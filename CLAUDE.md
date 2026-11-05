@@ -192,7 +192,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   the version `Product`; a log below the App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes
   `MSBuildNames`; another program's or a person's JSON `JsonMembers` (`Value` for a member of any kind), never a bare
   `TryGetProperty`/`GetProperty` (PSG0008); a search by halving `Sorted`, never a loop of your own; a primitive
-  `PrimitiveTypes`; an SDK into an installation `DotnetMerge`.
+  `PrimitiveTypes`; an SDK into an installation `DotnetMerge`; a path in a project file `ItemPaths`; what a Mac program
+  links `MachOFile`.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
   (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump.
@@ -237,8 +238,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - **Shell.** Every open through `PassengerApp.OpenProject`; a `.slnf`'s left-out projects are never saved as the
   person's; a handler acts only while its session is bound (`ProjectSession.Bind`). A Passenger nobody sees
   (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`; what a start
-  runs read by `DesktopPrograms`, never `Built` alone), and plays no sound. Anything new on the toolbar goes inside
-  `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's.
+  runs read by `DesktopPrograms`, never `Built` alone), and plays no sound; a Linux display is taken by `NoDisplay`,
+  never by unsetting `WAYLAND_DISPLAY`: a client named no socket connects to the session's `wayland-0`. Anything new on
+  the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's.
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; every editor through `ForEachEditor`; the one
   close `CloseTab`). A diff is an `OpenDocument.OfDiff` of no file, never in `Documents`, every one through
   `MainWindow.ShowDiff`. An SVG preview is a drawing (`ZoomedPicture`), never a bitmap; an HTML preview is never made in
@@ -269,10 +271,10 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   generator assigns every field in generated code, so a field's values come from the code's own documents. Edits placed
   in text Passenger read carry that text (`PlacedEdits`), checked before anything is written. A GDScript refactoring
   moving code asks `GDScriptEffects`: a call's arguments run before what it is called on, and an object's script
-  variable with no getter is read only as what takes it runs. Text typed for a scene is checked by `GodotVariantText`,
-  never `GodotFile`, which keeps what it doesn't know; values kept together go through `GodotKeeping`. Shader marks are
-  Passenger's port of Godot's front end (`GodotShaderChecker`). The person's Godot editor is asked through IDE messaging
-  (`GodotIdeLink`), never Passenger's headless editors.
+  variable with no getter is read only as what takes it runs. Text typed for a scene is checked by `GodotVariantText`
+  and `GodotVariantBounds`, never `GodotFile`, which keeps what it doesn't know; values kept together go through
+  `GodotKeeping`. Shader marks are Passenger's port of Godot's front end (`GodotShaderChecker`). The person's Godot
+  editor is asked through IDE messaging (`GodotIdeLink`), never Passenger's headless editors.
 - **Web languages.** `WebLanguages`: one Node.js server per kind but GDScript's (Godot's editor over TCP, one per Godot
   project: `ServerPlace`), every per-kind switch naming each kind; `JsonSchemas` and `PageStylesheets` reach the web
   only while Settings allows; a page's `<base href>` says nothing of the app's mount, so a link is the browser's address
@@ -312,7 +314,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - **Tests window.** `TestFinder`; tests are keyed by themselves (`TestItem.ById`), never a key string per test;
   `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
   asks to attach: `LaunchTestHost` is never called for one); the person's `GODOT_BIN` wins; GUT's tests are chosen by
-  `GutRuns.Hook`, never `-gunit_test_name` or `-ginner_class`, which take substrings.
+  `GutRuns.Hook`, never `-gunit_test_name` or `-ginner_class`, which take substrings; what a read depends on is taken
+  inside `TestFinder.ReadFile`'s parse, never captured by a listing.
 - **The rest.** `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
   only to their feed's host); `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
   templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); only an installed copy
@@ -427,18 +430,20 @@ a new name, and `just site-shots` retakes its images.
   change to project.godot counts as Godot's only where that temp was heard, `GodotSafeSave`). Run imports a project
   lacking `.import` files first. `script_templates/` is C# the build compiles unless removed; without a .sln Godot
   rewrites the csproj as it makes a C# script. On Windows a test's editor is two processes, both `--editor`.
-- **Godot's wire.** A scan of Godot's flags stops at its separator (`EngineArguments`); a condition's truth is the
-  game's (`GodotScriptBreakpoints.Truth`). Its debug peer takes only `[name, thread id 1, data]`; packed strings end
-  with a NUL; `scene:inspect_objects` answers a few objects (inspect one at a time); a warning comes as an error with
-  its flag set; its JSON reads every number as a float; from 4.7 an embedded game's state is 32 bytes and its pointer in
-  points. Its language server takes whole texts, reads `Content-Length` at a fixed offset, needs `rootPath`, has no
-  shutdown, and names a warning by `(NAME): ` to 4.7, by `code` from 4.8. Its script debugger: a message to a stopped
-  thread carries its id; an `evaluate` in a frame with no instance, or a `break` while stopped, lets the game go on; an
-  evaluation's errors come after its answer (`get_stack_dump` after each); `reload_scripts` keeps members by name, an
-  added one null. IDE messaging: `Play` plays only the main scene, `DebugPlay`'s debugger fields are dead in Godot 4,
-  `ReloadScripts` reloads the running games' scripts (GodotTools' watcher reloads the editor's own assemblies every 0.5
-  s); its completion kinds lack font sizes, so send the engine's numbers; an editor importing as it opens answers no
-  handshake until done (`GodotIdeLink` retries after 10 s).
+- **Godot's wire.** `scene:inspect_objects`, `Object.get` and `in` all run a script's getters and `_get`, so the helper
+  reads through `ClassDB.class_get_property` and `inst_to_dict`. A scan of Godot's flags stops at its separator
+  (`EngineArguments`); a condition's truth is the game's (`GodotScriptBreakpoints.Truth`). Its debug peer takes only
+  `[name, thread id 1, data]`; packed strings end with a NUL; `scene:inspect_objects` answers a few objects (inspect one
+  at a time); a warning comes as an error with its flag set; its JSON reads every number as a float; from 4.7 an
+  embedded game's state is 32 bytes and its pointer in points. Its language server takes whole texts, reads
+  `Content-Length` at a fixed offset, needs `rootPath`, has no shutdown, and names a warning by `(NAME): ` to 4.7, by
+  `code` from 4.8. Its script debugger: a message to a stopped thread carries its id; an `evaluate` in a frame with no
+  instance, or a `break` while stopped, lets the game go on; an evaluation's errors come after its answer
+  (`get_stack_dump` after each); `reload_scripts` keeps members by name, an added one null. IDE messaging: `Play` plays
+  only the main scene, `DebugPlay`'s debugger fields are dead in Godot 4, `ReloadScripts` reloads the running games'
+  scripts (GodotTools' watcher reloads the editor's own assemblies every 0.5 s); its completion kinds lack font sizes,
+  so send the engine's numbers; an editor importing as it opens answers no handshake until done (`GodotIdeLink` retries
+  after 10 s).
 - **Godot's game.** Stop ends a game before its debug session: wait for the session too; a session is ended once its
   adapter says so or its process is gone after Exited without Terminated (`ProgramGone`). An agent's call on a game has
   one limit (`GodotGame.Within`); app_ tools wait for the first scene, no evaluation. The frame counter runs on while
@@ -453,11 +458,13 @@ a new name, and `just site-shots` retakes its images.
   a Shader only at `get_rid()`, with no warnings, stopping at its first error, passing over a failed preprocess: only
   the shader port's comparison test reads it. Godot finds a C# error's `at:` place and backtrace by counting frames,
   which shift once tier 1 inlines GodotSharp's `PushError`: the console keys an entry by `GodotConsoleFold.KeyOf`.
-- **Godot's packages.** Its own GodotSharp packages differ from nuget.org's of the same version, so `tests/GodotGraphs`
-  never restores GodotSharp at a version a Godot ships (NU1403): GoDotTest's and GdUnit4's are `PackageDownload`s. 4.8's
-  C# generators can't build a script class whose base an older Godot's built (godotengine/godot#124939), so GdUnit4
-  5.1.0-rc6's runner doesn't build on 4.8 (`GdUnit4Log`). `--doctool` writes no descriptions, so engine words come from
-  `--dump-extension-api-with-docs` (`GodotClassReference`).
+- **Godot's packages.** Godot.NET.Sdk reads `GodotProjectDir` in its props: only a full path set before `<Import …
+  Sdk.props>` reaches its generators and output (`GodotProject.WhyNotBuiltFor`). Its own GodotSharp packages differ from
+  nuget.org's of the same version, so `tests/GodotGraphs` never restores GodotSharp at a version a Godot ships (NU1403):
+  GoDotTest's and GdUnit4's are `PackageDownload`s. 4.8's C# generators can't build a script class whose base an older
+  Godot's built (godotengine/godot#124939), so GdUnit4 5.1.0-rc6's runner doesn't build on 4.8 (`GdUnit4Log`).
+  `--doctool` writes no descriptions, so engine words come from `--dump-extension-api-with-docs`
+  (`GodotClassReference`).
 - **Godot's editor and the addon.** GodotTools' `_Build` runs before any addon's, so the addon sets
   `SkipBuildBeforePlaying` while Passenger builds. A game the editor's Play starts inherits its environment, names it by
   `--editor-pid`, is headless only through `editor/run/main_run_args`, and on Windows writes nothing to its stdout. An
@@ -480,9 +487,10 @@ a new name, and `just site-shots` retakes its images.
   program without `get-task-allow` (Godot's release build) can't be dumped, so its snapshot comes from its GC heap dump;
   a variadic libc call through P/Invoke (`fcntl`, `ioctl` with an argument) loses its variadic arguments on arm64;
   `poll` never says a named pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `Screen.Scaling` is 1
-  on Retina, so a pixel size goes with `RenderScaling`; `codesign` takes a dotted folder under `Contents/MacOS` for a
-  bundle (so the web servers live in Resources); TMPDIR goes through the /var link, so build a test's project by its
-  real path (two spellings restored at once collide).
+  on Retina, so a pixel size goes with `RenderScaling`, and Avalonia's `PointToScreen` is in points whatever its
+  `PixelPoint` says; `codesign` takes a dotted folder under `Contents/MacOS` for a bundle (so the web servers live in
+  Resources); TMPDIR goes through the /var link, so build a test's project by its real path (two spellings restored at
+  once collide).
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (dotnet/runtime#136577), so a folder is
   watched only through `WatchedTree`, never a bare `FileSystemWatcher` (#607, #609); settings.json, watched alone, is
   read again on its watcher's error and as a window comes in front (`SettingsStore.LookAgain`).
@@ -490,9 +498,11 @@ a new name, and `just site-shots` retakes its images.
   image whose file was replaced (`just package-mac` ejects one first) or a bundle written into (#450). Tests never start
   a program inside an unsigned bundle, and a run's folder ends in `.noindex`, so Spotlight reads none of it.
 - **Linux**: file systems tell letter case apart, so a test of another letter case skips there.
-- **MSBuild**: a build through another spelling of a project's path deletes what the first wrote (IncrementalClean; a
-  shell or MSBuild takes an inherited PWD for its folder, #413, #537), and a reused node carries a project's earlier
-  spelling and NuGet home into the next build. It keeps no idle node unless the process's nice value is 0.
+- **MSBuild**: a Remove glob (by its source an Include's or Update's too) is unescaped twice, an Exclude's or Import's
+  once, and one escaped wildcard makes a whole glob a plain name fitting no file (`ItemPaths`); a build through another
+  spelling of a project's path deletes what the first wrote (IncrementalClean; a shell or MSBuild takes an inherited PWD
+  for its folder, #413, #537), and a reused node carries a project's earlier spelling and NuGet home into the next
+  build. It keeps no idle node unless the process's nice value is 0.
 - **Local History's `changes.log` is shared by every Passenger on the same state**: a store takes in the others' lines
   under `Hold` before it keeps anything, and a change logged twice lists once.
 - **A variable taken out of a process's own environment goes through `OwnEnvironment.Set`**: on macOS and Linux
@@ -514,6 +524,8 @@ a new name, and `just site-shots` retakes its images.
 - **Avalonia 12's ListBox re-points its keys' row by the chosen row's new index before moving rows**, so a focused row
   loses the keys when rows come above it, and moves a Shift range's anchor only with its first chosen row: every tree
   goes through `TreeKeys.Attach`.
+- **`ArrayPool.Shared` loses a thread's arrays at a Gen 2 once load reaches 81% of memory**, so a `Rent` on a path held
+  to 0 bytes can allocate: such a path keeps a per-thread array (`FuzzyMatch`).
 - **`FormattedText` lays its lines out again at every draw**: text drawn frame after frame is kept as a `TextLayout` or
   `TextLine` until what it says or its width changes. Avalonia's text formatter returns the pooled arrays of runs it
   shapes together only when finalized, so runs of one line are taken from two copies of its text in turn.
