@@ -32,8 +32,7 @@ public partial class MainWindow
         {
             actions.Add(new IdeAction(id, tabs ? "Convert Indentation to Tabs" : "Convert Indentation to Spaces", "IDE", context => ConvertIndentation(context.File!, tabs))
             {
-                WhyNot = context => Refusals.NeedsLines(context)
-                    ?? (context.File!.IsReadOnly ? Refusals.ReadOnly(context.File.Name) : !context.File.KnowsStrings ? Refusals.ReadingStrings(context.File.Name) : null),
+                WhyNot = context => Refusals.NeedsLines(context) ?? context.File!.WhyNotConverted(tabs),
                 Words = [tabs ? "Tabify" : "Untabify"],
             });
         }

@@ -812,12 +812,12 @@ public sealed class OpenDocument : Observable
     /// <summary>Every line's indentation written in tabs, or in spaces, at the file's indent size, alignment within a line
     /// and each line that begins inside a string (<see cref="LinesInStrings"/>) left as they are, as one undoable step that
     /// makes it the indentation chosen for the file, the choice before back on Undo. How many lines changed and how many
-    /// inside strings were left; none changed changes nothing, and a read-only file is refused.</summary>
+    /// inside strings were left; none changed changes nothing, and what <see cref="WhyNotConverted"/> names is refused.</summary>
     public (int Changed, int InStrings) ConvertIndentation(bool toTabs)
     {
-        if (IsReadOnly)
+        if (WhyNotConverted(toTabs) is { } why)
         {
-            throw new IOException(Refusals.ReadOnly(Name));
+            throw new IOException(why);
         }
         IndentOptions from = Indentation.Options;
         // Tabs as wide as a level, so the lines stand where they stood.
@@ -836,13 +836,19 @@ public sealed class OpenDocument : Observable
         return (edits.Count, inStrings);
     }
 
-    /// <summary>Whether the lines that begin inside a string are known for the text as it stands: C#'s from its syntax at
-    /// once, another language's once its grammar has read the whole file.</summary>
-    public bool KnowsStrings => parser is not TextMateHighlighter grammar || grammar.HasRead(Text.Snapshot);
+    /// <summary>Why converting the indentation could change what the file means, so is refused: it is read-only, its language
+    /// takes no tabs, or the lines that begin inside a string are not known, as C#'s are from its syntax at once and another
+    /// language's once its grammar has read the whole file; a language with neither has none known unless it holds none.</summary>
+    public string? WhyNotConverted(bool toTabs) =>
+        IsReadOnly ? Refusals.ReadOnly(Name)
+        : toTabs && Language.IndentsWithSpacesAlone ? Refusals.SpacesAlone(Name, Language.Name)
+        : parser is TextMateHighlighter grammar && !grammar.HasRead(Text.Snapshot) ? Refusals.ReadingStrings(Name)
+        : parser is null && !Language.HoldsNoStrings(Path) ? Refusals.UnreadStrings(Name)
+        : null;
 
     /// <summary>The lines that begin inside a string, whose leading whitespace is the string's text: C#'s verbatim and raw
     /// strings from its syntax, another language's from where its grammar's states say a string runs on; none for a file
-    /// with neither.</summary>
+    /// that holds no strings.</summary>
     private IReadOnlySet<int>? LinesInStrings() => parser switch
     {
         CSharpHighlighter csharp => StringLines.Of(csharp.Current.Root, csharp.Current.Text),

@@ -316,6 +316,27 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A language Passenger has no parse or grammar of declines the conversion, saying why, as a Python string's
+    /// lines can't be told from code, and leaves the file as it is; a file of prose, which holds no strings, converts.</summary>
+    [AvaloniaFact]
+    public void Converting_indentation_is_refused_where_the_lines_inside_strings_cannot_be_told()
+    {
+        const string Code = "data = \"\"\"header\n        exact\"\"\"\n\ndef run():\n        pass\n";
+        Write("tool.py", Code);
+        MainWindow window = Open("tool.py");
+        Assert.Equal(Refusals.UnreadStrings("tool.py"), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+        Assert.Equal(Refusals.UnreadStrings("tool.py"), window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context()));
+        Assert.Equal(Code, Text(window));
+
+        Write("notes.txt", "one\n    two\n");
+        window.OpenFile("notes.txt");
+        Ui.Settle();
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Tabs");
+        Assert.Equal("one\n\ttwo\n", Text(window));
+        window.Close();
+    }
+
     /// <summary>A click on the caret's place in the status bar opens Go to Line:Column, and the line given is where the
     /// caret goes.</summary>
     [AvaloniaFact]

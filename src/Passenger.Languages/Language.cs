@@ -110,7 +110,8 @@ public sealed class Language
 
     private Language([IdentifierOf(typeof(LanguageIds))] string id, string name, IReadOnlyList<FilePattern> patterns, string? line = null,
         (string Start, string End)? block = null, int indent = 4, GrammarFile? grammar = null, Func<TextDocument, IFoldFinder>? folds = null,
-        LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false, bool tabs = false)
+        LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false, bool tabs = false,
+        bool spacesAlone = false)
     {
         Id = id;
         Name = name;
@@ -124,11 +125,12 @@ public sealed class Language
         Markup = markup;
         ReindentsPaste = reindentsPaste;
         Parsed = parsed;
+        IndentsWithSpacesAlone = spacesAlone;
         All.Add(this);
     }
 
-    /// <summary>What a file matching no language is, claiming none itself.</summary>
-    public static readonly Language PlainText = new("plaintext", "Text", [], reindentsPaste: false);
+    /// <summary>What a file matching no language is, claiming only the names of prose (<see cref="HoldsNoStrings"/>).</summary>
+    public static readonly Language PlainText = new("plaintext", "Text", ["*.txt", "*.text", "*.log"], reindentsPaste: false);
 
     /// <summary>What an image's or a font's preview is, as the status bar and the tools name it: no text, so no comments.</summary>
     public static readonly Language Image = new("image", "Image", []);
@@ -176,7 +178,7 @@ public sealed class Language
         line: "//", block: ("/*", "*/"), indent: 2, grammar: new("source.json", "JSON.tmLanguage.json"), folds: FoldScan.Json, service: LanguageService.Json);
 
     public static readonly Language Yaml = new("yaml", "YAML", ["*.yml", "*.yaml"], line: "#", indent: 2,
-        grammar: new("source.yaml", "yaml.tmLanguage.json"), service: LanguageService.Yaml);
+        grammar: new("source.yaml", "yaml.tmLanguage.json"), service: LanguageService.Yaml, spacesAlone: true);
 
     public static readonly Language Markdown = new("markdown", "Markdown", ["*.md", "*.markdown"], block: ("<!--", "-->"), indent: 2,
         grammar: new("text.html.markdown", "markdown.tmLanguage.json"), reindentsPaste: false);
@@ -259,6 +261,9 @@ public sealed class Language
     /// code blocks, plain text).</summary>
     public bool ReindentsPaste { get; }
 
+    /// <summary>Whether a tab can't indent the language's files: a reader takes the file for broken with one there.</summary>
+    public bool IndentsWithSpacesAlone { get; }
+
     internal GrammarFile? Grammar { get; }
 
     /// <summary>What scans a file of the language for its folds, where its colours' parse does not find them.</summary>
@@ -279,6 +284,10 @@ public sealed class Language
         }
         return PlainText;
     }
+
+    /// <summary>Whether a file can have no line that begins inside a string with nothing here to read it by: ignore patterns,
+    /// and prose by its name, where a file matching no language may be any program's.</summary>
+    public bool HoldsNoStrings(string path) => this == Ignore || (this == PlainText && PatternOf(path) is not null);
 
     /// <summary>The language id a server is told a file of this language is in: its pattern's, else the language's own.</summary>
     public string IdOf(string path) => PatternOf(path)?.Id ?? Id;

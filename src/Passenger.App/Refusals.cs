@@ -282,6 +282,13 @@ public static class Refusals
     /// <summary>A file whose grammar has yet to read it whole, so the lines inside its strings are not yet known.</summary>
     public static string ReadingStrings(string name) => $"{name} is still being read, to tell the lines inside its strings";
 
+    /// <summary>A file in a language with no parse or grammar here, whose lines may begin inside a string that converting
+    /// their indentation would change.</summary>
+    public static string UnreadStrings(string name) => $"Passenger can't tell which lines of {name} begin inside a string, whose text a conversion would change";
+
+    /// <summary>A file of a language tabs can't indent, which a conversion to them would break.</summary>
+    public static string SpacesAlone(string name, string language) => $"{language} takes no tabs in its indentation, so {name} would no longer read as {language}";
+
     /// <summary>Why the file shown cannot be saved (the one a diff's tab edits, <see cref="Workspace.OpenDocument.Saves"/>): none is
     /// shown, it is read-only, or it has nothing to save.</summary>
     public static string? NeedsUnsaved(ActionContext context) =>
