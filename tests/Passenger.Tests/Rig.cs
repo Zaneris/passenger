@@ -1659,7 +1659,8 @@ public static class Ui
     {
         list.ScrollIntoView(row);
         Settle();
-        return list.ContainerFromItem(row) ?? throw new Xunit.Sdk.XunitException($"The list does not show {row}");
+        return list.ContainerFromItem(row) ?? throw new Xunit.Sdk.XunitException($"The list does not show {row}: row {list.Items.IndexOf(row)} of {list.ItemCount}, "
+            + $"the list {list.Bounds.Height} high and {(list.IsEffectivelyVisible ? "shown" : "hidden")}, its view at {list.Scroll?.Offset} over {list.Scroll?.Viewport} of {list.Scroll?.Extent}");
     }
 
     /// <summary>Chooses an item of an open menu, through the submenus named before it ("Add", "Docker Support"), refusing
