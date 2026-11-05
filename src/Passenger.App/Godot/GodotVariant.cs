@@ -440,6 +440,65 @@ public static class GodotVariant
         _ => null,
     };
 
+    /// <summary>A new key of a dictionary typed <paramref name="type"/> that none of <paramref name="keys"/> is: false then
+    /// true, the next whole number, the next whole real, "key" and "key 2" on as a string, a name or a node path, a math
+    /// value's default with its first number moved on, an empty container. False where the type has none left, or none
+    /// made without a person (an object).</summary>
+    public static bool TryNewKey(GodotType type, IReadOnlyList<object?> keys, out object? key)
+    {
+        foreach (object? offered in KeysOf(type, keys))
+        {
+            if (!keys.Any(k => Same(k, offered)))
+            {
+                key = offered;
+                return true;
+            }
+        }
+        key = null;
+        return false;
+    }
+
+    /// <summary>The keys of a type to offer, in order: endless where the type has no end of them.</summary>
+    private static IEnumerable<object?> KeysOf(GodotType type, IReadOnlyList<object?> keys)
+    {
+        switch (type)
+        {
+            case GodotType.Bool:
+                yield return false;
+                yield return true;
+                break;
+            case GodotType.Int:
+                for (long next = keys.OfType<long>().DefaultIfEmpty(-1).Max() + 1; ; next++)
+                {
+                    yield return next;
+                }
+            case GodotType.Float:
+                for (double next = keys.OfType<double>().Where(double.IsFinite).Select(Math.Floor).DefaultIfEmpty(-1).Max() + 1; ; next++)
+                {
+                    yield return next;
+                }
+            case GodotType.Nil or GodotType.String or GodotType.StringName or GodotType.NodePath:
+                for (int n = 1; ; n++)
+                {
+                    string text = n == 1 ? "key" : $"key {n}";
+                    yield return type switch
+                    {
+                        GodotType.StringName => new GodotName(text),
+                        GodotType.NodePath => new GodotNodePath([text], [], false),
+                        _ => text,
+                    };
+                }
+            case GodotType.Dictionary or GodotType.Array or >= GodotType.PackedByteArray:
+                yield return Default(type);
+                break;
+            case var math when Default(math) is GodotMath start:
+                for (int n = 0; ; n++)
+                {
+                    yield return new GodotMath(math, [start.Values[0] + n, .. start.Values.Skip(1)]);
+                }
+        }
+    }
+
     /// <summary>What a packed array holds each of: an int's, a float's, a string's, a vector's or a colour's type; Nil for any
     /// other type.</summary>
     public static GodotType ElementOf(GodotType packed) => packed switch

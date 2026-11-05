@@ -311,15 +311,22 @@ public sealed class GodotItemsEditor : Border
         await SendAsync(Typed(entries));
     }
 
-    /// <summary>One more item, of the element type or the last item's (zero, empty, false), or an entry whose key no other has.</summary>
+    /// <summary>One more item, of the element type or the last item's (zero, empty, false), or an entry whose key no other
+    /// has, of the type the keys are; an untyped dictionary takes a string where its last key's type gives none.</summary>
     private async Task AddAsync()
     {
         if (Entries)
         {
             List<KeyValuePair<object?, object?>> entries = [.. Pairs];
+            List<object?> taken = [.. entries.Select(e => e.Key)];
             GodotType newKey = keyType != GodotType.Nil ? keyType : entries.Count > 0 ? GodotVariant.TypeOf(entries[^1].Key) : GodotType.String;
             GodotType newValue = itemType != GodotType.Nil ? itemType : entries.Count > 0 ? GodotVariant.TypeOf(entries[^1].Value) : GodotType.Nil;
-            entries.Add(new(NewKey(newKey, entries), GodotVariant.Default(newValue)));
+            if (!GodotVariant.TryNewKey(newKey, taken, out object? key) && (keyType != GodotType.Nil || !GodotVariant.TryNewKey(GodotType.String, taken, out key)))
+            {
+                Refused($"No new {GodotVariant.TypeName(newKey)} key can be made for {name}");
+                return;
+            }
+            entries.Add(new(key, GodotVariant.Default(newValue)));
             await SendAsync(Typed(entries));
             return;
         }
@@ -327,24 +334,6 @@ public sealed class GodotItemsEditor : Border
         GodotType of = itemType != GodotType.Nil ? itemType : added.Count > 0 ? GodotVariant.TypeOf(added[^1]) : GodotType.Nil;
         added.Add(GodotVariant.Default(of));
         await SendAsync(GodotVariant.Packed(type, added, items));
-    }
-
-    /// <summary>A key of a type that no entry has: the next whole number, else "key", "key 2" and on.</summary>
-    private static object? NewKey(GodotType type, List<KeyValuePair<object?, object?>> entries)
-    {
-        if (type == GodotType.Int)
-        {
-            return entries.Select(e => e.Key).OfType<long>().DefaultIfEmpty(-1).Max() + 1;
-        }
-        for (int n = 1; ; n++)
-        {
-            string text = n == 1 ? "key" : $"key {n}";
-            object key = type == GodotType.StringName ? new GodotName(text) : text;
-            if (!entries.Any(e => GodotVariant.Same(e.Key, key)))
-            {
-                return key;
-            }
-        }
     }
 
     /// <summary>Entries as a dictionary typed as the one the game sent.</summary>

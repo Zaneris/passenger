@@ -87,6 +87,36 @@ public class GodotContainersTests
         Assert.Equal("[2 bytes]", GodotVariant.Shown(new byte[] { 1, 2 }));
     }
 
+    private static object? NewKey(GodotType type, params object?[] keys)
+    {
+        Assert.True(GodotVariant.TryNewKey(type, keys, out object? key), $"A {type} dictionary holding {keys.Length} keys has a new key to take");
+        return key;
+    }
+
+    [Fact]
+    public void A_new_key_is_of_the_type_the_dictionary_declares_and_no_key_it_has()
+    {
+        Assert.Equal(false, NewKey(GodotType.Bool));
+        Assert.Equal(true, NewKey(GodotType.Bool, false));
+        Assert.False(GodotVariant.TryNewKey(GodotType.Bool, [true, false], out _), "A bool has two keys to give");
+        Assert.Equal(0L, NewKey(GodotType.Int));
+        Assert.Equal(6L, NewKey(GodotType.Int, 5L, 2L));
+        Assert.Equal(0.0, NewKey(GodotType.Float));
+        Assert.Equal(2.0, NewKey(GodotType.Float, 1.5, double.PositiveInfinity));
+        Assert.Equal("key", NewKey(GodotType.String));
+        Assert.Equal("key 3", NewKey(GodotType.String, "key", "key 2"));
+        Assert.Equal(new GodotName("key 2"), NewKey(GodotType.StringName, new GodotName("key")));
+        Assert.Equal("key", NewKey(GodotType.NodePath)?.ToString());
+        Assert.IsType<GodotNodePath>(NewKey(GodotType.NodePath));
+        Assert.Equal(new GodotMath(GodotType.Vector2, [0, 0]), NewKey(GodotType.Vector2));
+        Assert.Equal(new GodotMath(GodotType.Vector2I, [2, 0]), NewKey(GodotType.Vector2I, new GodotMath(GodotType.Vector2I, [0, 0]), new GodotMath(GodotType.Vector2I, [1, 0])));
+        Assert.Equal(new GodotMath(GodotType.Color, [1, 0, 0, 1]), NewKey(GodotType.Color, new GodotMath(GodotType.Color, [0, 0, 0, 1])));
+        Assert.Equal(new GodotArray([]), NewKey(GodotType.Array));
+        Assert.False(GodotVariant.TryNewKey(GodotType.Array, [new GodotArray([])], out _), "An empty array is the one key an array type gives");
+        Assert.Equal(GodotType.PackedVector3Array, GodotVariant.TypeOf(NewKey(GodotType.PackedVector3Array)));
+        Assert.False(GodotVariant.TryNewKey(GodotType.Object, [], out _), "An object is no key made without a person");
+    }
+
     [Theory]
     [InlineData("int", GodotType.Int)]
     [InlineData("Vector2i", GodotType.Vector2I)]
