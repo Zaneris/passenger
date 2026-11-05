@@ -89,6 +89,28 @@ public sealed class UnseenAppsTests : IDisposable
         KeptOff(plan, "a GTK app");
     }
 
+    /// <summary>A launch profile may name a display, as one forwarded over SSH does: where nobody is to see the program, that
+    /// names nothing, or it would reach the screen the process's own environment no longer leads to.</summary>
+    [Fact]
+    public async Task On_Linux_a_display_a_configuration_names_stays_out_of_what_a_passenger_nobody_sees_starts()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Only Linux finds its display in the environment");
+        string project = Path.Combine(folder, Passenger.Workspace.GodotProject.FileName);
+        File.WriteAllText(project, "config_version=5\n");
+        RunConfiguration named = new()
+        {
+            Name = "Tool", Project = project, Program = Carrying("Plain.dll", "Tool"),
+            Environment = new Dictionary<string, string> { [NoDisplay.X11] = ":1", [NoDisplay.Wayland] = "wayland-1", ["KEPT"] = "yes" },
+        };
+
+        LaunchPlan plan = await LaunchPlan.ResolveAsync(named, [], null, folder, TestContext.Current.CancellationToken, unseen: true);
+        LaunchPlan seen = await LaunchPlan.ResolveAsync(named, [], null, folder, TestContext.Current.CancellationToken, unseen: false);
+
+        Assert.False(plan.Environment.ContainsKey(NoDisplay.X11), "A configuration's DISPLAY reaches what a Passenger nobody sees starts");
+        Assert.Equal((NoDisplay.Nowhere, "yes"), (plan.Environment[NoDisplay.Wayland], plan.Environment["KEPT"]));
+        Assert.Equal((":1", "wayland-1"), (seen.Environment[NoDisplay.X11], seen.Environment[NoDisplay.Wayland]));
+    }
+
     /// <summary>A plan nobody is to see, of the program given, in the test's folder.</summary>
     private LaunchPlan Plan(string program) => new() { Name = "App", Program = program, WorkingDirectory = folder, Unseen = true };
 

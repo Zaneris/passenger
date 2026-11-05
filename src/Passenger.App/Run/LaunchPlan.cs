@@ -232,7 +232,7 @@ public sealed partial record LaunchPlan
         {
             // Godot runs a game of GDScript alone as it is: no MSBuild to ask, nothing to build.
             ProjectModel scripts = ProjectModel.OfScriptGame(System.IO.Path.GetDirectoryName(configuration.Project)!);
-            Dictionary<string, string> variables = configuration.Environment.ToDictionary(v => v.Key, v => System.Environment.ExpandEnvironmentVariables(v.Value));
+            Dictionary<string, string> variables = Unnamed(configuration.Environment.ToDictionary(v => v.Key, v => System.Environment.ExpandEnvironmentVariables(v.Value)), headless);
             if (configuration.Program.Length == 0 || configuration.NamesGodot)
             {
                 return await GodotLaunch.PlanAsync(configuration, scripts, scripts.Folder, null, null, System.Environment.ExpandEnvironmentVariables,
@@ -287,7 +287,7 @@ public sealed partial record LaunchPlan
             {
                 set[LaunchProfile.NameVariable] = configuration.LaunchProfile;
             }
-            return set;
+            return Unnamed(set, headless);
         }
 
         string target = PathNames.Canonical(properties.GetValueOrDefault(CarriedProperties.TargetPath) is { Length: > 0 } path
@@ -362,6 +362,16 @@ public sealed partial record LaunchPlan
             Web = WebOf(project, framework, properties, workspace, projects),
             Unseen = headless,
         };
+    }
+
+    /// <summary>A configuration's variables, on Linux with no display in them where nobody is to see what they start.</summary>
+    private static Dictionary<string, string> Unnamed(Dictionary<string, string> variables, bool unseen)
+    {
+        if (unseen && OperatingSystem.IsLinux())
+        {
+            NoDisplay.Over(variables);
+        }
+        return variables;
     }
 
     /// <summary>A web project's build as its evaluation says it; null for another, or one whose evaluation says too little.</summary>

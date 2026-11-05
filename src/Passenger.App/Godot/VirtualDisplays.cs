@@ -12,7 +12,7 @@ namespace Passenger.App.Godot;
 public static class VirtualDisplays
 {
     /// <summary>The variable that names an X display to a program.</summary>
-    public const string Variable = "DISPLAY";
+    public const string Variable = NoDisplay.X11;
 
     /// <summary>How long the server stays with no game on it: about 20 MB, and a start of a few hundred milliseconds.</summary>
     private static readonly TimeSpan Idle = TimeSpan.FromMinutes(3);

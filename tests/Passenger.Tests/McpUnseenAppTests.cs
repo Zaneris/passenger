@@ -181,6 +181,19 @@ public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFol
         Assert.DoesNotContain(DesktopAgentAppFolder.MainRan, Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
     }
 
+    /// <summary>No start of an agent's own Passenger has a display to reach, whatever it runs and however it starts: here the
+    /// Terminal's shell, forked from the process's own environment rather than .NET's copy.</summary>
+    [Fact]
+    public async Task On_Linux_nothing_an_agents_own_passenger_starts_has_a_display_to_reach()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Only Linux finds its display in the environment");
+        await using McpClient client = await Start(["--mcp", appFolder], environment: new() { [NoDisplay.X11] = ":77", [NoDisplay.Wayland] = "wayland-7" }, languageServer: false);
+
+        string answer = (await Call(client, McpTools.TerminalRun, new() { ["command"] = $"echo \"x=[$DISPLAY] w=[$WAYLAND_DISPLAY]\"" })).GetString()!;
+
+        Assert.Contains($"x=[] w=[{NoDisplay.Nowhere}]", answer, StringComparison.Ordinal);
+    }
+
     /// <summary>Carrying the headless platform says nothing of the Main beside it: the app goes as it goes without the package,
     /// so its Main, which would draw on the screen, never runs.</summary>
     [Fact]

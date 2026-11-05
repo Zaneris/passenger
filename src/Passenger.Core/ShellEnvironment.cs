@@ -97,6 +97,7 @@ public static class ShellEnvironment
                     Environment.SetEnvironmentVariable(pair[..equals], pair[(equals + 1)..]);
                 }
             }
+            NoDisplay.Again();
         }
         catch (TimeoutException)
         {

@@ -75,8 +75,12 @@ public static class PassengerApp
     internal static void RunsForAgent() => ForAgent = true;
 
     /// <summary>The process runs on the headless platform, as <c>--mcp</c>, <c>--headless</c> and a screenshot choose it
-    /// before their window is made.</summary>
-    internal static void RunsHeadless() => headless = true;
+    /// before their window is made, and nothing it starts has a display to reach (<see cref="NoDisplay"/>).</summary>
+    internal static void RunsHeadless()
+    {
+        headless = true;
+        NoDisplay.Take();
+    }
 
     /// <summary>A window came in front, or one closed: Discord follows the front one.</summary>
     public static event EventHandler? FrontChanged;

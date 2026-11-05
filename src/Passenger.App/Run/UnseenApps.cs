@@ -8,7 +8,7 @@ namespace Passenger.App.Run;
 /// its Main (<see cref="Passenger.Inspector.Wire.UnseenVariable"/>); on Windows every desktop app on a desktop of its own
 /// too (<see cref="ChildProcesses.OnDesktopOfItsOwn"/>); elsewhere any other desktop app is refused, saying why. Which app
 /// that is, is read from what the plan starts (<see cref="DesktopPrograms"/>). A program with no windows of its own (a
-/// console's, a web app's) runs as it is.</summary>
+/// console's, a web app's) runs as it is; on Linux one not read as a desktop app finds no display (<see cref="NoDisplay"/>).</summary>
 public static class UnseenApps
 {
     /// <summary>Whether a plan's program starts on a desktop of its own: on Windows a desktop app a Passenger nobody sees
