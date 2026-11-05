@@ -86,7 +86,8 @@ public sealed class GodotProjectAboveTests : IClassFixture<GodotProjectAboveTest
             File.Move(Path.Combine(game, "nuget.config"), PathOf("nuget.config"));
             File.Delete(Path.Combine(game, "Spinner.csproj"));
             File.WriteAllText(PathOf("Spinner.csproj"), $"<Project Sdk=\"Godot.NET.Sdk/{version}\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
-                + "    <EnableDynamicLoading>true</EnableDynamicLoading>\n    <GodotProjectDir>game</GodotProjectDir>\n  </PropertyGroup>\n</Project>\n");
+                + "    <EnableDynamicLoading>true</EnableDynamicLoading>\n    <GodotProjectDir>$(MSBuildProjectDirectory)/game/</GodotProjectDir>\n"
+                + "    <GodotProjectDirBase64>$([MSBuild]::ConvertToBase64('$(GodotProjectDir)'))</GodotProjectDirBase64>\n  </PropertyGroup>\n</Project>\n");
         }
 
         public GodotFound? Godot { get; }
