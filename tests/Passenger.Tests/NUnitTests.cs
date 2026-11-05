@@ -229,6 +229,30 @@ public sealed class NUnitTests : NUnitFolders
         window.Close();
     }
 
+    /// <summary>A generic fixture, which its code alone never shows, is told where it is and marked beside its code once a
+    /// run has found it, whichever way NUnit is installed.</summary>
+    [AvaloniaTheory]
+    [InlineData(NUnitInstall.OnVSTest)]
+    [InlineData(NUnitInstall.OnItsRunner)]
+    [InlineData(NUnitInstall.FourOnVSTest)]
+    public void A_generic_fixture_found_by_its_runner_says_where_it_is_and_is_marked_beside_its_code(NUnitInstall install)
+    {
+        string folder = Restored(install, "Cases.cs", Cases);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile(Path.Combine(folder, "Cases.cs"));
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Plain") is not null, "the tests read from their code");
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Named") is { Path: not null }, "the run of every test", TimeSpan.FromSeconds(180));
+
+        int line = Array.FindIndex(Cases.Split('\n'), l => l.Contains("public void Named()", StringComparison.Ordinal));
+        TestNode named = Method(window, "Named")!;
+        Assert.Equal("Cases.cs", Path.GetFileName(named.Path));
+        Assert.Equal(line + 1, named.Line);
+        Assert.Contains(new TestMark(line, TestMarkKind.Passed), window.EditorArea.CodeEditor.TestMarks);
+        window.Close();
+    }
+
     /// <summary>The tests' tally, less the time they took.</summary>
     private static string Tally(MainWindow window) =>
         System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty);
@@ -269,7 +293,8 @@ public sealed class NUnitDebuggingTests : NUnitFolders
     }
 }
 
-/// <summary>NUnit as an agent meets it, however it is installed: a run's answer says which case of a method failed.</summary>
+/// <summary>NUnit as an agent meets it, however it is installed: a run's answer says which case of a method failed, and
+/// tests_list where a test its runner alone finds is.</summary>
 public sealed class NUnitMcpTests : McpRig
 {
     /// <summary>A method of two named cases, one failing, and a method whose only case is named and fails.</summary>
@@ -308,6 +333,20 @@ public sealed class NUnitMcpTests : McpRig
         JsonElement alone = await Call(client, McpTools.TestsRun, new() { ["filter"] = "Lone" });
         Assert.StartsWith("Tests passed: 0, failed: 1 of 1", alone.GetProperty("summary").GetString(), StringComparison.Ordinal);
         Assert.StartsWith("TwoIsThree: Failed", Details(alone, "Cases.Tests.Arithmetic.Lone"), StringComparison.Ordinal);
+    }
+
+    /// <summary>tests_list's location of a test only a runner finds, on NUnit's own runner as on VSTest.</summary>
+    [Theory]
+    [InlineData(NUnitInstall.OnVSTest)]
+    [InlineData(NUnitInstall.OnItsRunner)]
+    [InlineData(NUnitInstall.FourOnVSTest)]
+    public async Task An_agent_is_told_where_a_generic_fixture_is_however_nunit_is_installed(NUnitInstall install)
+    {
+        const string Typed = "using NUnit.Framework;\n\nnamespace Cases.Tests;\n\n[TestFixture(typeof(int))]\npublic class Typed<T>\n{\n    [Test]\n    public void Named() { }\n}\n";
+        await using McpClient client = await Start(["--mcp", await Restored(install, Typed)], languageServer: false);
+        await Call(client, McpTools.TestsRun);
+        JsonElement test = Assert.Single((await Call(client, McpTools.TestsList, new() { ["filter"] = "Typed" })).EnumerateArray());
+        Assert.True(test.TryGetProperty("location", out JsonElement location) && location.GetString() == "Cases.cs:9", $"tests_list says nowhere a run of it found the test: {test}");
     }
 
     /// <summary>What a run's answer says of a test's failure.</summary>
