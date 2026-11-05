@@ -16,7 +16,7 @@ internal sealed class TestsCache(string path)
 {
     /// <summary>The reading of tests the entries hold: raised whenever <see cref="TestsAtCaret"/> reads a file otherwise, or
     /// the entries are written otherwise.</summary>
-    public const int Schema = 1;
+    public const int Schema = 2;
 
     private const string Magic = "passenger-tests";
 

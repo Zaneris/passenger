@@ -197,7 +197,7 @@ public static partial class GutScripts
             {
                 types.Insert(0, (type, Math.Max(extendsLine, 0)));
             }
-            tests.Add(new DeclaredTest(owner, method, at, [], false) { Code = Code(lines, at, last) });
+            tests.Add(new DeclaredTest(owner, method, at, [], false) { Code = TestCode.OfScript(string.Join('\n', lines[at..(last + 1)])) });
         }
         if (config?.Takes(folder, path) == false)
         {
@@ -283,23 +283,6 @@ public static partial class GutScripts
             count++;
         }
         return count;
-    }
-
-    /// <summary>A function's text but its whitespace, hashed as FNV-1a does, so a result is known to be of its code now.</summary>
-    private static ulong Code(string[] lines, int first, int last)
-    {
-        ulong hash = 14695981039346656037;
-        for (int at = first; at <= last; at++)
-        {
-            foreach (char c in lines[at])
-            {
-                if (!char.IsWhiteSpace(c))
-                {
-                    hash = (hash ^ c) * 1099511628211;
-                }
-            }
-        }
-        return hash;
     }
 
     [GeneratedRegex(@"^extends\s+(?<base>[A-Za-z_]\w*|""[^""]*""|'[^']*')(?:\s+class_name\s+(?<name>[A-Za-z_]\w*))?")]

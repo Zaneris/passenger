@@ -14,8 +14,8 @@ public sealed record DeclaredTest(string Type, string Method, int Line, IReadOnl
     /// <summary>The names its cases are given as string literals (NUnit's TestCase TestName), each a runner's test name.</summary>
     public IReadOnlyList<string> Cases { get; init; } = [];
 
-    /// <summary>Its code, attributes to body, as a number that changes with any of it but its whitespace: whether a result
-    /// is of the code there now. A read that differs in it alone is the same (<see cref="SameAs"/>).</summary>
+    /// <summary>Its code, attributes to body, as a number that changes with what it says (<see cref="TestCode"/>): whether a
+    /// result is of the code there now. A read that differs in it alone is the same (<see cref="SameAs"/>).</summary>
     public ulong Code { get; init; }
 
     public bool SameAs(DeclaredTest other) => Line == other.Line && SameTest(other);
@@ -155,8 +155,8 @@ public static class TestsAtCaret
 
     private static readonly IReadOnlySet<string> NoneOwn = new HashSet<string>(StringComparer.Ordinal);
 
-    /// <summary>Everything a file declares for testing, read without going into any member's body: a test is a method
-    /// with a framework's test attribute, or one of <paramref name="own"/>, the attributes its project derives from them.</summary>
+    /// <summary>Everything a file declares for testing, going into no member's body but a test's, for its code: a test is a
+    /// method with a framework's test attribute, or one of <paramref name="own"/>, the attributes its project derives from them.</summary>
     public static FileTests Read(ParsedText syntax, IReadOnlySet<string>? own = null)
     {
         own ??= NoneOwn;
@@ -184,7 +184,7 @@ public static class TestsAtCaret
                 any = true;
                 typeTraits ??= Traits(type.AttributeLists);
                 tests.Add(new DeclaredTest(name, method.Identifier.ValueText, syntax.Text.GetLineFromOffset(method.Identifier.SpanStart),
-                    [.. typeTraits, .. Traits(method.AttributeLists)], inherited) { Cases = Cases(method.AttributeLists), Code = Code(syntax.Text, method) });
+                    [.. typeTraits, .. Traits(method.AttributeLists)], inherited) { Cases = Cases(method.AttributeLists), Code = TestCode.Of(method) });
             }
             if (any)
             {
@@ -207,27 +207,6 @@ public static class TestsAtCaret
         string normalized = name.Replace('+', '.');
         string owner = type.Replace('+', '.');
         return method is null ? normalized.StartsWith(owner + ".", StringComparison.Ordinal) : normalized == $"{owner}.{method}";
-    }
-
-    /// <summary>A method's text but its whitespace, from its attributes to its end, hashed as FNV-1a does (the same in
-    /// every process, unlike <see cref="HashCode"/>).</summary>
-    private static ulong Code(TextSnapshot text, MethodDeclarationSyntax method)
-    {
-        ulong hash = 14695981039346656037;
-        Span<char> chunk = stackalloc char[512];
-        for (int at = method.SpanStart, end = Math.Min(method.Span.End, text.Length); at < end; at += chunk.Length)
-        {
-            Span<char> read = chunk[..Math.Min(chunk.Length, end - at)];
-            text.CopyTo(at, read);
-            foreach (char c in read)
-            {
-                if (!char.IsWhiteSpace(c))
-                {
-                    hash = (hash ^ c) * 1099511628211;
-                }
-            }
-        }
-        return hash;
     }
 
     /// <summary>The types a file declares, nested ones too, found without going into any member's body.</summary>

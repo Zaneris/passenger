@@ -195,6 +195,7 @@
     <Compile Include="../../src/Passenger.App/Godot/GodotServerWords.cs" Link="App/GodotServerWords.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotIdeRetry.cs" Link="App/GodotIdeRetry.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GutRuns.cs" Link="App/GutRuns.cs" />
+    <Compile Include="../../src/Passenger.App/Testing/TestCode.cs" Link="App/TestCode.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GoDotTests.cs" Link="App/GoDotTests.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GdUnit4Settings.cs" Link="App/GdUnit4Settings.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GdUnit4Log.cs" Link="App/GdUnit4Log.cs" />

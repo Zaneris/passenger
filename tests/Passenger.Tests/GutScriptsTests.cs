@@ -92,4 +92,14 @@ public sealed class GutScriptsTests
             Path.Combine(Folder, "test", "unit", "test_math.gd"), Bases, config).Tests;
         Assert.Single(inside.Tests);
     }
+
+    /// <summary>The whole of a function goes into what its result is compared by: its last line, and an inner class's too.</summary>
+    [Fact]
+    public void A_tests_code_changes_with_a_literal_on_its_last_line_and_not_with_the_tests_around_it()
+    {
+        ulong Code(string text, string method) => Read("test/test_math.gd", text).Tests.Single(t => t.Method == method).Code;
+        const string Script = "extends GutTest\n\n\nfunc test_adds():\n\tprepare()\n\tassert_eq(got, \"a b\")\n\n\nfunc test_turns():\n\tassert_eq(turns, 2)\n";
+        Assert.True(Code(Script, "test_adds") != Code(Script.Replace("a b", "ab", StringComparison.Ordinal), "test_adds"), "A test whose expected text lost a space reads as unchanged, so its old result stands");
+        Assert.Equal(Code(Script, "test_turns"), Code(Script.Replace("a b", "ab", StringComparison.Ordinal), "test_turns"));
+    }
 }

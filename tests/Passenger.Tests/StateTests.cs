@@ -30,6 +30,19 @@ public sealed class StateTests : IDisposable
         TestFolders.Delete(settings);
     }
 
+    /// <summary>A kept run's code as an earlier build read it compares with nothing read now: left in, every test kept would
+    /// read as changed since its run.</summary>
+    [Fact]
+    public void A_kept_tests_code_read_otherwise_goes_and_its_results_stay()
+    {
+        JsonObject kept = JsonNode.Parse("{\"methods\":{\"Sums.Adds\":{\"ran\":\"2026-11-01T10:00:00+00:00\",\"code\":7,\"results\":[{\"fullyQualifiedName\":\"Sums.Adds\"}]}}}")!.AsObject();
+        Passenger.App.Testing.TestResultsState.Upgrades[1](kept);
+        JsonObject run = kept["methods"]!["Sums.Adds"]!.AsObject();
+        Assert.False(run.ContainsKey("code"), "A kept run still holds a code no read of its test can match");
+        Assert.Single(run["results"]!.AsArray());
+        Passenger.App.Testing.TestResultsState.Upgrades[1](JsonNode.Parse("{}")!.AsObject());
+    }
+
     [AvaloniaFact]
     public void A_settings_file_a_crash_cut_short_is_set_aside_said_in_the_status_bar_and_logged_and_never_written_over()
     {

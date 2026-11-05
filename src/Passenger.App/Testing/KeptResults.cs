@@ -23,7 +23,20 @@ public sealed record TestResultsState : IStateDocument<TestResultsState>
 
     public Dictionary<string, KeptRun> Methods { get; init; } = [];
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, CodeReadOtherwise];
+
+    /// <summary>A run kept with its code read as <see cref="TestCode"/> no longer reads it says nothing of the code now, so
+    /// it is kept with none, and reads as changed by nobody.</summary>
+    private static void CodeReadOtherwise(JsonObject state)
+    {
+        if (state["methods"] is JsonObject methods)
+        {
+            foreach ((_, JsonNode? run) in methods)
+            {
+                (run as JsonObject)?.Remove("code");
+            }
+        }
+    }
 
     /// <summary>Within the bounds, each result of an outcome this build has and a length of time, a method with none left out.</summary>
     public TestResultsState Clamped()
