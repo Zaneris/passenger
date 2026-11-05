@@ -192,6 +192,29 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>Above the end tag Razor wrote, with a line between, typed without a pause: the tag is joined from the text as it
+    /// is there, and read once.</summary>
+    [AvaloniaFact]
+    public void An_end_tag_typed_on_a_line_above_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        TypeEach(window, "<section>");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section>|</section>", () => $"Razor's end tag after the caret; the line reads {XamlTests.CaretLine(editor)}");
+        Ui.Run(window, EditorActions.NewLine);
+        Ui.Run(window, EditorActions.NewLine);
+        Ui.Press(window, "UP");
+        foreach (char c in "</section>")
+        {
+            window.KeyTextInput(c.ToString());
+        }
+        Ui.Settle();
+        Assert.EndsWith("</section>|", XamlTests.CaretLine(editor), StringComparison.Ordinal);
+        Assert.Single(editor.Document.Snapshot.ToString().Split("</section>").Skip(1));
+        window.Close();
+    }
+
     /// <summary>Text typed a key at a time, as a person types it.</summary>
     /// <summary>A start tag's end tag Razor gives after the person typed on inside the new element: written after what was
     /// typed, the caret before it, and one Undo takes the end tag alone away.</summary>

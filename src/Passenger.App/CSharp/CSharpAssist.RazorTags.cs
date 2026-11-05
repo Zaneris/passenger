@@ -211,7 +211,8 @@ internal sealed partial class CSharpAssist
         }
         TextSnapshot markup = TextSnapshot.From(html);
         if (TextEditing.CloseTag(markup, asked, "/", MarkupKind.Html) is { } plan
-            && plan.Edits.All(e => text.GetText(e.Start, e.Length) == markup.GetText(e.Start, e.Length) && text.GetText(e.Start - 2, 2) == "</"))
+            && plan.Edits.All(e => text.GetText(e.Start, e.Length) == markup.GetText(e.Start, e.Length))
+            && asked.Items.All(s => s.Caret < 2 || markup.GetText(s.Caret - 2, 2) != "</" || text.GetText(s.Caret - 2, 2) == "</"))
         {
             editor.CloseEndTag(plan);
         }

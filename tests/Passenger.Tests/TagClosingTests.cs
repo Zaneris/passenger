@@ -8,8 +8,9 @@ namespace Passenger.Tests;
 
 /// <summary>The end tags typing completes in markup, in the window, as a person types a key at a time: a start tag's '>'
 /// in XAML, an MSBuild file, XML and HTML writes its end tag after the caret, which one Undo takes away leaving the '>';
-/// "&lt;/" writes the open element's name and its '>', or joins the end tag a '>' wrote, which the keys then pass one by
-/// one; a self-closed tag, a comment and HTML's empty elements get none; and the setting turns it off.</summary>
+/// "&lt;/" writes the open element's name and its '>', or joins the element's written end tag, right after it or on a line
+/// below, which the keys then pass one by one; a self-closed tag, a comment and HTML's empty elements get none; and the
+/// setting turns it off.</summary>
 public sealed class TagClosingTests
 {
     [AvaloniaFact]
@@ -133,6 +134,53 @@ public sealed class TagClosingTests
             Ui.Run(window, EditorActions.Undo);
             Ui.Settle();
             Assert.Equal("    <div></|</div>", XamlTests.CaretLine(editor));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void An_end_tag_typed_on_a_line_above_the_written_one_leaves_one_end_tag_and_undo_backspace_and_enter_put_that_line_back()
+    {
+        const string Joined = "<body>\n    <div>\n    </div>\n</body>\n";
+        string folder = TestFolders.Create("tags-");
+        TestFolders.Write(folder, "index.html", "<body>\n    <div>\n        \n    </div>\n</body>\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            CodeEditor editor = Opened(window, Path.Combine(folder, "index.html"), "<div>\n        ");
+            TypeEach(window, "</d");
+            Assert.Equal("    </d|iv>", XamlTests.CaretLine(editor));
+            Assert.Equal(Joined, editor.Document.Snapshot.ToString());
+            Ui.Run(window, EditorActions.Backspace);
+            Assert.Equal("    </|div>", XamlTests.CaretLine(editor));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.Settle();
+            Assert.Equal("        </|", XamlTests.CaretLine(editor));
+            Assert.Equal("<body>\n    <div>\n        </\n    </div>\n</body>\n", editor.Document.Snapshot.ToString());
+
+            Ui.Run(window, EditorActions.Backspace);
+            Ui.Run(window, EditorActions.Backspace);
+            TypeEach(window, "</");
+            Assert.Equal("    </|div>", XamlTests.CaretLine(editor));
+            Ui.Run(window, EditorActions.Backspace);
+            Assert.Equal("        <|", XamlTests.CaretLine(editor));
+            Assert.Equal("<body>\n    <div>\n        <\n    </div>\n</body>\n", editor.Document.Snapshot.ToString());
+
+            TypeEach(window, "/di");
+            Ui.Run(window, EditorActions.NewLine);
+            Ui.Settle();
+            Assert.StartsWith("<body>\n    <div>\n        </di\n", editor.Document.Snapshot.ToString());
+            Assert.EndsWith("\n    </div>\n</body>\n", editor.Document.Snapshot.ToString());
+            Ui.Run(window, EditorActions.Undo);
+            Ui.Settle();
+            Ui.Run(window, EditorActions.Backspace);
+            Ui.Run(window, EditorActions.Backspace);
+            TypeEach(window, "div>");
+            Assert.Equal("    </div>|", XamlTests.CaretLine(editor));
+            Assert.Equal(Joined, editor.Document.Snapshot.ToString());
         }
         finally
         {

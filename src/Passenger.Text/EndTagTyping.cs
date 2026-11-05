@@ -2,8 +2,13 @@ namespace Passenger.Text;
 
 /// <summary>An end tag one caret types over: the tag whole; <paramref name="Ahead"/> where the caret stands inside it, what
 /// is typed belonging before it, else where "&lt;/" just wrote it and the caret stands after it, what is typed belonging
-/// there.</summary>
-public readonly record struct TagTypedOver(string Tag, bool Ahead);
+/// there. A "&lt;/" that joined a tag further on took out the white space <paramref name="Between"/> them, and where it had
+/// a line to itself, indented by <paramref name="Indent"/>, that line too, the tag staying as it was indented.</summary>
+public readonly record struct TagTypedOver(string Tag, bool Ahead, string Between = "", string? Indent = null)
+{
+    /// <summary>The indentation of the tag's own line, where the "&lt;/" had a line above it to itself.</summary>
+    public string TagIndent => Between[(Between.AsSpan().LastIndexOfAny('\r', '\n') + 1)..];
+}
 
 /// <summary>End tags the editor wrote that a person goes on to type by hand, one per caret, from their "&lt;/": a key that
 /// comes next in every tag passes it, the text as it was, so the keys end after one tag however fast they come. The first
@@ -39,8 +44,8 @@ public sealed record EndTagTyping(IReadOnlyList<TagTypedOver> Tags)
     /// <summary>What is left to type a key back (<see cref="CanStepBack"/>).</summary>
     public EndTagTyping StepBack(TextSnapshot text, SelectionSet carets) => this with { Passed = PassedBack(text, carets) };
 
-    /// <summary>Each tag left whole, what was passed put back as typed: before a tag the caret stood inside, after one it
-    /// stood behind; null where nothing was passed but a tag the caret already stands after.</summary>
+    /// <summary>Each tag left whole, what was passed put back as typed: before a tag the caret stood inside, where its "&lt;/"
+    /// was typed, after one it stood behind; null where nothing was passed but a tag the caret already stands after.</summary>
     public EditPlan? PutBack(SelectionSet carets)
     {
         List<TextEdit> edits = [];
@@ -52,10 +57,16 @@ public sealed record EndTagTyping(IReadOnlyList<TagTypedOver> Tags)
             TagTypedOver over = Tags[i];
             if (over.Ahead)
             {
+                int indented = 0;
+                if (over.Indent is { } indent && indent != over.TagIndent)
+                {
+                    edits.Add(new TextEdit(caret - Passed - over.TagIndent.Length, over.TagIndent.Length, indent));
+                    indented = indent.Length - over.TagIndent.Length;
+                }
                 // What was passed stands before the caret already: written again after it, the tag is whole again.
-                edits.Add(new TextEdit(caret, 0, over.Tag[..Passed]));
-                placed[i] = Selection.At(caret + shift);
-                shift += Passed;
+                edits.Add(new TextEdit(caret, 0, over.Between + over.Tag[..Passed]));
+                placed[i] = Selection.At(caret + shift + indented);
+                shift += indented + over.Between.Length + Passed;
             }
             else if (Passed > Begun)
             {

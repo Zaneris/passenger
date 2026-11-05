@@ -123,6 +123,26 @@ internal static class MarkupIndent
         }
     }
 
+    /// <summary>Whether every element of <paramref name="name"/> open at <paramref name="at"/> has an end tag of its own after
+    /// it, however many hold one another: one left to an end tag of an element holding it has none. Read whole, the elements
+    /// open there first and what comes after paired as <see cref="ClosedAfter"/> pairs it.</summary>
+    public static bool OwnEndTagsAfter(TextSnapshot text, int at, ReadOnlySpan<char> name, MarkupKind kind)
+    {
+        char[] chars = ArrayPool<char>.Shared.Rent(Math.Max(1, text.Length));
+        try
+        {
+            Span<char> s = chars.AsSpan(0, text.Length);
+            text.CopyTo(0, s);
+            List<Open> open = [];
+            Read(s[..at], 0, kind, null, open);
+            return Forward(s, name, kind, at, open) == true;
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(chars);
+        }
+    }
+
     /// <summary>Whether <paramref name="s"/>, the text after a start tag of <paramref name="name"/>, closes its element
     /// (<see cref="ClosedAfter"/>); null where it ends before saying.</summary>
     private static bool? Forward(ReadOnlySpan<char> s, ReadOnlySpan<char> name, MarkupKind kind)
@@ -131,9 +151,18 @@ internal static class MarkupIndent
         {
             return EndTagOf(s, name, 0) >= 0 ? true : null;
         }
+        return Forward(s, name, kind, 0, []);
+    }
+
+    /// <summary>Whether <paramref name="s"/> from <paramref name="from"/> on closes what is asked: with <paramref name="open"/>
+    /// the elements open there, whether each of <paramref name="name"/> gets an end tag of its own (<see
+    /// cref="OwnEndTagsAfter"/>), with none, whether the first end tag not paired is of <paramref name="name"/>; null where it
+    /// ends before saying.</summary>
+    private static bool? Forward(ReadOnlySpan<char> s, ReadOnlySpan<char> name, MarkupKind kind, int from, List<Open> open)
+    {
         StringComparison names = kind == MarkupKind.Html ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        List<Open> open = [];
-        int i = 0;
+        int holders = open.Count;
+        int i = from;
         while (i < s.Length && s[i..].IndexOf('<') is var found and >= 0)
         {
             int lt = i + found;
@@ -168,12 +197,19 @@ internal static class MarkupIndent
             if (endTag)
             {
                 int match = LastOpen(s, open, tag, names);
-                if (match < 0)
+                if (holders == 0 && match < 0)
                 {
                     // Not one started since: its own, or one holding it, which it was left open inside.
                     return tag.Equals(name, names);
                 }
-                open.RemoveRange(match, open.Count - match);
+                if (match >= holders)
+                {
+                    open.RemoveRange(match, open.Count - match);
+                }
+                else if (HolderClosed(s, open, ref holders, match, name, names) is { } told)
+                {
+                    return told;
+                }
                 continue;
             }
             if (s[gt - 1] == '/' || (kind == MarkupKind.Html && MarkupNames.IsVoid(tag)))
@@ -192,6 +228,24 @@ internal static class MarkupIndent
             }
         }
         return null;
+    }
+
+    /// <summary>What an end tag closing the open element at <paramref name="match"/>, one of the <paramref name="holders"/> open
+    /// before reading began, tells of those of <paramref name="name"/>: false where it passes one by, true where it closed the
+    /// last, null where more are to come or it closes nothing.</summary>
+    private static bool? HolderClosed(ReadOnlySpan<char> s, List<Open> open, ref int holders, int match, ReadOnlySpan<char> name, StringComparison names)
+    {
+        if (match < 0)
+        {
+            return null;
+        }
+        if (LastOpen(s, open, name, names, holders) > match)
+        {
+            return false;
+        }
+        holders = match;
+        open.RemoveRange(match, open.Count - match);
+        return LastOpen(s, open, name, names, holders) < 0 ? true : null;
     }
 
     private enum PlaceKind
@@ -495,11 +549,12 @@ internal static class MarkupIndent
         return (gt, quote, attribute);
     }
 
-    /// <summary>The place at the end of <paramref name="s"/>, read forwards from the file's start (<paramref name="from"/> 0).</summary>
-    private static Place Read(ReadOnlySpan<char> s, int from, MarkupKind kind, string? following)
+    /// <summary>The place at the end of <paramref name="s"/>, read forwards from the file's start (<paramref name="from"/> 0),
+    /// the elements open there left in <paramref name="held"/> for one who asks.</summary>
+    private static Place Read(ReadOnlySpan<char> s, int from, MarkupKind kind, string? following, List<Open>? held = null)
     {
         StringComparison names = kind == MarkupKind.Html ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        List<Open> open = [];
+        List<Open> open = held ?? [];
         int i = 0;
         while (i < s.Length && s[i..].IndexOf('<') is var found and >= 0)
         {
@@ -584,10 +639,10 @@ internal static class MarkupIndent
         return new Place(PlaceKind.Content, Parent: from + innermost.Start, Opened: s[innermost.Inside..].IsWhiteSpace(), Closer: closer < 0 ? -1 : from + open[closer].Start);
     }
 
-    /// <summary>The last open element of a name, -1 with none.</summary>
-    private static int LastOpen(ReadOnlySpan<char> s, List<Open> open, ReadOnlySpan<char> name, StringComparison names)
+    /// <summary>The last open element of a name among the first <paramref name="among"/> (all by default), -1 with none.</summary>
+    private static int LastOpen(ReadOnlySpan<char> s, List<Open> open, ReadOnlySpan<char> name, StringComparison names, int among = int.MaxValue)
     {
-        for (int k = open.Count - 1; k >= 0; k--)
+        for (int k = Math.Min(among, open.Count) - 1; k >= 0; k--)
         {
             if (s.Slice(open[k].NameStart, open[k].NameLength).Equals(name, names))
             {
