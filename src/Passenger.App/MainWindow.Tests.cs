@@ -145,11 +145,16 @@ public partial class MainWindow
     {
         Task read = WorkspaceRead;
         session.Tests.Open(Folder, projectsRead: read.IsCompleted);
-        if (!read.IsCompleted)
+        // A walk's landing asks too, before it ends, and one look once it has ended answers both.
+        if (!read.IsCompleted && !ReferenceEquals(read, testsAwaitRead))
         {
+            testsAwaitRead = read;
             IdeErrors.Observe(FindTestsOnceRead(read, session));
         }
     }
+
+    /// <summary>The read of the folder's projects a look for tests waits for.</summary>
+    private Task? testsAwaitRead;
 
     private async Task FindTestsOnceRead(Task read, ProjectSession opening)
     {

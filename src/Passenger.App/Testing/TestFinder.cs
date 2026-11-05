@@ -74,6 +74,9 @@ public sealed class TestFinder
     /// <summary>How many closed C# files Roslyn's parser has read for their tests, those the cache had not counted out.</summary>
     public int Parsed => Volatile.Read(ref parsed);
 
+    /// <summary>How many times the folder's projects were taken to be read (<see cref="Scan"/>).</summary>
+    public int Scans { get; private set; }
+
     /// <summary>Whether the language server is still loading the solution, while which files are read
     /// <see cref="ReadersWhileLoading"/> at a time: set from the session's word that projects loaded.</summary>
     public bool ServerLoading
@@ -161,6 +164,7 @@ public sealed class TestFinder
     public void Scan(string? workspace, IReadOnlyList<ProjectModel> projects, IReadOnlyList<string>? godot = null)
     {
         UiThread.Check();
+        Scans++;
         if (workspace != Folder)
         {
             Folder = workspace;

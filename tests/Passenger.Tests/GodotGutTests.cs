@@ -389,6 +389,30 @@ public sealed class GodotGutTests : IDisposable
         }
     }
 
+    /// <summary>A folder with no solution is read for its tests once as its walk lands, which asks beside the look its opening
+    /// left waiting: each is a walk of the project's scripts. Needs no Godot: nothing runs.</summary>
+    [AvaloniaFact]
+    public void A_folder_without_a_solution_is_read_for_its_tests_once_as_its_walk_for_projects_lands()
+    {
+        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
+        WriteGut(folder);
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        try
+        {
+            int atOpening = 0;
+            window.OpenFolder(folder, opened: () => atOpening = window.Tests.Finder.Scans);
+            Ui.WaitFor(() => !window.Tests.IsLooking && window.Tests.Finder.Projects.Count == 1, () => $"the folder's Godot project read ({window.Tests.Tree.EmptyText})");
+            Ui.Settle();
+            int scans = window.Tests.Finder.Scans - atOpening;
+            Assert.True(scans == 1, $"The walk's landing read the folder's projects for tests {scans} times");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A test a script inherits stands on the code of the script declaring it, closed or as it is typed, through a chain
     /// of them: a result is only old by that code, which the deriving script's own text never shows. Needs no Godot: nothing runs.</summary>
     [AvaloniaFact]
