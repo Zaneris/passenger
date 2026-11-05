@@ -1019,7 +1019,7 @@ public static class Ui
     }
 
     /// <summary>The end of the IDE's own log, which names an exception that left background work waiting for good.</summary>
-    private static string IdeLogTail()
+    internal static string IdeLogTail()
     {
         string[] lines = IdeLog().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         return lines.Length == 0 ? string.Empty : $"\nThe IDE's log ends:\n{string.Join('\n', lines.TakeLast(25))}";

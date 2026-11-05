@@ -223,14 +223,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         MainWindow window = Ui.OpenFolder(solution, languageServer: false);
         Ui.WaitFor(() => window.DotnetWant.Lack == DotnetLack.NoDotnet && window.Session.Models.MissingSdk is not null, "the window to find no .NET", TimeSpan.FromMinutes(1));
 
-        List<string> stages = [];
-        window.Actions.Work.Changed += (_, change) =>
-        {
-            if (change.Work.Id == AppActions.InstallDotnetSdk && !change.Ended)
-            {
-                stages.Add(change.Work.Stage);
-            }
-        };
+        List<string> stages = Stages(window);
         ConfirmDialog dialog = Asked(window);
         Assert.Equal($"Install the .NET SDK {sdk.Version}?", dialog.Title);
         // Its size, which the metadata does not give, from the archive's HEAD.
@@ -414,10 +407,9 @@ public sealed class NoDotnetTests : IAsyncDisposable
         MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
         window.Show();
         Ui.Settle();
+        List<string> stages = Stages(window);
         Assert.Null(window.Actions.RunForAgent(AppActions.InstallDotnetSdk));
-        Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any() || window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null,
-            () => $"the agent's install to ask the person ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage}; {window.Status})", TimeSpan.FromMinutes(1));
-        ConfirmDialog asked = DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single());
+        ConfirmDialog asked = Question(window, stages);
         Assert.Equal($"Let an agent install the .NET SDK {sdk.Version}?", asked.Title);
         Assert.True(window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage == $"Waiting for the person to allow installing the .NET SDK {sdk.Version}",
             $"The agent's install waits saying {window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage}");
@@ -548,11 +540,33 @@ public sealed class NoDotnetTests : IAsyncDisposable
     /// <summary>Install .NET SDK clicked in the banner, waited on until it asks.</summary>
     private static ConfirmDialog Asked(MainWindow window)
     {
+        List<string> stages = Stages(window);
         Ui.ClickButton(window, "Install .NET SDK…");
+        return Question(window, stages);
+    }
+
+    /// <summary>The question an Install .NET SDK under way puts to the person, once it does; one that ended without asking
+    /// fails with each stage it said, what the window says it came to, and the end of the IDE's log.</summary>
+    private static ConfirmDialog Question(MainWindow window, IReadOnlyList<string> stages)
+    {
         Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any() || window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null,
-            () => $"Install .NET SDK to ask ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage})", TimeSpan.FromMinutes(1));
+            () => $"Install .NET SDK to ask ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage}; {window.Status})", TimeSpan.FromMinutes(1));
         return DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().SingleOrDefault()
-            ?? throw new InvalidOperationException($"Install .NET SDK asked nothing: {window.Status}"));
+            ?? throw new InvalidOperationException($"Install .NET SDK asked nothing. It said: {string.Join(" | ", stages)}. The window says: {window.Status}{Ui.IdeLogTail()}"));
+    }
+
+    /// <summary>Each stage Install .NET SDK says in this window from now on, as it says it.</summary>
+    private static List<string> Stages(MainWindow window)
+    {
+        List<string> stages = [];
+        window.Actions.Work.Changed += (_, change) =>
+        {
+            if (change.Work.Id == AppActions.InstallDotnetSdk && !change.Ended)
+            {
+                stages.Add(change.Work.Stage);
+            }
+        };
+        return stages;
     }
 
     /// <summary>A solution of one console project of the test projects' .NET; its path.</summary>
