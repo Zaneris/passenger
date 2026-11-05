@@ -279,8 +279,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   first, `LinkedSheet.Mounted` second; in a macOS bundle the servers live under `Contents/Resources/web`. One tsserver,
   never `useSyntaxServer` (it answers rename and usages from the open files alone); `typescript` stays on 6.x (7 carries
   no `tsserver`); typescript-language-server keeps a file's first `formattingOptions`, so each open file tells tsserver
-  its indent. Razor forwards `_vs_onAutoInsert` to the client's HTML only for `=`: its `>` is Razor's own answer, its
-  `</` closed over its HTML.
+  its indent. what an HTML server holds of Razor's files changes only in a send's turn (`RazorHtmlCopies`); the SDK
+  writes no scoped CSS bundle once a project has no sheet left. Razor forwards `_vs_onAutoInsert` to the client's HTML
+  only for `=`: its `>` is Razor's own answer, its `</` closed over its HTML.
 - **Build and run.** `BuildRunController`, every console through `ConsoleSink.PumpAsync`, `LaunchPlan` (one resolution
   for Run, Debug, Profile, Hot Reload and a debugged test host), `UpToDate`; a Passenger it launches keeps its state in
   `sandbox/`; `PASSENGER_DOTNET_RELEASES` is dead in tests. Godot: `GodotLaunch`, `GodotGame`; the Game window is an
@@ -364,11 +365,12 @@ a new name, and `just site-shots` retakes its images.
   takes edits only for its loaded modules' projects; `StaleCallers` blocks an update leaving loaded code calling a
   deleted body. A frame in old code is offered a remap at every statement, unstoppable: a running program is held
   through an update, its frames moving only at a statement's start where they hold the new closures (`RemapTarget`). A
-  XAML edit reaches a running app through its inspector after C#'s (`XamlHotReload`), its Styles, Resources and root
-  handlers cleared first (filling adds to them; a duplicate key throws); WPF's `x:Name` fields are found through
-  `IComponentConnector` (its `SuppressMessage` is compiled out); an app keeps its build's XAML, so a closed file written
-  on disk reaches it. dotnet watch replaces its app's `DOTNET_STARTUP_HOOKS`, so an Avalonia or WPF app's Run with Hot
-  Reload is attached quietly.
+  XAML edit reaches a running app through its inspector after C#'s (`XamlHotReload`), what the text before wrote of its
+  Styles, Resources and root handlers cleared first (`XamlRoot`; filling adds to them, a duplicate key throws, and the
+  app's own stay); C#'s bookkeeping follows `HotReloadOutcome.Code`; a file of an app's source places is told by
+  `XamlPlaces.FileOf`, never by name; WPF's `x:Name` fields are found through `IComponentConnector` (its
+  `SuppressMessage` is compiled out); an app keeps its build's XAML, so a closed file written on disk reaches it. dotnet
+  watch replaces its app's `DOTNET_STARTUP_HOOKS`, so an Avalonia or WPF app's Run with Hot Reload is attached quietly.
 - **dotnet watch takes Ctrl+R only from a console's keys**, never redirected input: the Run window's restart under it is
   Rerun, and a wait after the program ends is said (`BuildRunController.WatchedEnd`). A save's temporary file ends in
   `.user` (`FileText.SaveSuffix`), which `DefaultItemExcludes` leaves out, or dotnet watch hears it as added, reloads

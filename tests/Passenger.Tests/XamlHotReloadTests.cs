@@ -337,7 +337,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
                 InitializeComponent();
                 Resources["Coded"] = "Coded resource";
                 Resources.MergedDictionaries.Add(new ResourceDictionary { ["Merged"] = "Merged resource" });
-                Styles.Add(new Style(x => x.OfType<TextBlock>().Name("Greeting")) { Setters = { new Setter(TextBlock.FontSizeProperty, 31d) } });
+                Styles.Add(new Style(x => x.OfType<TextBlock>().Name("Greeting").Class("title")) { Setters = { new Setter(TextBlock.FontSizeProperty, 31d) } });
                 DataTemplates.Add(new FuncDataTemplate<int>((_, _) => new TextBlock()));
                 KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.F9) });
                 Classes.Add("coded");
