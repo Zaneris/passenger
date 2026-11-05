@@ -73,7 +73,8 @@ public partial class MainWindow
                 return null;
             }
             IReadOnlyList<GodotPlugin> plugins = GodotPlugins.Read(folder, GodotAddon.Enabled(project.Text));
-            return GodotAddon.Plan(folder, GodotAddonFiles.Carried, plugins, project.Text, path => File.Exists(path) ? FileText.Load(path)?.Text : null);
+            // A file there that cannot be read is no file of the addon's, and no gap to write into.
+            return GodotAddon.Plan(folder, GodotAddonFiles.Carried, plugins, project.Text, path => File.Exists(path) ? FileText.Load(path)?.Text ?? string.Empty : null);
         });
         if (plan is null)
         {

@@ -5,7 +5,7 @@ namespace Passenger.UnitTests.Workspace;
 /// <summary>Installing Passenger's addon in a Godot project: its files under addons/passenger and project.godot enabling it
 /// beside the plugins enabled there, the section made where there is none; nothing to do where the copy there is
 /// Passenger's own and enabled; an earlier copy updated in the folder it is in, never a second one; a newer Passenger's
-/// copy left as it is.</summary>
+/// copy left as it is; another addon's files in that folder never written over, the addon going in a folder beside it.</summary>
 public class GodotAddonTests
 {
     private static readonly string Project = Path.Combine(Path.GetTempPath(), "game");
@@ -101,5 +101,56 @@ public class GodotAddonTests
 
         Assert.Equal(Path.Combine(Project, "addons", "passenger"), install.Folder);
         Assert.False(install.Updated);
+    }
+
+    [Fact]
+    public void Another_addon_in_its_folder_keeps_its_files_and_the_addon_goes_in_a_folder_beside_it()
+    {
+        string theirs = Path.Combine(Project, "addons", "passenger");
+        GodotPlugin cargo = new("res://addons/passenger/plugin.cfg", Path.Combine(theirs, "plugin.cfg"), "Cargo", "1", "Ann", "cargo.gd", true);
+        string folder = Path.Combine(Project, "addons", "passenger_2");
+
+        GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [cargo], Enabled, path => path == cargo.File ? "[plugin]\n\nname=\"Cargo\"\n" : null);
+
+        Assert.Equal(folder, install.Folder);
+        Assert.Equal([(Path.Combine(folder, "plugin.cfg"), true), (Path.Combine(folder, "passenger.gd"), true)], install.Files.Select(f => (f.Path, f.Made)));
+        Assert.Equal(["res://addons/gut/plugin.cfg", "res://addons/passenger_2/plugin.cfg"], GodotAddon.Enabled(install.Project!));
+        Assert.False(install.Updated, "Another addon's files were taken for an earlier copy of Passenger's");
+    }
+
+    [Fact]
+    public void A_plugin_of_its_name_and_script_by_another_author_is_another_addon()
+    {
+        string theirs = Path.Combine(Project, "addons", "passenger");
+        GodotPlugin riders = new("res://addons/passenger/plugin.cfg", Path.Combine(theirs, "plugin.cfg"), "Passenger", "7", "Ann", "passenger.gd", true);
+
+        GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [riders], Enabled, path => Path.GetDirectoryName(path) == theirs ? "the game's riders" : null);
+
+        Assert.Equal(Path.Combine(Project, "addons", "passenger_2"), install.Folder);
+        Assert.True(install.Files.All(f => f.Made), "The game's own addon was to be left, nothing written over");
+    }
+
+    /// <summary>A file of one of the addon's names, in a folder no plugin.cfg makes an addon, is not known to be the addon's.</summary>
+    [Fact]
+    public void A_file_of_one_of_its_names_with_other_words_is_never_written_over_and_each_taken_folder_is_passed()
+    {
+        HashSet<string> taken = [Path.Combine(Project, "addons", "passenger", "passenger.gd"), Path.Combine(Project, "addons", "passenger_2", "plugin.cfg")];
+
+        GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [], Enabled, path => taken.Contains(path) ? "extends Node\n" : null);
+
+        Assert.Equal(Path.Combine(Project, "addons", "passenger_3"), install.Folder);
+        Assert.True(install.Files.All(f => f.Made && !taken.Contains(f.Path)), $"A file another wrote was to be left: {string.Join(", ", install.Files.Select(f => f.Path))}");
+    }
+
+    /// <summary>Its folder with none of its files in it, or some as Passenger carries them, is no other addon's to keep clear of.</summary>
+    [Fact]
+    public void Its_folder_holding_nothing_of_anothers_is_written_into_only_what_it_lacks()
+    {
+        string folder = Path.Combine(Project, "addons", "passenger");
+
+        GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [], Enabled, path => path == Path.Combine(folder, "passenger.gd") ? Carried[1].Text.Replace("\n", "\r\n", StringComparison.Ordinal) : null);
+
+        Assert.Equal(folder, install.Folder);
+        Assert.Equal([(Path.Combine(folder, "plugin.cfg"), true)], install.Files.Select(f => (f.Path, f.Made)));
     }
 }
