@@ -702,6 +702,7 @@ public sealed partial class BuildRunController
         parts.Views.Build.SetRunning(false);
         ShowProblems();
         session.Xaml.Built(session.Problems);
+        session.CSharp?.Built();
         parts.Say(outcome.Message, Place(outcome));
         if (ShowsBuildResults(outcome))
         {

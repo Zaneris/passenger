@@ -31,11 +31,8 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     private const string Tally = "static class Tally\n{\n    public static int Of(string text) => Words.Count(text) + Words.Count(text, 1);\n\n"
         + "    public static int CountAll(string[] texts) => texts.Sum(Words.Count);\n}\n";
 
-    /// <summary>A symbol of a project a solution filter leaves out, which C# reads only as its built assembly, is declared in
-    /// that project's own file, never in the server's stub of the assembly: a method, a property and a primary constructor,
-    /// and a method whose source takes another parameter than the assembly built before it; the framework's still a stub.</summary>
-    [Fact]
-    public async Task Go_to_declaration_into_a_project_a_solution_filter_leaves_out_opens_its_source_at_the_declaration()
+    /// <summary>A restored app and the library a solution filter leaves out of it, neither built.</summary>
+    private async Task<string> AppWithoutItsLibraryAsync()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-unloaded-"));
         DeleteAtEnd(folder);
@@ -47,13 +44,55 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
         TestFolders.Write(folder, "App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [ \"App\\\\App.csproj\" ]\n  }\n}\n");
         await Restore.RunAsync(Path.Combine(folder, "Shop.slnx"));
-        // Built by one server for the next to load: an assembly missing as a server loads its project stays missing from it.
-        await using (McpClient building = await Start(["--mcp", Path.Combine(folder, "App.slnf")]))
+        return folder;
+    }
+
+    /// <summary>The solution a filter leaves a library out of, as a fresh clone opens it: the assembly of the library is
+    /// not there as C# loads the app, so nothing of it is known, and the first build, however quick, takes it in with no
+    /// restart, what the agent asks next finding the library's types; each build after that brings what it added.</summary>
+    [Fact]
+    public async Task A_first_build_of_a_project_a_solution_filter_leaves_out_takes_its_assembly_in_and_each_build_after_it_what_it_added()
+    {
+        string folder = await AppWithoutItsLibraryAsync();
+        await using McpClient client = await Start(["--mcp", Path.Combine(folder, "App.slnf")]);
+
+        Assert.Contains("CS0246", await ErrorsAsync());
+        await BuiltAsync();
+        Assert.Empty(await ErrorsAsync());
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync());
+
+        TestFolders.Write(folder, "Lib/Greeter.cs", File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")).Replace("    public string Who", "    public string Twice() => Who + Who;\n\n    public string Who", StringComparison.Ordinal));
+        await Call(client, McpTools.Edit, new() { ["path"] = "App/Program.cs", ["oldText"] = "greeter.Who);", ["newText"] = "greeter.Twice());" });
+        Assert.Contains("CS1061", await ErrorsAsync());
+        await BuiltAsync();
+        Assert.Empty(await ErrorsAsync());
+
+        async Task<string[]> ErrorsAsync() => [.. (await Call(client, McpTools.Diagnostics, new() { ["path"] = "App/Program.cs" })).EnumerateArray()
+            .Where(d => d.GetProperty("severity").GetString() == "error").Select(d => d.GetProperty("code").GetString()!)];
+
+        async Task BuiltAsync()
         {
-            JsonElement built = await Call(building, McpTools.Build);
+            JsonElement built = await Call(client, McpTools.Build);
             Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The filter's app did not build with the project it leaves out: {built}");
         }
+
+        async Task<(string Path, int Line)> DeclaredAsync()
+        {
+            JsonElement place = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "App/Program.cs", ["line"] = 2, ["column"] = 34 })).EnumerateArray());
+            return (place.GetProperty("path").GetString()!, place.GetProperty("line").GetInt32());
+        }
+    }
+
+    /// <summary>A symbol of a project a solution filter leaves out, which C# reads only as its built assembly, is declared in
+    /// that project's own file, never in the server's stub of the assembly: a method, a property and a primary constructor,
+    /// and a method whose source takes another parameter than the assembly built before it; the framework's still a stub.</summary>
+    [Fact]
+    public async Task Go_to_declaration_into_a_project_a_solution_filter_leaves_out_opens_its_source_at_the_declaration()
+    {
+        string folder = await AppWithoutItsLibraryAsync();
         await using McpClient client = await Start(["--mcp", Path.Combine(folder, "App.slnf")]);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The filter's app did not build with the project it leaves out: {built}");
 
         Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync(client, 2, 34));
         Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 5), await DeclaredAsync(client, 2, 59));

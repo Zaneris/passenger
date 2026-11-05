@@ -119,6 +119,32 @@ public sealed partial class CSharpService : IAsyncDisposable
         session?.Reload(projects);
     }
 
+    /// <summary>Done once the server holds what the last build wrote of the assemblies its projects reference: one a
+    /// project it does not load makes, say, which what it answers from then on knows.</summary>
+    public Task ReferencesHeld { get; private set; } = Task.CompletedTask;
+
+    /// <summary>A build ended, its assemblies on disk: the server reads now those of them its projects reference.</summary>
+    public void Built()
+    {
+        UiThread.Check();
+        if (session is { } running)
+        {
+            IdeErrors.Observe(ReferencesHeld = ReadReferencesAsync(running));
+        }
+    }
+
+    private static async Task ReadReferencesAsync(RoslynSession running)
+    {
+        try
+        {
+            await running.ReadReferencesAsync();
+        }
+        catch (LanguageServerFailed)
+        {
+            // Gone, or without Passenger's extension: it reads them when it hears of them, if it can.
+        }
+    }
+
     /// <summary>What the folder's watcher saw change on disk, which the server hears of as it registered to: the files not
     /// open are read again from it, never an open one, whose text is the editor's.</summary>
     public void FilesChanged(FolderChanges changes)

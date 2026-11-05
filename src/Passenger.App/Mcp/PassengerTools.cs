@@ -1263,6 +1263,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         BuildOutcome built = await (game is not null ? Builds.ExportGodotAsync(new GodotExportRequest(game, preset!, debug, exportPath))
             : published is null ? Builds.BuildAsync(BuildCause.Explicit, CancellationToken.None)
             : Builds.PublishAsync(new PublishRequest(published.Path, profile ?? Session.Publishing.ProfileOf(published.Path)))).WaitAsync(cancel);
+        // So the code tools the agent calls next know what it built.
+        await (Session.CSharp?.ReferencesHeld ?? Task.CompletedTask).WaitAsync(cancel);
         IReadOnlyList<Finding> problems = [.. built.Problems.Select(p => new Finding(
             p.Severity == ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message, p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1))];
         return new BuildResult(built.Succeeded, built.Message, problems.Count(p => p.Severity == "error"), problems.Count(p => p.Severity == "warning"), problems,

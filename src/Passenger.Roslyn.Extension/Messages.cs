@@ -19,6 +19,7 @@ public static class Handlers
     public const string PushMembersDown = "Passenger.Roslyn.Extension.PushMembersDown";
     public const string DocumentTexts = "Passenger.Roslyn.Extension.DocumentTexts";
     public const string DocumentsWritten = "Passenger.Roslyn.Extension.DocumentsWritten";
+    public const string ReferencesRead = "Passenger.Roslyn.Extension.ReferencesRead";
     public const string AspireProjectDeclaration = "Passenger.Roslyn.Extension.AspireProjectDeclaration";
     public const string AspireCodeHelp = "Passenger.Roslyn.Extension.AspireCodeHelp";
     public const string AspireReferenceFix = "Passenger.Roslyn.Extension.AspireReferenceFix";
@@ -46,7 +47,7 @@ public static class Handlers
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
-        DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
+        DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
         ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
     ];
@@ -82,6 +83,12 @@ public sealed record WrittenFound(
 public sealed record DocumentWritten(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("gone")] bool Gone);
+
+/// <summary>A build ended: the assemblies the solution's projects reference that it wrote are wanted now.</summary>
+public sealed record ReferencesAsked;
+
+/// <summary>How many assemblies were read again.</summary>
+public sealed record ReferencesTaken([property: JsonPropertyName("read")] int Read);
 
 /// <summary>A text's fingerprint as both sides make it: SHA-256 of its characters with every line break as '\n', since a
 /// server's line and column are the same whichever break a line ends in (and Passenger holds a CR file's as '\n').</summary>
