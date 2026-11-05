@@ -140,6 +140,34 @@ public sealed class ProjectEditsTests : IDisposable
         Assert.True(removed == File.ReadAllText(project), "The files were removed again, so each write of the templates adds an item group to the project");
     }
 
+    [Fact]
+    public void A_removal_with_a_condition_of_its_own_leaves_the_files_in_other_builds_so_one_for_every_build_is_added()
+    {
+        const string Game = """
+            <Project Sdk="Godot.NET.Sdk/4.7.2">
+              <ItemGroup>
+                <Compile Remove="script_templates/**" Condition="'$(Configuration)' == 'Release'" />
+              </ItemGroup>
+            </Project>
+
+            """;
+        Write("Game.csproj", Game);
+        string project = Path.Combine(root, "Game.csproj");
+
+        Assert.False(ProjectEdits.RemovesCompiled(project, "script_templates/**"), "A removal under its own condition was read as every build's, so Debug builds the templates");
+        Assert.Null(ProjectEdits.RemoveCompiled(project, "script_templates/**"));
+        Assert.Equal(Game.Replace("""
+              </ItemGroup>
+            </Project>
+            """, """
+              </ItemGroup>
+              <ItemGroup>
+                <Compile Remove="script_templates/**" />
+              </ItemGroup>
+            </Project>
+            """, StringComparison.Ordinal), File.ReadAllText(project));
+    }
+
     /// <summary>The paths a project's items name, as XML reads them: each Include, then each DependentUpon.</summary>
     private static string[] Named(string project)
     {

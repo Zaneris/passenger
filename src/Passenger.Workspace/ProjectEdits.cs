@@ -36,7 +36,7 @@ public static class ProjectEdits
     });
 
     /// <summary>Files a glob names left out of the project's C# (<c>&lt;Compile Remove="…" /&gt;</c>), in an item group of its
-    /// own before &lt;/Project&gt;, where no unconditioned item group removes them already. Null once done, else why not.</summary>
+    /// own before &lt;/Project&gt;, where nothing every build sees removes them already. Null once done, else why not.</summary>
     public static string? RemoveCompiled(string project, string glob) => Change(project, xml =>
     {
         if (!Removes(xml, glob))
@@ -46,12 +46,12 @@ public static class ProjectEdits
         return null;
     });
 
-    /// <summary>Whether the project leaves the files a glob names out of its C# in an unconditioned item group
-    /// (<see cref="RemoveCompiled"/>); true for a file that reads as no project, which nothing is to be added to.</summary>
+    /// <summary>Whether the project leaves the files a glob names out of its C# in every build, no condition on the removal
+    /// or its item group (<see cref="RemoveCompiled"/>); true for a file that reads as no project, which nothing is to be added to.</summary>
     public static bool RemovesCompiled(string project, string glob) => Read(new ProjectText(project).Text) is not { Root.Name.LocalName: "Project" } xml || Removes(xml, glob);
 
     private static bool Removes(XmlText xml, string glob) => xml.Root.Elements().Where(g => IsItemGroup(g) && !Conditioned(g)).SelectMany(g => g.Elements())
-        .Any(e => e.Name.LocalName == "Compile" && e.Attribute("Remove")?.Value == glob);
+        .Any(e => e.Name.LocalName == "Compile" && !Conditioned(e) && e.Attribute("Remove")?.Value == glob);
 
     /// <summary>A package reference added as dotnet add package writes one, its version given (none under central package
     /// management, whose Directory.Packages.props holds it): after the project's last package reference that every build
