@@ -44,14 +44,16 @@ public static class WorkspaceEdits
 
     /// <summary>As <see cref="StaleAsync(EditorArea, LspDocument?, JsonElement, DateTime?, Patience?, IReadOnlyCollection{string}?)"/>,
     /// the server's texts asked of its session (<paramref name="held"/>, null for a server with none to tell), and the files of
-    /// its solution written or gone since a time (<paramref name="elsewhere"/>, null for one that cannot say).</summary>
+    /// its solution written or gone since a time (<paramref name="elsewhere"/>, null for one that cannot say), and the files
+    /// its answer comes from that it reads from disk, open here or not (<paramref name="read"/>).</summary>
     public static async Task<string?> StaleAsync(EditorArea editors, Held? held, JsonElement edit, DateTime? since, Patience? patience = null,
-        IReadOnlyCollection<string>? made = null, Written? elsewhere = null)
+        IReadOnlyCollection<string>? made = null, Written? elsewhere = null, IReadOnlyCollection<string>? read = null)
     {
         // With the files written for the command to wait for, which the server must have read as they are, in the edit or not.
         List<string> closed = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri))
             .Concat(patience?.Awaited ?? []).Distinct()
-            .Where(p => editors.Documents.All(d => d.Path != p) && File.Exists(p) && made?.Contains(p) != true)];
+            .Where(p => editors.Documents.All(d => d.Path != p) && File.Exists(p) && made?.Contains(p) != true)
+            .Concat((read ?? []).Where(File.Exists)).Distinct()];
         // One the command saw the server hold as the disk has it, unwritten since, has had its moment.
         List<(string Path, DateTime At)> written = [.. closed.Select(p => (Path: p, At: File.GetLastWriteTimeUtc(p)))
             .Where(f => since is { } sent && f.At > sent - Catching && patience?.Trusts(f.Path) != true)];
@@ -89,9 +91,9 @@ public static class WorkspaceEdits
             return null;
         }
         // Each file read off the window's thread, as an edit's reach is files of any size.
-        List<(string Path, string Hash, bool? OnDisk)> read = await BackgroundWork.Run(() => texts.Where(t => t.Hash is not null).Select(t => (t.Path, t.Hash!, HeldTexts.OnDisk(t.Path, t.Hash!))).ToList());
+        List<(string Path, string Hash, bool? OnDisk)> compared = await BackgroundWork.Run(() => texts.Where(t => t.Hash is not null).Select(t => (t.Path, t.Hash!, HeldTexts.OnDisk(t.Path, t.Hash!))).ToList());
         // One the call trusts is also the text it was seen as: a write within the disk's clock tick keeps its time.
-        List<string> unread = [.. read.Where(t => t.OnDisk == false || patience?.AsSeen(t.Path, t.Hash) == false).Select(t => t.Path)];
+        List<string> unread = [.. compared.Where(t => t.OnDisk == false || patience?.AsSeen(t.Path, t.Hash) == false).Select(t => t.Path)];
         if (unread.Count > 0)
         {
             string name = Path.GetFileName(unread[0]);

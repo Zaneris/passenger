@@ -848,7 +848,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         (IReadOnlyList<LspLocation> behind, int? answered) = await CodeBehindUses(file, old);
         // A server that has yet to read the XAML knows no field of this name, and so no use of it.
-        if (behind.Count == 0 && await Unread(asked, patience) is { } unread)
+        if (behind.Count == 0 && await Unread(file.Path, asked, patience) is { } unread)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unread}");
         }
@@ -879,10 +879,11 @@ internal sealed partial class XamlAssist : LanguageAssist
                 .Where(p => !(context.Editors.Find(p) is { } open && dropped.Contains(open.Name))).Select(p => new RefactoredFile(p, "changed", []))], dropped);
     }
 
-    /// <summary>Why the C# server's word that it knows nothing may be from files as they were (<see cref="WorkspaceEdits.StaleAsync"/>);
-    /// null with no server, or none of its files behind.</summary>
-    private Task<string?> Unread(Asked asked, Patience? patience) => context.CSharp?.Session is { } session
-        ? WorkspaceEdits.StaleAsync(context.Editors, paths => session.HeldTextsAsync(paths), NoEdit, asked.Since, patience, elsewhere: after => session.WrittenSinceAsync(after))
+    /// <summary>Why the C# server's word that it knows nothing may be from files as they were (<see cref="WorkspaceEdits.StaleAsync"/>),
+    /// the XAML its field comes from (<paramref name="xaml"/>) judged by what the server holds of it, however long ago it was
+    /// written and whatever the folder's watcher has heard; null with no server, or none of its files behind.</summary>
+    private Task<string?> Unread(string xaml, Asked asked, Patience? patience) => context.CSharp?.Session is { } session
+        ? WorkspaceEdits.StaleAsync(context.Editors, paths => session.HeldTextsAsync(paths), NoEdit, asked.Since, patience, elsewhere: after => session.WrittenSinceAsync(after), read: [xaml])
         : Task.FromResult<string?>(null);
 
     private static readonly JsonElement NoEdit = JsonSerializer.SerializeToElement(new { });

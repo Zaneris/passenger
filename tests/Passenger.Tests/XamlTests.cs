@@ -1778,7 +1778,24 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
     /// of it and so knowing no field of that name: the rename waits for the server, rather than leave the code-behind's uses
     /// of the field under the old name, then renames both.</summary>
     [AvaloniaFact]
-    public void An_elements_rename_in_its_xaml_a_moment_after_the_xaml_was_written_waits_for_the_server_and_renames_the_code_behinds_uses()
+    public void An_elements_rename_in_its_xaml_a_moment_after_the_xaml_was_written_waits_for_the_server_and_renames_the_code_behinds_uses() =>
+        RenamedOnceTheServerRead(wrote: (_, _, _) => { });
+
+    /// <summary>The same with nothing to go by but what the server holds, as on a machine slow enough that the write is past
+    /// its moment before the folder's watcher hears of it: a write another program made a minute ago, not heard of.</summary>
+    [AvaloniaFact]
+    public void An_elements_rename_waits_for_a_server_holding_its_xaml_otherwise_than_the_disk_with_nothing_heard_of_the_write() =>
+        RenamedOnceTheServerRead(wrote: (server, held, xaml) =>
+        {
+            File.SetLastWriteTimeUtc(xaml, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => held.IsCompleted, "the watcher's word of the XAML, held from the server");
+            (IReadOnlyList<string> heard, long asOf) = server.WatchedFiles.Changing();
+            server.WatchedFiles.Settle(heard, asOf, [], []);
+        });
+
+    /// <summary>The XAML written behind the server's back (what else the test does then, <paramref name="wrote"/>), the
+    /// server held from reading it: Rename says it waits, and once the server has read it renames both files.</summary>
+    private void RenamedOnceTheServerRead(Action<Passenger.Lsp.LanguageServer, Task, string> wrote)
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
         OpenDocument behind = window.EditorArea.Active!;
@@ -1790,6 +1807,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         try
         {
             TestFolders.Write(app.Folder, "MainWindow.axaml", Gallery.Window.Replace("Name=\"Go\"", "Name=\"Start\"", StringComparison.Ordinal).Replace("#Go.", "#Start.", StringComparison.Ordinal));
+            wrote(server, held, app.PathOf("MainWindow.axaml"));
             Replace(window.EditorArea.CodeEditor, "Go.Content", "Start.Content");
             window.OpenFile(app.PathOf("MainWindow.axaml"));
             Ui.WaitFor(() => window.EditorArea.Active?.Text.Snapshot.ToString().Contains("Name=\"Start\"", StringComparison.Ordinal) == true, "the XAML as it was written, open");
