@@ -1068,3 +1068,11 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   server with no state change after it, and the path named no member until the next edit. Opening Program.cs alone and
   then its folder fails so every time. **A race in the IDE**: the service tells when it opens a file in the server
   (`Connected`), and both ask then (5af1fc50).
+- `XamlTests`' `An_elements_rename_in_its_xaml_a_moment_after_the_xaml_was_written_…`, CI's macOS runner at d274f75f8: the
+  rename said "Renamed", in the XAML alone. It waited only on signs of a recent write, its time within 2 s or the
+  watcher's word, and a write by another program can have neither on a loaded machine. **A gap in the IDE**, read from the
+  code (the run kept no log) and held by a test that gives the same words: the rename asks what the server holds of the
+  XAML itself (5ac081ec7).
+- `UpdatesTests`' `An_app_on_another_volume_…`, CI's macOS runner at d274f75f8, in its `finally`: hdiutil's last exit code 1,
+  no words (`-quiet`), nothing open. Read as a forced detach taking the volume after saying busy. **The test**: what counts
+  is whether the volume is mounted, and hdiutil's words are kept (`TestVolumes.Detach`, 2aaee55ca).

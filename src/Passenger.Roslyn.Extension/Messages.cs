@@ -37,6 +37,7 @@ public static class Handlers
     public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
     public const string GeneratedNamed = "Passenger.Roslyn.Extension.GeneratedNamed";
     public const string PartialHalf = "Passenger.Roslyn.Extension.PartialHalf";
+    public const string GeneratedParts = "Passenger.Roslyn.Extension.GeneratedParts";
     public const string JsInteropCalls = "Passenger.Roslyn.Extension.JsInteropCalls";
     public const string GodotCode = "Passenger.Roslyn.Extension.GodotCode";
     public const string GodotNames = "Passenger.Roslyn.Extension.GodotNames";
@@ -51,7 +52,7 @@ public static class Handlers
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
+        ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
     ];
 }
 
@@ -140,6 +141,12 @@ public sealed record HalfAsked([property: JsonPropertyName("at")] UriSpan At, [p
 
 /// <summary>Where the half asked for is named, or null where the place names no other half.</summary>
 public sealed record HalfFound([property: JsonPropertyName("half")] UriSpan? Half);
+
+/// <summary>A place in a document naming a type, whose parts source generators made are asked for.</summary>
+public sealed record PartsAsked([property: JsonPropertyName("uri")] string Uri, [property: JsonPropertyName("at")] Place At);
+
+/// <summary>Where source generators' parts of a type declare it; none for anything else.</summary>
+public sealed record PartsFound([property: JsonPropertyName("parts")] IReadOnlyList<UriSpan> Parts);
 
 /// <summary>Documents source generators made, whose texts are asked for.</summary>
 public sealed record GeneratedAsked([property: JsonPropertyName("documents")] IReadOnlyList<GeneratedSource> Documents);

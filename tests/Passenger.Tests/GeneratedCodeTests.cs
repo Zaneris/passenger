@@ -53,6 +53,41 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         }
     }
 
+    /// <summary>A use of a type with one part of the person's goes straight to it, a generator's parts or not; from that part
+    /// Go to Declaration offers the part a generator made beside it, where the server names only the person's, and the
+    /// choice takes them to the generator's code, read-only, at the part.</summary>
+    [AvaloniaFact]
+    public void Go_to_declaration_goes_straight_to_a_persons_only_part_and_from_there_offers_the_part_a_generator_made()
+    {
+        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
+        try
+        {
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "Info => ShapeCon");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => window.EditorArea.CodeEditor.Document.Snapshot.GetLineText(window.EditorArea.CodeEditor.CaretPosition.Line).Contains("partial class ShapeContext", StringComparison.Ordinal),
+                () => $"a use of the type to go straight to its one part of the person's, offering {string.Join(", ", window.Assist.Offered)} ({window.Status})");
+            Assert.True(window.Assist.Offered.Count == 0, $"A use of a type with one part of the person's offered {string.Join(", ", window.Assist.Offered)}");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "public static partial class Patte");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => window.Assist.Offered.Count == 2, () => $"the type's two parts to choose from: {string.Join(", ", window.Assist.Offered)} ({window.Status})");
+            int made = window.Assist.Offered.ToList().FindIndex(o => o.Contains("RegexGenerator.g.cs", StringComparison.Ordinal));
+            Assert.True(made >= 0 && window.Assist.Offered.Any(o => o.Contains("Patterns.cs", StringComparison.Ordinal)),
+                $"Go to Declaration offered {string.Join(", ", window.Assist.Offered)}, not the person's part and the one the regular expression generator made");
+            for (int i = 0; i < made; i++)
+            {
+                Ui.Press(window, "DOWN");
+            }
+            Ui.Press(window, "ENTER");
+            OpenDocument part = Shown(window, "RegexGenerator.g.cs", "Choosing the generator's part");
+            string at = part.Text.Snapshot.GetLineText(window.EditorArea.CodeEditor.CaretPosition.Line);
+            Assert.True(at.Contains("partial class Patterns", StringComparison.Ordinal), $"The choice put the caret at '{at.Trim()}', not the generator's part of the type");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Go to Declaration on a System.Text.Json context's Default opens the code the JSON generator made of the
     /// context, read-only, at the property, where it said "Could not find file '/ShapeContext.g.cs'".</summary>
     [AvaloniaFact]

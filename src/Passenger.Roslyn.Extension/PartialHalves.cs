@@ -37,9 +37,33 @@ public sealed class PartialHalf : IExtensionWorkspaceMessageHandler<HalfAsked, H
         _ => null,
     };
 
-    private static async Task<UriSpan> SpanAsync(Document document, TextSpan span, CancellationToken cancel)
+    internal static async Task<UriSpan> SpanAsync(Document document, TextSpan span, CancellationToken cancel)
     {
         LinePositionSpan lines = (await document.GetValueTextAsync(cancel).ConfigureAwait(false)).Lines.GetLinePositionSpan(span);
         return new UriSpan(document.GetURI().UriString, new Place(lines.Start.Line, lines.Start.Character), new Place(lines.End.Line, lines.End.Character));
+    }
+}
+
+/// <summary>The parts of the type at a place that source generators made, which the server's answer to Go to Declaration
+/// leaves out of any type with a part of the person's own. None for a file that holds no C#, as a Razor component's.</summary>
+public sealed class GeneratedParts : IExtensionWorkspaceMessageHandler<PartsAsked, PartsFound>
+{
+    public async Task<PartsFound> ExecuteAsync(PartsAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    {
+        List<UriSpan> parts = [];
+        if (System.Uri.TryCreate(message.Uri, UriKind.Absolute, out Uri? uri)
+            && (await context.Solution.GetTextDocumentsAsync(new DocumentUri(uri), cancellationToken).ConfigureAwait(false)).FirstOrDefault() is Document document)
+        {
+            SourceText text = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
+            ISymbol? symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, WrittenPlaces.Offset(text, message.At), cancellationToken).ConfigureAwait(false);
+            foreach (Microsoft.CodeAnalysis.Location place in (symbol?.OriginalDefinition as INamedTypeSymbol)?.Locations.Where(l => l.IsInSource) ?? [])
+            {
+                if (context.Solution.GetDocument(place.SourceTree) is SourceGeneratedDocument made)
+                {
+                    parts.Add(await PartialHalf.SpanAsync(made, place.SourceSpan, cancellationToken).ConfigureAwait(false));
+                }
+            }
+        }
+        return new PartsFound(parts);
     }
 }

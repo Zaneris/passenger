@@ -661,6 +661,19 @@ public sealed class LspDocument : IDisposable
     public async Task<IReadOnlyList<LspLocation>> DefinitionAsync(int offset, CancellationToken cancel = default) =>
         Shapes.Locations(await Read(Server.RequestAsync<JsonElement>(LspMethods.Definition, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel)));
 
+    /// <summary>Where the parts source generators made of the type at an offset declare it (<see cref="Roslyn.Extension.PartsFound"/>);
+    /// none for anything else, or from a server with no extension to ask.</summary>
+    public async Task<IReadOnlyList<LspLocation>> GeneratedPartsAsync(int offset, CancellationToken cancel = default)
+    {
+        if (Server.ExtensionProblem is not null)
+        {
+            return [];
+        }
+        Roslyn.Extension.PartsFound found = await RoslynExtension.AskWorkspaceAsync<Roslyn.Extension.PartsFound>(Server, Roslyn.Extension.Handlers.GeneratedParts,
+            new Roslyn.Extension.PartsAsked(Identifier.Uri, PlaceOf(offset)), cancel).ConfigureAwait(false);
+        return [.. found.Parts.Select(p => new LspLocation(p.Uri, new LspRange(new LspPosition(p.Start.Line, p.Start.Character), new LspPosition(p.End.Line, p.End.Character))))];
+    }
+
     /// <summary>Where the type of the symbol at an offset (a variable's, a member's, a parameter's) is declared.</summary>
     public async Task<IReadOnlyList<LspLocation>> TypeDefinitionAsync(int offset, CancellationToken cancel = default) =>
         Shapes.Locations(await Read(Server.RequestAsync<JsonElement>(LspMethods.TypeDefinition, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel)));

@@ -259,7 +259,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   worked is refused. A generated document is never opened in the server (it would freeze its text into the compilation):
   its file (`RoslynSession.WrittenAsync`) or a read-only copy (`GeneratedCode`), asked about through
   `RoslynSession.Unopened`. The server finds a partial member's callers only at its declaring half and callees only at
-  its body half (`PartialHalf`). C# in XAML has one finder (`XamlService.UsesAsync`). A multi-targeted project's
+  its body half (`PartialHalf`). Its Go to Declaration leaves out a type's generated parts once the person wrote one
+  (`GeneratedParts`); an extension's document handler refuses a file that's no C# document, a `.razor`, so a handler
+  asked of any file is a workspace one. C# in XAML has one finder (`XamlService.UsesAsync`). A multi-targeted project's
   framework is one choice (`TargetFrameworkChoices`), never a framework's output taken by its newest write. A C# file no
   tab shows is pulled when shown or asked, never at a refresh. Edits added to a server's edit join that file's entry
   (`TypeRename.With`): `documentChanges` apply in order. A server's own command runs through `ServerCommands`, its

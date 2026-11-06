@@ -1,5 +1,6 @@
 using Passenger.App.Web;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Languages.CSharp;
 using Passenger.Lsp;
 
@@ -115,7 +116,7 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
     /// <summary>Aspire's, a configuration read's, a localized key's, a JS interop call's and a Godot path's places first; then the server's, a Godot
     /// script's generated member going to the code's (<see cref="GodotGeneratedDeclaredAsync"/>), where a Dockerfile's
     /// FROM that names no stage goes to its image's registry page, a XAML element's generated field to its name, and any other
-    /// place in a source generator's code to its copy (<see cref="GeneratedCode"/>).</summary>
+    /// place in a source generator's code, a type's generated parts among them, to its copy (<see cref="GeneratedCode"/>).</summary>
     public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
     {
         if (context.ServerOf(document)?.Lsp is not { } lsp)
@@ -146,7 +147,10 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         }
         // A project the folder has but C# does not load is declared in its own source, never its assembly's metadata stub.
         (found, bool onlyByName) = await UnloadedSources.OfAsync(found, csharp.UnloadedNow?.Invoke() ?? []);
-        return new Declared(await csharp.Generated.CopiedAsync(found), Refusals.NoDeclaration) { Note = onlyByName ? Refusals.OverloadNotInSource : null };
+        // One place of the person's is gone to straight, but from that place, where a generator's parts are all that's left to go to.
+        IReadOnlyList<LspLocation> parts = found is [{ } only] && !(PathNames.Same(DocumentUris.ToPath(only.Uri), document.Path) && only.Range.Holds(lsp.PositionOf(offset)))
+            ? [] : await lsp.GeneratedPartsAsync(offset);
+        return new Declared(await csharp.Generated.CopiedAsync([.. found.Union(parts)]), Refusals.NoDeclaration) { Note = onlyByName ? Refusals.OverloadNotInSource : null };
     }
 
     public override async Task<bool> UsagesAsync(int offset, bool inPopup)
