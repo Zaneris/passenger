@@ -112,7 +112,7 @@
     <!-- A Godot game's Ogg Vorbis and MP3 sounds decoded to WAV for the system's player; NVorbis's 0.10 line, as 1.0 is
          still a pre-release. -->
     <PackageVersion Include="NVorbis" Version="0.10.5" />
-    <PackageVersion Include="NLayer" Version="3.0.0" />
+    <PackageVersion Include="NLayer" Version="3.0.1" />
     <!-- An SVG file's picture: 5.1, the last line on the SkiaSharp 3 Avalonia's Skia carries (5.2 takes SkiaSharp 4). -->
     <PackageVersion Include="Svg.Skia" Version="5.1.1" />
     <!-- TextMate grammars' tokenizer, with GregsEx's managed regular expressions: colour for every

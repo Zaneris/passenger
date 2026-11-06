@@ -148,9 +148,9 @@
       },
       "NLayer": {
         "type": "Direct",
-        "requested": "[3.0.0, )",
-        "resolved": "3.0.0",
-        "contentHash": "aQrCT93NjIrJNXA7wiTSHMp9OUhGNb8YTJAwnsx2FtaNdAe74vwfguFExf6QFNU72XhNPb/bLAcdMbxvaNZgWg=="
+        "requested": "[3.0.1, )",
+        "resolved": "3.0.1",
+        "contentHash": "wmio64yT/zvjGlVaU6uWpjUaj3CkwfPcs2BngElCAc0LA/ORVaPOzqaaq4BGS6gqIp8fa3eZecnWLHUqnR436w=="
       },
       "NuGet.Configuration": {
         "type": "Direct",
