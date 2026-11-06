@@ -1826,6 +1826,25 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     [AvaloniaFact]
     public void Continue_pressed_while_a_stops_values_are_read_shows_the_program_running_at_once_and_sets_it_going()
     {
+        string engineLog = Path.Combine(Fresh(), "engine.log");
+        string? kept = Environment.GetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable);
+        Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable, engineLog);
+        try
+        {
+            ContinuePressedWhileValuesAreRead();
+        }
+        catch (TimeoutException stuck) when (Ui.Shared(engineLog) is { } log && log.IndexOf("is past its time", StringComparison.Ordinal) is >= 0 and int from)
+        {
+            throw new TimeoutException($"{stuck.Message}. The engine's log, from an evaluation's first going past its time:\n{log[from..Math.Min(log.Length, from + 12_000)]}", stuck);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable, kept);
+        }
+    }
+
+    private void ContinuePressedWhileValuesAreRead()
+    {
         string ticks = Path.Combine(Fresh(), "ticks.txt");
         // Each spin's begin, and its end with the other thread's count of ticks as it began and as it ended.
         string spins = Path.Combine(Fresh(), "spins.txt");

@@ -47,7 +47,7 @@ public sealed class FlingTests
         double screen = Math.Floor(editor.Bounds.Height / 50);
         long runs = editor.RunsFormatted;
         int first = editor.LinesShown.First;
-        long left = 0;
+        List<long> batches = [];
         while (editor.LinesShown.Last < Lines - 1)
         {
             // A few frames between full collections, too few to start one of their own: each counts what they left.
@@ -58,12 +58,13 @@ public sealed class FlingTests
                 rig.Window.MouseWheel(over, new Vector(0, -screen));
                 Ui.Draw();
             }
-            left += Math.Max(0, Collected() - idle);
+            batches.Add(Math.Max(0, Collected() - idle));
         }
         int flung = editor.LinesShown.First - first;
         Assert.True(editor.RunsFormatted - runs > 4L * flung, $"The fling through {flung} lines laid out only {editor.RunsFormatted - runs} runs: its lines were not of many colours");
+        long left = batches.Sum();
         Assert.True(left <= flung / 10,
-            $"A fling through {flung} lines of several colours left the finalizer {left} objects, where its lines' layouts leave it none: each buffer the formatter splits waits for it, "
+            $"A fling through {flung} lines of several colours left the finalizer {left} objects ({string.Join(", ", batches)} by each batch of frames), where its lines' layouts leave it none: each buffer the formatter splits waits for it, "
             + "is promoted with what it holds, and takes the pooled arrays it shares out of the pool");
     }
 
