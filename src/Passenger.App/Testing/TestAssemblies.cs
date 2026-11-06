@@ -1,3 +1,5 @@
+using System.Xml;
+using System.Xml.Linq;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Host;
@@ -112,6 +114,20 @@ public static class TestAssemblies
         }
         catch (ProjectHostFailed)
         {
+            return null;
+        }
+    }
+
+    /// <summary>What a run settings file says; null, said, for one that cannot be read. A worker's: it reads the file.</summary>
+    public static XElement? ReadRunSettings(string file, Action<string>? log)
+    {
+        try
+        {
+            return XDocument.Load(file).Root is { Name.LocalName: "RunSettings" } read ? read : throw new XmlException("its root is not RunSettings");
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or XmlException)
+        {
+            log?.Invoke($"The run settings {PathNames.Shown(file, null)} were left out: {unread.Message}");
             return null;
         }
     }

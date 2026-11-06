@@ -63,26 +63,18 @@ public sealed class TestingPlatformRunner : ITestRunner
         return await BackgroundWork.Run(() => Tell(asked));
     }
 
-    /// <summary>The run settings a framework on the platform's bridge to VSTest's adapters (NUnit's runner) reads from a test
-    /// host's environment, in place of a file another variable names; without them it says no test's file or line.</summary>
-    private const string RunSettingsVariable = "TESTINGPLATFORM_EXPERIMENTAL_VSTEST_RUNSETTINGS";
-
-    private const string RunSettingsFileVariable = "TESTINGPLATFORM_VSTESTBRIDGE_RUNSETTINGS_FILE";
-
-    private const string CollectSources = "<RunSettings><RunConfiguration><CollectSourceInformation>true</CollectSourceInformation></RunConfiguration></RunSettings>";
-
-    /// <summary>What a test host looking for tests is started with, for each to say where it is; nothing where the person's
-    /// environment gives a bridge its run settings, which stand.</summary>
-    private static Dictionary<string, string>? SourcesAsked() =>
-        Environment.GetEnvironmentVariable(RunSettingsVariable) is { Length: > 0 } || Environment.GetEnvironmentVariable(RunSettingsFileVariable) is { Length: > 0 }
-            ? null : new() { [RunSettingsVariable] = CollectSources };
+    /// <summary>What a test host of an assembly starts with (<see cref="PlatformRunSettings.Given"/>), its project's run settings
+    /// read from their file, one that cannot be read said and left out. A worker's: it reads the file.</summary>
+    private static IReadOnlyDictionary<string, string>? HostEnvironment(TestAssembly assembly, bool looking, IReadOnlyDictionary<string, string>? environment, Action<string>? log) =>
+        PlatformRunSettings.Given(assembly.RunSettings is { } file ? TestAssemblies.ReadRunSettings(file, log) : null, looking, environment, Environment.GetEnvironmentVariable);
 
     private static async Task<(TestAssembly, IReadOnlyList<PlatformNode>)> DiscoverIn(TestAssembly assembly, Action<string>? log, CancellationToken cancel)
     {
         List<PlatformNode> nodes = [];
         try
         {
-            await using Host host = await Host.StartAsync(assembly, SourcesAsked(), null, log, cancel);
+            IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: true, null, log), cancel);
+            await using Host host = await Host.StartAsync(assembly, given, null, log, cancel);
             bool asked = await host.RequestAsync("testing/discoverTests", null, changed =>
             {
                 lock (nodes)
@@ -154,7 +146,8 @@ public sealed class TestingPlatformRunner : ITestRunner
         long began = Stopwatch.GetTimestamp();
         try
         {
-            await using Host host = await Host.StartAsync(assembly, environment, debugger, log, cancel);
+            IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
+            await using Host host = await Host.StartAsync(assembly, given, debugger, log, cancel);
             bool ran = await host.RequestAsync("testing/runTests", chosen, changed =>
             {
                 List<TestOutcome> batch = new(changed.Count);

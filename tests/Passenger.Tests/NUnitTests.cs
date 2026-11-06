@@ -291,10 +291,35 @@ public sealed class NUnitDebuggingTests : NUnitFolders
         Ui.WaitFor(() => window.Debugger.Session is null || window.Debugger.Session.State == DebugState.Ended, "the test host to end once its run was done");
         window.Close();
     }
+
+    /// <summary>Run settings with a variable, which a test host on NUnit's own runner would start a process of its own to set,
+    /// leave the test in the process the debugger holds, reading the variable at a breakpoint.</summary>
+    [AvaloniaFact]
+    public void Debug_tests_stops_at_a_breakpoint_in_a_test_on_nunits_runner_whose_run_settings_set_a_variable()
+    {
+        string folder = Restored(NUnitInstall.OnItsRunner, SumTestsFile, SumTests.Replace("int sum = 2 + 2;", "int sum = System.Environment.GetEnvironmentVariable(\"SETTLED_BY\")!.Length / 4;", StringComparison.Ordinal));
+        string project = Path.Combine(folder, "Sums.Tests.csproj");
+        File.WriteAllText(project, File.ReadAllText(project).Replace("</PropertyGroup>", "  <RunSettingsFilePath>$(MSBuildProjectDirectory)/settled.runsettings</RunSettingsFilePath>\n  </PropertyGroup>", StringComparison.Ordinal));
+        Write(folder, "settled.runsettings", RunSettings);
+        MainWindow window = Opened(folder);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(10, 8));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+
+        Ui.Run(window, AppActions.DebugTests);
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames.Count > 0, "the stop in the test", TimeSpan.FromSeconds(180));
+        Assert.Contains("Adds", window.BottomPanel.Debug.Frames[0].Name, StringComparison.Ordinal);
+
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => !window.Tests.IsBusy, "the debugged run to end", TimeSpan.FromSeconds(60));
+        Assert.True(Method(window, "Adds")!.State == TestState.Passed, $"The test read no variable of its project's run settings under the debugger:\n{Method(window, "Adds")!.Details}");
+        Ui.WaitFor(() => window.Debugger.Session is null || window.Debugger.Session.State == DebugState.Ended, "the test host to end once its run was done");
+        window.Close();
+    }
 }
 
-/// <summary>NUnit as an agent meets it, however it is installed: a run's answer says which case of a method failed, and
-/// tests_list where a test its runner alone finds is.</summary>
+/// <summary>NUnit as an agent meets it, however it is installed: a run's answer says which case of a method failed,
+/// tests_list where a test its runner alone finds is, and a run takes what its project's run settings say.</summary>
 public sealed class NUnitMcpTests : McpRig
 {
     /// <summary>A method of two named cases, one failing, and a method whose only case is named and fails.</summary>
@@ -347,6 +372,44 @@ public sealed class NUnitMcpTests : McpRig
         await Call(client, McpTools.TestsRun);
         JsonElement test = Assert.Single((await Call(client, McpTools.TestsList, new() { ["filter"] = "Typed" })).EnumerateArray());
         Assert.True(test.TryGetProperty("location", out JsonElement location) && location.GetString() == "Cases.cs:9", $"tests_list says nowhere a run of it found the test: {test}");
+    }
+
+    /// <summary>A project's run settings file reaches its tests however NUnit is installed, a parameter and a variable as a
+    /// run of it reads them, and a test only a runner finds still says where it is.</summary>
+    [Theory]
+    [InlineData(NUnitInstall.OnVSTest)]
+    [InlineData(NUnitInstall.OnItsRunner)]
+    [InlineData(NUnitInstall.FourOnVSTest)]
+    public async Task A_projects_run_settings_reach_its_tests_however_nunit_is_installed(NUnitInstall install)
+    {
+        const string Settled = """
+            using NUnit.Framework;
+
+            namespace Cases.Tests;
+
+            [TestFixture(typeof(int))]
+            public class Typed<T>
+            {
+                [Test]
+                public void Parameter() => Assert.That(TestContext.Parameters["who"], Is.EqualTo("the parameter"));
+
+                [Test]
+                public void Variable() => Assert.That(System.Environment.GetEnvironmentVariable("SETTLED_BY"), Is.EqualTo("the run settings"));
+            }
+
+            """;
+        string folder = await Restored(install, Settled);
+        string project = Path.Combine(folder, "Sums.Tests.csproj");
+        File.WriteAllText(project, File.ReadAllText(project).Replace("</PropertyGroup>", "  <RunSettingsFilePath>$(MSBuildProjectDirectory)/settled.runsettings</RunSettingsFilePath>\n  </PropertyGroup>", StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(folder, "settled.runsettings"), NUnitFolders.RunSettings);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        JsonElement run = await Call(client, McpTools.TestsRun);
+        Assert.True(run.GetProperty("summary").GetString()!.StartsWith("Tests passed: 2, failed: 0 of 2", StringComparison.Ordinal),
+            $"The tests ran without what their project's run settings say: {run}");
+        JsonElement test = Assert.Single((await Call(client, McpTools.TestsList, new() { ["filter"] = "Parameter" })).EnumerateArray());
+        Assert.True(test.TryGetProperty("location", out JsonElement location) && location.GetString() == "Cases.cs:9",
+            $"Given its project's run settings, a host looking for tests no longer says where they are: {test}");
     }
 
     /// <summary>What a run's answer says of a test's failure.</summary>
@@ -417,6 +480,21 @@ public abstract class NUnitFolders : UnitTestsFolders
             [TestCase(2, 4)]
             public void Doubles(int value, int twice) => Assert.That(value * 2, Is.EqualTo(twice));
         }
+
+        """;
+
+    /// <summary>A run settings file giving a test a variable of 16 letters and a parameter.</summary>
+    internal const string RunSettings = """
+        <RunSettings>
+          <RunConfiguration>
+            <EnvironmentVariables>
+              <SETTLED_BY>the run settings</SETTLED_BY>
+            </EnvironmentVariables>
+          </RunConfiguration>
+          <TestRunParameters>
+            <Parameter name="who" value="the parameter" />
+          </TestRunParameters>
+        </RunSettings>
 
         """;
 

@@ -157,6 +157,48 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
     }
 }
 
+/// <summary>What a project's run settings file says reaches its tests on the platform: MSTest's runner reads a parameter
+/// from them as VSTest's adapter does, and a variable reaches xUnit v3's tests too, whose runner reads no run settings.</summary>
+public sealed class TestingPlatformSettingsTests : TestingPlatformFolders, IClassFixture<RestoredFolders>
+{
+    public TestingPlatformSettingsTests(RestoredFolders restored)
+        : base(restored)
+    {
+    }
+
+    [AvaloniaFact]
+    public void A_projects_run_settings_reach_its_tests_on_mstests_runner_and_their_variables_those_of_a_runner_that_reads_none()
+    {
+        const string Named = "    <RunSettingsFilePath>$(MSBuildProjectDirectory)/../settled.runsettings</RunSettingsFilePath>\n  </PropertyGroup>";
+        string solution = NewFolder();
+        Write(solution, "settled.runsettings", NUnitFolders.RunSettings);
+        Write(solution, "Store.Tests/Store.Tests.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <OutputType>Exe</OutputType>\n" +
+            $"    <EnableMSTestRunner>true</EnableMSTestRunner>\n{Named}\n  <ItemGroup>\n" +
+            $"    <PackageReference Include=\"MSTest.TestFramework\" Version=\"{TestPackages.MSTestRunner}\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestRunner}\" />\n  </ItemGroup>\n</Project>\n");
+        Write(solution, "Store.Tests/StoreTests.cs",
+            "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Store.Tests;\n\n[TestClass]\npublic class StoreTests\n{\n    public TestContext TestContext { get; set; } = null!;\n\n" +
+            "    [TestMethod]\n    public void Reads_the_parameter() => Assert.AreEqual(\"the parameter\", TestContext.Properties[\"who\"]);\n\n" +
+            "    [TestMethod]\n    public void Reads_the_variable() => Assert.AreEqual(\"the run settings\", System.Environment.GetEnvironmentVariable(\"SETTLED_BY\"));\n}\n");
+        Write(solution, "Sums.Tests/Sums.Tests.csproj", XunitProject.Replace("  </PropertyGroup>", Named, StringComparison.Ordinal));
+        Write(solution, "Sums.Tests/SumTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Reads_it_too() => Assert.Equal(\"the run settings\", Environment.GetEnvironmentVariable(\"SETTLED_BY\"));\n}\n");
+        Write(solution, "Suite.slnx", "<Solution>\n  <Project Path=\"Store.Tests/Store.Tests.csproj\" />\n  <Project Path=\"Sums.Tests/Sums.Tests.csproj\" />\n</Solution>\n");
+        Restore.Run(Path.Combine(solution, "Suite.slnx"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Reads_the_parameter") is not null && Method(window, "Reads_it_too") is not null, "both projects' tests read from the code");
+
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Reads_it_too")?.State is not (null or TestState.NotRun or TestState.Running), "the run of every test", TimeSpan.FromSeconds(240));
+        foreach (string test in new[] { "Reads_the_parameter", "Reads_the_variable", "Reads_it_too" })
+        {
+            Assert.True(Method(window, test)!.State == TestState.Passed, $"{test} ran without what its project's run settings say:\n{Method(window, test)!.Details}");
+        }
+        window.Close();
+    }
+}
+
 /// <summary>Debug Tests on Microsoft.Testing.Platform: a breakpoint inside a test stops it, and Stop as the test host
 /// starts under the debugger ends the run saying why. Debugged through the window, so the class runs alone.</summary>
 [Collection(Alone.Name)]

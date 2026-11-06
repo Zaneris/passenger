@@ -221,6 +221,7 @@
     <Compile Include="../../src/Passenger.App/Testing/GutScripts.cs" Link="App/GutScripts.cs" />
     <Compile Include="../../src/Passenger.App/Testing/FileTests.cs" Link="App/FileTests.cs" />
     <Compile Include="../../src/Passenger.App/Testing/TestCode.cs" Link="App/TestCode.cs" />
+    <Compile Include="../../src/Passenger.App/Testing/PlatformRunSettings.cs" Link="App/PlatformRunSettings.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GoDotTests.cs" Link="App/GoDotTests.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GdUnit4Settings.cs" Link="App/GdUnit4Settings.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GdUnit4Log.cs" Link="App/GdUnit4Log.cs" />

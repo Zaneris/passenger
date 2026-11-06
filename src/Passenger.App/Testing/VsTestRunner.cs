@@ -355,14 +355,7 @@ public sealed class VsTestRunner : ITestRunner
         XElement root = new("RunSettings");
         if (file is not null)
         {
-            try
-            {
-                root = XDocument.Load(file).Root is { Name.LocalName: "RunSettings" } read ? read : throw new XmlException("its root is not RunSettings");
-            }
-            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or XmlException)
-            {
-                log?.Invoke($"The run settings {PathNames.Shown(file, null)} were left out: {unread.Message}");
-            }
+            root = TestAssemblies.ReadRunSettings(file, log) ?? root;
         }
         XElement configuration = Child(root, "RunConfiguration");
         configuration.SetElementValue("DesignMode", "true");
