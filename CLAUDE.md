@@ -9,9 +9,8 @@ description of what the code does.
 
 **Passenger** is an IDE for C# and modern .NET (CoreCLR only: no .NET Framework, Mono or Unity; the one exception,
 Blazor's WebAssembly half debugged through the runtime's browser debug proxy, #586), written in C# on .NET 11 with an
-Avalonia 12 UI, for Windows, macOS and Linux. v0.2.4 shipped; the next release is 0.3.0
-(https://github.com/Zaneris/passenger/milestone/6), the Backlog (https://github.com/Zaneris/passenger/milestone/2)
-holding the rest. Each issue says **Now:**, **The aim:** and **Done when:**; read it before anything larger than a fix,
+Avalonia 12 UI, for Windows, macOS and Linux. v0.3.0 shipped; the Backlog
+(https://github.com/Zaneris/passenger/milestone/2) holds what's next. Each issue says **Now:**, **The aim:** and **Done when:**; read it before anything larger than a fix,
 and close or tick it when it lands. A new feature is the best Passenger can make it, never a copy of another IDE's; only
 its keys follow Rider's keymaps (their files are in the jars of `~/Applications/Rider.app`).
 
