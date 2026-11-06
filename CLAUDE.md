@@ -321,7 +321,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `GutRuns.Hook`, never `-gunit_test_name` or `-ginner_class`, which take substrings; what a read depends on is taken
   inside `TestFinder.ReadFile`'s parse, never captured by a listing. A case named in place of its method is a row from
   its source (`TestItem.NamedCase`), never by `NUnit.ClassName`, the declaring type; the Testing Platform's VSTest
-  bridge says no file or line unless run settings ask (`TestingPlatformRunner.SourcesAsked`).
+  bridge says no file or line unless run settings ask (`TestingPlatformRunner.SourcesAsked`); run settings reach a
+  Testing Platform host through `PlatformRunSettings`, never `--settings`.
 - **The rest.** `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
   only to their feed's host); `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
   templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); only an installed copy
@@ -350,7 +351,8 @@ a new name, and `just site-shots` retakes its images.
   it only once its projects loaded again without it (`ProjectMethods.Deleted`): told first, it reads the missing file, a
   second each, before any answer needing the compilation (dotnet/roslyn#86236).
 - **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
-  references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`.
+  references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`, which moves
+  `LanguageServer.Changes` itself (`AnswersMoved`).
 - **Roslyn's server passes over an option answered empty**, so an option goes back to its default only as the default's
   value (`CSharpService.OwnScope`), never null; a running server can't take an option left out.
 - **Roslyn's server writes its MEF caches beside its DLLs**, so in a macOS bundle (a file added breaks the seal, #450)
