@@ -909,20 +909,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.True(copy.InstalledVersion == Product.Version, $"A package manager's copy was changed, to {copy.InstalledVersion}");
     }
 
-    /// <summary>Unmounts the test's volume. The system's own readers of new files (Spotlight, the code-signing checks)
-    /// can hold a volume just written busy for a moment, which even a forced detach refuses (exit code 16): tried again
-    /// for up to 10 s, then failed naming what holds it.</summary>
-    private static void Detach(string volume)
-    {
-        ChildResult detached = null!;
-        if (Waiting.Until(() => (detached = Ran("/usr/bin/hdiutil", ["detach", volume, "-force", "-quiet"], TimeSpan.FromMinutes(1).Scaled())).Succeeded,
-            TimeSpan.FromSeconds(10), every: TimeSpan.FromSeconds(1)))
-        {
-            return;
-        }
-        ChildResult holders = Ran("/usr/sbin/lsof", ["+D", volume], TimeSpan.FromMinutes(1));
-        Assert.Fail($"The test's volume {volume} could not be detached (hdiutil exited with code {detached.ExitCode}: {detached.Error.Trim()}); what has files open on it:\n{holders.Output}");
-    }
+    private static void Detach(string volume) => TestVolumes.Detach(volume, (tool, arguments) => Ran(tool, arguments, TimeSpan.FromMinutes(1).Scaled()));
 
     /// <summary>The person's window as the app makes it, its settings kept in the test's state folder, asking the stand-in;
     /// with the updater of a copy installed in a test folder, or, as every window but the person's own, none.</summary>
