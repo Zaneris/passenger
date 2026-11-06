@@ -9,8 +9,9 @@ namespace Passenger.Core;
 /// SDK, whatever stopped it.</summary>
 internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan? heldLimit = null)
 {
-    /// <summary>How long a move or a removal waits on Windows for what holds the files it reaches, unless told.</summary>
-    private static readonly TimeSpan HeldLimit = TimeSpan.FromSeconds(30);
+    /// <summary>How long a step waits for what holds its files: a scanner reads every file just unpacked, for minutes on a slow
+    /// machine, and an install it outlasts fails for nothing.</summary>
+    private static readonly TimeSpan HeldLimit = TimeSpan.FromMinutes(3);
 
     private readonly TimeSpan limit = heldLimit ?? HeldLimit;
 

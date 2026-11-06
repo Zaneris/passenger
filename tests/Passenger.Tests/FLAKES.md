@@ -1076,3 +1076,7 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
 - `UpdatesTests`' `An_app_on_another_volume_…`, CI's macOS runner at d274f75f8, in its `finally`: hdiutil's last exit code 1,
   no words (`-quiet`), nothing open. Read as a forced detach taking the volume after saying busy. **The test**: what counts
   is whether the volume is mounted, and hdiutil's words are kept (`TestVolumes.Detach`, 2aaee55ca).
+- `NoDotnetTests`' `Install_dotnet_SDK_asks_then_installs_…`, CI's Windows runner at 00200fd83: the stages end at "Waiting
+  for Windows to let go of the .NET SDK's sdk", the move giving up on what held it after 30 s. **The IDE's limit**: a
+  scanner reads every file just unpacked, and the same install gave the SDK's first run 3 minutes for that reason. The
+  move now waits as long.
