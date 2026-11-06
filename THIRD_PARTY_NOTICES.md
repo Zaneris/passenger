@@ -9,7 +9,7 @@ the solution restores, Roslyn's language server carries, the container tools car
 ## In the app
 
 What `just publish` carries for macOS, Windows and Linux: the app, the debugger beside it under `debugger/`, the
-project host under `host/` (MSBuild's evaluation in a process of its own, run on the installed .NET with the installed
+project host under `host/` (MSBuild's evaluation in a process of its own, run on the .NET it carries with the installed
 SDK's MSBuild, of which it carries nothing), Roslyn's language server under `roslyn/` and Passenger's own extension to
 it under `roslyn-extension/` (compiled against the server's assemblies and carrying none), the JavaScript, TypeScript,
 HTML, CSS, JSON, Dockerfile and YAML language servers' npm packages under `web/` (listed below), on Windows what Velopack's installer
@@ -24,7 +24,7 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `Google.Protobuf` | Aspire resource service protocol messages | BSD-3-Clause | Copyright 2015, Google Inc. |
 | `Grpc.Net.Client`, `Grpc.Net.Common`, `Grpc.Core.Api` | Native Aspire interactions and resource commands | Apache-2.0 | Copyright 2019 The gRPC Authors |
 | `Microsoft.Extensions.Logging.Abstractions` | gRPC client's logging contracts | MIT | © Microsoft Corporation. All rights reserved. |
-| The .NET runtime (`Microsoft.NETCore.App`) | the app and the debugger are self-contained; Roslyn's server runs on the installed .NET | MIT | © Microsoft Corporation. All rights reserved. |
+| The .NET runtime (`Microsoft.NETCore.App`) | the app and the debugger are self-contained; Roslyn's server and the project host run on that .NET | MIT | © Microsoft Corporation. All rights reserved. |
 | `Avalonia`, `Avalonia.Desktop`, `Avalonia.Native`, `Avalonia.Win32`, `Avalonia.X11`, `Avalonia.FreeDesktop`, `Avalonia.FreeDesktop.AtSpi`, `Avalonia.Remote.Protocol`, `Avalonia.Themes.Fluent`, `Avalonia.Skia`, `Avalonia.HarfBuzz`, `Avalonia.Headless` | the UI, and the headless platform the screenshots draw on, `Avalonia.Headless` carried beside the inspector too (`inspector/`) for an Avalonia app a Passenger nobody sees runs | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `Avalonia.Markup.Xaml.Loader` | XAML Hot Reload's compiler, carried beside the inspector into an Avalonia app Passenger runs or debugs (`inspector/`) | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `Avalonia.Controls.WebView` | an HTML file's preview beside its text, in the system's own web view (WebView2, WKWebView, WebKitGTK) | MIT | Copyright 2019-2026 © AvaloniaUI OÜ |

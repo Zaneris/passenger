@@ -6,8 +6,7 @@ for coding agents and people alike; read the parts your change touches.
 
 ## Reporting a bug
 
-Search the [issues](https://github.com/Zaneris/passenger/issues) first: it may be known, or fixed on the branch of the
-release in progress. If it's new, open an issue with:
+Search the [issues](https://github.com/Zaneris/passenger/issues) first: it may be known, or fixed on `main`. If it's new, open an issue with:
 
 - what you did, what you expected and what happened instead, as steps someone else can follow;
 - your system and Passenger's version (Passenger > About on macOS, Help > About elsewhere);
@@ -33,8 +32,8 @@ You need the .NET 11 SDK (11.0.100-rc.3 or later, as `global.json` asks, until .
 [just](https://github.com/casey/just) and Git, and for the tests the .NET 10 SDK too, which the programs they debug and
 most projects they write run on (on Linux also the X11 and fontconfig libraries
 [Passenger's Linux page](https://passenger-ide.net/linux) names). Node.js runs the web languages' tests and a container
-engine running Linux containers runs the container tests; each kind skips without its own, saying why. Python 3 runs the
-recipes that write or check generated files (`just icons`, `just themes`, `just notices` and others). The README's
+engine running Linux containers runs the container tests; each kind skips without its own, saying why. Python 3 runs
+`just test` and the recipes that write or check generated files (`just icons`, `just themes`, `just notices` and others). The README's
 [Building](README.md#building) has the whole list.
 
 ```sh
@@ -44,7 +43,7 @@ just test [FILTER]         # the tests, or those whose name matches; results in 
 just screenshot shell.png  # the main window drawn off-screen to a PNG
 ```
 
-Working on Passenger needs only open-source tools: the .NET SDK, just, and the open-source packages the projects
+Working on Passenger needs only open-source tools: the .NET SDK, just, and the packages the projects
 restore, among them Avalonia's MIT framework. Passenger uses none of Avalonia's commercial tooling (Avalonia Accelerate's
 DevTools, Hot Reload and the rest), and takes no contribution that adds any. A licence you hold for a commercial tool,
 Avalonia's or any other vendor's, is between you and that vendor: nothing here asks you to use one, so if its terms
@@ -56,11 +55,11 @@ work on Passenger. Passenger can't tell you how those terms apply to you, so if 
 
 ## Making a change
 
-- **Branch from the release in progress** (a branch named after it, such as `0.2.0`) and open your pull request against
-  it, not `main`.
+- **Branch from `main`**, or from the release in progress's branch while one is open, and open your pull request
+  against it.
 - **Test it the way a person uses it.** The tests drive the whole IDE, headless: a window, real key presses, clicks and
-  files on disk. A test says what a person sees or gets ("an edit saved keeps the file's line endings"), never what
-  one function returns on its own. It waits for what it checks (`Ui.WaitFor`, `Ui.Settle`); fixed sleeps are build
+  files on disk. A test says what a person sees or gets ("an edit saved keeps the file's line endings"); pure
+  logic alone is unit tested in `tests/Passenger.UnitTests`. It waits for what it checks (`Ui.WaitFor`, `Ui.Settle`); fixed sleeps are build
   errors in the tests. A bug fix comes with a test that fails without it.
 - **Look at what you changed.** After changing anything visible, take a screenshot (`--scale 2`, in the dark and light
   themes) and look at it.
@@ -69,7 +68,8 @@ work on Passenger. Passenger can't tell you how those terms apply to you, so if 
 
 ### Rules a change keeps
 
-- **Licences.** Every dependency, icon or asset has an open-source licence and an entry in `THIRD_PARTY_NOTICES.md`,
+- **Licences.** Every dependency, icon or asset has an open-source licence (the notices name the exceptions) and an entry in
+  `THIRD_PARTY_NOTICES.md`,
   added in the same change; `just notices` fails on one missing. Package versions live only in
   `Directory.Packages.props`, and a change of package commits its `packages.lock.json`.
 - **No proprietary debugger or tooling:** nothing from Microsoft's vsdbg or C# Dev Kit, and no Avalonia Accelerate
@@ -80,8 +80,7 @@ work on Passenger. Passenger can't tell you how those terms apply to you, so if 
 - **Work off the UI thread** that changes what is drawn goes through `BackgroundWork`.
 - **Paths are canonical** (`PathNames.Canonical`) wherever two are compared.
 - **Code style:** four spaces, file-scoped namespaces, braces on every block, explicit types over `var`; `.editorconfig`
-  makes the build fail on the namespaces, braces and accessibility, while `var` is only a suggestion there, so write the
-  type yourself. Comments say why, never what the next lines do.
+  makes the build fail on the namespaces, braces, `var` and accessibility. Comments say why, never what the next lines do.
 
 ## Pull requests
 

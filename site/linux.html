@@ -50,7 +50,7 @@
 
 <main class="wrap page" id="main">
     <h1>Passenger on Linux</h1>
-    <p>Passenger's Linux builds come from the same code as its Windows and macOS ones, and every change runs the tests
+    <p>Passenger's Linux builds come from the same code as its Windows and macOS ones, and each CI run tests them
         on Ubuntu, then installs the archive there, debugs a program with it and uninstalls it. Fewer people use them yet,
         so please <a href="https://github.com/Zaneris/passenger/issues">report</a> anything that goes wrong.</p>
     <p class="status" id="linux-status"></p>
@@ -69,6 +69,7 @@
         <li><strong>Node.js</strong>, only for JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML (22.22.2 or
             later for TypeScript). Your distribution's package may be older; <a href="https://nodejs.org/en/download">nodejs.org</a>
             has current ones, and Settings &rsaquo; Node.js can name the one to use.</li>
+        <li><strong>WebKitGTK 4.1</strong>, only for the HTML preview, which says so where it's missing.</li>
     </ul>
 <pre><span class="comment"># Ubuntu, Debian</span>
 sudo apt install git libx11-6 libice6 libsm6 libfontconfig1 fonts-dejavu-core

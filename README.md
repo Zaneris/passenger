@@ -75,7 +75,7 @@ error and warning at once.
 While the game runs, the Live Visual Tree shows its scene tree and values, tuned while it plays and kept into the scene,
 a node picked by clicking in the game; its members' values show after their lines, and its errors stay pinned to them
 after the run. A profile holds GDScript's functions and Godot's frame times beside the C# in one call tree. GdUnit4, GUT
-and GoDotTest tests run and debug in the Unit Tests window. Passenger's addon for Godot's editor debugs in Passenger the
+and GoDotTest tests run and debug in the Unit Tests window, GdUnit4's engine tests on Godot 4.7 for now. Passenger's addon for Godot's editor debugs in Passenger the
 game Godot's own Play starts, and Passenger becomes Godot's script editor in one step. The website's
 [Godot page](https://passenger-ide.net/godot) has the rest.
 
@@ -262,7 +262,7 @@ needs:
 - **Node.js**, for JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML; C#, XAML, GDScript and shaders do
   without it;
 - for Godot games, **Godot 4** (its .NET build for C#), found from `GODOT`, the PATH or your applications, or named in
-  Settings › Godot; Passenger is tested on Godot 4.7 and 4.8;
+  Settings › Godot; Passenger is tested on Godot 4.7 and 4.8's betas;
 - for Blazor's WebAssembly debugging, **Chrome, Edge or another Chromium browser**;
 - for containers, **a container engine running Linux containers** (Docker Desktop, Colima, OrbStack, Rancher Desktop,
   Podman or a remote engine).
@@ -344,7 +344,7 @@ November 2026) and [just](https://github.com/casey/just). The tests need more:
 - **a container engine running Linux containers** (Docker Desktop, Docker Engine, Colima, OrbStack), for the container
   tests, which skip without one, saying why.
 
-**Python 3** runs the recipes that write or check generated files (`just icons`, `just file-icons`, `just themes`,
+**Python 3** runs `just test` and the recipes that write or check generated files (`just icons`, `just file-icons`, `just themes`,
 `just unicode-widths`, `just notices`, `just test-times`) and some of the macOS ones (`just app-icon`,
 `just package-mac`, `just site-shots`). To use what you build, Passenger needs what a release needs
 ([installing](#installing)).
