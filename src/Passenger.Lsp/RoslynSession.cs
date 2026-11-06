@@ -289,9 +289,20 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     /// changed that no command has seen the server read since, which it may hold as they were.</summary>
     public Task<WrittenLately> WrittenSinceAsync(DateTime since, CancellationToken cancel = default) => WrittenLately.AskAsync(Server, since, cancel);
 
-    /// <summary>Has the server read now the assemblies its projects reference that a build wrote; done once it holds them.</summary>
-    public Task<Roslyn.Extension.ReferencesTaken> ReadReferencesAsync(CancellationToken cancel = default) =>
-        ExtensionAsync<Roslyn.Extension.ReferencesTaken>(Roslyn.Extension.Handlers.ReferencesRead, new Roslyn.Extension.ReferencesAsked(), cancel);
+    /// <summary>Has the server read now the assemblies its projects reference that a build wrote; done once it holds them,
+    /// nothing pulled before then standing (<see cref="LanguageServer.Changes"/>), however few it read now: hearing of a file
+    /// as the build went may have had it read one first, and the word of a file written may come after this.</summary>
+    public async Task<Roslyn.Extension.ReferencesTaken> ReadReferencesAsync(CancellationToken cancel = default)
+    {
+        try
+        {
+            return await ExtensionAsync<Roslyn.Extension.ReferencesTaken>(Roslyn.Extension.Handlers.ReferencesRead, new Roslyn.Extension.ReferencesAsked(), cancel).ConfigureAwait(false);
+        }
+        finally
+        {
+            Server.AnswersMoved();
+        }
+    }
 
     /// <summary>A message to Passenger's extension about the solution that nothing waits on, as a debugging session ends.</summary>
     public void TellExtension(string handler, object message) => RoslynExtension.TellWorkspace(Server, handler, message);

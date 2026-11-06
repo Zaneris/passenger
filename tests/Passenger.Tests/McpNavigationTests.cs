@@ -94,6 +94,62 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>What build answers holds whenever the language server hears of the assembly it wrote: told as the build goes
+    /// on, the server reads it only at the build's end, so what diagnostics answered between the two is no answer to ask
+    /// after it, with nothing else said to the server since. (The server's own read of it may come first: nothing here asks
+    /// what the ask under way answered.)</summary>
+    [Fact]
+    public async Task Diagnostics_asked_while_a_build_goes_on_do_not_outlast_it_once_it_has_answered_with_what_it_wrote()
+    {
+        string folder = await AppWithoutItsLibraryAsync();
+        // The app's compile, after the library's, held once the test puts "hold" there until it puts "go" (ten minutes at most).
+        TestFolders.Write(folder, "Directory.Build.targets", """
+            <Project>
+              <Target Name="Held" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true' And '$(MSBuildProjectName)' == 'App' And Exists('$(MSBuildThisFileDirectory)hold')">
+                <Exec Condition="'$(OS)' != 'Windows_NT'" WorkingDirectory="$(MSBuildThisFileDirectory)" Command="rm -f hold; touch held; n=0; while [ ! -f go ] &amp;&amp; [ $n -lt 2400 ]; do sleep 0.25; n=`expr $n + 1`; done" />
+                <Exec Condition="'$(OS)' == 'Windows_NT'" WorkingDirectory="$(MSBuildThisFileDirectory)" Command="powershell -NoProfile -Command &quot;Remove-Item hold; New-Item held -ItemType File | Out-Null; $n = 0; while (-not (Test-Path go) -and $n -lt 2400) { Start-Sleep -Milliseconds 250; $n++ }&quot;" />
+              </Target>
+            </Project>
+            """);
+        await using McpClient client = await Start(["--mcp", Path.Combine(folder, "App.slnf")]);
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["traceProtocols"] = true } });
+        string trace = Path.Combine(OwnState, "logs", "lsp.log");
+        await ErrorsAsync();
+        await BuiltAsync(Call(client, McpTools.Build));
+
+        TestFolders.Write(folder, "Lib/Greeter.cs", File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")).Replace("    public string Who", "    public string Twice() => Who + Who;\n\n    public string Who", StringComparison.Ordinal));
+        await Call(client, McpTools.Edit, new() { ["path"] = "App/Program.cs", ["oldText"] = "greeter.Who);", ["newText"] = "greeter.Twice());" });
+        await ErrorsAsync();
+        int told = Told(trace);
+        TestFolders.Write(folder, "hold", string.Empty);
+        Task<JsonElement> building = Call(client, McpTools.Build);
+        await Until(() => File.Exists(Path.Combine(folder, "held")) && Told(trace) > told, "the build to reach the app's compile with the language server told of the library's assembly");
+        await ErrorsAsync();
+        TestFolders.Write(folder, "go", string.Empty);
+        await BuiltAsync(building);
+
+        string[] errors = await ErrorsAsync();
+        Assert.True(errors.Length == 0, $"build answered, but diagnostics still said what it said before the build took in the method the library gained: {string.Join(", ", errors)}");
+
+        async Task<string[]> ErrorsAsync() => [.. (await Call(client, McpTools.Diagnostics, new() { ["path"] = "App/Program.cs" })).EnumerateArray()
+            .Where(d => d.GetProperty("severity").GetString() == "error").Select(d => d.GetProperty("code").GetString()!)];
+
+        static async Task BuiltAsync(Task<JsonElement> asked)
+        {
+            JsonElement built = await asked;
+            Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The filter's app did not build with the project it leaves out: {built}");
+        }
+    }
+
+    /// <summary>How many times lsp.log's trace says the language server was told the library's reference assembly changed.</summary>
+    private static int Told(string trace)
+    {
+        using FileStream read = new(trace, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using StreamReader reader = new(read);
+        return reader.ReadToEnd().Split('\n').Count(l => l.Contains("] --> ", StringComparison.Ordinal)
+            && l.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.DidChangeWatchedFiles}\"", StringComparison.Ordinal) && l.Contains("/ref/Lib.dll\"", StringComparison.Ordinal));
+    }
+
     /// <summary>Unload Project takes the project out of the language server: nothing is answered from the text the server
     /// read of it, so Go to Declaration from what references it finds the line where it is now, its symbols are found no
     /// more, and a file come under it is neither waited for nor brings it back; Reload Project has it loaded again.</summary>

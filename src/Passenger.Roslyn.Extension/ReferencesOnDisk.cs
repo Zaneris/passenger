@@ -84,6 +84,8 @@ public sealed class ReferencesRead : IExtensionWorkspaceMessageHandler<Reference
         {
             await projects.StartRefreshingMetadataReferencesForFileAsync(path, cancellationToken).ConfigureAwait(false);
         }
+        // A file a refresh of the server's own has just read is no longer changed, and is in the solution once this gate opens.
+        await projects.ApplyChangeToWorkspaceAsync(static _ => { }, cancellationToken).ConfigureAwait(false);
         return new ReferencesTaken(changed.Length);
     }
 }

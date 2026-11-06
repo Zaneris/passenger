@@ -63,9 +63,13 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>A count of what may have changed the server's answers since it started: each notification it was sent (an
     /// open, a change or close of a document, files changed on disk, options), each of Passenger's own project
-    /// requests, and each time it said its projects loaded or its diagnostics changed. Roslyn's server watches nothing
-    /// itself, so an answer pulled at one count stands while the count does.</summary>
+    /// requests, each time it said its projects loaded or its diagnostics changed, and each change it made that nothing
+    /// said (<see cref="AnswersMoved"/>). Roslyn's server watches nothing itself, so an answer pulled at one count stands
+    /// while the count does.</summary>
     public long Changes => Interlocked.Read(ref changes);
+
+    /// <summary>Counts a change the server has made as it was asked, which it says only seconds later, if at all.</summary>
+    internal void AnswersMoved() => Interlocked.Increment(ref changes);
 
     /// <summary>Counts one more of what may change the server's answers (<see cref="Changes"/>): a method of the protocol's
     /// own ($/cancelRequest, $/progress) is none.</summary>
