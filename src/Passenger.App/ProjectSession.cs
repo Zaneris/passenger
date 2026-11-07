@@ -925,6 +925,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The open GDScripts' own trees and types.</summary>
     internal Godot.GodotScriptTypes GodotScriptTypes { get; }
 
+    /// <summary>Holds the next reading of an open GDScript (<see cref="Godot.GodotScriptTypes.HoldNextTyping"/>).</summary>
+    public Task HoldNextScriptReading(Task until) => GodotScriptTypes.HoldNextTyping(until);
+
     /// <summary>The folder of the Godot project a file is of: the one its project builds a game for, else the Godot project of
     /// GDScript alone it lies in (<see cref="WorkspaceModel.ScriptGames"/>), the innermost; null for a file of none.</summary>
     public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder

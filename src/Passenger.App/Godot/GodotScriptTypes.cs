@@ -24,6 +24,9 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
 
     private readonly Dictionary<OpenDocument, Kept> documents = [];
 
+    /// <summary>The next reading held by a test (<see cref="HoldNextTyping"/>): what it waits for, and done once it waits.</summary>
+    private (Task Until, TaskCompletionSource Holding)? typingHeld;
+
     /// <summary>An open script's tree and analysis as last made, and the change its text has made since.</summary>
     private sealed class Kept(Debounce pause)
     {
@@ -41,9 +44,6 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
 
         /// <summary>What names are, coloured over the grammar's colours, while the script is followed.</summary>
         public Languages.ColourLayer? Layer { get; set; }
-
-        /// <summary>The colours last given the layer, for the text the tree was read from.</summary>
-        public SyntaxSpan[] Colours { get; set; } = [];
     }
 
     /// <summary>A script's types for a version of its text: its tree, its analysis, and the analyzer that read them; its
@@ -260,6 +260,15 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         return autoloads;
     }
 
+    /// <summary>Holds the next reading of a script until <paramref name="until"/> ends, its text read and its answer not yet
+    /// landed, for a test of what typing on does meanwhile. Done once it is held.</summary>
+    public Task HoldNextTyping(Task until)
+    {
+        TaskCompletionSource holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        typingHeld = (until, holding);
+        return holding.Task;
+    }
+
     /// <summary>The script typed again, after the typing under way: each starts from the tree the last one left.</summary>
     private Task<Typed?> TypeAsync(OpenDocument document)
     {
@@ -286,7 +295,13 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         TextSnapshot snapshot = document.Text.Snapshot;
         GDScriptTextChange? change = kept.Pending;
         kept.Pending = null;
-        Typed? typed = await TypeOffAsync(document, snapshot, document.Text.Version, kept.Tree, kept.TreeText, change, kept.Colours);
+        Typed? typed = await TypeOffAsync(document, snapshot, document.Text.Version, kept.Tree, kept.TreeText, change, kept.Layer?.Shown ?? Languages.ShownColours.None);
+        if (typingHeld is { } held)
+        {
+            typingHeld = null;
+            held.Holding.SetResult();
+            await held.Until;
+        }
         if (typed is null || !documents.ContainsKey(document))
         {
             return typed;
@@ -300,7 +315,6 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
                 document.InlayHints = typed.Hints;
             }
             Mark(document, typed.Marks);
-            kept.Colours = typed.Colours;
             kept.Layer?.Set(typed.Colours, typed.Version, typed.ColoursDiffer);
         }
         return typed;
@@ -331,7 +345,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     }
 
     private async Task<Typed?> TypeOffAsync(OpenDocument document, TextSnapshot snapshot, int version, GDScriptTree? tree, string? treeText, GDScriptTextChange? change,
-        SyntaxSpan[] coloured)
+        Languages.ShownColours shown)
     {
         string path = document.Path;
         GodotEngineApi? api = await apis.ApiAsync();
@@ -354,10 +368,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             Marker[] marks = [.. findings.OrderBy(f => f.Start).Select(f => Marker.Coded(TextRange.FromBounds(f.Start, f.End),
                 f.IsNote ? MarkerKind.Info : f.IsError ? MarkerKind.Error : MarkerKind.Warning, f.IsError ? null : f.Code, f.Message))];
             SyntaxSpan[] colours = [.. analysis.Colours().Select(c => new SyntaxSpan(c.Start, c.Length, KindOf(c.Colour)))];
-            // Read whole with no edit to carry the last through, every name may differ.
-            TextRange? differ = made is null && text != treeText ? TextRange.FromBounds(0, text.Length)
-                : Languages.ColourLayer.Differing(coloured, made is { } carried ? [carried] : [], colours);
-            return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints, findings, marks, colours, differ);
+            return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints, findings, marks, colours, Languages.ColourLayer.Differing(shown, colours));
         });
     }
 

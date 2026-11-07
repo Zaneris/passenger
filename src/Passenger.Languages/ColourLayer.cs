@@ -4,6 +4,13 @@ using Passenger.Text;
 
 namespace Passenger.Languages;
 
+/// <summary>What a colour layer shows as its text stands: the colours last given it and each change of the text since, in
+/// turn, which it carries them through to draw. A copy, for any thread.</summary>
+public sealed record ShownColours(SyntaxSpan[] Colours, IReadOnlyList<IReadOnlyList<TextEdit>> Since)
+{
+    public static readonly ShownColours None = new([], []);
+}
+
 /// <summary>Colours of what names are (a member, a local, a class), read elsewhere for a version of the text and given
 /// here (<see cref="Set"/>), over a grammar's colours, which they replace where they reach. Those given are carried
 /// through every edit made since, as a range is drawn, so they never lag a key nor flash plain; a set that says what is
@@ -43,9 +50,12 @@ public sealed class ColourLayer : IHighlighter, IBraceMatcher, IDisposable
     /// <summary>The grammar's word that it kept every colour it had given, while it is raised.</summary>
     public bool KeptColours { get; private set; }
 
-    /// <summary>Colours read for a version of the text, in order of their starts, and where they differ from those given
-    /// before as the edits since carry them (<see cref="Differing"/>, worked out where they were read; null, the same);
-    /// ignored where of an older version than those shown. Raises <see cref="Changed"/> only where they differ, saying
+    /// <summary>What the layer shows now, for colours read for this text to be compared with where they are read.</summary>
+    public ShownColours Shown => new(spans, [.. history.Select(h => h.Edits)]);
+
+    /// <summary>Colours read for a version of the text, in order of their starts, and where they differ from what was shown
+    /// of that version (<see cref="Differing"/>, worked out where they were read; null, the same); ignored where of an older
+    /// version than those shown. Raises <see cref="Changed"/> only where they differ, saying
     /// where (<see cref="ChangedWithin"/>) where nothing has been typed since they were read.</summary>
     public void Set(SyntaxSpan[] colours, int at, TextRange? differ)
     {
@@ -70,13 +80,15 @@ public sealed class ColourLayer : IHighlighter, IBraceMatcher, IDisposable
         }
     }
 
-    /// <summary>Where colours given for a text, carried through the edits that made another (sorted, in the first's text),
-    /// differ from colours read for the other: from the first that differs to the last, in the other's text; null where
-    /// none does. Pure, for any thread.</summary>
-    public static TextRange? Differing(SyntaxSpan[] before, IReadOnlyList<TextEdit> edits, SyntaxSpan[] after)
+    /// <summary>Where what a layer showed of a text differs from colours read for that text: from the first that differs to
+    /// the last; null where none does. Pure, for any thread.</summary>
+    public static TextRange? Differing(ShownColours shown, SyntaxSpan[] after)
     {
-        List<SyntaxSpan> carried = [.. before];
-        CarriedSpans.Forward(carried, edits, Word);
+        List<SyntaxSpan> carried = [.. shown.Colours];
+        foreach (IReadOnlyList<TextEdit> edits in shown.Since)
+        {
+            CarriedSpans.Forward(carried, edits, Word);
+        }
         int low = 0;
         while (low < carried.Count && low < after.Length && carried[low] == after[low])
         {
