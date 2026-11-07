@@ -58,6 +58,11 @@ public sealed class CommandHistory
     /// none.</summary>
     public ActionWork? Work { get; set; }
 
+    /// <summary>Lets go of the folders an Undo or Redo moves, told "Undo" or "Redo", until disposed: what builds in them or
+    /// watches inside them, which would keep a folder from moving or make it again where it was, done once they may move;
+    /// null lets go of nothing.</summary>
+    public Func<IReadOnlyList<string>, string, Task<IDisposable>>? LetGo { get; set; }
+
     /// <summary>The command being made that Undo or Redo there waits for: in a file's editor, one whose change is what that
     /// file's next undo step would take; in the Solution view (no file), the first being made that has changed anything.</summary>
     public Recording? Making(OpenDocument? document) => making.FirstOrDefault(r => r.Changed(document));
@@ -227,11 +232,11 @@ public sealed class CommandHistory
         return unlike ?? Blocked(command, redo, looks);
     }
 
-    /// <summary>Takes a command back (or makes it again, given true), asked again first as <see cref="BlockedAsync"/> asks and
-    /// at once after, so nothing comes between the look and the change: its moves (made within <paramref name="moving"/>)
-    /// and the open files' steps on the window's thread, its files not open written off it in order, each stored as the look
-    /// found it. Why not, null once done, one refused partway having taken back what it did, so the command stays to be
-    /// asked again; and whether it began, false when refused before it changed anything.</summary>
+    /// <summary>Takes a command back (or makes it again, given true), the folders it moves let go of (<see cref="LetGo"/>),
+    /// asked again as <see cref="BlockedAsync"/> asks and at once after, so nothing comes between the look and the change:
+    /// its moves (within <paramref name="moving"/>) and the open files' steps on the window's thread, its files not open
+    /// written off it in order as the look found them stored. Why not, null once done, one refused partway having taken
+    /// back what it did, to be asked again; and whether it began, false when refused before it changed anything.</summary>
     public async Task<(string? Why, bool Began)> PutAsync(Command command, bool redo, Func<Func<string?>, string?> moving)
     {
         // Its open files too, whose saves would go over what another program holds.
@@ -239,6 +244,8 @@ public sealed class CommandHistory
         {
             return (held, false);
         }
+        // Before the look, as letting go may wait; held until the put, or its taking back, has ended.
+        using IDisposable? letGo = LetGo is { } letting && Moving(command, redo) is { Count: > 0 } folders ? await letting(folders, redo ? "Redo" : "Undo") : null;
         Dictionary<string, Look> looks;
         while (true)
         {
@@ -292,6 +299,14 @@ public sealed class CommandHistory
     /// still be landing once it returns (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>).</summary>
     public IReadOnlyList<string> Writes(Command command, bool redo) =>
         [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => t.Path), .. redo ? command.Created.Select(c => c.Path) : command.Deleted.Select(d => d.Path)];
+
+    /// <summary>The folders taking a command back (or making it again, given true) moves, each where it is and where it goes,
+    /// as a refused put moves it back: those of its moves there now, and its parts' (<see cref="Part.Folder"/>).</summary>
+    private static List<string> Moving(Command command, bool redo) =>
+    [
+        .. command.Moves.Select(m => redo ? m : (From: m.To, To: m.From)).Where(m => Directory.Exists(m.From)).SelectMany(m => new[] { m.From, m.To }),
+        .. command.Parts.Select(p => p.Folder).OfType<string>().Select(PathNames.Canonical),
+    ];
 
     /// <summary>Why a command cannot be taken back (or made again) now, from what the window holds and where its files are:
     /// its files not open as <paramref name="looks"/> found them, one not looked at counting as changed; with no look, no
@@ -870,6 +885,10 @@ public sealed class CommandHistory
         /// <summary>Put before the command's files and moves, whichever way it goes, so that its failure leaves the rest of
         /// the command as it was: a part the disk may refuse (a folder moved).</summary>
         public bool First { get; init; }
+
+        /// <summary>The folder it moves, let go of with those the command moves before it is put (<see cref="LetGo"/>); null
+        /// for none.</summary>
+        public string? Folder { get; init; }
 
         /// <summary>Why it cannot be taken back (or made again, given true) now, from what it reads of the disk at length,
         /// read off the window's thread; null when it can.</summary>

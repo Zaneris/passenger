@@ -205,6 +205,7 @@ public partial class MainWindow
             Read = redo => redo ? Task.FromResult<string?>(null) : BackgroundWork.Run(() => MadeFolders.Unlike(folder, made)),
             Dropped = () => MadeFolders.Forget(aside),
             First = true,
+            Folder = folder,
         };
     }
 

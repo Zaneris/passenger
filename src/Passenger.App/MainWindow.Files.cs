@@ -27,6 +27,7 @@ public partial class MainWindow
         Editors.Moved += (_, move) => OnFileMoved(move);
         // The watcher that saw the move reads the Explorer, the index and Git again itself.
         Editors.Followed += (_, move) => session.Followed(move);
+        Editors.Commands.LetGo = LetGoForCommandAsync;
     }
 
     /// <summary>File Nesting, over the window: its "Show files with the same names as nested" is the setting every
@@ -575,6 +576,15 @@ public partial class MainWindow
             }
         }
         return new LetGo(held, unwatched);
+    }
+
+    /// <summary>Lets go of the folders an Undo or Redo moves (<see cref="CommandHistory.LetGo"/>) as a move does, saying
+    /// meanwhile whose design-time builds it waits for: those of the folders there now.</summary>
+    private Task<IDisposable> LetGoForCommandAsync(IReadOnlyList<string> folders, string verb)
+    {
+        List<string> there = [.. folders.Where(Directory.Exists).Select(Path.GetFileName).OfType<string>()];
+        return LetGoAsync(folders,
+            $"Waiting for the design-time {Plural.Noun(there.Count, "build")} of {Plural.Listed(there)} to end before {verb} moves {(there.Count == 1 ? "it" : "them")}…");
     }
 
     /// <summary>What was let go of for a move or a delete (<see cref="LetGoAsync"/>), taken up again once it is done.</summary>

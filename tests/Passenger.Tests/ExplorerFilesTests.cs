@@ -191,6 +191,54 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A loaded project's folder moved into another folder is moved back by Undo and into it again by Redo, each once
+    /// its build output is watched for the C# language server where it is: what watches inside it lets go first, as for the
+    /// move itself, as Windows moves no folder with one inside it watched, and the folder is not made again where it was.</summary>
+    [AvaloniaFact]
+    public void Undo_and_redo_of_a_loaded_projects_folders_move_go_through_once_its_build_output_is_watched_for_the_language_server()
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        MainWindow window = Ui.OpenFolder(folder);
+        List<string> asked = Answer(window);
+        string lib = PathNames.Canonical(library);
+        string models = PathNames.Canonical(Path.Combine(folder, "Models"));
+        string moved = Path.Combine(models, "Lib");
+        Watched(lib, "before its move");
+        Assert.True(Ui.Await(window.PutAsync([lib], models, copy: false), "the move").Count > 0 && File.Exists(Path.Combine(moved, "Lib.csproj")),
+            $"Lib was not moved into Models: {window.Status}{Holders(window, lib)}");
+
+        Put(EditorActions.Undo, moved, lib, "Undone");
+        Put(EditorActions.Redo, lib, moved, "Redone");
+        Assert.Equal(["Undo", "Redo"], asked);
+        window.Close();
+
+        void Watched(string at, string when)
+        {
+            Ui.WaitFor(() => window.CSharpService?.Watching?.Watching.Any(w => PathNames.Within(w.Folder, at)) == true,
+                () => $"Lib's build output to be watched for the C# language server {when}, where {string.Join(", ", (window.CSharpService?.Watching?.Watching ?? []).Select(w => w.Folder))} are",
+                TimeSpan.FromMinutes(2));
+        }
+
+        void Put(string action, string from, string to, string done)
+        {
+            Watched(from, $"before {action}");
+            window.ExplorerView.Reveal(from);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == from));
+            Ui.Run(window, action);
+            Ui.WaitFor(() => window.Status?.StartsWith(done, StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
+                () => $"{action} of Lib's move to end: {window.Status}", TimeSpan.FromMinutes(2));
+            Assert.True(window.Status == $"{done}: Move Lib to Models" && File.Exists(Path.Combine(to, "Lib.csproj")),
+                $"{action} of Lib's move did not take it to {to}: {window.Status}{Holders(window, from)}");
+            Ui.Settle();
+            Assert.False(Directory.Exists(from), $"Lib is there again after {action}, holding [{string.Join(", ", Left(from))}]: its design-time build wrote where it had been");
+            Assert.DoesNotContain(window.CSharpService?.Watching?.Watching ?? [], w => PathNames.Within(w.Folder, from));
+        }
+    }
+
     /// <summary>A project's folder renamed, or moved into another folder, while its design-time build runs waits for the build
     /// to end, as a delete does: the build, still writing its obj/, would make the folder again where it was, and on Windows
     /// the folder it works in would not move.</summary>
