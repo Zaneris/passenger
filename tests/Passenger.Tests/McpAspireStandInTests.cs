@@ -389,20 +389,25 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     {
         await project.ResetAsync();
         string web = await project.WriteWebAppAsync();
-        string address = $"http://127.0.0.1:{AspireApp.FreePort().ToString(System.Globalization.CultureInfo.InvariantCulture)}/";
+        // Held from every other program until web runs, which binds only past its gate: a port freed a minute ahead may be taken.
+        using HeldPort port = new();
+        string address = $"http://127.0.0.1:{port.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)}/";
         string told = $"{project.KeyFile}.web.pid";
+        string gate = $"{project.KeyFile}.web.gate";
         File.Delete(told);
+        File.Delete(gate);
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
         resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Starting" });
         await project.ServeAsync(resources);
         await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
         await Running(client, PathNames.Canonical(project.ProjectFile), "web");
         (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = await project.StartApiAsync("web",
-            environment: new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address, ["STAND_IN_PID_FILE"] = told }, projectPath: web);
+            environment: new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address, ["STAND_IN_PID_FILE"] = told, ["STAND_IN_GATE"] = gate }, projectPath: web);
         using System.Net.WebSockets.ClientWebSocket subscribed = notified;
         Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the web service's run session: {answer}");
         int program = 0;
         Assert.True(await Waiting.UntilAsync(() => (program = Processes.ReadId(told)) > 0, TimeSpan.FromMinutes(1), Cancel), "The web service never said its process's id");
+        port.LetGo(gate);
         resources.PushResource(new Passenger.App.Aspire.Protocol.Resource
         {
             Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Running",

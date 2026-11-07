@@ -2167,8 +2167,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     {
         project.Reset();
         string web = project.WriteWebApp();
-        int port = AspireApp.FreePort();
-        string address = $"http://127.0.0.1:{port.ToString(System.Globalization.CultureInfo.InvariantCulture)}/";
+        // Held from every other program until web runs, which binds only past its gate: a port freed a minute ahead may be taken.
+        using HeldPort port = new();
+        string address = $"http://127.0.0.1:{port.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)}/";
+        string gate = $"{project.KeyFile}.web.gate";
+        File.Delete(gate);
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
         MainWindow window = OpenRunning(backend);
         using CancellationTokenSource stopAsking = new();
@@ -2176,11 +2179,12 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         try
         {
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("web",
-                environment: new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address }, projectPath: web);
+                environment: new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address, ["STAND_IN_GATE"] = gate }, projectPath: web);
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
             Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.Any(service => service.ProcessId is > 0), "the web service started as DCP asked");
             int program = window.AspireRuntime.Apps.Single().Services.Single().ProcessId!.Value;
+            port.LetGo(gate);
             backend.PushResource(new Resource
             {
                 Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Running",
@@ -3513,7 +3517,8 @@ public sealed class StandInAppHost : SharedProject
 
     /// <summary>Writes an ASP.NET Core app into the stand-in's folder, built by its real path, for the AppHost to start as a web
     /// service: one route, /, which answers "up" and counts itself on a meter of the app's own (StandIn.Web's standin.served);
-    /// given STAND_IN_PID_FILE, it writes its process's id there as it starts. Its project's path; the next test's
+    /// given STAND_IN_PID_FILE, it writes its process's id there as it starts; given STAND_IN_GATE, it binds its address only
+    /// once that file is there (<see cref="HeldPort.LetGo"/>). Its project's path; the next test's
     /// <see cref="SharedProject.Reset"/> takes it away.</summary>
     internal string WriteWebApp() => Ui.Await(WriteWebAppAsync(), "the web service's build", TimeSpan.FromMinutes(4));
 
@@ -3525,6 +3530,7 @@ public sealed class StandInAppHost : SharedProject
             using System;
             using System.Diagnostics.Metrics;
             using System.IO;
+            using System.Threading;
             using Microsoft.AspNetCore.Builder;
 
             if (Environment.GetEnvironmentVariable("STAND_IN_PID_FILE") is { Length: > 0 } told)
@@ -3540,6 +3546,13 @@ public sealed class StandInAppHost : SharedProject
                 served.Add(1);
                 return "up";
             });
+            if (Environment.GetEnvironmentVariable("STAND_IN_GATE") is { Length: > 0 } gate)
+            {
+                while (!File.Exists(gate))
+                {
+                    Thread.Sleep(50);
+                }
+            }
             app.Run();
 
             """);
