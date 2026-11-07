@@ -1368,8 +1368,12 @@ internal sealed class EvalStatus
 
     /// <summary>Says in the engine's log where the program's threads stand, at the first look at an evaluation past its time
     /// on the thread given and again as it is left to run on, so a thread that moved between is told from one that stood
-    /// still (<see cref="ManagedDebugger.WhereThreadsStand"/>).</summary>
+    /// still, and as an expression's own time runs out (<see cref="ManagedDebugger.WhereThreadsStand"/>).</summary>
     internal Action<ICorDebugThread>? TellThreads { get; init; }
+
+    /// <summary>The time of the expression being interpreted, while one is: its evaluations count what they took there, and
+    /// one still running as it falls due says where the threads stand.</summary>
+    internal ExpressionEvaluator.Cil.ExpressionTime? Expression { get; set; }
 
     /// <summary>Why code the debugger would run of itself (a getter, a ToString, a proxy) is not run, once an
     /// evaluation has timed out, until the program next runs on.</summary>

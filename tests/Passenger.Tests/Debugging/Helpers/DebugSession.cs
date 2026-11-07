@@ -362,7 +362,7 @@ public sealed class DebugSession : IAsyncDisposable
     public async Task<EvaluateResponse> EvaluateAsync(int frameId, string expression, bool letThreadsRun = false, bool mayStand = false)
     {
         EvaluateResponse answer = await RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl", letThreadsRun ? true : null));
-        if (!mayStand && answer.Result.Contains("The evaluation took longer than", StringComparison.Ordinal))
+        if (!mayStand && (answer.Result.Contains("The evaluation took longer than", StringComparison.Ordinal) || answer.Result.Contains("The expression took too long to evaluate", StringComparison.Ordinal)))
         {
             string log = EngineLog();
             Assert.Fail($"{expression} was answered: {answer.Result}\nThe engine's log from it:\n{log[Math.Max(0, log.LastIndexOf($"Evaluate: {expression}", StringComparison.Ordinal))..]}{ProgramStacks()}");

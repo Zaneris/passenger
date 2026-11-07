@@ -30,33 +30,42 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         ICilLocation[] arguments = CreateArguments(frame, context, refind);
         ICilLocation[] locals = CreateLocals(compiled, resolver, frame, body.LocalSignature, context.RootValue is not null, refind);
         await using DebuggeeDelegateAssemblyLoader delegateAssemblyLoader = new DebuggeeDelegateAssemblyLoader(debugger, compiled, resolver, context, handles, delegateMaterializer);
-        Interpretation run = new Interpretation(compiled, resolver, context, handles, delegateAssemblyLoader, Stopwatch.GetTimestamp() + (long)(Extensions.EvaluationTimeout.TotalSeconds * Stopwatch.Frequency),
-            debugger.EvalStatus.Leaving);
-        CilValue result = await InterpretAsync(run, decoded, arguments, locals);
-        ICorDebugValue value;
+        ExpressionTime time = new ExpressionTime(Deadline.In(Extensions.EvaluationTimeout));
+        Interpretation run = new Interpretation(compiled, resolver, context, handles, delegateAssemblyLoader, time, Stopwatch.GetTimestamp(), debugger.EvalStatus.Leaving);
+        debugger.EvalStatus.Expression = time;
         try
         {
-            value = result.Value is EvaluationDelegate
-                ? await MaterializeDelegateAsync(result, compiled, resolver, delegateAssemblyLoader, context, handles)
-                : await MaterializeAsync(result, context, handles, resolver.ResolveMethodReturnType(compiled.EntryMethod), resolver);
+            CilValue result = await InterpretAsync(run, decoded, arguments, locals);
+            ICorDebugValue value;
+            try
+            {
+                value = result.Value is EvaluationDelegate
+                    ? await MaterializeDelegateAsync(result, compiled, resolver, delegateAssemblyLoader, context, handles)
+                    : await MaterializeAsync(result, context, handles, resolver.ResolveMethodReturnType(compiled.EntryMethod), resolver);
+            }
+            catch (ManagedDebugger.EvalRefusedException) when (result is { Value: string, CorValue: null })
+            {
+                return new CilInterpretationResult(null, null, (string)result.Value);
+            }
+            return new CilInterpretationResult(value, handles.DetachIfOwned(value));
         }
-        catch (ManagedDebugger.EvalRefusedException) when (result is { Value: string, CorValue: null })
+        finally
         {
-            return new CilInterpretationResult(null, null, (string)result.Value);
+            debugger.EvalStatus.Expression = null;
         }
-        return new CilInterpretationResult(value, handles.DetachIfOwned(value));
     }
 
     /// <summary>One expression's interpretation, shared by the evaluation methods it calls: what it has made, and when it
-    /// is given up (a <see cref="Stopwatch"/> timestamp, or a request that leaves the stop), so a loop it runs never holds
-    /// the engine's lock for good.</summary>
+    /// is given up (its <see cref="ExpressionTime.Due"/>, or a request that leaves the stop), so a loop it runs never holds
+    /// the engine's lock for good. <paramref name="Began"/> is a <see cref="Stopwatch"/> timestamp.</summary>
     private sealed record Interpretation(
         CompiledEvaluationMethod Compiled,
         EvaluationMetadataResolver Resolver,
         CompiledExpressionEvaluationContext Context,
         EvaluationHandleScope Handles,
         DebuggeeDelegateAssemblyLoader Delegates,
-        long Deadline,
+        ExpressionTime Time,
+        long Began,
         CancellationToken Leaving)
     {
         public Dictionary<string, ICilLocation> SyntheticVariables { get; } = new(StringComparer.Ordinal);
@@ -171,17 +180,23 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         Stack<CilValue> stack = new Stack<CilValue>();
         int index = 0;
         ResolvedCilType? constrainedType = null;
+        CilInstruction? stepped = null;
+        long steppedAt = run.Began;
         while (index < instructions.Count)
         {
-            if (Stopwatch.GetTimestamp() > run.Deadline)
+            long now = Stopwatch.GetTimestamp();
+            if (run.Time.Due.PassedAt(now))
             {
+                TellPastItsTime(run, instructions[index], stepped, Stopwatch.GetElapsedTime(steppedAt, now));
                 throw new ManagedDebugger.EvalException($"{TookTooLong}: it was stopped after {Extensions.EvaluationTimeout.TotalSeconds:0.#} s");
             }
+            steppedAt = now;
             if (run.Leaving.IsCancellationRequested)
             {
                 throw new ManagedDebugger.EvalException(Extensions.NotEvaluated);
             }
             CilInstruction instruction = instructions[index++];
+            stepped = instruction;
             try
             {
                 switch (instruction.Code)
@@ -434,6 +449,16 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         throw new InvalidOperationException("Generated evaluation method ended without ret");
 
         void Load(ICilLocation location) => stack.Push(handles.Root(location.Read()).WithSourceLocation(location));
+    }
+
+    /// <summary>Says in the engine's log what an expression past its time spent it on, and where the program's threads stand
+    /// as it gives up; the last step, which took <paramref name="took"/>, is what it was late from, none at its first.</summary>
+    private void TellPastItsTime(Interpretation run, CilInstruction next, CilInstruction? stepped, TimeSpan took)
+    {
+        string last = stepped is { } step ? $", {step.OpCode.Name} at IL_{step.Offset:X4} having taken {ExpressionTime.Seconds(took)}" : "";
+        debugger.Log($"The expression on thread {run.Context.ThreadId.Value} is past its {Extensions.EvaluationTimeout.TotalSeconds:0.#} s before {next.OpCode.Name} at IL_{next.Offset:X4}{last}: "
+            + run.Time.Spent(Stopwatch.GetElapsedTime(run.Began)));
+        debugger.EvalStatus.TellThreads?.Invoke(run.Context.Thread);
     }
 
     /// <summary>What the program would throw running an instruction itself, told as code run in the program throws.</summary>

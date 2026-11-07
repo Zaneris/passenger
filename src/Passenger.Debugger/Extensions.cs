@@ -270,6 +270,7 @@ public static class Extensions
         evalStatus.ThreadId = thread.Id;
         CancellationTokenSource reading = new();
         Task<CorDebugManagedCallbackEventArgs> waiting = Task.FromCanceled<CorDebugManagedCallbackEventArgs>(new CancellationToken(true));
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
             // Only the evaluation's thread runs, unless the person let every thread go: the others' values hold still and none meets a breakpoint unseen.
@@ -280,7 +281,8 @@ public static class Extensions
             process.Continue(false);
             waiting = Read();
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
-            bool ended = await Task.WhenAny(waiting, Task.Delay(EvaluationTimeout, leaving)) == waiting;
+            Task timeUp = Task.Delay(EvaluationTimeout, leaving);
+            bool ended = await EndedAsTheExpressionsTimeIsToldAsync() || await Task.WhenAny(waiting, timeUp) == waiting;
             bool lookedAt = !ended && !leaving.IsCancellationRequested;
             bool asked = false;
             bool told = false;
@@ -396,6 +398,7 @@ public static class Extensions
         }
         finally
         {
+            evalStatus.Expression?.Ran(System.Diagnostics.Stopwatch.GetElapsedTime(started));
             evalStatus.ThreadId = null;
             evalStatus.Reading = default;
             reading.Dispose();
@@ -425,6 +428,36 @@ public static class Extensions
             reading = new CancellationTokenSource();
             evalStatus.Reading = reading.Token;
             return processEventsUntilEvalEventFunc();
+        }
+
+        // Waits out what is left of the time of the expression this evaluation is part of, where that ends before the
+        // evaluation's own: once it returns the threads stand elsewhere, so they are told while it runs. Whether it ended.
+        async Task<bool> EndedAsTheExpressionsTimeIsToldAsync()
+        {
+            if (evalStatus.TellThreads is not { } tell || evalStatus.Expression?.Due.Left is not { } left || left <= TimeSpan.Zero || left >= EvaluationTimeout)
+            {
+                return false;
+            }
+            if (await Task.WhenAny(waiting, Task.Delay(left, leaving)) == waiting)
+            {
+                return true;
+            }
+            if (leaving.IsCancellationRequested)
+            {
+                return false;
+            }
+            if (await GiveUp() is not null)
+            {
+                return true;
+            }
+            if (process.TryStop(0) is Cor.S_OK)
+            {
+                evalStatus.Log?.Invoke($"The expression on thread {thread.Id} is past its time with an evaluation in the program under way for {ExpressionEvaluator.Cil.ExpressionTime.Seconds(System.Diagnostics.Stopwatch.GetElapsedTime(started))}");
+                tell(thread);
+                process.Continue(false);
+            }
+            waiting = Read();
+            return false;
         }
 
         // Ends the wait for the evaluation's event, which reads the runtime's events while the request holds the engine's
