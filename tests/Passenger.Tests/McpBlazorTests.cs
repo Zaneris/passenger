@@ -14,6 +14,10 @@ public sealed class McpBlazorTests : McpRig, IAsyncLifetime
 {
     private readonly string app = PathNames.Canonical(TestFolders.Create("blazor-agent-"));
 
+    /// <summary>The development server's port, held until the agent's Debug begins its build: the server has no code of the
+    /// test's to wait at a gate.</summary>
+    private readonly HeldPort port = new();
+
     private const string Counter = """
         @page "/counter"
 
@@ -43,7 +47,7 @@ public sealed class McpBlazorTests : McpRig, IAsyncLifetime
         string settings = Path.Combine(app, "Properties", "launchSettings.json");
         JsonNode launch = JsonNode.Parse(await File.ReadAllTextAsync(settings))!;
         JsonNode http = launch["profiles"]!["http"]!;
-        http["applicationUrl"] = $"http://localhost:{AspireApp.FreePort()}";
+        http["applicationUrl"] = $"http://localhost:{port.Port}";
         http["launchUrl"] = "counter";
         http["launchBrowser"] = false;
         await File.WriteAllTextAsync(settings, launch.ToJsonString());
@@ -57,6 +61,7 @@ public sealed class McpBlazorTests : McpRig, IAsyncLifetime
     public override void Dispose()
     {
         base.Dispose();
+        port.Dispose();
         TestFolders.Delete(app);
     }
 
@@ -69,6 +74,7 @@ public sealed class McpBlazorTests : McpRig, IAsyncLifetime
         int line = Array.FindIndex(Counter.Split('\n'), l => l.Contains("currentCount = 41;", StringComparison.Ordinal)) + 1;
         JsonElement set = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Pages/Counter.razor", ["line"] = line })).EnumerateArray());
         Assert.Equal("set", set.GetProperty("status").GetString());
+        port.LetGo();
         await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Wasm: http", ["waitSeconds"] = 180 });
         JsonElement state = default;
         await Until(async () => (state = await Call(client, McpTools.DebugState)).GetProperty("state").GetString() == "paused",

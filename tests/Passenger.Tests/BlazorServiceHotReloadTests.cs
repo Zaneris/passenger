@@ -18,7 +18,7 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
     public void Under_an_Aspire_services_debug_session_a_components_edit_runs_the_apps_update_handlers_and_reaches_its_page()
     {
         project.Reset();
-        (string bell, int port) = Bell();
+        string bell = Bell();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
         project.Serve(backend);
         MainWindow window = project.Open(project.Program);
@@ -30,7 +30,7 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Ui.WaitFor(() => service.DebugTab is { IsLive: true }, () => $"the debugger to attach to the Blazor service ({window.Status})", TimeSpan.FromMinutes(2));
             Func<string> output = () => service.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, port, output), StringComparison.Ordinal);
+            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, output), StringComparison.Ordinal);
 
             Ui.Await(window.Debugger.ChooseAsync(service.DebugTab!), "the service's tab to be chosen");
             Edit(window, bell);
@@ -40,8 +40,8 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
             Ui.WaitFor(() => BellApp.Count(output(), BellApp.HandlersRan) == 1,
                 () => $"the service's update handlers to run after the edit; its output has:\n{output()}\nits tab's console:\n{service.DebugTab?.Console.Document.Snapshot}",
                 TimeSpan.FromMinutes(1));
-            Assert.Contains("<h1>Tally</h1>", BellApp.Page(window, port, output), StringComparison.Ordinal);
-            KeptUp(window, bell, port);
+            Assert.Contains("<h1>Tally</h1>", BellApp.Page(window, output), StringComparison.Ordinal);
+            KeptUp(window, bell, HeardPorts.Of(output, "the Blazor service"));
         }
         finally
         {
@@ -56,7 +56,7 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
     public void Under_run_with_hot_reload_an_Aspire_services_quiet_session_runs_the_apps_update_handlers_after_a_components_edit()
     {
         project.Reset();
-        (string bell, int port) = Bell();
+        string bell = Bell();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
         project.Serve(backend);
         MainWindow window = project.Open(project.Program);
@@ -70,14 +70,14 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Ui.WaitFor(() => window.Debugger.Running.Count == 1, $"the Blazor service to be attached to for Hot Reload ({window.Status})", TimeSpan.FromMinutes(2));
             Func<string> output = () => service.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, port, output), StringComparison.Ordinal);
+            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, output), StringComparison.Ordinal);
 
             Edit(window, bell);
             Assert.True(window.Perform(AppActions.Save), $"Save could not run: {window.Status}");
             Ui.WaitFor(() => BellApp.Count(output(), BellApp.HandlersRan) == 1,
                 () => $"the service's update handlers to run after the saved edit applied ({window.Debugger.LastApplied?.Said}); its output has:\n{output()}", TimeSpan.FromMinutes(1));
-            Assert.Contains("<h1>Tally</h1>", BellApp.Page(window, port, output), StringComparison.Ordinal);
-            KeptUp(window, bell, port);
+            Assert.Contains("<h1>Tally</h1>", BellApp.Page(window, output), StringComparison.Ordinal);
+            KeptUp(window, bell, HeardPorts.Of(output, "the Blazor service"));
         }
         finally
         {
@@ -89,18 +89,18 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
     }
 
     /// <summary>The Blazor app made beside the stand-in's projects, in its solution, built by its real path as the IDE starts
-    /// it unbuilt (as DCP asks for an AppHost's built service): its project and its port.</summary>
-    private (string Project, int Port) Bell()
+    /// it unbuilt (as DCP asks for an AppHost's built service): its project.</summary>
+    private string Bell()
     {
         string folder = project.PathOf("Bell");
-        int port = BellApp.Make(folder);
+        BellApp.Make(folder);
         string bell = PathNames.Canonical(Path.Combine(folder, "Bell.csproj"));
         project.Write("StandIn.slnx", $"<Solution>\n  <Project Path=\"{StandInAppHost.Name}/{StandInAppHost.Name}.csproj\" />\n"
             + $"  <Project Path=\"{StandInAppHost.Api}/{StandInAppHost.Api}.csproj\" />\n  <Project Path=\"Bell/Bell.csproj\" />\n</Solution>\n");
         ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", bell, "-nologo", "-v:q"]), limit: TimeSpan.FromMinutes(4).Scaled()),
             "the Blazor service's build");
         Assert.True(built.Succeeded, $"The Blazor service did not build: {built.Output}{built.Error}");
-        return (bell, port);
+        return bell;
     }
 
     private static void Choose(MainWindow window)

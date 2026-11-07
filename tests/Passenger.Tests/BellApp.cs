@@ -6,7 +6,8 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>A Blazor Web App as <c>dotnet new blazor</c> makes it (Interactive Server, no HTTPS), named Bell, made for a test:
-/// listening on a port of its own with no browser opened, with an update handler of its own that writes
+/// listening on a port of the system's choosing, which it says (<see cref="HeardPorts"/>), with no browser opened, with an
+/// update handler of its own that writes
 /// <see cref="HandlersRan"/> each time the app's update handlers run. It needs no package, so it restores offline.</summary>
 internal static class BellApp
 {
@@ -17,8 +18,8 @@ internal static class BellApp
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(3);
 
     /// <summary>The app made in <paramref name="folder"/> for <paramref name="framework"/> (the run's by default) and
-    /// restored, on the SDK a global.json there names when <paramref name="sdk"/> is given: the port it listens on.</summary>
-    public static int Make(string folder, string? framework = null, string? sdk = null)
+    /// restored, on the SDK a global.json there names when <paramref name="sdk"/> is given.</summary>
+    public static void Make(string folder, string? framework = null, string? sdk = null)
     {
         Directory.CreateDirectory(folder);
         if (sdk is not null)
@@ -33,10 +34,9 @@ internal static class BellApp
             Assert.True(made.Succeeded, $"dotnet new blazor did not make the test's app (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
             return made;
         }), "dotnet new blazor to make the test's app", Limit + TestFolders.Spare);
-        int port = AspireApp.FreePort();
         string settings = Path.Combine(folder, "Properties", "launchSettings.json");
         JsonNode launch = JsonNode.Parse(File.ReadAllText(settings))!;
-        launch["profiles"]!["http"]!["applicationUrl"] = $"http://localhost:{port}";
+        launch["profiles"]!["http"]!["applicationUrl"] = "http://127.0.0.1:0";
         launch["profiles"]!["http"]!["launchBrowser"] = false;
         File.WriteAllText(settings, launch.ToJsonString());
         TestFolders.Write(folder, "UpdateProbe.cs", "[assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(UpdateProbe))]\n\n"
@@ -44,15 +44,15 @@ internal static class BellApp
         TestFolders.Write(folder, "nuget.config", "<configuration>\n  <packageSources><clear /><add key=\"local\" value=\"feed\" /></packageSources>\n</configuration>\n");
         Directory.CreateDirectory(Path.Combine(folder, "feed"));
         Restore.Run(Path.Combine(folder, "Bell.csproj"));
-        return port;
     }
 
-    /// <summary>A page of the app (the counter's by default), once its output (<paramref name="output"/>) says it listens.</summary>
-    public static string Page(MainWindow window, int port, Func<string> output, string path = "/counter")
+    /// <summary>A page of the app (the counter's by default), at the port its output (<paramref name="output"/>) last says it
+    /// listens on.</summary>
+    public static string Page(MainWindow window, Func<string> output, string path = "/counter")
     {
-        Ui.WaitFor(() => output().Contains("Now listening on", StringComparison.Ordinal), () => $"the app to listen ({window.Status}):\n{output()}", TimeSpan.FromMinutes(2));
+        int port = HeardPorts.Of(output, $"the app ({window.Status})");
         using HttpClient http = new();
-        return Ui.Await(http.GetStringAsync(new Uri($"http://localhost:{port}{path}")), $"{path} from the app", TimeSpan.FromMinutes(1));
+        return Ui.Await(http.GetStringAsync(new Uri($"http://127.0.0.1:{port}{path}")), $"{path} from the app", TimeSpan.FromMinutes(1));
     }
 
     /// <summary>An edit to the file open in the editor, as typed.</summary>

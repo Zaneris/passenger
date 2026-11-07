@@ -132,9 +132,9 @@ public sealed class WebRoutesTests
                     + $"text hash {TextHash.Of(program.Text.Snapshot.ToString())}, routes: {string.Join("; ", window.Session.Routes.All.Select(r => $"{RouteRequests.Title(r)} {r.Path}:{r.At.Line} {r.SourceHash}"))}, doc {program.Path}");
             }
 
-            port.LetGo(Path.Combine(folder, "gate"));
             Assert.True(window.SelectConfiguration("Shop: http"), $"No configuration Shop: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             Ui.Launched(window, window.RunAsync(), "the shop to start", TimeSpan.FromMinutes(2));
+            port.LetGo(HeldPort.GateIn(folder));
             Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the shop to listen",
                 TimeSpan.FromMinutes(2));
 
@@ -211,15 +211,15 @@ public sealed class WebRoutesTests
         using HeldPort port = new();
         string folder = TestFolders.Create("query-");
         TestFolders.Write(folder, "Finder.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>"));
-        TestFolders.Write(folder, "Properties/launchSettings.json",
-            $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\" }}\n  }}\n}}\n");
-        TestFolders.Write(folder, "Program.cs", """
+        TestFolders.Write(folder, "Properties/launchSettings.json", $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\", "
+            + $"\"environmentVariables\": {{ {HeldPort.GateMember(HeldPort.GateIn(folder))} }} }}\n  }}\n}}\n");
+        TestFolders.Write(folder, "Program.cs", HeldPort.Gated("""
             WebApplication app = WebApplication.CreateBuilder(args).Build();
             app.MapMethods("/search", ["QUERY"], (Search search, HttpRequest request) => $"{request.Method} for {search.Text}.");
             app.Run();
 
             public record Search(string Text);
-            """);
+            """));
         Restore.Run(folder);
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -233,9 +233,9 @@ public sealed class WebRoutesTests
             int line = Line(program, "app.MapMethods(");
             Ui.WaitFor(() => program.RouteMarks.Any(m => m.Line == line), "the send icon beside the QUERY's route", TimeSpan.FromMinutes(1));
 
-            port.LetGo(Path.Combine(folder, "gate"));
             Assert.True(window.SelectConfiguration("Finder: http"), $"No configuration Finder: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             Ui.Launched(window, window.RunAsync(), "the app to start", TimeSpan.FromMinutes(2));
+            port.LetGo(HeldPort.GateIn(folder));
             Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the app to listen",
                 TimeSpan.FromMinutes(2));
 
@@ -621,9 +621,9 @@ public sealed class WebRoutesTests
     internal static void WriteShop(string folder, int port)
     {
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>"));
-        TestFolders.Write(folder, "Properties/launchSettings.json",
-            $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port}\" }}\n  }}\n}}\n");
-        TestFolders.Write(folder, "Program.cs", """
+        TestFolders.Write(folder, "Properties/launchSettings.json", $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port}\", "
+            + $"\"environmentVariables\": {{ {HeldPort.GateMember(HeldPort.GateIn(folder))} }} }}\n  }}\n}}\n");
+        TestFolders.Write(folder, "Program.cs", HeldPort.Gated("""
             using Shop;
 
             WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -643,7 +643,7 @@ public sealed class WebRoutesTests
             app.MapRazorPages();
             app.MapHub<ChatHub>("/chat");
             app.Run();
-            """);
+            """));
         TestFolders.Write(folder, "Orders.cs", """
             namespace Shop;
 

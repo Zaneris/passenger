@@ -33,7 +33,9 @@ public sealed class ProjectTelemetryTests : McpRig
         Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image], TimeSpan.FromSeconds(30).Scaled())),
             $"docker image inspect {ContainerTelemetry.Image}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded,
             $"The engine lacks the dashboard's image, which no test pulls: pull {ContainerTelemetry.Image} to run it");
-        (string folder, int port) = Shop();
+        using HeldPort held = new();
+        int port = held.Port;
+        string folder = Shop(port);
         MainWindow window = ContainerRunsTests.Open(folder);
         Collect(window);
         McpClient? client = null;
@@ -42,6 +44,7 @@ public sealed class ProjectTelemetryTests : McpRig
         {
             string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5));
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            held.LetGo(HeldPort.GateIn(folder));
             RunDashboard dashboard = Assert.Single(window.Session.Dashboards);
             project = dashboard.ProjectName;
             string container = ContainerRunsTests.Container(project, ContainerTelemetry.Service);
@@ -109,13 +112,16 @@ public sealed class ProjectTelemetryTests : McpRig
     [AvaloniaFact]
     public void A_project_run_that_collects_its_logs_and_traces_with_no_container_engine_says_why_and_runs_as_it_would()
     {
-        (string folder, int port) = Shop();
+        using HeldPort held = new();
+        int port = held.Port;
+        string folder = Shop(port);
         MainWindow window = ContainerRunsTests.Open(folder, engine: new ContainerEngine(cli: null, search: false));
         Collect(window);
         try
         {
             string? refused = Ui.Await(window.RunAsync(), "the project to run without a dashboard", TimeSpan.FromMinutes(5));
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            held.LetGo(HeldPort.GateIn(folder));
             string? answered = null;
             Assert.True(Ui.Pumped(() => (answered = Answer(port)) == "in stock", TimeSpan.FromMinutes(1)), $"web did not answer: {answered}\n{ContainerRunsTests.Run(window)}");
             string said = ContainerRunsTests.Run(window);
@@ -136,7 +142,9 @@ public sealed class ProjectTelemetryTests : McpRig
     [AvaloniaFact]
     public void A_project_run_that_inherits_an_OTLP_endpoint_is_left_to_it_and_starts_no_dashboard()
     {
-        (string folder, int port) = Shop();
+        using HeldPort held = new();
+        int port = held.Port;
+        string folder = Shop(port);
         MainWindow window = ContainerRunsTests.Open(folder, engine: new ContainerEngine(cli: null, search: false));
         Collect(window);
         string? had = Environment.GetEnvironmentVariable(OtelVariables.ExporterEndpoint);
@@ -145,6 +153,7 @@ public sealed class ProjectTelemetryTests : McpRig
         {
             string? refused = Ui.Await(window.RunAsync(), "the project to run on its inherited endpoint", TimeSpan.FromMinutes(5));
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            held.LetGo(HeldPort.GateIn(folder));
             string? answered = null;
             Assert.True(Ui.Pumped(() => (answered = Answer(port)) == "in stock", TimeSpan.FromMinutes(1)), $"web did not answer: {answered}\n{ContainerRunsTests.Run(window)}");
             string said = ContainerRunsTests.Run(window);
@@ -167,7 +176,9 @@ public sealed class ProjectTelemetryTests : McpRig
         Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image], TimeSpan.FromSeconds(30).Scaled())),
             $"docker image inspect {ContainerTelemetry.Image}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded,
             $"The engine lacks the dashboard's image, which no test pulls: pull {ContainerTelemetry.Image} to run it");
-        (string folder, int port) = Shop(Failing);
+        using HeldPort held = new();
+        int port = held.Port;
+        string folder = Shop(port, Failing);
         MainWindow window = ContainerRunsTests.Open(folder);
         Collect(window);
         string? project = null;
@@ -175,6 +186,7 @@ public sealed class ProjectTelemetryTests : McpRig
         {
             string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5));
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            held.LetGo(HeldPort.GateIn(folder));
             project = Assert.Single(window.Session.Dashboards).ProjectName;
             RunPane run = window.BottomPanel.RunWindow;
             ToggleButton tab = run.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Name == "runTelemetryTab");
@@ -253,7 +265,8 @@ public sealed class ProjectTelemetryTests : McpRig
         Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image], TimeSpan.FromSeconds(30).Scaled())),
             $"docker image inspect {ContainerTelemetry.Image}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded,
             $"The engine lacks the dashboard's image, which no test pulls: pull {ContainerTelemetry.Image} to run it");
-        (string folder, _) = Shop();
+        // Never asked: it takes a port of the system's choosing.
+        string folder = Shop(0);
         MainWindow window = ContainerRunsTests.Open(folder);
         Ui.WaitFor(() => window.Configurations.Any(c => c.Name == Name), "the launch profile's configuration");
         Assert.False(window.Configurations.Single(c => c.Name == Name).Telemetry, "A project run collects telemetry unasked");
@@ -345,12 +358,13 @@ public sealed class ProjectTelemetryTests : McpRig
     }
 
     /// <summary>One ASP.NET Core project that sends OpenTelemetry where it is told (OTLP, as an Aspire service's defaults do),
-    /// its launch profile naming its port and the name its records go by, its packages the package cache's (the run's local
+    /// its launch profile naming the port given, which it listens at once past its gate (<see cref="HeldPort"/>), or given 0
+    /// one of the system's choosing at once, and the name its records go by, its packages the package cache's (the run's local
     /// feed its only source).</summary>
-    internal static (string Folder, int Port) Shop(string? program = null)
+    internal static string Shop(int port, string? program = null)
     {
         string folder = TestFolders.Create("prj-telemetry-");
-        int port = AspireApp.FreePort();
+        string gate = port == 0 ? string.Empty : $", {HeldPort.GateMember(HeldPort.GateIn(folder))}";
         string version = AvaloniaApp.Metadata("OpenTelemetryVersion");
         TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n</Solution>\n");
         TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>").With($"""
@@ -368,14 +382,14 @@ public sealed class ProjectTelemetryTests : McpRig
                 "http": {
                   "commandName": "Project",
                   "applicationUrl": "http://127.0.0.1:{{port.ToString(CultureInfo.InvariantCulture)}}",
-                  "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Development", "{{OtelVariables.ServiceName}}": "shop-web" }
+                  "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Development", "{{OtelVariables.ServiceName}}": "shop-web"{{gate}} }
                 }
               }
             }
 
             """);
-        TestFolders.Write(folder, "Web/Program.cs", program ?? Serving);
+        TestFolders.Write(folder, "Web/Program.cs", HeldPort.Gated(program ?? Serving));
         AvaloniaApp.UseFeed(folder);
-        return (PathNames.Canonical(folder), port);
+        return PathNames.Canonical(folder);
     }
 }

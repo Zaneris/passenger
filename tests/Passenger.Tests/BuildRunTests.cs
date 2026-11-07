@@ -1431,10 +1431,13 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     [AvaloniaFact]
     public void Under_hot_reload_a_web_project_whose_profile_launches_the_browser_opens_it_once_through_the_window_and_never_through_dotnet_watch()
     {
-        int port = AspireApp.FreePort();
+        // The port held until the site, started, waits at its gate, outside its project where dotnet watch hears no change.
+        using HeldPort held = new();
+        int port = held.Port;
+        string gate = HeldPort.GateIn(Folder);
         Write("Sample.slnx", "<Solution>\n  <Project Path=\"src/Hello/Hello.csproj\" />\n  <Project Path=\"src/Site/Site.csproj\" />\n</Solution>\n");
         Write("src/Site/Site.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
-        Write("src/Site/Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/orders\", () => \"Orders\");\napp.Run();\n");
+        Write("src/Site/Program.cs", HeldPort.Gated("WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/orders\", () => \"Orders\");\napp.Run();\n"));
         string sent = Path.Combine(Folder, "dotnet-watch-browsed");
         string browser;
         if (OperatingSystem.IsWindows())
@@ -1453,7 +1456,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             ["Browse"] = new System.Text.Json.Nodes.JsonObject
             {
                 ["commandName"] = "Project", ["launchBrowser"] = true, ["launchUrl"] = "orders", ["applicationUrl"] = $"http://127.0.0.1:{port}",
-                ["environmentVariables"] = new System.Text.Json.Nodes.JsonObject { ["DOTNET_WATCH_BROWSER_PATH"] = browser },
+                ["environmentVariables"] = new System.Text.Json.Nodes.JsonObject { ["DOTNET_WATCH_BROWSER_PATH"] = browser, [HeldPort.GateVariable] = gate },
             },
         };
         Write("src/Site/Properties/launchSettings.json", new System.Text.Json.Nodes.JsonObject { ["profiles"] = profiles }.ToJsonString());
@@ -1464,7 +1467,9 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         {
             Assert.True(window.SelectConfiguration("Site: Browse"));
             window.Perform(AppActions.RunProgram);
-            WaitWatched(window, () => window.Browsed.Count > 0, "the browser to open once the site listens under dotnet watch", TimeSpan.FromMinutes(3));
+            WaitWatched(window, () => Output(window).Contains(HeldPort.AtGate, StringComparison.Ordinal), "the site to start under dotnet watch", TimeSpan.FromMinutes(3));
+            held.LetGo(gate);
+            WaitWatched(window, () => window.Browsed.Count > 0, "the browser to open once the site listens under dotnet watch", TimeSpan.FromMinutes(1));
             Uri opened = Assert.Single(window.Browsed);
             Assert.Equal($"http://127.0.0.1:{port}/orders", opened.AbsoluteUri);
             WaitWatched(window, () => Output(window).Contains("Now listening on:", StringComparison.Ordinal) && Output(window).Contains("Waiting for changes", StringComparison.Ordinal),

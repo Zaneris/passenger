@@ -29,10 +29,11 @@ public sealed class BlazorWebAssemblyTests : IDisposable
     public void A_standalone_app_runs_and_with_no_browser_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged()
     {
         Make("blazorwasm", "Wasm");
-        int port = AspireApp.FreePort();
         string settings = Path.Combine(folder, "Properties", "launchSettings.json");
         JsonNode launch = JsonNode.Parse(File.ReadAllText(settings))!;
-        launch["profiles"]!["http"]!["applicationUrl"] = $"http://localhost:{port}";
+        // A port of the system's choosing, which its development server says as it listens; no page opened at it.
+        launch["profiles"]!["http"]!["applicationUrl"] = "http://127.0.0.1:0";
+        launch["profiles"]!["http"]!["launchBrowser"] = false;
         File.WriteAllText(settings, launch.ToJsonString());
         TestFolders.Write(folder, "nuget.config", "<configuration>\n  <packageSources><clear /><add key=\"local\" value=\"feed\" /></packageSources>\n</configuration>\n");
         Directory.CreateDirectory(Path.Combine(folder, "feed"));
@@ -48,7 +49,7 @@ public sealed class BlazorWebAssemblyTests : IDisposable
             Ui.Launched(window, window.RunAsync(), "Wasm to build and run through its development server", TimeSpan.FromMinutes(3));
             try
             {
-                Answers(window, port, () => window.BottomPanel.Run.Document.Snapshot.ToString());
+                Answers(window, () => window.BottomPanel.Run.Document.Snapshot.ToString());
             }
             finally
             {
@@ -66,7 +67,7 @@ public sealed class BlazorWebAssemblyTests : IDisposable
                 string notDebugged = "Wasm's components run in the browser on .NET's WebAssembly runtime, and their breakpoints are not hit: "
                     + $"only the development server that serves them runs under the debugger. Settings | Run › Browser for WebAssembly names {nowhere} as the browser to debug "
                     + "them in, and there is no program there: name a Chromium browser that is, or install Google Chrome (google.com/chrome) or Microsoft Edge (microsoft.com/edge)";
-                Answers(window, port, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString());
+                Answers(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString());
                 Assert.Contains(notDebugged, window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
                 Assert.True(window.Debugger.Summary?.EndsWith($"running; {notDebugged}", StringComparison.Ordinal) == true,
                     $"Debug's state did not say what it cannot debug: {window.Debugger.Summary}");
@@ -136,14 +137,13 @@ public sealed class BlazorWebAssemblyTests : IDisposable
         }
     }
 
-    /// <summary>The app's page from its development server, once the program's output (<paramref name="output"/>) says it
-    /// listens.</summary>
-    private static void Answers(MainWindow window, int port, Func<string> output)
+    /// <summary>The app's page from its development server, at the port the program's output (<paramref name="output"/>) says
+    /// it listens on.</summary>
+    private static void Answers(MainWindow window, Func<string> output)
     {
-        Ui.WaitFor(() => output().Contains("Now listening on", StringComparison.Ordinal), () => $"the development server to listen ({window.Status}):\n{output()}",
-            TimeSpan.FromMinutes(2));
+        int port = HeardPorts.Of(output, $"the development server ({window.Status})");
         using HttpClient http = new();
-        string page = Ui.Await(http.GetStringAsync(new Uri($"http://localhost:{port}/")), "the app's page from its development server", TimeSpan.FromMinutes(1));
+        string page = Ui.Await(http.GetStringAsync(new Uri($"http://127.0.0.1:{port}/")), "the app's page from its development server", TimeSpan.FromMinutes(1));
         Assert.Contains("<div id=\"app\">", page, StringComparison.Ordinal);
     }
 

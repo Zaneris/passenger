@@ -64,7 +64,9 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         File.AppendAllText(layout, "\n@code {\n    private string served = \"on the server\";\n\n    protected override void OnInitialized()\n    {\n        served = served.ToUpperInvariant();\n    }\n}\n");
         string counter = Path.Combine(folder, "Bwa.Client", "Pages", "Counter.razor");
         File.WriteAllText(counter, Counter);
-        Profile(Path.Combine(folder, "Bwa", "Properties", "launchSettings.json"));
+        using HeldPort port = new();
+        Profile(Path.Combine(folder, "Bwa", "Properties", "launchSettings.json"), port.Port, HeldPort.GateIn(folder));
+        Gate(Path.Combine(folder, "Bwa"));
         Restore.Run(Path.Combine(folder, "Bwa", "Bwa.csproj"));
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
@@ -79,6 +81,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
             window.Debugger.Breakpoints.Set(counter, set, null);
 
             Ui.Launched(window, window.DebugAsync(), "Bwa to build and start under the debugger", TimeSpan.FromMinutes(3));
+            port.LetGo(HeldPort.GateIn(folder));
             Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.Managed, State: DebugState.Paused } && Stopped(window, layout) == served || BrowserRefused(window),
                 () => $"the server to stop in its layout as the browser asks for the page ({Sessions(window)}; {Ui.Said(window)}; {Consoles(window)})", TimeSpan.FromMinutes(3));
             Assert.False(BrowserRefused(window), $"No browser asks for the page, as none started: {Ui.Said(window)}");
@@ -111,7 +114,11 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         MakeIn(made, "blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
         string counter = Path.Combine(made, "Bwa.Client", "Pages", "Counter.razor");
         File.WriteAllText(counter, Counter);
-        Profile(Path.Combine(made, "Bwa", "Properties", "launchSettings.json"));
+        // Held from every other program until the service, started, waits at its gate.
+        using HeldPort port = new();
+        string gate = HeldPort.GateIn(made);
+        Profile(Path.Combine(made, "Bwa", "Properties", "launchSettings.json"), port.Port);
+        Gate(Path.Combine(made, "Bwa"));
         string server = PathNames.Canonical(Path.Combine(made, "Bwa", "Bwa.csproj"));
         Restore.Run(server);
         ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", server, "-nologo", "-v:q"]), limit: Limit.Scaled()), "Bwa's build", Limit + TestFolders.Spare);
@@ -129,11 +136,13 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
             int set = LineOf(counter, "currentCount = 41;");
             window.Debugger.Breakpoints.Set(counter, set, null);
             Ui.Launched(window, window.DebugAsync(), "the stand-in AppHost to come up debugged", TimeSpan.FromMinutes(3));
-            string address = $"http://localhost:{AspireApp.FreePort().ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            string address = $"http://localhost:{port.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = appHost.AskToStartApi("bwa", "Debug",
-                new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address }, projectPath: server);
+                new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address, [HeldPort.GateVariable] = gate }, projectPath: server);
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Assert.True((int)answer is >= 200 and < 300, $"The IDE refused Bwa's start: {answer} ({window.Status})");
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.Any(service => service.ProcessId is > 0), "Bwa started as DCP asked");
+            port.LetGo(gate);
 
             Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.WebAssembly, State: DebugState.Paused } && Stopped(window, counter) == set || BrowserRefused(window),
                 () => $"the service's page component to stop in the browser ({Sessions(window)}; {Ui.Said(window)}; {Consoles(window)}; the service said: "
@@ -160,7 +169,8 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in for dotnet dev-certs is a shell script");
         Make("blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
         string settings = Path.Combine(folder, "Bwa", "Properties", "launchSettings.json");
-        Profile(settings);
+        // Its server's port of the system's choosing: the page refused, nothing asks it.
+        Profile(settings, 0);
         // Its page over HTTPS; the server listening over HTTP, so it starts whatever certificate this machine has.
         JsonNode launch = JsonNode.Parse(File.ReadAllText(settings))!;
         int port = AspireApp.FreePort();
@@ -199,7 +209,9 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         Make("blazorwasm", "Wasm");
         string counter = Path.Combine(folder, "Pages", "Counter.razor");
         File.WriteAllText(counter, Counter.Replace("@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))\n", string.Empty, StringComparison.Ordinal));
-        Profile(Path.Combine(folder, "Properties", "launchSettings.json"));
+        // The development server has no code of the test's to wait at a gate: its port is held until Debug begins its build.
+        using HeldPort port = new();
+        Profile(Path.Combine(folder, "Properties", "launchSettings.json"), port.Port);
         Restore.Run(Path.Combine(folder, "Wasm.csproj"));
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         // The browser found, told to keep its own log of every request it makes.
@@ -213,6 +225,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
             int set = LineOf(counter, "currentCount = 41;");
             LineBreakpoint breakpoint = window.Debugger.Breakpoints.Set(counter, set, null);
 
+            port.LetGo();
             Ui.Launched(window, window.DebugAsync(), "Wasm to build and start in the browser", TimeSpan.FromMinutes(3));
             Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.WebAssembly, State: DebugState.Paused } && Stopped(window, counter) == set,
                 () => $"the page's component to stop in the browser ({Sessions(window)}; {Ui.Said(window)}; {Consoles(window)})", TimeSpan.FromMinutes(3));
@@ -281,7 +294,8 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     public void Debug_with_no_browser_where_Settings_names_one_says_so_and_how_to_get_one()
     {
         Make("blazorwasm", "Wasm");
-        Profile(Path.Combine(folder, "Properties", "launchSettings.json"));
+        // Nothing asks its development server: a port of the system's choosing.
+        Profile(Path.Combine(folder, "Properties", "launchSettings.json"), 0);
         Restore.Run(Path.Combine(folder, "Wasm.csproj"));
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
@@ -312,7 +326,10 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     public void Debug_in_a_browser_the_system_refuses_its_sandbox_says_so_naming_the_browser_and_the_fixes()
     {
         Make("blazorwasm", "Wasm");
-        Profile(Path.Combine(folder, "Properties", "launchSettings.json"));
+        // The browser starts once the page listens; the development server has no code of the test's to wait at a gate, so its
+        // port is held until Debug begins its build.
+        using HeldPort port = new();
+        Profile(Path.Combine(folder, "Properties", "launchSettings.json"), port.Port);
         Restore.Run(Path.Combine(folder, "Wasm.csproj"));
         string started = Path.Combine(folder, "browser-started");
         string browser = SandboxRefusingBrowser(started);
@@ -323,6 +340,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
                 TimeSpan.FromMinutes(2));
             Assert.True(window.SelectConfiguration("Wasm: http"));
+            port.LetGo();
             Task<string?> launch = window.DebugAsync();
             string Words() => $"{Ui.Said(window)}\n{Consoles(window)}";
             Ui.WaitFor(() => launch.IsCompleted && Words().Contains("the system refused it its sandbox", StringComparison.Ordinal),
@@ -347,7 +365,10 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     public void Debug_in_a_browser_that_ends_as_it_starts_ends_its_session_within_seconds_in_the_browsers_own_words()
     {
         Make("blazorwasm", "Wasm");
-        Profile(Path.Combine(folder, "Properties", "launchSettings.json"));
+        // The browser starts once the page listens; the development server has no code of the test's to wait at a gate, so its
+        // port is held until Debug begins its build.
+        using HeldPort port = new();
+        Profile(Path.Combine(folder, "Properties", "launchSettings.json"), port.Port);
         Restore.Run(Path.Combine(folder, "Wasm.csproj"));
         const string Words = "[4242:4242:1102/120000.000000:ERROR:ozone_platform_x11.cc(240)] Missing X server or $DISPLAY";
         string browser = ExitingBrowser(Words);
@@ -358,6 +379,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
                 TimeSpan.FromMinutes(2));
             Assert.True(window.SelectConfiguration("Wasm: http"));
+            port.LetGo();
             Task<string?> launch = window.DebugAsync();
             string Said() => $"{Ui.Said(window)}\n{Consoles(window)}";
             // Its build and its development server's start first; the browser's end then ends the session at once.
@@ -430,15 +452,27 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
             $"Loud's getter read as {loud.ReadAs!.Value} ({loud.ReadAs.Type}), where it returns \"HELLO\"");
     }
 
-    /// <summary>The app's http profile at a free port, opening the counter's page.</summary>
-    private static void Profile(string settings)
+    /// <summary>The app's http profile at the port given (0: one of the system's choosing), opening the counter's page, its
+    /// program told of the gate it waits at before it listens where one is given (<see cref="HeldPort"/>).</summary>
+    private static void Profile(string settings, int port, string? gate = null)
     {
         JsonNode launch = JsonNode.Parse(File.ReadAllText(settings))!;
         JsonNode http = launch["profiles"]!["http"]!;
-        http["applicationUrl"] = $"http://localhost:{AspireApp.FreePort()}";
+        http["applicationUrl"] = port == 0 ? "http://127.0.0.1:0" : $"http://localhost:{port}";
         http["launchUrl"] = "counter";
         http["launchBrowser"] = false;
+        if (gate is not null)
+        {
+            ((http["environmentVariables"] ??= new JsonObject()).AsObject())[HeldPort.GateVariable] = gate;
+        }
         File.WriteAllText(settings, launch.ToJsonString());
+    }
+
+    /// <summary>The server project's Program.cs made to wait at its gate before it listens (<see cref="HeldPort.Gated"/>).</summary>
+    private static void Gate(string project)
+    {
+        string program = Path.Combine(project, "Program.cs");
+        File.WriteAllText(program, HeldPort.Gated(File.ReadAllText(program)));
     }
 
     /// <summary>The line (from zero) of a file's text.</summary>

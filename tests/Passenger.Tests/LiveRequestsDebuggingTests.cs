@@ -20,9 +20,9 @@ public sealed class LiveRequestsDebuggingTests
         try
         {
             window.ShowToolWindow(ToolWindowIds.Requests);
-            port.LetGo(Path.Combine(folder, "gate"));
             Assert.True(window.SelectConfiguration("Shop: http"), $"No configuration Shop: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             Ui.Launched(window, window.DebugAsync(), "the shop to start under the debugger", TimeSpan.FromMinutes(2));
+            port.LetGo(HeldPort.GateIn(folder));
             Ui.WaitFor(() => window.RequestLog.Following.StartsWith("Following", StringComparison.Ordinal) && window.RequestLog.Following.Contains("process", StringComparison.Ordinal),
                 "the Requests window to follow the shop debugged", TimeSpan.FromMinutes(1));
             using (HttpClient client = new())

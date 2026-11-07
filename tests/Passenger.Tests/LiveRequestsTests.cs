@@ -99,9 +99,9 @@ public sealed class LiveRequestsTests
         {
             window.ShowToolWindow(ToolWindowIds.Requests);
             Ui.WaitFor(() => window.Session.Routes.All.Count == 5, "the app's five routes, read from its code", TimeSpan.FromMinutes(3));
-            port.LetGo(Path.Combine(folder, "gate"));
             Assert.True(window.SelectConfiguration("Shop: http"), $"No configuration Shop: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             Ui.Launched(window, window.RunAsync(), "the shop to start", TimeSpan.FromMinutes(2));
+            port.LetGo(HeldPort.GateIn(folder));
             Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the shop to listen",
                 TimeSpan.FromMinutes(2));
             try
@@ -215,9 +215,9 @@ public sealed class LiveRequestsTests
         try
         {
             window.ShowToolWindow(ToolWindowIds.Requests);
-            port.LetGo(Path.Combine(folder, "gate"));
             Assert.True(window.SelectConfiguration("Shop: http"), $"No configuration Shop: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             Ui.Launched(window, window.RunAsync(), "the shop to start", TimeSpan.FromMinutes(2));
+            port.LetGo(HeldPort.GateIn(folder));
             Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the shop to listen",
                 TimeSpan.FromMinutes(2));
             Ui.WaitFor(() => window.RequestLog.Following.StartsWith("Following", StringComparison.Ordinal) && window.RequestLog.Following.Contains("process", StringComparison.Ordinal),
@@ -326,12 +326,12 @@ public sealed class LiveRequestsTests
         try
         {
             window.ShowToolWindow(ToolWindowIds.Requests);
-            port.LetGo(Path.Combine(folder, "gate"));
             RunConfiguration shop = window.Configurations.FirstOrDefault(c => c.Name == "Shop: http")
                 ?? throw new Xunit.Sdk.XunitException($"No configuration Shop: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             RunConfiguration inTerminal = shop with { Name = "Shop in the terminal", Generated = false, Console = ConsoleKind.Terminal };
             window.SetConfigurations([inTerminal], inTerminal.Name);
             Ui.Launched(window, window.RunAsync(), "the shop to start in the terminal", TimeSpan.FromMinutes(2));
+            port.LetGo(HeldPort.GateIn(folder));
             Assert.True(window.RunInTerminal is { IsRunning: true }, "The shop does not run in the terminal");
             using HttpClient client = new();
             Ui.WaitFor(() => Answers(client, $"http://127.0.0.1:{port.Port}/orders/2"), "the shop to listen", TimeSpan.FromMinutes(2));
@@ -370,17 +370,17 @@ public sealed class LiveRequestsTests
         using HeldPort port = new();
         string folder = TestFolders.Create("requests-many-");
         TestFolders.Write(folder, "Counter.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
-        TestFolders.Write(folder, "Properties/launchSettings.json",
-            $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\" }}\n  }}\n}}\n");
-        TestFolders.Write(folder, "Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/items/{id:int}\", (int id) => id);\napp.Run();\n");
+        TestFolders.Write(folder, "Properties/launchSettings.json", $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\", "
+            + $"\"environmentVariables\": {{ {HeldPort.GateMember(HeldPort.GateIn(folder))} }} }}\n  }}\n}}\n");
+        TestFolders.Write(folder, "Program.cs", HeldPort.Gated("WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/items/{id:int}\", (int id) => id);\napp.Run();\n"));
         Restore.Run(folder);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
             window.ShowToolWindow(ToolWindowIds.Requests);
-            port.LetGo(Path.Combine(folder, "gate"));
             Assert.True(window.SelectConfiguration("Counter: http"), $"No configuration Counter: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             Ui.Launched(window, window.RunAsync(), "the app to start", TimeSpan.FromMinutes(2));
+            port.LetGo(HeldPort.GateIn(folder));
             Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the app to listen", TimeSpan.FromMinutes(2));
             Ui.WaitFor(() => window.RequestLog.Following.StartsWith("Following", StringComparison.Ordinal) && window.RequestLog.Following.Contains("process", StringComparison.Ordinal),
                 () => $"the Requests window to follow the app; it says: {window.RequestLog.Following}", TimeSpan.FromMinutes(1));
@@ -741,9 +741,9 @@ public sealed class LiveRequestsTests
         AvaloniaApp.UseFeed(folder);
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>")
             .With($"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"{ShopApp.Version}\" />\n  </ItemGroup>\n"));
-        TestFolders.Write(folder, "Properties/launchSettings.json",
-            $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port}\" }}\n  }}\n}}\n");
-        TestFolders.Write(folder, "Program.cs", program);
+        TestFolders.Write(folder, "Properties/launchSettings.json", $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port}\", "
+            + $"\"environmentVariables\": {{ {HeldPort.GateMember(HeldPort.GateIn(folder))} }} }}\n  }}\n}}\n");
+        TestFolders.Write(folder, "Program.cs", HeldPort.Gated(program));
     }
 
     /// <summary>The app's answer at the address, asked from the UI thread with the window's loop running meanwhile, never
@@ -755,5 +755,5 @@ public sealed class LiveRequestsTests
     private static T Asked<T>(Func<Task<T>> request, string what) =>
         Ui.AwaitPumped(Waiting.Apart(request), what, TimeSpan.FromSeconds(100) + TestFolders.Spare);
 
-    private static int LineOf(string text) => Array.FindIndex(Program.Split('\n'), l => l.Contains(text, StringComparison.Ordinal));
+    private static int LineOf(string text) => Array.FindIndex(HeldPort.Gated(Program).Split('\n'), l => l.Contains(text, StringComparison.Ordinal));
 }

@@ -3158,12 +3158,51 @@ public sealed class HeldPort : IDisposable
 
     public int Port { get; }
 
+    /// <summary>The environment variable naming the gate file a program of <see cref="WaitsAtGate"/> waits at.</summary>
+    public const string GateVariable = "PORT_GATE";
+
+    /// <summary>What a program of <see cref="WaitsAtGate"/> says as it comes to its gate.</summary>
+    public const string AtGate = "Waiting at its gate to listen";
+
+    /// <summary>Top-level C# a test's program runs before it listens: it says <see cref="AtGate"/> and waits while the file its
+    /// <see cref="GateVariable"/> names is not there, and goes straight on where none is named.</summary>
+    public const string WaitsAtGate = $$"""
+        if (System.Environment.GetEnvironmentVariable("{{GateVariable}}") is { Length: > 0 } portGate)
+        {
+            System.Console.WriteLine("{{AtGate}}");
+            while (!System.IO.File.Exists(portGate))
+            {
+                System.Threading.Thread.Sleep(50);
+            }
+        }
+
+        """;
+
+    /// <summary>The gate file of a test's folder, which <see cref="LetGo"/> opens.</summary>
+    public static string GateIn(string folder) => Path.Combine(folder, "gate");
+
+    /// <summary>A program's text with <see cref="WaitsAtGate"/> before its <c>app.Run();</c>.</summary>
+    public static string Gated(string program)
+    {
+        Assert.Contains("app.Run();", program, StringComparison.Ordinal);
+        return program.Replace("app.Run();", WaitsAtGate + "app.Run();", StringComparison.Ordinal);
+    }
+
+    /// <summary>A launch profile's <c>environmentVariables</c> member, as JSON, naming <paramref name="gate"/> to its program.</summary>
+    public static string GateMember(string gate) => $"\"{GateVariable}\": {System.Text.Json.JsonSerializer.Serialize(gate)}";
+
     /// <summary>Frees the port and opens the gate the program that listens there waits at.</summary>
     public void LetGo(string gate)
     {
+        LetGo();
+        File.WriteAllText(gate, string.Empty);
+    }
+
+    /// <summary>Frees the port for a program that has no gate to wait at, just before it is started.</summary>
+    public void LetGo()
+    {
         held?.Dispose();
         held = null;
-        File.WriteAllText(gate, string.Empty);
     }
 
     /// <summary>Closes the gate and takes the port back, the program that listened there having ended.</summary>
@@ -3190,4 +3229,23 @@ public sealed class HeldPort : IDisposable
         socket.Bind(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port));
         return socket;
     }
+}
+
+/// <summary>Where a program given port 0 listens, the port of the system's choosing it took as it bound: the last address
+/// .NET's host said it listens on ("Now listening on: http://127.0.0.1:52341") in the program's output.</summary>
+public static class HeardPorts
+{
+    /// <summary>The port <paramref name="program"/> last said it listens on, once its <paramref name="output"/> says one.</summary>
+    public static int Of(Func<string> output, string program, TimeSpan? limit = null)
+    {
+        int port = 0;
+        Ui.WaitFor(() => (port = Last(output())) > 0, () => $"{program} to say where it listens; its output has:\n{output()}", limit ?? TimeSpan.FromMinutes(2));
+        return port;
+    }
+
+    /// <summary>The port the output last says its program listens on, or 0 where it says none.</summary>
+    public static int Last(string output) =>
+        System.Text.RegularExpressions.Regex.Matches(output, @"Now listening on: https?://(?:\[[^\]]+\]|[^\s:/\[]+):(\d+)") is { Count: > 0 } heard
+            ? int.Parse(heard[^1].Groups[1].ValueSpan, System.Globalization.CultureInfo.InvariantCulture)
+            : 0;
 }

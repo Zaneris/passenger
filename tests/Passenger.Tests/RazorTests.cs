@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Sockets;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -512,29 +510,35 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 public sealed class RazorDebuggingTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("razor-debug-");
+
+    /// <summary>The app's port, held until the app, started, waits at its gate.</summary>
+    private readonly HeldPort held = new();
     private readonly int port;
 
     public RazorDebuggingTests()
     {
-        TcpListener free = new(IPAddress.Loopback, 0);
-        free.Start();
-        port = ((IPEndPoint)free.LocalEndpoint).Port;
-        free.Stop();
+        port = held.Port;
         TestFolders.Prepare(() =>
         {
             BlazorApp.Create(folder);
+            string program = Path.Combine(folder, "Program.cs");
+            File.WriteAllText(program, HeldPort.Gated(File.ReadAllText(program)));
             File.WriteAllText(Path.Combine(folder, "Components/Pages/Visits.razor"),
                 "@page \"/visits\"\n\n<p>Visits: @visits</p>\n\n@code {\n    private int visits;\n\n    protected override void OnInitialized()\n    {\n        visits = 41 + 1;\n    }\n}\n");
             File.WriteAllText(Path.Combine(folder, "Components/Pages/Tally.razor"), BlazorApp.TallyMarkup);
             File.WriteAllText(Path.Combine(folder, "Components/Pages/Tally.razor.cs"), BlazorApp.TallyCode);
             File.WriteAllText(Path.Combine(folder, "Properties/launchSettings.json"),
-                $"{{ \"profiles\": {{ \"http\": {{ \"commandName\": \"Project\", \"launchBrowser\": true, \"applicationUrl\": \"http://localhost:{port}\", "
-                + "\"environmentVariables\": { \"ASPNETCORE_ENVIRONMENT\": \"Development\" } } } }");
+                $"{{ \"profiles\": {{ \"http\": {{ \"commandName\": \"Project\", \"launchBrowser\": true, \"applicationUrl\": \"http://127.0.0.1:{port}\", "
+                + $"\"environmentVariables\": {{ \"ASPNETCORE_ENVIRONMENT\": \"Development\", {HeldPort.GateMember(HeldPort.GateIn(folder))} }} }} }} }}");
             Restore.Run(folder);
         }, folder);
     }
 
-    public void Dispose() => TestFolders.Delete(folder);
+    public void Dispose()
+    {
+        held.Dispose();
+        TestFolders.Delete(folder);
+    }
 
     /// <summary>A breakpoint in a page's <c>@code</c> block stops the app as the page is asked for, one set on the markup's C#
     /// while it is stopped there stops it as the page is drawn, and the page comes once it goes on; then one in another
@@ -559,9 +563,12 @@ public sealed class RazorDebuggingTests : IDisposable
         Assert.Contains(new LineMark(9, LineMarkKind.Breakpoint), editor.LineMarks);
 
         Ui.Run(window, AppActions.Debug);
-        Ui.WaitFor(() => window.Browsed.Count > 0, "the app to listen at its launch profile's address", TimeSpan.FromMinutes(4));
+        Ui.WaitFor(() => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains(HeldPort.AtGate, StringComparison.Ordinal),
+            "the app to start under the debugger", TimeSpan.FromMinutes(4));
+        held.LetGo(HeldPort.GateIn(folder));
+        Ui.WaitFor(() => window.Browsed.Count > 0, "the app to listen at its launch profile's address", TimeSpan.FromMinutes(1));
         using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(3) };
-        Task<string> page = Waiting.Apart(() => client.GetStringAsync($"http://localhost:{port}/visits"));
+        Task<string> page = Waiting.Apart(() => client.GetStringAsync($"http://127.0.0.1:{port}/visits"));
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused, "the app to stop at the breakpoint in @code as the page is asked for");
         Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(9, LineMarkKind.ExecutionPoint)), "the stop shown on the breakpoint's line");
         Assert.Contains(new LineMark(9, LineMarkKind.BreakpointBound), editor.LineMarks);
@@ -580,7 +587,7 @@ public sealed class RazorDebuggingTests : IDisposable
         string html = Ui.Await(page, "the page once the app goes on");
         Assert.Contains("Visits: 42", html, StringComparison.Ordinal);
 
-        Task<string> tally = Waiting.Apart(() => client.GetStringAsync($"http://localhost:{port}/tally"));
+        Task<string> tally = Waiting.Apart(() => client.GetStringAsync($"http://127.0.0.1:{port}/tally"));
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.EditorArea.Active?.Path == code,
             "the app to stop at the breakpoint in the code-behind as the page is asked for");
         Ui.WaitFor(() => window.EditorArea.CodeEditor.LineMarks.Contains(new LineMark(18, LineMarkKind.ExecutionPoint)), "the stop shown on the code-behind's line");

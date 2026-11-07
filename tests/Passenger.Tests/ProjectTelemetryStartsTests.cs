@@ -24,7 +24,9 @@ public sealed class ProjectTelemetryStartsTests
         Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image],
             TimeSpan.FromSeconds(30).Scaled())), $"docker image inspect {ContainerTelemetry.Image}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded,
             $"The engine lacks the dashboard's image, which no test pulls: pull {ContainerTelemetry.Image} to run it");
-        (string folder, int port) = ProjectTelemetryTests.Shop();
+        using HeldPort held = new();
+        int port = held.Port;
+        string folder = ProjectTelemetryTests.Shop(port);
         MainWindow window = ContainerRunsTests.Open(folder);
         ProjectTelemetryTests.Collect(window);
         string? project = null;
@@ -33,6 +35,7 @@ public sealed class ProjectTelemetryStartsTests
             string? refused = Ui.Await(start == AppActions.Debug ? window.DebugAsync() : window.ProfileAsync(), $"{start} to start the project with its dashboard",
                 TimeSpan.FromMinutes(5));
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}");
+            held.LetGo(HeldPort.GateIn(folder));
             RunDashboard dashboard = Assert.Single(window.Session.Dashboards);
             project = dashboard.ProjectName;
             string? answered = null;

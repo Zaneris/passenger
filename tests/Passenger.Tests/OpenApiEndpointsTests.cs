@@ -21,12 +21,15 @@ public sealed class OpenApiEndpointsTests
     [AvaloniaFact]
     public void A_minimal_APIs_document_makes_its_requests_and_a_response_that_breaks_its_schema_is_said_at_the_member()
     {
-        (string folder, int port) = Shop();
+        using HeldPort held = new();
+        int port = held.Port;
+        string folder = Shop(port);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
             Assert.True(window.SelectConfiguration("Web: http"), $"No configuration Web: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             Ui.Launched(window, window.RunAsync(), "the shop to start", TimeSpan.FromMinutes(2));
+            held.LetGo(HeldPort.GateIn(folder));
             Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the shop to listen",
                 TimeSpan.FromMinutes(2));
 
@@ -137,21 +140,23 @@ public sealed class OpenApiEndpointsTests
     public void An_apps_answers_are_held_to_the_document_the_person_names_where_its_code_names_none()
     {
         string folder = TestFolders.Create("openapi-named-");
-        int port = AspireApp.FreePort();
+        using HeldPort held = new();
+        int port = held.Port;
         TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n</Solution>\n");
         TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
         TestFolders.Write(folder, "Web/Properties/launchSettings.json", $$"""
-            { "profiles": { "http": { "commandName": "Project", "applicationUrl": "http://127.0.0.1:{{port.ToString(CultureInfo.InvariantCulture)}}" } } }
+            { "profiles": { "http": { "commandName": "Project", "applicationUrl": "http://127.0.0.1:{{port.ToString(CultureInfo.InvariantCulture)}}",
+              "environmentVariables": { {{HeldPort.GateMember(HeldPort.GateIn(folder))}} } } } }
 
             """);
-        TestFolders.Write(folder, "Web/Program.cs", """
+        TestFolders.Write(folder, "Web/Program.cs", HeldPort.Gated("""
             WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
             WebApplication app = builder.Build();
             app.UseStaticFiles();
             app.MapGet("/broken", () => Results.Json(new { name = 42 }));
             app.Run();
 
-            """);
+            """));
         TestFolders.Write(folder, "Web/wwwroot/spec.json", """
             { "openapi": "3.0.1", "info": { "title": "Shop", "version": "1" }, "paths": { "/broken": { "get": { "responses": { "200": { "description": "OK",
               "content": { "application/json": { "schema": { "type": "object", "required": [ "name" ], "properties": { "name": { "type": "string" } } } } } } } } } } }
@@ -164,6 +169,7 @@ public sealed class OpenApiEndpointsTests
         {
             Assert.True(window.SelectConfiguration("Web: http"), $"No configuration Web: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             Ui.Launched(window, window.RunAsync(), "the shop to start", TimeSpan.FromMinutes(2));
+            held.LetGo(HeldPort.GateIn(folder));
             Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the shop to listen",
                 TimeSpan.FromMinutes(2));
             window.ShowToolWindow(ToolWindowIds.Endpoints);
@@ -258,12 +264,12 @@ public sealed class OpenApiEndpointsTests
           "type": "object", "properties": { "{{member}}": { "type": "string" } } } } } }, "responses": { "200": { "description": "OK" } } } } } }
         """)!;
 
-    /// <summary>One minimal API on <c>MapOpenApi</c>, its launch profile on a port of its own: an item by id, one added, and
-    /// one route whose answer breaks the schema its document gives it (a number for the name, a word for the price).</summary>
-    private static (string Folder, int Port) Shop()
+    /// <summary>One minimal API on <c>MapOpenApi</c>, its launch profile on the port given, which it listens at once past its
+    /// gate (<see cref="HeldPort"/>): an item by id, one added, and one route whose answer breaks the schema its document gives
+    /// it (a number for the name, a word for the price).</summary>
+    private static string Shop(int port)
     {
         string folder = TestFolders.Create("openapi-");
-        int port = AspireApp.FreePort();
         TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n</Solution>\n");
         TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>").With($"""
               <ItemGroup>
@@ -275,12 +281,12 @@ public sealed class OpenApiEndpointsTests
             {
               "profiles": {
                 "http": { "commandName": "Project", "applicationUrl": "http://127.0.0.1:{{port.ToString(CultureInfo.InvariantCulture)}}",
-                  "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Development" } }
+                  "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Development", {{HeldPort.GateMember(HeldPort.GateIn(folder))}} } }
               }
             }
 
             """);
-        TestFolders.Write(folder, "Web/Program.cs", """
+        TestFolders.Write(folder, "Web/Program.cs", HeldPort.Gated("""
             WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
             builder.Services.AddOpenApi();
             WebApplication app = builder.Build();
@@ -292,8 +298,8 @@ public sealed class OpenApiEndpointsTests
 
             record Item(string Name, decimal Price);
 
-            """);
+            """));
         AvaloniaApp.UseFeed(folder);
-        return (PathNames.Canonical(folder), port);
+        return PathNames.Canonical(folder);
     }
 }

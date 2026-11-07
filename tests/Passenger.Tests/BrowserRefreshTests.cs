@@ -56,10 +56,10 @@ public sealed class BrowserRefreshTests : IDisposable
             return made;
         }), "dotnet new blazor to make the test's app", TimeSpan.FromMinutes(3) + TestFolders.Spare);
         string app = Path.Combine(folder, "Bwa");
-        int port = AspireApp.FreePort();
         string settings = Path.Combine(app, "Properties", "launchSettings.json");
         JsonNode launch = JsonNode.Parse(File.ReadAllText(settings))!;
-        launch["profiles"]!["http"]!["applicationUrl"] = $"http://localhost:{port}";
+        // A port of the system's choosing, which the app says as it listens.
+        launch["profiles"]!["http"]!["applicationUrl"] = "http://127.0.0.1:0";
         launch["profiles"]!["http"]!["launchBrowser"] = false;
         File.WriteAllText(settings, launch.ToJsonString());
         // The package cache tests/BlazorGraphs fills holds the app's packages, never fetched.
@@ -76,8 +76,9 @@ public sealed class BrowserRefreshTests : IDisposable
             Assert.True(window.SelectConfiguration("Bwa: http"));
             Ui.Launched(window, window.DebugAsync(), "Bwa to start under the debugger", TimeSpan.FromMinutes(3));
             Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, port, console), StringComparison.Ordinal);
+            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, console), StringComparison.Ordinal);
             Assert.False(console().Contains("the browser is not kept up", StringComparison.Ordinal), $"Passenger keeps no page up:\n{console()}");
+            int port = HeardPorts.Of(console, "the app");
             client = Ui.AwaitPumped(Waiting.Apart(() => RefreshClient.ConnectAsync(port)), "the page's refresh client to connect to Passenger through the app");
 
             window.OpenFile(Path.Combine(app, "wwwroot", "app.css"));
@@ -102,7 +103,7 @@ public sealed class BrowserRefreshTests : IDisposable
     public void Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place()
     {
         string bell = Path.Combine(folder, "Bell");
-        int port = BellApp.Make(bell);
+        BellApp.Make(bell);
         string kit = Path.Combine(folder, "Kit");
         Ui.AwaitPumped(Waiting.Apart(async () =>
         {
@@ -128,7 +129,8 @@ public sealed class BrowserRefreshTests : IDisposable
             Assert.True(window.SelectConfiguration("Bell: http"));
             Ui.Launched(window, window.DebugAsync(), "Bell to start under the debugger", TimeSpan.FromMinutes(3));
             Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, port, console), StringComparison.Ordinal);
+            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, console), StringComparison.Ordinal);
+            int port = HeardPorts.Of(console, "the app");
             client = Ui.AwaitPumped(Waiting.Apart(() => RefreshClient.ConnectAsync(port)), "the page's refresh client to connect to Passenger through the app");
 
             window.OpenFile(Path.Combine(kit, "wwwroot", "kit.css"));
@@ -159,7 +161,7 @@ public sealed class BrowserRefreshTests : IDisposable
     [AvaloniaFact]
     public void Where_the_build_makes_no_browser_tools_debug_says_why_and_what_makes_them()
     {
-        int port = BellApp.Make(folder);
+        BellApp.Make(folder);
         string project = Path.Combine(folder, "Bell.csproj");
         File.WriteAllText(project, File.ReadAllText(project).Replace("</PropertyGroup>",
             "  <EnableHotReloadInRuntimeConfigDevFile>false</EnableHotReloadInRuntimeConfigDevFile>\n  </PropertyGroup>", StringComparison.Ordinal));
@@ -170,7 +172,7 @@ public sealed class BrowserRefreshTests : IDisposable
             Assert.True(window.SelectConfiguration("Bell: http"));
             Ui.Launched(window, window.DebugAsync(), "Bell to start under the debugger", TimeSpan.FromMinutes(3));
             Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, port, console), StringComparison.Ordinal);
+            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, console), StringComparison.Ordinal);
             Assert.Contains("Hot Reload: the browser is not kept up: Bell's build made no browser tools for its pages, which the SDK makes in a build whose "
                 + "EnableHotReloadInRuntimeConfigDevFile is true, as a Debug build's is unless the project sets it to false", console(), StringComparison.Ordinal);
         }
@@ -184,7 +186,7 @@ public sealed class BrowserRefreshTests : IDisposable
     /// page as the SDK's client hears it.</summary>
     private void KeptUp(string? sdk)
     {
-        int port = BellApp.Make(folder, sdk: sdk);
+        BellApp.Make(folder, sdk: sdk);
         MainWindow window = Ui.OpenFolder(folder);
         RefreshClient? client = null;
         try
@@ -193,8 +195,9 @@ public sealed class BrowserRefreshTests : IDisposable
             Assert.True(window.SelectConfiguration("Bell: http"));
             Ui.Launched(window, window.DebugAsync(), "Bell to start under the debugger", TimeSpan.FromMinutes(3));
             Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, port, console), StringComparison.Ordinal);
+            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, console), StringComparison.Ordinal);
             Assert.False(console().Contains("the browser is not kept up", StringComparison.Ordinal), $"Passenger keeps no page up:\n{console()}");
+            int port = HeardPorts.Of(console, "the app");
             client = Ui.AwaitPumped(Waiting.Apart(() => RefreshClient.ConnectAsync(port)), "the page's refresh client to connect to Passenger through the app");
 
             window.OpenFile(Path.Combine(folder, "wwwroot", "app.css"));
@@ -253,6 +256,6 @@ public sealed class BrowserRefreshTests : IDisposable
     private static string Served(int port, string path)
     {
         using HttpClient http = new();
-        return Ui.Await(http.GetStringAsync(new Uri($"http://localhost:{port}{path}")), $"{path} from the app", TimeSpan.FromMinutes(1));
+        return Ui.Await(http.GetStringAsync(new Uri($"http://127.0.0.1:{port}{path}")), $"{path} from the app", TimeSpan.FromMinutes(1));
     }
 }

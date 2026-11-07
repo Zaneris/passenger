@@ -17,8 +17,8 @@ public sealed class McpRequestsTests : McpRig
         DeleteAtEnd(shop);
         await LiveRequestsTests.WriteShopAsync(shop, port.Port);
         await using McpClient client = await Start(["--mcp", shop]);
-        port.LetGo(Path.Combine(shop, "gate"));
         await Call(client, McpTools.Run, new() { ["configuration"] = "Shop: http", ["waitSeconds"] = 5 });
+        port.LetGo(HeldPort.GateIn(shop));
         try
         {
             // The first ask follows the app, so what it serves from then on is heard.

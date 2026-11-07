@@ -22,24 +22,24 @@ public sealed class BlazorHotReloadTests : IDisposable
     [AvaloniaFact]
     public void Under_debug_a_components_markup_and_code_edits_reach_its_page_and_the_apps_update_handlers_run_after_each()
     {
-        int port = Make();
+        Make();
         MainWindow window = Ui.OpenFolder(folder);
         try
         {
             Choose(window);
             Ui.Launched(window, window.DebugAsync(), "Bell to start under the debugger", TimeSpan.FromMinutes(3));
             Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", Page(window, port, console), StringComparison.Ordinal);
+            Assert.Contains("<h1>Counter</h1>", Page(window, console), StringComparison.Ordinal);
 
             Edit(window, "<h1>Counter</h1>", "<h1>Tally</h1>");
             Apply(window);
             Ui.WaitFor(() => Count(console(), HandlersRan) == 1, () => $"the app's update handlers to run after the markup's edit; the console has:\n{console()}", TimeSpan.FromMinutes(1));
-            Assert.Contains("<h1>Tally</h1>", Page(window, port, console), StringComparison.Ordinal);
+            Assert.Contains("<h1>Tally</h1>", Page(window, console), StringComparison.Ordinal);
 
             Edit(window, "private int currentCount = 0;", "private int currentCount = 5;");
             Apply(window);
             Ui.WaitFor(() => Count(console(), HandlersRan) == 2, () => $"the app's update handlers to run after the code's edit; the console has:\n{console()}", TimeSpan.FromMinutes(1));
-            Assert.Contains("Current count: 5", Page(window, port, console), StringComparison.Ordinal);
+            Assert.Contains("Current count: 5", Page(window, console), StringComparison.Ordinal);
         }
         finally
         {
@@ -52,7 +52,7 @@ public sealed class BlazorHotReloadTests : IDisposable
     [AvaloniaFact]
     public void Under_run_with_hot_reload_a_components_markup_and_code_edits_reach_its_page_as_dotnet_watch_runs_the_update_handlers()
     {
-        int port = Make();
+        Make();
         MainWindow window = Ui.OpenFolder(folder);
         window.ApplySettings(window.Settings with { HotReload = true });
         try
@@ -62,17 +62,17 @@ public sealed class BlazorHotReloadTests : IDisposable
             Func<string> output = () => window.BottomPanel.Run.Document.Snapshot.ToString();
             Ui.WaitFor(() => output().Contains("Waiting for changes", StringComparison.Ordinal) || output().Contains("Waiting for a file to change", StringComparison.Ordinal),
                 () => $"dotnet watch to watch the app ({window.Status}):\n{output()}", TimeSpan.FromMinutes(3));
-            Assert.Contains("<h1>Counter</h1>", Page(window, port, output), StringComparison.Ordinal);
+            Assert.Contains("<h1>Counter</h1>", Page(window, output), StringComparison.Ordinal);
 
             Edit(window, "<h1>Counter</h1>", "<h1>Tally</h1>");
             window.Perform(AppActions.Save);
             Ui.WaitFor(() => Count(output(), HandlersRan) == 1, () => $"dotnet watch to run the update handlers after the markup's edit:\n{output()}", TimeSpan.FromMinutes(1));
-            Assert.Contains("<h1>Tally</h1>", Page(window, port, output), StringComparison.Ordinal);
+            Assert.Contains("<h1>Tally</h1>", Page(window, output), StringComparison.Ordinal);
 
             Edit(window, "private int currentCount = 0;", "private int currentCount = 5;");
             window.Perform(AppActions.Save);
             Ui.WaitFor(() => Count(output(), HandlersRan) == 2, () => $"dotnet watch to run the update handlers after the code's edit:\n{output()}", TimeSpan.FromMinutes(1));
-            Assert.Contains("Current count: 5", Page(window, port, output), StringComparison.Ordinal);
+            Assert.Contains("Current count: 5", Page(window, output), StringComparison.Ordinal);
         }
         finally
         {
@@ -100,10 +100,10 @@ public sealed class BlazorHotReloadTests : IDisposable
             () => $"the edit applied; Hot Reload said: {window.Debugger.LastApplied?.Said} ({window.Status})", TimeSpan.FromMinutes(1));
     }
 
-    /// <summary>The app, made and restored in the test's folder (<see cref="BellApp"/>): the port it listens on.</summary>
-    private int Make() => BellApp.Make(folder);
+    /// <summary>The app, made and restored in the test's folder (<see cref="BellApp"/>).</summary>
+    private void Make() => BellApp.Make(folder);
 
-    private static string Page(MainWindow window, int port, Func<string> output) => BellApp.Page(window, port, output);
+    private static string Page(MainWindow window, Func<string> output) => BellApp.Page(window, output);
 
     private static void Edit(MainWindow window, string was, string now) => BellApp.Edit(window, was, now);
 
