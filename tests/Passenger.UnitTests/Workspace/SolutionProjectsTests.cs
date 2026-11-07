@@ -30,6 +30,53 @@ public sealed class SolutionProjectsTests : IDisposable
         Assert.Equal(Solution, File.ReadAllText(solution));
     }
 
+    [Theory]
+    [InlineData("elements")]
+    [InlineData("a name")]
+    [InlineData("nested projects")]
+    public void Folders_nested_past_what_a_solution_holds_stand_in_the_deepest_and_lose_no_project(string how)
+    {
+        const int Deep = 5_000;
+        string project = "<Project Path=\"a/A.csproj\" />";
+        string solution = how switch
+        {
+            "elements" => Write("Deep.slnx", "<Solution>" + string.Concat(Enumerable.Repeat("<Folder Name=\"/f/\">", Deep)) + project
+                + string.Concat(Enumerable.Repeat("</Folder>", Deep)) + "</Solution>"),
+            "a name" => Write("Deep.slnx", "<Solution><Folder Name=\"/" + string.Concat(Enumerable.Repeat("f/", Deep)) + "\">" + project + "</Folder></Solution>"),
+            _ => Write("Deep.sln", Nested(Deep)),
+        };
+        SmallStack.Run(() =>
+        {
+            SolutionModel read = SolutionModel.Load(solution)!;
+            Assert.Equal(At("a", "A.csproj"), Assert.Single(read.Projects).Path);
+            int depth = 0;
+            for (SolutionFolder? folder = read.Entries.OfType<SolutionFolder>().Single(); folder is not null; folder = folder.Children.OfType<SolutionFolder>().SingleOrDefault())
+            {
+                depth++;
+                Assert.Equal(depth * 2 + 1, folder.Path.Length);
+            }
+            Assert.Equal(256, depth);
+        });
+    }
+
+    /// <summary>A classic solution of folders each in the one before and a project in the last.</summary>
+    private static string Nested(int deep)
+    {
+        static string Id(int number) => $"{{{number:D8}-0000-0000-0000-000000000000}}";
+        System.Text.StringBuilder text = new("Microsoft Visual Studio Solution File, Format Version 12.00\n");
+        for (int folder = 0; folder < deep; folder++)
+        {
+            text.Append($"Project(\"{{2150E333-8FDC-42A3-9474-1A3956D46DE8}}\") = \"f\", \"f\", \"{Id(folder)}\"\nEndProject\n");
+        }
+        text.Append($"Project(\"{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}\") = \"A\", \"a/A.csproj\", \"{Id(deep)}\"\nEndProject\n");
+        text.Append("Global\n\tGlobalSection(NestedProjects) = preSolution\n");
+        for (int child = 1; child <= deep; child++)
+        {
+            text.Append($"\t\t{Id(child)} = {Id(child - 1)}\n");
+        }
+        return text.Append("\tEndGlobalSection\nEndGlobal\n").ToString();
+    }
+
     [Fact]
     public void A_project_of_that_name_is_taken_in_another_solution_folder()
     {

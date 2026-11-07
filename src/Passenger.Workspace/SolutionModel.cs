@@ -13,6 +13,10 @@ public sealed record SolutionModel(string Path, string Name, IReadOnlyList<Solut
     /// <summary>The solution folder's GUID in a classic .sln, which marks an entry as a folder.</summary>
     private const string SolutionFolderType = "2150E333-8FDC-42A3-9474-1A3956D46DE8";
 
+    /// <summary>How deep folders stand inside one another: past what any solution is written to, and short of what a walk of
+    /// them reaches on a thread's stack or their paths take of memory, each holding those above it.</summary>
+    private const int DeepestNesting = 256;
+
     public IEnumerable<ProjectModel> Projects => Entries.SelectMany(Flatten);
 
     /// <summary>The same solution with each project as <paramref name="map"/> gives it (evaluated), its folders kept.</summary>
@@ -100,43 +104,74 @@ public sealed record SolutionModel(string Path, string Name, IReadOnlyList<Solut
         return new SolutionModel(path, System.IO.Path.GetFileNameWithoutExtension(path), Placed(entries, "/"));
     }
 
-    private static void AddSlnx(XElement element, string root, List<SolutionEntry> into)
+    private static void AddSlnx(XElement first, string root, List<SolutionEntry> top)
     {
-        if (element.Name.LocalName == "Project" && element.Attribute("Path")?.Value is { } relative)
+        Stack<(XElement Element, List<SolutionEntry> Into)> left = new();
+        left.Push((first, top));
+        while (left.TryPop(out (XElement Element, List<SolutionEntry> Into) next))
         {
-            into.Add(ProjectModel.Unevaluated(System.IO.Path.Combine(root, relative.Replace('\\', '/'))));
-        }
-        else if (element.Name.LocalName == "File" && element.Attribute("Path")?.Value is { } file)
-        {
-            into.Add(SolutionItem.At(System.IO.Path.Combine(root, file.Replace('\\', '/'))));
-        }
-        else if (element.Name.LocalName == "Folder" && element.Attribute("Name")?.Value is { } name
-            && name.Split('/', StringSplitOptions.RemoveEmptyEntries) is { Length: > 0 } parts)
-        {
-            // A folder named "/src/tools/" is "tools" inside "src": slnx writes the whole path on each.
-            List<SolutionEntry> level = into;
-            foreach (string part in parts)
+            (XElement element, List<SolutionEntry> into) = next;
+            if (element.Name.LocalName == "Project" && element.Attribute("Path")?.Value is { } relative)
             {
-                SolutionFolder? folder = level.OfType<SolutionFolder>().FirstOrDefault(f => f.Name == part);
-                if (folder is null)
-                {
-                    folder = new SolutionFolder(part, string.Empty, []);
-                    level.Add(folder);
-                }
-                level = folder.Children;
+                into.Add(ProjectModel.Unevaluated(System.IO.Path.Combine(root, relative.Replace('\\', '/'))));
             }
-            foreach (XElement child in element.Elements())
+            else if (element.Name.LocalName == "File" && element.Attribute("Path")?.Value is { } file)
             {
-                AddSlnx(child, root, level);
+                into.Add(SolutionItem.At(System.IO.Path.Combine(root, file.Replace('\\', '/'))));
+            }
+            else if (element.Name.LocalName == "Folder" && element.Attribute("Name")?.Value is { } name
+                && name.Split('/', StringSplitOptions.RemoveEmptyEntries) is { Length: > 0 } parts)
+            {
+                // A folder named "/src/tools/" is "tools" inside "src": slnx writes the whole path on each.
+                List<SolutionEntry> level = into;
+                foreach (string part in parts)
+                {
+                    SolutionFolder? folder = level.OfType<SolutionFolder>().FirstOrDefault(f => f.Name == part);
+                    if (folder is null)
+                    {
+                        folder = new SolutionFolder(part, string.Empty, []);
+                        level.Add(folder);
+                    }
+                    level = folder.Children;
+                }
+                foreach (XElement child in element.Elements().Reverse())
+                {
+                    left.Push((child, level));
+                }
             }
         }
     }
 
-    /// <summary>The folders given their paths in the solution ("/src/tools/"), known only once the whole file is read.</summary>
-    private static List<SolutionEntry> Placed(List<SolutionEntry> entries, string parent) =>
+    /// <summary>The folders given their paths in the solution ("/src/tools/"), known only once the whole file is read; what
+    /// folders nested past <see cref="DeepestNesting"/> hold stands in the deepest, so no project of the file is lost.</summary>
+    private static List<SolutionEntry> Placed(List<SolutionEntry> entries, string parent, int depth = 1) =>
         [.. entries.Select(entry => entry is SolutionFolder folder
-            ? folder with { Path = $"{parent}{folder.Name}/", Children = Placed(folder.Children, $"{parent}{folder.Name}/") }
+            ? folder with
+            {
+                Path = $"{parent}{folder.Name}/",
+                Children = depth < DeepestNesting ? Placed(folder.Children, $"{parent}{folder.Name}/", depth + 1) : Unfoldered(folder),
+            }
             : entry)];
+
+    /// <summary>The projects and files a folder holds, those of the folders in it too, in the file's order.</summary>
+    private static List<SolutionEntry> Unfoldered(SolutionFolder folder)
+    {
+        List<SolutionEntry> held = [];
+        Stack<SolutionEntry> left = new(Enumerable.Reverse(folder.Children));
+        while (left.TryPop(out SolutionEntry? entry))
+        {
+            if (entry is not SolutionFolder inner)
+            {
+                held.Add(entry);
+                continue;
+            }
+            foreach (SolutionEntry child in Enumerable.Reverse(inner.Children))
+            {
+                left.Push(child);
+            }
+        }
+        return held;
+    }
 
     private static SolutionModel LoadSln(string path)
     {
