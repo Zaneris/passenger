@@ -58,7 +58,6 @@ public class CSharpParsingTests
     [Theory]
     [InlineData("class C { object x = a", "?.b")]
     [InlineData("class C { object x = a", "? .b")]
-    [InlineData("class C { object x = a", "?[0]")]
     [InlineData("class C { bool x = a is ", "not ")]
     [InlineData("class C { ", "A<")]
     [InlineData("class C { object x = ", "x => ")]
@@ -69,6 +68,55 @@ public class CSharpParsingTests
         int? at = null;
         SmallStack.Run(() => at = CSharpParsing.DeepAt(TextSnapshot.From(text), CSharpParsing.Default));
         Assert.InRange(at ?? -1, before.Length + (998 * link.Length), before.Length + (1000 * link.Length) - 1);
+    }
+
+    /// <summary>The shapes in which a parser reads past a <c>?[</c> to the end of what follows, a <c>?[</c> there read past
+    /// in turn, each level at least doubling its time: one past the eleventh is too deep, wherever it lies in the expression,
+    /// and however the <c>?</c> and the <c>[</c> are apart.</summary>
+    [Theory]
+    [InlineData("class C { object x = a", "?[0]")]
+    [InlineData("class C { object x = a", "?\n[0]")]
+    [InlineData("class C { object x = a", "? /* */ [0]")]
+    [InlineData("class C { object x = a", "?.b?[0]")]
+    [InlineData("class C { object x = a", "?[0]!")]
+    [InlineData("class C { object x = a", "?[0](1).b[2]")]
+    [InlineData("class C { object x = ", "a?[")]
+    [InlineData("class C { object x = ", "a?[x => ")]
+    [InlineData("class C { object x = ", "a?[x => { return ")]
+    [InlineData("class C { object x = ", "a?[new C { P = ")]
+    [InlineData("class C { object x = ", "a?[0] switch { _ => ")]
+    [InlineData("class C { object x = 0", " + a?[0]")]
+    [InlineData("class C { object x = 0", " ?? a?[0]")]
+    [InlineData("class C { object x = 0", " + F<A, B>(0) + a?[0]")]
+    [InlineData("class C { object x = ", "c ? a?[0] : ")]
+    [InlineData("class C { object x = ", "c ? [")]
+    [InlineData("class C { object x = ", "c ? b?[")]
+    [InlineData("class C { bool x = a is int", "?[]")]
+    public void A_run_of_conditional_accesses_read_ahead_through_goes_too_deep_at_its_twelfth(string before, string link)
+    {
+        string text = before + string.Concat(Enumerable.Repeat(link, 30));
+        int? at = null;
+        SmallStack.Run(() => at = CSharpParsing.DeepAt(TextSnapshot.From(text), CSharpParsing.Default));
+        Assert.InRange(at ?? -1, before.Length + (11 * link.Length), before.Length + (12 * link.Length) - 1);
+        string sixteen = before + string.Concat(Enumerable.Repeat(link, 16));
+        SmallStack.Run(() => Assert.Empty(((CompilationUnitSyntax)CSharpParsing.Parse(sixteen).GetRoot()).Members));
+        Assert.False(CSharpParsing.ReadsAsType("int" + string.Concat(Enumerable.Repeat("?[]", 12))), "A type a parser reads past twelve times reads as a type");
+    }
+
+    /// <summary>What real code holds of <c>?[</c>: types of nullable arrays in member after member, chains of eleven, and
+    /// accesses in statements of a lambda an access reads ahead through, each statement ending its own.</summary>
+    [Theory]
+    [InlineData("class C {\n", "    public static int?[] M(int?[] a, object?[] b) { return a?[0] is null ? null : a; }\n", "}")]
+    [InlineData("class C {\n", "    public float?[]? P { get; set; }\n", "}")]
+    [InlineData("class C {\n", "    int?[] f = new int?[] { 1 };\n", "}")]
+    [InlineData("class C { object x = a?[0] ?? F(y => {\n", "    y = b?[0]?[1]?[2];\n", "}); }")]
+    [InlineData("class C { void M() {\n", "    x = a?[0]?[1]?[2]?[3]?[4]?[5]?[6]?[7]?[8]?[9]?[10];\n", "} }")]
+    public void Conditional_accesses_of_real_code_read_whole_however_many(string before, string each, string after)
+    {
+        string text = before + string.Concat(Enumerable.Repeat(each, 1_000)) + after;
+        Assert.Null(CSharpParsing.DeepAt(TextSnapshot.From(text), CSharpParsing.Default));
+        Assert.NotEmpty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot(TestContext.Current.CancellationToken)).Members);
+        Assert.True(CSharpParsing.ReadsAsType("int?[]?[]"), "A nullable array of nullable arrays no longer reads as a type");
     }
 
     [Theory]

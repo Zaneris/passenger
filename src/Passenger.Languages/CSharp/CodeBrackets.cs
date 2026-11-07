@@ -36,7 +36,8 @@ internal static class CodeBrackets
     /// <summary>A text's brackets as its tokens have them. An interpolated string is a token to the lexer and code to the
     /// parser, as a documentation comment is trivia to one and read by the other, so each is read as it stands, on its own, the
     /// text around it left as it was: what a template leaves open doesn't add up over a file. A <c>?</c> is a link only before
-    /// a <c>.</c> or a <c>[</c>, where it is a conditional access, and <c>not</c> only as written, never escaped.</summary>
+    /// a <c>.</c> or a <c>[</c>, where it is a conditional access, and <c>not</c> only as written, never escaped. A token after
+    /// a closing brace that no expression goes on with ends the conditional accesses read ahead through at its level.</summary>
     private static int? TokensDeepAt(string text, CSharpParseOptions? options)
     {
         Brackets brackets = new() { CSharp = true };
@@ -46,6 +47,10 @@ internal static class CodeBrackets
             if ((DeepIn(token.LeadingTrivia, ref brackets) ?? DeepIn(token.TrailingTrivia, ref brackets)) is int inTrivia)
             {
                 return inTrivia;
+            }
+            if (before == SyntaxKind.CloseBraceToken && !GoesOn(token))
+            {
+                brackets.Ended();
             }
             switch (token.Kind())
             {
@@ -71,6 +76,18 @@ internal static class CodeBrackets
         }
         return null;
     }
+
+    /// <summary>Whether an expression may go on with a token after a closing brace: an operator, a bracket, <c>switch</c>,
+    /// <c>with</c>, a comma and a pattern's or a query's words may, where any other word, a semicolon or a closer ends it.</summary>
+    private static bool GoesOn(SyntaxToken token) => token.Kind() switch
+    {
+        SyntaxKind.IdentifierToken => token.Text is "with" or "and" or "or" or "not" or "when" or "select" or "where" or "group" or "by"
+            or "into" or "orderby" or "join" or "let" or "on" or "equals" or "ascending" or "descending" or "from",
+        SyntaxKind.SemicolonToken or SyntaxKind.CloseBraceToken or SyntaxKind.CloseParenToken
+            or SyntaxKind.CloseBracketToken or SyntaxKind.EndOfFileToken => false,
+        SyntaxKind kind when SyntaxFacts.IsKeywordKind(kind) => kind is SyntaxKind.SwitchKeyword or SyntaxKind.IsKeyword or SyntaxKind.AsKeyword or SyntaxKind.InKeyword,
+        _ => true,
+    };
 
     /// <summary>Reads the conditions among trivia into what's counted: where they or a documentation comment go too deep.</summary>
     private static int? DeepIn(SyntaxTriviaList trivia, ref Brackets brackets)

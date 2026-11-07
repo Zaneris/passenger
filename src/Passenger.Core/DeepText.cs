@@ -81,6 +81,10 @@ public struct Brackets
     /// <summary>Past any code written or generated, and where a parser's cost is still seconds at its worst.</summary>
     private const int Deepest = 1000;
 
+    /// <summary>The most conditional accesses a C# parser reads ahead through at once (<see cref="Link"/>): it reads what follows
+    /// each twice or more, so its time grows threefold a level at the worst, some 60 ms at this many. Real code reaches 6.</summary>
+    private const int MostLinks = 11;
+
     private static readonly SearchValues<char> Marks = SearchValues.Create("()[]{};#$");
 
     private static readonly SearchValues<char> CSharpMarks = SearchValues.Create("()[]{};#$<>?n");
@@ -91,11 +95,15 @@ public struct Brackets
     private int holes;
     private bool dollar;
     private int consumed;
+    private int depth;
+    private LinkLevels links;
+    private int linkLevels;
+    private int linked;
 
     /// <summary>Whether C#'s links count as a statement's brackets do: each <c>?</c>, a pattern's <c>not</c> and a lambda's
     /// <c>=&gt;</c>, which a parser and a binder nest through with no bracket, and a type's <c>&lt;</c> closed by its
-    /// <c>&gt;</c>. A <c>&lt;</c> before another or an <c>=</c> opens nothing, nor does a <c>&gt;</c> after a <c>-</c>; a
-    /// stretch's first character is read as having nothing before it.</summary>
+    /// <c>&gt;</c>, a <c>&lt;</c> before another or an <c>=</c> opening nothing, nor a <c>&gt;</c> after a <c>-</c>; and each
+    /// <c>?[</c> once more as a conditional access (<see cref="MostLinks"/>). A stretch's first character has nothing before it.</summary>
     public bool CSharp { get; init; }
 
     public bool TooDeep { get; private set; }
@@ -114,11 +122,20 @@ public struct Brackets
         {
             switch (text[at])
             {
-                case '(' or '[' or '?':
+                case '?':
                     statement++;
+                    if (CSharp && OpensElement(text, at))
+                    {
+                        Link();
+                    }
+                    break;
+                case '(' or '[':
+                    statement++;
+                    depth++;
                     break;
                 case ')' or ']':
                     statement = Math.Max(0, statement - 1);
+                    Close();
                     break;
                 case '<':
                     statement += Before(text, at) == '<' || After(text, at) is '<' or '=' ? 0 : 1;
@@ -136,12 +153,14 @@ public struct Brackets
                     break;
                 case '{':
                     braces++;
+                    depth++;
                     holes += dollar ? 1 : 0;
                     dollar = false;
                     break;
                 case '}':
                     braces = Math.Max(0, braces - 1);
                     holes = Math.Max(0, holes - 1);
+                    Close();
                     break;
                 case '$':
                     dollar = true;
@@ -152,9 +171,10 @@ public struct Brackets
                     break;
                 default:
                     statement = 0;
+                    EndLinks(depth);
                     break;
             }
-            if (!TooDeep && statement + braces + conditions > Deepest)
+            if (!TooDeep && (statement + braces + conditions > Deepest || linked > MostLinks))
             {
                 TooDeep = true;
                 DeepAt = consumed + at;
@@ -164,6 +184,48 @@ public struct Brackets
             text = text[(at + 1)..];
         }
         consumed += text.Length;
+    }
+
+    /// <summary>The expression a lexer's tokens are at ended where a closing brace left it, as the token after says: the
+    /// conditional accesses read ahead through at its level end with it.</summary>
+    public void Ended() => EndLinks(depth);
+
+    /// <summary>A conditional access, or a conditional with a collection, whose <c>?[</c> a parser reads past to see which it
+    /// is: what follows to the end of the expression it starts, a nested one's own reading among it.</summary>
+    private void Link()
+    {
+        if (linkLevels > 0 && links[linkLevels - 1].Depth == depth)
+        {
+            links[linkLevels - 1].Count++;
+        }
+        else if (linkLevels < MostLinks + 1)
+        {
+            links[linkLevels++] = (depth, 1);
+        }
+        linked++;
+    }
+
+    private void Close()
+    {
+        depth = Math.Max(0, depth - 1);
+        EndLinks(depth + 1);
+    }
+
+    /// <summary>Ends the links read ahead from this depth and those within it.</summary>
+    private void EndLinks(int from)
+    {
+        while (linkLevels > 0 && links[linkLevels - 1].Depth >= from)
+        {
+            linked -= links[--linkLevels].Count;
+        }
+    }
+
+    /// <summary>Whether a <c>?</c> may come before a <c>[</c>, as far as the text shows: a comment or a directive may lie
+    /// between them, and a stretch's end may cut what follows.</summary>
+    private static bool OpensElement(ReadOnlySpan<char> text, int at)
+    {
+        int next = text[(at + 1)..].IndexOfAnyExcept(" \t\r\n");
+        return next < 0 || text[at + 1 + next] is '[' or '/' or '#';
     }
 
     /// <summary>Whether a text holds the word <c>not</c> at a place, as far as the text shows: a stretch's end may cut it.</summary>
@@ -178,4 +240,11 @@ public struct Brackets
     private static char After(ReadOnlySpan<char> text, int at) => at + 1 < text.Length ? text[at + 1] : '\0';
 
     private static bool InWord(char c) => char.IsLetterOrDigit(c) || c is '_' or '@';
+
+    /// <summary>The depths conditional accesses are read ahead from, and how many at each: one past the most is too deep.</summary>
+    [InlineArray(MostLinks + 1)]
+    private struct LinkLevels
+    {
+        private (int Depth, int Count) first;
+    }
 }
