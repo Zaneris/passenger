@@ -209,7 +209,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   compare entries, never names. A finder never tells its answer inside a document's `Changed`. A recursive reader of a
   person's text goes through `DeepestNesting` and checks the stack at each level (`StackLeft`), as a level's cost is the
   platform's: no text ends the IDE. Roslyn's parser recurses unchecked,
-  so every in-process parse goes through `CSharpParsing.Parse`/`Changed` (`DeepText`), never `ParseText`.
+  so every in-process parse goes through `CSharpParsing.Parse`/`Changed` (`DeepText`), never `ParseText`; its depth is
+  read as Roslyn's lexer reads strings and comments (`Brackets.ReadCode`), a key's around what it changed
+  (`TypedMayGoDeep`), and a `?[` is read ahead to its expression's end, so 11 of them at once are too deep.
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
   binding's path is read once (`BindingPath`) for the check, Go to Declaration, uses and completion.
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project), `LspDocument` (never a change
