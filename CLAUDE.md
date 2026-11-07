@@ -375,7 +375,9 @@ a new name, and `just site-shots` retakes its images.
   passes by, so a step over one turns it off. A func-eval's by-ref value with no home is a copy gone when the call
   returns: give a callee that may keep it a home (`PinnedArrayOfOneAsync`) or refuse; a struct the evaluation stores is
   its own copy (`OwnAsync`). `Task.NotifyDebuggerOfWaitCompletion`'s breakpoint is no GC-safe point: nothing runs there,
-  and a value read there is boxed at its stop. Letting threads run voids every value read before, so an evaluation left
+  and a value read there is boxed at its stop. A thread paused in a library method's P/Invoke (`Thread.Sleep`) shows that frame on top: a step from it ends only at
+  the thread's next pass through that code, never once tiering replaced it, so it steps out to the user's code (#1359).
+  Letting threads run voids every value read before, so an evaluation left
   running returns first (`LetAbandonedReturnAsync`), holding the program at the stop shown: never Continue there. One left
   is held with the rest (`process.Stop(0)`) until the person goes on, so "still running N s later" says nothing of how
   long it ran.
