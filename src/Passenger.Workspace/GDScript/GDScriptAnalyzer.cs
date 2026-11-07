@@ -511,6 +511,11 @@ public sealed partial class GDScriptAnalyzer
             {
                 Add(new GDScriptMemberInfo(value, "const", type.Instance, null));
             }
+            // A script's enum by its name is a constant Dictionary to Godot; an engine's enum is none.
+            foreach (GodotApiMethod method in type is { Meta: true, Script: not null } ? Engine?.Builtins.GetValueOrDefault("Dictionary")?.Methods.Values.Where(m => m.IsConst) ?? [] : [])
+            {
+                Add(new GDScriptMemberInfo(method.Name, "func", FromApi(method.Returns), null));
+            }
             return all;
         }
         if (Constructor(type) is { } constructor)

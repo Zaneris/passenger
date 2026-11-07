@@ -27,7 +27,8 @@ public class GDScriptAnalyzerTests
               "constants": [{ "name": "ZERO", "type": "Vector2" }], "enums": [{ "name": "Axis", "values": [{ "name": "AXIS_X", "value": 0 }] }],
               "operators": [{ "name": "*", "right_type": "float", "return_type": "Vector2" }], "methods": [{ "name": "length", "return_type": "float" }] },
             { "name": "Array", "indexing_return_type": "Variant", "methods": [{ "name": "size", "return_type": "int" }, { "name": "front", "return_type": "Variant" }] },
-            { "name": "Dictionary", "methods": [] },
+            { "name": "Dictionary", "methods": [{ "name": "keys", "return_type": "Array", "is_const": true }, { "name": "size", "return_type": "int", "is_const": true },
+              { "name": "has", "return_type": "bool", "is_const": true, "arguments": [{ "name": "key", "type": "Variant" }] }, { "name": "clear" }] },
             { "name": "StringName", "methods": [] },
             { "name": "Callable", "methods": [] },
             { "name": "Signal", "methods": [] }
@@ -576,6 +577,38 @@ public class GDScriptAnalyzerTests
 
         GDScriptMemberInfo axis = analyzer.Members(GDScriptType.Builtin("Vector2") with { Meta = true }).Single(m => m.Name == "AXIS_X");
         Assert.Equal(("const", "Vector2.Axis"), (axis.Kind, axis.Type.ToString()));
+    }
+
+    /// <summary>A script's enum by its name has a Dictionary's functions that change nothing, beside its values; an engine's enum
+    /// has none, nor has a value of an enum. Godot 4.7.2 compiled each call listed and rejected each left out.</summary>
+    [Theory]
+    [InlineData("Mood.|", "CALM keys size has", "clear")]
+    [InlineData("self.Mood.|", "CALM keys size has", "clear")]
+    [InlineData("Worker.Mood.|", "CALM keys size has", "clear")]
+    [InlineData("Node.ProcessMode.|", "PROCESS_MODE_INHERIT", "keys size has")]
+    [InlineData("Vector2.Axis.|", "AXIS_X", "keys size has")]
+    [InlineData("Mood.CALM.|", "", "keys size has")]
+    [InlineData("held.|", "", "keys size has")]
+    public void A_scripts_enum_by_its_name_has_what_a_constant_dictionary_has(string written, string listed, string left)
+    {
+        const string Head = "extends Node\n\nenum Mood { CALM }\nvar held: Mood\n\nfunc f():\n\t";
+        string text = $"{Head}print({written.Replace("|", string.Empty, StringComparison.Ordinal)})\n";
+        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, Classes);
+        GDScriptType owner = TypeBeforeDot(analysis, Head.Length + "print(".Length + written.Length - 2);
+        HashSet<string> names = [.. analyzer.Members(owner).Select(m => m.Name)];
+        Assert.Superset(new HashSet<string>(listed.Split(' ', StringSplitOptions.RemoveEmptyEntries)), names);
+        Assert.Empty(names.Intersect(left.Split(' ')));
+    }
+
+    /// <summary>An enum's Dictionary function lists as the function it is, with what it returns.</summary>
+    [Fact]
+    public void An_enums_dictionary_function_says_what_it_returns()
+    {
+        string text = "extends Node\n\nenum Mood { CALM }\n\nfunc f():\n\tprint(Mood.CALM)\n";
+        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text);
+        IReadOnlyList<GDScriptMemberInfo> members = analyzer.Members(TypeBeforeDot(analysis, text.IndexOf(".CALM", StringComparison.Ordinal)));
+        Assert.Equal(("func", "Array"), (members.Single(m => m.Name == "keys").Kind, members.Single(m => m.Name == "keys").Type.ToString()));
+        Assert.Equal(("const", "Mood"), (members.Single(m => m.Name == "CALM").Kind, members.Single(m => m.Name == "CALM").Type.Name));
     }
 
     /// <summary>A small project's classes to make: plain, with inner classes, with a constructor, inheriting one, abstract, and

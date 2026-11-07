@@ -28,6 +28,9 @@ internal sealed partial class GDScriptAssist
     /// <summary>The characters beyond a name's a node path or a string's text narrows by.</summary>
     private const string PathCharacters = "$%/.:-";
 
+    /// <summary>The built-in type that gives a script's enum its functions.</summary>
+    private const string EnumMethods = "Dictionary";
+
     /// <summary>The calls a GDScript gives a node's path from its own node to, at the argument that takes it.</summary>
     private static readonly Dictionary<string, int> NodePathCalls = new(StringComparer.Ordinal)
     {
@@ -294,11 +297,19 @@ internal sealed partial class GDScriptAssist
         return Item(member.Name, kind, member.Type.IsVariant ? member.Kind : member.Type.ToString(), rankOf, what);
     }
 
-    /// <summary>What a member of a type names: a built-in type's or an engine class's member by its owner, else a script's.</summary>
+    /// <summary>What a member of a type names: a built-in type's or an engine class's member by its owner, an enum's function by
+    /// the Dictionary that gives it, else a script's.</summary>
     private static Named NamedOf(GDScriptMemberInfo member, GDScriptType? owner) =>
         owner is { Kind: GDScriptTypeKind.Builtin } builtin ? new OfEngine(builtin.Name, member.Kind, member.Name, member.Type)
+            : owner is { Kind: GDScriptTypeKind.Enum } && member.Kind == "func" ? new OfEngine(EnumMethods, member.Kind, member.Name, member.Type)
             : member.Declaration is { EngineClass: { } engine } ? new OfEngine(engine, member.Kind, member.Name, member.Type)
             : new OfScript(member);
+
+    /// <summary>The Dictionary function a name after a type's dot reads where the type is a script's enum by its name; null for
+    /// any other type or name.</summary>
+    private static OfEngine? EnumMethod(GodotScriptTypes.Typed typed, GDScriptType owner, string name, GDScriptType type) =>
+        owner is { Kind: GDScriptTypeKind.Enum, Meta: true, Script: not null } && typed.Analyzer.Engine?.Builtins.GetValueOrDefault(EnumMethods)?.Methods.GetValueOrDefault(name) is { IsConst: true }
+            ? new OfEngine(EnumMethods, "func", name, type) : null;
 
     /// <summary>The engine's globals as items, made once for an API.</summary>
     private static GlobalItems GlobalsOf(GodotEngineApi api) => Globals.GetValue(api, static api =>

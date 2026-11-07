@@ -92,10 +92,14 @@ internal sealed partial class GDScriptAssist
         bool afterDot = start > 0 && start <= text.Length && text[start - 1] == '.';
         if (afterDot)
         {
-            return api is not null && start >= 2 && typed.Analysis.ValueBefore(start - 1) is ({ } before, _)
-                && typed.Analysis.TypeOf(before) is { Kind: GDScriptTypeKind.Builtin } builtin && api.Builtins.GetValueOrDefault(builtin.Name) is { } owner
+            if (api is null || start < 2 || typed.Analysis.ValueBefore(start - 1) is not ({ } before, _))
+            {
+                return null;
+            }
+            GDScriptType taken = typed.Analysis.TypeOf(before);
+            return taken is { Kind: GDScriptTypeKind.Builtin } builtin && api.Builtins.GetValueOrDefault(builtin.Name) is { } owner
                 ? new OfEngine(builtin.Name, owner.Methods.ContainsKey(name.Name) ? "func" : owner.Constants.ContainsKey(name.Name) ? "const" : "var", name.Name, type)
-                : null;
+                : EnumMethod(typed, taken, name.Name, type);
         }
         if (api is not null)
         {

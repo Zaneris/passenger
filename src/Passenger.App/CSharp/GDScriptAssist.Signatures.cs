@@ -68,7 +68,8 @@ internal sealed partial class GDScriptAssist : IOwnSignatures
         else if (named is null && ReceiverType(typed, call) is { } owner)
         {
             named = owner.Kind == GDScriptTypeKind.Builtin ? new OfEngine(owner.Name, "func", call.Name, GDScriptType.Variant)
-                : typed.Analyzer.Member(owner, call.Name) is { } member ? NamedOf(member, owner) : null;
+                : EnumMethod(typed, owner, call.Name, GDScriptType.Variant)
+                ?? (typed.Analyzer.Member(owner, call.Name) is { } member ? NamedOf(member, owner) : null);
         }
         if (named is OfClass { Kind: "type" } builtin && api?.Builtins.GetValueOrDefault(builtin.Name) is { Constructors.Count: > 0 } made)
         {

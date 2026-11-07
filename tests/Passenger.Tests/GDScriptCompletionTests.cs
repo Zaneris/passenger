@@ -230,6 +230,36 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>After a script's enum by its name the list holds its values and the Dictionary functions Godot lets it call, a
+    /// function that takes arguments going in with the caret between its parentheses.</summary>
+    [AvaloniaFact]
+    public void After_a_scripts_enum_the_list_holds_its_values_and_a_constant_dictionarys_functions()
+    {
+        Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): Dictionary's functions come from the engine's API");
+        TestFolders.Write(folder, "main.gd", "extends Node\n\nenum Mood { CALM }\n\n\nfunc _ready() -> void:\n\tprint(1)\n");
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "print(1)");
+            window.KeyTextInput("Mood");
+            window.KeyTextInput(".");
+            Listed(window, "CALM", "value of the enum");
+            Assert.Superset(new HashSet<string> { "keys", "size", "has" }, window.Assist.CompletionLabels.ToHashSet());
+            Assert.DoesNotContain("clear", window.Assist.CompletionLabels);
+            window.KeyTextInput("has");
+            First(window, "has", "Dictionary's has after the enum's dot");
+            Ui.Press(window, "ENTER", settle: false);
+            Ui.PumpUntil(() => document.Text.Snapshot.ToString().Contains("\tMood.has()\n", StringComparison.Ordinal), "Mood.has() put in", TimeSpan.FromSeconds(10));
+            Assert.Equal("\tMood.has(", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)[..editor.CaretPosition.Column]);
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>After a closing bracket the list holds what the bracket closes, a call's result rather than its last argument's
     /// type, and a group's parentheses list what they hold.</summary>
     [AvaloniaFact]
