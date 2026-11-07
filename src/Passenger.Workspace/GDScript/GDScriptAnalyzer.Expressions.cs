@@ -592,10 +592,10 @@ public sealed partial class GDScriptAnalyzer
         return type;
     }
 
-    /// <summary>An attribute's type (<c>a.b</c>), its unsafe access warned of, and Godot's errors of a member it is not where
-    /// what it is taken of is known: an enum's value's property, a member an enum, a built-in type or a class does not have,
-    /// a property of null, and an engine's enum standing on its own unless <paramref name="pseudo"/> (it is what another
-    /// subscript is taken of).</summary>
+    /// <summary>An attribute's type (<c>a.b</c>), recorded for its name too, which is what a place in the text finds before a
+    /// further dot; its unsafe access warned of, and Godot's errors of a member it is not where what it is taken of is known:
+    /// an enum's value's property, a member an enum, a built-in type or a class does not have, a property of null, and an
+    /// engine's enum standing on its own unless <paramref name="pseudo"/> (it is what another subscript is taken of).</summary>
     private GDScriptType AttributeOf(GDScriptSubscript attribute, Context context, bool pseudo)
     {
         GDScriptType owner = ReduceBase(attribute.Base, context);
@@ -615,7 +615,7 @@ public sealed partial class GDScriptAnalyzer
             {
                 Error(context, name, $"Type \"{name.Name}\" in base \"Variant\" cannot be used on its own.");
             }
-            return new GDScriptType(GDScriptTypeKind.Enum, variantEnum.Name) { Values = variantEnum.Values, Meta = true };
+            return Recorded(name, new GDScriptType(GDScriptTypeKind.Enum, variantEnum.Name) { Values = variantEnum.Values, Meta = true }, context);
         }
         GDScriptType found = Attribute(owner, name, context);
         EnumValueDeclared(owner, name, found, context);
@@ -623,9 +623,9 @@ public sealed partial class GDScriptAnalyzer
             && found is { Kind: GDScriptTypeKind.Enum, Meta: true, Script: null, Owner: { } engine })
         {
             // An engine's enum on its own is no type Godot goes on with: a Variant standing for the enum's native class.
-            return GDScriptType.Variant with { Meta = true, Owner = $"{engine}.{found.Name}" };
+            return Recorded(name, GDScriptType.Variant with { Meta = true, Owner = $"{engine}.{found.Name}" }, context);
         }
-        return found;
+        return Recorded(name, found, context);
     }
 
     /// <summary>A script enum's value read off the enum (<c>FillArea.AREA</c>) recorded as declared where the enum gives it.</summary>

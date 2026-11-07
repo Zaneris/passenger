@@ -132,6 +132,34 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>After a member read off a class or a value the list holds that member's own, however many dots came before.</summary>
+    [AvaloniaFact]
+    public void After_a_member_read_off_another_the_list_holds_what_that_member_has()
+    {
+        TestFolders.Write(folder, "worker.gd", "class_name Worker\nextends Node\n\nvar buddy: Worker\nvar instance_field := 1\n\n\n"
+            + "class Inner:\n\tconst DEEP := 3\n\n\tstatic func make() -> int:\n\t\treturn 1\n");
+        (MainWindow window, _, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "\tcounter += 1");
+            window.KeyTextInput("Worker.Inner");
+            window.KeyTextInput(".");
+            Listed(window, "make", "inner class's static function after two dots");
+            Assert.Contains("DEEP", window.Assist.CompletionLabels);
+            Ui.Press(window, "ESCAPE", settle: false);
+
+            TypeOverLine(window, editor, "Worker.new().buddy");
+            window.KeyTextInput(".");
+            Listed(window, "instance_field", "variable of the class a value's variable holds");
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>A local declared in a block is offered in that block and not after it, where Godot rejects it; a local around
     /// the block is offered at both.</summary>
     [AvaloniaFact]

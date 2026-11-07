@@ -41,7 +41,8 @@ public class GDScriptAnalyzerTests
               "properties": [{ "name": "name", "type": "StringName" }, { "name": "process_mode", "type": "enum::Node.ProcessMode" }],
               "signals": [{ "name": "ready" }] },
             { "name": "Node2D", "inherits": "Node", "properties": [{ "name": "position", "type": "Vector2" }] },
-            { "name": "SceneTree", "inherits": "Object", "methods": [{ "name": "change_scene_to_file", "return_value": { "type": "enum::Error" } }] },
+            { "name": "SceneTree", "inherits": "Object", "methods": [{ "name": "change_scene_to_file", "return_value": { "type": "enum::Error" } }],
+              "properties": [{ "name": "root", "type": "Node" }] },
             { "name": "Input", "inherits": "Object", "methods": [{ "name": "is_action_pressed", "return_value": { "type": "bool" } }] },
             { "name": "Resource", "inherits": "RefCounted" },
             { "name": "PackedScene", "inherits": "Resource" }
@@ -360,6 +361,52 @@ public class GDScriptAnalyzerTests
             Assert.True(type.Meta, $"What comes before {after} read as {type}, no class");
             return type;
         }
+    }
+
+    /// <summary>What stands before a dot reads as the member it is however many dots came first, as a list opened there needs:
+    /// typed on the dot alone, with nothing after it yet, or before a name already written. Godot 4.7.2 compiled each name
+    /// listed there, and of a class read by its name rejected those left out.</summary>
+    [Theory]
+    [InlineData("print(Worker.Inner.|)", "Inner", "make DEEP Deepest", "held work field")]
+    [InlineData("print(Worker.Inner.Deepest.|)", "Deepest", "low BOTTOM", "make DEEP held")]
+    [InlineData("print(buddy.buddy.|)", "Worker", "field work hit LIMIT count Mood", "held make")]
+    [InlineData("print(self.buddy.|)", "Worker", "field work hit LIMIT count", "held make")]
+    [InlineData("print(buddy.inner_held.|)", "Inner", "held make DEEP", "field work")]
+    [InlineData("print(buddy.buddy.inner_held.|)", "Inner", "held make DEEP", "field work")]
+    [InlineData("print(self.spot.|)", "Vector2", "x y length", "field")]
+    [InlineData("print(get_tree().root.|)", "Node", "name get_tree ready", "field")]
+    [InlineData("print(Worker.Mood.|)", "Mood", "CALM", "LIMIT")]
+    public void A_member_read_off_a_member_lists_its_own_members_after_its_dot(string written, string type, string listed, string left)
+    {
+        const string Worker = "class_name Worker\nextends Node\n\nsignal hit\nenum Mood { CALM }\nconst LIMIT := 3\nvar field := 1\nvar buddy: Worker\nvar inner_held: Inner\n\n"
+            + "class Inner:\n\tvar held := 1\n\tconst DEEP := 2\n\tstatic func make() -> int:\n\t\treturn 1\n\tclass Deepest:\n\t\tconst BOTTOM := 3\n\t\tstatic func low() -> int:\n\t\t\treturn 2\n\n"
+            + "func work() -> int:\n\treturn 1\n\nstatic func count() -> int:\n\treturn 2\n";
+        const string Head = "extends Node2D\n\nvar buddy: Worker\nvar spot: Vector2\n\nfunc f():\n\t";
+        foreach (string after in (string[])[string.Empty, "zz"])
+        {
+            string text = Head + written.Replace("|", after, StringComparison.Ordinal) + "\n";
+            (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, new() { ["res://worker.gd"] = Worker });
+            int dot = Head.Length + written.IndexOf('|', StringComparison.Ordinal) - 1;
+            GDScriptType owner = analysis.NodeAt(dot - 1) is ({ } node, _) ? analysis.TypeOf(node) : GDScriptType.Variant;
+            Assert.True(owner.Name == type, $"What stands before the dot of {written} read as {owner}, not {type}: the list there stays empty");
+            HashSet<string> names = [.. analyzer.Members(owner).Select(m => m.Name)];
+            Assert.Superset(new HashSet<string>(listed.Split(' ')), names);
+            Assert.Empty(names.Intersect(left.Split(' ')));
+        }
+    }
+
+    /// <summary>A function read off a member is a Callable before its dot, and a name a type gives nothing stays no type.</summary>
+    [Theory]
+    [InlineData("print(self.work.|)", "Callable")]
+    [InlineData("print(self.buddy.work.|)", "Callable")]
+    [InlineData("print(self.buddy.gone.|)", "Variant")]
+    public void What_a_member_read_off_a_member_is_stands_before_its_dot(string written, string type)
+    {
+        const string Head = "class_name Worker\nextends Node\n\nvar buddy: Worker\n\nfunc work():\n\tpass\n\nfunc f():\n\t";
+        string text = Head + written.Replace("|", string.Empty, StringComparison.Ordinal) + "\n";
+        (GDScriptAnalysis analysis, _) = Analyze(text);
+        int dot = Head.Length + written.IndexOf('|', StringComparison.Ordinal) - 1;
+        Assert.Equal(type, analysis.NodeAt(dot - 1) is ({ } node, _) ? analysis.TypeOf(node).Name : null);
     }
 
     /// <summary>The locals in scope where a name is typed (the bar), the nearest first, whether the name is typed yet or, on a line
