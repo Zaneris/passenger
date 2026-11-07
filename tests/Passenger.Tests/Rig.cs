@@ -2335,7 +2335,9 @@ public static class TestGit
 }
 
 /// <summary>SSH keys a test signs its commits with, each made by ssh-keygen for that test alone in a folder of its own,
-/// never the person's: no agent holds them, and one with no passphrase signs without asking.</summary>
+/// never the person's: no agent holds them, and one with no passphrase signs without asking. Every ssh-keygen here runs
+/// with its input closed and asks only through the test's askpass (<see cref="SshKeygenQuestions"/>), so none reads a
+/// console or terminal, and one asking what the test does not answer is ended at once, saying what it asked.</summary>
 public static class TestSshKeys
 {
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
@@ -2345,58 +2347,47 @@ public static class TestSshKeys
         ? "ssh-keygen is not on the PATH, so no commit can be signed with an SSH key here"
         : null;
 
-    /// <summary>A new ed25519 key with no passphrase, at <c>folder/name</c> and its public half beside it (.pub).</summary>
+    /// <summary>A new ed25519 key with no passphrase (-N ""), at <c>folder/name</c> and its public half beside it (.pub).</summary>
     public static async Task<string> MakeAsync(string folder, string name)
     {
         string key = Path.Combine(folder, name);
-        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(
-            Passenger.Core.ChildProcesses.Command("ssh-keygen", ["-q", "-t", "ed25519", "-N", string.Empty, "-C", name, "-f", key], folder), limit: Limit.Scaled());
-        Assert.True(made.Succeeded, $"ssh-keygen made no key {name} to sign with, exiting {made.ExitCode}: {made.Error}{made.Output}");
+        (await RunAsync(folder, ["-q", "-t", "ed25519", "-N", string.Empty, "-C", name, "-f", key], [])).Succeeded($"made no key {name} to sign with");
         return key;
     }
 
-    /// <summary>A new ed25519 key guarded by <paramref name="passphrase"/>, which ssh-keygen is given as git's askpass
-    /// helper gives it (Passenger's own executable answering from a socket the test serves), never on its command line.</summary>
+    /// <summary>A new ed25519 key guarded by <paramref name="passphrase"/>, which ssh-keygen asks for twice and is given as
+    /// git's askpass helper gives it (Passenger's own executable answering from a socket the test serves), never on its
+    /// command line.</summary>
     public static async Task<string> MakeAsync(string folder, string name, string passphrase)
     {
         string key = Path.Combine(folder, name);
-        string socket = Path.Combine(Passenger.Core.SocketFolders.Own(StateStore.DefaultRoot), $"{Environment.ProcessId}-keygen-{name}");
-        File.Delete(socket);
-        using System.Net.Sockets.Socket listener = new(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
-        listener.Bind(new System.Net.Sockets.UnixDomainSocketEndPoint(socket));
-        listener.Listen(4);
-        using CancellationTokenSource ended = new();
-        // ssh-keygen asks for the passphrase, then for it again.
-        Task answering = Waiting.Apart(async () =>
-        {
-            while (!ended.IsCancellationRequested)
-            {
-                using System.Net.Sockets.Socket asked = await listener.AcceptAsync(ended.Token);
-                await using System.Net.Sockets.NetworkStream stream = new(asked);
-                byte[] prompt = new byte[4096];
-                while (await stream.ReadAsync(prompt, ended.Token) > 0)
-                {
-                }
-                await stream.WriteAsync(System.Text.Encoding.UTF8.GetBytes("+" + passphrase), ended.Token);
-                asked.Shutdown(System.Net.Sockets.SocketShutdown.Send);
-            }
-        });
-        System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("ssh-keygen", ["-q", "-t", "ed25519", "-C", name, "-f", key], folder);
-        start.Environment["SSH_ASKPASS"] = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
-        start.Environment["SSH_ASKPASS_REQUIRE"] = "force";
-        start.Environment[Passenger.Vcs.GitAskPass.Variable] = socket;
-        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(start, limit: Limit.Scaled());
-        await ended.CancelAsync();
+        SshKeygenRun made = await RunAsync(folder, ["-q", "-t", "ed25519", "-C", name, "-f", key], [passphrase, passphrase]);
+        made.Succeeded($"made no key {name} guarded by a passphrase");
+        Assert.True(made.Asked.Count == 2 && File.Exists(key), $"ssh-keygen asked for key {name}'s passphrase {made.Asked.Count} times, not twice, so it may not guard the key: {made}");
+        return key;
+    }
+
+    /// <summary>ssh-keygen with <paramref name="arguments"/> in <paramref name="folder"/>, its input closed, each question it
+    /// asks given the next of <paramref name="answers"/>: one past them, or an exchange with its helper that fails, ends it
+    /// at once (<see cref="SshKeygenRun.Unanswered"/>), where it would ask again or wait for good.</summary>
+    public static async Task<SshKeygenRun> RunAsync(string folder, IReadOnlyList<string> arguments, IReadOnlyList<string> answers)
+    {
+        await using SshKeygenQuestions questions = SshKeygenQuestions.Open(answers);
+        System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("ssh-keygen", arguments, folder);
+        questions.Give(start);
         try
         {
-            await answering;
+            Passenger.Core.ChildResult result = await Passenger.Core.ChildProcesses.RunAsync(start, limit: Limit.Scaled(), cancel: questions.Unanswering);
+            return new SshKeygenRun(result, questions.Asked, questions.Unanswered);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (questions.Unanswering.IsCancellationRequested)
         {
+            return new SshKeygenRun(null, questions.Asked, questions.Unanswered);
         }
-        File.Delete(socket);
-        Assert.True(made.Succeeded && File.Exists(key), $"ssh-keygen made no key {name} guarded by a passphrase, exiting {made.ExitCode}: {made.Error}{made.Output}");
-        return key;
+        catch (TimeoutException late)
+        {
+            throw new TimeoutException($"{late.Message}, {questions.Said}", late);
+        }
     }
 
     /// <summary>A key's public half as an allowed signers file lists it after the signer's name.</summary>
@@ -2417,13 +2408,8 @@ public static class TestSshKeys
     }
 
     /// <summary>A key's fingerprint as git names a signature's key (%GK).</summary>
-    public static async Task<string> FingerprintAsync(string key)
-    {
-        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(
-            Passenger.Core.ChildProcesses.Command("ssh-keygen", ["-l", "-E", "sha256", "-f", key + ".pub"], Path.GetDirectoryName(key)!), limit: Limit.Scaled());
-        Assert.True(listed.Succeeded, $"ssh-keygen gave no fingerprint of {key}: {listed.Error}");
-        return listed.Output.Split(' ')[1];
-    }
+    public static async Task<string> FingerprintAsync(string key) =>
+        (await RunAsync(Path.GetDirectoryName(key)!, ["-l", "-E", "sha256", "-f", key + ".pub"], [])).Succeeded($"gave no fingerprint of {key}").Output.Split(' ')[1];
 
     /// <summary>A repository made in <paramref name="root"/> (<see cref="TestGit.InitAsync"/>) of an unsigned first commit,
     /// one signed by a key the allowed signers file in <paramref name="keys"/> lists for tests@passenger.invalid, and one
