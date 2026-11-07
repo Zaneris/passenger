@@ -273,7 +273,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   newer Godot's warning or error is gated on `GodotEngineApi.Version`; an error is said only where the class is read
   whole and both types are sure (`GDScriptAnalyzer.Knows`, `Sure`); a GDScript session starts no Godot editor, its
   headless one only when asked (`WebLanguages.AskGodot`; a test of Godot's own server opens with
-  `MainWindow.GodotHeadlessAtOpen`); a function's argument count only `GodotScriptDeclared.Takes`; `GDScriptFormatter`
+  `MainWindow.GodotHeadlessAtOpen`); a function's argument count only `GodotScriptDeclared.Takes`; what stands before a dot only
+  `GDScriptAnalysis.ValueBefore`, never `NodeAt(dot - 1)`; `GDScriptFormatter`
   refuses unless `Differs` finds the same tokens, comments and tree, and Reformat Code never runs `OrderParts`. Godot's
   generator assigns every field in generated code, so a field's values come from the code's own documents. Edits placed
   in text Passenger read carry that text (`PlacedEdits`), checked before anything is written. A GDScript refactoring
