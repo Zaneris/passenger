@@ -231,7 +231,7 @@ public static class CreateFromUsage
     /// blank line between, indented as the type's members are; the class made partial and the usings added that it needs.</summary>
     private static IReadOnlyList<TextEdit> Edits(string text, ClrType owner, Planned member, CSharpParseOptions parsing)
     {
-        SyntaxNode root = CSharpSyntaxTree.ParseText(text, parsing).GetRoot();
+        SyntaxNode root = SourceTypes.Parsed(text, parsing).GetRoot();
         TypeDeclarationSyntax? type = root.DescendantNodes().OfType<TypeDeclarationSyntax>().FirstOrDefault(t => FullName(t) == owner.FullName);
         if (type is null || type.OpenBraceToken.IsMissing)
         {
@@ -296,13 +296,21 @@ public static class CreateFromUsage
         type is TypeDeclarationSyntax { TypeParameterList.Parameters.Count: > 0 and int arity } ? $"{type.Identifier.ValueText}`{arity}" : type.Identifier.ValueText;
 
     /// <summary>A namespace's name as metadata has it, each part without an <c>@</c> that escapes it, a <c>global::</c> left out.</summary>
-    private static string Dotted(NameSyntax name) => name switch
+    private static string Dotted(NameSyntax name)
     {
-        QualifiedNameSyntax qualified => $"{Dotted(qualified.Left)}.{qualified.Right.Identifier.ValueText}",
-        AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
-        SimpleNameSyntax simple => simple.Identifier.ValueText,
-        _ => name.ToString(),
-    };
+        Stack<string> parts = new();
+        for (; name is QualifiedNameSyntax qualified; name = qualified.Left)
+        {
+            parts.Push(qualified.Right.Identifier.ValueText);
+        }
+        parts.Push(name switch
+        {
+            AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
+            SimpleNameSyntax simple => simple.Identifier.ValueText,
+            _ => name.ToString(),
+        });
+        return string.Join('.', parts);
+    }
 
     /// <summary>The using directives a file lacks of those a member needs, after its last one (or at its top).</summary>
     private static TextEdit? Usings(SyntaxNode root, IReadOnlyList<string> needed, string own)

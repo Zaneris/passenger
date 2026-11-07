@@ -458,12 +458,12 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             {
                 await held.Ended();
             }
-            long allocated = GC.GetAllocatedBytesForCurrentThread();
-            SyntaxTree parsed = previous is null ? CSharpSyntaxTree.ParseText(parsedText, parsedWith) : previous.WithChangedText(parsedText);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() + DeepText.ReadBytes;
+            SyntaxTree parsed = previous is null ? CSharpParsing.Parse(parsedText, parsedWith) : CSharpParsing.Changed(previous, parsedText);
             // The screen's lines classified here build the tree's nodes off the UI thread, which classifies them no more.
             Dictionary<int, (int Length, SyntaxSpan[] Spans)> read = Read(parsed.GetRoot(), parsedText.Snapshot, warm);
             FoldRegions folds = FoldRegions.Of(new ParsedText(parsed, parsedText.Snapshot), previousFolds);
-            Interlocked.Add(ref parseBytes, GC.GetAllocatedBytesForCurrentThread() - allocated);
+            Interlocked.Add(ref parseBytes, GC.GetAllocatedBytesForCurrentThread() + DeepText.ReadBytes - allocated);
             Interlocked.Increment(ref parses);
             return (Tree: parsed, Folds: folds, Lines: read);
         });
@@ -567,7 +567,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             ((IAsyncResult)first).AsyncWaitHandle.WaitOne();
             basis = first.IsCompletedSuccessfully ? first.Result.Tree : null;
         }
-        return basis is null ? CSharpSyntaxTree.ParseText(text, options) : basis.WithChangedText(text);
+        return basis is null ? CSharpParsing.Parse(text, options) : CSharpParsing.Changed(basis, text);
     }
 
     private void OnUi(Action action)

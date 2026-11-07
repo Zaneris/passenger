@@ -1,3 +1,4 @@
+using Passenger.Languages.CSharp;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.CodeAnalysis;
@@ -364,7 +365,7 @@ public static class TypeRename
         {
             return null;
         }
-        return (CSharpSyntaxTree.ParseText(file.Text, editors.ParseOptions(path)).GetRoot(), TextSnapshot.From(file.Text));
+        return (CSharpParsing.Parse(file.Text, editors.ParseOptions(path)).GetRoot(), TextSnapshot.From(file.Text));
     }
 
     private static bool IsCSharp(string path) => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);

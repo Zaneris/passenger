@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -194,8 +195,9 @@ public static class Colours
         }
     }
 
-    /// <summary>A small integer constant as written (a decimal or hex literal, maybe cast to byte); -1 for anything else.</summary>
-    private static int Constant(ExpressionSyntax expression) => expression switch
+    /// <summary>A small integer constant as written (a decimal or hex literal, maybe cast to byte); -1 for anything else, past
+    /// the stack left too.</summary>
+    private static int Constant(ExpressionSyntax expression) => !RuntimeHelpers.TryEnsureSufficientExecutionStack() ? -1 : expression switch
     {
         LiteralExpressionSyntax { Token.Value: int value } => value,
         LiteralExpressionSyntax { Token.Value: uint value } when value <= 255 => (int)value,

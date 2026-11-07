@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Editor;
+using Passenger.Languages.CSharp;
 using Passenger.Roslyn.Extension;
 
 namespace Passenger.App.CSharp;
@@ -182,7 +183,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         : SyntaxFacts.IsValidIdentifier(name.Trim()) && SyntaxFacts.GetKeywordKind(name.Trim()) == SyntaxKind.None);
 
     private bool IsType(string? text) => !string.IsNullOrWhiteSpace(text) && (GDScript ? Passenger.Workspace.GDScript.GDScriptRefactorings.IsType(text.Trim())
-        : !SyntaxFactory.ParseTypeName(text.Trim()).ContainsDiagnostics);
+        : CSharpParsing.ReadsAsType(text.Trim()));
 
     /// <summary>A new parameter after the chosen one, its type to type first.</summary>
     private void Add()

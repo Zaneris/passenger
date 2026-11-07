@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Languages.CSharp;
@@ -41,5 +42,17 @@ public sealed class ParameterTypesTests
     public void Overloads_come_to_different_words(string one, string other)
     {
         Assert.NotEqual(Of(one), Of(other));
+    }
+
+    [Fact]
+    public void A_type_deeper_than_a_stack_holds_is_named_and_ends_nothing()
+    {
+        string stars = new('*', 100_000);
+        SmallStack.Run(() =>
+        {
+            SyntaxNode root = CSharpParsing.Parse($"class C {{ void M(int{stars} p) {{ }} }}").GetRoot();
+            string named = ParameterTypes.Of(root.DescendantNodes().OfType<ParameterListSyntax>().Single());
+            Assert.Equal("int" + stars, named);
+        });
     }
 }

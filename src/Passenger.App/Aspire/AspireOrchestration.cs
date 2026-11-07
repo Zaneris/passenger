@@ -254,12 +254,12 @@ public static class AspireOrchestration
         CSharpParseOptions parsing = CompilationSymbols.Of(defaults);
         List<MethodDeclarationSyntax> methods = [.. FolderWalk.Files(defaults.Folder, built: true)
             .Where(p => p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            .SelectMany(p => CSharpSyntaxTree.ParseText(Read(p).Text, parsing).GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())];
+            .SelectMany(p => CSharpParsing.Parse(Read(p).Text, parsing).GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())];
         if (!methods.Any(m => m.Identifier.ValueText == "AddServiceDefaults" && m.ParameterList.Parameters.FirstOrDefault()?.Modifiers.Any(SyntaxKind.ThisKeyword) == true))
         {
             throw new InvalidOperationException("The selected ServiceDefaults project does not expose AddServiceDefaults: choose an Aspire ServiceDefaults project");
         }
-        bool web = services.Any(p => CSharpSyntaxTree.ParseText(Read(Path.Combine(p.Folder, "Program.cs")).Text, CompilationSymbols.Of(p)).GetRoot()
+        bool web = services.Any(p => CSharpParsing.Parse(Read(Path.Combine(p.Folder, "Program.cs")).Text, CompilationSymbols.Of(p)).GetRoot()
             .DescendantNodes().OfType<InvocationExpressionSyntax>().Any(i => i.Expression is MemberAccessExpressionSyntax
             { Expression: IdentifierNameSyntax { Identifier.ValueText: "WebApplication" }, Name.Identifier.ValueText: "CreateBuilder" }));
         if (web && !methods.Any(m => m.Identifier.ValueText == "MapDefaultEndpoints" && m.ParameterList.Parameters.FirstOrDefault()?.Modifiers.Any(SyntaxKind.ThisKeyword) == true))
@@ -285,7 +285,7 @@ public static class AspireOrchestration
     /// <summary>The AppHost's file that makes its builder, its files read as its project compiles them (<paramref name="parsing"/>).</summary>
     private static string HostSourcePath(string project, CSharpParseOptions parsing)
     {
-        List<string> sources = [.. AppHostSources(project).Where(path => CSharpSyntaxTree.ParseText(Read(path).Text, parsing).GetRoot()
+        List<string> sources = [.. AppHostSources(project).Where(path => CSharpParsing.Parse(Read(path).Text, parsing).GetRoot()
             .DescendantNodes().OfType<InvocationExpressionSyntax>().Any(i => i.Expression is MemberAccessExpressionSyntax
                 { Expression: IdentifierNameSyntax { Identifier.ValueText: "DistributedApplication" }, Name.Identifier.ValueText: "CreateBuilder" }))];
         return sources.Count == 1 ? sources[0]
@@ -555,7 +555,7 @@ public static class AspireOrchestration
     /// <summary>A file to change, read as its project compiles it (<paramref name="parsing"/>).</summary>
     private static CompilationUnitSyntax Parse(string text, string path, CSharpParseOptions parsing)
     {
-        CompilationUnitSyntax root = CSharpSyntaxTree.ParseText(text, parsing).GetCompilationUnitRoot();
+        CompilationUnitSyntax root = CSharpParsing.Parse(text, parsing).GetCompilationUnitRoot();
         if (root.ContainsDiagnostics || root.ContainsDirectives)
         {
             throw new InvalidOperationException($"{path}: source contains syntax errors or directives: add orchestration by hand for this layout");

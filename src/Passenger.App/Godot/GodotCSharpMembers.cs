@@ -19,7 +19,7 @@ public static class GodotCSharpMembers
     public static IReadOnlyList<GodotCSharpMember> Of(string path, string text)
     {
         string name = System.IO.Path.GetFileNameWithoutExtension(path);
-        SyntaxNode root = CSharpSyntaxTree.ParseText(text, CSharpParsing.Default).GetRoot();
+        SyntaxNode root = CSharpParsing.Parse(text, CSharpParsing.Default).GetRoot();
         ClassDeclarationSyntax? declared = root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax)
             .OfType<ClassDeclarationSyntax>().FirstOrDefault(c => c.Identifier.ValueText == name);
         if (declared is null)

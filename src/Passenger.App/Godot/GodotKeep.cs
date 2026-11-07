@@ -1,3 +1,4 @@
+using Passenger.Languages.CSharp;
 using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -226,7 +227,7 @@ public static class GodotKeep
     /// member, or its declared type takes no value written here.</summary>
     public static GodotKept? InCode(string file, string code, CSharpParseOptions options, string property, object? value, GodotProperty? declared)
     {
-        SyntaxNode root = CSharpSyntaxTree.ParseText(code, options).GetRoot();
+        SyntaxNode root = CSharpParsing.Parse(code, options).GetRoot();
         string script = System.IO.Path.GetFileNameWithoutExtension(file);
         IEnumerable<MemberDeclarationSyntax> members = root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax)
             .OfType<ClassDeclarationSyntax>().Where(c => c.Identifier.ValueText == script).SelectMany(c => c.Members);

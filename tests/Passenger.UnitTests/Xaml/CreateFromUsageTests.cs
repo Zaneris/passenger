@@ -52,6 +52,23 @@ public class CreateFromUsageTests
             $"Create property for a binding of B.MainViewModel did not make it in B's class, the binding still finding nothing:\n{made}");
     }
 
+    [Fact]
+    public void A_property_is_made_in_a_type_whose_namespace_has_more_parts_than_a_stack_holds()
+    {
+        string space = "a" + string.Concat(Enumerable.Repeat(".a", 30_000));
+        string models = $"namespace {space}\n{{\n    public class Order\n    {{\n        public string Title {{ get; set; }}\n    }}\n}}\n";
+        string window = $"<Window xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" xmlns:vm=\"using:{space}\" x:DataType=\"vm:Order\">"
+            + "<TextBlock Text=\"{Binding Subtitle}\" /></Window>";
+        SmallStack.Run(() =>
+        {
+            XamlFile file = XamlFiles.Read("MainWindow.axaml", window, AvaloniaDialect.Instance, ("Models.cs", models));
+            ClrType owner = Assert.IsType<ClrType>(file.Types.Find(space + ".Order"));
+            XmlAttribute text = file.Tree.Elements.Single(e => e.LocalName == "TextBlock").Attribute("Text")!;
+            XamlFix fix = Assert.IsType<XamlFix>(CreateFromUsage.Property(file, owner, "Subtitle", text, last: true));
+            Assert.Contains("public object Subtitle { get; set; }", XamlFiles.Applied(models, fix.Edits(models)), StringComparison.Ordinal);
+        });
+    }
+
     [Theory]
     [InlineData("Shop", "@event", "Shop.event", "using:Shop", "vm:event")]
     [InlineData("Shop.@class", "Order", "Shop.class.Order", "using:Shop.class", "vm:Order")]

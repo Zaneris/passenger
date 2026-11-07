@@ -37,7 +37,7 @@ public static class LambdaBreakpoints
         }
         CSharpParseOptions options = editors.ParseOptions(path);
         ParsedText? read = await BackgroundWork.Run(() => EditorArea.ReadText(path) is { } text
-            ? new ParsedText(CSharpSyntaxTree.ParseText(text, options), TextSnapshot.From(text))
+            ? new ParsedText(CSharpParsing.Parse(text, options), TextSnapshot.From(text))
             : null);
         // Opened as it was read, its text is the editor's.
         return editors.Find(path) is { } opened ? opened.Syntax?.Current : read;

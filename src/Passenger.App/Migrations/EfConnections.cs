@@ -1,3 +1,4 @@
+using Passenger.Languages.CSharp;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -17,7 +18,7 @@ public static class EfConnections
     /// <summary>The connection's name, and where it was told; null where nothing tells it.</summary>
     public static (string Name, string Told)? NameOf(string context, IEnumerable<(string Path, string Text)> code, CSharpParseOptions options, IReadOnlyList<string> configured)
     {
-        List<SyntaxNode> roots = [.. code.Select(c => CSharpSyntaxTree.ParseText(c.Text, options, c.Path).GetRoot())];
+        List<SyntaxNode> roots = [.. code.Select(c => CSharpParsing.Parse(c.Text, options, c.Path).GetRoot())];
         foreach (SyntaxNode root in roots)
         {
             foreach (InvocationExpressionSyntax registration in root.DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => Registers(i, context)))

@@ -123,7 +123,7 @@ public static class TestsAtCaret
     /// <summary>A file not open in an editor, parsed on its own with its project's symbols (<see cref="CSharpParsing"/>),
     /// its documentation comments passed over: an open one's tests are read from its shared parse.</summary>
     public static FileTests Read(string text, CSharpParseOptions options, IReadOnlySet<string>? own = null) =>
-        Read(new ParsedText(CSharpSyntaxTree.ParseText(text, options.WithDocumentationMode(DocumentationMode.None)), TextSnapshot.From(text)), own);
+        Read(new ParsedText(CSharpParsing.Parse(text, options.WithDocumentationMode(DocumentationMode.None)), TextSnapshot.From(text)), own);
 
     /// <summary>Whether a test's full name (a theory's rows, NUnit's cases and fixtures' instances included) belongs to a
     /// type and method.</summary>

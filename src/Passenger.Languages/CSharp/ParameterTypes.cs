@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis.CSharp;
+using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Core;
 
@@ -18,8 +19,9 @@ public static class ParameterTypes
         return (byReference ? "&" : string.Empty) + (parameter.Type is { } type ? Named(type) : string.Empty);
     }
 
-    /// <summary>A type in those words.</summary>
-    public static string Named(TypeSyntax type) => type switch
+    /// <summary>A type in those words; past the stack left (a chain of a thousand <c>*</c> is one the parser makes with none),
+    /// as it is written.</summary>
+    public static string Named(TypeSyntax type) => !RuntimeHelpers.TryEnsureSufficientExecutionStack() ? type.ToString() : type switch
     {
         PredefinedTypeSyntax predefined => predefined.Keyword.Text,
         IdentifierNameSyntax name => PrimitiveTypes.Named($"System.{name.Identifier.Text}")?.CSharpName ?? name.Identifier.Text,

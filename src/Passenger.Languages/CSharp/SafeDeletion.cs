@@ -15,7 +15,7 @@ public static class SafeDeletion
 {
     /// <summary>A file not open in the editor, parsed once for what is asked of it with its project's symbols
     /// (<see cref="CSharpParsing"/>).</summary>
-    public static ParsedText Parse(string text, CSharpParseOptions options) => new(CSharpSyntaxTree.ParseText(text, options), TextSnapshot.From(text));
+    public static ParsedText Parse(string text, CSharpParseOptions options) => new(CSharpParsing.Parse(text, options), TextSnapshot.From(text));
 
     /// <summary>What deleting the declaration whose name is at an offset takes out of its file, or null when no name of a
     /// declaration is there.</summary>

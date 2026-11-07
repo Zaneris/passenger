@@ -140,7 +140,7 @@ public static partial class GodotMembers
         {
             if (at.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
             {
-                run.AddRange(RunByReading(CSharpSyntaxTree.ParseText(text, CSharpParsing.Default).GetRoot(), at));
+                run.AddRange(RunByReading(CSharpParsing.Parse(text, CSharpParsing.Default).GetRoot(), at));
                 break;
             }
             GDScriptTree tree = GDScriptTree.Parse(text);

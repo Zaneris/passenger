@@ -1,5 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Passenger.Languages.CSharp;
 using Passenger.Xaml;
 using Passenger.Xaml.Dialects;
+using Passenger.Xaml.Features;
+using Passenger.Xaml.Metadata;
 using Passenger.Xaml.Syntax;
 
 namespace Passenger.UnitTests.Xaml;
@@ -39,5 +43,27 @@ public class XamlFileTests
         string text = string.Concat(Enumerable.Repeat("<Style Selector=\"^:a\">", 64)) + string.Concat(Enumerable.Repeat("</Style>", 64));
         XamlFile file = XamlFiles.Read("Styles.axaml", text, AvaloniaDialect.Instance);
         Assert.Null(file.StyleTargetAt(file.Tree.Elements[^1]));
+    }
+
+    [Fact]
+    public void A_type_deeper_than_a_stack_holds_reads_as_far_as_a_reference_goes_and_ends_nothing()
+    {
+        string text = "class C { " + string.Concat(Enumerable.Repeat("A<", 100_000)) + "int" + new string('>', 100_000) + " x; }";
+        SmallStack.Run(() =>
+        {
+            ClrType type = Assert.Single(SourceTypes.Read("/App/C.cs", text, "App", CSharpParsing.Default).Types);
+            Assert.Equal("x", Assert.Single(type.Members).Name);
+        });
+    }
+
+    [Fact]
+    public void A_colours_casts_deeper_than_a_stack_holds_say_no_colour_and_end_nothing()
+    {
+        string casts = string.Concat(Enumerable.Repeat("(byte)", 100_000));
+        SmallStack.Run(() =>
+        {
+            SyntaxNode root = CSharpParsing.Parse($"class C {{ object c = Color.FromRgb({casts}1, 2, 3); }}").GetRoot();
+            Assert.Empty(Colours.InCSharp(root));
+        });
     }
 }

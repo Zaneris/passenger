@@ -69,7 +69,7 @@ public static class PostfixTemplates
             return null;
         }
         SourceText ended = syntax.Tree.GetText().WithChanges(new TextChange(TextSpan.FromBounds(dot, caret), ";"));
-        SyntaxNode root = syntax.Tree.WithChangedText(ended).GetRoot();
+        SyntaxNode root = CSharpParsing.Changed(syntax.Tree, ended).GetRoot();
         SyntaxToken last = root.FindToken(dot - 1);
         if (last.Span.End != dot || last.Parent is null)
         {

@@ -100,7 +100,7 @@ public partial class MainWindow
                 ServerLines lines = ServerLines.Of(snapshot);
                 List<int> offsets = [.. here.Select(l => lines.OffsetOf(l.Range.Start))];
                 IReadOnlyList<UsageKind> kinds = path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
-                    ? UsageKinds.Classify(syntax?.Root ?? CSharpSyntaxTree.ParseText(snapshot.ToString(), parse).GetRoot(), offsets)
+                    ? UsageKinds.Classify(syntax?.Root ?? CSharpParsing.Parse(snapshot.ToString(), parse).GetRoot(), offsets)
                     : [.. here.Select(_ => UsageKind.Other)];
                 for (int i = 0; i < here.Count; i++)
                 {

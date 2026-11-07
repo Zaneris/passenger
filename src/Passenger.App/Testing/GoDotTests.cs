@@ -184,13 +184,13 @@ public static partial class GoDotTests
 
     /// <summary>Whether C# calls GoDotTest's GoTest.RunTests, as its syntax says.</summary>
     public static bool RunsTests(string code, CSharpParseOptions? parsing = null) =>
-        CSharpSyntaxTree.ParseText(code, parsing ?? CSharpParsing.Default).GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Any(call =>
+        CSharpParsing.Parse(code, parsing ?? CSharpParsing.Default).GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Any(call =>
             call.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "RunTests", Expression: var owner }
             && owner is IdentifierNameSyntax { Identifier.ValueText: "GoTest" } or MemberAccessExpressionSyntax { Name.Identifier.ValueText: "GoTest" });
 
     /// <summary>The scenes C# names by a string of a res:// path, which it may change to.</summary>
     private static IEnumerable<string> ScenesNamed(string code, CSharpParseOptions? parsing) =>
-        CSharpSyntaxTree.ParseText(code, parsing ?? CSharpParsing.Default).GetRoot().DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken))
+        CSharpParsing.Parse(code, parsing ?? CSharpParsing.Default).GetRoot().DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken))
             .Select(t => t.ValueText).Where(v => v.StartsWith("res://", StringComparison.Ordinal) && v.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>A run's tests as GoDotTest's lines of them are heard: each test's start, then its end with the time between,

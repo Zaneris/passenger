@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Languages.CSharp;
@@ -40,7 +41,7 @@ public static class StringLines
         Stack<TextSpan> unread = new(LeftOut(root.DescendantTrivia()));
         while (unread.TryPop(out TextSpan run))
         {
-            foreach (SyntaxToken token in SyntaxFactory.ParseTokens(text.GetText(run.Start, run.Length), initialTokenPosition: run.Start, options: options))
+            foreach (SyntaxToken token in DeepText.Read(run.Length, () => SyntaxFactory.ParseTokens(text.GetText(run.Start, run.Length), initialTokenPosition: run.Start, options: options).ToList()))
             {
                 Inside(token.Span, text, lines);
                 foreach (TextSpan deeper in LeftOut(token.LeadingTrivia))

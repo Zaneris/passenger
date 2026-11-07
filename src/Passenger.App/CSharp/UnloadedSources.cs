@@ -56,7 +56,7 @@ internal static partial class UnloadedSources
         {
             return ([], false);
         }
-        SyntaxTree tree = CSharpSyntaxTree.ParseText(text, CSharpParsing.Default);
+        SyntaxTree tree = CSharpParsing.Parse(text, CSharpParsing.Default);
         int position = tree.GetText().Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(location.Range.Start.Line, location.Range.Start.Character));
         if (Declared(tree.GetRoot().FindToken(position).Parent) is not { } wanted)
         {
@@ -72,7 +72,7 @@ internal static partial class UnloadedSources
             {
                 continue;
             }
-            SyntaxTree read = CSharpSyntaxTree.ParseText(source, options, file);
+            SyntaxTree read = CSharpParsing.Parse(source, options, file);
             foreach (SyntaxNode node in read.GetRoot().DescendantNodes())
             {
                 if (DeclaredHere(node) is not { } declared || declared.Key with { Parameters = string.Empty } != wanted.Key with { Parameters = string.Empty })

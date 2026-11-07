@@ -4,6 +4,7 @@ using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.Core;
 using Passenger.Inspector;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.App.Mcp;
 
@@ -227,7 +228,7 @@ public sealed partial class PassengerTools
             }
             Text.TextSnapshot text = Text.TextSnapshot.From(source);
             return csharp
-                ? GodotMembers.OfCSharp(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source, options).GetRoot(), text, script)
+                ? GodotMembers.OfCSharp(CSharpParsing.Parse(source, options).GetRoot(), text, script)
                 : GodotMembers.OfGdScript(text, script);
         });
     }

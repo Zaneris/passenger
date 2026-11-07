@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Core;
 
 namespace Passenger.Xaml.Metadata;
 
@@ -10,6 +11,9 @@ namespace Passenger.Xaml.Metadata;
 /// with the scope they are read in, for the type system to resolve.</summary>
 public sealed class SourceTypes
 {
+    /// <summary>How deep a type's arguments are read, past what any type is written to.</summary>
+    private const int DeepestType = 64;
+
     private SourceTypes(string path, IReadOnlyList<ClrType> types, IReadOnlyList<string> globalUsings, IReadOnlyList<ClrAttribute> attributes, CSharpParseOptions? parsing)
     {
         Path = path;
@@ -38,11 +42,15 @@ public sealed class SourceTypes
     /// makes when no C# does.</summary>
     public static SourceTypes Declaring(string path, IReadOnlyList<ClrType> types) => new(path, types, [], [], null);
 
+    /// <summary>A text's tree, its parser running out of no stack; a text nested too deeply for it holds nothing.</summary>
+    internal static SyntaxTree Parsed(string text, CSharpParseOptions parsing, string path = "") =>
+        DeepText.Read(text.Length, () => CSharpSyntaxTree.ParseText(DeepText.TooDeep(text) ? string.Empty : text, parsing, path));
+
     /// <summary>A C# file's, parsed with what its project compiles it with (<paramref name="parsing"/>), its documentation
     /// comments passed over.</summary>
     public static SourceTypes Read(string path, string text, string assemblyName, CSharpParseOptions parsing)
     {
-        SyntaxTree tree = CSharpSyntaxTree.ParseText(text, parsing.WithDocumentationMode(DocumentationMode.None), path);
+        SyntaxTree tree = Parsed(text, parsing.WithDocumentationMode(DocumentationMode.None), path);
         CompilationUnitSyntax root = tree.GetCompilationUnitRoot();
         Reader reader = new(path, tree, assemblyName);
         reader.Unit(root);
@@ -353,29 +361,36 @@ public sealed class SourceTypes
         _ => false,
     };
 
-    /// <summary>A type written in source as a reference to resolve in its scope.</summary>
-    public static TypeRef Reference(TypeSyntax syntax, SourceScope scope)
+    /// <summary>A type written in source as a reference to resolve in its scope; one nested past <see cref="DeepestType"/>,
+    /// which a walk of a reference could not follow on a thread's stack, an object.</summary>
+    public static TypeRef Reference(TypeSyntax syntax, SourceScope scope) => Reference(syntax, scope, 0);
+
+    private static TypeRef Reference(TypeSyntax syntax, SourceScope scope, int depth)
     {
+        if (depth > DeepestType)
+        {
+            return TypeRef.Named("System.Object");
+        }
         switch (syntax)
         {
             case PredefinedTypeSyntax predefined:
                 return TypeRef.Named(TypeNames.FromKeyword(predefined.Keyword.Text) ?? "System.Object");
             case NullableTypeSyntax nullable:
-                return Reference(nullable.ElementType, scope);
+                return Reference(nullable.ElementType, scope, depth + 1);
             case ArrayTypeSyntax array:
-                return Reference(array.ElementType, scope) with { IsArray = true };
+                return Reference(array.ElementType, scope, depth + 1) with { IsArray = true };
             case GenericNameSyntax generic:
                 return new TypeRef(Arity(generic.Identifier.ValueText, generic.TypeArgumentList.Arguments.Count),
-                    [.. generic.TypeArgumentList.Arguments.Select(a => Reference(a, scope))], Scope: scope);
+                    [.. generic.TypeArgumentList.Arguments.Select(a => Reference(a, scope, depth + 1))], Scope: scope);
             case QualifiedNameSyntax qualified:
-                TypeRef right = Reference(qualified.Right, scope);
+                TypeRef right = Reference(qualified.Right, scope, depth + 1);
                 return right with { Name = $"{Strip(qualified.Left.ToString())}.{right.Name}" };
             case AliasQualifiedNameSyntax aliased:
-                return Reference(aliased.Name, scope);
+                return Reference(aliased.Name, scope, depth + 1);
             case IdentifierNameSyntax identifier:
                 return identifier.Identifier.Text == "var" ? TypeRef.Named("System.Object") : new TypeRef(identifier.Identifier.ValueText, [], Scope: scope);
             case TupleTypeSyntax tuple:
-                return new TypeRef($"System.ValueTuple`{tuple.Elements.Count}", [.. tuple.Elements.Select(e => Reference(e.Type, scope))]);
+                return new TypeRef($"System.ValueTuple`{tuple.Elements.Count}", [.. tuple.Elements.Select(e => Reference(e.Type, scope, depth + 1))]);
             default:
                 return TypeRef.Named("System.Object");
         }
