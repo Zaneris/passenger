@@ -25,6 +25,17 @@ public class IncludeGlobsTests
     }
 
     [Fact]
+    public void A_glob_goes_only_as_deep_as_the_path_it_matches_however_long_it_is()
+    {
+        string stars = string.Concat(Enumerable.Repeat($"**{Path.DirectorySeparatorChar}", 100_000));
+        SmallStack.Run(() =>
+        {
+            Assert.True(Globbed(At("cs", stars + "*.cs"), At("cs", "a", "b", "Util.cs")), "A long run of ** did not take a file folders down");
+            Assert.False(Globbed(At("cs", stars + "*.vb"), At("cs", "a", "b", "Util.cs")), "A long run of ** took a file its last part does not fit");
+        });
+    }
+
+    [Fact]
     public void A_file_matching_in_its_own_case_or_in_none_asks_no_folder()
     {
         Assert.True(Globbed(At("cs", "lib", "*.cs"), At("cs", "lib", "Util.cs")));

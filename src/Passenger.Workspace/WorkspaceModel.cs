@@ -264,9 +264,13 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// <summary>Whether a file matches an include as MSBuild's globs match: <c>*</c> and <c>?</c> within a name, <c>**</c>
     /// across folders, a name differing only in letter case where its folder ignores case (<paramref name="caseIgnoredIn"/>).</summary>
     internal static bool Globbed(string pattern, string path, Func<string, bool> caseIgnoredIn) =>
-        Matches(pattern.Split(Separators), 0, path, path.Split(Separators), 0, caseIgnoredIn);
+        Matches(Folded(pattern.Split(Separators)), 0, path, path.Split(Separators), 0, caseIgnoredIn);
 
     private static readonly char[] Separators = ['/', '\\'];
+
+    /// <summary>A glob's parts with each run of <c>**</c> as the one it means, so a match goes as deep as its path and no
+    /// deeper, however long the glob.</summary>
+    private static string[] Folded(string[] parts) => [.. parts.Where((part, at) => at == 0 || part != "**" || parts[at - 1] != "**")];
 
     private static bool Matches(string[] parts, int part, string path, string[] names, int name, Func<string, bool> caseIgnoredIn) =>
         part == parts.Length ? name == names.Length
