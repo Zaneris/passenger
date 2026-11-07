@@ -67,7 +67,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Ui.Settle();
         Assert.True(github.Requests.Count == 1, $"The window asked for the latest release {github.Requests.Count} times as it started, not once");
 
-        Assert.True(Notice(window) == $"Passenger {newer} available", $"A newer release, v{newer}, is out, but the status bar's notice is '{Notice(window)}'");
+        Assert.True(Notice(window) == $"Passenger {newer} available", $"A newer release, v{newer}, is out, but {UpdatesSaid(window)}");
         string download = $"https://github.com/Zaneris/passenger/releases/download/v{newer}/{ThisSystemsDownload()}";
         Assert.True(window.UpdateShown?.Link.AbsoluteUri == download,
             $"The notice's link opens {window.UpdateShown?.Link}, not this system's download from the release, {download}");
@@ -89,10 +89,10 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.WatchForUpdates();
         Ui.Settle();
         Assert.True(github.Requests.Count == 2, "The window started again did not ask for the latest release");
-        Assert.True(Notice(window) is null, $"v{newer} was announced already, yet the window started again announces it once more: '{Notice(window)}'");
+        Assert.True(Notice(window) is null, $"v{newer} was announced already, yet the window started again announces it once more: {UpdatesSaid(window)}");
 
         CheckForUpdates(window);
-        Assert.True(Notice(window) == $"Passenger {newer} available", "Check for Updates did not show the newer release the window had announced before");
+        Assert.True(Notice(window) == $"Passenger {newer} available", $"Check for Updates did not show the newer release the window had announced before: {UpdatesSaid(window)}");
         Assert.Equal($"Passenger {newer} is available", window.Status);
         window.Close();
 
@@ -101,7 +101,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window = Started();
         window.WatchForUpdates();
         Ui.Settle();
-        Assert.True(Notice(window) == $"Passenger {later} available", $"v{later} came out after v{newer} was announced, but the window shows '{Notice(window)}'");
+        Assert.True(Notice(window) == $"Passenger {later} available", $"v{later} came out after v{newer} was announced, but {UpdatesSaid(window)}");
         window.Close();
     }
 
@@ -146,7 +146,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Ui.Settle();
         Assert.True(github.Requests.Count == 1, "The window did not ask for the latest release as it started");
         Assert.True(Notice(window) is null && window.Status == before,
-            $"The latest release is the running version, yet the window shows '{Notice(window)}' and says '{window.Status}'");
+            $"The latest release is the running version, yet {UpdatesSaid(window)}");
 
         // Asked for, each of these is nothing newer, in Rider's words.
         (string What, StandIn.Reply Answer)[] nothingNewer =
@@ -165,7 +165,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             CheckForUpdates(window);
             Assert.True(github.Requests.Count == asked + 1, $"Check for Updates did not ask for the latest release with {what} out");
             Assert.True(window.Status == MainWindow.UpToDate, $"With {what} out, Check for Updates says '{window.Status}', not '{MainWindow.UpToDate}'");
-            Assert.True(Notice(window) is null, $"With {what} out, the status bar shows '{Notice(window)}'");
+            Assert.True(Notice(window) is null, $"With {what} out, {UpdatesSaid(window)}");
         }
         window.Close();
     }
@@ -195,12 +195,12 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.WatchForUpdates();
         Ui.Settle();
         Assert.True(github.Requests.Count == 0, $"With Check for updates off, the window asked for the latest release {github.Requests.Count} time(s)");
-        Assert.True(Notice(window) is null, $"With Check for updates off, the status bar shows '{Notice(window)}'");
+        Assert.True(Notice(window) is null, $"With Check for updates off, {UpdatesSaid(window)}");
 
         window.ApplySettings(window.Settings with { CheckForUpdates = true });
         Ui.Settle();
         Assert.True(github.Requests.Count == 1, "Check for updates turned on again did not ask for the latest release");
-        Assert.True(Notice(window) is not null, "Check for updates turned on again did not announce the newer release");
+        Assert.True(Notice(window) is not null, $"Check for updates turned on again did not announce the newer release: {UpdatesSaid(window)}");
         window.Close();
     }
 
@@ -217,21 +217,48 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.WatchForUpdates();
         Ui.Settle();
         Assert.True(github.Requests.Count == 1, "The window did not ask for the latest release as it started");
-        Assert.True(Notice(window) is null && window.Status == before, $"A check that failed shows '{Notice(window)}' and says '{window.Status}'");
+        Assert.True(Notice(window) is null && window.Status == before, $"A check that failed was shown or said, where it is only logged: {UpdatesSaid(window)}");
         Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: could not ask {github.Latest} for the latest release: it answered 500 Internal Server Error", StringComparison.Ordinal));
         window.Close();
 
         // A server that takes the request and never answers is given up on at the feed's timeout.
         github.Answer = null;
-        window = Started();
+        window = Started(feedLimit: TimeSpan.FromSeconds(1));
         window.WatchForUpdates();
         Ui.Settle();
         Assert.True(github.Requests.Count == 2, "The window did not ask for the latest release as it started");
-        Assert.True(Notice(window) is null && window.Status == before, $"A check never answered shows '{Notice(window)}' and says '{window.Status}'");
+        Assert.True(Notice(window) is null && window.Status == before, $"A check never answered was shown or said, where it is only logged: {UpdatesSaid(window)}");
         Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: could not ask {github.Latest} for the latest release: no answer in 1 s", StringComparison.Ordinal));
 
         CheckForUpdates(window);
         Assert.Equal("Could not check for updates: no answer in 1 s", window.Status);
+        window.Close();
+    }
+
+    /// <summary>A release answered late, as a cold start's first request on a busy machine may be, is announced once its
+    /// answer comes within the feed's limit; until then the status bar shows nothing, and its notice comes with its words.</summary>
+    [AvaloniaFact]
+    public void A_release_answered_late_is_announced_as_its_answer_comes_and_the_notice_never_shows_without_its_words()
+    {
+        using IDisposable theme = TestsTheme();
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}");
+        github.HoldAnswers();
+        MainWindow window = Started();
+        List<string?> shown = [];
+        using IDisposable following = FollowNotice(window, shown);
+        window.WatchForUpdates();
+        Ui.PumpUntil(() => github.Requests.Count == 1, "the window to ask for the latest release as it started");
+        Ui.Hold(TimeSpan.FromSeconds(2), "an answer later than a second, which a busy machine's first request may take");
+        Assert.True(Notice(window) is null, $"The window shows a notice while its check still waits for the answer: {UpdatesSaid(window)}");
+
+        github.Let();
+        Ui.Settle();
+        Assert.True(Notice(window) == $"Passenger {newer} available",
+            $"v{newer} was answered 2 s after the window asked, well within its feed's limit, yet {UpdatesSaid(window)}");
+        Assert.True(shown.SequenceEqual([$"Passenger {newer} available"]),
+            $"The notice's button came into view {shown.Count} time(s), with [{string.Join(", ", shown.Select(words => words is null ? "no words" : $"'{words}'"))}], not once with its words");
+        Assert.True(github.Requests.Count == 1, $"The window asked for the latest release {github.Requests.Count} times, not once");
         window.Close();
     }
 
@@ -332,7 +359,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.True(github.Requests.Count == 0, $"With Check for updates off, the window asked GitHub {github.Requests.Count} time(s)");
 
         CheckForUpdates(window);
-        Assert.True(Notice(window) == $"Passenger {newer} available", $"Check for Updates with the setting off shows '{Notice(window)}'");
+        Assert.True(Notice(window) == $"Passenger {newer} available", $"Check for Updates with the setting off did not show the newer release: {UpdatesSaid(window)}");
         Ui.Settle();
         string[] downloaded = [.. update.Keys.Where(name => github.RequestsFor(name).Length > 0)];
         Assert.True(downloaded.Length == 0, $"With Check for updates off, the window downloaded {string.Join(", ", downloaded)}");
@@ -342,7 +369,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", "Check for updates turned on to download the newer release");
         window.ApplySettings(window.Settings with { CheckForUpdates = false });
         Ui.WaitFor(() => !copy.Holds(newer) && copy.Downloaded().Count == 0, "the update downloaded to be dropped as Check for updates went off");
-        Assert.True(Notice(window) == $"Passenger {newer} available", $"With the download dropped, the status bar still shows '{Notice(window)}'");
+        Assert.True(Notice(window) == $"Passenger {newer} available", $"With the download dropped, {UpdatesSaid(window)}");
         Assert.Null(window.UpdateReady);
         window.Close();
         Ended(window);
@@ -370,7 +397,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         MainWindow window = Started();
         window.WatchForUpdates();
         Ui.Settle();
-        Assert.True(Notice(window) == $"Passenger {newer} available", $"A copy that cannot update itself shows '{Notice(window)}', not the newer release's link");
+        Assert.True(Notice(window) == $"Passenger {newer} available", $"A copy that cannot update itself does not show the newer release's link: {UpdatesSaid(window)}");
         Assert.True(github.Requests.Count == 1, $"A copy that cannot update itself made {github.Requests.Count} requests, not only the one for the latest release");
         CheckForUpdates(window);
         Assert.True(github.Requests.Count == 2 && files.Keys.All(name => github.RequestsFor(name).Length == 0),
@@ -551,7 +578,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Ui.Click(window.FindControl<Button>("UpdateButton")!);
             Assert.True(window.IsVisible, "Restart to Update closed the window while another Passenger runs from the same app");
             Assert.True(Notice(window) == $"Passenger {newer} waits for 1 program to close",
-                $"With another Passenger running from the app, Restart to Update's notice is '{Notice(window)}'");
+                $"With another Passenger running from the app, Restart to Update does not say it waits for it: {UpdatesSaid(window)}");
             string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
             Assert.True(tip.Contains($"Passenger {newer} cannot be installed while this runs from {copy.Bundle}:", StringComparison.Ordinal)
                 && tip.Contains($"process {other.Id}: ", StringComparison.Ordinal) && tip.Contains("Passenger 120", StringComparison.Ordinal)
@@ -745,7 +772,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         MainWindow window = Started(copy.Updater());
         window.WatchForUpdates();
         Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}",
-            () => $"the status bar to offer Restart to Update to v{newer}: its notice says '{Notice(window)}', its message '{window.Status}'");
+            () => $"the status bar to offer Restart to Update to v{newer}: {UpdatesSaid(window)}");
         Assert.True(copy.Holds(newer), $"Restart to Update is offered, but v{newer} is not unpacked beside {copy.Install}, where it installs from");
         Assert.True(copy.InstalledVersion == Product.Version, $"The update was put in place at once, as {copy.InstalledVersion}, before Passenger restarted");
 
@@ -848,7 +875,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             MainWindow window = Started(copy.Updater());
             window.WatchForUpdates();
             Ui.WaitFor(() => Notice(window) == $"Passenger {newer} ready to install",
-                () => $"the status bar to say v{newer} is ready to install by hand: its notice says '{Notice(window)}', its message '{window.Status}'");
+                () => $"the status bar to say v{newer} is ready to install by hand: {UpdatesSaid(window)}");
 
             string unpacked = Path.Combine(copy.Staging, newer, "passenger");
             string command = $"sudo {ShellWords.Quoted(Path.Combine(copy.Install, "install.sh"), ShellKind.Posix)} --system --from {ShellWords.Quoted(unpacked, ShellKind.Posix)} --keep-replaced";
@@ -891,7 +918,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.WatchForUpdates();
         Ui.Settle();
 
-        Assert.True(Notice(window) == $"Passenger {newer} available", $"A package manager's copy shows '{Notice(window)}', not that v{newer} is out");
+        Assert.True(Notice(window) == $"Passenger {newer} available", $"A package manager's copy does not say v{newer} is out: {UpdatesSaid(window)}");
         string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
         Assert.True(tip.Contains("This copy of Passenger is a package pacman installed: the system's package manager updates it.", StringComparison.Ordinal),
             $"The notice does not say the package manager updates this copy: '{tip}'");
@@ -911,13 +938,15 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     private static void Detach(string volume) => TestVolumes.Detach(volume, (tool, arguments) => Ran(tool, arguments, TimeSpan.FromMinutes(1).Scaled()));
 
-    /// <summary>The person's window as the app makes it, its settings kept in the test's state folder, asking the stand-in;
-    /// with the updater of a copy installed in a test folder, or, as every window but the person's own, none.</summary>
-    private MainWindow Started(Updater? updater = null)
+    /// <summary>The person's window as the app makes it, its settings kept in the test's state folder, asking the stand-in
+    /// within the limit a person's Passenger gives GitHub, scaled to the run, or the test's own (a stand-in held to not
+    /// answering); with the updater of a copy installed in a test folder, or, as every window but the person's own, none.</summary>
+    private MainWindow Started(Updater? updater = null, TimeSpan? feedLimit = null)
     {
+        ReleaseFeed feed = new(github.Latest, feedLimit ?? ReleaseFeed.ShortTimeout.Scaled());
         MainWindow window = new()
         {
-            Width = 1200, Height = 800, StateFolder = settings, Releases = new ReleaseFeed(github.Latest, TimeSpan.FromSeconds(1)), SelfUpdate = updater,
+            Width = 1200, Height = 800, StateFolder = settings, Releases = feed, SelfUpdate = updater,
         };
         window.Show();
         window.KeepSettings();
@@ -960,6 +989,29 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>The status bar's notice of a newer release, or null while it shows none.</summary>
     private static string? Notice(MainWindow window) =>
         window.FindControl<Button>("UpdateButton")!.IsVisible ? window.FindControl<TextBlock>("UpdateText")!.Text : null;
+
+    /// <summary>What the window shows and said of updates, for a failure to name: its notice or that it shows none, never
+    /// told apart by an empty quote, its status bar's message, and the log's last lines of its checks.</summary>
+    private static string UpdatesSaid(MainWindow window)
+    {
+        string[] checks = [.. Ui.IdeLog().Split('\n').Where(line => line.Contains("Updates: ", StringComparison.Ordinal)).TakeLast(4)];
+        string notice = Notice(window) is { } shown ? $"its notice says '{shown}'" : "it shows no notice";
+        return $"{notice}, its message '{window.Status}', and the log's last checks say:\n{(checks.Length == 0 ? "nothing" : string.Join('\n', checks))}";
+    }
+
+    /// <summary>The notice's words each time its button comes into view, as a person watching it come saw them.</summary>
+    private static IDisposable FollowNotice(MainWindow window, List<string?> shown)
+    {
+        TextBlock words = window.FindControl<TextBlock>("UpdateText")!;
+        return Avalonia.AvaloniaObjectExtensions.GetObservable(window.FindControl<Button>("UpdateButton")!, Avalonia.Visual.IsVisibleProperty)
+            .Subscribe(new Avalonia.Reactive.AnonymousObserver<bool>(visible =>
+            {
+                if (visible)
+                {
+                    shown.Add(words.Text);
+                }
+            }));
+    }
 
     /// <summary>This system's download by the release's fixed names: its system and its processor's.</summary>
     private static string ThisSystemsDownload()
@@ -1493,9 +1545,9 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
     }
 
-    /// <summary>GitHub on a loopback port of its own: releases/latest, answered as the test says or taken and never answered
-    /// until the client gives up, and a release's downloads, each request's head kept as it came. A file held is sent half
-    /// way and the rest only once the test lets it go.</summary>
+    /// <summary>GitHub on a loopback port of its own: releases/latest, answered as the test says, once it lets the answers
+    /// go where it held them, or taken and never answered until the client gives up, and a release's downloads, each
+    /// request's head kept as it came. A file held is sent half way and the rest only once the test lets it go.</summary>
     internal sealed class StandIn : IDisposable
     {
         private const string DownloadPath = "/Zaneris/passenger/releases/download/";
@@ -1505,6 +1557,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         private readonly StandInHttp http;
         private Reply? answer;
         private Held? holding;
+        private TaskCompletionSource? answersHeld;
 
         public StandIn()
         {
@@ -1552,7 +1605,15 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         /// <summary>Holds a file half sent until <see cref="Let"/>.</summary>
         public void Hold(string name) => Volatile.Write(ref holding, new Held(name, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)));
 
-        public void Let() => Interlocked.Exchange(ref holding, null)?.Gate.TrySetResult();
+        /// <summary>Holds each answer to releases/latest, its request taken, until <see cref="Let"/>.</summary>
+        public void HoldAnswers() => Volatile.Write(ref answersHeld, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+
+        /// <summary>Lets go of the file and the answers held.</summary>
+        public void Let()
+        {
+            Interlocked.Exchange(ref holding, null)?.Gate.TrySetResult();
+            Interlocked.Exchange(ref answersHeld, null)?.TrySetResult();
+        }
 
         public void Dispose()
         {
@@ -1572,6 +1633,10 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             }
             else if (Answer is { } reply)
             {
+                if (Volatile.Read(ref answersHeld) is { } held)
+                {
+                    await held.Task.WaitAsync(exchange.Ending);
+                }
                 await exchange.ReplyAsync(reply.Status, "application/json; charset=utf-8", reply.Body);
             }
             else
