@@ -412,9 +412,9 @@ public static class MSBuildCompletion
         {
             "TargetFramework" or "TargetFrameworks" => context.Insight?.Raw.Frameworks is { Count: > 0 } known
                 ? [.. known.Select(f => (f.Alias, (string?)f.Name))]
-                : [("net10.0", ".NET 10.0"), ("net9.0", ".NET 9.0"), ("net8.0", ".NET 8.0"), ("netstandard2.1", ".NET Standard 2.1"), ("netstandard2.0", ".NET Standard 2.0"), ("net48", ".NET Framework 4.8")],
+                : [("net11.0", ".NET 11.0"), ("net10.0", ".NET 10.0"), ("net9.0", ".NET 9.0"), ("net8.0", ".NET 8.0"), ("netstandard2.1", ".NET Standard 2.1"), ("netstandard2.0", ".NET Standard 2.0"), ("net48", ".NET Framework 4.8")],
             "OutputType" => [("Exe", "Console application"), ("Library", "Class library"), ("WinExe", "Windows application"), ("Module", "Module")],
-            "LangVersion" => [.. new[] { "latest", "latestMajor", "preview", "default", "14.0", "13.0", "12.0", "11.0", "10.0", "9.0", "8.0", "7.3" }.Select(v => (v, (string?)null))],
+            "LangVersion" => [.. new[] { "latest", "latestMajor", "preview", "default", "15.0", "14.0", "13.0", "12.0", "11.0", "10.0", "9.0", "8.0", "7.3" }.Select(v => (v, (string?)null))],
             "Configuration" => [("Debug", null), ("Release", null)],
             "Platform" or "PlatformTarget" => [("AnyCPU", null), ("x64", null), ("x86", null), ("ARM64", null)],
             "RuntimeIdentifier" or "RuntimeIdentifiers" => [.. new[] { "win-x64", "win-x86", "win-arm64", "osx-arm64", "osx-x64", "linux-x64", "linux-arm64", "linux-musl-x64" }
