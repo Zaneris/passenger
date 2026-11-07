@@ -599,6 +599,20 @@ public sealed partial class GDScriptAnalyzer
         return all;
     }
 
+    /// <summary>The members code at an offset finds by their names alone: <see cref="MembersInScope"/>'s, an enum's value's taking
+    /// what it finds of its own enum (<see cref="GDScriptAnalysis.EnumNamesAt"/>) over them.</summary>
+    public IReadOnlyList<GDScriptMemberInfo> MembersAt(GDScriptAnalysis analysis, int offset)
+    {
+        IReadOnlyList<GDScriptMemberInfo> members = MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(offset), analysis.StaticAt(offset));
+        if (analysis.EnumNamesAt(offset) is not { } own)
+        {
+            return members;
+        }
+        IEnumerable<GDScriptMemberInfo> values = members.FirstOrDefault(m => m is { Kind: "enum" } && m.Name == own.Name) is { Type: { } named }
+            ? Members(named).Where(m => m.Kind == "const" && own.Read.Contains(m.Name)) : [];
+        return [.. values.Concat(members.Where(m => !own.Unread.Contains(m.Name))).DistinctBy(m => m.Name)];
+    }
+
     private static IEnumerable<string> Names(GDScriptNode node) => node switch
     {
         GDScriptVariable { Identifier: { } name } => [name.Name],

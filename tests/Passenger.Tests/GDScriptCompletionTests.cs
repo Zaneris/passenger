@@ -319,6 +319,46 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>An enum's value lists the values before it, a named enum's too, and neither itself nor what comes after; inside a
+    /// call the integer can be made from any constant, so <c>PI</c> is listed there and only there, and <c>as</c> beside a value.</summary>
+    [AvaloniaFact]
+    public void An_enums_value_lists_the_values_before_it_and_a_call_in_it_takes_any_constant()
+    {
+        TestFolders.Write(folder, "main.gd", "extends Node\n\nconst PINE := 1\nvar stock := 1\n");
+        (MainWindow window, _, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "var stock := 1");
+            TypeOverLine(window, editor, "enum Named { Alpha = 1, Beta = ");
+            TypeName(window, "a");
+            Listed(window, "Alpha", "the value before");
+            Assert.DoesNotContain("Beta", window.Assist.CompletionLabels);
+            Assert.DoesNotContain("Named", window.Assist.CompletionLabels);
+            Ui.Press(window, "ESCAPE", settle: false);
+
+            TypeOverLine(window, editor, "enum { X = int(");
+            TypeName(window, "P");
+            Listed(window, "PI", "a float in a call");
+            Ui.Press(window, "ESCAPE", settle: false);
+
+            TypeOverLine(window, editor, "enum { X = ");
+            TypeName(window, "P");
+            Listed(window, "PINE", "an integer constant");
+            Assert.DoesNotContain("PI", window.Assist.CompletionLabels);
+            Ui.Press(window, "ESCAPE", settle: false);
+
+            TypeOverLine(window, editor, "enum { X = 1 ");
+            TypeName(window, "a");
+            Listed(window, "as", "a cast after a value");
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>After a closing bracket the list holds what the bracket closes, a call's result rather than its last argument's
     /// type, and a group's parentheses list what they hold.</summary>
     [AvaloniaFact]

@@ -131,7 +131,7 @@ public sealed class GDScriptAnalysis
     /// Godot's parser adds a name to its block (_find_identifiers_in_suite).</summary>
     public IReadOnlyList<GDScriptMemberInfo> LocalsAt(int offset)
     {
-        (_, GDScriptSuite? innermost, int from, _, _) = ScopeAt(offset);
+        (_, GDScriptSuite? innermost, int from, _, _, _) = ScopeAt(offset);
         if (innermost is null)
         {
             return [];
@@ -168,11 +168,15 @@ public sealed class GDScriptAnalysis
         return asked.Kind == GDScriptAskedKind.NodePath && StaticAt(caret) ? new GDScriptAsked(GDScriptAskedKind.None, caret) : asked;
     }
 
-    /// <summary>What an offset's place asks of a name: a constant's value, local or a class's, or an enum's; a constant with no
-    /// value yet is no node, so its line says.</summary>
+    /// <summary>What an offset's place asks of a name: a constant's value, local or a class's, or an enum's, whose call takes any
+    /// constant to give its integer from; a constant with no value yet is no node, so its line says.</summary>
     public GDScriptConstantPlace ConstantAt(int offset)
     {
         GDScriptConstantPlace read = ScopeAt(offset).Constant;
+        if (read == GDScriptConstantPlace.Integer && GDScriptAsked.At(Tree!.Text, offset).Call is not null)
+        {
+            return GDScriptConstantPlace.Value;
+        }
         if (read != GDScriptConstantPlace.None || Tree is not { Text: { } text } || offset > text.Length)
         {
             return read;
@@ -182,10 +186,24 @@ public sealed class GDScriptAnalysis
         return before.StartsWith("const ") && before.Contains('=') ? GDScriptConstantPlace.Value : read;
     }
 
+    /// <summary>What the value of an enum at an offset finds of that enum; null outside an enum.</summary>
+    public GDScriptEnumNames? EnumNamesAt(int offset)
+    {
+        if (ScopeAt(offset) is not { Enum: { } enumerated, From: var from })
+        {
+            return null;
+        }
+        int written = Math.Max(enumerated.Values.FindLastIndex(v => from + v.Name.Start <= offset), 0);
+        IEnumerable<string> unread = enumerated.Values.Skip(written).Select(v => v.Name.Name);
+        return new GDScriptEnumNames(enumerated.Identifier?.Name, enumerated.Values.Take(written).Select(v => v.Name.Name).ToHashSet(StringComparer.Ordinal),
+            (enumerated.Identifier is { Name: { } own } ? unread.Append(own) : unread).ToHashSet(StringComparer.Ordinal));
+    }
+
     /// <summary>The innermost inner class and block an offset is in, with the offset their positions count from, whether it is
-    /// static there and what a constant asks there. On a line of code the nodes around it say; on a line with nothing yet
-    /// before it, or past what could be read, its indentation does, as a name typed there would end what is less indented.</summary>
-    private (GDScriptClass? Class, GDScriptSuite? Block, int From, bool Static, GDScriptConstantPlace Constant) ScopeAt(int offset)
+    /// static there, what a constant asks there and the enum it is in. On a line of code the nodes around it say; on a line with
+    /// nothing yet before it, or past what could be read, its indentation does, as a name typed there would end what is less
+    /// indented.</summary>
+    private (GDScriptClass? Class, GDScriptSuite? Block, int From, bool Static, GDScriptConstantPlace Constant, GDScriptEnum? Enum) ScopeAt(int offset)
     {
         if (Tree?.Members.LastOrDefault(m => m.Start <= offset) is not { Node: { } member } within)
         {
@@ -206,6 +224,7 @@ public sealed class GDScriptAnalysis
         bool staticOwner = false;
         bool isStatic = false;
         GDScriptConstantPlace constant = GDScriptConstantPlace.None;
+        GDScriptEnum? enumerated = null;
         for (GDScriptNode? at = member; at is not null;)
         {
             GDScriptNode? next = LastBegunBy(at, relative);
@@ -214,7 +233,7 @@ public sealed class GDScriptAnalysis
                 case GDScriptClass inner:
                     if ((byIndent || relative > inner.End) && column <= IndentOf(inner))
                     {
-                        return (@class, block, within.Offset, isStatic, constant);
+                        return (@class, block, within.Offset, isStatic, constant, enumerated);
                     }
                     @class = inner;
                     break;
@@ -225,12 +244,13 @@ public sealed class GDScriptAnalysis
                     break;
                 case GDScriptConstant or GDScriptEnum when lineStart <= within.Offset + at.End:
                     constant = at is GDScriptEnum ? GDScriptConstantPlace.Integer : GDScriptConstantPlace.Value;
+                    enumerated = at as GDScriptEnum;
                     break;
                 case GDScriptFunction { Body: { } body } function:
                     staticOwner = function.IsLambda ? staticOwner : function.IsStatic;
                     if (relative <= function.HeaderEnd)
                     {
-                        return (@class, body, within.Offset, staticOwner, constant);
+                        return (@class, body, within.Offset, staticOwner, constant, enumerated);
                     }
                     next = body;
                     break;
@@ -241,7 +261,7 @@ public sealed class GDScriptAnalysis
                     int indent = suite.Statements.Count > 0 ? IndentOf(suite.Statements[0]) : around + 1;
                     if ((byIndent || relative > suite.End) && (indent <= around || column < indent))
                     {
-                        return (@class, block, within.Offset, isStatic, constant);
+                        return (@class, block, within.Offset, isStatic, constant, enumerated);
                     }
                     block = suite;
                     isStatic = staticOwner;
@@ -250,7 +270,7 @@ public sealed class GDScriptAnalysis
             around = Math.Max(around, IndentOf(at));
             at = next;
         }
-        return (@class, block, within.Offset, isStatic, constant);
+        return (@class, block, within.Offset, isStatic, constant, enumerated);
     }
 
     /// <summary>The last of a node's children to begin by an offset.</summary>

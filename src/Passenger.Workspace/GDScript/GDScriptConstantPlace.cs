@@ -9,6 +9,11 @@ public enum GDScriptConstantPlace
     Integer,
 }
 
+/// <summary>What an enum's value finds of its own enum, which Godot's analyzer reads a value at a time: the values before it by
+/// their names (<paramref name="Read"/>), and neither that value, those after it nor the enum (<paramref name="Unread"/>), each
+/// hiding what its class calls the same. <paramref name="Name"/> is the enum's own, null for one written without.</summary>
+public sealed record GDScriptEnumNames(string? Name, IReadOnlySet<string> Read, IReadOnlySet<string> Unread);
+
 /// <summary>The names a constant place takes, as Godot's analyzer folds them: a name that can begin what folds, so a class or an
 /// enum, which a dot goes on from. Pure.</summary>
 public static class GDScriptConstantPlaces
@@ -26,12 +31,12 @@ public static class GDScriptConstantPlaces
         _ => true,
     };
 
-    /// <summary>Whether a place takes a keyword: an integer no literal or operator a keyword writes.</summary>
+    /// <summary>Whether a place takes a keyword: an integer only <c>as</c>, the one operator there giving an integer.</summary>
     public static bool TakesKeyword(this GDScriptConstantPlace place, string keyword) => place switch
     {
         GDScriptConstantPlace.None => true,
         GDScriptConstantPlace.Value => !Running.Contains(keyword),
-        _ => false,
+        _ => keyword == "as",
     };
 
     /// <summary>Whether a place takes a utility function: one Godot folds, for an integer one that may give one.</summary>

@@ -230,7 +230,7 @@ internal sealed partial class GDScriptAssist
             }
         }
         bool isStatic = typed.Analysis.StaticAt(caret);
-        foreach (GDScriptMemberInfo member in typed.Analyzer.MembersInScope(typed.Tree, typed.Analysis.Path, typed.Analysis.ClassAt(caret), isStatic).Where(m => constant.Takes(m)))
+        foreach (GDScriptMemberInfo member in typed.Analyzer.MembersAt(typed.Analysis, caret).Where(m => constant.Takes(m)))
         {
             if (seen.Add(member.Name))
             {

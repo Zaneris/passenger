@@ -825,6 +825,11 @@ public class GDScriptAnalyzerTests
     [InlineData("enum Named { X = | }\n", GDScriptConstantPlace.Integer)]
     [InlineData("enum Named {\n\tA,\n\tX = |,\n}\n", GDScriptConstantPlace.Integer)]
     [InlineData("enum Named {\n\tX = |\n", GDScriptConstantPlace.Integer)]
+    [InlineData("enum { X = (|) }\n", GDScriptConstantPlace.Integer)]
+    [InlineData("enum { X = int(1) + | }\n", GDScriptConstantPlace.Integer)]
+    [InlineData("enum { X = int(|) }\n", GDScriptConstantPlace.Value)]
+    [InlineData("enum Named { X = absi(|) + 1 }\n", GDScriptConstantPlace.Value)]
+    [InlineData("enum Named {\n\tA,\n\tX = Vector2i(1, |).x,\n}\n", GDScriptConstantPlace.Value)]
     [InlineData("var v = |\n", GDScriptConstantPlace.None)]
     [InlineData("const C = 1\nvar v = |\n", GDScriptConstantPlace.None)]
     [InlineData("enum { X = 1 }\nvar v = |\n", GDScriptConstantPlace.None)]
@@ -871,7 +876,8 @@ public class GDScriptAnalyzerTests
         Assert.All(kept.Concat(running), k => Assert.True(GDScriptConstantPlace.None.TakesKeyword(k)));
         Assert.All(kept, k => Assert.True(GDScriptConstantPlace.Value.TakesKeyword(k), $"{k} left out of a constant's value"));
         Assert.All(running, k => Assert.False(GDScriptConstantPlace.Value.TakesKeyword(k), $"{k} offered in a constant's value"));
-        Assert.All(kept.Concat(running), k => Assert.False(GDScriptConstantPlace.Integer.TakesKeyword(k), $"{k} offered in an enum's value"));
+        Assert.All(kept.Concat(running).Where(k => k != "as"), k => Assert.False(GDScriptConstantPlace.Integer.TakesKeyword(k), $"{k} offered in an enum's value"));
+        Assert.True(GDScriptConstantPlace.Integer.TakesKeyword("as"), "as left out of an enum's value, where `1 as int` compiles");
 
         Dictionary<string, (bool Value, bool Integer)> functions = new(StringComparer.Ordinal)
         {
@@ -925,6 +931,45 @@ public class GDScriptAnalyzerTests
             (GDScriptAnalysis analysis, _) = Analyze(Head + written.Replace("|", typed, StringComparison.Ordinal));
             return analysis.AskedAt(Head.Length + mark + typed.Length);
         }
+    }
+
+    /// <summary>An enum's value finds the values before it by their names, a named enum's too, and neither itself, those after it
+    /// nor its enum, whatever the class calls the same: what's listed compiled at each under Godot 4.7.2 and what's left out didn't.</summary>
+    [Theory]
+    [InlineData("enum N { A = 1, B = | }\n", "A", "B N")]
+    [InlineData("enum N { A, B, C = int(|) }\n", "A B", "C N")]
+    [InlineData("enum N { A = 1, B = 2, C = 1 + | }\n", "A B", "C N")]
+    [InlineData("enum N {\n\tA = 1,\n\tB = |,\n\tC,\n}\n", "A", "B C N")]
+    [InlineData("enum N { A = |, B = 1 }\n", "", "A B N")]
+    [InlineData("enum { A = 1, B = |, C }\n", "A", "B C")]
+    [InlineData("enum { A = |, B = 1 }\n", "", "A B")]
+    [InlineData("const B := 1\nenum N { A = 1, B = |, C }\n", "A", "B C N")]
+    [InlineData("enum M { Z = 1 }\nenum N { A = 1, B = | }\n", "A M", "B N Z")]
+    [InlineData("class In:\n\tenum N { A = 1, B = | }\n", "A", "B N")]
+    public void An_enums_value_finds_the_values_before_it(string written, string found, string missed)
+    {
+        const string Head = "extends Node\n\nconst LIMIT := 3\n\n";
+        int mark = written.IndexOf('|', StringComparison.Ordinal);
+        foreach (string typed in (string[])["zz", string.Empty])
+        {
+            (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(Head + written.Replace("|", typed, StringComparison.Ordinal), Classes);
+            int caret = Head.Length + mark + typed.Length;
+            HashSet<string> names = [.. analyzer.MembersAt(analysis, caret).Where(m => analysis.ConstantAt(caret).Takes(m)).Select(m => m.Name)];
+            Assert.Contains("LIMIT", names);
+            Assert.All(found.Split(' ', StringSplitOptions.RemoveEmptyEntries), n => Assert.True(names.Contains(n), $"{n} left out of \"{written}\" with \"{typed}\" typed: {string.Join(' ', names)}"));
+            Assert.All(missed.Split(' '), n => Assert.False(names.Contains(n), $"{n} offered in \"{written}\" with \"{typed}\" typed"));
+        }
+    }
+
+    /// <summary>Away from an enum's value, what a place finds is what its scope holds.</summary>
+    [Fact]
+    public void A_place_outside_an_enum_finds_the_classs_members_alone()
+    {
+        const string Script = "extends Node\n\nenum N { A = 1, B = 2 }\nenum { C, D }\nvar v = \n";
+        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(Script, Classes);
+        int caret = Script.Length - 1;
+        Assert.Null(analysis.EnumNamesAt(caret));
+        Assert.Equal(analyzer.MembersInScope(analysis.Tree!, analysis.Path, null, false).Select(m => m.Name), analyzer.MembersAt(analysis, caret).Select(m => m.Name));
     }
 
     private static Dictionary<string, string> Locals(GDScriptAnalysis analysis) =>
