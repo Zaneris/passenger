@@ -97,7 +97,7 @@ public class JsonTextTests
     [InlineData("{\"a\":", "1", "}")]
     public void Values_as_deep_as_are_read_read_whole(string open, string inner, string close)
     {
-        string text = Nested(open, inner, close, 500);
+        string text = Nested(open, inner, close, 250);
         SmallStack.Run(() => Assert.Equal(text.Length, new JsonText.Reader(text).Document().End));
     }
 }

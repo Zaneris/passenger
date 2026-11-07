@@ -465,7 +465,7 @@ public static class JsonText
     {
         /// <summary>How deep values are read inside one another: past what any file written by hand reaches, and short of
         /// what this reader and a walk of what it read reach on a thread's stack.</summary>
-        private const int DeepestNesting = 512;
+        private const int DeepestNesting = 256;
 
         private int at;
         private int nesting;
