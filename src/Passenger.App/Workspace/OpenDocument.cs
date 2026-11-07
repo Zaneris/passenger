@@ -337,6 +337,9 @@ public sealed class OpenDocument : Observable
     /// the file again; null for a file that is not C#.</summary>
     public CSharpHighlighter? Syntax => parser as CSharpHighlighter;
 
+    /// <summary>The grammar colouring the file, for a language with one.</summary>
+    public Languages.TextMate.TextMateHighlighter? Grammar => parser as Languages.TextMate.TextMateHighlighter;
+
     /// <summary>Raised when a save wrote the file as UTF-8 because its own encoding could not hold the text, with what
     /// the status bar says of it.</summary>
     public event EventHandler<string>? Converted;

@@ -20,6 +20,22 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     {
     }
 
+    /// <summary>A grammar takes a moment to read a long file, whose lines inside strings Convert Indentation must know: the action
+    /// waits for it, right after the file opens and again after the edit its first conversion made, where each refused the agent.</summary>
+    [Fact]
+    public async Task An_action_waits_for_the_grammar_reading_the_file_it_asks_of()
+    {
+        await TakeFolderAsync();
+        Write("long.py", string.Concat(Enumerable.Range(0, 6000).Select(i => $"def f{i}(a):\n    if a:\n        return [x for x in a]\n    return None\n\n\n")));
+        await using McpClient client = await Start(["--mcp", Folder]);
+        await Call(client, McpTools.Open, new() { ["path"] = "long.py" });
+        foreach (string action in (string[])[AppActions.ConvertIndentationToTabs, AppActions.ConvertIndentationToSpaces])
+        {
+            CallToolResult converted = await Result(client, McpTools.IdeAction, new() { ["action"] = action });
+            Assert.True(converted.IsError != true, $"{action} answered: {Text(converted)}");
+        }
+    }
+
     [Fact]
     public async Task An_agent_finds_text_in_the_windows_scopes_reverts_a_file_through_local_history_and_reads_problems_and_the_build_window()
     {

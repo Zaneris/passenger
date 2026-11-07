@@ -33,6 +33,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>How long a file's markers are waited for: its checks are quick once its project is read.</summary>
     private static readonly TimeSpan MarkersLimit = TimeSpan.FromSeconds(30);
 
+    /// <summary>How long an action waits for a grammar to read the file it asks of.</summary>
+    private static TimeSpan GrammarLimit => Waits.Of(TimeSpan.FromSeconds(60));
+
     /// <summary>The folder open in the window as this call finds it: an agent's Open makes another.</summary>
     private ProjectSession Session => window.Session;
 
@@ -2308,6 +2311,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Session.Vcs.Opened;
             await Session.Vcs.RefreshAsync();
         }
+        await GrammarReadForAsync(action, cancel);
         if (named is not null)
         {
             AgentCall.Follow(window.Actions.Work, named.WorkId);
@@ -2349,6 +2353,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             null => $"Ran {action}",
         };
     });
+
+    /// <summary>Waits for the file in front's grammar where that alone stands in an action's way: a file opened or edited a moment
+    /// before is read as the call waits, so an agent never has to ask again. Past the limit the action says what stands in its way.</summary>
+    private async Task GrammarReadForAsync(string action, CancellationToken cancel)
+    {
+        ActionContext context = Beside ? window.Actions.Context().ForAgent() : window.Actions.Context();
+        if (context.File is { Grammar: { } grammar } file && window.Actions.WhyNot(action, context) == Refusals.ReadingStrings(file.Name))
+        {
+            await When(() => grammar.HasRead(file.Text.Snapshot), GrammarLimit, cancel, On(h => grammar.Changed += h, h => grammar.Changed -= h));
+        }
+    }
 
     /// <summary>The group of Git's actions, whose state ide_action reads fresh before asking whether one can run.</summary>
     private const string GitGroup = "Git";
