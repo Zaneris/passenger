@@ -207,7 +207,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   fresh parse, every parse's options from `CSharpParsing`, never its own; the rest by TextMate grammars through Tint
   (`TextMateHighlighter`, `ScopeColours`). A new language: one `Language` entry, its grammar and a notices entry;
   compare entries, never names. A finder never tells its answer inside a document's `Changed`. A recursive reader of a
-  person's text goes through `DeepestNesting` or a stack check: no text ends the IDE.
+  person's text goes through `DeepestNesting` or a stack check: no text ends the IDE. Roslyn's parser recurses unchecked,
+  so every in-process parse goes through `CSharpParsing.Parse`/`Changed` (`DeepText`), never `ParseText`.
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
   binding's path is read once (`BindingPath`) for the check, Go to Declaration, uses and completion.
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project), `LspDocument` (never a change
