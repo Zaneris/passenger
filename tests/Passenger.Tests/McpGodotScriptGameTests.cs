@@ -134,6 +134,48 @@ public sealed class McpGodotScriptGameTests : McpRig
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>Keys aimed at the main window's text box reach it though a second window holds the focus, which they take from it
+    /// with nothing of the game hearing a press, where they went to that window as the answer named the text box; keys aimed at
+    /// nothing stay with the window holding the focus.</summary>
+    [Fact]
+    public async Task Keys_aimed_at_the_main_window_reach_it_past_a_second_window_holding_the_focus()
+    {
+        File.WriteAllText(Path.Combine(folder, "main.tscn"), TwoWindows);
+        File.WriteAllText(Path.Combine(folder, "second.gd"), "extends Control\n\nfunc _input(event: InputEvent) -> void:\n\tif event is InputEventMouseButton and event.position.x < 0:\n"
+            + "\t\tprint(\"the game heard a press\")\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false,
+            environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
+        await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["waitSeconds"] = 10 });
+        await Until(async () => await Result(client, McpTools.AppTree) is { IsError: not true } tree && Text(tree).Contains("#Inner", StringComparison.Ordinal), "the game's second window");
+
+        await Call(client, McpTools.AppClick, new() { ["control"] = "#Inner" });
+        Assert.Contains("it shows \"Ada\"", Text(await Call(client, McpTools.AppType, new() { ["text"] = "Ada" })), StringComparison.Ordinal);
+        string typed = Text(await Call(client, McpTools.AppType, new() { ["control"] = "#Field", ["text"] = "Grace" }));
+        Assert.True(typed.Contains("into LineEdit#Field @", StringComparison.Ordinal) && typed.Contains("it shows \"Grace\"", StringComparison.Ordinal), $"Typing aimed at the main window answered: {typed}");
+        string shown = Text(await Call(client, McpTools.AppTree, new() { ["window"] = "#Second" }));
+        Assert.True(shown.Contains("LineEdit#Inner \"Ada\"", StringComparison.Ordinal), $"The keys reached the second window as well, whose tree reads:\n{shown}");
+        Assert.DoesNotContain("the game heard a press", Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>An exclusive window keeps every key until it closes, for a person as for an agent: keys aimed at the main window go
+    /// to it, and the answer says so, where it named the control they missed.</summary>
+    [Fact]
+    public async Task Keys_aimed_past_an_exclusive_window_are_said_to_have_gone_to_it()
+    {
+        File.WriteAllText(Path.Combine(folder, "main.tscn"), TwoWindows.Replace("type=\"Window\" parent=\".\"", "type=\"AcceptDialog\" parent=\".\"", StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(folder, "second.gd"), "extends Control\n\nfunc _ready() -> void:\n\t$Second.popup_centered.call_deferred()\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false,
+            environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
+        await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["waitSeconds"] = 10 });
+        await Until(async () => await Result(client, McpTools.AppTree) is { IsError: not true } tree && Text(tree).Contains("#Inner", StringComparison.Ordinal), "the game's dialog");
+
+        string typed = Text(await Call(client, McpTools.AppType, new() { ["control"] = "#Field", ["text"] = "Grace" }));
+        Assert.True(typed.Contains(", not LineEdit#Field @", StringComparison.Ordinal) && typed.Contains("is exclusive, so it takes every key until it closes", StringComparison.Ordinal),
+            $"Typing aimed past the dialog answered: {typed}");
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>A control whose script names a <c>text</c>, <c>disabled</c> and <c>editable</c> of its own, each read counted:
     /// its getter, its <c>_get</c>, and a plain <c>note</c>.</summary>
     private const string Counting = "extends Control\n\nvar getter_reads := 0\nvar get_reads := 0\nvar text := \"stored\":\n\tget:\n\t\tgetter_reads += 1\n\t\treturn \"by getter\"\n"

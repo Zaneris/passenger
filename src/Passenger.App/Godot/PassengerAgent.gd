@@ -29,6 +29,8 @@ var _pressed_in: Viewport = null
 ## for none).
 var _keys_back := KEY_NONE
 var _keys_back_modifiers := 0
+## Whether the press that takes the focus from an embedded window is being given, which ends with this helper.
+var _letting_go := false
 ## The last member, so it is set only once every other member's default is (members are made in the order written).
 var _made = true
 
@@ -75,6 +77,9 @@ func scale_to_window(ask: int) -> void:
 
 
 func _input(event: InputEvent) -> void:
+    if _letting_go:
+        get_viewport().set_input_as_handled()
+        return
     var key := event as InputEventKey
     if _keys_back == KEY_NONE or key == null or not key.pressed or key.echo or key.keycode != _keys_back:
         return
@@ -257,6 +262,33 @@ func _bring(viewport: Viewport) -> void:
         window.grab_focus()
 
 
+## The embedded window with the focus in a viewport's window, to which Godot gives every key given there, whatever the
+## viewport's own focus; null for none.
+func _keys_window(viewport: Viewport) -> Window:
+    for found in viewport.get_window().find_children("*", "Window", true, false):
+        if found.is_embedded() and found.has_focus():
+            return found
+    return null
+
+
+## Takes the focus from an embedded window in a viewport's window, as a press outside it does: this one, given past the
+## viewport's edge straight to it, is under no control, and ends here, where input comes before the game's (a scene changed
+## to since comes first). An exclusive window keeps the focus, as it keeps every key until it closes.
+func _let_go(viewport: Viewport) -> void:
+    var holding := _keys_window(viewport)
+    if holding == null or holding.exclusive:
+        return
+    set_process_input(true)
+    var press := InputEventMouseButton.new()
+    press.button_index = MOUSE_BUTTON_LEFT
+    press.pressed = true
+    press.position = Vector2(-1, -1)
+    press.global_position = press.position
+    _letting_go = true
+    viewport.get_window().push_input(press, true)
+    _letting_go = false
+
+
 func _frames(count: int) -> void:
     for i in count:
         await get_tree().process_frame
@@ -411,9 +443,17 @@ func _focus(id: int, viewport: Viewport) -> Control:
     _bring(viewport)
     var node := _node(id)
     if node is Control and node.focus_mode != Control.FOCUS_NONE:
+        _let_go(viewport)
         node.grab_focus()
         return node
     return viewport.gui_get_focus_owner()
+
+
+## What keys came to: where they went, an embedded window that had them before the viewport aimed at, and whether that
+## one is exclusive, which no aim takes them from.
+func _keyed(viewport: Viewport, holding: Window) -> Array:
+    var held := is_instance_valid(holding)
+    return _after(holding if held else viewport, Vector2.ZERO, null, null, false) + [1 if held and holding.exclusive else 0]
 
 
 func key(ask: int, id: int, window: int, chords: Array) -> void:
@@ -421,6 +461,7 @@ func key(ask: int, id: int, window: int, chords: Array) -> void:
         return
     var viewport := _viewport_of(id, window)
     _focus(id, viewport)
+    var holding := _keys_window(viewport)
     for chord in chords:
         var code := OS.find_keycode_from_string(chord[0])
         if code == KEY_NONE:
@@ -440,7 +481,7 @@ func key(ask: int, id: int, window: int, chords: Array) -> void:
         release.pressed = false
         _send(release, viewport)
     await _frames(2)
-    _say(ask, true, _after(viewport, Vector2.ZERO, null, null, false))
+    _say(ask, true, _keyed(viewport, holding))
 
 
 func type(ask: int, id: int, window: int, text: String, replace: bool) -> void:
@@ -452,6 +493,9 @@ func type(ask: int, id: int, window: int, text: String, replace: bool) -> void:
         return
     var viewport := _viewport_of(id, window)
     var focus := _focus(id, viewport)
+    var holding := _keys_window(viewport)
+    if holding != null:
+        focus = holding.gui_get_focus_owner()
     if replace and focus != null and focus.has_method("select_all"):
         focus.select_all()
     for character in text:
@@ -471,7 +515,7 @@ func type(ask: int, id: int, window: int, text: String, replace: bool) -> void:
         release.pressed = false
         _send(release, viewport)
     await _frames(2)
-    _say(ask, true, _after(viewport, Vector2.ZERO, null, null, false))
+    _say(ask, true, _keyed(viewport, holding))
 
 
 func _process(_delta: float) -> void:

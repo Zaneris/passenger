@@ -354,8 +354,9 @@ public sealed partial class PassengerTools
     {
         using IDisposable asking = GodotGame.Within(GameLimit);
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: false, null, null);
-        InputDone done = GameDone(nodes, target, await game.AskAsync("type", element?.Element.Id ?? 0L, target.Element.Id, text, replace));
-        return $"Typed {Plural.Of(text.Length, "character")} into {done.Focused ?? "the window, nothing having the focus"}{Said(done)}";
+        List<object?> said = await game.AskAsync("type", element?.Element.Id ?? 0L, target.Element.Id, text, replace);
+        InputDone done = GameDone(nodes, target, said);
+        return $"Typed {Plural.Of(text.Length, "character")} into {done.Focused ?? "the window, nothing having the focus"}{KeysHeld(element, done, said)}{Said(done)}";
     }
 
     private async Task<string> GameKeyAsync(GodotGame game, string keys, string? control, string? window)
@@ -364,9 +365,15 @@ public sealed partial class PassengerTools
         IReadOnlyList<Chord> chords = Chords(keys);
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: false, null, null);
         List<object?> pressed = [.. chords.Select(c => (object?)new List<object?> { GodotAgent.KeyName(c.Key), GameModifiers(c.Modifiers) })];
-        InputDone done = GameDone(nodes, target, await game.AskAsync("key", element?.Element.Id ?? 0L, target.Element.Id, pressed));
-        return $"Pressed {keys.Trim()} in {done.Focused ?? "the window, nothing having the focus"}{Said(done)}";
+        List<object?> said = await game.AskAsync("key", element?.Element.Id ?? 0L, target.Element.Id, pressed);
+        InputDone done = GameDone(nodes, target, said);
+        return $"Pressed {keys.Trim()} in {done.Focused ?? "the window, nothing having the focus"}{KeysHeld(element, done, said)}{Said(done)}";
     }
+
+    /// <summary>Why keys aimed at a control went elsewhere, where the helper says an exclusive window kept them.</summary>
+    private static string KeysHeld(AppNode? element, InputDone done, List<object?> said) =>
+        element is not null && said.Count > 6 && Whole(said[6]) != 0
+            ? $", not {AppQuery.Short(element.Element)}: window {Id(done.Window)} is exclusive, so it takes every key until it closes" : string.Empty;
 
     private async Task<string> GameScrollAsync(GodotGame game, string? control, double down, double across, double? x, double? y, string? window, IReadOnlyList<string>? modifiers)
     {
