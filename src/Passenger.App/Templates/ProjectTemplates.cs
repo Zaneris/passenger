@@ -218,94 +218,6 @@ public static partial class ProjectTemplates
 
     internal static int LanguageOrder(string language) => language switch { "C#" => 0, "F#" => 1, "VB" => 2, _ => 3 };
 
-    /// <summary>Whether an option is enabled by its template's condition ("UseMSTestSdk &amp;&amp; (TestRunner == MSTest)") over
-    /// the values the options have now, a word no option is named being itself; one that does not read leaves it enabled.</summary>
-    public static bool IsEnabled(string? condition, IReadOnlyDictionary<string, string> values)
-    {
-        if (string.IsNullOrWhiteSpace(condition))
-        {
-            return true;
-        }
-        List<string> tokens = Tokens(condition);
-        int at = 0;
-        try
-        {
-            bool enabled = Or();
-            return at != tokens.Count || enabled;
-        }
-        catch (FormatException)
-        {
-            return true;
-        }
-
-        bool Or()
-        {
-            bool value = And();
-            while (Next("||"))
-            {
-                value = And() | value;
-            }
-            return value;
-        }
-
-        bool And()
-        {
-            bool value = Not();
-            while (Next("&&"))
-            {
-                value = Not() & value;
-            }
-            return value;
-        }
-
-        bool Not()
-        {
-            if (Next("!"))
-            {
-                return !Not();
-            }
-            if (Next("("))
-            {
-                bool inner = Or();
-                return Next(")") ? inner : throw new FormatException();
-            }
-            string left = Operand();
-            if (Next("=="))
-            {
-                return string.Equals(left, Operand(), StringComparison.OrdinalIgnoreCase);
-            }
-            if (Next("!="))
-            {
-                return !string.Equals(left, Operand(), StringComparison.OrdinalIgnoreCase);
-            }
-            return left.Equals("true", StringComparison.OrdinalIgnoreCase);
-        }
-
-        string Operand()
-        {
-            if (at >= tokens.Count || tokens[at] is "==" or "!=" or "&&" or "||" or "!" or "(" or ")")
-            {
-                throw new FormatException();
-            }
-            string token = tokens[at++];
-            return token[0] is '"' or '\'' ? token[1..^1] : values.TryGetValue(token, out string? value) ? value : token;
-        }
-
-        bool Next(string token)
-        {
-            if (at < tokens.Count && tokens[at] == token)
-            {
-                at++;
-                return true;
-            }
-            return false;
-        }
-    }
-
-    /// <summary>A template's condition or computed value as its tokens: quoted texts, operators, brackets and words.</summary>
-    private static List<string> Tokens(string expression) =>
-        [.. Regex.Matches(expression, @"""[^""]*""|'[^']*'|==|!=|&&|\|\||[!()]|[^\s!=&|()""']+").Select(m => m.Value)];
-
     /// <summary>dotnet new list, which brings dotnet new's cache up to date, then the cache.</summary>
     private static async Task<TemplateCatalog> ReadAsync(string folder, string sdk, string? custom)
     {
@@ -531,7 +443,7 @@ public static partial class ProjectTemplates
     /// <summary>The terms of an expression's top "or", each as its tokens, the brackets around the whole taken off.</summary>
     private static List<List<string>> Terms(string expression)
     {
-        List<string> tokens = Tokens(expression);
+        List<string> tokens = TemplateConditions.Tokens(expression);
         while (tokens.Count >= 2 && tokens[0] == "(" && Closing(tokens, 0) == tokens.Count - 1)
         {
             tokens = tokens[1..^1];

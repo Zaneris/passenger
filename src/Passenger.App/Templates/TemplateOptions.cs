@@ -194,7 +194,7 @@ public sealed class TemplateOptions
     {
         foreach ((TemplateOption option, Control row, Control editor) in shown)
         {
-            editor.IsEnabled = ProjectTemplates.IsEnabled(option.EnabledWhen, values);
+            editor.IsEnabled = TemplateConditions.IsEnabled(option.EnabledWhen, values);
             row.Opacity = editor.IsEnabled ? 1 : 0.55;
             if (editor is ComboBox choices)
             {

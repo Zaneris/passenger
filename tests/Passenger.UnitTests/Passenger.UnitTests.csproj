@@ -262,6 +262,7 @@
        app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Templates/ProjectNames.cs" Link="App/ProjectNames.cs" />
+    <Compile Include="../../src/Passenger.App/Templates/TemplateConditions.cs" Link="App/TemplateConditions.cs" />
   </ItemGroup>
 
   <!-- Godot's remote debug protocol, its Variant encoding and messages, from their bytes alone, the names Passenger's
