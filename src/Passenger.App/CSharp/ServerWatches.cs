@@ -13,8 +13,8 @@ namespace Passenger.App.CSharp;
 /// folder (<see cref="WatchedTree"/>), recorded only as deep as the registrations over it reach and only the files they
 /// match, so what a burst lost is found. A watcher starts as its registration comes, and what was written in its folder
 /// since the server, or a design-time build it was given, may have read it is told then (<see cref="WatchedFiles.Since"/>).
-/// What changed reaches the server from the thread pool, one notification for each batch, in the order seen. The folders
-/// watched, and any that cannot be, are said in the IDE's log.</summary>
+/// What changed reaches the server from the thread pool, one notification for each batch, in the order each watcher saw
+/// it. The folders watched, and any that cannot be, are said in the IDE's log.</summary>
 public sealed class ServerWatches : IDisposable
 {
     /// <summary>How far a file system's clock may round a file's time down: one written as the server, or a build, began
@@ -46,9 +46,13 @@ public sealed class ServerWatches : IDisposable
     private bool refreshAgain;
     private bool disposed;
 
-    /// <summary>What is told the server, one batch after another in the order they were seen, so a file made and then
-    /// deleted is never told the other way round.</summary>
+    /// <summary>What the watchers of this one's own saw is told the server one batch after another in the order they were
+    /// seen, so a file made and then deleted is never told the other way round, a watcher's walk as it starts among them.</summary>
     private Task telling = Task.CompletedTask;
+
+    /// <summary>What the folder's watcher saw, told in a turn of its own: none of its files is another watcher's, so a walk
+    /// of a large folder watched apart from it (the references' packs) never holds what was written in the folder.</summary>
+    private Task tellingHeard = Task.CompletedTask;
 
     /// <summary>Watches what the server registered, and what it registers from now on, beside the watcher of a folder
     /// (canonical) whose changes it is given (<see cref="Heard"/>); with none (a server no window has), alone.</summary>
@@ -110,7 +114,7 @@ public sealed class ServerWatches : IDisposable
         if (changes.Lost || changes.Paths.Count > 0)
         {
             watched.Hearing(changes.Paths);
-            InTurn(() => Tell(changes, open, recursive: true, IgnoredFolders.Is));
+            InTurn(() => Tell(changes, open, recursive: true, IgnoredFolders.Is), heard: true);
         }
         List<string> outputs = [.. changes.ComeOrGone.Where(IgnoredFolders.Is)];
         if (outputs.Count > 0)
@@ -450,13 +454,14 @@ public sealed class ServerWatches : IDisposable
         IdeErrors.Write($"C# language server (process {server.ProcessId}): {at} cannot be watched for it, so it hears nothing changed there: {why}");
     }
 
-    /// <summary>Tells the server on the thread pool after what was told before, held as background work until it has.</summary>
-    private void InTurn(Action tell)
+    /// <summary>Tells the server on the thread pool after what was told before from the same watchers, the folder's
+    /// (<paramref name="heard"/>) or this one's own, held as background work until it has.</summary>
+    private void InTurn(Action tell, bool heard = false)
     {
         IDisposable held = BackgroundWork.Scope();
         lock (gate)
         {
-            telling = telling.ContinueWith(_ =>
+            Task next = (heard ? tellingHeard : telling).ContinueWith(_ =>
             {
                 try
                 {
@@ -467,7 +472,15 @@ public sealed class ServerWatches : IDisposable
                     held.Dispose();
                 }
             }, TaskScheduler.Default);
-            IdeErrors.Observe(telling);
+            if (heard)
+            {
+                tellingHeard = next;
+            }
+            else
+            {
+                telling = next;
+            }
+            IdeErrors.Observe(next);
         }
     }
 
