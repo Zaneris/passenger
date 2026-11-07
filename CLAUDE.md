@@ -540,6 +540,8 @@ a new name, and `just site-shots` retakes its images.
 - **Avalonia 12's ListBox re-points its keys' row by the chosen row's new index before moving rows**, so a focused row
   loses the keys when rows come above it, and moves a Shift range's anchor only with its first chosen row: every tree
   goes through `TreeKeys.Attach`.
+- **`GC.GetAllocatedBytesForCurrentThread` counts the unused rest of a thread's allocation context** when a background
+  collection's mark ends, up to 8 KB never allocated, so the unit tests run every collection blocking (#1355).
 - **`ArrayPool.Shared` loses a thread's arrays at a Gen 2 once load reaches 81% of memory**, so a `Rent` on a path held
   to 0 bytes can allocate: such a path keeps a per-thread array (`FuzzyMatch`).
 - **`FormattedText` lays its lines out again at every draw**: text drawn frame after frame is kept as a `TextLayout` or
