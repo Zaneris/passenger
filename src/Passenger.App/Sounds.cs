@@ -12,7 +12,11 @@ namespace Passenger.App;
 /// (<see cref="Playable"/>), so each plays on every system. What the system's player cannot play is said as why.</summary>
 public static class Sounds
 {
-    private static Process? playing;
+    private static readonly OnePlaying<Process> Playing = new(static last =>
+    {
+        ChildProcesses.Kill(last);
+        last.Dispose();
+    });
 
     /// <summary>How many decoded sounds the cache keeps, the newest.</summary>
     private const int Kept = 16;
@@ -150,19 +154,24 @@ public static class Sounds
             : (null, "No sound player was found (pw-play, paplay or aplay): install PipeWire's or PulseAudio's tools to hear it");
     }
 
-    /// <summary>Plays a file, ending what played before; why it cannot, where it cannot. On the UI thread.</summary>
+    /// <summary>Plays a file, ending what played before and any sound still starting; why it cannot, where it cannot, and
+    /// nothing of one a later sound overtook. On the UI thread.</summary>
     public static async Task<string?> PlayAsync(string file)
     {
         UiThread.Check();
-        Stop();
+        int ask = Playing.Ask();
         (ProcessStartInfo? start, string? whyNot) = await BackgroundWork.Run(() => Player(file));
+        if (Playing.Overtaken(ask))
+        {
+            return null;
+        }
         if (start is null)
         {
             return whyNot;
         }
         try
         {
-            playing = await ChildProcesses.StartAsync(start);
+            Playing.Started(ask, await ChildProcesses.StartAsync(start));
             return null;
         }
         catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
@@ -171,13 +180,10 @@ public static class Sounds
         }
     }
 
-    /// <summary>Ends the sound playing, if one is.</summary>
+    /// <summary>Ends the sound playing, if one is, and any still starting. On the UI thread.</summary>
     public static void Stop()
     {
-        if (Interlocked.Exchange(ref playing, null) is { } last)
-        {
-            ChildProcesses.Kill(last);
-            last.Dispose();
-        }
+        UiThread.Check();
+        Playing.Stop();
     }
 }

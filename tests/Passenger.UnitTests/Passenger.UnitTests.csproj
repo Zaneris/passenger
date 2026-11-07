@@ -45,6 +45,11 @@
     <Compile Include="../../src/Passenger.UpdateHandlers/Handlers.cs" Link="App/UpdateHandlers.cs" />
   </ItemGroup>
 
+  <!-- Which of the sounds asked for in turn runs, by the order of its asks alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/OnePlaying.cs" Link="App/OnePlaying.cs" />
+  </ItemGroup>
+
   <!-- How a tool window shares out its room, from widths alone, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/ToolWindows/ToolLayout.cs" Link="App/ToolLayout.cs" />
