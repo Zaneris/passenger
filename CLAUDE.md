@@ -301,7 +301,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   SHA256-checked; Podman both ways. A container publish (`-t:PublishContainer`; several platforms need
   `RuntimeIdentifiers` too, NETSDK1047 otherwise, and containerd's image store) is judged by the SDK's "Pushed image"
   line: an unreachable base image is only a warning while dotnet exits 0, and its registry client tries HTTPS first even
-  on localhost; a push takes the logins the SDK reads (`RegistryLogins`, server names only). Vulnerabilities only when
+  on localhost; a push takes the logins the SDK reads (`RegistryLogins`, server names only), refused only on the
+  registry's own 401 (`AsksForLoginAsync`). Vulnerabilities only when
   asked: without the plugin docker answers `scout … --format` with "unknown flag", so find it by `docker scout version`.
 - **Aspire.** `AspireController` checks bearer tokens first; deploy logins are read from each tool's files, never by
   running a cloud CLI; metrics only while shown. MetricsEventSource's CollectionStart and Stop reach TraceEvent as
@@ -371,7 +372,9 @@ a new name, and `just site-shots` retakes its images.
   returns: give a callee that may keep it a home (`PinnedArrayOfOneAsync`) or refuse; a struct the evaluation stores is
   its own copy (`OwnAsync`). `Task.NotifyDebuggerOfWaitCompletion`'s breakpoint is no GC-safe point: nothing runs there,
   and a value read there is boxed at its stop. Letting threads run voids every value read before, so an evaluation left
-  running returns first (`LetAbandonedReturnAsync`), holding the program at the stop shown: never Continue there.
+  running returns first (`LetAbandonedReturnAsync`), holding the program at the stop shown: never Continue there. One left
+  is held with the rest (`process.Stop(0)`) until the person goes on, so "still running N s later" says nothing of how
+  long it ran.
 - **Hot Reload**: the server's `EditAndContinueService` from the extension; update handlers through Passenger's hook
   (`UpdateHandlerHook`), never the runtime's agent, which refuses under a debugger. CoreCLR lets no debugger go once
   Edit and Continue changed a program, so neither does Passenger (`DebugController.LetsNoDebuggerGo`: Detach refused, a
@@ -656,7 +659,7 @@ to the window's tests.
   `Bar`, `Page`, `Default`, `Cancel`, `OkCancel`, `Headed`, `Popup`) in a `Border.footerBar`; `Border.framed`;
   `Passenger.Separator`, `Passenger.Divider`; `MenuChoice` (`Holding`); `ListMenus.PlaceForKeys`; `ToolTabs.Tab`;
   `PopupFrame` (`Framed`), `popupTitle`; `ListRow.Height` (24); `TextBlock.emptyText`, `EmptyState`;
-  `ToolButtons.Of`/`Toggle` (never focusable); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
+  `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
   `MutedText`; `ListKeys.Move`; `Plural.Of`/`Listed`; `Border.kindBadge`/`tag`/`box` (never a literal radius);
   `RunRows`; `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
   `ToolWindows.FilterBox`; `ToolFlow`; `PaneSplit`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
