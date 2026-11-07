@@ -35,6 +35,12 @@ public static class InContainer
         {
             if (!resume)
             {
+                // A live reading's session waits out the program's start, where its runtime could hang for good.
+                TimeSpan due = requests || metrics ? ProgramStarts.DueAt(processId) : TimeSpan.Zero;
+                if (due > TimeSpan.Zero)
+                {
+                    await Task.Delay(due).ConfigureAwait(false);
+                }
                 session = await StartAsync(new DiagnosticsClient(processId)).ConfigureAwait(false);
             }
             else

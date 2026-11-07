@@ -71,13 +71,15 @@ public sealed class LiveMetrics : IAsyncDisposable
         }),
     ];
 
-    /// <summary>Starts hearing a running program's instruments of <paramref name="meters"/> at its diagnostic port. A program
-    /// gone, with no port to reach, or whose runtime takes no session in time, is a <see cref="ProfilingException"/> saying
-    /// why (<see cref="SessionStarts"/>).</summary>
-    public static async Task<LiveMetrics> AttachAsync(int processId, IReadOnlyCollection<string> meters, MetricsHeard heard, CancellationToken cancel = default)
+    /// <summary>Starts hearing a running program's instruments of <paramref name="meters"/> at its diagnostic port, once it is
+    /// past its start where its runtime could hang (<paramref name="waiting"/> told how long that is). A program gone, with
+    /// no port to reach, or whose runtime takes no session in time, is a <see cref="ProfilingException"/> saying why
+    /// (<see cref="SessionStarts"/>).</summary>
+    public static async Task<LiveMetrics> AttachAsync(int processId, IReadOnlyCollection<string> meters, MetricsHeard heard, Action<TimeSpan>? waiting = null,
+        CancellationToken cancel = default)
     {
         string session = Guid.NewGuid().ToString();
-        EventPipeSession started = await SessionStarts.StartAsync(processId, Providers(session, meters), circularBufferMB: 16, "Its metrics could not be read", cancel);
+        EventPipeSession started = await SessionStarts.StartAsync(processId, Providers(session, meters), circularBufferMB: 16, "Its metrics could not be read", waiting, cancel);
         return Hear(started.EventStream, session, meters, heard, async () =>
         {
             await EventPipeStops.StopAsync(started, TimeSpan.FromSeconds(5));

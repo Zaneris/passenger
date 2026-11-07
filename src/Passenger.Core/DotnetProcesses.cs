@@ -189,6 +189,21 @@ public static partial class DotnetProcesses
         }
     }
 
+    /// <summary>When a process started, in UTC, as the system recorded it; null when it has gone or cannot be read (another
+    /// user's, an elevated one).</summary>
+    public static DateTime? StartedAt(int id)
+    {
+        try
+        {
+            using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
+            return process.StartTime.ToUniversalTime();
+        }
+        catch (Exception unread) when (unread is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Whether this <see cref="System.Diagnostics.Process"/> started its process: a zombie of its own is .NET's to
     /// take, which it is about to, where a process found by its id has no start to give.</summary>
     private static bool Started(System.Diagnostics.Process process)

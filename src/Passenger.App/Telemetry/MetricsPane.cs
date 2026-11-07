@@ -196,18 +196,30 @@ public sealed class MetricsPane : DockPanel
             await before.DisposeAsync();
         }
         DateTime first = DateTime.UtcNow;
+        bool waited = false;
         for (int attempt = 1; follow == follows; attempt++)
         {
             try
             {
                 LiveMetrics started = place is { } there ? await LiveMetrics.AttachAsync(process, there, Heard(follow))
-                    : await LiveMetrics.AttachAsync(process, [.. meters], Heard(follow));
+                    : await LiveMetrics.AttachAsync(process, [.. meters], Heard(follow), _ =>
+                    {
+                        if (follow == follows)
+                        {
+                            waited = true;
+                            Say(ProgramStarts.Waiting(name, "reading its metrics"));
+                        }
+                    });
                 if (follow != follows)
                 {
                     await started.DisposeAsync();
                     return;
                 }
                 live = started;
+                if (waited && charts.Count == 0)
+                {
+                    Say($"Waiting for {name}'s first metrics…");
+                }
                 IdeErrors.Observe(EndedAsync(started, follow));
                 return;
             }

@@ -3,10 +3,11 @@ using Passenger.Core;
 
 namespace Passenger.Profiler;
 
-/// <summary>The one start of a session at a program's own diagnostic port for what is heard from it live, given
-/// <see cref="Limit"/> for its runtime to take it: a client waits for good on a runtime that never answers (on Windows on a
-/// pipe that is not there too). A start refused or past its limit is a <see cref="ProfilingException"/> saying why, one
-/// past its limit with what the port showed then (<see cref="UnansweredPorts"/>); whether to ask again is
+/// <summary>The one start of a session at a program's own diagnostic port for what is heard from it live, begun only once
+/// the program is past its start where its runtime could hang (<see cref="ProgramStarts"/>), so its stop is past it too,
+/// and given <see cref="Limit"/> for its runtime to take it: a client waits for good on a runtime that never answers (on
+/// Windows on a pipe that is not there too). A start refused or past its limit is a <see cref="ProfilingException"/> saying
+/// why, one past its limit with what the port showed then (<see cref="UnansweredPorts"/>); whether to ask again is
 /// <see cref="AskAgain"/>'s to say.</summary>
 public static class SessionStarts
 {
@@ -14,10 +15,17 @@ public static class SessionStarts
     public static TimeSpan Limit => Waits.Of(TimeSpan.FromSeconds(10));
 
     /// <summary>A session of <paramref name="providers"/> at process <paramref name="processId"/>'s port, its failure said
-    /// after <paramref name="unread"/> ("Its metrics could not be read").</summary>
+    /// after <paramref name="unread"/> ("Its metrics could not be read"); <paramref name="waiting"/> told how long it waits
+    /// first for the program to finish starting, where it does.</summary>
     internal static async Task<EventPipeSession> StartAsync(int processId, IEnumerable<EventPipeProvider> providers, int circularBufferMB, string unread,
-        CancellationToken cancel)
+        Action<TimeSpan>? waiting, CancellationToken cancel)
     {
+        TimeSpan due = await BackgroundWork.Run(() => ProgramStarts.DueAt(processId), cancel);
+        if (due > TimeSpan.Zero)
+        {
+            waiting?.Invoke(due);
+            await Task.Delay(due, cancel);
+        }
         using CancellationTokenSource answered = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         answered.CancelAfter(Limit);
         try

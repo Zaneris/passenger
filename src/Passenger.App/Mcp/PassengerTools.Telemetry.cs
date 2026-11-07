@@ -162,6 +162,7 @@ public sealed partial class PassengerTools
             ?? throw new InvalidOperationException($"{selected.Resource.DisplayName} runs no .NET program on this machine to read metrics from");
         Dictionary<(string, string), MetricValue> latest = [];
         HashSet<string> published = new(StringComparer.Ordinal);
+        string? waited = null;
         await HearAsync(LiveMetrics.Shipped);
         if (published.Count > 0)
         {
@@ -174,7 +175,7 @@ public sealed partial class PassengerTools
         MetricInfo[] heard = [.. latest.Values.OrderBy(v => LiveMetrics.Shipped.Contains(v.Meter) ? 0 : 1).ThenBy(v => v.Meter, StringComparer.Ordinal)
             .ThenBy(v => v.Instrument, StringComparer.Ordinal).Select(v => new MetricInfo(v.Meter, v.Instrument, v.Unit, v.Shown))];
         (IReadOnlyList<MetricInfo> kept, string? more) = AgentAnswers.Listed(heard, Math.Max(1, limit), "instrument", "a larger limit gives them");
-        return new TelemetryInfo([], []) { Metrics = kept, More = more };
+        return new TelemetryInfo([], []) { Metrics = kept, More = more, Waited = waited };
 
         // Its readings of three collections at most, or of a few seconds; an idle histogram keeps the value it last had.
         async Task HearAsync(IReadOnlyCollection<string> meters)
@@ -212,7 +213,12 @@ public sealed partial class PassengerTools
             LiveMetrics live;
             try
             {
-                live = await LiveMetrics.AttachAsync(program, meters, listened, cancel);
+                live = await LiveMetrics.AttachAsync(program, meters, listened, due =>
+                {
+                    AgentCall.Say(ProgramStarts.Waiting(selected.Resource.DisplayName, "reading its metrics"));
+                    waited = ProgramStarts.Waited(selected.Resource.DisplayName, "reading its metrics", due);
+                }, cancel);
+                AgentCall.Say(null);
             }
             catch (ProfilingException failed)
             {
@@ -242,6 +248,9 @@ public sealed record TelemetryInfo(IReadOnlyList<JsonElement> Logs, IReadOnlyLis
 
     /// <summary>What it left out of a long answer, and how to read it.</summary>
     public string? More { get; init; }
+
+    /// <summary>kind metrics': how long it waited for the program to finish starting before reading it, and why, where it did.</summary>
+    public string? Waited { get; init; }
 }
 
 /// <summary>An instrument of a program's, its meter, unit and latest value with its rate ("12/s, median 0.14 ms, 95% under 0.22 ms").</summary>

@@ -107,12 +107,13 @@ public sealed class LiveRequests : IAsyncDisposable
         new EventPipeProvider(Logging, EventLevel.Informational, 0x4, new Dictionary<string, string> { ["FilterSpecs"] = LogsSpec }),
     ];
 
-    /// <summary>Starts hearing a running program at its diagnostic port, each event told to <paramref name="heard"/> on the
-    /// thread that reads the stream. A program gone, with no port to reach, or whose runtime takes no session in time, is a
+    /// <summary>Starts hearing a running program at its diagnostic port, once it is past its start where its runtime could
+    /// hang (<paramref name="waiting"/> told how long that is), each event told to <paramref name="heard"/> on the thread
+    /// that reads the stream. A program gone, with no port to reach, or whose runtime takes no session in time, is a
     /// <see cref="ProfilingException"/> saying why (<see cref="SessionStarts"/>).</summary>
-    public static async Task<LiveRequests> AttachAsync(int processId, Action<WebEvent> heard, CancellationToken cancel = default)
+    public static async Task<LiveRequests> AttachAsync(int processId, Action<WebEvent> heard, Action<TimeSpan>? waiting = null, CancellationToken cancel = default)
     {
-        EventPipeSession session = await SessionStarts.StartAsync(processId, Providers, circularBufferMB: 64, "Its requests could not be followed", cancel);
+        EventPipeSession session = await SessionStarts.StartAsync(processId, Providers, circularBufferMB: 64, "Its requests could not be followed", waiting, cancel);
         return Hear(session.EventStream, heard, async () =>
         {
             await EventPipeStops.StopAsync(session, TimeSpan.FromSeconds(5));
