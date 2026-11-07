@@ -536,7 +536,7 @@ public sealed class XamlService : IDisposable
     {
         IReadOnlyList<XamlProject> read = await ReadAsync(projectFiles, symbol);
         Func<string, TextSnapshot?> open = OpenSnapshots();
-        return read.Count == 0 ? [] : await BackgroundWork.Run(() => Uses(read, symbol, open).Select(f => (f.Path, f.Text, f.Uses)).ToList());
+        return read.Count == 0 ? [] : await BackgroundWork.Run(() => Uses(read, symbol, open).Where(f => f.Uses.Count > 0).Select(f => (f.Path, f.Text, f.Uses)).ToList());
     }
 
     /// <summary>The edits the XAML of the projects given takes as a symbol of their C# is renamed to <paramref name="name"/>
@@ -631,6 +631,8 @@ public sealed class XamlService : IDisposable
         return read;
     }
 
+    /// <summary>Each file of the projects whose text names the symbol, with its uses: one read only in part with them too,
+    /// none found in it, as a use past where reading stopped goes unseen (<see cref="XamlRefactorings.CodeRename"/>).</summary>
     private static List<(string Path, TextSnapshot Text, XamlFile File, IReadOnlyList<TextRange> Uses)> Uses(IReadOnlyList<XamlProject> read, CodeSymbol symbol,
         Func<string, TextSnapshot?> open)
     {
@@ -647,7 +649,8 @@ public sealed class XamlService : IDisposable
                 }
                 string written = text.ToString();
                 if (names.Any(n => written.Contains(n, StringComparison.OrdinalIgnoreCase))
-                    && XamlDocument.Read(path, written, project, null) is var file && XamlNavigation.Uses(file, names, symbol.Is) is { Count: > 0 } uses)
+                    && XamlDocument.Read(path, written, project, null) is var file && XamlNavigation.Uses(file, names, symbol.Is) is var uses
+                    && (uses.Count > 0 || file.Tree.Stopped is not null))
                 {
                     found.Add((path, text, file, uses));
                 }

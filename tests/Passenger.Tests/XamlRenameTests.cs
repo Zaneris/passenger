@@ -139,6 +139,28 @@ public sealed class XamlRenameTests : IClassFixture<XamlRenameTests.Shop>
         window.Close();
     }
 
+    /// <summary>A view nested past what Passenger reads, its one binding to the property past where reading stopped: renaming
+    /// the property is refused saying so, as that use would go unseen, and nothing is renamed.</summary>
+    [AvaloniaFact]
+    public void A_rename_whose_use_stands_past_where_a_view_was_read_is_refused_and_renames_nothing()
+    {
+        string deep = "<UserControl xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" "
+            + "xmlns:vm=\"using:Shop.ViewModels\" x:Class=\"Shop.Views.Deep\" x:DataType=\"vm:MainViewModel\">\n"
+            + string.Concat(Enumerable.Repeat("<Border>", 300)) + "<TextBlock Text=\"{Binding Greeting}\" />" + string.Concat(Enumerable.Repeat("</Border>", 300))
+            + "\n</UserControl>\n";
+        shop.Write([("Views/Deep.axaml", deep)]);
+        MainWindow window = shop.Open(ViewModelPath);
+        OpenDocument model = window.EditorArea.Active!;
+
+        XamlTests.RenameInCode(window, "public string Greet", "Salutation");
+
+        Ui.WaitFor(() => window.Status?.Contains("Deep.axaml is nested too deeply for Passenger to read whole", StringComparison.Ordinal) == true,
+            () => $"the rename refused for the view read in part: {window.Status}");
+        Assert.Equal(ViewModel, model.Text.Snapshot.ToString());
+        Assert.Equal((Reader, Card, deep), (File.ReadAllText(ReaderPath), File.ReadAllText(CardPath), File.ReadAllText(shop.PathOf("Views/Deep.axaml"))));
+        window.Close();
+    }
+
     /// <summary>Rename on an <c>[ObservableProperty]</c> field renames what the toolkit makes of it, which Roslyn's rename of the
     /// field alone leaves: its property's use in another C# file, the code's own OnXChanged, and both views' bindings; then
     /// Rename on such a binding renames the field, keeping its underscore, so its property is the name typed.</summary>
