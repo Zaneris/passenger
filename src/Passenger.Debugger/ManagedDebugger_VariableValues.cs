@@ -491,7 +491,12 @@ public partial class ManagedDebugger
     internal static string Address(ICorDebugReferenceValue pointer) =>
         string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{pointer.Value.Value:x16}");
 
-    internal static string GetCorDebugTypeFriendlyName(ICorDebugType corDebugType)
+    internal static string GetCorDebugTypeFriendlyName(ICorDebugType corDebugType) => TypeName(corDebugType, global: false);
+
+    /// <summary>A type as an expression names it from any scope: from the global namespace, where nothing in scope hides it.</summary>
+    internal static string GetCorDebugTypeGlobalName(ICorDebugType corDebugType) => TypeName(corDebugType, global: true);
+
+    private static string TypeName(ICorDebugType corDebugType, bool global)
     {
         string? primitiveName = GetFriendlyTypeName(corDebugType.Type);
         if (primitiveName is not null)
@@ -500,25 +505,25 @@ public partial class ManagedDebugger
         }
         if (corDebugType.Type is CorElementType.PTR)
         {
-            return $"{GetCorDebugTypeFriendlyName(corDebugType.FirstTypeParameter)}*";
+            return $"{TypeName(corDebugType.FirstTypeParameter, global)}*";
         }
 
         if (corDebugType.Type is CorElementType.SZARRAY)
         {
-            string elementName = GetCorDebugTypeFriendlyName(corDebugType.FirstTypeParameter);
+            string elementName = TypeName(corDebugType.FirstTypeParameter, global);
             return $"{elementName}[]";
         }
         if (corDebugType.Type is CorElementType.ARRAY)
         {
-            string elementName = GetCorDebugTypeFriendlyName(corDebugType.FirstTypeParameter);
+            string elementName = TypeName(corDebugType.FirstTypeParameter, global);
             return $"{elementName}[{new string(',', corDebugType.Rank - 1)}]";
         }
         // Type parameters cover enclosing types too, each level taking as many as its arity (`1, `2), outermost first.
         ICorDebugClass corDebugClass = corDebugType.Class;
         string name = MetadataTypeNames.Of(corDebugClass.Module.GetMetaDataInterface<IMetaDataImport>(), corDebugClass.Token, '.');
-        string[] typeArguments = [.. corDebugType.TypeParameters.Select(GetCorDebugTypeFriendlyName)];
+        string[] typeArguments = [.. corDebugType.TypeParameters.Select(argument => TypeName(argument, global))];
         string closed = CSharpTypeNames.Closed(name, typeArguments, spelledNullable: false) ?? name;
-        return PrimitiveTypes.Named(closed)?.Keyword ?? closed;
+        return PrimitiveTypes.Named(closed)?.Keyword ?? (global ? $"global::{closed}" : closed);
     }
 
     public static CorDebugValueValueResult GetCorDebugGenericValue_Value_AsString(ICorDebugGenericValue corDebugGenericValue)

@@ -7,7 +7,7 @@ using Library;
 [assembly: DebuggerDisplay("any box", Target = typeof(TargetedBox<>))]
 [assembly: DebuggerDisplay("number box {Held}", Target = typeof(TargetedBox<int>))]
 [assembly: DebuggerDisplay("text box {Held,nq}", Target = typeof(TargetedBox<string>))]
-[assembly: DebuggerDisplay("a box of boxes", Target = typeof(TargetedBox<TargetedBox<int>[]>))]
+[assembly: DebuggerDisplay("a box of {Held.Length} boxes", Target = typeof(TargetedBox<TargetedBox<int>[]>))]
 [assembly: DebuggerTypeProxy(typeof(NumberBoxView), Target = typeof(TargetedBox<int>))]
 
 // Values of types whose displays and views the program's assembly declares, the runtime's and a library's, and
@@ -25,13 +25,35 @@ internal static class Targeted
 		TargetedBox<string> textBox = new("words");
 		TargetedBox<double> otherBox = new(4.5);
 		TargetedBox<TargetedBox<int>[]> boxes = new([numberBox, numberBox]);
-		Console.WriteLine($"targeted {version} {gauge.Level} {bookcase.Books.Length} {ages.Count} {mixed.Count} {numberBox.Held} {textBox.Held} {otherBox.Held} {boxes.Held.Length}");
+		TargetedPair<int[]> numbers = new([1, 2, 3]);
+		TargetedPair<string> words = new("four");
+		TargetedShelf<string>.Row<int[]> row = new("top", [5, 6]);
+		Console.WriteLine($"targeted {version} {gauge.Level} {bookcase.Books.Length} {ages.Count} {mixed.Count} {numberBox.Held} {textBox.Held} {otherBox.Held} {boxes.Held.Length} {numbers.First} {words.First} {row.Name}");
 	}
 }
 
 internal sealed class TargetedBox<T>(T held)
 {
 	public T Held { get; } = held;
+}
+
+[DebuggerDisplay("{First.Length} long, {Twice(First.Length) + 1} and {First.Lacking}")]
+internal readonly struct TargetedPair<T>(T first)
+{
+	public T First { get; } = first;
+
+	private static int Twice(int value) => value * 2;
+}
+
+internal static class TargetedShelf<T>
+{
+	[DebuggerDisplay("{Name.Length} and {Held[0] + 1}")]
+	internal sealed class Row<U>(T name, U held)
+	{
+		public T Name { get; } = name;
+
+		public U Held { get; } = held;
+	}
 }
 
 internal sealed class NumberBoxView(TargetedBox<int> box)

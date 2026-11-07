@@ -106,7 +106,7 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         .ToFrozenSet(StringComparer.Ordinal);
 
     private const int CacheCapacity = 256;
-    private readonly record struct CompileCacheKey(int ModuleVersion, CompileContextKind ContextKind, CORDB_ADDRESS Module, int Token, int IlOffset, string Expression, string? Exception, string ReturnValues);
+    private readonly record struct CompileCacheKey(int ModuleVersion, CompileContextKind ContextKind, CORDB_ADDRESS Module, int Token, int IlOffset, string Expression, string? Exception, string ReturnValues, string? ExactType = null);
     private enum CompileContextKind { Method, Type }
     private readonly Dictionary<CompileCacheKey, CacheEntry> _compileCache = new();
     private readonly LinkedList<CompileCacheKey> _compileLru = new();
@@ -145,11 +145,18 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         {
             return cached;
         }
+        string? exactType = context.RootValue is { } root ? ExactGenericType(root) : null;
+        CompileCacheKey exactKey = key with { ExactType = exactType };
+        if (TryGetCachedCompiled(exactKey, out cached))
+        {
+            return cached;
+        }
 
         ImmutableArray<MetadataBlock> blocks = GetMetadataBlocks(preferredModule);
+        NamedTypeSymbol? definition = null;
         EvaluationContext evaluationContext = context.RootValue is null
             ? CreateMethodContext(blocks, frame)
-            : CreateTypeContext(blocks, context.RootValue);
+            : CreateTypeContext(blocks, context.RootValue, out definition);
 
         DiagnosticBag diagnostics = DiagnosticBag.GetInstance();
         try
@@ -169,6 +176,18 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
                 diagnostics.Clear();
                 result = evaluationContext.CompileExpression(expression, DkmEvaluationFlags.TreatAsExpression, aliases, diagnostics, out _, testData: null);
             }
+            bool atExactType = false;
+            if ((result is null || diagnostics.HasAnyErrors()) && exactType is not null && definition is not null)
+            {
+                (HashSet<string> instanceMembers, HashSet<string> staticMembers) = MemberNames(definition);
+                if (ExactFragment.Of(expression, exactType, instanceMembers, staticMembers) is { } rewritten)
+                {
+                    // What the definition's type parameters can't say, and its errors, are the construction's.
+                    diagnostics.Clear();
+                    result = evaluationContext.CompileExpression(ScopeDeclaredVariables(rewritten), DkmEvaluationFlags.TreatAsExpression, aliases, diagnostics, out _, testData: null);
+                    atExactType = true;
+                }
+            }
 
             if (result is null || diagnostics.HasAnyErrors())
             {
@@ -187,12 +206,40 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
                 return null;
             }
 
-            return CacheCompiled(key, new CompiledEvaluationMethod(result.Assembly, result.TypeName, result.MethodName));
+            return CacheCompiled(atExactType ? exactKey : key, new CompiledEvaluationMethod(result.Assembly, result.TypeName, result.MethodName));
         }
         finally
         {
             diagnostics.Free();
         }
+    }
+
+    /// <summary>A value's type where it is a construction of a generic type, as an expression names it from any scope; null for
+    /// any other type, and for one no expression can name: a compiler's own, or a shared instantiation's stand-in.</summary>
+    private static string? ExactGenericType(ICorDebugValue value)
+    {
+        ICorDebugType type = value.ExactType;
+        if (type.Type is not (CorElementType.CLASS or CorElementType.VALUETYPE) || type.TypeParameters.Length == 0)
+        {
+            return null;
+        }
+        string name = ManagedDebugger.GetCorDebugTypeGlobalName(type);
+        return name.Contains("System.__Canon", StringComparison.Ordinal) || SyntaxFactory.ParseTypeName(name).ContainsDiagnostics ? null : name;
+    }
+
+    /// <summary>The names of the members a type and those it derives from hold, its instances' and its own.</summary>
+    private static (HashSet<string> Instance, HashSet<string> Static) MemberNames(NamedTypeSymbol type)
+    {
+        HashSet<string> instance = new(StringComparer.Ordinal);
+        HashSet<string> shared = new(StringComparer.Ordinal);
+        for (NamedTypeSymbol? each = type; each is not null; each = each.BaseTypeNoUseSiteDiagnostics)
+        {
+            foreach (Symbol member in each.GetMembers().Where(member => member.Kind is SymbolKind.Field or SymbolKind.Property or SymbolKind.Method or SymbolKind.Event))
+            {
+                (member.IsStatic ? shared : instance).Add(member.Name);
+            }
+        }
+        return (instance, shared);
     }
 
     /// <summary>Whether an expression is a query, names Enumerable or calls a member by a name Enumerable's methods have: a
@@ -437,13 +484,14 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
             debugInfo);
     }
 
-    private EvaluationContext CreateTypeContext(ImmutableArray<MetadataBlock> blocks, ICorDebugValue rootValue)
+    private EvaluationContext CreateTypeContext(ImmutableArray<MetadataBlock> blocks, ICorDebugValue rootValue, out NamedTypeSymbol definition)
     {
         ICorDebugType rootType = rootValue.ExactType;
         ModuleInfo moduleInfo = debugger.GetModuleInfoForModule(rootType.Class.Module);
         ModuleId moduleId = new ModuleId(moduleInfo.MetadataReader.Mvid, moduleInfo.ModuleName);
         CSharpCompilation compilation = AddRuntimeAccessAttributes(blocks.ToCompilation(moduleId: default, MakeAssemblyReferencesKind.AllAssemblies).AddReferences(_intrinsicMethodsReference));
         PENamedTypeSymbol currentType = compilation.GetType(moduleId, rootType.Class.Token);
+        definition = currentType;
         SynthesizedContextMethodSymbol currentFrame = new SynthesizedContextMethodSymbol(currentType);
         return new EvaluationContext(
             null,

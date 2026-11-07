@@ -107,12 +107,25 @@ public class PresentationsTests(ITestOutputHelper testOutputHelper)
         await using DebugSession host = await LaunchTargeted();
         List<DapVariable> locals = await host.LocalsAsync(await host.WaitForStoppedEvent());
         List<DapVariable> boxes = [.. locals.Where(v => v.Name is "numberBox" or "textBox" or "otherBox" or "boxes")];
-        Assert.True(boxes.Select(v => (v.Name, v.Value)).SequenceEqual([("numberBox", "number box 5"), ("textBox", "text box words"), ("otherBox", "any box"), ("boxes", "a box of boxes")]),
+        Assert.True(boxes.Select(v => (v.Name, v.Value)).SequenceEqual([("numberBox", "number box 5"), ("textBox", "text box words"), ("otherBox", "any box"), ("boxes", "a box of 2 boxes")]),
             $"The boxes read {Typed(boxes)}, one construction's display shown on another");
         List<DapVariable> numbers = await host.VariablesAsync(boxes[0].VariablesReference);
         Assert.True(numbers.Select(r => (r.Name, r.Value)).SequenceEqual([("Doubled", "10"), ("Raw View", "")]), $"The box of numbers opens to {Typed(numbers)}, not to the view declared for it");
         List<DapVariable> words = await host.VariablesAsync(boxes[1].VariablesReference);
         Assert.True(words.Select(r => (r.Name, r.Value)).SequenceEqual([("Held", "\"words\"")]), $"The box of words opens to {Typed(words)}, where only its own member was to show");
+    }
+
+    /// <summary>A display's fragment reads a member typed by a type parameter at the value's exact type, a struct's and one
+    /// nested in a generic type too: what a construction's own member offers works, and what it lacks is said of that construction.</summary>
+    [Fact]
+    public async Task A_display_reads_a_member_typed_by_a_type_parameter_at_the_values_exact_type()
+    {
+        await using DebugSession host = await LaunchTargeted();
+        List<DapVariable> locals = await host.LocalsAsync(await host.WaitForStoppedEvent());
+        string Shown(string name) => locals.Single(v => v.Name == name).Value;
+        Assert.True(Shown("numbers").StartsWith("3 long, 7 and <error: 'int[]' does not contain a definition for 'Lacking'", StringComparison.Ordinal), $"The pair of numbers reads {Shown("numbers")}");
+        Assert.True(Shown("words").StartsWith("4 long, 9 and <error: 'string' does not contain a definition for 'Lacking'", StringComparison.Ordinal), $"The pair of words reads {Shown("words")}");
+        Assert.True(Shown("row") == "3 and 6", $"The row nested in a generic type reads {Shown("row")}");
     }
 
     private static string Listed(List<DapVariable> rows) => string.Join(", ", rows.Select(r => $"{r.Name} = {r.Value}"));

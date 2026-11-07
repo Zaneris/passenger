@@ -74,9 +74,11 @@ internal sealed class CilValue
     public ICilLocation? Target => Location
         ?? (CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR, IsNull: false } pointer ? new CorDebugLocation(pointer.Dereference()) : null);
 
-    /// <summary>What a managed location holds, or what a pointer points at.</summary>
+    /// <summary>What a managed location holds, what a pointer points at, or a struct itself: an expression on a struct value
+    /// (<see cref="CompiledExpressionEvaluationContext.RootValue"/>) is given it where a method's this is a location.</summary>
     public CilValue Dereference() => Location?.Read()
         ?? (CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR, IsNull: false } pointer ? FromCorValue(pointer.Dereference()) : null)
+        ?? (Struct is not null ? this : null)
         ?? throw new InvalidOperationException("CIL value is not a managed location");
 
     public int AsInt32() => Value switch
