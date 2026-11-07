@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -27,39 +26,24 @@ public static class CSharpParsing
     public static SyntaxTree Parse(string text, CSharpParseOptions? options = null, string path = "") => Parse(SourceText.From(text), options, path);
 
     /// <inheritdoc cref="Parse(string, CSharpParseOptions?, string)"/>
-    public static SyntaxTree Parse(SourceText text, CSharpParseOptions? options = null, string path = "")
-    {
-        SourceText read = TooDeep(text) ? SourceText.From(new string(' ', text.Length)) : text;
-        return DeepText.Read(text.Length, () => CSharpSyntaxTree.ParseText(read, options, path));
-    }
+    public static SyntaxTree Parse(SourceText text, CSharpParseOptions? options = null, string path = "") =>
+        DeepText.Read(text.Length, () => CSharpSyntaxTree.ParseText(CodeBrackets.TooDeep(text, options) ? Nothing(text) : text, options, path));
 
     /// <summary>A tree as a text changed from its own has it, the parser reading again only what changed.</summary>
     public static SyntaxTree Changed(SyntaxTree tree, SourceText text)
     {
-        if (text.GetChangeRanges(tree.GetText()).Sum(c => (long)c.NewLength) > MostTyped && TooDeep(text))
-        {
-            return Parse(text, (CSharpParseOptions)tree.Options, tree.FilePath);
-        }
-        return DeepText.Read(text.Length, () => tree.WithChangedText(text));
+        bool typed = text.GetChangeRanges(tree.GetText()).Sum(c => (long)c.NewLength) <= MostTyped;
+        CSharpParseOptions options = (CSharpParseOptions)tree.Options;
+        return DeepText.Read(text.Length, () => !typed && CodeBrackets.TooDeep(text, options)
+            ? CSharpSyntaxTree.ParseText(Nothing(text), options, tree.FilePath)
+            : tree.WithChangedText(text));
     }
 
     /// <summary>Whether a person's text reads as a type's name.</summary>
     public static bool ReadsAsType(string text) => !DeepText.TooDeep(text) && DeepText.Read(text.Length, () => !SyntaxFactory.ParseTypeName(text).ContainsDiagnostics);
 
-    /// <summary>Whether a text's brackets go past what its parser is given.</summary>
-    private static bool TooDeep(SourceText text)
-    {
-        char[] stretch = ArrayPool<char>.Shared.Rent(4096);
-        Brackets brackets = new();
-        for (int at = 0; at < text.Length && !brackets.TooDeep; at += stretch.Length)
-        {
-            int count = Math.Min(stretch.Length, text.Length - at);
-            text.CopyTo(at, stretch, 0, count);
-            brackets.Read(stretch.AsSpan(0, count));
-        }
-        ArrayPool<char>.Shared.Return(stretch);
-        return brackets.TooDeep;
-    }
+    /// <summary>What's parsed in place of a text too deep: nothing, its length.</summary>
+    private static SourceText Nothing(SourceText text) => SourceText.From(new string(' ', text.Length));
 
     /// <summary>The options defining these symbols, each once, any that is not an identifier left out as the compiler leaves
     /// it out, at a C# version as a project's LangVersion writes it ("12", "latest"); one the parser does not know (a newer

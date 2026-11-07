@@ -60,6 +60,9 @@ public static class DeepText
         return result!;
     }
 
+    /// <summary>Whether a read of so many characters gets all the stack they ask for: one past that may still run out.</summary>
+    public static bool Holds(int characters) => Least + ((long)characters * PerCharacter) <= Most;
+
     /// <summary>Whether a text's brackets go past what's worth a parser's time.</summary>
     public static bool TooDeep(string text)
     {
@@ -77,16 +80,23 @@ public struct Brackets
     /// <summary>Past any code written or generated, and where a parser's cost is still seconds at its worst.</summary>
     private const int Deepest = 1000;
 
-    private static readonly SearchValues<char> Marks = SearchValues.Create("()[]{};#");
+    private static readonly SearchValues<char> Marks = SearchValues.Create("()[]{};#$");
 
     private int statement;
     private int braces;
+    private int conditions;
+    private int holes;
+    private bool dollar;
 
     public bool TooDeep { get; private set; }
 
+    /// <summary>Whether what goes too deep is conditions or an interpolation's holes, each reached by a <c>$</c> of its own:
+    /// a lexer's cost goes as their square, so these are too deep to ask a lexer about, and reading stops.</summary>
+    public bool TooDeepToLex { get; private set; }
+
     public void Read(ReadOnlySpan<char> text)
     {
-        for (int at = text.IndexOfAny(Marks); at >= 0 && !TooDeep; at = text.IndexOfAny(Marks))
+        for (int at = text.IndexOfAny(Marks); at >= 0 && !TooDeepToLex; at = text.IndexOfAny(Marks))
         {
             switch (text[at])
             {
@@ -98,19 +108,26 @@ public struct Brackets
                     break;
                 case '{':
                     braces++;
+                    holes += dollar ? 1 : 0;
+                    dollar = false;
                     break;
                 case '}':
                     braces = Math.Max(0, braces - 1);
+                    holes = Math.Max(0, holes - 1);
+                    break;
+                case '$':
+                    dollar = true;
                     break;
                 case '#':
-                    braces += text[(at + 1)..].StartsWith("if") ? 1 : text[(at + 1)..].StartsWith("endif") ? -1 : 0;
-                    braces = Math.Max(0, braces);
+                    conditions += text[(at + 1)..].StartsWith("if") ? 1 : text[(at + 1)..].StartsWith("endif") ? -1 : 0;
+                    conditions = Math.Max(0, conditions);
                     break;
                 default:
                     statement = 0;
                     break;
             }
-            TooDeep = statement + braces > Deepest;
+            TooDeep |= statement + braces + conditions > Deepest;
+            TooDeepToLex = conditions > Deepest || holes > Deepest;
             text = text[(at + 1)..];
         }
     }

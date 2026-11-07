@@ -1,7 +1,9 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using Passenger.Core;
+using Passenger.Languages.CSharp;
 using Passenger.Xaml.Syntax;
 
 namespace Passenger.Xaml.Metadata;
@@ -45,7 +47,7 @@ public sealed class SourceTypes
 
     /// <summary>A text's tree, its parser running out of no stack; a text nested too deeply for it holds nothing.</summary>
     internal static SyntaxTree Parsed(string text, CSharpParseOptions parsing, string path = "") =>
-        DeepText.Read(text.Length, () => CSharpSyntaxTree.ParseText(DeepText.TooDeep(text) ? string.Empty : text, parsing, path));
+        DeepText.Read(text.Length, () => CSharpSyntaxTree.ParseText(CodeBrackets.TooDeep(SourceText.From(text), parsing) ? string.Empty : text, parsing, path));
 
     /// <summary>A C# file's, parsed with what its project compiles it with (<paramref name="parsing"/>), its documentation
     /// comments passed over.</summary>

@@ -29,6 +29,7 @@ public class CSharpParsingTests
     [InlineData("class C { string x = ", "$\"{", "1", "}\"", "; }")]
     [InlineData("class C { [A(", "(", "1", ")", ")] int x; }")]
     [InlineData("", "#if A\n", "", "#endif\n", "")]
+    [InlineData("/// <see cref=\"", "A{", "B", "}", "\"/>\nclass C { }\n")]
     public void Brackets_past_what_a_parser_is_given_are_a_tree_of_nothing_the_texts_length(string before, string open, string inner, string close, string after)
     {
         string text = Nested(before, open, inner, close, after, 100_000);
@@ -55,6 +56,46 @@ public class CSharpParsingTests
         string text = "class C { void M() {\n" + string.Concat(Enumerable.Repeat("    F(\"(\", '[');\n", 5_000)) + "} }\n";
         Assert.False(DeepText.TooDeep(text), "Brackets in strings added up over a file's statements");
         Assert.NotEmpty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot(TestContext.Current.CancellationToken)).Members);
+    }
+
+    /// <summary>The shapes of real test and data files, whose brackets are only text: a list of a parser's inputs in one
+    /// statement, with no semicolon to stop the count, and braces that never close.</summary>
+    [Theory]
+    [InlineData("class C { string[] x = { ", "\"(\", ", "", "}; }")]
+    [InlineData("class C { string[] x = { ", "@\"[\", ", "", "}; }")]
+    [InlineData("class C { char[] x = { ", "'(', ", "", "}; }")]
+    [InlineData("class C { string[] x = { ", "$\"(\", ", "", "}; }")]
+    [InlineData("class C { string x = \"\"\"\n", "((\n", "", "\"\"\"; }")]
+    [InlineData("class C { void M() {\n", "F(\"{\");\n", "", "} }")]
+    [InlineData("class C {\n", "// {\n", "", "}")]
+    [InlineData("class C {\n/*", " ( { [", "*/", "}")]
+    [InlineData("class C {\n#if NEVER\n", "(((\n", "#endif\n", "}")]
+    public void Brackets_that_are_only_text_read_whole_however_many(string before, string each, string inner, string after)
+    {
+        string text = Nested(before, each, inner, string.Empty, after, 5_000);
+        Assert.True(DeepText.TooDeep(text), "The text as it stands is no longer read as deep, so nothing here reads its tokens");
+        SmallStack.Run(() => Assert.NotEmpty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
+    }
+
+    /// <summary>What a text reader would take for a string or a comment left open is what the lexer reads past: a branch left
+    /// out and a merge's other side are no code, so the brackets after them are.</summary>
+    [Theory]
+    [InlineData("#if NEVER\n/*\n#endif\nclass C { int x = ")]
+    [InlineData("#if NEVER\n@\"\n#endif\nclass C { int x = ")]
+    [InlineData("<<<<<<< ours\n=======\n/*\n>>>>>>> theirs\nclass C { int x = ")]
+    [InlineData("#region /*\nclass C { int x = ")]
+    public void Brackets_after_what_only_looks_like_an_open_comment_are_still_too_deep(string before)
+    {
+        string text = Nested(before, "(", "1", ")", "; }", 100_000);
+        SmallStack.Run(() => Assert.Empty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
+    }
+
+    [Fact]
+    public void A_text_past_what_a_stack_holds_is_too_deep_as_it_reads_as_the_lexer_could_run_out()
+    {
+        string text = Nested("class C { string x = $\"{", "(", "1", ")", "}\"; }", 2_000_000);
+        Assert.False(DeepText.Holds(text.Length), "This text no longer reaches past what a stack holds");
+        SmallStack.Run(() => Assert.Empty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
     }
 
     [Fact]

@@ -57,6 +57,13 @@ public class XamlFileTests
     }
 
     [Fact]
+    public void A_file_whose_strings_leave_brackets_open_still_declares_its_types()
+    {
+        string text = "class C { string[] x = { " + string.Concat(Enumerable.Repeat("\"(\", ", 5_000)) + "}; }";
+        SmallStack.Run(() => Assert.Equal("C", Assert.Single(SourceTypes.Read("/App/C.cs", text, "App", CSharpParsing.Default).Types).Name));
+    }
+
+    [Fact]
     public void A_colours_casts_deeper_than_a_stack_holds_say_no_colour_and_end_nothing()
     {
         string casts = string.Concat(Enumerable.Repeat("(byte)", 100_000));
