@@ -108,18 +108,11 @@ public sealed class LiveRequests : IAsyncDisposable
     ];
 
     /// <summary>Starts hearing a running program at its diagnostic port, each event told to <paramref name="heard"/> on the
-    /// thread that reads the stream. A program gone, or with no port to reach, is a <see cref="ProfilingException"/> saying why.</summary>
+    /// thread that reads the stream. A program gone, with no port to reach, or whose runtime takes no session in time, is a
+    /// <see cref="ProfilingException"/> saying why (<see cref="SessionStarts"/>).</summary>
     public static async Task<LiveRequests> AttachAsync(int processId, Action<WebEvent> heard, CancellationToken cancel = default)
     {
-        EventPipeSession session;
-        try
-        {
-            session = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(Providers, requestRundown: false, circularBufferMB: 64, cancel);
-        }
-        catch (Exception error) when (DiagnosticsFailures.Of(error))
-        {
-            throw new ProfilingException($"Its requests could not be followed: {error.Message}", error);
-        }
+        EventPipeSession session = await SessionStarts.StartAsync(processId, Providers, circularBufferMB: 64, "Its requests could not be followed", cancel);
         return Hear(session.EventStream, heard, async () =>
         {
             await EventPipeStops.StopAsync(session, TimeSpan.FromSeconds(5));

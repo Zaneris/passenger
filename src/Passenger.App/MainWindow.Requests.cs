@@ -191,11 +191,13 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>One program followed, asked again while its runtime has yet to open its port; why not said.</summary>
+    /// <summary>One program followed; a start that failed said at once, and asked again, saying so, only while its runtime has
+    /// yet to open its port (<see cref="SessionStarts.AskAgain"/>).</summary>
     private async Task FollowAsync(RequestTarget target)
     {
         RequestLog log = RequestLog;
-        for (int attempt = 0; attempt < 30; attempt++)
+        DateTime first = DateTime.UtcNow;
+        while (true)
         {
             try
             {
@@ -215,12 +217,13 @@ public partial class MainWindow
             }
             catch (ProfilingException failed)
             {
-                RequestLog.Following = failed.Message;
-                if (target.Place is not null)
+                // Tools in a container that answered have said why: asking again would only say it again.
+                if (target.Place is not null || !SessionStarts.AskAgain(failed, DateTime.UtcNow - first, HeldStart.PortLimit))
                 {
-                    // Tools that answered have said why: asking again would only say it again.
+                    RequestLog.Following = failed.Message;
                     return;
                 }
+                RequestLog.Following = $"Waiting for {target.Name}'s runtime to open its diagnostic port…";
                 await Task.Delay(TimeSpan.FromMilliseconds(200));
             }
         }
