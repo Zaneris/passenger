@@ -40,15 +40,16 @@ public static class Indentation
     /// <summary>How wide a tab is to a reader whose blocks are its indentation.</summary>
     private const int BlockTabWidth = 8;
 
-    /// <summary>The indentation a file's lines use: tabs when more lines start with a tab than with spaces, else the
-    /// step most changes of indentation between neighbouring lines take, when more than half take it. Blank lines and a
-    /// block comment's aligned <c>*</c> lines say nothing, nor in <paramref name="markup"/> a line that begins inside a
-    /// tag or a comment, where attributes are aligned. Null when fewer than <paramref name="minimumLines"/> lines are
-    /// indented, or no step stands out.</summary>
+    /// <summary>The indentation a file's lines use: tabs when more lines start with a tab than with spaces, else the step most
+    /// changes between neighbouring lines take, when more than half take it, 8 being two of 4 where 4 is taken too and a quarter
+    /// of the indented lines stand halfway between 8's levels (continuations 8 deep in a file of 4). Blank lines and a block
+    /// comment's <c>*</c> lines say nothing, nor in <paramref name="markup"/> a line beginning inside a tag or a comment. Null
+    /// when fewer than <paramref name="minimumLines"/> lines are indented, or no step stands out.</summary>
     public static IndentOptions? Detect(ReadOnlySpan<char> text, int tabWidth, int minimumLines = 2, bool markup = false)
     {
         int tabs = 0;
         int spaces = 0;
+        int halfway = 0;
         Dictionary<int, int> steps = [];
         int? previous = null;
         MarkupState state = default;
@@ -84,6 +85,7 @@ public static class Indentation
             if (lead > 0)
             {
                 spaces++;
+                halfway += lead % WidestStep == WidestStep / 2 ? 1 : 0;
             }
             int step = previous is { } before ? Math.Abs(lead - before) : 0;
             if (step is > 0 and <= WidestStep)
@@ -105,7 +107,11 @@ public static class Indentation
             return null;
         }
         (int size, int count) = steps.OrderByDescending(s => s.Value).ThenBy(s => s.Key).Select(s => (s.Key, s.Value)).First();
-        return count * 2 > steps.Values.Sum() ? new IndentOptions(size, UseTabs: false, tabWidth) : null;
+        if (count * 2 <= steps.Values.Sum())
+        {
+            return null;
+        }
+        return new IndentOptions(size == WidestStep && steps.ContainsKey(WidestStep / 2) && halfway * 4 >= spaces ? WidestStep / 2 : size, UseTabs: false, tabWidth);
     }
 
     /// <summary>Where a scan of markup is between lines: inside a tag (and a quoted value in it) or a comment.</summary>
