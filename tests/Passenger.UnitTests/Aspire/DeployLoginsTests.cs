@@ -26,6 +26,25 @@ public sealed class DeployLoginsTests
         Assert.Null(DeployLogins.CurrentContextIn("contexts:\n- context:\n    current-context: nested\n"));
     }
 
+    /// <summary>kubectl reads JSON as YAML, so a configuration of either says the same; a deploy needing the context is
+    /// refused where this finds none.</summary>
+    [Fact]
+    public void A_kubectl_configuration_in_JSON_gives_its_top_level_current_context()
+    {
+        Assert.Equal("demo", DeployLogins.CurrentContextIn("""{"apiVersion":"v1","kind":"Config","clusters":[],"current-context":"demo"}"""));
+        Assert.Equal("demo", DeployLogins.CurrentContextIn("\n{\n  \"kind\": \"Config\",\n  \"current-context\": \"demo\",\n  \"users\": []\n}\n"));
+        Assert.Null(DeployLogins.CurrentContextIn("""{"kind":"Config","current-context":""}"""));
+        Assert.Null(DeployLogins.CurrentContextIn("""{"kind":"Config","contexts":[{"context":{"current-context":"nested"}}]}"""));
+        Assert.Null(DeployLogins.CurrentContextIn("""{"kind":"Config","""));
+    }
+
+    [Fact]
+    public void A_kubectl_configurations_key_may_be_quoted_as_YAML_allows()
+    {
+        Assert.Equal("demo", DeployLogins.CurrentContextIn("kind: Config\n\"current-context\": demo\n"));
+        Assert.Equal("demo", DeployLogins.CurrentContextIn("kind: Config\n'current-context': \"demo\"\n"));
+    }
+
     [Fact]
     public void Kubectls_files_are_those_its_variable_names_in_order_else_the_home_folders()
     {

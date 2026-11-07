@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Passenger.Core;
 
 namespace Passenger.App.Aspire;
@@ -8,7 +9,7 @@ namespace Passenger.App.Aspire;
 /// account's name or a context's taken from them: the Azure CLI's account in its profile (azureProfile.json, which lists
 /// the accounts az login made and holds no token), Helm's Kubernetes context in kubectl's configuration (its
 /// current-context), each where the tool's own variable puts it, as the AppHost's own steps would find them.</summary>
-public static class DeployLogins
+public static partial class DeployLogins
 {
     /// <summary>The Azure CLI's folder, in place of .azure in the home folder.</summary>
     public const string AzureConfigFolder = "AZURE_CONFIG_DIR";
@@ -84,16 +85,19 @@ public static class DeployLogins
             ? files
             : [Path.Combine(home, ".kube", "config")];
 
-    /// <summary>The context a kubectl configuration's text makes current, its top-level current-context; null where it sets
-    /// none.</summary>
-    public static string? CurrentContextIn(string yaml)
+    /// <summary>The context a kubectl configuration's text makes current, its top-level current-context, in YAML or in the
+    /// JSON kubectl reads as YAML; null where it sets none.</summary>
+    public static string? CurrentContextIn(string configuration)
     {
-        const string Key = "current-context:";
-        foreach (string line in yaml.Split('\n'))
+        if (configuration.TrimStart().StartsWith('{'))
         {
-            if (line.StartsWith(Key, StringComparison.Ordinal))
+            return CurrentContextInJson(configuration);
+        }
+        foreach (string line in configuration.Split('\n'))
+        {
+            if (CurrentContextLine().Match(line) is { Success: true } found)
             {
-                string value = line[Key.Length..];
+                string value = found.Groups[1].Value;
                 int comment = value.IndexOf(" #", StringComparison.Ordinal);
                 value = (comment >= 0 ? value[..comment] : value).Trim().Trim('"', '\'');
                 return value.Length > 0 ? value : null;
@@ -101,6 +105,23 @@ public static class DeployLogins
         }
         return null;
     }
+
+    private static string? CurrentContextInJson(string configuration)
+    {
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(configuration);
+            return JsonMembers.Text(read.RootElement, "current-context") is { Length: > 0 } named ? named : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A top-level current-context of a YAML mapping, its key as YAML may write it, bare or quoted.</summary>
+    [GeneratedRegex("""^(?:current-context|"current-context"|'current-context')\s*:(.*)$""")]
+    private static partial Regex CurrentContextLine();
 
     private static string? Read(string file)
     {
