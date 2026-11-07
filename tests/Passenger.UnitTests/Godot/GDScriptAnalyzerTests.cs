@@ -327,6 +327,41 @@ public class GDScriptAnalyzerTests
         ], colours.Where(c => c.Key is not ("emit" or "print")).OrderBy(c => c.Key, StringComparer.Ordinal).Select(c => $"{c.Key} {string.Join("/", c.Value)}"));
     }
 
+    /// <summary>What Godot 4.7.2 accepts read off a class by its name: its static variables and functions, constants, enums,
+    /// an unnamed enum's values and inner classes; it rejects a variable, a function or a signal only an instance has. Its
+    /// list says the same, a class built on it inheriting the same, and an instance's holds all of them.</summary>
+    [Fact]
+    public void A_class_read_by_its_name_lists_what_it_has_itself_and_nothing_only_an_instance_has()
+    {
+        const string Worker = "class_name Worker\nextends Node\n\nsignal hit\nenum Mood { CALM }\nenum { LOOSE }\nconst LIMIT := 3\nstatic var shared := 2\nvar field := 1\n\n"
+            + "class Inner:\n\tvar held := 1\n\tstatic func make() -> int:\n\t\treturn 1\n\n"
+            + "func work() -> int:\n\treturn 1\n\nstatic func count() -> int:\n\treturn 2\n";
+        const string Boss = "class_name Boss\nextends Worker\n\nfunc manage() -> int:\n\treturn 4\n\nstatic func lead() -> int:\n\treturn 5\n";
+        string text = "extends Node\n\nfunc f():\n\tprint(Worker.LIMIT, Boss.LIMIT)\n";
+        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, new() { ["res://worker.gd"] = Worker, ["res://boss.gd"] = Boss });
+
+        HashSet<string> worker = Names(TypeBefore(".LIMIT"));
+        Assert.Superset(new HashSet<string> { "count", "shared", "LIMIT", "Mood", "LOOSE", "Inner" }, worker);
+        Assert.Empty(worker.Intersect(["field", "work", "hit", "get_tree", "name", "ready", "get_class"]));
+        HashSet<string> inner = Names(analyzer.Member(TypeBefore(".LIMIT"), "Inner")!.Type);
+        Assert.Contains("make", inner);
+        Assert.DoesNotContain("held", inner);
+        HashSet<string> boss = Names(TypeBefore(".LIMIT", last: true));
+        Assert.Superset(new HashSet<string> { "lead", "count", "LIMIT" }, boss);
+        Assert.Empty(boss.Intersect(["manage", "work"]));
+        Assert.Superset(new HashSet<string> { "field", "work", "hit", "count", "LIMIT", "get_tree", "name" }, Names(TypeBefore(".LIMIT").Instance));
+
+        HashSet<string> Names(GDScriptType type) => [.. analyzer.Members(type).Select(m => m.Name)];
+
+        GDScriptType TypeBefore(string after, bool last = false)
+        {
+            int dot = last ? text.LastIndexOf(after, StringComparison.Ordinal) : text.IndexOf(after, StringComparison.Ordinal);
+            GDScriptType type = analysis.NodeAt(dot - 1) is ({ } node, _) ? analysis.TypeOf(node) : GDScriptType.Variant;
+            Assert.True(type.Meta, $"What comes before {after} read as {type}, no class");
+            return type;
+        }
+    }
+
     private static Dictionary<string, string> Locals(GDScriptAnalysis analysis) =>
         analysis.Tree!.Members.SelectMany(m => analysis.LocalsAt(m.End - 1)).GroupBy(l => l.Name).ToDictionary(g => g.Key, g => g.First().Type.ToString(), StringComparer.Ordinal);
 }

@@ -101,6 +101,37 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>After a class's name and its dot the list holds what the class has itself, its static members and constants,
+    /// and nothing Godot rejects there, an instance's variables, functions and signals; a value of the class has them all.</summary>
+    [AvaloniaFact]
+    public void After_a_class_name_the_list_holds_what_the_class_has_and_nothing_only_an_instance_has()
+    {
+        TestFolders.Write(folder, "worker.gd", "class_name Worker\nextends Node\n\nsignal finished\n\nconst LIMIT := 3\n\nvar instance_field := 1\n\n\n"
+            + "func instance_fn() -> int:\n\treturn 1\n\n\nstatic func static_fn() -> int:\n\treturn 2\n");
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "\tcounter += 1");
+            window.KeyTextInput("Worker");
+            window.KeyTextInput(".");
+            Listed(window, "static_fn", "static function after the class's dot");
+            Assert.Contains("LIMIT", window.Assist.CompletionLabels);
+            Assert.Empty(window.Assist.CompletionLabels.Intersect(["instance_field", "instance_fn", "finished"]));
+            Ui.Press(window, "ESCAPE", settle: false);
+
+            TypeOverLine(window, editor, "Worker.new()");
+            window.KeyTextInput(".");
+            Listed(window, "instance_field", "instance's variable after a value of the class");
+            Assert.Contains("instance_fn", window.Assist.CompletionLabels);
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>A list opened on a name typed before it, by its key or as typing outruns the list, shows its first item's card
     /// as it opens, the item chosen before the list shows.</summary>
     [AvaloniaFact]

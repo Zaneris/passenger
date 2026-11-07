@@ -695,11 +695,14 @@ public sealed partial class GDScriptAnalyzer
         {
             if (OwnNames(at).TryGetValue(name, out (GDScriptNode Node, int Offset) owned))
             {
-                return owned.Node is GDScriptVariable { IsStatic: false } or GDScriptSignal or GDScriptFunction { IsStatic: false };
+                return InstanceOnly(owned.Node);
             }
         }
         return false;
     }
+
+    /// <summary>Whether a class's member is one only an instance has.</summary>
+    private static bool InstanceOnly(GDScriptNode member) => member is GDScriptVariable { IsStatic: false } or GDScriptSignal or GDScriptFunction { IsStatic: false };
 
     /// <summary>The text a preload's path is as Godot folds it: a string written, or a constant's name, of the function or
     /// of the class and the script classes it extends, whose value is one; null for any other.</summary>

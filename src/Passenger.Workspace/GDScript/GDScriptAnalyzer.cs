@@ -475,7 +475,8 @@ public sealed partial class GDScriptAnalyzer
         return null;
     }
 
-    /// <summary>Every member a type has, its own first, then its bases'.</summary>
+    /// <summary>Every member a type has, its own first, then its bases'; of a class read by its name, those it has itself,
+    /// as Godot's completion lists them (_find_identifiers_in_class) and its analyzer finds them.</summary>
     public IReadOnlyList<GDScriptMemberInfo> Members(GDScriptType type)
     {
         List<GDScriptMemberInfo> all = [];
@@ -523,6 +524,10 @@ public sealed partial class GDScriptAnalyzer
             }
             foreach ((GDScriptNode node, int offset) in OwnMembers(at))
             {
+                if (type.Meta && InstanceOnly(node))
+                {
+                    continue;
+                }
                 foreach (string name in Names(node))
                 {
                     if (!seen.Contains(name) && ScriptMember(node, offset, name, at) is { } found)
