@@ -111,7 +111,7 @@ public sealed class Language
     private Language([IdentifierOf(typeof(LanguageIds))] string id, string name, IReadOnlyList<FilePattern> patterns, string? line = null,
         (string Start, string End)? block = null, int indent = 4, GrammarFile? grammar = null, Func<TextDocument, IFoldFinder>? folds = null,
         LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false, bool tabs = false,
-        bool spacesAlone = false, Func<TextSnapshot, IReadOnlySet<int>>? literals = null)
+        bool spacesAlone = false, HashSet<string>? blockWords = null, Func<TextSnapshot, IReadOnlySet<int>>? literals = null)
     {
         Id = id;
         Name = name;
@@ -126,6 +126,7 @@ public sealed class Language
         ReindentsPaste = reindentsPaste;
         Parsed = parsed;
         IndentsWithSpacesAlone = spacesAlone;
+        BlockWords = blockWords;
         Literals = literals;
         All.Add(this);
     }
@@ -231,7 +232,8 @@ public sealed class Language
         grammar: new("source.gdshader", "GDShader.tmLanguage.json"));
 
     public static readonly Language Python = new("python", "Python", ["*.py", "*.pyi", "*.pyw"], line: "#",
-        grammar: new("source.python", "MagicPython.tmLanguage.json"));
+        grammar: new("source.python", "MagicPython.tmLanguage.json"),
+        blockWords: ["async", "case", "class", "def", "elif", "else", "except", "finally", "for", "if", "match", "try", "while", "with"]);
 
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
@@ -267,6 +269,10 @@ public sealed class Language
 
     /// <summary>Whether a tab can't indent the language's files: a reader takes the file for broken with one there.</summary>
     public bool IndentsWithSpacesAlone { get; }
+
+    /// <summary>The words a statement opening a block can begin with, where the language's blocks are its indentation and its
+    /// reader refuses a block it can't tell from its parent's by tabs and spaces alike; null for any other language.</summary>
+    public IReadOnlySet<string>? BlockWords { get; }
 
     /// <summary>What finds the lines of a file of the language whose whitespace its reader keeps though its grammar's strings
     /// don't show them; null for a language with none.</summary>

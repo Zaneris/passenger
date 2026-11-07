@@ -380,9 +380,9 @@ public sealed class FilePropertiesTests : IDisposable
         string tabbed = string.Join('\n', Spaced.Split('\n').Select((line, at) => code.Contains(at) ? Tabs(line) : line));
         Write("tool.py", Spaced);
         MainWindow window = Open("tool.py");
+        window.EditorArea.Active!.ChosenIndent = new Passenger.Text.IndentOptions(4, UseTabs: false, TabWidth: 4);
         Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
         Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context()));
-        window.EditorArea.Active!.ChosenIndent = new Passenger.Text.IndentOptions(4, UseTabs: false, TabWidth: 4);
         Click(window, "IndentButton");
         Choose(window, "Convert Indentation to Tabs");
         Assert.Equal(tabbed, Text(window));
@@ -397,6 +397,28 @@ public sealed class FilePropertiesTests : IDisposable
             string code = line.TrimStart(' ');
             return new string('\t', (line.Length - code.Length) / 4) + code;
         }
+    }
+
+    /// <summary>A Python file whose indent size leaves a block's parent between levels refuses tabs, which Python would refuse
+    /// beside that line's spaces, saying which line; the same file at the indent its lines use converts, and to spaces at any
+    /// size. A comment, a string's line and a line of code that opens nothing between levels stop nothing.</summary>
+    [AvaloniaFact]
+    public void Converting_Python_to_tabs_is_refused_where_a_blocks_parent_is_no_whole_number_of_levels_deep()
+    {
+        const string Code = "class Loader:\n    # kept\n    def __init__(self):\n        self.text = \"\"\"\n          words\"\"\"\n   # between levels\n        self.done = call(1,\n                         2)\n";
+        Write("loader.py", Code);
+        MainWindow window = Open("loader.py");
+        window.EditorArea.Active!.ChosenIndent = new Passenger.Text.IndentOptions(8, UseTabs: false, TabWidth: 8);
+        Assert.Equal(Refusals.BlockAtRisk("loader.py", "Python", 3), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context()));
+        Assert.Equal(Code, Text(window));
+
+        window.EditorArea.Active!.ChosenIndent = new Passenger.Text.IndentOptions(4, UseTabs: false, TabWidth: 4);
+        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Tabs");
+        Assert.Equal("class Loader:\n\t# kept\n\tdef __init__(self):\n\t\tself.text = \"\"\"\n          words\"\"\"\n   # between levels\n\t\tself.done = call(1,\n\t\t\t\t\t\t 2)\n", Text(window));
+        window.Close();
     }
 
     /// <summary>A YAML file's block scalar keeps every line, the first whose indentation the scalar takes its own from among

@@ -37,6 +37,9 @@ public static class Indentation
     /// <summary>The widest step taken for a level.</summary>
     private const int WidestStep = 8;
 
+    /// <summary>How wide a tab is to a reader whose blocks are its indentation.</summary>
+    private const int BlockTabWidth = 8;
+
     /// <summary>The indentation a file's lines use: tabs when more lines start with a tab than with spaces, else the
     /// step most changes of indentation between neighbouring lines take, when more than half take it. Blank lines and a
     /// block comment's aligned <c>*</c> lines say nothing, nor in <paramref name="markup"/> a line that begins inside a
@@ -238,6 +241,43 @@ public static class Indentation
             edits.Add(new TextEdit(line.Start, was.Length, now));
         }
         return (edits, left);
+    }
+
+    /// <summary>The first line whose block a conversion could change, in a file whose blocks are its indentation and whose
+    /// reader counts a tab as 8 columns and as 1, refusing a block the two disagree on; null for none. Either way the file's own
+    /// tab width must order lines as the reader does (<see cref="ReadsTabsApart"/>). To tabs, a block's parent must be a whole
+    /// number of levels deep, as under tabs alone whatever is deeper reads as deeper. A line <paramref name="kept"/> names is
+    /// no block's.</summary>
+    public static int? FirstBlockAtRisk(TextSnapshot text, IndentOptions from, bool toTabs, IReadOnlySet<int>? kept, IReadOnlySet<string> blockWords)
+    {
+        for (int i = 0; i < text.LineCount; i++)
+        {
+            LineSpan span = text.GetLine(i);
+            string line = text.GetText(span.Start, span.Length);
+            int lead = Lead(line);
+            if (lead < line.Length && kept?.Contains(i) != true && (ReadsTabsApart(line.AsSpan(0, lead), from.TabWidth)
+                || (toTabs && from.Columns(line.AsSpan(0, lead)) % from.Size != 0 && MayOpenBlock(line, lead, blockWords))))
+            {
+                return i;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Whether a tab width could order this leading whitespace unlike a reader counting a tab as 8 columns and as 1.
+    /// Tabs before spaces, at a width between those, read in between them, so the order the two agree on holds.</summary>
+    private static bool ReadsTabsApart(ReadOnlySpan<char> lead, int tabWidth) =>
+        tabWidth != BlockTabWidth && lead.Contains('\t') && (tabWidth > BlockTabWidth || lead.TrimStart('\t').Contains('\t'));
+
+    /// <summary>Whether a line begins with a word that opens a block, or a backslash or form feed hiding where its statement starts.</summary>
+    private static bool MayOpenBlock(string line, int lead, IReadOnlySet<string> blockWords)
+    {
+        int end = lead;
+        while (end < line.Length && (char.IsLetterOrDigit(line[end]) || line[end] == '_'))
+        {
+            end++;
+        }
+        return line[lead] is '\\' or '\f' || blockWords.Contains(line[lead..end]);
     }
 
     /// <summary>How many spaces and tabs begin a run of text.</summary>

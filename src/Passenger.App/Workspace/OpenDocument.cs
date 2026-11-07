@@ -837,14 +837,32 @@ public sealed class OpenDocument : Observable
     }
 
     /// <summary>Why converting the indentation could change what the file means, so is refused: it is read-only, its language
-    /// takes no tabs, or the lines that begin inside a string are not known, as C#'s are from its syntax at once and another
-    /// language's once its grammar has read the whole file; a language with neither has none known unless it holds none.</summary>
+    /// takes no tabs, the lines that begin inside a string are not known, as C#'s are from its syntax at once and another
+    /// language's once its grammar has read the whole file (a language with neither has none known unless it holds none), or
+    /// its language would read a block of the result otherwise.</summary>
     public string? WhyNotConverted(bool toTabs) =>
         IsReadOnly ? Refusals.ReadOnly(Name)
         : toTabs && Language.IndentsWithSpacesAlone ? Refusals.SpacesAlone(Name, Language.Name)
         : parser is TextMateHighlighter grammar && !grammar.HasRead(Text.Snapshot) ? Refusals.ReadingStrings(Name)
         : parser is null && !Language.HoldsNoStrings(Path) ? Refusals.UnreadStrings(Name)
+        : Language.BlockWords is { } words && FirstBlockAtRisk(toTabs, words) is { } line ? Refusals.BlockAtRisk(Name, Language.Name, line + 1)
         : null;
+
+    /// <summary>The first line whose block converting could change, read once for each text, indent and way, as a menu or Find
+    /// Action asks of every action it lists.</summary>
+    private int? FirstBlockAtRisk(bool toTabs, IReadOnlySet<string> words)
+    {
+        TextSnapshot text = Text.Snapshot;
+        IndentOptions from = Indentation.Options;
+        int way = toTabs ? 1 : 0;
+        if (!ReferenceEquals(blocksAtRisk[way].Text, text) || blocksAtRisk[way].From != from)
+        {
+            blocksAtRisk[way] = (text, from, Passenger.Text.Indentation.FirstBlockAtRisk(text, from, toTabs, LinesInStrings(), words));
+        }
+        return blocksAtRisk[way].Line;
+    }
+
+    private readonly (TextSnapshot? Text, IndentOptions From, int? Line)[] blocksAtRisk = new (TextSnapshot?, IndentOptions, int?)[2];
 
     /// <summary>The lines that begin inside a string, whose leading whitespace is the string's text: C#'s verbatim and raw
     /// strings from its syntax, another language's from where its grammar's states say a string runs on, with those its

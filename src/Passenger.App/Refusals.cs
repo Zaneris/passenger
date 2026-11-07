@@ -304,6 +304,11 @@ public static class Refusals
     /// <summary>A file of a language tabs can't indent, which a conversion to them would break.</summary>
     public static string SpacesAlone(string name, string language) => $"{language} takes no tabs in its indentation, so {name} would no longer read as {language}";
 
+    /// <summary>A file of a language whose blocks are its indentation, a line of which a conversion could move to another block
+    /// or leave the file refused.</summary>
+    public static string BlockAtRisk(string name, string language, int line) =>
+        $"Converted, line {line} of {name} could read as another block, as {language} counts tabs and spaces apart";
+
     /// <summary>Why the file shown cannot be saved (the one a diff's tab edits, <see cref="Workspace.OpenDocument.Saves"/>): none is
     /// shown, it is read-only, or it has nothing to save.</summary>
     public static string? NeedsUnsaved(ActionContext context) =>
