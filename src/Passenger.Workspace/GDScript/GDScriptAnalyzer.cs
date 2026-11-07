@@ -565,17 +565,18 @@ public sealed partial class GDScriptAnalyzer
     }
 
     /// <summary>The members a class's code finds by their names alone, an inner class's where <paramref name="inner"/> says
-    /// (<see cref="GDScriptAnalysis.ClassAt"/>): the class's own and its bases', then of each class it is written in, nearest
-    /// first, only the constants, enums and classes it declares (Godot's _find_identifiers_in_class).</summary>
-    public IReadOnlyList<GDScriptMemberInfo> MembersInScope(GDScriptTree tree, string path, GDScriptClass? inner)
+    /// (<see cref="GDScriptAnalysis.ClassAt"/>): the class's own and its bases', in a static place (<see cref="GDScriptAnalysis.StaticAt"/>)
+    /// what it has as a class read by its name, then of each class it is written in, nearest first, only the constants, enums
+    /// and classes it declares (Godot's _find_identifiers_in_class).</summary>
+    public IReadOnlyList<GDScriptMemberInfo> MembersInScope(GDScriptTree tree, string path, GDScriptClass? inner, bool isStatic)
     {
         GDScriptType script = ScriptClass(tree, path);
         if (inner is not { Identifier.Name: { } name } || Enclosing(script, tree.Members.Select(m => (m.Node, m.Offset)), inner) is not { Count: > 0 } holders
             || Member(holders[^1], name) is not { Type: { } own })
         {
-            return Members(script);
+            return Members(script with { Meta = isStatic });
         }
-        List<GDScriptMemberInfo> all = [.. Members(own.Instance)];
+        List<GDScriptMemberInfo> all = [.. Members(own with { Meta = isStatic })];
         HashSet<string> seen = new(all.Select(m => m.Name), StringComparer.Ordinal);
         foreach (GDScriptType holder in Enumerable.Reverse(holders))
         {

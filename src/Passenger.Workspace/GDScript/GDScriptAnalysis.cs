@@ -108,7 +108,7 @@ public sealed class GDScriptAnalysis
     /// Godot's parser adds a name to its block (_find_identifiers_in_suite).</summary>
     public IReadOnlyList<GDScriptMemberInfo> LocalsAt(int offset)
     {
-        (_, GDScriptSuite? innermost, int from) = ScopeAt(offset);
+        (_, GDScriptSuite? innermost, int from, _) = ScopeAt(offset);
         if (innermost is null)
         {
             return [];
@@ -133,10 +133,14 @@ public sealed class GDScriptAnalysis
     /// <summary>The innermost inner class an offset is in; null in the script's own.</summary>
     public GDScriptClass? ClassAt(int offset) => ScopeAt(offset).Class;
 
-    /// <summary>The innermost inner class and block an offset is in, with the offset their positions count from. On a line of
-    /// code the nodes around it say; on a line with nothing yet before it, or past what could be read, its indentation
-    /// does, as a name typed there would end what is less indented.</summary>
-    private (GDScriptClass? Class, GDScriptSuite? Block, int From) ScopeAt(int offset)
+    /// <summary>Whether an offset is where Godot's analyzer finds no instance: a static function's parameters and body, a static
+    /// variable's value, setter and getter, and any lambda in them (its static_context).</summary>
+    public bool StaticAt(int offset) => ScopeAt(offset).Static;
+
+    /// <summary>The innermost inner class and block an offset is in, with the offset their positions count from, and whether it
+    /// is static there. On a line of code the nodes around it say; on a line with nothing yet before it, or past what could
+    /// be read, its indentation does, as a name typed there would end what is less indented.</summary>
+    private (GDScriptClass? Class, GDScriptSuite? Block, int From, bool Static) ScopeAt(int offset)
     {
         if (Tree?.Members.LastOrDefault(m => m.Start <= offset) is not { Node: { } member } within)
         {
@@ -154,6 +158,8 @@ public sealed class GDScriptAnalysis
         GDScriptClass? @class = null;
         GDScriptSuite? block = null;
         int around = -1;
+        bool staticOwner = false;
+        bool isStatic = false;
         for (GDScriptNode? at = member; at is not null;)
         {
             GDScriptNode? next = LastBegunBy(at, relative);
@@ -162,14 +168,20 @@ public sealed class GDScriptAnalysis
                 case GDScriptClass inner:
                     if ((byIndent || relative > inner.End) && column <= IndentOf(inner))
                     {
-                        return (@class, block, within.Offset);
+                        return (@class, block, within.Offset, isStatic);
                     }
                     @class = inner;
                     break;
+                case GDScriptVariable { IsStatic: true } variable:
+                    staticOwner = true;
+                    // A value still being written may have ended by what was read, its line going on.
+                    isStatic = lineStart <= within.Offset + variable.End;
+                    break;
                 case GDScriptFunction { Body: { } body } function:
+                    staticOwner = function.IsLambda ? staticOwner : function.IsStatic;
                     if (relative <= function.HeaderEnd)
                     {
-                        return (@class, body, within.Offset);
+                        return (@class, body, within.Offset, staticOwner);
                     }
                     next = body;
                     break;
@@ -180,15 +192,16 @@ public sealed class GDScriptAnalysis
                     int indent = suite.Statements.Count > 0 ? IndentOf(suite.Statements[0]) : around + 1;
                     if ((byIndent || relative > suite.End) && (indent <= around || column < indent))
                     {
-                        return (@class, block, within.Offset);
+                        return (@class, block, within.Offset, isStatic);
                     }
                     block = suite;
+                    isStatic = staticOwner;
                     break;
             }
             around = Math.Max(around, IndentOf(at));
             at = next;
         }
-        return (@class, block, within.Offset);
+        return (@class, block, within.Offset, isStatic);
     }
 
     /// <summary>The last of a node's children to begin by an offset.</summary>

@@ -171,6 +171,37 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>In a static function the list holds what needs no instance, the class's static members, and none of what Godot
+    /// rejects there, an instance's variables, functions and signals and <c>self</c>; a function beside it has them all.</summary>
+    [AvaloniaFact]
+    public void A_static_function_completes_only_what_needs_no_instance()
+    {
+        TestFolders.Write(folder, "main.gd", "extends Node\n\nsignal spent\n\nstatic var shared_count := 1\nvar stock := 1\n\n\n"
+            + "func spend() -> void:\n\tprint(1)\n\n\nstatic func spawn() -> void:\n\tprint(2)\n");
+        (MainWindow window, _, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "print(2)");
+            TypeName(window, "s");
+            Listed(window, "shared_count", "static variable in a static function");
+            Assert.Contains("spawn", window.Assist.CompletionLabels);
+            Assert.Empty(window.Assist.CompletionLabels.Intersect(["stock", "spend", "spent", "self"]));
+            Ui.Press(window, "ESCAPE", settle: false);
+            Erase(window, 1);
+
+            NewLineAfter(window, editor, "print(1)");
+            TypeName(window, "s");
+            Listed(window, "stock", "instance's variable in a function");
+            Assert.Superset(new HashSet<string> { "spend", "spent", "self", "shared_count", "spawn" }, window.Assist.CompletionLabels.ToHashSet());
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>After a member read off a class or a value the list holds that member's own, however many dots came before.</summary>
     [AvaloniaFact]
     public void After_a_member_read_off_another_the_list_holds_what_that_member_has()

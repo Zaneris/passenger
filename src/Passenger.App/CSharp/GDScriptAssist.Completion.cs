@@ -207,7 +207,8 @@ internal sealed partial class GDScriptAssist
     }
 
     /// <summary>The names a place may use: the locals in scope there, its class's members, the keywords it may begin with, then
-    /// the project's classes and autoloads and the engine's globals; at a class's level a declaration's keywords alone.</summary>
+    /// the project's classes and autoloads and the engine's globals, nothing of an instance in a static place; at a class's
+    /// level a declaration's keywords alone.</summary>
     private Listed InScopeListed(GodotScriptTypes.Typed typed, GDScriptAsked at, int caret)
     {
         List<CompletionItem> items = [];
@@ -224,7 +225,8 @@ internal sealed partial class GDScriptAssist
                 items.Add(MemberItem(typed, local, null, "0"));
             }
         }
-        foreach (GDScriptMemberInfo member in typed.Analyzer.MembersInScope(typed.Tree, typed.Analysis.Path, typed.Analysis.ClassAt(caret)))
+        bool isStatic = typed.Analysis.StaticAt(caret);
+        foreach (GDScriptMemberInfo member in typed.Analyzer.MembersInScope(typed.Tree, typed.Analysis.Path, typed.Analysis.ClassAt(caret), isStatic))
         {
             if (seen.Add(member.Name))
             {
@@ -233,7 +235,7 @@ internal sealed partial class GDScriptAssist
         }
         foreach (string keyword in at.StatementStart ? StatementKeywords.Concat(ExpressionKeywords) : ExpressionKeywords)
         {
-            if (seen.Add(keyword))
+            if (seen.Add(keyword) && !(isStatic && keyword == "self"))
             {
                 items.Add(Item(keyword, CompletionItemKind.Keyword, "keyword", "2", new OfWords($"{keyword}, a GDScript keyword")));
             }

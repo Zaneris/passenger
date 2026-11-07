@@ -36,6 +36,7 @@ public class GDScriptAnalyzerTests
             { "name": "RefCounted", "inherits": "Object" },
             { "name": "Node", "inherits": "Object", "enums": [{ "name": "ProcessMode", "values": [{ "name": "PROCESS_MODE_INHERIT", "value": 0 }] }],
               "methods": [{ "name": "get_tree", "return_value": { "type": "SceneTree" } }, { "name": "_ready", "is_virtual": true },
+                { "name": "print_orphan_nodes", "is_static": true },
                 { "name": "get_children", "return_value": { "type": "typedarray::Node" } }, { "name": "get_node", "return_value": { "type": "Node" },
                   "arguments": [{ "name": "path", "type": "NodePath" }] }],
               "properties": [{ "name": "name", "type": "StringName" }, { "name": "process_mode", "type": "enum::Node.ProcessMode" }],
@@ -571,7 +572,7 @@ public class GDScriptAnalyzerTests
             + "func outer_work():\n\tpass\n\nstatic func outer_static():\n\tpass\n\nclass Next:\n\tpass\n\n"
             + "class Inner:\n\tvar own := 1\n\n\tclass Deep:\n\t\tconst DEEP := 1\n\t\tfunc deep_work():\n\t\t\tzz\n\n\tfunc work():\n\t\tyy\n\n\tvar later := 2\n";
         (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text);
-        HashSet<string> Names(int at) => [.. analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(at)).Select(m => m.Name)];
+        HashSet<string> Names(int at) => [.. analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(at), analysis.StaticAt(at)).Select(m => m.Name)];
 
         int work = text.IndexOf("yy", StringComparison.Ordinal);
         Assert.Equal("Inner", analysis.ClassAt(work)?.Identifier?.Name);
@@ -588,6 +589,79 @@ public class GDScriptAnalyzerTests
         int outer = text.IndexOf("pass", StringComparison.Ordinal);
         Assert.Null(analysis.ClassAt(outer));
         Assert.Superset(new HashSet<string> { "outer_field", "outer_work", "rung", "shared", "LIMIT", "name", "get_tree" }, Names(outer));
+    }
+
+    /// <summary>The class's names a place finds, whether a name is typed there, nothing yet, or, on a line of its own, only its
+    /// indentation. Godot 4.7.2 compiled every name of the script at each: in a static place only what needs no instance, and
+    /// <c>new()</c>; a member variable's value takes all of them, as Godot's analyzer does, though its completion shows it none.</summary>
+    [Theory]
+    [InlineData("static func f():\n\t|\n", true)]
+    [InlineData("static func f():\n\tprint(|)\n", true)]
+    [InlineData("static func f(a):\n\tif a:\n\t\t|\n", true)]
+    [InlineData("static func f(a):\n\tif a:\n\t\tpass\n\t|\n", true)]
+    [InlineData("static func f():\n\tvar g = func(): print(|)\n", true)]
+    [InlineData("static func f():\n\tvar g = func():\n\t\tvar h = func():\n\t\t\t|\n", true)]
+    [InlineData("static func f():\n\tvar local = |\n", true)]
+    [InlineData("static func f(a = |):\n\tpass\n", true)]
+    [InlineData("static func _static_init():\n\t|\n", true)]
+    [InlineData("static var v = |\n", true)]
+    [InlineData("static var v = func(): print(|)\n", true)]
+    [InlineData("static var v: int:\n\tset(value):\n\t\t|\n", true)]
+    [InlineData("static var v: int:\n\tget:\n\t\tprint(|)\n\t\treturn 1\n", true)]
+    [InlineData("func f():\n\t|\n", false)]
+    [InlineData("func f():\n\tvar g = func(): print(|)\n", false)]
+    [InlineData("func f(a = |):\n\tpass\n", false)]
+    [InlineData("var v = |\n", false)]
+    [InlineData("var v = func(): print(|)\n", false)]
+    [InlineData("var v: int:\n\tset(value):\n\t\t|\n", false)]
+    [InlineData("var v: int:\n\tget:\n\t\tprint(|)\n\t\treturn 1\n", false)]
+    [InlineData("static func g():\n\tpass\n\n\nfunc f():\n\t|\n", false)]
+    [InlineData("static var w = 1\n\n\nfunc f():\n\t|\n", false)]
+    public void A_static_place_finds_only_what_needs_no_instance(string written, bool isStatic)
+    {
+        const string Head = "extends Node\n\nsignal rung\nenum Mood { CALM }\nenum { LOOSE }\nconst LIMIT := 3\nstatic var shared := 2\nvar field := 1\n\n"
+            + "func work():\n\tpass\n\nstatic func tool_fn():\n\tpass\n\nclass Next:\n\tpass\n\n";
+        string[] always = ["shared", "tool_fn", "LIMIT", "Mood", "LOOSE", "Next", "print_orphan_nodes"];
+        string[] ofAnInstance = ["field", "work", "rung", "name", "get_tree", "ready"];
+        int mark = written.IndexOf('|', StringComparison.Ordinal);
+        foreach (string typed in (string[])["zz", string.Empty])
+        {
+            (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(Head + written.Replace("|", typed, StringComparison.Ordinal));
+            int caret = Head.Length + mark + typed.Length;
+            Assert.True(analysis.StaticAt(caret) == isStatic, $"\"{written}\" with \"{typed}\" typed read as {(isStatic ? "no static place" : "a static place")}");
+            HashSet<string> names = [.. analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(caret), analysis.StaticAt(caret)).Select(m => m.Name)];
+            Assert.Superset(new HashSet<string>(always), names);
+            Assert.Equal(isStatic ? [] : ofAnInstance.Order(), names.Intersect(ofAnInstance).Order());
+            Assert.Equal(isStatic, names.Contains("new"));
+        }
+    }
+
+    /// <summary>An inner class's static function finds what its own class has as a class and what the classes around it declare
+    /// for all, as Godot 4.7.2 compiled them, and a static function of a class Godot refuses to make has no <c>new</c>.</summary>
+    [Fact]
+    public void An_inner_classs_static_function_finds_what_needs_no_instance_of_it()
+    {
+        string text = "extends Node\n\nconst LIMIT := 3\nvar field := 1\nstatic var shared := 2\n\nclass In:\n\tvar own := 1\n\tstatic var own_shared := 2\n\tconst OWN := 3\n\tsignal own_rung\n"
+            + "\tfunc own_work():\n\t\tpass\n\tstatic func own_tool():\n\t\tpass\n\tstatic func f():\n\t\tzz\n\tfunc g():\n\t\tyy\n";
+        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text);
+        HashSet<string> Names(string mark)
+        {
+            int at = text.IndexOf(mark, StringComparison.Ordinal) + mark.Length;
+            return [.. analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(at), analysis.StaticAt(at)).Select(m => m.Name)];
+        }
+
+        HashSet<string> inStatic = Names("zz");
+        Assert.Superset(new HashSet<string> { "own_shared", "OWN", "own_tool", "LIMIT", "In", "new" }, inStatic);
+        Assert.Empty(inStatic.Intersect(["own", "own_rung", "own_work", "field", "shared"]));
+        Assert.Superset(new HashSet<string> { "own", "own_rung", "own_work", "own_shared", "own_tool", "OWN", "LIMIT" }, Names("yy"));
+
+        foreach (string head in (string[])["@abstract\nextends Node\n", "extends CanvasItem\n"])
+        {
+            string made = $"{head}\nstatic func f():\n\tzz\n";
+            (GDScriptAnalysis held, GDScriptAnalyzer holder) = Analyze(made);
+            int caret = made.IndexOf("zz", StringComparison.Ordinal) + 2;
+            Assert.DoesNotContain("new", holder.MembersInScope(held.Tree!, held.Path, held.ClassAt(caret), held.StaticAt(caret)).Select(m => m.Name));
+        }
     }
 
     private static Dictionary<string, string> Locals(GDScriptAnalysis analysis) =>
