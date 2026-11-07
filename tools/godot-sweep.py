@@ -29,24 +29,24 @@ IMPORT_LIMIT = 900
 CHECK_LIMIT = 600
 CALL_LIMIT = 900
 # Loads every scene, resource and script of a project as Godot does, instancing each scene, so Godot's own errors for each
-# follow its CHECK line.
+# follow its CHECK line: its lines go to standard error, where Godot writes those errors, as standard output is buffered.
 CHECK_SCRIPT = """extends SceneTree
 
 func _init() -> void:
 \tvar paths: Array[String] = []
 \t_walk("res://", paths)
 \tfor path in paths:
-\t\tprint("CHECK ", path)
+\t\tprinterr("CHECK ", path)
 \t\tvar loaded := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REUSE)
 \t\tif loaded == null:
-\t\t\tprint("FAILED ", path)
+\t\t\tprinterr("FAILED ", path)
 \t\telif loaded is PackedScene:
 \t\t\tvar made: Node = (loaded as PackedScene).instantiate()
 \t\t\tif made == null:
-\t\t\t\tprint("NOT MADE ", path)
+\t\t\t\tprinterr("NOT MADE ", path)
 \t\t\telse:
 \t\t\t\tmade.free()
-\tprint("CHECKED ", paths.size())
+\tprinterr("CHECKED ", paths.size())
 \tquit()
 
 func _walk(folder: String, into: Array[String]) -> void:
@@ -99,12 +99,13 @@ def homes(base):
 
 
 def run(command, cwd=None, env=None, limit=None, log_to=None):
-    """A program's exit code, output and seconds; None for the code where it outlived its limit and was ended."""
+    """A program's exit code, its two outputs as one in the order they came, and seconds; None for the code where it outlived
+    its limit and was ended."""
     began = time.monotonic()
     try:
-        done = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, errors="replace", timeout=limit,
-                              stdin=subprocess.DEVNULL)
-        code, out = done.returncode, done.stdout + done.stderr
+        done = subprocess.run(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
+                              timeout=limit, stdin=subprocess.DEVNULL)
+        code, out = done.returncode, done.stdout
     except subprocess.TimeoutExpired as ended:
         code = None
         out = (ended.stdout or b"").decode(errors="replace") if isinstance(ended.stdout, bytes) else (ended.stdout or "")
