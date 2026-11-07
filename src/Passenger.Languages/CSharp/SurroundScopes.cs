@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using Passenger.Text;
 
 namespace Passenger.Languages.CSharp;
@@ -61,7 +62,9 @@ public static class SurroundScopes
         {
             scope |= SurroundScope.Statements;
         }
-        if (first.Parent?.AncestorsAndSelf().OfType<ExpressionSyntax>().FirstOrDefault(e => e.Span.Start == start && e.Span.End == end) is { } expression
+        // An expression of the code chosen begins at its first token and ends at its last, which its full span says at once.
+        if (first.Parent?.AncestorsAndSelf().OfType<ExpressionSyntax>().FirstOrDefault(e => e.FullSpan.Start == first.FullSpan.Start && e.FullSpan.End == last.FullSpan.End
+                && e.Span.Start == start && e.Span.End == end) is { } expression
             && !SyntaxFacts.IsInNamespaceOrTypeContext(expression))
         {
             scope |= SurroundScope.Expression;
@@ -74,21 +77,51 @@ public static class SurroundScopes
     }
 
     /// <summary>The lines of a range after its first that begin inside a string's text (a verbatim, raw or interpolated
-    /// string's), counted from its first: they hold the string's value, which indenting them would change.</summary>
+    /// string's), counted from its first: they hold the string's value, which indenting them would change. Found in one walk
+    /// of the range's strings, each line placed by the innermost holding it, so a range's cost is its code's, however deep.</summary>
     public static IReadOnlySet<int> InStrings(ParsedText syntax, TextRange range)
     {
         TextSnapshot text = syntax.Text;
         SyntaxNode root = syntax.Root;
         int first = text.GetLineFromOffset(range.Start);
+        int last = text.GetLineFromOffset(range.End);
         HashSet<int> inside = [];
-        for (int line = first + 1; line <= text.GetLineFromOffset(range.End); line++)
+        if (last == first)
         {
-            if (InString(root, text.GetLineStart(line)))
+            return inside;
+        }
+        int from = text.GetLineStart(first + 1);
+        int to = Math.Min(text.GetLineStart(last) + 1, root.FullSpan.End);
+        // Outer strings come before those in their holes, which place the lines of their own text.
+        foreach (SyntaxNodeOrToken part in root.DescendantNodesAndTokens(TextSpan.FromBounds(from, to)))
+        {
+            if (part.IsToken && part.Kind() is SyntaxKind.StringLiteralToken or SyntaxKind.CharacterLiteralToken or SyntaxKind.SingleLineRawStringLiteralToken
+                or SyntaxKind.MultiLineRawStringLiteralToken or SyntaxKind.Utf8StringLiteralToken)
             {
-                inside.Add(line - first);
+                Lines(part.Span, []);
+            }
+            else if (part.AsNode() is InterpolatedStringExpressionSyntax interpolated)
+            {
+                Lines(interpolated.Span, [.. interpolated.Contents.OfType<InterpolationSyntax>().Select(i => i.Expression.Span)]);
             }
         }
         return inside;
+
+        void Lines(TextSpan within, TextSpan[] holes)
+        {
+            for (int line = Math.Max(first + 1, text.GetLineFromOffset(within.Start) + 1); line <= last && text.GetLineStart(line) < within.End; line++)
+            {
+                int at = text.GetLineStart(line);
+                if (at <= 0 || at >= root.FullSpan.End)
+                {
+                    continue;
+                }
+                if (!holes.Any(h => h.Start <= at && at <= h.End))
+                {
+                    inside.Add(line - first);
+                }
+            }
+        }
     }
 
     /// <summary>Whether an offset falls inside a comment or a string (a template there would be text, not code); one at
@@ -151,8 +184,9 @@ public static class SurroundScopes
     /// statements, a comment before the first or after the last taken with it.</summary>
     private static bool Statements(SyntaxToken first, SyntaxToken last, int start, int end)
     {
-        List<StatementSyntax> opening = [.. Ancestors<StatementSyntax>(first).Where(s => Begins(s, start) && ListOf(s) is not null)];
-        List<StatementSyntax> closing = [.. Ancestors<StatementSyntax>(last).Where(s => Ends(s, end) && ListOf(s) is not null)];
+        // A statement in no list (an else's if) is passed over first, so a chain of them costs no walk to its ends.
+        List<StatementSyntax> opening = [.. Ancestors<StatementSyntax>(first).Where(s => ListOf(s) is not null && Begins(s, start))];
+        List<StatementSyntax> closing = [.. Ancestors<StatementSyntax>(last).Where(s => ListOf(s) is not null && Ends(s, end))];
         return opening.Any(a => closing.Any(b => ListOf(a) == ListOf(b) && a.SpanStart <= b.SpanStart));
     }
 
@@ -166,8 +200,8 @@ public static class SurroundScopes
             && !member.Parent.ChildNodes().OfType<FileScopedNamespaceDeclarationSyntax>().Any()
                 ? member.Parent
                 : null;
-        List<MemberDeclarationSyntax> opening = [.. Ancestors<MemberDeclarationSyntax>(first).Where(m => Begins(m, start) && Holder(m) is not null)];
-        List<MemberDeclarationSyntax> closing = [.. Ancestors<MemberDeclarationSyntax>(last).Where(m => Ends(m, end) && Holder(m) is not null)];
+        List<MemberDeclarationSyntax> opening = [.. Ancestors<MemberDeclarationSyntax>(first).Where(m => Holder(m) is not null && Begins(m, start))];
+        List<MemberDeclarationSyntax> closing = [.. Ancestors<MemberDeclarationSyntax>(last).Where(m => Holder(m) is not null && Ends(m, end))];
         return opening.Any(a => closing.Any(b => Holder(a) == Holder(b) && a.SpanStart <= b.SpanStart));
     }
 

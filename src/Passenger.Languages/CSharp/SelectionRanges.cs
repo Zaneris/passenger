@@ -40,6 +40,11 @@ public static class SelectionRanges
         yield return Range(token.Span);
         for (SyntaxNode? node = token.Parent; node is not null; node = node.Parent)
         {
+            // What a node gives lies in its full span, read at once, where its span walks down to its first and last tokens.
+            if (node.FullSpan.Length <= selection.Length || !node.FullSpan.Contains(new TextSpan(selection.Start, selection.Length)))
+            {
+                continue;
+            }
             if (Inside(node) is { } inside)
             {
                 yield return Range(inside);
@@ -48,6 +53,11 @@ public static class SelectionRanges
             if (node is MemberDeclarationSyntax && node.GetLeadingTrivia().FirstOrDefault(t => t.IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia) || t.IsKind(SyntaxKind.MultiLineDocumentationCommentTrivia)) is { RawKind: not 0 } doc)
             {
                 yield return TextRange.FromBounds(doc.SpanStart, node.Span.End);
+            }
+            // Every range further out holds this node, so none is nearer: a chain 100,000 long is walked no further.
+            if (node.Span.Length > selection.Length && node.Span.Contains(new TextSpan(selection.Start, selection.Length)))
+            {
+                break;
             }
         }
         yield return new TextRange(0, snapshot.Length);

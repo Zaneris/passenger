@@ -22,9 +22,10 @@ public static class RunningLines
         LineSpan span = parsed.Text.GetLine(line);
         // At least a character, so a blank line inside a string over several lines finds the string.
         int end = Math.Max(span.Start + span.Length, span.Start + 1);
+        Ancestors held = new();
         foreach (SyntaxToken token in parsed.Root.DescendantTokens(Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(span.Start, end)))
         {
-            if (token.Span.Length > 0 && token.Span.Start < end && token.Span.End > span.Start && Runs(token))
+            if (token.Span.Length > 0 && token.Span.Start < end && token.Span.End > span.Start && held.Runs(token))
             {
                 return true;
             }
@@ -42,9 +43,10 @@ public static class RunningLines
             return null;
         }
         int from = parsed.Text.GetLineStart(next);
+        Ancestors held = new();
         foreach (SyntaxToken token in parsed.Root.DescendantTokens(Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(from, parsed.Text.Length)))
         {
-            if (token.Span.Length > 0 && token.Span.End > from && Runs(token))
+            if (token.Span.Length > 0 && token.Span.End > from && held.Runs(token))
             {
                 return parsed.Text.GetLineFromOffset(Math.Max(token.SpanStart, from));
             }
@@ -52,40 +54,76 @@ public static class RunningLines
         return null;
     }
 
-    /// <summary>Whether a token is in code that runs, by the nearest of its ancestors that says.</summary>
-    private static bool Runs(SyntaxToken token)
+    /// <summary>Whether tokens taken in order are in code that runs, each by the nearest of its ancestors that says: the
+    /// ancestors holding the token taken now are kept (outermost first) with what a token inside each comes to where nothing
+    /// nearer says, so the tokens of a chain 100,000 long walk it once, and what's kept is the tree's depth at most.</summary>
+    private sealed class Ancestors
     {
-        for (SyntaxNode? node = token.Parent; node is not null; node = node.Parent)
+        /// <summary>Each node with what it comes to: <c>Runs</c>, or as <c>Type</c> says of the token where a type's header
+        /// and body differ.</summary>
+        private readonly List<(SyntaxNode Node, bool Runs, BaseTypeDeclarationSyntax? Type)> held = [];
+        private readonly List<SyntaxNode> walked = [];
+
+        public bool Runs(SyntaxToken token)
         {
-            switch (node)
+            while (held.Count > 0 && !held[^1].Node.FullSpan.Contains(token.SpanStart))
             {
-                case AttributeListSyntax or UsingDirectiveSyntax or ExternAliasDirectiveSyntax or TypeParameterListSyntax or TypeParameterConstraintClauseSyntax:
-                    return false;
-                case ParameterListSyntax parameters:
-                    return parameters.Parent is ConstructorDeclarationSyntax or TypeDeclarationSyntax || !IsMemberHeader(parameters.Parent);
-                case BracketedParameterListSyntax:
-                    return false;
-                case StatementSyntax or ArrowExpressionClauseSyntax or ConstructorInitializerSyntax or GlobalStatementSyntax:
-                    return true;
-                case EqualsValueClauseSyntax value:
-                    return value.Parent switch
-                    {
-                        ParameterSyntax or EnumMemberDeclarationSyntax => false,
-                        VariableDeclaratorSyntax { Parent.Parent: FieldDeclarationSyntax field } => !field.Modifiers.Any(SyntaxKind.ConstKeyword),
-                        _ => true,
-                    };
-                case AccessorDeclarationSyntax or AccessorListSyntax or EnumMemberDeclarationSyntax or DelegateDeclarationSyntax or BaseNamespaceDeclarationSyntax
-                    or CompilationUnitSyntax:
-                    return false;
-                case ConstructorDeclarationSyntax:
-                    return true;
-                case BaseMethodDeclarationSyntax or BasePropertyDeclarationSyntax or BaseFieldDeclarationSyntax:
-                    return false;
-                case BaseTypeDeclarationSyntax type:
-                    return type is TypeDeclarationSyntax { ParameterList: not null } primary && token.SpanStart < primary.OpenBraceToken.SpanStart;
+                held.RemoveAt(held.Count - 1);
             }
+            SyntaxNode? top = held.Count > 0 ? held[^1].Node : null;
+            walked.Clear();
+            SyntaxNode? node = token.Parent;
+            for (; node is not null && node != top; node = node.Parent)
+            {
+                walked.Add(node);
+            }
+            if (node is null)
+            {
+                held.Clear();
+            }
+            (bool runs, BaseTypeDeclarationSyntax? type) = held.Count > 0 ? (held[^1].Runs, held[^1].Type) : (true, null);
+            for (int i = walked.Count - 1; i >= 0; i--)
+            {
+                (runs, type) = walked[i] is BaseTypeDeclarationSyntax declared ? (false, declared)
+                    : Says(walked[i], token) is bool said ? (said, null)
+                    : (runs, type);
+                held.Add((walked[i], runs, type));
+            }
+            return type is null ? runs : Says(type, token) == true;
         }
-        return true;
+    }
+
+    /// <summary>Whether code runs, as a node says of a token inside it; null where it doesn't say.</summary>
+    private static bool? Says(SyntaxNode node, SyntaxToken token)
+    {
+        switch (node)
+        {
+            case AttributeListSyntax or UsingDirectiveSyntax or ExternAliasDirectiveSyntax or TypeParameterListSyntax or TypeParameterConstraintClauseSyntax:
+                return false;
+            case ParameterListSyntax parameters:
+                return parameters.Parent is ConstructorDeclarationSyntax or TypeDeclarationSyntax || !IsMemberHeader(parameters.Parent);
+            case BracketedParameterListSyntax:
+                return false;
+            case StatementSyntax or ArrowExpressionClauseSyntax or ConstructorInitializerSyntax or GlobalStatementSyntax:
+                return true;
+            case EqualsValueClauseSyntax value:
+                return value.Parent switch
+                {
+                    ParameterSyntax or EnumMemberDeclarationSyntax => false,
+                    VariableDeclaratorSyntax { Parent.Parent: FieldDeclarationSyntax field } => !field.Modifiers.Any(SyntaxKind.ConstKeyword),
+                    _ => true,
+                };
+            case AccessorDeclarationSyntax or AccessorListSyntax or EnumMemberDeclarationSyntax or DelegateDeclarationSyntax or BaseNamespaceDeclarationSyntax
+                or CompilationUnitSyntax:
+                return false;
+            case ConstructorDeclarationSyntax:
+                return true;
+            case BaseMethodDeclarationSyntax or BasePropertyDeclarationSyntax or BaseFieldDeclarationSyntax:
+                return false;
+            case BaseTypeDeclarationSyntax type:
+                return type is TypeDeclarationSyntax { ParameterList: not null } primary && token.SpanStart < primary.OpenBraceToken.SpanStart;
+        }
+        return null;
     }
 
     /// <summary>Whether a parameter list's owner is a member whose declaration runs nothing of its own: a method, an operator,
