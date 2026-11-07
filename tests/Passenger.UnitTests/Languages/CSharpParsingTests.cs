@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
@@ -275,6 +276,76 @@ public class CSharpParsingTests
             Assert.Empty(((CompilationUnitSyntax)root).Members);
             Assert.Equal(pasted.Length, root.FullSpan.Length);
         });
+    }
+
+    private static string Links(int count) => string.Concat(Enumerable.Repeat("?[0]", count));
+
+    /// <summary>Typing that makes a run of conditional accesses one past the eleventh, by a link typed, a semicolon taken
+    /// away between two runs, a quote or a comment taken away from one, a run in a lambda's statement within another, or a
+    /// run past a branch left out, is too deep as a file opened so would be.</summary>
+    [Theory]
+    [InlineData("class C { void M() { x = a{11}; } }", "; }", "?[0]; }")]
+    [InlineData("class C { void M() { x = a{6};\n+ a{6}; } }", ";\n+", "\n+")]
+    [InlineData("class C { void M() { x = \"a{12}\"; } }", "\"a", "a")]
+    [InlineData("class C { void M() { x = a // {12}\n; } }", "// ", "")]
+    [InlineData("class C { void M() { x = a /* {12} */; } }", "/* ", "")]
+    [InlineData("class C { void M() { x = a{6} ?? F(y => { y = b; }); } }", "y = b;", "y = b{6};")]
+    [InlineData("class C { int x = a{6} ?? F(y => { y = b; }); }", "y = b;", "y = b{6};")]
+    [InlineData("#if !NEVER\nclass C { void M() { x = a{6}\n#else\n;\n#endif\n+ b; } }\n", "+ b;", "+ b{6};")]
+    public void Typing_a_run_of_conditional_accesses_past_the_eleventh_reads_as_too_deep(string written, string find, string typed)
+    {
+        SourceText text = SourceText.From(written.Replace("{6}", Links(6)).Replace("{11}", Links(11)).Replace("{12}", Links(12)));
+        SyntaxTree tree = CSharpParsing.Parse(text);
+        Assert.Null(CSharpParsing.DeepAt(tree));
+        int at = text.ToString().IndexOf(find, StringComparison.Ordinal);
+        SourceText changed = text.WithChanges(new TextChange(new TextSpan(at, find.Length), typed.Replace("{6}", Links(6))));
+        SyntaxTree after = CSharpParsing.Changed(tree, changed);
+        Assert.NotNull(CSharpParsing.DeepAt(after));
+        Assert.Empty(((CompilationUnitSyntax)after.GetRoot(TestContext.Current.CancellationToken)).Members);
+    }
+
+    /// <summary>Typing that keeps every run at eleven or fewer, or changes only words, leaves the tree a parser made.</summary>
+    [Theory]
+    [InlineData("class C { void M() { x = a{10}; } }", "; }", "?[0]; }")]
+    [InlineData("class C { void M() { x = a{6};\n y = a{6}; } }", "y = a", "y = b")]
+    [InlineData("class C { void M() { x = a{6}; y = b{6}; } }", "y = b", "y = b?[1]")]
+    [InlineData("class C { int x = a{6} ?? F(y => { y = b; }); }", "y = b;", "y = b?[0]?[0];")]
+    public void Typing_runs_of_eleven_or_fewer_keeps_the_tree(string written, string find, string typed)
+    {
+        SourceText text = SourceText.From(written.Replace("{6}", Links(6)).Replace("{10}", Links(10)));
+        SyntaxTree tree = CSharpParsing.Parse(text);
+        int at = text.ToString().IndexOf(find, StringComparison.Ordinal);
+        SyntaxTree after = CSharpParsing.Changed(tree, text.WithChanges(new TextChange(new TextSpan(at, find.Length), typed)));
+        Assert.Null(CSharpParsing.DeepAt(after));
+        Assert.NotEmpty(((CompilationUnitSyntax)after.GetRoot(TestContext.Current.CancellationToken)).Members);
+    }
+
+    /// <summary>A key typed in a statement of a long file reads that statement, not the file: what measuring it reads and
+    /// allocates in a file of 4,000 methods is what it does in one of 40.</summary>
+    [Fact]
+    public void A_key_typed_is_measured_by_its_statement_not_the_file()
+    {
+        static (long Read, long Bytes) Measured(int methods)
+        {
+            StringBuilder written = new("class C\n{\n");
+            for (int i = 0; i < methods; i++)
+            {
+                written.Append("    void M").Append(i).Append("(object a)\n    {\n        var x = a?[0]?[1] ?? F(\"(\", ')');\n        G(x);\n    }\n");
+            }
+            SourceText text = SourceText.From(written.Append("}\n").ToString());
+            SyntaxTree tree = CSharpParsing.Parse(text);
+            int at = text.ToString().IndexOf("?[1]", text.Length / 2, StringComparison.Ordinal);
+            SourceText typed = text.WithChanges(new TextChange(new TextSpan(at, 0), "?[2]"));
+            IReadOnlyList<TextChangeRange> changes = typed.GetChangeRanges(text);
+            Assert.False(CSharpParsing.TypedMayGoDeep(tree, typed, changes));
+            (long read, long bytes) = (CSharpParsing.TypedRead, GC.GetAllocatedBytesForCurrentThread());
+            Assert.False(CSharpParsing.TypedMayGoDeep(tree, typed, changes));
+            return (CSharpParsing.TypedRead - read, GC.GetAllocatedBytesForCurrentThread() - bytes);
+        }
+        (long smallRead, long small) = Measured(40);
+        (long largeRead, long large) = Measured(4_000);
+        Assert.True(largeRead == smallRead && smallRead < 1_000, $"Measuring a key read {largeRead} characters of a long file against {smallRead} of a short one, so a key costs what the file holds");
+        Assert.True(large <= small + 256, $"Measuring a key allocated {large} bytes in a long file against {small} in a short one, so a key costs what the file holds");
     }
 
     [Fact]

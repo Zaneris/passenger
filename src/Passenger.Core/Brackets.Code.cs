@@ -52,6 +52,10 @@ public partial struct Brackets
 
     private static readonly int EndIf = Named("endif");
 
+    private static readonly int Else = Named("else");
+
+    private static readonly int Elif = Named("elif");
+
     /// <summary>Where the text was read to: in code, unsure, or inside what a lexer reads as one token or trivia.</summary>
     private enum Place : byte
     {
@@ -122,6 +126,22 @@ public partial struct Brackets
         midLine = text.Length > 0 ? !NewLines.Contains(text[^1]) : midLine;
         consumed += text.Length;
     }
+
+    /// <summary>Whether a C# text read from within, not from its start, starts past more than spaces and tabs on its line.</summary>
+    public bool StartsAfterText
+    {
+        init => lineWritten = value;
+    }
+
+    /// <summary>Whether a C# text read from within starts past its line's first character.</summary>
+    public bool StartsMidLine
+    {
+        init => midLine = value;
+    }
+
+    /// <summary>Whether a C# text read so far ends in code with no conditional access read ahead through: what follows is read
+    /// as on its own.</summary>
+    public readonly bool Settled => place == Place.Code && counts.Linked == 0;
 
     /// <summary>Where a string read within code or a hole goes back to.</summary>
     private readonly Place Back => nestings > 0 ? Place.Hole : Place.Code;
@@ -490,6 +510,11 @@ public partial struct Brackets
         else if (named == 5 && directive == EndIf)
         {
             counts.Conditions = Math.Max(0, counts.Conditions - 1);
+        }
+        else if (named == 4 && (directive == Else || directive == Elif) && counts.Conditions == 0)
+        {
+            // A text read from within a condition goes on into a branch left out.
+            counts.Conditions = 1;
         }
         return To(Place.DirectiveRest, at);
     }
