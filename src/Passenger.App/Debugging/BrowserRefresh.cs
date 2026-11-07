@@ -400,22 +400,11 @@ public sealed class BrowserRefresh : IDisposable
         return reached;
     }
 
-    private async Task AcceptAsync()
-    {
-        try
-        {
-            while (true)
-            {
-                TcpClient client = await listener.AcceptTcpClientAsync(closing.Token);
-                // Not held: a page's connection lasts as long as the page, which nothing drawn waits for.
-                IdeErrors.Observe(BackgroundWork.Unheld(() => ServeAsync(client)));
-            }
-        }
-        catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
-        {
-            // The session ended: nothing more connects.
-        }
-    }
+    private Task AcceptAsync() =>
+        Accepting.EachAsync(stop => listener.AcceptTcpClientAsync(stop), Serve, listener.Stop, "Hot Reload's browser refresh server", closing.Token);
+
+    // Not held: a page's connection lasts as long as the page, which nothing drawn waits for.
+    private void Serve(TcpClient client) => IdeErrors.Observe(BackgroundWork.Unheld(() => ServeAsync(client)));
 
     /// <summary>One request: from .NET 11 the app's forwarded settings, cache clearing and connection; before, the page's
     /// connection alone.</summary>

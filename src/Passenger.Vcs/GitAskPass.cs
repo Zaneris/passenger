@@ -219,19 +219,28 @@ public sealed class GitQuestions
 /// <summary>Git's askpass helper, both ends. Git runs with GIT_ASKPASS and SSH_ASKPASS naming Passenger's executable and
 /// <see cref="Variable"/> the operation's socket (<see cref="Prompting.Variables"/>); run with a prompt, the executable sends it
 /// there and writes the answer for git (<see cref="Answer"/>), or exits 1, which git takes as no answer. The helper sends
-/// the prompt and ends its side; the answer comes back after a byte saying whether there is one. A secret goes only over
-/// the socket and git's pipe, never on a command line or into a file.</summary>
+/// the prompt and ends its side; the IDE says at once that it took it, then answers after a byte saying whether there is
+/// an answer. A secret goes only over the socket and git's pipe, never on a command line or into a file.</summary>
 public static class GitAskPass
 {
     /// <summary>The variable naming the socket of the operation git asks for.</summary>
     [IdentifierHome]
     public const string Variable = "PASSENGER_GIT_ASKPASS";
 
+    internal const byte Taken = (byte)'?';
     internal const byte Given = (byte)'+';
     internal const byte None = (byte)'-';
 
     /// <summary>The longest prompt read: ssh's question about a host is a few lines.</summary>
     internal const int Longest = 64 * 1024;
+
+    /// <summary>How long the helper waits for the IDE to take its question, which it does as the question comes; the
+    /// person's answer may then take as long as they like.</summary>
+    internal static readonly TimeSpan TakeLimit = TimeSpan.FromSeconds(30);
+
+    /// <summary>How the helper's words begin where it gives none for want of the IDE, on git's errors, from which the IDE's
+    /// log takes them (<see cref="Prompting.Heard"/>).</summary>
+    internal const string NoAnswer = "Passenger gave git no answer: ";
 
     /// <summary>What Main asks before anything starts: where git runs this executable to ask (<see cref="Variable"/> set, one prompt given), the
     /// answer written for git, and the exit code; else null, and Passenger starts as itself.</summary>
@@ -241,12 +250,44 @@ public static class GitAskPass
         {
             return null;
         }
+        (string? answer, string? why) = Put(socket, args[0], Waits.Of(TakeLimit));
+        try
+        {
+            if (answer is null)
+            {
+                if (why is not null)
+                {
+                    Console.Error.WriteLine(NoAnswer + why);
+                }
+                return 1;
+            }
+            using Stream output = Console.OpenStandardOutput();
+            output.Write(Encoding.UTF8.GetBytes(answer));
+            output.Write("\n"u8);
+            return 0;
+        }
+        catch (IOException)
+        {
+            // Git stopped reading: it has its answer no more.
+            return 1;
+        }
+    }
+
+    /// <summary>A question put to an operation's socket: its answer, or null with why where the IDE gave none for want of
+    /// itself (a why of null where it refused). One the IDE has not taken within <paramref name="taking"/> is given up;
+    /// once taken, the answer is waited for however long the person takes.</summary>
+    public static (string? Answer, string? Why) Put(string socket, string prompt, TimeSpan taking)
+    {
         try
         {
             using Socket asking = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             asking.Connect(new UnixDomainSocketEndPoint(socket));
-            asking.Send(Encoding.UTF8.GetBytes(args[0]));
+            asking.Send(Encoding.UTF8.GetBytes(prompt));
             asking.Shutdown(SocketShutdown.Send);
+            if (!asking.Poll(taking, SelectMode.SelectRead))
+            {
+                return (null, $"the IDE had not taken its question within {taking.TotalSeconds:0} s");
+            }
             using MemoryStream reply = new();
             byte[] buffer = new byte[4096];
             int read;
@@ -254,28 +295,31 @@ public static class GitAskPass
             {
                 reply.Write(buffer, 0, read);
             }
-            if (reply.Length == 0 || reply.GetBuffer()[0] != Given)
-            {
-                return 1;
-            }
-            using Stream output = Console.OpenStandardOutput();
-            output.Write(reply.GetBuffer().AsSpan(1, (int)reply.Length - 1));
-            output.Write("\n"u8);
-            return 0;
+            return Read(reply.GetBuffer().AsSpan(0, (int)reply.Length));
         }
         catch (Exception failed) when (failed is SocketException or IOException)
         {
-            Console.Error.WriteLine($"Passenger could not ask for git: {failed.Message}");
-            return 1;
+            return (null, $"it could not ask the IDE ({failed.Message})");
         }
+    }
+
+    /// <summary>The IDE's reply as the helper reads it: the byte saying the question was taken, where there is one, then one
+    /// saying whether there is an answer, then the answer.</summary>
+    internal static (string? Answer, string? Why) Read(ReadOnlySpan<byte> reply)
+    {
+        int at = reply.Length > 0 && reply[0] == Taken ? 1 : 0;
+        return reply.Length <= at ? (null, at == 1 ? "the IDE took its question and ended before answering" : "the IDE ended without taking its question")
+            : reply[at] == Given ? (Encoding.UTF8.GetString(reply[(at + 1)..]), null)
+            : reply[at] == None ? (null, null)
+            : (null, $"the IDE answered in a way the helper does not read ({reply[at]})");
     }
 }
 
-/// <summary>An operation's socket for git's helper while git runs (<see cref="GitAskPass"/>): each question put to
-/// <see cref="GitAsker.Ask"/> in turn, a login's password kept for git's next question for the same place and then
-/// forgotten, the operation's background work let go while the person answers, and every question answered as refused
-/// once its <see cref="GitAsker.Questions"/> end. The first question left unanswered is <see cref="Refused"/>. Disposed as
-/// git ends: a question still asked is taken away, and the socket goes.</summary>
+/// <summary>An operation's socket for git's helper while git runs (<see cref="GitAskPass"/>): each connection taken and
+/// served apart (<see cref="Accepting"/>), each question put to <see cref="GitAsker.Ask"/> in turn, a login's password kept
+/// for git's next question for the same place and then forgotten, the operation's background work let go while the person
+/// answers, and every question answered as refused once its <see cref="GitAsker.Questions"/> end. The first question left
+/// unanswered is <see cref="Refused"/>. Disposed as git ends: a question still asked is taken away, and the socket goes.</summary>
 internal sealed class Prompting : IAsyncDisposable
 {
     private static int opened;
@@ -287,6 +331,8 @@ internal sealed class Prompting : IAsyncDisposable
     private readonly CancellationTokenSource ending;
     private readonly CancellationToken refusing;
     private readonly CancellationTokenSource asking;
+    private readonly SemaphoreSlim turn = new(1, 1);
+    private readonly List<Task> serving = [];
     private readonly Task accepting;
 
     /// <summary>The password git asks for next, by the URL it will name, once a login's user is given.</summary>
@@ -304,7 +350,7 @@ internal sealed class Prompting : IAsyncDisposable
         refusing = asker.Questions?.Refusing ?? CancellationToken.None;
         asking = CancellationTokenSource.CreateLinkedTokenSource(ending.Token, refusing);
         // Not held: it waits for git's questions while git runs, which the operation's own hold covers.
-        accepting = BackgroundWork.Unheld(AcceptAsync);
+        accepting = BackgroundWork.Unheld(() => Accepting.EachAsync(stop => listener.AcceptAsync(stop), Serve, listener.Dispose, "Git's question socket", ending.Token));
     }
 
     /// <summary>The socket opened for an operation, letting go of its background work through <paramref name="apart"/>
@@ -348,6 +394,19 @@ internal sealed class Prompting : IAsyncDisposable
     /// <summary>The operation's git, started, whose end its <see cref="GitAsker.Questions"/> wait for as they end.</summary>
     public void Runs(Process git) => asker.Questions?.Runs(git);
 
+    /// <summary>Writes to the IDE's log what git's helper said, on git's <paramref name="errors"/>, of a question it gave
+    /// no answer for want of the IDE, which nothing here heard.</summary>
+    public static void Heard(string errors)
+    {
+        foreach (string line in errors.Split('\n'))
+        {
+            if (line.Contains(GitAskPass.NoAnswer, StringComparison.Ordinal))
+            {
+                PassengerLog.Write(line.Trim());
+            }
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         await ending.CancelAsync();
@@ -361,24 +420,22 @@ internal sealed class Prompting : IAsyncDisposable
             // Left for the next start to take away, as a dead process's socket is.
         }
         await accepting;
+        Task[] served;
+        lock (serving)
+        {
+            served = [.. serving];
+        }
+        await Task.WhenAll(served);
+        turn.Dispose();
         asking.Dispose();
         ending.Dispose();
     }
 
-    private async Task AcceptAsync()
+    private void Serve(Socket client)
     {
-        while (true)
+        lock (serving)
         {
-            Socket client;
-            try
-            {
-                client = await listener.AcceptAsync(ending.Token);
-            }
-            catch (Exception ended) when (ended is OperationCanceledException or SocketException or ObjectDisposedException)
-            {
-                return;
-            }
-            await ServeAsync(client);
+            serving.Add(ServeAsync(client));
         }
     }
 
@@ -387,6 +444,8 @@ internal sealed class Prompting : IAsyncDisposable
         try
         {
             await using NetworkStream stream = new(client, ownsSocket: true);
+            // Said at once, so the helper waits on the person's answer however long it takes, and on nothing else.
+            await stream.WriteAsync((byte[])[GitAskPass.Taken], ending.Token);
             using MemoryStream prompt = new();
             byte[] buffer = new byte[4096];
             int read;
@@ -395,7 +454,16 @@ internal sealed class Prompting : IAsyncDisposable
             {
                 prompt.Write(buffer, 0, (int)Math.Min(read, Math.Max(0, GitAskPass.Longest - prompt.Length)));
             }
-            GitAnswer answer = await AnswerAsync(GitQuestion.Of(Encoding.UTF8.GetString(prompt.GetBuffer(), 0, (int)prompt.Length)));
+            GitAnswer answer;
+            await turn.WaitAsync(ending.Token);
+            try
+            {
+                answer = await AnswerAsync(GitQuestion.Of(Encoding.UTF8.GetString(prompt.GetBuffer(), 0, (int)prompt.Length)));
+            }
+            finally
+            {
+                turn.Release();
+            }
             byte[] reply = answer.Text is { } text ? [GitAskPass.Given, .. Encoding.UTF8.GetBytes(text)] : [GitAskPass.None];
             await stream.WriteAsync(reply, ending.Token);
             client.Shutdown(SocketShutdown.Send);

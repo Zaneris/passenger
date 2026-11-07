@@ -276,6 +276,10 @@ public sealed partial class Git
                 await process.WaitForExitAsync(CancellationToken.None);
             }
             string errors = await said;
+            if (prompting is not null)
+            {
+                Prompting.Heard(errors);
+            }
             cancel.ThrowIfCancellationRequested();
             return new GitResult(process.ExitCode, await output, errors, prompting?.Refused);
         }
@@ -1847,6 +1851,10 @@ public sealed partial class Git
         try
         {
             ChildRead<T> ran = await ChildProcesses.RunAsync(start, read, input, answers, cancel, prompting is null ? null : prompting.Runs);
+            if (prompting is not null)
+            {
+                Prompting.Heard(ran.Error);
+            }
             return (new GitResult(ran.ExitCode, string.Empty, ran.Error, prompting?.Refused), ran.Output);
         }
         catch (System.ComponentModel.Win32Exception unstarted)

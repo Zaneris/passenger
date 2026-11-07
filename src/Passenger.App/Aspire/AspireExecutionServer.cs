@@ -157,28 +157,20 @@ public sealed class AspireExecutionServer : IAsyncDisposable
         }
     }
 
-    private async Task AcceptAsync()
+    private Task AcceptAsync() => Accepting.EachAsync(stop => listener.AcceptTcpClientAsync(stop), Take, listener.Stop, "Aspire's execution server", shutdown.Token);
+
+    private void Take(TcpClient client)
     {
-        try
+        lock (sync)
         {
-            while (true)
+            if (shutdown.IsCancellationRequested)
             {
-                TcpClient client = await listener.AcceptTcpClientAsync(shutdown.Token).ConfigureAwait(false);
-                lock (sync)
-                {
-                    if (shutdown.IsCancellationRequested)
-                    {
-                        client.Dispose();
-                        return;
-                    }
-                    AspireExecutionConnection connection = new(client, shutdown.Token);
-                    connections.Add(connection, HandleConnectionAsync(connection));
-                }
+                client.Dispose();
+                return;
             }
+            AspireExecutionConnection connection = new(client, shutdown.Token);
+            connections.Add(connection, HandleConnectionAsync(connection));
         }
-        catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { }
-        catch (SocketException) when (shutdown.IsCancellationRequested) { }
-        catch (ObjectDisposedException) when (shutdown.IsCancellationRequested) { }
     }
 
     private async Task HandleConnectionAsync(AspireExecutionConnection context)

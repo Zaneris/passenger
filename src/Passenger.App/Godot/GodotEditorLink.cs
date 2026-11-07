@@ -123,22 +123,8 @@ internal sealed class GodotEditorLink : IAsyncDisposable
         }
     }
 
-    private async Task AcceptAsync(TcpListener from, CancellationToken cancel)
-    {
-        while (!cancel.IsCancellationRequested)
-        {
-            TcpClient client;
-            try
-            {
-                client = await from.AcceptTcpClientAsync(cancel);
-            }
-            catch (Exception stopped) when (stopped is OperationCanceledException or ObjectDisposedException or SocketException)
-            {
-                return;
-            }
-            IdeErrors.Observe(ServeAsync(client, cancel));
-        }
-    }
+    private Task AcceptAsync(TcpListener from, CancellationToken cancel) =>
+        Accepting.EachAsync(stop => from.AcceptTcpClientAsync(stop), client => IdeErrors.Observe(ServeAsync(client, cancel)), from.Stop, "The Godot editors' link", cancel);
 
     /// <summary>One connection: its secret checked, then its lines read until it ends.</summary>
     private async Task ServeAsync(TcpClient client, CancellationToken cancel)

@@ -152,22 +152,8 @@ public sealed class AgentSocket : IDisposable
         }
     }
 
-    private async Task AcceptAsync()
-    {
-        while (!closed.IsCancellationRequested)
-        {
-            Socket client;
-            try
-            {
-                client = await listener.AcceptAsync(closed.Token);
-            }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
-            {
-                return;
-            }
-            IdeErrors.Observe(ServeAsync(client));
-        }
-    }
+    private Task AcceptAsync() =>
+        Accepting.EachAsync(stop => listener.AcceptAsync(stop), client => IdeErrors.Observe(ServeAsync(client)), listener.Dispose, "The agents' socket", closed.Token);
 
     private async Task ServeAsync(Socket client)
     {

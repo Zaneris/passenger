@@ -125,22 +125,8 @@ internal sealed class AppSocket : IDisposable
         return null;
     }
 
-    private async Task AcceptAsync()
-    {
-        while (!closed.IsCancellationRequested)
-        {
-            Socket client;
-            try
-            {
-                client = await listener.AcceptAsync(closed.Token);
-            }
-            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
-            {
-                return;
-            }
-            IdeErrors.Observe(AnswerAsync(client));
-        }
-    }
+    private Task AcceptAsync() =>
+        Accepting.EachAsync(stop => listener.AcceptAsync(stop), client => IdeErrors.Observe(AnswerAsync(client)), listener.Dispose, "The socket asking this Passenger to open a folder or a launch", closed.Token);
 
     private static readonly string Refused = new JsonObject { ["refused"] = "Passenger takes {\"open\": FOLDER} or {\"launch\": ...} here and nothing else" }.ToJsonString();
 

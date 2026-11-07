@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Sockets;
 using System.Text;
 using Passenger.Core;
 
@@ -198,28 +197,15 @@ public static class GpgLoopback
         return through.ExitCode;
     }
 
-    /// <summary>A question put through the operation's socket as git's askpass helper puts it: the answer, or null for none.</summary>
+    /// <summary>A question put through the operation's socket as git's askpass helper puts it (<see cref="GitAskPass.Put"/>):
+    /// the answer, or null for none, saying why on gpg's errors where the IDE gave none for want of itself.</summary>
     private static string? Ask(string socket, string prompt)
     {
-        try
+        (string? answer, string? why) = GitAskPass.Put(socket, prompt, Waits.Of(GitAskPass.TakeLimit));
+        if (why is not null)
         {
-            using Socket asking = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-            asking.Connect(new UnixDomainSocketEndPoint(socket));
-            asking.Send(Encoding.UTF8.GetBytes(prompt));
-            asking.Shutdown(SocketShutdown.Send);
-            using MemoryStream reply = new();
-            byte[] buffer = new byte[4096];
-            int read;
-            while ((read = asking.Receive(buffer)) > 0)
-            {
-                reply.Write(buffer, 0, read);
-            }
-            return reply.Length > 0 && reply.GetBuffer()[0] == GitAskPass.Given ? Encoding.UTF8.GetString(reply.GetBuffer(), 1, (int)reply.Length - 1) : null;
+            Console.Error.WriteLine(GitAskPass.NoAnswer + why);
         }
-        catch (Exception failed) when (failed is SocketException or IOException)
-        {
-            Console.Error.WriteLine($"Passenger could not ask for gpg: {failed.Message}");
-            return null;
-        }
+        return answer;
     }
 }
