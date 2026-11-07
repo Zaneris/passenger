@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
@@ -50,7 +51,7 @@ public static class ReusedRows
                 [!ContentPresenter.PaddingProperty] = new TemplateBinding(TemplatedControl.PaddingProperty),
                 [!ContentPresenter.VerticalContentAlignmentProperty] = new TemplateBinding(ContentControl.VerticalContentAlignmentProperty),
                 [!ContentPresenter.HorizontalContentAlignmentProperty] = new TemplateBinding(ContentControl.HorizontalContentAlignmentProperty),
-                Content = row(),
+                Content = NamedByWords(row()),
             };
             if (foreground)
             {
@@ -59,6 +60,17 @@ public static class ReusedRows
             return presenter;
         })));
         list.Styles.Add(style);
+    }
+
+    /// <summary>A row a screen reader names by the first words it shows, read as it asks, where its list's container would
+    /// say its item's type.</summary>
+    private static Control NamedByWords(Control row)
+    {
+        if (row is not TextBlock && row.GetLogicalDescendants().OfType<TextBlock>().FirstOrDefault() is { } words)
+        {
+            AutomationProperties.SetLabeledBy(row, words);
+        }
+        return row;
     }
 
     /// <summary>Has a row made once show each item its list hands it: <paramref name="show"/> is given the item as it

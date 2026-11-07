@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
@@ -47,12 +48,20 @@ public static class ToolButtons
             Focusable = false,
             Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { mark, count } },
         };
-        ToolTip.SetTip(button, tip);
-        return button;
+        return Tip(button, tip);
     }
 
     /// <summary>A toolbar's button that stays pressed while what it turns on is on (Mute Breakpoints, Select Element).</summary>
     public static ToggleButton Toggle(string icon, string tip) => Made(new ToggleButton(), icon, tip);
+
+    /// <summary>Gives a button with no words on it its tip, and those words as the name a screen reader says for it.</summary>
+    public static T Tip<T>(T button, string tip)
+        where T : Control
+    {
+        ToolTip.SetTip(button, tip);
+        AutomationProperties.SetName(button, tip);
+        return button;
+    }
 
     private static T Made<T>(T button, string icon, string tip)
         where T : Button
@@ -62,8 +71,7 @@ public static class ToolButtons
         button.Classes.Add(StyleClasses.Tool);
         button.Content = glyph;
         button.Focusable = false;
-        ToolTip.SetTip(button, tip);
-        return button;
+        return Tip(button, tip);
     }
 }
 

@@ -201,7 +201,7 @@ public partial class MainWindow
         AnalysisIcon.Bind(PathIcon.ForegroundProperty, AnalysisIcon.GetResourceObservable(brush));
         AnalysisText.Text = text;
         AnalysisText.IsVisible = text.Length > 0;
-        ToolTip.SetTip(AnalysisButton, tip);
+        ToolButtons.Tip(AnalysisButton, tip);
         AnalysisButton.IsVisible = session.CSharp is not null;
     }
 

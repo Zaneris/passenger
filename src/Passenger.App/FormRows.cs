@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -37,6 +38,7 @@ public static class FormRows
         if (!string.IsNullOrEmpty(label))
         {
             row.Children.Add(name);
+            AutomationProperties.SetLabeledBy(field, name);
         }
         Grid.SetColumn(field, 1);
         row.Children.Add(field);

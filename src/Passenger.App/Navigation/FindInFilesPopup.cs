@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -80,9 +81,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         projects = choices.Projects;
         Width = PopupFrame.Widest;
         query = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
-        matchCase = Option(OptionGlyph(IconKeys.MatchCase), "Match case (Alt+C)");
-        words = Option(OptionGlyph(IconKeys.WholeWord), "Words (Alt+O)");
-        regex = Option(new TextBlock { Text = ".*", FontWeight = FontWeight.Bold, FontSize = 12 }.InCodeFont(), "Regex (Alt+X)");
+        matchCase = Option(OptionGlyph(IconKeys.MatchCase), "Match case", "Alt+C");
+        words = Option(OptionGlyph(IconKeys.WholeWord), "Words", "Alt+O");
+        regex = Option(new TextBlock { Text = ".*", FontWeight = FontWeight.Bold, FontSize = 12 }.InCodeFont(), "Regex", "Alt+X");
         DockPanel find = new() { Margin = new Thickness(10, 0, 10, 6) };
         StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0, 0, 0), Children = { matchCase, words, regex } };
         DockPanel.SetDock(toggles, Dock.Right);
@@ -123,8 +124,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         projectBox.SelectedItem = choices.Projects.FirstOrDefault(p => p.Path == choices.Start.Project) ?? choices.Projects.FirstOrDefault();
         directoryBox = Field(choices.Directories, editable: true);
         directoryBox.Text = choices.Start.Directory ?? string.Empty;
-        recursive = new ToggleButton { Classes = { StyleClasses.Option }, Content = Glyph(IconKeys.Structure), IsChecked = choices.Start.Recursive };
-        ToolTip.SetTip(recursive, "Recursively (Alt+Y)");
+        recursive = Option(Glyph(IconKeys.Structure), "Recursively", "Alt+Y");
+        recursive.IsChecked = choices.Start.Recursive;
         Button browse = ToolButtons.Of(IconKeys.FolderOpen, "Choose a directory", () => IdeErrors.Observe(BrowseAsync()));
         browse.Margin = new Thickness(4, 0, 2, 0);
         DockPanel directory = new() { Children = { recursive, browse, directoryBox } };
@@ -584,10 +585,11 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         return glyph;
     }
 
-    private static ToggleButton Option(Control label, string tip)
+    private static ToggleButton Option(Control label, string name, string keys)
     {
         ToggleButton button = new() { Classes = { StyleClasses.Option }, Content = label };
-        ToolTip.SetTip(button, tip);
+        ToolTip.SetTip(button, ActionTips.Named(name, keys));
+        AutomationProperties.SetName(button, name);
         return button;
     }
 

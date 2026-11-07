@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -106,9 +107,12 @@ public static class DialogFooter
 
     /// <summary>A question's whole window, laid out one way: its title in bold over its paragraphs (words from
     /// <see cref="Paragraph"/>, or what it is about, as a list), each wrapping, at one width and as tall as they are; its
-    /// answers in the footer's bar, and what goes beside them (Don't ask again) at the bar's left.</summary>
+    /// answers in the footer's bar, and what goes beside them (Don't ask again) at the bar's left. Its words are the
+    /// window's description too, for a screen reader to say with its title.</summary>
     public static void Question(Window dialog, string title, IEnumerable<Control> paragraphs, StackPanel answers, Control? left = null)
     {
+        Control[] said = [.. paragraphs];
+        AutomationProperties.SetHelpText(dialog, string.Join(" ", said.OfType<TextBlock>().Select(words => words.Text)));
         dialog.Title = title;
         dialog.Width = QuestionWidth;
         dialog.SizeToContent = SizeToContent.Height;
@@ -116,7 +120,7 @@ public static class DialogFooter
         dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;
         StackPanel page = new() { Margin = new Thickness(20), Spacing = 12 };
         page.Children.Add(new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
-        page.Children.AddRange(paragraphs);
+        page.Children.AddRange(said);
         // On a screen too short for its words, they scroll above the answers, which stay in reach.
         dialog.Content = Page(new ScrollViewer { Content = page }, Bar(answers, left));
     }

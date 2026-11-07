@@ -92,7 +92,7 @@
                          behind the button after them. The titles are added after the button as Settings asks for
                          them. -->
                     <app:MainMenuPlace Name="MainMenuPlace" Margin="0,0,2,0">
-                        <Button Name="MenuButton" Classes="tool" ToolTip.Tip="Main menu" Click="OnMenuClicked">
+                        <Button Name="MenuButton" Classes="tool" ToolTip.Tip="Main menu" AutomationProperties.Name="Main menu" Click="OnMenuClicked">
                             <PathIcon Data="{StaticResource Icon.Menu}" />
                         </Button>
                     </app:MainMenuPlace>

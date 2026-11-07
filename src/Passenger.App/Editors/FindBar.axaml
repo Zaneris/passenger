@@ -9,27 +9,27 @@
             <Panel Grid.Column="0" Width="380">
                 <TextBox Name="Query" Classes="search" PlaceholderText="Find" Padding="8,4,96,4" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" Spacing="1">
-                    <ToggleButton Name="MatchCase" Classes="option" ToolTip.Tip="Match case">
+                    <ToggleButton Name="MatchCase" Classes="option" ToolTip.Tip="Match case" AutomationProperties.Name="Match case">
                         <PathIcon Data="{StaticResource Icon.MatchCase}" />
                     </ToggleButton>
-                    <ToggleButton Name="WholeWords" Classes="option" ToolTip.Tip="Words">
+                    <ToggleButton Name="WholeWords" Classes="option" ToolTip.Tip="Words" AutomationProperties.Name="Words">
                         <PathIcon Data="{StaticResource Icon.WholeWord}" />
                     </ToggleButton>
-                    <ToggleButton Name="UseRegex" Classes="option" ToolTip.Tip="Regex">
+                    <ToggleButton Name="UseRegex" Classes="option" ToolTip.Tip="Regex" AutomationProperties.Name="Regex">
                         <TextBlock Name="RegexGlyph" Text=".*" FontWeight="Bold" FontSize="12" />
                     </ToggleButton>
                 </StackPanel>
             </Panel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" Margin="10,0,0,0" VerticalAlignment="Center">
                 <TextBlock Name="Count" Classes="muted" Margin="0,0,8,0" VerticalAlignment="Center" />
-                <Button Name="PreviousButton" Classes="tool" ToolTip.Tip="Previous occurrence">
+                <Button Name="PreviousButton" Classes="tool" ToolTip.Tip="Previous occurrence" AutomationProperties.Name="Previous occurrence">
                     <PathIcon Data="{StaticResource Icon.ArrowUp}" />
                 </Button>
-                <Button Name="NextButton" Classes="tool" ToolTip.Tip="Next occurrence">
+                <Button Name="NextButton" Classes="tool" ToolTip.Tip="Next occurrence" AutomationProperties.Name="Next occurrence">
                     <PathIcon Data="{StaticResource Icon.ArrowDown}" />
                 </Button>
             </StackPanel>
-            <Button Name="CloseButton" Grid.Column="2" Classes="tool" ToolTip.Tip="Close" VerticalAlignment="Center">
+            <Button Name="CloseButton" Grid.Column="2" Classes="tool" ToolTip.Tip="Close" AutomationProperties.Name="Close" VerticalAlignment="Center">
                 <PathIcon Classes="small" Data="{StaticResource Icon.Close}" />
             </Button>
             <StackPanel Name="ReplaceRow" Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0" IsVisible="False">

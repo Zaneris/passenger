@@ -66,7 +66,7 @@ public sealed class LiveTemplatesPane : DockPanel
         ReformatBox.IsCheckedChanged += (_, _) => Edit(t => t with { Reformat = ReformatBox.IsChecked == true });
         AvailabilityText = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         AvailabilityButton = new Button { Content = "…", Padding = new Thickness(8, 1), Margin = new Thickness(8, 0, 0, 0) };
-        ToolTip.SetTip(AvailabilityButton, "Availability configuration");
+        ToolButtons.Tip(AvailabilityButton, "Availability configuration");
         AvailabilityButton.Click += (_, _) => IdeErrors.Observe(ConfigureAvailability());
         GenerationButton = Use("Generation", TemplateUse.Generation);
         SurroundButton = Use("Surround", TemplateUse.Surround);

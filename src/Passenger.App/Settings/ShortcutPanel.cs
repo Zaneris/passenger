@@ -170,7 +170,7 @@ public sealed class StrokeField : TextBox
         PathIcon plus = new() { Width = 12, Height = 12 };
         plus.Bind(PathIcon.DataProperty, plus.GetResourceObservable(IconKeys.Add));
         Button set = new() { Classes = { StyleClasses.TabPin }, Content = plus, Focusable = false, Margin = new Thickness(0, 0, 6, 0) };
-        ToolTip.SetTip(set, $"Set shortcuts with {string.Join(", ", keys.Where(k => k.Modifiers == KeyModifiers.None).Select(k => k.Display()))} keys");
+        ToolButtons.Tip(set, $"Set shortcuts with {string.Join(", ", keys.Where(k => k.Modifiers == KeyModifiers.None).Select(k => k.Display()))} keys");
         List<MenuItem> items = [];
         foreach (Keystroke key in keys)
         {

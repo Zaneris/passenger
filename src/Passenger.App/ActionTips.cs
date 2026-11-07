@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 
@@ -13,9 +14,11 @@ public static class ActionTips
 {
     private static readonly AttachedProperty<Tip?> TipProperty = AvaloniaProperty.RegisterAttached<Control, Tip?>("Tip", typeof(ActionTips));
 
-    /// <summary>Gives a control the tip of an action named in words.</summary>
+    /// <summary>Gives a control the tip of an action named in words, and those words, without the keys, as the name a
+    /// screen reader says for it.</summary>
     public static void Set(Control control, string action, string words)
     {
+        AutomationProperties.SetName(control, words);
         if (control.GetValue(TipProperty) is null)
         {
             // A hidden tool window's buttons are out of the tree when the keymap changes.

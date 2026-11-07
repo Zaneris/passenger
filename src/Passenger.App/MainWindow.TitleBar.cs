@@ -38,6 +38,8 @@ public partial class MainWindow
     {
         WindowDecorationsTheme = (ControlTheme)Resources["TitleBarDecorations"]!;
         MergeTitleBar(TitleBars.Merged(settings));
+        // Its badge's letters come first on its face, its name being what a screen reader should say.
+        AutomationProperties.SetLabeledBy(ProjectButton, ProjectName);
     }
 
     /// <summary>The toolbar becomes the title bar, or the system's comes back over it (Linux's setting changed).</summary>

@@ -151,7 +151,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         PathIcon clearGlyph = new() { Classes = { StyleClasses.Small } };
         clearGlyph.Bind(PathIcon.DataProperty, clearGlyph.GetResourceObservable(IconKeys.Close));
         Button clearBranch = new() { Classes = { StyleClasses.TabPin }, Content = clearGlyph, Margin = new Thickness(6, 0, 0, 0) };
-        ToolTip.SetTip(clearBranch, "Clear Branch Filter");
+        ToolButtons.Tip(clearBranch, "Clear Branch Filter");
         clearBranch.Click += (_, _) => FilterBranch(null, all: true);
         branchFilter = new Border
         {

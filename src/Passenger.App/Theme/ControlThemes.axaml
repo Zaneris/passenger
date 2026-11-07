@@ -69,10 +69,10 @@
                                Orientation="{TemplateBinding Orientation}"
                                IsDirectionReversed="True">
                             <Track.DecreaseButton>
-                                <RepeatButton Name="PART_PageUpButton" Theme="{StaticResource Passenger.ScrollPageTheme}" />
+                                <RepeatButton Name="PART_PageUpButton" Theme="{StaticResource Passenger.ScrollPageTheme}" AutomationProperties.Name="Page up" />
                             </Track.DecreaseButton>
                             <Track.IncreaseButton>
-                                <RepeatButton Name="PART_PageDownButton" Theme="{StaticResource Passenger.ScrollPageTheme}" />
+                                <RepeatButton Name="PART_PageDownButton" Theme="{StaticResource Passenger.ScrollPageTheme}" AutomationProperties.Name="Page down" />
                             </Track.IncreaseButton>
                             <Thumb Theme="{StaticResource Passenger.ScrollThumbTheme}"
                                    Width="{DynamicResource Passenger.ScrollThumbSize}"
@@ -96,10 +96,10 @@
                                ViewportSize="{TemplateBinding ViewportSize}"
                                Orientation="{TemplateBinding Orientation}">
                             <Track.DecreaseButton>
-                                <RepeatButton Name="PART_PageUpButton" Theme="{StaticResource Passenger.ScrollPageTheme}" />
+                                <RepeatButton Name="PART_PageUpButton" Theme="{StaticResource Passenger.ScrollPageTheme}" AutomationProperties.Name="Page left" />
                             </Track.DecreaseButton>
                             <Track.IncreaseButton>
-                                <RepeatButton Name="PART_PageDownButton" Theme="{StaticResource Passenger.ScrollPageTheme}" />
+                                <RepeatButton Name="PART_PageDownButton" Theme="{StaticResource Passenger.ScrollPageTheme}" AutomationProperties.Name="Page right" />
                             </Track.IncreaseButton>
                             <Thumb Theme="{StaticResource Passenger.ScrollThumbTheme}"
                                    Height="{DynamicResource Passenger.ScrollThumbSize}"

@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -484,6 +485,7 @@ public sealed partial class SettingsDialog : IdeWindow
             VerticalAlignment = firstLine < 0 ? VerticalAlignment.Center : VerticalAlignment.Top,
             Margin = new Thickness(0, Math.Max(0, firstLine), 0, 0),
         };
+        AutomationProperties.SetLabeledBy(editor, name);
         Control row = new StackPanel { Orientation = Orientation.Horizontal, Children = { name, editor } };
         if (note is not null)
         {

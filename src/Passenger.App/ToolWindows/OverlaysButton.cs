@@ -19,7 +19,7 @@ public sealed class OverlaysButton : Button
         PathIcon icon = new();
         icon.Bind(PathIcon.DataProperty, this.GetResourceObservable(IconKeys.Overlays));
         Content = icon;
-        ToolTip.SetTip(this, "Avalonia Debug Overlays");
+        ToolButtons.Tip(this, "Avalonia Debug Overlays");
         IsVisible = false;
     }
 

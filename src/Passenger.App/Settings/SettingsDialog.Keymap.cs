@@ -214,12 +214,12 @@ public sealed partial class SettingsDialog
         icon.Children.Add(keyboard);
         icon.Children.Add(magnifier);
         FindByShortcut.Content = icon;
-        ToolTip.SetTip(FindByShortcut, "Find Actions by Shortcut");
+        ToolButtons.Tip(FindByShortcut, "Find Actions by Shortcut");
         FindByShortcut.Click += (_, _) => findPopup.IsOpen = true;
 
         ClearFiltering.Content = Glyph(IconKeys.Close);
         ((PathIcon)ClearFiltering.Content).Width = ((PathIcon)ClearFiltering.Content).Height = 10;
-        ToolTip.SetTip(ClearFiltering, "Clear Filtering");
+        ToolButtons.Tip(ClearFiltering, "Clear Filtering");
         ClearFiltering.Click += (_, _) => ClearShortcutFilter();
         filterChip.Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { filterText, ClearFiltering } };
         filterChip.Bind(Border.BackgroundProperty, filterChip.GetResourceObservable(TokenKeys.Selected));

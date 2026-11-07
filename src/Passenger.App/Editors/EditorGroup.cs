@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
@@ -493,6 +494,7 @@ public sealed class EditorGroup : DockPanel
         // Its decorations are the file's, which every editor showing it reads.
         Editor.Show(document.Text, selections, scroll, document.SoftWrap, document.Decorations);
         Editor.Highlighter = document.Highlighter;
+        AutomationProperties.SetName(Editor, document.Title);
         Gutter.Show(document);
         Editor.ContextLabel = ContextShown(document);
         Editor.IsReadOnly = document.IsReadOnly;
@@ -795,10 +797,10 @@ public sealed class EditorGroup : DockPanel
         Ellipse modified = new() { Classes = { StyleClasses.Modified }, Width = 7, Height = 7 };
         RowIcon closeGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Close };
         Button close = new() { Classes = { StyleClasses.TabClose }, Content = closeGlyph };
-        ToolTip.SetTip(close, "Close");
+        ToolButtons.Tip(close, "Close");
         RowIcon pinGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Pin };
         Button pin = new() { Classes = { StyleClasses.TabPin }, Content = pinGlyph };
-        ToolTip.SetTip(pin, "Unpin Tab");
+        ToolButtons.Tip(pin, "Unpin Tab");
         Border border = new()
         {
             Classes = { StyleClasses.Tab },

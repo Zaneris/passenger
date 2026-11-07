@@ -777,6 +777,43 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>Every button a person meets in the window and its tool windows has words a screen reader says: its own, or a
+    /// name given where it was made (<see cref="ToolButtons.Tip"/>), never only an icon. Its peer's name is what each
+    /// system's accessibility reads, so an icon's button left with a tip alone is heard as a nameless button.</summary>
+    [AvaloniaFact]
+    public void No_button_in_the_window_or_a_tool_window_goes_unnamed()
+    {
+        MainWindow window = Open(1400, 880);
+        try
+        {
+            window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            window.OpenFile(project.PathOf("Program.cs"));
+            Ui.Settle();
+            window.Perform(AppActions.Find);
+            Ui.Settle();
+            List<string> unnamed = [];
+            HashSet<Button> seen = [];
+            foreach (Passenger.App.Docking.ToolWindow tool in window.DockHost.Windows.ToList())
+            {
+                window.DockHost.Show(tool.Id);
+                Ui.Settle();
+                foreach (Button button in window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.Bounds.Width > 0).Where(seen.Add))
+                {
+                    if (string.IsNullOrWhiteSpace(Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(button).GetName()))
+                    {
+                        unnamed.Add($"{tool.Title}'s {button.GetType().Name} {button.Name} tip \"{ToolTip.GetTip(button)}\" in {button.GetVisualParent()?.GetType().Name}");
+                    }
+                }
+            }
+            Assert.True(seen.Count >= 40, $"Only {seen.Count} buttons were found in the window and its tool windows");
+            Assert.True(unnamed.Count == 0, $"{unnamed.Count} buttons are nameless to a screen reader: give each ToolButtons.Tip or AutomationProperties.Name:\n{string.Join("\n", unnamed)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Every button that runs one of the window's actions, the toolbar's and every tool window's, names in its tip
     /// the keys the keymap in force gives that action (<see cref="ActionTips"/>), and every tool window's Hide names Hide Tool
     /// Window's keys or none: under every keymap Settings offers, each chosen in turn, so no tip names a key that does not

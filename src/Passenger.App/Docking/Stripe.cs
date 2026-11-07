@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
@@ -48,7 +49,7 @@ internal sealed class Stripe : Border
         PathIcon dots = new();
         dots.Bind(PathIcon.DataProperty, dots.GetResourceObservable(IconKeys.More));
         more = new ToggleButton { Classes = { StyleClasses.Stripe }, Content = dots, IsVisible = false, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
-        ToolTip.SetTip(more, "More Tool Windows");
+        ToolButtons.Tip(more, "More Tool Windows");
         more.Click += (_, _) => ShowMore();
         StackPanel sides = new() { [DockPanel.DockProperty] = Dock.Top, Children = { groups[upper], gap, groups[lower], more } };
         groups[bottom].VerticalAlignment = VerticalAlignment.Bottom;
@@ -149,6 +150,7 @@ internal sealed class Stripe : Border
         PathIcon glyph = new();
         glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(window.Icon));
         ToggleButton button = new() { Classes = { StyleClasses.Stripe }, Content = glyph, Tag = window.Id };
+        AutomationProperties.SetName(button, window.Title);
         button.AddHandler(PointerPressedEvent, (_, e) => host.Drag.Begin(window, e), RoutingStrategies.Tunnel, handledEventsToo: true);
         button.AddHandler(PointerMovedEvent, (_, e) => host.Drag.Continue(e), RoutingStrategies.Tunnel, handledEventsToo: true);
         button.AddHandler(PointerReleasedEvent, (_, e) =>
