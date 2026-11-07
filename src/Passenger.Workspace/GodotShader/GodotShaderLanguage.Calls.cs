@@ -164,7 +164,7 @@ public sealed partial class GodotShaderLanguage
                     {
                         if (compileInfo.LowEnd)
                         {
-                            if (builtinFuncDefs[idx].HighEnd)
+                            if (OnlyOnHighEnd(builtinFuncDefs[idx]))
                             {
                                 fail = true;
                                 unsupportedBuiltin = true;

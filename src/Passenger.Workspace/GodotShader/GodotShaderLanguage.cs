@@ -393,6 +393,11 @@ public sealed partial class GodotShaderLanguage
     /// constant's values only where written as values.</summary>
     private bool Before48 => compileInfo.Godot is { } godot && godot < Godot48;
 
+    /// <summary>Whether the Godot the compile follows has a table's entry only on the high end: a function that came to be so
+    /// in a later version is refused only where that version or a newer one is known to run the shader.</summary>
+    private bool OnlyOnHighEnd(BuiltinFuncDef entry) =>
+        entry.HighEnd && (!highEndFrom.TryGetValue(entry.Name!, out Version? from) || compileInfo.Godot is { } godot && godot >= from);
+
     /// <summary>The shader the last compile made, whole or as far as it read.</summary>
     public ShaderNode Shader => shader;
 

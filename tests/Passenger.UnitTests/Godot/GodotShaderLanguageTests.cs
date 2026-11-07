@@ -153,6 +153,27 @@ public class GodotShaderLanguageTests
         Assert.Equal((4, "Built-in function \"fma(float, float, float)\" is only supported on high-end platforms."), (refused.Line, refused.Text));
     }
 
+    /// <summary>Godot's table has textureGather on the high end only from 4.7: 4.4's Compatibility renderer compiles it.</summary>
+    [Theory]
+    [InlineData("4.4", false)]
+    [InlineData("4.6", false)]
+    [InlineData("4.7", true)]
+    [InlineData("4.8", true)]
+    public void TextureGather_is_refused_under_Compatibility_only_from_the_Godot_that_made_it_high_end(string godot, bool refused)
+    {
+        const string code = "shader_type canvas_item;\n\nuniform sampler2D source;\n\nvoid fragment() {\n\tCOLOR = textureGather(source, UV);\n}\n";
+        Assert.Empty(Check(code, godot: Version.Parse(godot)).Messages);
+        IReadOnlyList<GodotShaderMessage> messages = Check(code, method: "gl_compatibility", godot: Version.Parse(godot)).Messages;
+        Assert.Equal(refused ? ["Built-in function \"textureGather(sampler2D, vec2)\" is only supported on high-end platforms."] : [], messages.Select(m => m.Text));
+    }
+
+    [Fact]
+    public void TextureGather_is_not_refused_where_the_Godot_that_runs_the_shader_is_unknown()
+    {
+        const string code = "shader_type canvas_item;\n\nuniform sampler2D source;\n\nvoid fragment() {\n\tCOLOR = textureGather(source, UV);\n}\n";
+        Assert.Empty(Check(code, new GodotShaderCheckOptions { RenderingMethod = "gl_compatibility", Godot = null }).Messages);
+    }
+
     [Fact]
     public void A_shader_that_compiles_is_warned_of_what_it_declares_and_never_uses_by_line()
     {

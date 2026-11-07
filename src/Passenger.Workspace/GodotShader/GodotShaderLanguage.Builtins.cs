@@ -37,6 +37,9 @@ public sealed partial class GodotShaderLanguage
         new BuiltinFuncDef(null, DataType.Void, new DataType[BuiltinFuncDef.MaxArgs], SubClassTag.Global, false),
     ];
 
+    /// <summary>The functions the carried table has only on the high end that every Godot before a version has on the low end too.</summary>
+    private static readonly Dictionary<string, Version> highEndFrom = new(StringComparer.Ordinal) { ["textureGather"] = new Version(4, 7) };
+
     private static readonly HashSet<string> globalFuncSet =
         new(builtinFuncDefs.Where(d => d.Name != null && d.Tag == SubClassTag.Global).Select(d => d.Name!), StringComparer.Ordinal);
 
