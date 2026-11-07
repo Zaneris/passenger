@@ -160,6 +160,8 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
     {
         switch (named)
         {
+            case OfScript { Member: var made } when MakesPlainly(made):
+                return new GDScriptSignature("func", null, made.Name, [], made.Type.ToString(), false);
             case OfScript { Member: { Kind: "func" or "signal", Declaration: { Script: { } script, Start: var start } } }:
                 GDScriptTree? tree = script == typed.Analysis.Path ? typed.Tree : typed.Analyzer.Project.Script(script);
                 return tree is not null && GDScriptSignature.DeclaredAt(tree, start) is ({ } node, int offset)

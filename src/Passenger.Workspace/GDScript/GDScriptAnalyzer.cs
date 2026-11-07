@@ -475,8 +475,8 @@ public sealed partial class GDScriptAnalyzer
         return null;
     }
 
-    /// <summary>Every member a type has, its own first, then its bases'; of a class read by its name, those it has itself,
-    /// as Godot's completion lists them (_find_identifiers_in_class) and its analyzer finds them.</summary>
+    /// <summary>Every member a type has, its own first, then its bases'; of a class read by its name, the <c>new</c> that makes
+    /// one and those it has itself, as Godot's completion lists them (_find_identifiers_in_class) and its analyzer finds them.</summary>
     public IReadOnlyList<GDScriptMemberInfo> Members(GDScriptType type)
     {
         List<GDScriptMemberInfo> all = [];
@@ -504,6 +504,10 @@ public sealed partial class GDScriptAnalyzer
                 Add(new GDScriptMemberInfo(value, "const", type.Instance, null));
             }
             return all;
+        }
+        if (Constructor(type) is { } constructor)
+        {
+            Add(constructor);
         }
         int depth = 0;
         for (GDScriptType? at = type.Instance; at is not null && depth++ < 64; at = BaseOf(at))
@@ -546,6 +550,18 @@ public sealed partial class GDScriptAnalyzer
                 all.Add(member);
             }
         }
+    }
+
+    /// <summary>The <c>new</c> of a class read by its name, declared by the <c>_init</c> a script of its classes writes; null for
+    /// any other type and for a class Godot refuses to make, abstract or built on an abstract engine class.</summary>
+    private GDScriptMemberInfo? Constructor(GDScriptType type)
+    {
+        if (type is not { Meta: true, Kind: GDScriptTypeKind.Native or GDScriptTypeKind.Class } || type.Class is { IsAbstract: true } || AbstractNative(type) is not null)
+        {
+            return null;
+        }
+        GDScriptDeclaration? written = Member(type.Instance, "_init")?.Declaration;
+        return new GDScriptMemberInfo("new", "func", type.Instance with { Hard = true }, written is { Script: not null } ? written : null);
     }
 
     /// <summary>The members a class's code finds by their names alone, an inner class's where <paramref name="inner"/> says

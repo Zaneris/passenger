@@ -260,9 +260,12 @@ internal sealed partial class GDScriptAssist
         return new Listed(at.Start, items);
     }
 
-    /// <summary>The rank a member's item sorts by: a script's own members before what the engine's classes give it, as
-    /// Godot's editor lists them by where they are declared.</summary>
-    private static string RankOf(GDScriptMemberInfo member, string rank) => member.Declaration is { Script: not null } ? rank : rank + "~~";
+    /// <summary>The rank a member's item sorts by: a script's own members and what makes the class before what the engine's
+    /// classes give it, as Godot's editor lists them by where they are declared.</summary>
+    private static string RankOf(GDScriptMemberInfo member, string rank) => member.Declaration is { Script: not null } || MakesPlainly(member) ? rank : rank + "~~";
+
+    /// <summary>Whether a member is the <c>new</c> of a class no script gives an <c>_init</c>, which takes nothing.</summary>
+    private static bool MakesPlainly(GDScriptMemberInfo member) => member is { Name: "new", Kind: "func", Declaration: null };
 
     /// <summary>A member's item: its kind, its type, and for a function the parentheses its call takes, the caret inside them
     /// where it takes arguments.</summary>

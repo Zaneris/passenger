@@ -132,6 +132,45 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>After a class's name <c>new</c> goes in with its parentheses, the caret inside them where its constructor takes
+    /// arguments and after them where it takes none; a class Godot refuses to make lists none.</summary>
+    [AvaloniaFact]
+    public void After_a_class_name_new_goes_in_with_its_parentheses_and_an_abstract_class_lists_none()
+    {
+        TestFolders.Write(folder, "worker.gd", "class_name Worker\nextends Node\n");
+        TestFolders.Write(folder, "boss.gd", "class_name Boss\nextends Node\n\n\nfunc _init(rank: int) -> void:\n\tpass\n");
+        TestFolders.Write(folder, "shape.gd", "@abstract\nclass_name Shape\nextends RefCounted\n\nconst SIDES := 3\n");
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "\tcounter += 1");
+            window.KeyTextInput("Shape");
+            window.KeyTextInput(".");
+            Listed(window, "SIDES", "constant after an abstract class's dot");
+            Assert.DoesNotContain("new", window.Assist.CompletionLabels);
+            Ui.Press(window, "ESCAPE", settle: false);
+
+            foreach ((string name, string written, string beforeCaret) in new[] { ("Worker", "\tWorker.new()\n", "\tWorker.new()"), ("Boss", "\tBoss.new()\n", "\tBoss.new(") })
+            {
+                TypeOverLine(window, editor, name);
+                window.KeyTextInput(".");
+                Listed(window, "new", $"new after {name}'s dot");
+                Assert.Equal("new", window.Assist.CompletionLabels[0]);
+                window.KeyTextInput("ne");
+                First(window, "new", $"new as {name}'s dot is typed past");
+                Ui.Press(window, "ENTER", settle: false);
+                Ui.PumpUntil(() => document.Text.Snapshot.ToString().Contains(written, StringComparison.Ordinal), $"{written.Trim()} put in", TimeSpan.FromSeconds(10));
+                Assert.Equal(beforeCaret, editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)[..editor.CaretPosition.Column]);
+            }
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>After a member read off a class or a value the list holds that member's own, however many dots came before.</summary>
     [AvaloniaFact]
     public void After_a_member_read_off_another_the_list_holds_what_that_member_has()

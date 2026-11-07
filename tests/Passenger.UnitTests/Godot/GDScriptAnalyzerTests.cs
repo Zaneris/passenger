@@ -41,6 +41,7 @@ public class GDScriptAnalyzerTests
               "properties": [{ "name": "name", "type": "StringName" }, { "name": "process_mode", "type": "enum::Node.ProcessMode" }],
               "signals": [{ "name": "ready" }] },
             { "name": "Node2D", "inherits": "Node", "properties": [{ "name": "position", "type": "Vector2" }] },
+            { "name": "CanvasItem", "inherits": "Node", "is_instantiable": false },
             { "name": "SceneTree", "inherits": "Object", "methods": [{ "name": "change_scene_to_file", "return_value": { "type": "enum::Error" } }],
               "properties": [{ "name": "root", "type": "Node" }] },
             { "name": "Input", "inherits": "Object", "methods": [{ "name": "is_action_pressed", "return_value": { "type": "bool" } }] },
@@ -387,7 +388,7 @@ public class GDScriptAnalyzerTests
             string text = Head + written.Replace("|", after, StringComparison.Ordinal) + "\n";
             (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, new() { ["res://worker.gd"] = Worker });
             int dot = Head.Length + written.IndexOf('|', StringComparison.Ordinal) - 1;
-            GDScriptType owner = analysis.NodeAt(dot - 1) is ({ } node, _) ? analysis.TypeOf(node) : GDScriptType.Variant;
+            GDScriptType owner = TypeBeforeDot(analysis, dot);
             Assert.True(owner.Name == type, $"What stands before the dot of {written} read as {owner}, not {type}: the list there stays empty");
             HashSet<string> names = [.. analyzer.Members(owner).Select(m => m.Name)];
             Assert.Superset(new HashSet<string>(listed.Split(' ')), names);
@@ -406,8 +407,80 @@ public class GDScriptAnalyzerTests
         string text = Head + written.Replace("|", string.Empty, StringComparison.Ordinal) + "\n";
         (GDScriptAnalysis analysis, _) = Analyze(text);
         int dot = Head.Length + written.IndexOf('|', StringComparison.Ordinal) - 1;
-        Assert.Equal(type, analysis.NodeAt(dot - 1) is ({ } node, _) ? analysis.TypeOf(node).Name : null);
+        Assert.Equal(type, TypeBeforeDot(analysis, dot).Name);
     }
+
+    /// <summary><c>new</c> follows a class read by its name, by any path to it, wherever Godot 4.7.2 compiled that call, and
+    /// nowhere it refused one: an abstract class, one built on an abstract engine class, a singleton, an enum, a built-in type.
+    /// A value of a class makes nothing, though Godot leaves that to the running game.</summary>
+    [Theory]
+    [InlineData("Worker", true)]
+    [InlineData("Worker.Inner", true)]
+    [InlineData("Worker.Inner.Deepest", true)]
+    [InlineData("Boss", true)]
+    [InlineData("Heir", true)]
+    [InlineData("Next", true)]
+    [InlineData("Loaded", true)]
+    [InlineData("Loaded.Inner", true)]
+    [InlineData("kept", true)]
+    [InlineData("Node", true)]
+    [InlineData("Node2D", true)]
+    [InlineData("Shape.Whole", true)]
+    [InlineData("Shape", false)]
+    [InlineData("Shape.Part", false)]
+    [InlineData("CanvasItem", false)]
+    [InlineData("Drawn", false)]
+    [InlineData("Input", false)]
+    [InlineData("Mood", false)]
+    [InlineData("Worker.Mood", false)]
+    [InlineData("Vector2", false)]
+    [InlineData("int", false)]
+    [InlineData("self", false)]
+    [InlineData("buddy", false)]
+    [InlineData("Worker.new()", false)]
+    public void New_follows_a_class_by_its_name_wherever_godot_lets_one_be_made(string written, bool listed)
+    {
+        const string Head = "extends Node\n\nenum Mood { CALM }\nconst Loaded = preload(\"res://worker.gd\")\nvar buddy: Worker\n\nclass Next:\n\tpass\n\nfunc f():\n\tvar kept := Worker\n\t";
+        foreach (string after in (string[])[string.Empty, "zz"])
+        {
+            string text = $"{Head}print({written}.{after})\n";
+            (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, Classes);
+            GDScriptType owner = TypeBeforeDot(analysis, Head.Length + "print(".Length + written.Length);
+            Assert.True(analyzer.Members(owner).Any(m => m.Name == "new") == listed, $"new {(listed ? "missing from" : "offered on")} {written}, read as {owner}");
+        }
+    }
+
+    /// <summary>A class's <c>new</c> gives a value of the class, the <c>_init</c> of the nearest class writing one saying what it takes.</summary>
+    [Fact]
+    public void New_gives_an_instance_and_is_declared_by_the_constructor_its_classes_write()
+    {
+        string text = "extends Node\n\nfunc f():\n\tprint(Worker.LIMIT, Boss.LIMIT, Heir.LIMIT, Node.LIMIT)\n";
+        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, Classes);
+        GDScriptMemberInfo NewOf(string name) => analyzer.Members(TypeBeforeDot(analysis, text.IndexOf($"{name}.LIMIT", StringComparison.Ordinal) + name.Length)).Single(m => m.Name == "new");
+
+        GDScriptMemberInfo plain = NewOf("Worker");
+        Assert.Equal(("func", "Worker", false, null), (plain.Kind, plain.Type.ToString(), plain.Type.Meta, plain.Declaration));
+        Assert.Equal(("Node", (GDScriptDeclaration?)null), (NewOf("Node").Type.ToString(), NewOf("Node").Declaration));
+        foreach (string name in (string[])["Boss", "Heir"])
+        {
+            GDScriptDeclaration? written = NewOf(name).Declaration;
+            Assert.Equal(("res://boss.gd", Classes["res://boss.gd"].IndexOf("_init", StringComparison.Ordinal)), (written?.Script, written?.Start));
+        }
+    }
+
+    /// <summary>A small project's classes to make: plain, with inner classes, with a constructor, inheriting one, abstract, and
+    /// built on an abstract engine class.</summary>
+    private static readonly Dictionary<string, string> Classes = new(StringComparer.Ordinal)
+    {
+        ["res://worker.gd"] = "class_name Worker\nextends Node\n\nenum Mood { CALM }\nconst LIMIT := 3\n\nclass Inner:\n\tclass Deepest:\n\t\tpass\n",
+        ["res://boss.gd"] = "class_name Boss\nextends Worker\n\nfunc _init(rank: int) -> void:\n\tpass\n",
+        ["res://heir.gd"] = "class_name Heir\nextends Boss\n",
+        ["res://shape.gd"] = "@abstract\nclass_name Shape\nextends RefCounted\n\n@abstract class Part:\n\tpass\n\nclass Whole extends Part:\n\tpass\n",
+        ["res://drawn.gd"] = "class_name Drawn\nextends CanvasItem\n",
+    };
+
+    /// <summary>The type of what stands before a dot, found as a list opened after it finds it.</summary>
+    private static GDScriptType TypeBeforeDot(GDScriptAnalysis analysis, int dot) => analysis.NodeAt(dot - 1) is ({ } node, _) ? analysis.TypeOf(node) : GDScriptType.Variant;
 
     /// <summary>The locals in scope where a name is typed (the bar), the nearest first, whether the name is typed yet or, on a line
     /// of its own, the caret only stands at its indentation. Each was compiled by Godot 4.7.2 with every name of its script

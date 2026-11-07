@@ -1944,7 +1944,7 @@ public sealed partial class GDScriptAnalyzer
         {
             Error(context, call, $"Cannot construct abstract class \"{owner.Instance}\".");
         }
-        if (NativeBase(owner) is not { } native || Engine!.Classes.GetValueOrDefault(native) is not { Instantiable: false })
+        if (AbstractNative(owner) is not { } native)
         {
             return false;
         }

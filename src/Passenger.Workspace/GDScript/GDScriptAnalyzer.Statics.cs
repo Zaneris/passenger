@@ -129,6 +129,10 @@ public sealed partial class GDScriptAnalyzer
         return null;
     }
 
+    /// <summary>The engine class a class is built on where that can't be made; null for one that can, or isn't read.</summary>
+    private string? AbstractNative(GDScriptType type) =>
+        NativeBase(type) is { } native && Engine?.Classes.GetValueOrDefault(native) is { Instantiable: false } ? native : null;
+
     /// <summary>The engine class a class is built on at the end of its bases; null where one between is not read.</summary>
     private string? NativeBase(GDScriptType type)
     {
