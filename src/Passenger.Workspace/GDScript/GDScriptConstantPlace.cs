@@ -13,7 +13,7 @@ public enum GDScriptConstantPlace
 /// enum, which a dot goes on from. Pure.</summary>
 public static class GDScriptConstantPlaces
 {
-    /// <summary>The keywords no constant's value holds, or none that Passenger's reading calls one.</summary>
+    /// <summary>The keywords no constant's value holds, but for an await that leaves the constant it waits for as it was.</summary>
     private static readonly HashSet<string> Running = new(StringComparer.Ordinal) { "self", "super", "await", "func" };
 
     /// <summary>Whether a place takes a local or a member: a constant, an enum or a class; for an integer, a constant holding none

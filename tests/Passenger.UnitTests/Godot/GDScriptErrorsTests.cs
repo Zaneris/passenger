@@ -565,6 +565,33 @@ public class GDScriptErrorsTests
         ], Errors(Script));
     }
 
+    /// <summary>An await of a constant is that constant, wherever one must be (Godot 4.7.2 compiled each of these), and an await of
+    /// what is no constant stays no constant (and refused each of those, on its line).</summary>
+    [Fact]
+    public void An_await_is_constant_only_where_what_it_waits_for_is()
+    {
+        const string Head = "extends Node\n\nsignal fired\nenum Mood { CALM }\nconst LIMIT := 3\nvar num := 1\n\n\nfunc work() -> int:\n\treturn 1\n\n\n";
+        foreach (string written in (string[])["const C = await 1\n", "const C = await LIMIT\n", "const C = await Mood.CALM\n", "const C = await (1 + 2)\n", "const C = await await 1\n",
+            "const C = [await 1]\n", "enum { X = await 1 }\n", "enum { X = await LIMIT }\n", "@export_range(await 1, 10) var r: int\n",
+            "func f():\n\tconst K = 2\n\tconst C = await K\n\tprint(C)\n", "func f(a):\n\tmatch a:\n\t\t1 + await 1:\n\t\t\tpass\n"])
+        {
+            Assert.DoesNotContain(Errors(Head + written), e => e.Contains("constant", StringComparison.Ordinal));
+        }
+        foreach ((string written, string error) in ((string, string)[])[
+            ("const C = await num\n", "Assigned value for constant \"C\" isn't a constant expression."),
+            ("const C = await work()\n", "Assigned value for constant \"C\" isn't a constant expression."),
+            ("const C = await fired\n", "Assigned value for constant \"C\" isn't a constant expression."),
+            ("const C = await self\n", "Assigned value for constant \"C\" isn't a constant expression."),
+            ("const C = [await num]\n", "Assigned value for constant \"C\" isn't a constant expression."),
+            ("enum { X = await num }\n", "Enum values must be constant."),
+            ("@export_range(await num, 10) var r: int\n", "Argument 1 of annotation \"@export_range\" isn't a constant expression."),
+            ("func f(p):\n\tconst C = await p\n\tprint(C)\n", "Assigned value for constant \"C\" isn't a constant expression."),
+            ("func f(a):\n\tmatch a:\n\t\t1 + await num:\n\t\t\tpass\n", "Expression in match pattern must be a constant expression, an identifier, or an attribute access (\"A.B\").")])
+        {
+            Assert.Contains(Errors(Head + written), e => e.EndsWith(error, StringComparison.Ordinal));
+        }
+    }
+
     /// <summary>A file the project's files, listed whole, lack is said where a script preloads it, and a class named as a
     /// singleton autoload is said to hide it; with no list, nothing is lacked.</summary>
     [Fact]

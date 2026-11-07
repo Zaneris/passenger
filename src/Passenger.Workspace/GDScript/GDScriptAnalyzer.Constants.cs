@@ -9,11 +9,13 @@ namespace Passenger.Workspace.GDScript;
 public sealed partial class GDScriptAnalyzer
 {
     /// <summary>Whether Godot holds an expression as no constant, as far as Passenger can be sure: a variable or parameter,
-    /// self, a node path, an await, a call of the script's own function, or what is made of one; false where it may be one.</summary>
+    /// self, a node path, a call of the script's own function, or what is made of one, an await of a constant being that
+    /// constant; false where it may be one.</summary>
     private bool NonConstant(GDScriptExpression? expression, Context context) => RuntimeHelpers.TryEnsureSufficientExecutionStack() && expression switch
     {
         null or GDScriptLiteral => false,
-        GDScriptSelf or GDScriptGetNode or GDScriptAwait => true,
+        GDScriptSelf or GDScriptGetNode => true,
+        GDScriptAwait waiting => NonConstant(waiting.Awaited, context),
         GDScriptIdentifier name => context.Scope?.Find(name.Name) is { } local ? local.Local?.Kind != LocalKind.Constant
             : Member(context.Class, name.Name) is { Kind: "var" or "signal" },
         GDScriptCall { Callee: GDScriptIdentifier own } when Declared(own, context) => true,
