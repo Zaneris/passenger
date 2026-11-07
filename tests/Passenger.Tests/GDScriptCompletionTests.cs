@@ -202,6 +202,34 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>An engine class's enum values complete in a script built on the class, and a built-in type's enum and its values
+    /// after the type's name.</summary>
+    [AvaloniaFact]
+    public void An_engine_enums_values_complete_in_a_script_on_its_class_and_after_a_built_in_types_name()
+    {
+        Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the engine's enums come from its API");
+        (MainWindow window, _, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "\tcounter += 1");
+            TypeName(window, "PROCESS_MODE_INH");
+            Listed(window, "PROCESS_MODE_INHERIT", "value of an enum of the class the script is built on");
+            Ui.Press(window, "ESCAPE", settle: false);
+            Erase(window, "PROCESS_MODE_INH".Length);
+
+            window.KeyTextInput("Vector2");
+            window.KeyTextInput(".");
+            Listed(window, "AXIS_X", "value of a built-in type's enum after its name");
+            Assert.Contains("Axis", window.Assist.CompletionLabels);
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>After a closing bracket the list holds what the bracket closes, a call's result rather than its last argument's
     /// type, and a group's parentheses list what they hold.</summary>
     [AvaloniaFact]

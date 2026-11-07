@@ -24,6 +24,7 @@ public class GDScriptAnalyzerTests
             { "name": "float", "operators": [{ "name": "*", "right_type": "float", "return_type": "float" }] },
             { "name": "String", "methods": [{ "name": "length", "return_type": "int" }], "operators": [{ "name": "+", "right_type": "String", "return_type": "String" }] },
             { "name": "Vector2", "members": [{ "name": "x", "type": "float" }, { "name": "y", "type": "float" }], "indexing_return_type": "float",
+              "constants": [{ "name": "ZERO", "type": "Vector2" }], "enums": [{ "name": "Axis", "values": [{ "name": "AXIS_X", "value": 0 }] }],
               "operators": [{ "name": "*", "right_type": "float", "return_type": "Vector2" }], "methods": [{ "name": "length", "return_type": "float" }] },
             { "name": "Array", "indexing_return_type": "Variant", "methods": [{ "name": "size", "return_type": "int" }, { "name": "front", "return_type": "Variant" }] },
             { "name": "Dictionary", "methods": [] },
@@ -45,7 +46,8 @@ public class GDScriptAnalyzerTests
             { "name": "CanvasItem", "inherits": "Node", "is_instantiable": false },
             { "name": "SceneTree", "inherits": "Object", "methods": [{ "name": "change_scene_to_file", "return_value": { "type": "enum::Error" } }],
               "properties": [{ "name": "root", "type": "Node" }] },
-            { "name": "Input", "inherits": "Object", "methods": [{ "name": "is_action_pressed", "return_value": { "type": "bool" } }] },
+            { "name": "Input", "inherits": "Object", "methods": [{ "name": "is_action_pressed", "return_value": { "type": "bool" } }],
+              "enums": [{ "name": "MouseMode", "values": [{ "name": "MOUSE_MODE_VISIBLE", "value": 0 }] }] },
             { "name": "Resource", "inherits": "RefCounted" },
             { "name": "PackedScene", "inherits": "Resource" }
           ]
@@ -527,6 +529,53 @@ public class GDScriptAnalyzerTests
             GDScriptDeclaration? written = NewOf(name).Declaration;
             Assert.Equal(("res://boss.gd", Classes["res://boss.gd"].IndexOf("_init", StringComparison.Ordinal)), (written?.Script, written?.Start));
         }
+    }
+
+    /// <summary>An engine class's enum values come after a class by its name, a value of it and a singleton, and in the scope of a
+    /// class built on it, static places too; a built-in type's after its name alone. Godot 4.7.2 compiled each name listed and
+    /// rejected each left out, but the enum by its bare name, which it takes only before a further dot.</summary>
+    [Theory]
+    [InlineData("Node.|", "PROCESS_MODE_INHERIT ProcessMode", "AXIS_X")]
+    [InlineData("Node2D.|", "PROCESS_MODE_INHERIT ProcessMode", "")]
+    [InlineData("Worker.|", "PROCESS_MODE_INHERIT ProcessMode", "")]
+    [InlineData("self.|", "PROCESS_MODE_INHERIT ProcessMode", "")]
+    [InlineData("buddy.|", "PROCESS_MODE_INHERIT ProcessMode", "")]
+    [InlineData("Input.|", "MOUSE_MODE_VISIBLE MouseMode", "")]
+    [InlineData("Node.ProcessMode.|", "PROCESS_MODE_INHERIT", "ProcessMode")]
+    [InlineData("Vector2.|", "AXIS_X Axis ZERO", "PROCESS_MODE_INHERIT")]
+    [InlineData("Vector2.Axis.|", "AXIS_X", "ZERO")]
+    [InlineData("spot.|", "x", "AXIS_X Axis ZERO")]
+    public void An_engine_enums_values_follow_what_godot_finds_them_on(string written, string listed, string left)
+    {
+        const string Head = "extends Node\n\nvar buddy: Worker\nvar spot: Vector2\n\nfunc f():\n\t";
+        string text = $"{Head}print({written.Replace("|", string.Empty, StringComparison.Ordinal)})\n";
+        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, Classes);
+        GDScriptType owner = TypeBeforeDot(analysis, Head.Length + "print(".Length + written.Length - 2);
+        HashSet<string> names = [.. analyzer.Members(owner).Select(m => m.Name)];
+        Assert.Superset(new HashSet<string>(listed.Split(' ')), names);
+        Assert.Empty(names.Intersect(left.Split(' ', StringSplitOptions.RemoveEmptyEntries)));
+    }
+
+    /// <summary>An enum value says the enum it is of, and in a class built on the engine's it is in scope wherever Godot 4.7.2
+    /// compiled it: static places too, though not in an inner class, which is built on no node.</summary>
+    [Fact]
+    public void An_engine_enums_values_are_in_the_scope_of_a_class_built_on_it()
+    {
+        string text = "extends Node\n\nfunc f():\n\tzz\n\nstatic func g():\n\tyy\n\nclass In:\n\tfunc h():\n\t\txx\n";
+        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text);
+        IReadOnlyList<GDScriptMemberInfo> Scope(string mark)
+        {
+            int at = text.IndexOf(mark, StringComparison.Ordinal) + mark.Length;
+            return analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(at), analysis.StaticAt(at));
+        }
+
+        GDScriptMemberInfo value = Scope("zz").Single(m => m.Name == "PROCESS_MODE_INHERIT");
+        Assert.Equal(("const", "Node.ProcessMode", "Node"), (value.Kind, value.Type.ToString(), value.Declaration?.EngineClass));
+        Assert.Contains("PROCESS_MODE_INHERIT", Scope("yy").Select(m => m.Name));
+        Assert.DoesNotContain("PROCESS_MODE_INHERIT", Scope("xx").Select(m => m.Name));
+
+        GDScriptMemberInfo axis = analyzer.Members(GDScriptType.Builtin("Vector2") with { Meta = true }).Single(m => m.Name == "AXIS_X");
+        Assert.Equal(("const", "Vector2.Axis"), (axis.Kind, axis.Type.ToString()));
     }
 
     /// <summary>A small project's classes to make: plain, with inner classes, with a constructor, inheriting one, abstract, and

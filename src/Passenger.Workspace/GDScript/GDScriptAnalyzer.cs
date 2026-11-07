@@ -495,6 +495,14 @@ public sealed partial class GDScriptAnalyzer
             {
                 Add(new GDScriptMemberInfo(name, "const", FromApi(constant), null));
             }
+            foreach ((string name, GodotApiEnum named) in type.Meta ? builtin.Enums : [])
+            {
+                Add(new GDScriptMemberInfo(name, "enum", NativeEnum(type.Name, named, meta: true), null));
+                foreach (string value in named.Values.Keys)
+                {
+                    Add(new GDScriptMemberInfo(value, "const", NativeEnum(type.Name, named, meta: false), null));
+                }
+            }
             return all;
         }
         if (type.Kind == GDScriptTypeKind.Enum)
@@ -516,7 +524,8 @@ public sealed partial class GDScriptAnalyzer
             {
                 foreach (GodotApiClass engine in Engine?.Chain(at.Name) ?? [])
                 {
-                    foreach (string name in engine.Properties.Keys.Concat(engine.Methods.Keys).Concat(engine.Signals.Keys).Concat(engine.Constants.Keys).Concat(engine.Enums.Keys))
+                    foreach (string name in engine.Properties.Keys.Concat(engine.Methods.Keys).Concat(engine.Signals.Keys).Concat(engine.Constants.Keys).Concat(engine.Enums.Keys)
+                        .Concat(engine.Enums.Values.SelectMany(e => e.Values.Keys)))
                     {
                         if (!seen.Contains(name) && NativeMember(engine.Name, name, type.Meta) is { } found)
                         {
