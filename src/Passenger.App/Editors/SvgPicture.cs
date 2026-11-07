@@ -22,6 +22,10 @@ public sealed class SvgPicture : IImage
     /// <summary>The most units a side of a drawing may measure, beyond which it is no picture to show.</summary>
     private const float Largest = 1 << 16;
 
+    /// <summary>How deep elements are drawn inside one another, past what any drawing is made of: Svg.Skia recurses as deep as
+    /// they go, and a stack that runs out ends the process.</summary>
+    private const int DeepestNesting = 256;
+
     private readonly SKSvg svg;
     private readonly SKPicture picture;
 
@@ -46,8 +50,10 @@ public sealed class SvgPicture : IImage
     public string? LeftOut { get; }
 
     /// <summary>An SVG's text drawn, what it names read from <paramref name="file"/>'s folder, or why it cannot be: XML that
-    /// does not read, another root than <c>&lt;svg&gt;</c>, or nothing of a size to draw.</summary>
-    public static (SvgPicture? Picture, string? Problem) Read(string text, string? file)
+    /// does not read, another root than <c>&lt;svg&gt;</c>, nesting past what is drawn, or nothing of a size to draw.</summary>
+    public static (SvgPicture? Picture, string? Problem) Read(string text, string? file) => DeepText.Read(text.Length, () => Reading(text, file));
+
+    private static (SvgPicture? Picture, string? Problem) Reading(string text, string? file)
     {
         SKSvg svg;
         try
@@ -55,6 +61,10 @@ public sealed class SvgPicture : IImage
             if (RootOf(text) is not "svg" and var root)
             {
                 return (null, root is null ? "The file holds no SVG to draw" : $"The file's root is <{root}>, where an SVG's is <svg>");
+            }
+            if (DeepText.TooDeep(text) || ElementsTooDeep(text))
+            {
+                return (null, "The SVG is nested too deeply to draw");
             }
             svg = new SKSvg();
             using MemoryStream bytes = new(Encoding.UTF8.GetBytes(text));
@@ -111,6 +121,20 @@ public sealed class SvgPicture : IImage
     {
         using XmlReader reader = XmlReader.Create(new StringReader(text), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null });
         return reader.MoveToContent() == XmlNodeType.Element ? reader.LocalName : null;
+    }
+
+    /// <summary>Whether a text's elements go past those drawn, read as far as its XML reads.</summary>
+    private static bool ElementsTooDeep(string text)
+    {
+        using XmlReader reader = XmlReader.Create(new StringReader(text), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null });
+        while (reader.Read())
+        {
+            if (reader.Depth > DeepestNesting)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <inheritdoc/>

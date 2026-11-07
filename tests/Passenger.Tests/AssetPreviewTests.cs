@@ -167,6 +167,26 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Svg.Skia recurses as deep as a drawing's elements, a stylesheet's rules and a selector's brackets go, so each is
+    /// refused before it reads them, with the text still there beside the problem.</summary>
+    [AvaloniaTheory]
+    [InlineData("<g>", "</g>", "<rect width=\"5\" height=\"5\"/>")]
+    [InlineData("<svg>", "</svg>", "")]
+    [InlineData("<style>", "</style>", "")]
+    public void An_SVG_nested_past_what_is_drawn_says_so_and_ends_nothing(string open, string close, string inner)
+    {
+        string nested = open == "<style>"
+            ? "<style>" + string.Concat(Enumerable.Repeat("@media screen {", 20_000)) + new string('}', 20_000) + "</style>"
+            : string.Concat(Enumerable.Repeat(open, 20_000)) + inner + string.Concat(Enumerable.Repeat(close, 20_000));
+        File.WriteAllText(Path.Combine(folder, "deep.svg"), $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">{nested}</svg>");
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile("deep.svg"));
+        SvgPreview preview = window.EditorArea.ActiveGroup.Svg ?? throw new Xunit.Sdk.XunitException("The SVG shows no picture beside its text");
+        Ui.WaitFor(() => preview.Problem is not null, () => "the SVG said to be nested too deeply");
+        Assert.Equal("The SVG is nested too deeply to draw", preview.Problem);
+        window.Close();
+    }
+
     /// <summary>An SVG opens as its text with its picture beside it, drawn as a drawing, so zoomed in its circle's edge is as
     /// sharp as at its size (a point half a unit outside it the ground's own colour, where an enlarged bitmap would blend
     /// them); its text edited, the picture follows; and the toggle hides and shows it.</summary>
