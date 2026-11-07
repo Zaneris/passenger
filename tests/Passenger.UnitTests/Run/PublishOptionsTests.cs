@@ -8,6 +8,41 @@ public class PublishOptionsTests
 {
     private static readonly PublishOptions Project = new("Release", null, null, false, false, false, false, null);
 
+    private static string? WhyNotPlatform(string runtimes, string? registry) => new ContainerImage("web", "latest", registry, runtimes).WhyNotPlatform();
+
+    /// <summary>The SDK pushes an image of either system with nothing of the engine.</summary>
+    [Theory]
+    [InlineData("win-x64")]
+    [InlineData("win-arm64")]
+    [InlineData("linux-x64;win-x64")]
+    [InlineData("linux-musl-arm64")]
+    public void A_registry_takes_a_container_of_Windows_or_Linux(string runtimes)
+    {
+        Assert.Null(WhyNotPlatform(runtimes, "registry.example"));
+    }
+
+    [Fact]
+    public void An_image_for_Windows_goes_into_no_engine_here_and_the_words_say_where_it_can_go()
+    {
+        Assert.Equal("The engine runs Linux containers: an image for win-x64 can only be pushed to a registry", WhyNotPlatform("linux-x64;win-x64", null));
+        Assert.Null(WhyNotPlatform("linux-x64;linux-arm64", null));
+    }
+
+    [Theory]
+    [InlineData("osx-arm64", null)]
+    [InlineData("osx-arm64", "registry.example")]
+    [InlineData("x64", "registry.example")]
+    public void A_name_that_is_no_containers_platform_is_refused_wherever_it_goes(string runtime, string? registry)
+    {
+        Assert.Equal($"{runtime} is no platform of a container (linux-x64, linux-arm64, win-x64…)", WhyNotPlatform(runtime, registry));
+    }
+
+    [Fact]
+    public void No_platform_named_leaves_it_to_the_SDK()
+    {
+        Assert.Null(WhyNotPlatform(string.Empty, null));
+    }
+
     [Fact]
     public void A_new_framework_dependent_single_file_profile_says_SelfContained_false()
     {

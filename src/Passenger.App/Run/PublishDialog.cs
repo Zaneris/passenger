@@ -436,11 +436,7 @@ public sealed class PublishDialog : IdeWindow
         {
             return "An image's name, tags, platforms and registry take no spaces";
         }
-        if (Container && Several(Runtimes).Split(';', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(r => !r.StartsWith("linux-", StringComparison.Ordinal)) is { } other)
-        {
-            return $"A container runs Linux: {other} is no platform of one (linux-x64, linux-arm64…)";
-        }
-        return null;
+        return Options().Image?.WhyNotPlatform();
     }
 
     /// <summary>The profiles in the project's folder for them, then New profile; the one named chosen, else the first that

@@ -21,7 +21,22 @@ public sealed record PublishOptions(
 /// <summary>A container profile's image as its profile names it: its repository and tag, several tags between semicolons
 /// (empty where it leaves them to the SDK: the assembly's name, latest), the registry it is pushed to (null for the engine
 /// on this machine), and the runtime it is made for, several for an image of more than one platform (empty: the SDK's own).</summary>
-public sealed record ContainerImage(string Repository, string Tag, string? Registry, string Runtimes = "");
+public sealed record ContainerImage(string Repository, string Tag, string? Registry, string Runtimes = "")
+{
+    /// <summary>Why a platform named can't be made here, null where each can: the SDK builds and pushes an image of Linux or
+    /// Windows alike, but one of Windows goes into no engine here, which runs Linux containers.</summary>
+    public string? WhyNotPlatform()
+    {
+        string[] platforms = Runtimes.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        if (platforms.FirstOrDefault(r => !r.StartsWith("linux-", StringComparison.Ordinal) && !r.StartsWith("win-", StringComparison.Ordinal)) is { } other)
+        {
+            return $"{other} is no platform of a container (linux-x64, linux-arm64, win-x64…)";
+        }
+        return Registry is null && platforms.FirstOrDefault(r => r.StartsWith("win-", StringComparison.Ordinal)) is { } windows
+            ? $"The engine runs Linux containers: an image for {windows} can only be pushed to a registry"
+            : null;
+    }
+}
 
 /// <summary>What a profile's evaluation and the Publish dialog's options make of each other, from their values alone.</summary>
 public static partial class PublishProfiles
