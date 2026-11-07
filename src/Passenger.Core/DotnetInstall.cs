@@ -225,7 +225,8 @@ public static class DotnetInstall
     private static readonly TimeSpan FirstRunLimit = TimeSpan.FromMinutes(3);
 
     /// <summary>An install's steps as they are timed, said in the log as one line once it ends, so where its time went reads
-    /// from the log: each step's seconds, and how long the moves waited for what held the files.</summary>
+    /// from the log: each step's seconds, how long the moves waited for what held the files, and how many folders came in
+    /// entry by entry for it.</summary>
     private sealed class Steps(string version)
     {
         private readonly List<(string Step, TimeSpan Took)> took = [];
@@ -268,7 +269,10 @@ public static class DotnetInstall
             string waits = merge.HeldSteps > 0
                 ? string.Create(CultureInfo.InvariantCulture, $"; the moves waited {merge.Held.TotalSeconds:0.0} s in all for Windows to let go of {merge.HeldSteps} held entries")
                 : string.Empty;
-            PassengerLog.Write($"Install .NET SDK {version}: {(installed ? "installed" : "not installed")}; {each}{waits}");
+            string pieces = merge.Piecemeal > 0
+                ? string.Create(CultureInfo.InvariantCulture, $"; {merge.Piecemeal} folders came in entry by entry, a file under them being open")
+                : string.Empty;
+            PassengerLog.Write($"Install .NET SDK {version}: {(installed ? "installed" : "not installed")}; {each}{waits}{pieces}");
         }
     }
 

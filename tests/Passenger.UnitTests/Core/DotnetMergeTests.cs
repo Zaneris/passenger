@@ -6,7 +6,8 @@ namespace Passenger.UnitTests.Core;
 /// <summary>An unpacked SDK moved into an installation as one change: what the installation has stays, what it lacks comes
 /// whole, through a folder that is a link too, onto another volume too, the sdk folder last; and whatever stops it or
 /// follows it, taking it back puts the installation as it was, so no half of an SDK is left to read as one. Windows refuses
-/// a move or a removal for a file another program holds, which is waited out, said, and named where it outlasts the wait.</summary>
+/// a move or a removal for a file another program holds, which is waited out, said, and named where it outlasts the wait,
+/// and a folder's move for any file open under it, so such a folder comes in entry by entry, counting only once whole.</summary>
 public sealed class DotnetMergeTests : IDisposable
 {
     private const string Sdk = "10.0.403";
@@ -211,6 +212,83 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.False(File.Exists(Path.Join(Installation, "dotnet")), "The host stayed behind the file that could not be taken out");
     }
 
+    /// <summary>A reader of the files just unpacked that shares their deletion, as a scanner or Passenger's own Local History
+    /// does, holds up no file's move, only its folder's: the folders come in entry by entry with no wait.</summary>
+    [Fact]
+    public async Task Folders_whose_files_another_program_reads_come_in_entry_by_entry_with_no_wait_and_the_SDK_installs()
+    {
+        WindowsAlone();
+        Read(Path.Join(Unpacked, RuntimeFolder, "System.Private.CoreLib.dll"));
+        Read(Path.Join(Unpacked, SdkFolder, "dotnet.runtimeconfig.json"));
+
+        await merge.IntoAsync(Unpacked, Installation, CancellationToken.None);
+
+        Assert.True(merge.HeldSteps == 0 && stages.Count == 0, $"The merge waited for what reads the files: {string.Join(" | ", stages)}");
+        Assert.True(merge.Piecemeal > 0, "The folders read were moved whole, so nothing held them");
+        Assert.Equal("runtime\n", File.ReadAllText(Path.Join(Installation, RuntimeFolder, "System.Private.CoreLib.dll")));
+        Assert.Equal([Sdk], DotnetInstallation.Read(Installation).Sdks);
+        Assert.Empty(Directory.EnumerateFiles(Unpacked, "*", SearchOption.AllDirectories));
+    }
+
+    /// <summary>What makes a folder count to the dotnet host comes after all else of a folder brought in entry by entry, so
+    /// until then the host passes over it and the SDK reads as none; each wait names who holds the file.</summary>
+    [Fact]
+    public async Task A_folder_brought_in_entry_by_entry_counts_only_once_all_of_it_is_there()
+    {
+        WindowsAlone();
+        string deps = Write(Unpacked, Path.Join(RuntimeFolder, "Microsoft.NETCore.App.deps.json"), "{}\n");
+        FileStream runtime = Hold(deps);
+        FileStream cli = Hold(Path.Join(Unpacked, SdkFolder, "dotnet.dll"));
+        List<string> found = [];
+        DotnetMerge waiting = new(Sdk, said =>
+        {
+            stages.Add(said);
+            bool sdk = said.Contains("dotnet.dll", StringComparison.Ordinal);
+            string folder = Path.Join(Installation, sdk ? SdkFolder : RuntimeFolder);
+            found.Add($"{(sdk ? "dotnet.dll" : "deps.json")}: {string.Join(", ", Directory.EnumerateFiles(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal))}; SDKs [{string.Join(", ", DotnetInstallation.Read(Installation).Sdks)}]");
+            (sdk ? cli : runtime).Dispose();
+        });
+
+        await waiting.IntoAsync(Unpacked, Installation, CancellationToken.None);
+
+        Assert.Equal(["deps.json: System.Private.CoreLib.dll; SDKs []", "dotnet.dll: dotnet.runtimeconfig.json; SDKs []"], found);
+        Assert.All(stages, said => Assert.EndsWith($", which {FileHolders.Itself} holds", said, StringComparison.Ordinal));
+        Assert.Equal([Sdk], DotnetInstallation.Read(Installation).Sdks);
+    }
+
+    /// <summary>The dotnet host takes the newest of host/fxr's folders as it stands, so the one holding its resolver waits
+    /// to come whole, even for a reader a file's move would pass.</summary>
+    [Fact]
+    public async Task The_folder_of_the_hosts_resolver_waits_to_come_whole_and_never_stands_without_it()
+    {
+        WindowsAlone();
+        string fxr = Path.Join("host", "fxr", Runtime);
+        FileStream resolver = Read(Write(Unpacked, Path.Join(fxr, "hostfxr.dll"), "fxr\n"));
+        List<bool> there = [];
+        DotnetMerge waiting = new(Sdk, said =>
+        {
+            stages.Add(said);
+            there.Add(Directory.Exists(Path.Join(Installation, fxr)));
+            resolver.Dispose();
+        });
+
+        await waiting.IntoAsync(Unpacked, Installation, CancellationToken.None);
+
+        Assert.Equal([false], there);
+        Assert.StartsWith($"Waiting for Windows to let go of the .NET SDK's {Runtime}, which ", Assert.Single(stages), StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Join(Installation, fxr, "hostfxr.dll")), "The host's resolver did not come");
+    }
+
+    [Theory]
+    [InlineData("sdk/10.0.403/dotnet.dll", true)]
+    [InlineData("shared/Microsoft.NETCore.App/10.0.14/Microsoft.NETCore.App.deps.json", true)]
+    [InlineData("shared/Microsoft.AspNetCore.App/10.0.14/Microsoft.AspNetCore.App.deps.json", true)]
+    [InlineData("shared/Microsoft.NETCore.App/10.0.14/System.Private.CoreLib.dll", false)]
+    [InlineData("sdk/10.0.403/dotnet.deps.json", false)]
+    [InlineData("sdk/10.0.403/dotnet.runtimeconfig.json", false)]
+    public void What_makes_a_folder_count_to_the_host_is_told_from_the_rest(string entry, bool counts) =>
+        Assert.Equal(counts, DotnetMerge.Counts(Path.Join("dotnet", entry)));
+
     /// <summary>The folder a link leads to lies on a volume of its own, so nothing of the SDK can be renamed there.</summary>
     [Fact]
     public async Task A_merge_through_a_link_onto_another_volume_lands_whole_and_is_taken_out_whole()
@@ -332,6 +410,15 @@ public sealed class DotnetMergeTests : IDisposable
     private FileStream Hold(string file)
     {
         FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.None);
+        held.Add(stream);
+        return stream;
+    }
+
+    /// <summary>A file held as a reader of it holds it, sharing its writing and its deletion, as a scanner and Passenger's
+    /// own reads do, let go as the test ends if it has not been.</summary>
+    private FileStream Read(string file)
+    {
+        FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         held.Add(stream);
         return stream;
     }

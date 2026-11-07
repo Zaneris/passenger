@@ -233,17 +233,17 @@ public sealed class NoDotnetTests : IAsyncDisposable
         CheckBox onPath = dialog.GetVisualDescendants().OfType<CheckBox>().Single(c => c.Name == "AddDotnetToPath");
         Assert.True(onPath.IsChecked == true, "Install .NET SDK does not offer to add it to the shell's PATH, checked");
         Ui.ClickButton(dialog, "Install");
-        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, () => $"the install to end ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage})", TimeSpan.FromMinutes(5));
+        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, () => $"the install to end: {Told(stages, window)}", TimeSpan.FromMinutes(5));
         // Each step named as it runs, and timed in the log, so where an install's time goes reads from it.
         foreach (string step in (string[])[$"Downloading the .NET SDK {sdk.Version}", $"Checking the .NET SDK {sdk.Version}'s archive", $"Unpacking the .NET SDK {sdk.Version}",
             $"Moving the .NET SDK {sdk.Version} into ", $"Starting the .NET SDK {sdk.Version} for the first time"])
         {
-            Assert.True(stages.Any(s => s.StartsWith(step, StringComparison.Ordinal)), $"The install never said '{step}': it said {string.Join(" | ", stages.Distinct())}");
+            Assert.True(stages.Any(s => s.StartsWith(step, StringComparison.Ordinal)), $"The install never said '{step}': {Told(stages, window)}");
         }
         string log = Ui.IdeLog();
         Assert.True(log.Contains($"Install .NET SDK {sdk.Version}: installed; download ", StringComparison.Ordinal) && log.Contains(", move ", StringComparison.Ordinal)
-            && log.Contains($"Install .NET SDK {sdk.Version}: first run ", StringComparison.Ordinal), "The log does not time the install's steps");
-        Assert.True(window.Status?.StartsWith($"The .NET SDK {sdk.Version} is installed in ", StringComparison.Ordinal) == true, $"The install said: {window.Status}");
+            && log.Contains($"Install .NET SDK {sdk.Version}: first run ", StringComparison.Ordinal), $"The log does not time the install's steps: {Told(stages, window)}");
+        Assert.True(window.Status?.StartsWith($"The .NET SDK {sdk.Version} is installed in ", StringComparison.Ordinal) == true, $"The install did not end installed: {Told(stages, window)}");
         Assert.True(File.Exists(Path.Combine(Installs, DotnetName)) && File.Exists(Path.Combine(Installs, "sdk", sdk.Version, "dotnet.dll")),
             $"Nothing of the SDK is in {Installs}: {string.Join(", ", Directory.EnumerateFileSystemEntries(Installs).Select(Path.GetFileName))}");
         Assert.DoesNotContain(Directory.EnumerateDirectories(Installs), d => Path.GetFileName(d).StartsWith(".passenger-install-", StringComparison.Ordinal));
@@ -326,10 +326,11 @@ public sealed class NoDotnetTests : IAsyncDisposable
         window.Show();
         Ui.Settle();
 
+        List<string> stages = Stages(window);
         Ui.ClickButton(Asked(window), "Install");
-        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, () => $"the install to end ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage})", TimeSpan.FromMinutes(5));
+        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, () => $"the install to end: {Told(stages, window)}", TimeSpan.FromMinutes(5));
 
-        Assert.True(window.Status?.StartsWith($"The .NET SDK {sdk.Version} is installed in ", StringComparison.Ordinal) == true, $"The install said: {window.Status}");
+        Assert.True(window.Status?.StartsWith($"The .NET SDK {sdk.Version} is installed in ", StringComparison.Ordinal) == true, $"The install did not end installed: {Told(stages, window)}");
         Assert.True(Directory.EnumerateDirectories(Path.Combine(elsewhere, "Microsoft.NETCore.App")).Any(), $"The runtime did not go through the link to {elsewhere}");
         Assert.Contains(sdk.Version, DotnetInstallation.Read(Installs).Sdks);
         window.Close();
@@ -482,10 +483,11 @@ public sealed class NoDotnetTests : IAsyncDisposable
         window.Show();
         Ui.Settle();
 
+        List<string> stages = Stages(window);
         Ui.ClickButton(Asked(window), "Install");
-        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, () => $"the install to end ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage})", TimeSpan.FromMinutes(1));
+        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, () => $"the install to end: {Told(stages, window)}", TimeSpan.FromMinutes(1));
 
-        Assert.True(window.Status?.StartsWith(said, StringComparison.Ordinal) == true, $"The install said: {window.Status}");
+        Assert.True(window.Status?.StartsWith(said, StringComparison.Ordinal) == true, $"The install did not end saying '{said}': {Told(stages, window)}");
         Assert.Equal([kept], Directory.EnumerateFileSystemEntries(Installs));
         Assert.Equal(Refusals.NoDotnet, window.DotnetSaid);
         Assert.Null(Environment.GetEnvironmentVariable(RuntimeVariables.Root));
@@ -567,6 +569,16 @@ public sealed class NoDotnetTests : IAsyncDisposable
             }
         };
         return stages;
+    }
+
+    /// <summary>What an install told the person, for a failure, since CI keeps no log: each stage it said but its download's
+    /// megabytes, what the window says it came to, and the IDE log's lines of it (one held by another program names Windows'
+    /// error and the holder).</summary>
+    private static string Told(IEnumerable<string> stages, MainWindow window)
+    {
+        IEnumerable<string> said = stages.Distinct().Where(s => !(s.StartsWith("Downloading the .NET SDK ", StringComparison.Ordinal) && s.EndsWith(" MB", StringComparison.Ordinal)));
+        IEnumerable<string> logged = Ui.IdeLog().Split('\n').Where(l => l.Contains("Install .NET SDK", StringComparison.Ordinal));
+        return $"it said {string.Join(" | ", said)}; the window says {window.Status}; the IDE's log says:\n{string.Join('\n', logged)}";
     }
 
     /// <summary>A solution of one console project of the test projects' .NET; its path.</summary>
