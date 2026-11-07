@@ -20,6 +20,9 @@
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <Compile Include="../Passenger.Core/RazorFiles.cs" Link="RazorFiles.cs" />
     <Compile Include="../Passenger.Core/Plural.cs" Link="Plural.cs" />
+    <!-- A file nested past what a parser is given, left out of its project, read as the rest of Passenger reads it. -->
+    <Compile Include="../Passenger.Core/DeepText.cs" Link="DeepText.cs" />
+    <Compile Include="../Passenger.Languages/CSharp/CodeBrackets.cs" Link="CodeBrackets.cs" />
     <!-- The names the MVVM Toolkit's generators give, as Passenger's XAML reads them. -->
     <Compile Include="../Passenger.Xaml/Metadata/ToolkitNames.cs" Link="ToolkitNames.cs" />
   </ItemGroup>

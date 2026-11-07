@@ -11,6 +11,8 @@ using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Shared.TestHooks;
 using Microsoft.Extensions.Logging;
+using Passenger.Core;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -149,7 +151,44 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
     private static DiagnosticLogItem[] Logged(IReadOnlyList<ProjectDiagnostic>? logged) =>
         [.. (logged ?? []).Select(d => new DiagnosticLogItem(d.Error ? DiagnosticLogItemKind.Error : DiagnosticLogItemKind.Warning, d.Message, d.Project))];
 
-    private RemoteProjectLoadResult Result(string projectPath, ProjectFileInfo[] infos, DiagnosticLogItem[] problems) => new()
+    private RemoteProjectLoadResult Result(string projectPath, ProjectFileInfo[] infos, DiagnosticLogItem[] problems)
+    {
+        Dictionary<string, bool> deep = new(StringComparer.Ordinal);
+        ProjectFileInfo[] read = [.. infos.Select(info => info.Language == LanguageNames.CSharp && info.Documents.Any(d => TooDeep(d.FilePath, info, deep))
+            ? info with { Documents = [.. info.Documents.Where(d => !deep.GetValueOrDefault(d.FilePath))] }
+            : info)];
+        DiagnosticLogItem[] said = [.. problems, .. deep.Where(d => d.Value).Select(d => new DiagnosticLogItem(DiagnosticLogItemKind.Warning,
+            $"{Path.GetFileName(d.Key)} is nested too deeply for the C# language server to read, so it is left out and what it declares reads as missing", projectPath))];
+        return Made(projectPath, read, said);
+    }
+
+    /// <summary>Whether a C# file goes past the brackets a parser is given, which ends the server where it goes deeper than
+    /// its stack: each file read once for all of a project's frameworks, one that can't be read left to the server.</summary>
+    private static bool TooDeep(string path, ProjectFileInfo info, Dictionary<string, bool> deep)
+    {
+        if (deep.TryGetValue(path, out bool known))
+        {
+            return known;
+        }
+        string text;
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return deep[path] = false;
+        }
+        // The text as it stands goes first, on this thread: real code passes it.
+        return deep[path] = DeepText.TooDeep(text) && DeepText.Read(text.Length, () =>
+            CodeBrackets.DeepAt(Microsoft.CodeAnalysis.Text.SourceText.From(text), Parsing(info)) is not null);
+    }
+
+    /// <summary>What a framework's build parses its files with: its preprocessor symbols and C# version.</summary>
+    private static Microsoft.CodeAnalysis.CSharp.CSharpParseOptions Parsing(ProjectFileInfo info) =>
+        Microsoft.CodeAnalysis.CSharp.CSharpCommandLineParser.Default.Parse(info.CommandLineArgs, Path.GetDirectoryName(info.FilePath) ?? ".", sdkDirectory: null).ParseOptions;
+
+    private RemoteProjectLoadResult Made(string projectPath, ProjectFileInfo[] infos, DiagnosticLogItem[] problems) => new()
     {
         ProjectFileInfos = ImmutableArray.Create(infos),
         DiagnosticLogItems = ImmutableArray.Create(problems),

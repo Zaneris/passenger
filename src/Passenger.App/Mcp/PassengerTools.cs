@@ -128,7 +128,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException($"{Refusals.NoCSharp}, and routes are read from code through it");
         }
-        await When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
+        await When(() => Session.CSharp is not { } csharp || csharp.IsReady || csharp.IsStopped, ServerLimit, cancel, ServerState());
         IReadOnlyList<Roslyn.Extension.WebRoute> found = await window.RoutesAsync(cancel);
         return answered with
         {
@@ -2858,11 +2858,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (Session.CSharp is { IsReady: false })
         {
             AgentCall.Say("Waiting for the C# language server to load the solution");
-            await When(() => Session.CSharp?.IsReady != false, ServerLimit, cancel, ServerState());
+            await When(() => Session.CSharp is not { IsReady: false, IsStopped: false }, ServerLimit, cancel, ServerState());
             AgentCall.Say(null);
         }
         return Session.CSharp is { IsReady: true, Session: { } server }
             ? server
+            : Session.CSharp is { IsStopped: true }
+            ? throw new InvalidOperationException(Refusals.CSharpStopped)
             : throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
     }
 
@@ -2911,7 +2913,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException(Refusals.TooDeep(Path.GetFileName(document.Path)));
         }
-        await Until(() => Session.CSharp is not { } csharp || csharp.IsReady && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
+        await Until(() => Session.CSharp is not { } csharp || csharp.IsStopped || csharp.IsReady && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
+        if (Session.CSharp is { IsStopped: true })
+        {
+            throw new InvalidOperationException(Refusals.CSharpStopped);
+        }
         if (!takenIn)
         {
             await TakenInAsync(path, cancel);
@@ -2929,7 +2935,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return await Code(path, cancel);
         }
         OpenDocument copy = await DocumentAsync(path, cancel);
-        await When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
+        await When(() => Session.CSharp is not { } csharp || csharp.IsReady || csharp.IsStopped, ServerLimit, cancel, ServerState());
         (LspDocument? lsp, string? why) = Session.CSharp is { } service ? await service.Generated.AskableAsync(copy, cancel) : (null, Refusals.NoCSharp);
         return lsp is null ? throw new InvalidOperationException(why) : (copy, lsp);
     }

@@ -50,6 +50,9 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     /// server is never given it, as its parser has no such bound and its process would end.</summary>
     public bool TooDeep { get; private set; }
 
+    /// <summary>Whether the file went from too deep to read back to read, which its project's next load takes once it is saved.</summary>
+    private bool readAgain;
+
     public LspDocument? Lsp { get; private set; }
 
     /// <summary>The diagnostics last pulled, moved with the text since, so their lines are the text's as it is now.</summary>
@@ -245,7 +248,15 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         }
     }
 
-    private void OnSaved(object? sender, EventArgs e) => Lsp?.Saved();
+    private void OnSaved(object? sender, EventArgs e)
+    {
+        Lsp?.Saved();
+        if (readAgain && !TooDeep)
+        {
+            readAgain = false;
+            service.ReloadHolder(document.Path);
+        }
+    }
 
     /// <summary>A parse landed for the text as it stands: one gone too deep is said to be and taken from the server, and one
     /// read again goes back to it.</summary>
@@ -258,6 +269,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         else if (TooDeep)
         {
             TooDeep = false;
+            readAgain = true;
             document.Markers = diagnostics.Take([], DiagnosticMarks.Marker);
             service.FileProblemsChanged(document);
             service.Reconnect();

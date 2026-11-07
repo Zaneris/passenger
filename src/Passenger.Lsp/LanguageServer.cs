@@ -452,6 +452,8 @@ public sealed class LanguageServer : IAsyncDisposable
             // Or every project, a plain one too, would fetch the Windows packs it never uses, and fail to restore offline.
             start.Environment.TryAdd(MSBuildNames.DisableTransitiveFrameworkReferenceDownloads, "true");
         }
+        // Its parser recurses unchecked, 2 KB a pattern's level: 16 MB holds the 1,000 brackets a file it's given goes to.
+        start.Environment.TryAdd(RuntimeVariables.ThreadStackSize, "1000000");
         // The server collector kept 3 to 5 times the live heap and never gave it back; the workstation one holds near it (#559).
         if (!start.Environment.ContainsKey(RuntimeVariables.GcServer))
         {

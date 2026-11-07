@@ -29,6 +29,9 @@ public static class RuntimeVariables
     /// <summary>"1" lets the host roll a program forward onto a prerelease runtime when no release one will do.</summary>
     public const string RollForwardToPrerelease = "DOTNET_ROLL_FORWARD_TO_PRERELEASE";
 
+    /// <summary>The stack each thread the runtime starts is given, in bytes written in hex, the thread pool's too.</summary>
+    public const string ThreadStackSize = "DOTNET_Thread_DefaultStackSize";
+
     /// <summary>How hard the runtime's GC compacts a heap left fragmented, from 0 (its default) to 9.</summary>
     public const string ConserveMemory = "DOTNET_GCConserveMemory";
 

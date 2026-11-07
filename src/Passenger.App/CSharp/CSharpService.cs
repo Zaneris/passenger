@@ -917,6 +917,15 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
     }
 
+    /// <summary>Loads again the project holding a file, which its last load left out as too deep to read.</summary>
+    internal void ReloadHolder(string path)
+    {
+        if (HolderOf(path) is { } project)
+        {
+            Reload([project]);
+        }
+    }
+
     /// <summary>Lets the open files go and ends the server, or with a <see cref="WarmServer"/> leaves a loaded one there,
     /// its files closed and nothing of this service's hung on it. The server's end (shutdown, exit, a kill when it will
     /// not go) runs on a worker thread, so the process can wait for it once the window's loop has stopped.</summary>

@@ -19,6 +19,35 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// <summary>The user secrets of the Aspire test's AppHost, the run's own.</summary>
     private const string AspireSecretsId = "passenger-mcp-aspire-host";
 
+    /// <summary>A C# file nested past what Passenger reads would end the C# language server, whose parser recurses past its
+    /// stack: it is left out of its project and said to be, an agent's call on it is refused saying why, and the rest of the
+    /// project answers as ever. One 900 deep, past what a thread pool's stack holds, is the server's as any other.</summary>
+    [Fact]
+    public async Task An_agent_is_told_a_cs_file_nested_past_what_passenger_reads_is_left_out_while_the_rest_of_its_project_answers()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-deep-cs-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Deep.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "Program.cs", "public static class Program\n{\n    public static int Twice(int value) => value * 2;\n\n"
+            + "    public static void Main() => System.Console.WriteLine(Twice(21));\n}\n");
+        TestFolders.Write(folder, "Deep.cs", Patterns("Deep", 2_000));
+        TestFolders.Write(folder, "Deeper.cs", Patterns("Deeper", 900));
+        await using McpClient client = await Start(["--mcp", folder]);
+        Assert.Equal("Program.cs", Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Twice" })).EnumerateArray()).GetProperty("path").GetString());
+        Assert.Equal("Deeper.cs", Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Deeper" })).EnumerateArray()).GetProperty("path").GetString());
+        JsonElement note = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Deep.cs" })).EnumerateArray());
+        Assert.Equal(("info", Languages.CSharp.CSharpParsing.TooDeep, 3), (note.GetProperty("severity").GetString(), note.GetProperty("message").GetString(), note.GetProperty("line").GetInt32()));
+        Assert.Contains((await Call(client, McpTools.Diagnostics)).GetProperty("toolset").EnumerateArray(),
+            f => f.GetProperty("message").GetString()!.StartsWith("Deep.cs is nested too deeply for the C# language server to read", StringComparison.Ordinal));
+        CallToolResult refused = await Result(client, McpTools.SymbolInfo, new() { ["path"] = "Deep.cs", ["line"] = 3, ["column"] = 24 });
+        Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.TooDeep("Deep.cs"), StringComparison.Ordinal), $"symbol_info on a file too deep answered: {Text(refused)}");
+        Assert.Equal("ready", (await Call(client, McpTools.Workspace)).GetProperty("languageServer").GetString());
+    }
+
+    /// <summary>A class whose one method's pattern nests <paramref name="deep"/> levels: 2 KB of the parser's stack each.</summary>
+    private static string Patterns(string name, int deep) => $"public static class {name}\n{{\n    public static bool Is(object x) => x is "
+        + string.Concat(Enumerable.Repeat("{ a: ", deep)) + "1" + string.Concat(Enumerable.Repeat(" }", deep)) + ";\n}\n";
+
     /// <summary>Avalonia's XAML, and a library type it names decompiled once across sessions, another version's decompiled
     /// files unused for months pruned.</summary>
     [Fact]
