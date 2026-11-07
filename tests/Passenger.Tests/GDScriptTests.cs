@@ -534,6 +534,37 @@ public sealed class GDScriptTests
 
     /// <summary>GDScript's server, a headless Godot editor of about 800 MB, is let go once no GDScript has been open for a
     /// while (shortened here to a second), and starts again as a script opens, rather than lasting as long as the folder.</summary>
+    /// <summary>On Windows, where Godot listens without sharing its port, a port another program's connection holds as the
+    /// headless editor starts has the editor started again on another, which serves the script, the log saying why: the test
+    /// holds the port it has Passenger tell the first editor with a connection's local end.</summary>
+    [AvaloniaFact]
+    public void A_port_another_programs_connection_holds_as_the_headless_editor_starts_has_it_started_again_on_another()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Godot listens with SO_REUSEADDR off Windows, so a connection's local end leaves its listen be there");
+        using System.Net.Sockets.TcpListener far = new(System.Net.IPAddress.Loopback, 0);
+        far.Start();
+        using System.Net.Sockets.Socket holder = new(System.Net.Sockets.AddressFamily.InterNetwork, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+        holder.Bind(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 0));
+        int held = ((System.Net.IPEndPoint)holder.LocalEndPoint!).Port;
+        holder.Connect(far.LocalEndpoint);
+        using System.Net.Sockets.Socket accepted = far.AcceptSocket();
+        GodotPorts.GiveNext(held);
+        MainWindow window = Open();
+        try
+        {
+            string said = $"could not serve: port {held} was taken by a connection from 127.0.0.1:{held}";
+            Assert.True(Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Contains(said, StringComparison.Ordinal),
+                $"The log never said the headless editor was started again because port {held} was held");
+            Assert.Equal(1, EditorsServing(folder));
+            string card = Hover(window, window.EditorArea.CodeEditor, "get_tree");
+            Assert.Contains("func Node.get_tree() -> SceneTree", card, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Godots_headless_editor_is_let_go_once_no_script_is_open_and_starts_again_as_one_opens()
     {

@@ -19,6 +19,10 @@ public sealed record ServerStart(ProcessStartInfo? Process, string Folder, strin
     /// project first).</summary>
     public TimeSpan Listening { get; init; } = TimeSpan.FromSeconds(60);
 
+    /// <summary>What holds <see cref="Port"/> so the program started to serve there cannot listen on it, said as a clause,
+    /// else null: asked now and then while it runs and has yet to listen.</summary>
+    public Func<int, string?>? Taken { get; init; }
+
     /// <summary>Whether the server is told the folder's path as well as its URI (LSP's <c>rootPath</c>), which Godot's reads
     /// to know it is the project open in it.</summary>
     public bool TellsRootPath { get; init; }

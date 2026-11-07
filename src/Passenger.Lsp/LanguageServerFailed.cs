@@ -17,6 +17,10 @@ public sealed class LanguageServerFailed(string reason, string? method = null, E
     /// may answer.</summary>
     public bool Ended { get; init; }
 
+    /// <summary>Whether another program took the port it was started to listen on before it listened there: one started
+    /// again on another port may listen.</summary>
+    public bool PortTaken { get; init; }
+
     /// <summary>Whether the server refused it as asked of a document it has since read again (LSP's ContentModified): what
     /// it gave for the document before, asked again of what it gives now, it may answer.</summary>
     public bool Outdated { get; init; }

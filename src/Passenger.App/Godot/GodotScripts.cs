@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
 using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.Core;
@@ -82,25 +80,41 @@ public static class GodotScripts
             throw new Unstarted();
         }
         string? version = await GodotExecutables.VersionAsync(found, cancel);
-        int lsp = FreePort();
         Before before = await BackgroundWork.Run(() => new Before(project, MadeFiles.Uids | MadeFiles.Imports));
         // No plugin or tool script of the project's runs there to write into it later; a GDExtension would not load to be known.
         bool recovering = GodotExecutables.HasRecoveryMode(version) && !before.Extensions;
         IdeErrors.Write(recovering ? $"GDScript: Godot's headless editor on {project} runs in its recovery mode, so no editor plugin or tool script of the project runs in it"
             : before.Extensions ? $"GDScript: Godot's headless editor on {project} runs its plugins and tool scripts, as the project's GDExtensions load only outside recovery mode"
             : $"GDScript: Godot {version ?? "of no version said"} has no recovery mode, so Godot's headless editor on {project} runs the project's plugins and tool scripts");
-        ProcessStartInfo editor = ChildProcesses.Command(found.Executable,
-            [.. GodotLaunch.Chosen(setting)?.Arguments ?? [], GodotExecutables.Headless, .. recovering ? (string[])[GodotExecutables.RecoveryMode] : [], "--editor", "--path", project,
-                "--lsp-port", lsp.ToString(System.Globalization.CultureInfo.InvariantCulture)],
-            project);
-        foreach ((string name, string value) in environment)
-        {
-            editor.Environment[name] = value;
-        }
-        Task<LanguageSession> starting = LanguageSession.StartAsync(Start(editor, project, logFolder, lsp), cancel);
+        Task<LanguageSession> starting = ListenedAsync();
         // Apart, as the editor's first seconds are its own: it saves its layout a moment after it loads it, its server already listening.
         IdeErrors.Observe(BackgroundWork.Unheld(() => KeepAsync(before, starting)));
         return await starting;
+
+        // Started again on another port where another program held the one chosen before Godot listened there.
+        async Task<LanguageSession> ListenedAsync()
+        {
+            for (int tries = 1; ; tries++)
+            {
+                int lsp = GodotPorts.Choose();
+                ProcessStartInfo editor = ChildProcesses.Command(found.Executable,
+                    [.. GodotLaunch.Chosen(setting)?.Arguments ?? [], GodotExecutables.Headless, .. recovering ? (string[])[GodotExecutables.RecoveryMode] : [], "--editor",
+                        "--path", project, "--lsp-port", lsp.ToString(System.Globalization.CultureInfo.InvariantCulture)],
+                    project);
+                foreach ((string name, string value) in environment)
+                {
+                    editor.Environment[name] = value;
+                }
+                try
+                {
+                    return await LanguageSession.StartAsync(Start(editor, project, logFolder, lsp), cancel);
+                }
+                catch (LanguageServerFailed taken) when (taken.PortTaken && tries < GodotPorts.Tries)
+                {
+                    IdeErrors.Write($"GDScript: Godot's headless editor on {project} could not serve: {taken.Reason}, so it is started again on another port");
+                }
+            }
+        }
     }
 
     /// <summary>The person's editor's server, where one listens on the port and works on this project; null where none
@@ -131,19 +145,10 @@ public static class GodotScripts
             Port = port,
             TellsRootPath = true,
             Listening = Waits.Of(TimeSpan.FromSeconds(90)),
+            Taken = GodotPorts.HeldBy,
             // It parses a document as each text comes and pushes what it found, none too.
             Pushes = new PushPace(EachText: true, TimeSpan.Zero),
         };
-
-    /// <summary>A loopback port free now, for a headless editor to listen on.</summary>
-    private static int FreePort()
-    {
-        TcpListener probe = new(IPAddress.Loopback, 0);
-        probe.Start();
-        int port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-        return port;
-    }
 
     /// <summary>The port the person's Godot editor serves GDScript on, by its newest Editor Settings
     /// (<see cref="GodotServerWords.PortIn"/>); null where Godot's editor has kept no settings in the user's folders, so

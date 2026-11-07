@@ -529,7 +529,7 @@ public sealed class LanguageServer : IAsyncDisposable
         TcpClient socket;
         try
         {
-            socket = await ConnectAsync(port, process, start.Listening, cancel).ConfigureAwait(false);
+            socket = await ConnectAsync(port, process, start.Listening, start.Taken, cancel).ConfigureAwait(false);
         }
         catch
         {
@@ -549,11 +549,12 @@ public sealed class LanguageServer : IAsyncDisposable
     }
 
     /// <summary>The connection to a server listening on a loopback port, tried while the program started to serve there
-    /// runs, until it listens or <paramref name="limit"/> passes; tried once where no program was started.</summary>
-    private static async Task<TcpClient> ConnectAsync(int port, Process? process, TimeSpan limit, CancellationToken cancel)
+    /// runs, until it listens, <paramref name="limit"/> passes or the port is held where it cannot listen
+    /// (<paramref name="taken"/>, asked each second); tried once where no program was started.</summary>
+    private static async Task<TcpClient> ConnectAsync(int port, Process? process, TimeSpan limit, Func<int, string?>? taken, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
-        while (true)
+        for (int tries = 1; ; tries++)
         {
             TcpClient client = new() { NoDelay = true };
             bool connected = false;
@@ -572,6 +573,10 @@ public sealed class LanguageServer : IAsyncDisposable
                 if (!DotnetProcesses.Runs(process))
                 {
                     throw new LanguageServerFailed($"it ended ({ExitCodes.Said(process.ExitCode)}) before it listened on port {port}", LspMethods.Initialize, refused) { Ended = true };
+                }
+                if (tries % 10 == 0 && taken?.Invoke(port) is { } holder)
+                {
+                    throw new LanguageServerFailed($"port {port} was taken by {holder} before it listened there", LspMethods.Initialize, refused) { PortTaken = true };
                 }
                 if (Stopwatch.GetElapsedTime(began) > limit)
                 {
