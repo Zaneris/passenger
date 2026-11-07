@@ -24,8 +24,10 @@ public sealed class WatchedFiles
     private readonly Dictionary<string, FileChangeType> kept = new(PathNames.Comparer);
 
     /// <summary>How long a changed file the server was found holding otherwise than the disk is waited for, from the first
-    /// time it was: a server that never reads it again would otherwise hold every command that waits for it.</summary>
-    private static readonly TimeSpan UnreadLimit = TimeSpan.FromSeconds(10);
+    /// time it was: a server that never reads it again would otherwise hold every command that waits for it. Longer than a
+    /// command's own wait for the server (10 s, as much longer on a slower machine, <see cref="Waits"/>), so the command that
+    /// first found it so still waits for it in its last attempt.</summary>
+    private static TimeSpan UnreadLimit => Waits.Of(TimeSpan.FromSeconds(15));
 
     /// <summary>The files heard changed on disk, told the server or about to be, that no command has yet seen it hold as the
     /// disk has them: each with the number of its latest change heard, and when the server was first found holding it otherwise.</summary>
