@@ -1292,14 +1292,14 @@ public sealed partial class BuildRunController
             List<string> started = [];
             for (int copy = 1; copy <= count; copy++)
             {
-                work.Say($"Starting {GameCopies.Name(chosen.Name, copy)}, {copy} of {count}…");
+                work.Say($"Starting {CopyName(chosen, copy)}, {copy} of {count}…");
                 BuiltEdits? its = each[copy - 1];
                 each[copy - 1] = null;
                 if (await RunCopyAsync(chosen, plan, copy, reloaded, work, its) is { } refused)
                 {
-                    return Said(copy == 1 ? refused : $"{GameCopies.Name(chosen.Name, copy)} did not start ({refused}); {Plural.Listed(started)} run on");
+                    return Said(copy == 1 ? refused : $"{CopyName(chosen, copy)} did not start ({refused}); {Plural.Listed(started)} run on");
                 }
-                started.Add(GameCopies.Name(chosen.Name, copy));
+                started.Add(CopyName(chosen, copy));
             }
             parts.Say($"Running {count} copies of {chosen.Name}{(reloaded && !plan.ScriptsAlone ? " with Hot Reload: a save applies its changes in each" : string.Empty)}, each in a tab of the Terminal window",
                 StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
@@ -1320,7 +1320,7 @@ public sealed partial class BuildRunController
     private async Task<string?> RunCopyAsync(RunConfiguration chosen, LaunchPlan plan, int copy, bool reloaded, Working work, BuiltEdits? edits)
     {
         bool heldStart = reloaded && !plan.ScriptsAlone;
-        (LaunchPlan each, Godot.GodotGame? game) = session.Listened(GameCopies.Plan(chosen, plan, copy));
+        (LaunchPlan each, Godot.GodotGame? game) = session.Listened(GameCopies.Plan(chosen, plan, copy, ConfigurationNames));
         game?.ReloadsScripts = reloaded;
         string program = GodotConsole.Program(each, each.Program);
         ProcessStartInfo start = ChildProcesses.Command(program, each.Arguments, each.WorkingDirectory);
@@ -1409,7 +1409,7 @@ public sealed partial class BuildRunController
             {
                 return Said(gone);
             }
-            work.Say($"Starting {GameCopies.Name(chosen.Name, next)}…");
+            work.Say($"Starting {CopyName(chosen, next)}…");
             bool reloaded = parts.Settings().HotReload && chosen.NamesNoOtherProgram(session.Projects);
             // The edits since the build the copies run, as the first of them attached for Hot Reload follows them.
             string? first = RunsOwnProgram(chosen.Name) ? chosen.Name : copyRuns.Where(c => c.Configuration == chosen.Name).OrderBy(c => c.Copy).Select(c => c.Run.Name).FirstOrDefault();
@@ -1418,10 +1418,16 @@ public sealed partial class BuildRunController
             {
                 return Said(refused);
             }
-            parts.Say($"Running {GameCopies.Name(chosen.Name, next)} beside {chosen.Name}, in a tab of the Terminal window", StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
+            parts.Say($"Running {CopyName(chosen, next)} beside {chosen.Name}, in a tab of the Terminal window", StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
             return null;
         }
     }
+
+    /// <summary>What each configuration goes by, which a copy's name stays clear of.</summary>
+    private IEnumerable<string> ConfigurationNames => session.Configurations.All.Select(c => c.Name);
+
+    /// <summary>A copy's name among this folder's configurations.</summary>
+    private string CopyName(RunConfiguration chosen, int copy) => GameCopies.Name(chosen.Name, copy, ConfigurationNames);
 
     /// <summary>How many copies of a configuration's game Run runs in the Terminal window.</summary>
     private int CopiesRun(string configuration) => copyRuns.Count(c => c.Configuration == configuration);
@@ -2251,11 +2257,11 @@ public sealed partial class BuildRunController
         {
             for (int i = 0; i < numbers.Count; i++)
             {
-                LaunchPlan copy = GameCopies.Plan(chosen, plan, numbers[i]);
+                LaunchPlan copy = GameCopies.Plan(chosen, plan, numbers[i], ConfigurationNames);
                 debugged[copy.Name] = (chosen, arguments);
                 if (await LaunchDebuggedAsync(chosen, copy, work, each[i], copies: chosen.Name) is { } refused)
                 {
-                    return i == 0 ? refused : $"{copy.Name} did not start ({refused}); {Plural.Listed([.. numbers.Take(i).Select(n => GameCopies.Name(chosen.Name, n))])} run on";
+                    return i == 0 ? refused : $"{copy.Name} did not start ({refused}); {Plural.Listed([.. numbers.Take(i).Select(n => CopyName(chosen, n))])} run on";
                 }
             }
             return null;

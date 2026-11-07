@@ -15,6 +15,16 @@ public class GameCopiesTests
     }
 
     [Fact]
+    public void A_copy_says_more_of_its_name_where_another_configuration_goes_by_it()
+    {
+        Assert.Equal("Arena (copy 2)", GameCopies.Name("Arena", 2, ["Arena", "Arena #2"]));
+        Assert.Equal("Arena (copy 2) (copy 2)", GameCopies.Name("Arena", 2, ["Arena #2", "Arena (copy 2)"]));
+        Assert.Equal("Arena #3", GameCopies.Name("Arena", 3, ["Arena", "Arena #2"]));
+        Assert.Equal("Arena", GameCopies.Name("Arena", 1, ["Arena", "Arena #2"]));
+        Assert.Equal("Arena #2 #2", GameCopies.Name("Arena #2", 2, ["Arena", "Arena #2"]));
+    }
+
+    [Fact]
     public void A_program_is_the_copy_its_plan_says_and_a_name_alone_is_the_first_of_its_own_configuration()
     {
         Assert.Equal(new GameCopy("Arena", 2), GameCopies.Of(new GameCopy("Arena", 2), "Arena #2"));

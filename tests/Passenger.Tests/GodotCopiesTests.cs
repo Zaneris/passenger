@@ -165,6 +165,36 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
         }
     }
 
+    /// <summary>A copy beside a configuration called what that copy would be goes by another name, so debugging that configuration
+    /// comes in a tab of its own and the copy's tab and session stay as they were.</summary>
+    [AvaloniaFact]
+    public void A_copy_keeps_its_tab_as_a_configuration_called_what_it_would_be_starts_beside_it()
+    {
+        string own = $"{Name} #2";
+        string second = GameCopies.Name(Name, 2, [own]);
+        MainWindow window = Open();
+        try
+        {
+            Choose(window, 2);
+            RunConfiguration copies = window.Configurations.Single(c => c.Name == Name);
+            RunConfiguration[] mine = [copies, copies with { Name = own, GodotCopies = 1 }];
+            window.SetConfigurations(mine, Name);
+            Ui.Launched(window, window.DebugAsync(), "the two copies' start under the debugger", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Tab(window, Name)?.Session?.State == DebugState.Running && Tab(window, second)?.Session?.State == DebugState.Running,
+                () => $"both copies to run ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            DebugSession copy = Tab(window, second)!.Session!;
+
+            window.SetConfigurations(mine, own);
+            Ui.Launched(window, window.DebugAsync(), "the other configuration's start under the debugger", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Tab(window, own)?.Session?.State == DebugState.Running, () => $"the other configuration to run ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            Assert.True(Tab(window, second)?.Session == copy && copy.State == DebugState.Running, $"The configuration's start took the copy's tab: {Sessions(window)}");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>The game's configuration, run headless with the run's user folders, starting <paramref name="copies"/> copies: the
     /// first a server, the second a client, the rest clients too, given no arguments of their own.</summary>
     private void Choose(MainWindow window, int copies, string name = Name)

@@ -10,10 +10,11 @@ public static partial class GameCopies
     public static int Count(RunConfiguration configuration, LaunchPlan plan) =>
         plan.Godot is not null && !plan.GodotEditor ? Math.Clamp(configuration.GodotCopies, 1, Most) : 1;
 
-    /// <summary>A copy's plan (from one): the configuration's, named for the copy, its own arguments after the configuration's.</summary>
-    public static LaunchPlan Plan(RunConfiguration configuration, LaunchPlan plan, int copy) => plan with
+    /// <summary>A copy's plan (from one): the configuration's, named for the copy clear of <paramref name="others"/>, its own
+    /// arguments after the configuration's.</summary>
+    public static LaunchPlan Plan(RunConfiguration configuration, LaunchPlan plan, int copy, IEnumerable<string> others) => plan with
     {
-        Name = Name(configuration.Name, copy),
+        Name = Name(configuration.Name, copy, others),
         Arguments = [.. plan.Arguments, .. Own(configuration.CopyArguments, copy)],
         Copy = new GameCopy(configuration.Name, copy),
     };
