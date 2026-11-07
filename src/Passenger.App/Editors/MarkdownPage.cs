@@ -171,6 +171,7 @@ public sealed class MarkdownCode : Border
             "bash" or "sh" or "shell" or "zsh" => "code.sh",
             "docker" or "dockerfile" => "Dockerfile",
             "markdown" or "md" => "code.md",
+            "python" or "py" => "code.py",
             _ when word.All(c => char.IsLetterOrDigit(c) || c is '-' or '_') => $"code.{word}",
             _ => null,
         };

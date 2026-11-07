@@ -316,16 +316,16 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A language Passenger has no parse or grammar of declines the conversion, saying why, as a Python string's
+    /// <summary>A language Passenger has no parse or grammar of declines the conversion, saying why, as a Ruby heredoc's
     /// lines can't be told from code, and leaves the file as it is; a file of prose, which holds no strings, converts.</summary>
     [AvaloniaFact]
     public void Converting_indentation_is_refused_where_the_lines_inside_strings_cannot_be_told()
     {
-        const string Code = "data = \"\"\"header\n        exact\"\"\"\n\ndef run():\n        pass\n";
-        Write("tool.py", Code);
-        MainWindow window = Open("tool.py");
-        Assert.Equal(Refusals.UnreadStrings("tool.py"), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
-        Assert.Equal(Refusals.UnreadStrings("tool.py"), window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context()));
+        const string Code = "data = <<~TEXT\n        exact\nTEXT\n\ndef run\n        1\nend\n";
+        Write("tool.rb", Code);
+        MainWindow window = Open("tool.rb");
+        Assert.Equal(Refusals.UnreadStrings("tool.rb"), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+        Assert.Equal(Refusals.UnreadStrings("tool.rb"), window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context()));
         Assert.Equal(Code, Text(window));
 
         Write("notes.txt", "one\n    two\n");
@@ -335,6 +335,68 @@ public sealed class FilePropertiesTests : IDisposable
         Choose(window, "Convert Indentation to Tabs");
         Assert.Equal("one\n\ttwo\n", Text(window));
         window.Close();
+    }
+
+    /// <summary>A Python file's conversion is offered and leaves every line that begins inside a string as it is: a docstring's,
+    /// a triple-quoted, raw, bytes or f-string's, and one going on past a backslash, a statement's opening string among them. An
+    /// f-string's format spec opens nothing whatever it holds, nor does a comment in its field, so what follows them is read as
+    /// it is; the code around the strings converts, there and back.</summary>
+    [AvaloniaFact]
+    public void Converting_Python_leaves_every_kind_of_string_and_converts_the_code_around_them()
+    {
+        const string Spaced = """"
+            """The module.
+                kept as written.
+            """
+
+            def run(value):
+                """The docs.
+
+                    Indented.
+                """
+                text = f"""
+                    {value:'>10}
+                    {value:(}
+                    {value:\n}
+                    {
+                        value  # it's a """ comment
+                    }
+                """
+                raw = r"""
+                    [unbalanced
+                """
+                data = b'''
+                    bytes
+                '''
+                joined = "one \
+                    two"
+                "opening \
+                    statement"
+                if value:
+                    return text
+
+            """";
+        int[] code = [5, 9, 17, 20, 23, 25, 27, 28];
+        string tabbed = string.Join('\n', Spaced.Split('\n').Select((line, at) => code.Contains(at) ? Tabs(line) : line));
+        Write("tool.py", Spaced);
+        MainWindow window = Open("tool.py");
+        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context()));
+        window.EditorArea.Active!.ChosenIndent = new Passenger.Text.IndentOptions(4, UseTabs: false, TabWidth: 4);
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Tabs");
+        Assert.Equal(tabbed, Text(window));
+        Assert.Equal("Converted the indentation of 8 lines of tool.py to tabs, a tab a level; 16 lines inside strings left as they are", window.Status);
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Spaces");
+        Assert.Equal(Spaced, Text(window));
+        window.Close();
+
+        static string Tabs(string line)
+        {
+            string code = line.TrimStart(' ');
+            return new string('\t', (line.Length - code.Length) / 4) + code;
+        }
     }
 
     /// <summary>A YAML file's block scalar keeps every line, the first whose indentation the scalar takes its own from among

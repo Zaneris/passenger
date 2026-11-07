@@ -104,6 +104,10 @@ internal sealed class Grammar
             {
                 RawStringsEndAsOpened(node);
             }
+            else if (name == "source.python")
+            {
+                StringsEndAsPythonEndsThem(node);
+            }
             LoadedGrammar grammar = GrammarLoader.Load(Encoding.UTF8.GetBytes(node.ToJsonString()).AsSpan());
             registry.Add(grammar);
             foreach (string dependency in grammar.Info.Dependencies)
@@ -190,6 +194,38 @@ internal sealed class Grammar
             {
                 rule["begin"] = $"{begin[..^end.Length]}({end})";
                 rule["end"] = @"\1";
+            }
+        }
+    }
+
+    /// <summary>A Python string ends where Python ends it, whatever its text holds. An f-string field's format spec is text up
+    /// to the field's closing brace, its quotes and brackets opening nothing; a comment in a field over lines of a triple-quoted
+    /// f-string hides what it says; a statement's opening string runs on past a backslash ending its line, as any other does.</summary>
+    private static void StringsEndAsPythonEndsThem(JsonNode grammar)
+    {
+        if (grammar["repository"] is not JsonObject repository)
+        {
+            return;
+        }
+        foreach (string spec in (string[])["fstring-terminator-single-tail", "fstring-terminator-multi-tail"])
+        {
+            if (repository[spec] is JsonObject rule && rule["begin"]?.GetValue<string>() is { } begin)
+            {
+                rule["begin"] = begin.Replace("(?=.*?{)", string.Empty, StringComparison.Ordinal);
+            }
+        }
+        if (repository["fstring-multi-brace"]?["patterns"] is JsonArray field)
+        {
+            field.Add(new JsonObject { ["include"] = "#comments-base" });
+        }
+        if (repository["docstring"]?["patterns"] is JsonArray openings)
+        {
+            foreach (JsonObject rule in openings.OfType<JsonObject>())
+            {
+                if (rule["end"]?.GetValue<string>() is { } end)
+                {
+                    rule["end"] = end.Replace(@"|(\n)", @"|((?<!\\)\n)", StringComparison.Ordinal);
+                }
             }
         }
     }

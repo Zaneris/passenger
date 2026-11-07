@@ -7,7 +7,7 @@ using Tint;
 namespace Passenger.Languages.TextMate;
 
 /// <summary>Colours a file by its language's TextMate grammar (XML, JSON, YAML, Markdown, HTML, CSS, JavaScript,
-/// TypeScript, shell, Dockerfile), off the UI thread. Each line keeps the state the grammar ended it in, so a key reads its
+/// TypeScript, shell, Dockerfile, Python), off the UI thread. Each line keeps the state the grammar ended it in, so a key reads its
 /// line again and goes on only while a line ends in another state than before (a comment opened, a fence closed); until a
 /// pass lands, its colours are carried through the edits since. A long pass shows what it has read as it goes, and a
 /// newer key ends it a little way on, the next pass going on from there.</summary>
@@ -134,11 +134,11 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// known for every line.</summary>
     public bool HasRead(TextSnapshot text) => table is { Complete: true } && ReferenceEquals(tableText, text) && since.Count == 0;
 
-    /// <summary>The lines of <paramref name="text"/> that begin inside one of the grammar's strings or a Markdown code block,
-    /// whose leading whitespace is their own; never a YAML plain scalar's next line, which YAML folds. A block scalar's string
-    /// has no end to read and may open on its first line, so its lines are those ending in it under a line ending in the
-    /// scalar; a line ending in an indented code block is the block's. Null until the grammar has read the whole text as it
-    /// stands (<see cref="HasRead"/>).</summary>
+    /// <summary>The lines of <paramref name="text"/> that begin inside one of the grammar's strings, a Python f-string (whose
+    /// string scopes open and close around each stretch of its text) or a Markdown code block, whose leading whitespace is
+    /// their own; never a YAML plain scalar's next line, which YAML folds. A block scalar's string has no end to read and may
+    /// open on its first line, so its lines are those ending in it under a line ending in the scalar; a line ending in an
+    /// indented code block is the block's. Null until the grammar has read the whole text as it stands (<see cref="HasRead"/>).</summary>
     public IReadOnlySet<int>? StringLines(TextSnapshot text)
     {
         if (!HasRead(text) || table is not { } lines)
@@ -170,6 +170,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     }
 
     private static bool IsRunningString(string scope) => scope.StartsWith("markup.fenced_code", StringComparison.Ordinal)
+        || scope.StartsWith("meta.fstring", StringComparison.Ordinal)
         || (scope.StartsWith("string.", StringComparison.Ordinal) && !IsBlockString(scope) && !scope.StartsWith("string.unquoted.plain", StringComparison.Ordinal));
 
     private static bool IsIndentedCode(string scope) => scope.StartsWith("markup.raw.block", StringComparison.Ordinal);

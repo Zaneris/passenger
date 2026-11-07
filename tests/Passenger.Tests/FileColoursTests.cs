@@ -841,6 +841,34 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
+    /// <summary>A Python file's tokens show as their kinds: its word operators and self as keywords, a built-in type as a
+    /// class, an f-string's text as a string however its field's format spec reads, and the code after it as code; a Markdown
+    /// file's python block is coloured as the file is.</summary>
+    [AvaloniaFact]
+    public void A_python_file_and_a_markdown_python_block_show_their_tokens_as_their_kinds()
+    {
+        MainWindow window = Window();
+        const string Code = "# Sums a day's orders.\nimport json\n\nclass Shop(Base):\n    \"\"\"The shop.\"\"\"\n\n    def total(self, rows: list) -> int:\n"
+            + "        if rows and not self.closed:\n            return sum(rows) + 42\n        return f\"none {rows:'>10} left\"\n\n    def after(self):\n        pass\n";
+        CodeEditor editor = Open(window, "shop.py", Code);
+        editor.Focus();
+        Assert.Equal("Python", window.LanguageShown);
+        (string Stretch, TokenKind Kind)[] expected = [("# Sums a day's orders.", TokenKind.Comment), ("import", TokenKind.Keyword), ("class", TokenKind.Keyword),
+            ("Shop", TokenKind.Class), ("Base", TokenKind.Class), ("\"\"\"The shop.\"\"\"", TokenKind.String), ("def", TokenKind.Keyword), ("total", TokenKind.Method),
+            ("self", TokenKind.Keyword), ("list", TokenKind.Class), ("and", TokenKind.Keyword), ("not", TokenKind.Keyword), ("return", TokenKind.Keyword),
+            ("42", TokenKind.Number), ("none ", TokenKind.String), (" left", TokenKind.String), ("after", TokenKind.Method), ("pass", TokenKind.Keyword)];
+        string[] wrong = [.. expected.Select(e => (e.Stretch, e.Kind, Found: KindOf(editor, e.Stretch))).Where(e => e.Found != e.Kind)
+            .Select(e => $"{e.Stretch} as {e.Found?.ToString() ?? "several kinds"}, not {e.Kind}")];
+        Assert.True(wrong.Length == 0, $"Python's tokens are not coloured as their kinds: {string.Join("; ", wrong)}");
+
+        editor = Open(window, "NOTES.md", "# Notes\n\n```python\n# The sum.\ndef total():\n    return 42\n```\n");
+        Assert.Equal(TokenKind.Comment, KindOf(editor, "# The sum."));
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "def"));
+        Assert.Equal(TokenKind.Method, KindOf(editor, "total"));
+        Assert.Equal(TokenKind.Number, KindOf(editor, "42"));
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Comment_with_line_comment_writes_each_languages_own_comment_and_block_comment_wraps_XML_in_its_own()
     {

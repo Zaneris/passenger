@@ -230,11 +230,14 @@ public sealed class Language
     public static readonly Language GodotShader = new("gdshader", "Godot Shader", ["*.gdshader", "*.gdshaderinc"], line: "//", block: ("/*", "*/"),
         grammar: new("source.gdshader", "GDShader.tmLanguage.json"));
 
+    public static readonly Language Python = new("python", "Python", ["*.py", "*.pyi", "*.pyw"], line: "#",
+        grammar: new("source.python", "MagicPython.tmLanguage.json"));
+
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
         line: "//", block: ("/*", "*/"));
 
-    public static readonly Language Script = new("script", "Script", ["*.py", "*.toml", "*.ps1", "*.rb", "justfile"], line: "#");
+    public static readonly Language Script = new("script", "Script", ["*.toml", "*.ps1", "*.rb", "justfile"], line: "#");
 
     /// <summary>VS Code's id for the language, which a language server is told unless a file's pattern names another.</summary>
     [IdentifierOf(typeof(LanguageIds))]

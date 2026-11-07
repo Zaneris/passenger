@@ -78,6 +78,11 @@ public sealed class MarkdownPreviewTests
             { "name": "shop", "open": true }
             ```
 
+            ```python
+            def total(count):
+                return count * 1.2
+            ```
+
             ---
 
             From elsewhere: ![a secret](../secret.png) and from the web ![a badge](https://example.com/badge.png).
@@ -147,11 +152,12 @@ public sealed class MarkdownPreviewTests
         Assert.Contains(preview.GetLogicalDescendants().OfType<Border>(), b => b.Classes.Contains(StyleClasses.MdRule));
 
         MarkdownCode[] code = [.. preview.GetLogicalDescendants().OfType<MarkdownCode>()];
-        Assert.True(code.Select(c => c.Language).SequenceEqual(["C#", "JSON"]), $"The fences are coloured as [{string.Join(", ", code.Select(c => c.Language))}], not C# and JSON");
+        Assert.True(code.Select(c => c.Language).SequenceEqual(["C#", "JSON", "Python"]), $"The fences are coloured as [{string.Join(", ", code.Select(c => c.Language))}], not C#, JSON and Python");
         IBrush keyword = Brush(window, TokenKeys.Syntax_Keyword);
         IBrush text = Brush(window, TokenKeys.Syntax_String);
         Ui.WaitFor(() => code[0].Runs.Any(r => r.Text == "class" && r.Foreground == keyword), "the C# fence's 'class' in the editor's keyword colour");
         Ui.WaitFor(() => code[1].Runs.Any(r => r.Text?.Contains("shop", StringComparison.Ordinal) == true && r.Foreground == text), "the JSON fence's string in the editor's string colour");
+        Ui.WaitFor(() => code[2].Runs.Any(r => r.Text == "def" && r.Foreground == keyword), "the Python fence's 'def' in the editor's keyword colour");
 
         MarkdownPicture picture = Assert.Single(preview.GetLogicalDescendants().OfType<MarkdownPicture>());
         Assert.True(PathNames.Same(picture.File, PathNames.Canonical(Path.Combine(folder, "images", "inside.png"))), $"The picture drawn is {picture.File}, not the folder's own");

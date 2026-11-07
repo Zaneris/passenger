@@ -867,6 +867,9 @@ Microsoft Corporation), unchanged, from the project its header names:
   Docker's NOTICE.
 - `ini.tmLanguage.json` (VS Code 1.144.0, `extensions/ini`): converted from textmate/ini.tmbundle
   (https://github.com/textmate/ini.tmbundle), under the TextMate bundle licence below; it colours .editorconfig files.
+- `MagicPython.tmLanguage.json` (VS Code 1.144.0, `extensions/python`): converted from MagicStack/MagicPython
+  (https://github.com/MagicStack/MagicPython) at commit 7d0f2b22, its 1.1.1, MIT, Copyright (c) 2015-present MagicStack
+  Inc.
 
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
 dotnet/roslyn (https://github.com/dotnet/roslyn, where Razor's tooling moved from dotnet/razor; MIT, Copyright (c) .NET
@@ -890,8 +893,9 @@ tag 2.7.1 (commit 7317ea20), its `syntaxes/` folder, unchanged: `GDScript.tmLang
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
 that begins with no end never end, as VS Code does, takes YAML's typed scalars (booleans, numbers, null) out of a block
 or flow mapping's keys, so a key such as a workflow's `on` is read as a key, ends a shell heredoc only at a line that is
-its delimiter alone, as bash does, and a C# raw string only at as many quotes as it opened with, as C# does. Where
-Markdown embeds JSON with comments or JSON Lines, or HTML inside its text, it reads them by the JSON and HTML grammars
+its delimiter alone, as bash does, a C# raw string only at as many quotes as it opened with, as C# does, and reads a
+Python f-string's format spec as text up to its field's closing brace, a comment in a triple-quoted f-string's field as a
+comment, and a statement's opening string past a backslash ending its line, as Python does. Where Markdown embeds JSON with comments or JSON Lines, or HTML inside its text, it reads them by the JSON and HTML grammars
 here.
 
 ```
@@ -910,6 +914,7 @@ Copyright (c) .NET Foundation and Contributors
 Copyright (c) 2016 .NET Foundation
 Copyright (c) 2016 - present Huachao Mao
 Copyright (c) 2016-2022 The Godot Engine community
+Copyright (c) 2015-present MagicStack Inc.  http://magic.io
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
