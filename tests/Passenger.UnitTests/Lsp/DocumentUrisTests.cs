@@ -33,7 +33,7 @@ public sealed class DocumentUrisTests : IDisposable
         if (OperatingSystem.IsWindows())
         {
             // vscode-uri's spelling: a lowercase drive, its colon escaped.
-            spellings.Add(("a drive as vscode-uri writes it", $"file:///{char.ToLowerInvariant(player[0])}%3A{new Uri(player).AbsolutePath[3..]}"));
+            spellings.Add(("a drive as vscode-uri writes it", $"file:///{char.ToLowerInvariant(player[0])}%3A{new Uri(player).AbsolutePath[(new Uri(player).AbsolutePath.IndexOf(':') + 1)..]}"));
         }
         foreach ((string spelling, string uri) in spellings)
         {
