@@ -75,4 +75,29 @@ public class JsonTextTests
         Assert.Null(problem);
         Assert.Equal(expected, changed);
     }
+
+    private static string Nested(string open, string inner, string close, int deep) =>
+        string.Concat(Enumerable.Repeat(open, deep)) + inner + string.Concat(Enumerable.Repeat(close, deep));
+
+    [Theory]
+    [InlineData("[", "", "]")]
+    [InlineData("{\"a\":", "1", "}")]
+    public void Values_nested_past_what_is_read_are_said_not_to_read_and_end_nothing(string open, string inner, string close)
+    {
+        string text = Nested(open, inner, close, 100_000);
+        SmallStack.Run(() =>
+        {
+            Assert.Contains("nested too deeply", JsonText.SetKey(text, ["b"], null).Problem, StringComparison.Ordinal);
+            Assert.Throws<FormatException>(() => new JsonText.Reader(text).Document());
+        });
+    }
+
+    [Theory]
+    [InlineData("[", "", "]")]
+    [InlineData("{\"a\":", "1", "}")]
+    public void Values_as_deep_as_are_read_read_whole(string open, string inner, string close)
+    {
+        string text = Nested(open, inner, close, 500);
+        SmallStack.Run(() => Assert.Equal(text.Length, new JsonText.Reader(text).Document().End));
+    }
 }

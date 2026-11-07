@@ -462,7 +462,12 @@ public static class JsonText
     /// stands; a text that does not read is a <see cref="FormatException"/>.</summary>
     internal sealed class Reader(string text)
     {
+        /// <summary>How deep values are read inside one another: past what any file written by hand reaches, and short of
+        /// what this reader and a walk of what it read reach on a thread's stack.</summary>
+        private const int DeepestNesting = 512;
+
         private int at;
+        private int nesting;
 
         public Node Document()
         {
@@ -482,13 +487,19 @@ public static class JsonText
             {
                 throw new FormatException("it ends where a value should be");
             }
-            return text[at] switch
+            if (++nesting > DeepestNesting)
+            {
+                throw new FormatException($"it is nested too deeply to read at {at}");
+            }
+            Node value = text[at] switch
             {
                 '{' => Object(),
                 '[' => Array(),
                 '"' => String(),
                 _ => Literal(),
             };
+            nesting--;
+            return value;
         }
 
         private Node Object()
