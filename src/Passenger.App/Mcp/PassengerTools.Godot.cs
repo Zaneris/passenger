@@ -89,7 +89,7 @@ public sealed partial class PassengerTools
         Element Of(GodotNode node)
         {
             Element element = new((long)node.Id, TypeOf(node.Type), node.Name, [], false, node.SceneFile.Length > 0, node.Visible,
-                [.. node.Children.Where(c => !GodotAgent.Is(c)).Select(Of)]);
+                [.. node.Children.Where(c => !GodotAgent.Is(c)).Select(Of)]) { Deeper = node.Deeper ? true : null };
             if (!drawn.TryGetValue(element.Id, out List<object?>? at))
             {
                 return element;

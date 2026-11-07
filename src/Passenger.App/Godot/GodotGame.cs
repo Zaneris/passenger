@@ -921,7 +921,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// Passenger's own helper left out.</summary>
     private static Element ElementOf(GodotNode node) =>
         new((long)node.Id, node.Type.StartsWith("res://", StringComparison.Ordinal) ? Path.GetFileName(node.Type) : node.Type, node.Name, [], false,
-            node.SceneFile.Length > 0, node.Visible, [.. node.Children.Where(c => !GodotAgent.Is(c)).Select(ElementOf)]);
+            node.SceneFile.Length > 0, node.Visible, [.. node.Children.Where(c => !GodotAgent.Is(c)).Select(ElementOf)]) { Deeper = node.Deeper ? true : null };
 
     /// <summary>Whether the game draws on Passenger's own X server (<see cref="VirtualDisplays"/>), held while it runs.</summary>
     private bool drawsOnServer;

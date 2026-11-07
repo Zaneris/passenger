@@ -806,7 +806,7 @@ public sealed partial class LiveTreeController
         {
             following = false;
         }
-        if (ask != followAsks || refreshed != treeAsks || app != game || (tree is not null && Same(tree.Roots, next.Roots)))
+        if (ask != followAsks || refreshed != treeAsks || app != game || (tree is not null && AppQuery.Same(tree.Roots, next.Roots)))
         {
             return;
         }
@@ -816,25 +816,6 @@ public sealed partial class LiveTreeController
             Choose(null);
             ShowDetails(null, "The node chosen has left the game.");
         }
-    }
-
-    /// <summary>Whether two trees name the same elements, by id, type, name and whether each shows, in the same places.</summary>
-    private static bool Same(IReadOnlyList<Element> shown, IReadOnlyList<Element> next)
-    {
-        if (shown.Count != next.Count)
-        {
-            return false;
-        }
-        for (int i = 0; i < shown.Count; i++)
-        {
-            Element a = shown[i];
-            Element b = next[i];
-            if (a.Id != b.Id || a.Type != b.Type || a.Name != b.Name || a.Visible != b.Visible || !Same(a.Children, b.Children))
-            {
-                return false;
-            }
-        }
-        return true;
     }
 
     /// <summary>A property of the chosen element set to what the person typed, its details asked again to show what the

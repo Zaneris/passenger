@@ -646,7 +646,7 @@ public sealed class LiveTreeView : DockPanel
     public void ShowTree(AppTree? tree)
     {
         shown = tree;
-        sourced = tree is not null && tree.Roots.Any(HasSourced);
+        sourced = tree is not null && HoldsSourced(tree.Roots);
         Rebuild(Details?.Id);
         placeholder.IsVisible = rows.Count == 0 && placeholder.Text is { Length: > 0 } && aside is null;
         if (tree is null)
@@ -660,7 +660,7 @@ public sealed class LiveTreeView : DockPanel
     /// has no such element.</summary>
     public bool Choose(long id)
     {
-        if (shown is null || Path(shown.Roots, id) is not { } path)
+        if (shown is null || AppQuery.Path(shown.Roots, id) is not { } path)
         {
             return false;
         }
@@ -831,7 +831,7 @@ public sealed class LiveTreeView : DockPanel
         choosing = true;
         try
         {
-            rows.Show([.. (shown?.Roots ?? []).SelectMany(root => RowsOf(root, 0))]);
+            rows.Show([.. RowsOf(shown?.Roots ?? [], 0)]);
             if (select is long id && rows.FirstOrDefault(r => r.Element.Id == id) is { } row)
             {
                 tree.SelectedItem = row;
@@ -843,40 +843,17 @@ public sealed class LiveTreeView : DockPanel
         }
     }
 
-    /// <summary>An element's row, and the rows under it while it is open.</summary>
-    private IEnumerable<LiveTreeRow> RowsOf(Element element, int depth)
-    {
-        LiveTreeRow row = new(element, depth, element.Children.Count > 0 && IsOpen(element, depth));
-        yield return row;
-        foreach (LiveTreeRow below in row.IsExpanded ? element.Children.SelectMany(child => RowsOf(child, depth + 1)) : [])
-        {
-            yield return below;
-        }
-    }
+    /// <summary>The rows of a level's elements, at a depth, each followed by the rows under it while it is open.</summary>
+    private IEnumerable<LiveTreeRow> RowsOf(IReadOnlyList<Element> level, int depth) =>
+        AppTree.Walk(level, depth, IsOpen).Select(walked => new LiveTreeRow(walked.Element, walked.Depth, walked.Open));
 
     /// <summary>Whether a row is open: as the person left it, else down to the app's own XAML (a template's parts closed),
     /// else, for an app built without source information, its first levels.</summary>
     private bool IsOpen(Element element, int depth) =>
-        opened.Contains(element.Id) || (!closed.Contains(element.Id) && (sourced ? element.Children.Any(HasSourced) : depth < 6 && element.Children.Any(c => !c.FromTemplate)));
+        opened.Contains(element.Id) || (!closed.Contains(element.Id) && (sourced ? HoldsSourced(element.Children) : depth < 6 && element.Children.Any(c => !c.FromTemplate)));
 
-    private static bool HasSourced(Element element) => element.Sourced || element.Children.Any(HasSourced);
-
-    private static List<Element>? Path(IReadOnlyList<Element> level, long id)
-    {
-        foreach (Element element in level)
-        {
-            if (element.Id == id)
-            {
-                return [element];
-            }
-            if (Path(element.Children, id) is { } below)
-            {
-                below.Insert(0, element);
-                return below;
-            }
-        }
-        return null;
-    }
+    /// <summary>Whether any of some elements, or what they hold, is in the app's XAML.</summary>
+    private static bool HoldsSourced(IReadOnlyList<Element> level) => AppTree.Walk(level).Any(walked => walked.Element.Sourced);
 
     /// <summary>Opens a row, or closes it, where it is: the rows round it, and the one chosen, stay as they are.</summary>
     public void Toggle(LiveTreeRow row)
@@ -894,19 +871,21 @@ public sealed class LiveTreeView : DockPanel
             closed.Remove(id);
             opened.Add(id);
             row.IsExpanded = true;
-            rows.Open(row, row.Element.Children.SelectMany(child => RowsOf(child, row.Depth + 1)));
+            rows.Open(row, RowsOf(row.Element.Children, row.Depth + 1));
         }
     }
 
     /// <summary>A row for whichever element the list hands its container: its chevron, type, name and classes, faint where
-    /// the element is hidden.</summary>
+    /// the element is hidden, and where it holds more than the tree read, so.</summary>
     private Control Row()
     {
         RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = Colored(new TextBlock { Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, TokenKeys.Syntax_Field);
         TextBlock classes = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(6, 0, 0, 0), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-        StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, type, name, classes } };
+        TextBlock deeper = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(6, 0, 0, 0), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Text = "… more inside, not read" };
+        ToolTip.SetTip(deeper, $"The tree is read {Element.DeepestNesting} levels deep");
+        StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, type, name, classes, deeper } };
         chevron.PointerPressed += (_, e) =>
         {
             if (line.DataContext is LiveTreeRow row)
@@ -928,6 +907,7 @@ public sealed class LiveTreeView : DockPanel
             name.Text = name.IsVisible ? $"#{element.Name}" : null;
             classes.IsVisible = element.Classes.Count > 0;
             classes.Text = classes.IsVisible ? string.Join(" ", element.Classes.Select(c => "." + c)) : null;
+            deeper.IsVisible = element.Deeper == true;
         });
     }
 

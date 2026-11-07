@@ -26,31 +26,61 @@ public sealed record AppNode(Element Element, AppNode? Parent, Element Window, b
 /// is written for it. A query is steps joined by '/', each step finding elements inside the last one's: <c>@12</c> (an id
 /// the tree shows), or a type, <c>#name</c>, <c>.class</c>es and <c>"text"</c> (what it shows) in any mix, with
 /// <c>[n]</c> for the nth of its matches from 1; a bare word no type has is taken as a name. A step finds the outermost
-/// elements matching it, so <c>"Save"</c> is the button, not the text inside it, and a template's parts only by #name or id.</summary>
+/// elements matching it, so <c>"Save"</c> is the button, not the text inside it, and a template's parts only by #name or id.
+/// Also where an element is in a tree, and whether two trees are the same. Every walk keeps a stack of its own
+/// (<see cref="AppTree.Walk"/>), so no tree is too deep for the thread that walks it.</summary>
 public static class AppQuery
 {
     /// <summary>The lines an answer may carry before it says how many more there are.</summary>
     public const int MostLines = 1500;
 
     /// <summary>Every element of the windows given, in tree order, each window before what it holds.</summary>
-    public static List<AppNode> Flatten(IEnumerable<Element> windows)
+    public static List<AppNode> Flatten(IReadOnlyList<Element> windows)
     {
         List<AppNode> all = [];
-        foreach (Element window in windows)
+        // The nodes from a window down to the one made last.
+        List<AppNode> line = [];
+        foreach ((Element element, int depth, _) in AppTree.Walk(windows))
         {
-            Add(window, null, window, true);
+            line.RemoveRange(depth, line.Count - depth);
+            AppNode? parent = depth > 0 ? line[^1] : null;
+            AppNode node = new(element, parent, parent?.Window ?? element, (parent?.Shows ?? true) && element.Visible);
+            line.Add(node);
+            all.Add(node);
         }
         return all;
+    }
 
-        void Add(Element element, AppNode? parent, Element window, bool parentShows)
+    /// <summary>The elements from a root down to the first with an id, in tree order; null where none has it.</summary>
+    public static List<Element>? Path(IReadOnlyList<Element> roots, long id)
+    {
+        List<Element> line = [];
+        foreach ((Element element, int depth, _) in AppTree.Walk(roots))
         {
-            AppNode node = new(element, parent, window, parentShows && element.Visible);
-            all.Add(node);
-            foreach (Element child in element.Children)
+            line.RemoveRange(depth, line.Count - depth);
+            line.Add(element);
+            if (element.Id == id)
             {
-                Add(child, node, window, node.Shows);
+                return line;
             }
         }
+        return null;
+    }
+
+    /// <summary>Whether two trees name the same elements, by id, type, name, whether each shows and whether it holds more
+    /// than is read, in the same places.</summary>
+    public static bool Same(IReadOnlyList<Element> first, IReadOnlyList<Element> second)
+    {
+        using IEnumerator<(Element Element, int Depth, bool Open)> others = AppTree.Walk(second).GetEnumerator();
+        foreach ((Element a, int depth, _) in AppTree.Walk(first))
+        {
+            if (!others.MoveNext() || others.Current is not (Element b, int otherDepth, _) || depth != otherDepth || a.Id != b.Id || a.Type != b.Type
+                || a.Name != b.Name || a.Visible != b.Visible || a.Deeper != b.Deeper || a.Children.Count != b.Children.Count)
+            {
+                return false;
+            }
+        }
+        return !others.MoveNext();
     }
 
     /// <summary>The elements a query finds among <paramref name="nodes"/> (a whole tree, flattened), in tree order: a
@@ -62,8 +92,8 @@ public static class AppQuery
         for (int i = 0; i < steps.Count; i++)
         {
             Step step = steps[i];
-            List<AppNode> under = found;
-            IEnumerable<AppNode> scope = i == 0 ? nodes : nodes.Where(n => under.Any(n.IsInside));
+            HashSet<AppNode> under = new(found, ReferenceEqualityComparer.Instance);
+            IEnumerable<AppNode> scope = i == 0 ? nodes : nodes.Where(n => Inside(n, under));
             List<AppNode> matches = [.. scope.Where(n => step.Matches(n.Element, templates))];
             // A bare word that is no type of the tree's is a name.
             if (matches.Count == 0 && step is { Type: { } word, Name: null, Classes.Count: 0, Shown: null, Id: null })
@@ -71,7 +101,8 @@ public static class AppQuery
                 Step named = step with { Type = null, Name = word };
                 matches = [.. scope.Where(n => named.Matches(n.Element, templates))];
             }
-            List<AppNode> outermost = [.. matches.Where(m => !matches.Any(m.IsInside))];
+            HashSet<AppNode> matched = new(matches, ReferenceEqualityComparer.Instance);
+            List<AppNode> outermost = [.. matches.Where(m => !Inside(m, matched))];
             if (step.Index is int n)
             {
                 if (n < 1 || n > outermost.Count)
@@ -83,6 +114,19 @@ public static class AppQuery
             found = outermost;
         }
         return found;
+    }
+
+    /// <summary>Whether a node is inside any of some others.</summary>
+    private static bool Inside(AppNode node, HashSet<AppNode> others)
+    {
+        for (AppNode? at = node.Parent; at is not null; at = at.Parent)
+        {
+            if (others.Contains(at))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>The one element a query names, for input or a picture: of several, the one a person can see (shown, in view,
@@ -177,67 +221,92 @@ public static class AppQuery
 
     /// <summary>The tree under some elements, indented two spaces a level: a template's parts left out unless asked for (what
     /// they hold coming up a level), and what is inside a hidden element counted rather than written unless asked for, as
-    /// are Avalonia's empty layers over a window. At most <see cref="MostLines"/> lines, then how many more.</summary>
+    /// are Avalonia's empty layers over a window; where an element holds more than was read, it says so. At most
+    /// <see cref="MostLines"/> lines, then how many more.</summary>
     public static string Write(IEnumerable<AppNode> roots, int? depth, bool templates, bool hidden)
     {
         StringBuilder text = new();
         int lines = 0;
-        int more = 0;
-        foreach (AppNode root in roots)
+        (int Count, bool Deeper) more = (0, false);
+        // What is left to write, the next on top: an element, the level it would be written at, and whether it is a root.
+        Stack<(Element Element, int Level, bool Root)> left = new();
+        foreach (AppNode root in roots.Reverse())
         {
-            Add(root.Element, 0, true);
+            left.Push((root.Element, 0, true));
         }
-        if (more > 0)
+        while (left.TryPop(out (Element Element, int Level, bool Root) next))
         {
-            text.Append(CultureInfo.InvariantCulture, $"... and {more} more elements: narrow it with control, filter or depth\n");
-        }
-        return text.ToString().TrimEnd();
-
-        void Add(Element element, int level, bool root)
-        {
+            (Element element, int level, bool root) = next;
             bool written = root || templates || !element.FromTemplate;
-            if (!templates && !root && element.Children.Count == 0 && element.Name is null && element.Type.EndsWith("Layer", StringComparison.Ordinal))
+            bool holds = element.Children.Count > 0 || element.Deeper == true;
+            if (!templates && !root && !holds && element.Name is null && element.Type.EndsWith("Layer", StringComparison.Ordinal))
             {
-                return;
+                continue;
             }
             if (!written && !element.Visible && !hidden)
             {
-                return;
+                continue;
             }
             if (written)
             {
                 if (lines >= MostLines)
                 {
-                    more += Count(element);
-                    return;
+                    (int count, bool deeper) = Inside(element);
+                    more = (more.Count + count + 1, more.Deeper || deeper);
+                    continue;
                 }
                 text.Append(' ', level * 2).Append(Label(element));
                 lines++;
-                if (!element.Visible && !hidden && element.Children.Count > 0)
+                if (!element.Visible && !hidden && holds)
                 {
-                    text.Append(CultureInfo.InvariantCulture, $" ({Count(element) - 1} inside)\n");
-                    return;
+                    text.Append(CultureInfo.InvariantCulture, $" ({Counted(Inside(element))} inside)\n");
+                    continue;
                 }
                 text.Append('\n');
                 if (depth is int most && level >= most)
                 {
-                    if (element.Children.Count > 0)
+                    if (holds)
                     {
-                        text.Append(' ', (level + 1) * 2).Append(CultureInfo.InvariantCulture, $"... {Count(element) - 1} inside\n");
+                        text.Append(' ', (level + 1) * 2).Append(CultureInfo.InvariantCulture, $"... {Counted(Inside(element))} inside\n");
                         lines++;
                     }
-                    return;
+                    continue;
                 }
             }
-            foreach (Element child in element.Children)
+            if (element.Deeper == true && lines < MostLines)
             {
-                Add(child, written ? level + 1 : level, false);
+                text.Append(' ', (written ? level + 1 : level) * 2)
+                    .Append(CultureInfo.InvariantCulture, $"... more inside, not read: the tree is read {Element.DeepestNesting} levels deep\n");
+                lines++;
+            }
+            for (int i = element.Children.Count - 1; i >= 0; i--)
+            {
+                left.Push((element.Children[i], written ? level + 1 : level, false));
             }
         }
+        if (more.Count > 0)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"... and {Counted(more)} more elements: narrow it with control, filter or depth\n");
+        }
+        return text.ToString().TrimEnd();
     }
 
-    /// <summary>An element and everything inside it.</summary>
-    private static int Count(Element element) => 1 + element.Children.Sum(Count);
+    /// <summary>How many elements are inside one, and whether it or any of them holds more than was read.</summary>
+    private static (int Count, bool Deeper) Inside(Element element)
+    {
+        int count = 0;
+        bool deeper = element.Deeper == true;
+        foreach ((Element inside, _, _) in AppTree.Walk(element.Children))
+        {
+            count++;
+            deeper |= inside.Deeper == true;
+        }
+        return (count, deeper);
+    }
+
+    /// <summary>A count of elements, "at least" where some hold more than was read.</summary>
+    private static string Counted((int Count, bool Deeper) counted) =>
+        counted.Deeper ? $"at least {counted.Count.ToString(CultureInfo.InvariantCulture)}" : counted.Count.ToString(CultureInfo.InvariantCulture);
 
     private static List<Step> Parse(string query)
     {
