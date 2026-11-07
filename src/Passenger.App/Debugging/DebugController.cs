@@ -795,8 +795,8 @@ public sealed class DebugController : IDisposable
 
     /// <summary>The live tabs of a configuration's game, one copy or several (<see cref="Run.GameCopies"/>), each by its place from one.</summary>
     public IReadOnlyList<(DebugTab Tab, int Copy)> CopiesOf(string configuration) =>
-        [.. view.Sessions.Where(t => t.IsLive && t.Companion is null).Select(t => (Tab: t, Of: Run.GameCopies.Of(t.Name)))
-            .Where(c => c.Of.Configuration == configuration).Select(c => (c.Tab, c.Of.Copy))];
+        [.. view.Sessions.Where(t => t.IsLive && t.Companion is null).Select(t => (Tab: t, Of: Run.GameCopies.Of(t.Plan?.Copy, t.Name)))
+            .Where(c => c.Of.Configuration == configuration).Select(c => (c.Tab, c.Of.Place))];
 
     /// <summary>Makes the live tabs of a configuration's game copies of it, so Stop ends them with one more launched beside them.</summary>
     public void JoinCopies(string configuration)

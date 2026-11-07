@@ -1,5 +1,8 @@
 namespace Passenger.App.Run;
 
+/// <summary>A copy of a game: the configuration that starts it, by its name, and its place among the copies, from one.</summary>
+public sealed record GameCopy(string Configuration, int Place);
+
 /// <summary>The copies' names and own arguments, apart from the plans they make.</summary>
 public static partial class GameCopies
 {
@@ -9,14 +12,9 @@ public static partial class GameCopies
     /// <summary>A copy's name, from one: the configuration's own for the first.</summary>
     public static string Name(string configuration, int copy) => copy <= 1 ? configuration : $"{configuration} #{copy}";
 
-    /// <summary>The configuration a copy's name is of, and its place from one: a name of no copy past the first is its own, the first.</summary>
-    public static (string Configuration, int Copy) Of(string name)
-    {
-        int mark = name.LastIndexOf(" #", StringComparison.Ordinal);
-        return mark > 0 && int.TryParse(name.AsSpan(mark + 2), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int copy) && copy >= 2
-            ? (name[..mark], copy)
-            : (name, 1);
-    }
+    /// <summary>The copy a program of a name was started as: what its plan says, else the first of the configuration its name
+    /// is. Never read from the name, which a person's own configuration may also end in a number.</summary>
+    public static GameCopy Of(GameCopy? told, string name) => told ?? new GameCopy(name, 1);
 
     /// <summary>A copy's own arguments (from one), its line of the configuration's, none for one past them.</summary>
     public static IReadOnlyList<string> Own(IReadOnlyList<string> copyArguments, int copy) =>

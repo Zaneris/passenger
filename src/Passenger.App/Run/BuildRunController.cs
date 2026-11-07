@@ -274,7 +274,7 @@ public sealed partial class BuildRunController
 
     /// <summary>The copies of a Godot game Run runs side by side, each in a tab of the Terminal window, by its configuration's
     /// name (<see cref="GameCopies"/>): Stop ends them together.</summary>
-    private readonly List<(string Configuration, TerminalRun Run)> copyRuns = [];
+    private readonly List<(string Configuration, int Copy, TerminalRun Run)> copyRuns = [];
 
     /// <summary>The copies of a game Run runs now, each in its tab of the Terminal window.</summary>
     public IReadOnlyList<TerminalRun> CopyRuns => [.. copyRuns.Select(c => c.Run)];
@@ -1348,7 +1348,7 @@ public sealed partial class BuildRunController
             return failed.Message;
         }
         run.StartedBy = Mcp.AgentCall.Current?.Connection;
-        copyRuns.Add((chosen.Name, run));
+        copyRuns.Add((chosen.Name, copy, run));
         EndWith(game, run.Ended);
         IdeErrors.Observe(CopyEnded());
         RunningChanged?.Invoke(this, EventArgs.Empty);
@@ -1398,7 +1398,7 @@ public sealed partial class BuildRunController
         using (cancellation.Register(work.Cancel))
         using (BackgroundWork.Scope())
         {
-            int next = copyRuns.Where(c => c.Configuration == chosen.Name).Select(c => GameCopies.Of(c.Run.Name).Copy)
+            int next = copyRuns.Where(c => c.Configuration == chosen.Name).Select(c => c.Copy)
                 .Append(RunsOwnProgram(chosen.Name) ? 1 : 0).Max() + 1;
             (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, null, work, build: false);
             if (plan is null)
@@ -1412,7 +1412,7 @@ public sealed partial class BuildRunController
             work.Say($"Starting {GameCopies.Name(chosen.Name, next)}…");
             bool reloaded = parts.Settings().HotReload && chosen.NamesNoOtherProgram(session.Projects);
             // The edits since the build the copies run, as the first of them attached for Hot Reload follows them.
-            string? first = RunsOwnProgram(chosen.Name) ? chosen.Name : copyRuns.Where(c => c.Configuration == chosen.Name).Select(c => c.Run.Name).MinBy(n => GameCopies.Of(n).Copy);
+            string? first = RunsOwnProgram(chosen.Name) ? chosen.Name : copyRuns.Where(c => c.Configuration == chosen.Name).OrderBy(c => c.Copy).Select(c => c.Run.Name).FirstOrDefault();
             BuiltEdits? edits = reloaded && !plan.ScriptsAlone && first is not null ? session.Debug.Carried(first, hotReload: true) : null;
             if (await RunCopyAsync(chosen, plan, next, reloaded, work, edits) is { } refused)
             {
@@ -1469,7 +1469,7 @@ public sealed partial class BuildRunController
         if (copyRuns.FirstOrDefault(c => c.Run.Name == name) is { Run: { } copy } run)
         {
             return session.Configurations.Chosen is { } chosen && chosen.Name == run.Configuration
-                && await RestartRunCopyAsync(SceneOf(chosen) is { } scene ? chosen with { GodotScene = scene } : chosen, copy);
+                && await RestartRunCopyAsync(SceneOf(chosen) is { } scene ? chosen with { GodotScene = scene } : chosen, copy, run.Copy);
         }
         if (session.Configurations.Chosen is not { } running || running.Name != name)
         {
@@ -1489,7 +1489,7 @@ public sealed partial class BuildRunController
     /// <summary>One copy of a game Run runs with Hot Reload restarted alone so the edits Hot Reload could not apply run: ended,
     /// built again, and started in its tab's place, held and attached to again with the edits from this build, the other
     /// copies running on. True once it runs again.</summary>
-    private async Task<bool> RestartRunCopyAsync(RunConfiguration chosen, TerminalRun copy)
+    private async Task<bool> RestartRunCopyAsync(RunConfiguration chosen, TerminalRun copy, int place)
     {
         if (parts.Work.Begin(AppActions.RunProgram, $"Restarting {copy.Name} to apply the changes…") is not { } work)
         {
@@ -1513,7 +1513,7 @@ public sealed partial class BuildRunController
                 parts.Say($"Hot Reload could not restart {copy.Name}: {problem}");
                 return false;
             }
-            return await RunCopyAsync(chosen, plan, GameCopies.Of(copy.Name).Copy, reloaded: true, work, Take(ref edits)) is null;
+            return await RunCopyAsync(chosen, plan, place, reloaded: true, work, Take(ref edits)) is null;
         }
     }
 
@@ -2767,7 +2767,7 @@ public sealed partial class BuildRunController
     public bool IsRunningConfiguration(string name) =>
         RunsInConsole && (Containers?.Plan.Name ?? ran) == name
         || copyRuns.Any(c => c.Configuration == name && c.Run.IsRunning)
-        || session.Debug.Tabs.Any(t => t.IsLive && GameCopies.Of(t.Name).Configuration == name && debugged.ContainsKey(t.Name))
+        || session.Debug.CopiesOf(name).Any(c => debugged.ContainsKey(c.Tab.Name))
         || session.Profiled is { Run.HasExited: false } profiled && profiled.Name == name;
 
     /// <summary>Why Stop cannot run now: nothing it stops is running.</summary>

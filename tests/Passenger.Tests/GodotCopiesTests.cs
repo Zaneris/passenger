@@ -143,17 +143,39 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
         return window;
     }
 
+    /// <summary>A person's configuration named as a copy of another would be is its own game: Debug starts it as the first of
+    /// its own copies, and Debug Another Copy finds it and counts on from it.</summary>
+    [AvaloniaFact]
+    public void A_configuration_named_as_a_copy_is_debugged_as_its_own_and_Debug_Another_Copy_counts_on_from_it()
+    {
+        const string Own = "Lobby #2";
+        MainWindow window = Open();
+        try
+        {
+            Choose(window, 1, Own);
+            Ui.Launched(window, window.DebugAsync(), "the game's start under the debugger", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Tab(window, Own)?.Session?.State == DebugState.Running, () => $"the game to run ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+
+            Assert.Null(window.Actions.Run(AppActions.DebugAnotherCopy));
+            Ui.WaitFor(() => Tab(window, $"{Own} #2")?.Session?.State == DebugState.Running, () => $"its second copy beside it ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>The game's configuration, run headless with the run's user folders, starting <paramref name="copies"/> copies: the
     /// first a server, the second a client, the rest clients too, given no arguments of their own.</summary>
-    private void Choose(MainWindow window, int copies)
+    private void Choose(MainWindow window, int copies, string name = Name)
     {
         Ui.WaitFor(() => window.Configurations.Any(c => c.Generated && c.Name == "Lobby"),
             () => $"the game's configuration ({string.Join(", ", window.Configurations.Select(c => c.Name))})", TimeSpan.FromMinutes(1));
         RunConfiguration generated = window.Configurations.Single(c => c.Generated && c.Name == "Lobby");
         window.SetConfigurations([generated with
         {
-            Name = Name, Generated = false, Arguments = "--headless", Environment = new(game.Homes), GodotCopies = copies, CopyArguments = ["-- server", "-- client"],
-        }], Name);
+            Name = name, Generated = false, Arguments = "--headless", Environment = new(game.Homes), GodotCopies = copies, CopyArguments = ["-- server", "-- client"],
+        }], name);
     }
 
     private static void End(MainWindow window)

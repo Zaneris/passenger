@@ -32,6 +32,9 @@ public sealed partial record LaunchPlan
     /// <summary>The configuration's name, as the windows and the status bar say it.</summary>
     public required string Name { get; init; }
 
+    /// <summary>The copy of its configuration's game it starts, where it starts one of several (<see cref="GameCopies"/>).</summary>
+    public GameCopy? Copy { get; init; }
+
     /// <summary>The program started: the <c>dotnet</c> host for an assembly, or an executable.</summary>
     public required string Program { get; init; }
 
