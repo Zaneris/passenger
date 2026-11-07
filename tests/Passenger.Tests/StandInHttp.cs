@@ -75,6 +75,7 @@ public sealed class StandInHttp : IDisposable, IAsyncDisposable
     {
         200 => "OK",
         201 => "Created",
+        202 => "Accepted",
         302 => "Found",
         307 => "Temporary Redirect",
         401 => "Unauthorized",

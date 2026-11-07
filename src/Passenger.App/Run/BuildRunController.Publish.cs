@@ -9,8 +9,8 @@ namespace Passenger.App.Run;
 /// <summary>Publish: dotnet publish of one project with its profile, as a build of the Build window's (its output there,
 /// its problems in Problems, Stop ending it, the Build window's Rerun publishing again), its folder resolved by MSBuild
 /// before it starts and said once it has landed there, a link in the Build window's line and the status bar's word each
-/// a way to open it. A container profile's image goes into the engine on this machine, or to a registry docker has a login
-/// for; an AppHost publishes through its own publishers, their files landed in the folder chosen.</summary>
+/// a way to open it. A container profile's image goes into the engine on this machine, or to a registry, which a login is
+/// looked for where it asks for one; an AppHost publishes through its own publishers, their files landed in the folder chosen.</summary>
 public sealed partial class BuildRunController
 {
     /// <summary>The publish under way, from its start to <see cref="FinishBuild"/>.</summary>
@@ -94,9 +94,9 @@ public sealed partial class BuildRunController
         BuildOutcome Refused(string why) => Said(new BuildOutcome(BuildStatus.Refused, why));
     }
 
-    /// <summary>What a container publish needs before it starts: for a registry, a login the SDK would find for it (never
-    /// asked for here, nor given on a command line); for the engine on this machine, an engine that answers. The engine's CLI
-    /// is first on the publish's PATH, so the SDK loads the image through it. The request, or why not.</summary>
+    /// <summary>What a container publish needs before it starts: for a registry that asks for a login, one the SDK would find
+    /// for it (never asked for here, nor given on a command line); for the engine on this machine, an engine that answers. The
+    /// engine's CLI is first on the publish's PATH, so the SDK loads the image through it. The request, or why not.</summary>
     private async Task<(PublishRequest? Ready, string? Refused)> ImageReadyAsync(PublishRequest request, Working work)
     {
         ContainerEngine engine = session.Containers.Engine;
@@ -107,7 +107,11 @@ public sealed partial class BuildRunController
                 work.Say($"Looking for a login for {registry}…");
                 if (await RegistryLogins.WhyNotAsync(registry, work.Stopping) is { } none)
                 {
-                    return (null, $"{request.Shown} was not pushed: {none}");
+                    work.Say($"Asking {registry} whether it wants a login…");
+                    if (await RegistryLogins.AsksForLoginAsync(registry, work.Stopping))
+                    {
+                        return (null, $"{request.Shown} was not pushed: {none}");
+                    }
                 }
             }
             else

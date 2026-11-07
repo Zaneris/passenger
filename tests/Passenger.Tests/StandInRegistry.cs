@@ -9,15 +9,18 @@ namespace Passenger.Tests;
 
 /// <summary>An OCI registry on a loopback port of its own that serves one small base image, standin/base:1, for the SDK's
 /// container publish to build on: a manifest, its config for this machine's processor on Linux, and one layer of a single
-/// file, so no test pulls a real base image; given several processors, an index of a manifest for each. The SDK reaches
-/// localhost's registries over HTTP, with no login. Its image name, for a project's ContainerBaseImage, is <see cref="BaseImage"/>.</summary>
+/// file, so no test pulls a real base image; given several processors, an index of a manifest for each. It takes a push as a
+/// registry does, its blobs read back and its manifests in <see cref="Pushed"/>, with no login unless <see cref="AsksForLogin"/>.
+/// The SDK reaches localhost's registries over HTTP. Its image name, for a project's ContainerBaseImage, is <see cref="BaseImage"/>.</summary>
 public sealed class StandInRegistry : IDisposable, IAsyncDisposable
 {
     private const string ManifestType = "application/vnd.oci.image.manifest.v1+json";
     private const string IndexType = "application/vnd.oci.image.index.v1+json";
 
     private readonly StandInHttp http;
-    private readonly Dictionary<string, byte[]> blobs = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> blobs = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> uploads = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> pushed = new();
     private readonly byte[] manifest;
     private readonly string manifestType;
     private readonly Dictionary<string, byte[]> manifests = new(StringComparer.Ordinal);
@@ -66,8 +69,17 @@ public sealed class StandInRegistry : IDisposable, IAsyncDisposable
         http = new StandInHttp(AnswerAsync, keepAlive: true);
     }
 
+    /// <summary>Whether it answers every request 401, as a registry wanting a login does.</summary>
+    public bool AsksForLogin { get; init; }
+
     /// <summary>The base image as a project names it.</summary>
     public string BaseImage => $"localhost:{http.Port}/standin/base:1";
+
+    /// <summary>The registry as a project names it.</summary>
+    public string Host => $"localhost:{http.Port}";
+
+    /// <summary>The manifests pushed to it, each by its path, /v2/repository/manifests/reference.</summary>
+    public IReadOnlyList<string> Pushed => [.. pushed];
 
     /// <summary>The connections clients have made to it.</summary>
     public int Connections => http.Connections;
@@ -80,7 +92,17 @@ public sealed class StandInRegistry : IDisposable, IAsyncDisposable
     private async Task AnswerAsync(StandInHttp.Exchange exchange)
     {
         requests.Enqueue(exchange.Line);
+        if (AsksForLogin)
+        {
+            await exchange.ReplyAsync(401, "application/json", "{\"errors\":[{\"code\":\"UNAUTHORIZED\"}]}", "WWW-Authenticate: Basic realm=\"stand-in\"\r\n");
+            return;
+        }
         string path = exchange.Path.Split('?')[0];
+        if (exchange.Method is "POST" or "PATCH" or "PUT")
+        {
+            await TakeAsync(exchange, path);
+            return;
+        }
         (byte[] Body, string Type)? found = path is "/v2/" or "/v2" ? ("{}"u8.ToArray(), "application/json")
             : path.EndsWith("/manifests/1", StringComparison.Ordinal) || path.EndsWith($"/manifests/{Digest(manifest)}", StringComparison.Ordinal) ? (manifest, manifestType)
             : manifests.Values.FirstOrDefault(one => path.EndsWith($"/manifests/{Digest(one)}", StringComparison.Ordinal)) is { } platform ? (platform, ManifestType)
@@ -88,7 +110,8 @@ public sealed class StandInRegistry : IDisposable, IAsyncDisposable
             : null;
         if (found is not { } answer)
         {
-            await exchange.ReplyAsync(404, "application/json", "{\"errors\":[{\"code\":\"NAME_UNKNOWN\"}]}");
+            byte[] unknown = exchange.Method == "HEAD" ? [] : "{\"errors\":[{\"code\":\"NAME_UNKNOWN\"}]}"u8.ToArray();
+            await exchange.ReplyAsync(404, "application/json", unknown);
             return;
         }
         string headers = $"Docker-Content-Digest: {Digest(answer.Body)}\r\nDocker-Distribution-API-Version: registry/2.0\r\n";
@@ -99,6 +122,35 @@ public sealed class StandInRegistry : IDisposable, IAsyncDisposable
         else
         {
             await exchange.ReplyAsync(200, answer.Type, answer.Body, headers);
+        }
+    }
+
+    /// <summary>A step of a push: an upload begun (a mount refused, so its blob comes too), its bytes, its digest ending it, or a
+    /// manifest, the last.</summary>
+    private async Task TakeAsync(StandInHttp.Exchange exchange, string path)
+    {
+        if (exchange.Method == "PUT" && path.Contains("/manifests/", StringComparison.Ordinal))
+        {
+            pushed.Enqueue(path);
+            await exchange.ReplyAsync(201, null, [], $"Docker-Content-Digest: {Digest(exchange.Body)}\r\n");
+        }
+        else if (exchange.Method == "POST")
+        {
+            string upload = $"{path}{Guid.NewGuid():N}";
+            uploads[upload] = [];
+            await exchange.ReplyAsync(202, null, [], $"Location: {upload}\r\n");
+        }
+        else if (exchange.Method == "PATCH")
+        {
+            byte[] held = uploads.AddOrUpdate(path, exchange.Body, (_, before) => [.. before, .. exchange.Body]);
+            await exchange.ReplyAsync(202, null, [], $"Location: {path}\r\nRange: 0-{held.Length - 1}\r\n");
+        }
+        else
+        {
+            string digest = Uri.UnescapeDataString(exchange.Path.Split("digest=")[1].Split('&')[0]);
+            uploads.TryRemove(path, out byte[]? held);
+            blobs[digest] = [.. held ?? [], .. exchange.Body];
+            await exchange.ReplyAsync(201, null, [], $"Docker-Content-Digest: {digest}\r\n");
         }
     }
 

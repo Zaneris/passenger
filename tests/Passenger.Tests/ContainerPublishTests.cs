@@ -9,7 +9,8 @@ namespace Passenger.Tests;
 
 /// <summary>Publish beside a folder's: a project's container image made by the SDK into the test's engine through a container
 /// profile, on a base image a stand-in registry serves (each image labelled for the run and removed after); a push to a
-/// registry docker holds no login for refused, saying how to log in; an AppHost's Docker Compose files, written by its
+/// registry that asks for a login docker doesn't hold refused, saying how to log in, and one to a registry that asks for none
+/// taken with no engine at all; an AppHost's Docker Compose files, written by its
 /// publishers, landed in the folder chosen as one step of Undo, which <c>docker compose config</c> reads, its binary output
 /// byte for byte; and an AppHost's deploy steps offered as it declares them, one whose Azure login is missing refused naming
 /// it. Alone: the refusals point the process's DOCKER_CONFIG and AZURE_CONFIG_DIR at folders of the test's while they ask.</summary>
@@ -113,11 +114,11 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
     }
 
     [AvaloniaFact]
-    public void A_push_to_a_registry_with_no_docker_login_is_refused_saying_how_to_log_in()
+    public void A_push_to_a_registry_asking_for_a_login_with_none_found_is_refused_saying_how_to_log_in()
     {
+        using StandInRegistry registry = new() { AsksForLogin = true };
         string project = WriteApp("localhost:1/standin/base:1");
-        TestFolders.Write(folder, "Shipped/Properties/PublishProfiles/Pushed.pubxml", "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Project>\n  <PropertyGroup>\n"
-            + "    <WebPublishMethod>Container</WebPublishMethod>\n    <ContainerRegistry>registry.passenger-test.invalid</ContainerRegistry>\n  </PropertyGroup>\n</Project>\n");
+        WritePushProfile(registry.Host);
         string config = TestFolders.Write(folder, "docker-config/config.json", "{\n  \"auths\": {\n    \"https://index.docker.io/v1/\": {}\n  }\n}\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         string? had = Environment.GetEnvironmentVariable(EngineVariables.DockerConfig);
@@ -126,16 +127,49 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
             PublishDialog dialog = Show(window, project);
             dialog.ChooseProfile("Pushed");
             Ui.WaitFor(() => !dialog.IsReading, "the Publish dialog to read the profile that pushes", TimeSpan.FromMinutes(1));
-            Assert.Equal((true, "registry.passenger-test.invalid"), (dialog.Container, dialog.Registry));
-            Assert.Contains("with docker's login for registry.passenger-test.invalid", dialog.ImageSaid, StringComparison.Ordinal);
+            Assert.Equal((true, registry.Host), (dialog.Container, dialog.Registry));
+            Assert.Contains($"with docker's login for {registry.Host}", dialog.ImageSaid, StringComparison.Ordinal);
             // Docker's configuration the test's own, holding a login for another registry, while the publish asks it.
             OwnEnvironment.Set(EngineVariables.DockerConfig, Path.GetDirectoryName(config));
             BuildOutcome ended = Publish(window, dialog.PublishAsync);
             OwnEnvironment.Set(EngineVariables.DockerConfig, had);
             Assert.Equal(BuildStatus.Refused, ended.Status);
-            Assert.Equal($"Shipped (Pushed) was not pushed: No docker login for registry.passenger-test.invalid was found in {PathNames.Shown(config, null)}: "
-                + "run docker login registry.passenger-test.invalid in a terminal, then publish again", ended.Message);
+            Assert.Equal($"Shipped (Pushed) was not pushed: No docker login for {registry.Host} was found in {PathNames.Shown(config, null)}: "
+                + $"run docker login {registry.Host} in a terminal, then publish again", ended.Message);
             Assert.False(window.IsBuilding, "The refused push started a build");
+            Assert.Equal(["GET /v2/"], registry.Requests);
+        }
+        finally
+        {
+            OwnEnvironment.Set(EngineVariables.DockerConfig, had);
+            window.Close();
+        }
+    }
+
+    /// <summary>The SDK looks for a login only on a 401, so a registry asking for none takes the push with none found, the
+    /// image built on its base and pushed by the SDK alone: no engine is asked.</summary>
+    [AvaloniaFact]
+    public void A_push_to_a_registry_asking_for_no_login_goes_on_with_none_found()
+    {
+        using StandInRegistry registry = new();
+        // No app host, which a runtime's publish would take from a package of the platform's: framework-dependent, it needs none.
+        string project = WriteApp(registry.BaseImage, "<UseAppHost>false</UseAppHost>");
+        WritePushProfile(registry.Host, "    <ContainerRepository>pushed</ContainerRepository>\n    <ContainerImageTag>t1</ContainerImageTag>\n");
+        string config = TestFolders.Write(folder, "docker-config/config.json", "{}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        string? had = Environment.GetEnvironmentVariable(EngineVariables.DockerConfig);
+        try
+        {
+            PublishDialog dialog = Show(window, project);
+            dialog.ChooseProfile("Pushed");
+            Ui.WaitFor(() => !dialog.IsReading, "the Publish dialog to read the profile that pushes", TimeSpan.FromMinutes(1));
+            OwnEnvironment.Set(EngineVariables.DockerConfig, Path.GetDirectoryName(config));
+            BuildOutcome ended = Publish(window, dialog.PublishAsync);
+            OwnEnvironment.Set(EngineVariables.DockerConfig, had);
+            Assert.True(ended.Succeeded, $"The push was not taken: {ended.Message}\n{string.Join('\n', ended.Output)}\nThe registry was asked: {string.Join(", ", registry.Requests)}");
+            Assert.Equal($"{registry.Host}/pushed:t1", ended.Image);
+            Assert.Equal($"Published Shipped (Pushed): pushed the image {registry.Host}/pushed:t1", ended.Message);
+            Assert.Contains("/v2/pushed/manifests/t1", registry.Pushed);
         }
         finally
         {
@@ -301,6 +335,11 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
         TestFolders.Write(folder, "Shipped/Program.cs", "System.Console.WriteLine(\"shipped\");\n");
         return PathNames.Canonical(Path.Combine(folder, "Shipped", "Shipped.csproj"));
     }
+
+    /// <summary>The app's profile Pushed, pushing to a registry, with what else it says.</summary>
+    private void WritePushProfile(string registry, string properties = "") =>
+        TestFolders.Write(folder, "Shipped/Properties/PublishProfiles/Pushed.pubxml", "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Project>\n  <PropertyGroup>\n"
+            + $"    <WebPublishMethod>Container</WebPublishMethod>\n    <ContainerRegistry>{registry}</ContainerRegistry>\n{properties}  </PropertyGroup>\n</Project>\n");
 
     private static PublishDialog Show(MainWindow window, string project)
     {

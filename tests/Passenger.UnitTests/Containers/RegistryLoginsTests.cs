@@ -1,10 +1,11 @@
+using System.Net;
 using Passenger.App.Containers;
 using Passenger.Core;
 
 namespace Passenger.UnitTests.Containers;
 
-/// <summary>Whether a push would find a login for a registry, as the SDK looks for one: refused only where the SDK could
-/// find none, the words saying how to make one. Files and variables are the test's own.</summary>
+/// <summary>Whether a push would find a login for a registry, as the SDK looks for one, the words saying how to make one, and
+/// whether the registry asks for one, as the SDK reaches it. Files, variables and answers are the test's own.</summary>
 public sealed class RegistryLoginsTests
 {
     private const string Home = "/home/ada";
@@ -55,11 +56,12 @@ public sealed class RegistryLoginsTests
         Assert.Null(WhyNot("registry-1.docker.io", InDocker("""{ "auths": { "https://index.docker.io/v1/": {} } }""")));
     }
 
+    /// <summary>A registry on this machine may ask for a login too, so its name settles nothing.</summary>
     [Fact]
-    public void A_registry_on_this_machine_asks_for_no_login()
+    public void A_registry_on_this_machine_finds_its_login_as_any_other()
     {
-        Assert.Null(WhyNot("localhost:5000", new Dictionary<string, string>()));
-        Assert.Null(WhyNot("127.0.0.1:5000", new Dictionary<string, string>()));
+        Assert.NotNull(WhyNot("localhost:5000", new Dictionary<string, string>()));
+        Assert.Null(WhyNot("localhost:5000", InDocker("""{ "auths": { "localhost:5000": {} } }""")));
     }
 
     [Theory]
@@ -96,6 +98,93 @@ public sealed class RegistryLoginsTests
     {
         string config = Path.Combine("/etc/docker-ada", "config.json");
         Assert.Null(WhyNot(Registry, new Dictionary<string, string> { [config] = """{ "credsStore": "desktop" }""" }, (EngineVariables.DockerConfig, "/etc/docker-ada")));
+    }
+
+    [Fact]
+    public async Task A_registry_answering_an_anonymous_request_asks_for_no_login()
+    {
+        Answers answers = new(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        Assert.False(await Asks(Registry, answers));
+        Assert.Equal([$"https://{Registry}/v2/"], answers.Asked);
+        Assert.False(answers.SentLogin, "An anonymous question carried a login");
+    }
+
+    [Fact]
+    public async Task A_registry_answering_401_asks_for_a_login()
+    {
+        Assert.True(await Asks(Registry, new Answers(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized))));
+    }
+
+    /// <summary>Only a 401 sends the SDK looking for a login; whatever else is wrong, the push says better.</summary>
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task Any_other_answer_is_left_to_the_push(HttpStatusCode status)
+    {
+        Assert.False(await Asks(Registry, new Answers(_ => new HttpResponseMessage(status))));
+    }
+
+    [Fact]
+    public async Task A_registry_speaking_no_TLS_is_asked_again_over_HTTP_as_the_SDK_falls_back()
+    {
+        Answers plain = new(address => address.Scheme == "https" ? throw NoTls() : new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        Assert.True(await Asks(Registry, plain));
+        Assert.Equal([$"https://{Registry}/v2/", $"http://{Registry}/v2/"], plain.Asked);
+        Assert.False(await Asks(Registry, new Answers(address => address.Scheme == "https" ? throw NoTls() : new HttpResponseMessage(HttpStatusCode.OK))));
+    }
+
+    [Fact]
+    public async Task A_registry_not_reached_is_left_to_the_push_with_no_second_try_over_HTTP()
+    {
+        Answers refused = new(_ => throw new HttpRequestException(HttpRequestError.ConnectionError, "refused"));
+        Assert.False(await Asks(Registry, refused));
+        Assert.Equal([$"https://{Registry}/v2/"], refused.Asked);
+        Assert.False(await Asks(Registry, new Answers(address => address.Scheme == "https" ? throw NoTls() : throw new HttpRequestException(HttpRequestError.ConnectionError, "refused"))));
+    }
+
+    [Fact]
+    public async Task A_registry_that_never_answers_is_left_to_the_push_and_a_stopped_publish_stops()
+    {
+        Assert.False(await Asks(Registry, new Answers(_ => throw new TaskCanceledException("timed out"))));
+        using CancellationTokenSource stopped = new();
+        await stopped.CancelAsync();
+        using HttpClient client = new(new Answers(_ => throw new TaskCanceledException("stopped")));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RegistryLogins.AsksForLoginAsync(Registry, client, stopped.Token));
+    }
+
+    [Fact]
+    public async Task Docker_Hub_is_asked_where_its_API_answers_and_a_registrys_scheme_and_path_are_left_out()
+    {
+        Answers hub = new(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        Assert.True(await Asks("docker.io", hub));
+        Assert.Equal(["https://registry-1.docker.io/v2/"], hub.Asked);
+        Answers named = new(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        await Asks($"https://{Registry}/team", named);
+        Assert.Equal([$"https://{Registry}/v2/"], named.Asked);
+    }
+
+    private static async Task<bool> Asks(string registry, Answers answers)
+    {
+        using HttpClient client = new(answers, disposeHandler: false);
+        return await RegistryLogins.AsksForLoginAsync(registry, client, TestContext.Current.CancellationToken);
+    }
+
+    private static HttpRequestException NoTls() => new(HttpRequestError.SecureConnectionError, "no TLS here");
+
+    /// <summary>A registry as a test's answers make it, keeping what it was asked.</summary>
+    private sealed class Answers(Func<Uri, HttpResponseMessage> answer) : HttpMessageHandler
+    {
+        public List<string> Asked { get; } = [];
+
+        public bool SentLogin { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Asked.Add(request.RequestUri!.ToString());
+            SentLogin |= request.Headers.Authorization is not null;
+            return Task.FromResult(answer(request.RequestUri));
+        }
     }
 
     [Fact]
