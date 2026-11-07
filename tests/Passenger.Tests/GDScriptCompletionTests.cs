@@ -292,6 +292,33 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>A function beside a static one lists the scene's nodes after <c>$</c>; the static one, where Godot refuses it, none.</summary>
+    [AvaloniaFact]
+    public void A_static_function_offers_no_node_paths()
+    {
+        TestFolders.Write(folder, "main.gd", "extends Node\n\n\nfunc _ready() -> void:\n\tprint(1)\n\n\nstatic func spawn() -> void:\n\tprint(2)\n");
+        (MainWindow window, _, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "print(1)");
+            window.KeyTextInput("$");
+            Listed(window, "$Player", "node of the scene after $");
+            Ui.Press(window, "ESCAPE", settle: false);
+            Erase(window, 1);
+
+            NewLineAfter(window, editor, "print(2)");
+            window.KeyTextInput("$");
+            bool listed = Ui.Pumped(() => window.Assist.CompletionLabels.Count > 0, TimeSpan.FromSeconds(3));
+            Assert.False(listed, $"Node paths offered in a static function, where Godot refuses $: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>After a closing bracket the list holds what the bracket closes, a call's result rather than its last argument's
     /// type, and a group's parentheses list what they hold.</summary>
     [AvaloniaFact]

@@ -160,6 +160,14 @@ public sealed class GDScriptAnalysis
     /// variable's value, setter and getter, and any lambda in them (its static_context).</summary>
     public bool StaticAt(int offset) => ScopeAt(offset).Static;
 
+    /// <summary>What the caret of the script read is at, as its text says; nothing where that is a node path in a static place,
+    /// where Godot's analyzer refuses <c>$</c> and <c>%</c>.</summary>
+    public GDScriptAsked AskedAt(int caret)
+    {
+        GDScriptAsked asked = GDScriptAsked.At(Tree?.Text ?? string.Empty, caret);
+        return asked.Kind == GDScriptAskedKind.NodePath && StaticAt(caret) ? new GDScriptAsked(GDScriptAskedKind.None, caret) : asked;
+    }
+
     /// <summary>What an offset's place asks of a name: a constant's value, local or a class's, or an enum's; a constant with no
     /// value yet is no node, so its line says.</summary>
     public GDScriptConstantPlace ConstantAt(int offset)

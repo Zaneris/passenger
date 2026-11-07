@@ -145,7 +145,7 @@ internal sealed partial class GDScriptAssist
             // Typed on while the script was read: the list is made for the text as it stands now.
             return await CompleteAsync(trigger, incomplete);
         }
-        GDScriptAsked at = typed is null ? new GDScriptAsked(GDScriptAskedKind.None, caret) : GDScriptAsked.At(typed.Text, caret);
+        GDScriptAsked at = typed is null ? new GDScriptAsked(GDScriptAskedKind.None, caret) : typed.Analysis.AskedAt(caret);
         // A sigil typed opens only its own list: '%' takes a remainder, '/' divides, a quote opens any string.
         if (trigger is { } typedSign && !Opens(typedSign, at.Kind))
         {

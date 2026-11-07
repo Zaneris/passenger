@@ -887,6 +887,46 @@ public class GDScriptAnalyzerTests
         }
     }
 
+    /// <summary>A node path is asked for only where Godot 4.7.2 compiled <c>$</c> and <c>%</c>, as each is typed: never in a static
+    /// place, whose names are still asked for.</summary>
+    [Theory]
+    [InlineData("static func f():\n\t|\n", true)]
+    [InlineData("static func f():\n\tprint(|)\n", true)]
+    [InlineData("static func f():\n\tvar kept = |\n", true)]
+    [InlineData("static func f(a):\n\tif a:\n\t\tprint(|)\n", true)]
+    [InlineData("static func f():\n\tvar g = func(): print(|)\n", true)]
+    [InlineData("static func f(a = |):\n\tpass\n", true)]
+    [InlineData("static func _static_init():\n\t|\n", true)]
+    [InlineData("static var v = |\n", true)]
+    [InlineData("static var v = func(): print(|)\n", true)]
+    [InlineData("static var v: int:\n\tset(value):\n\t\tprint(|)\n", true)]
+    [InlineData("static var v: int:\n\tget:\n\t\tprint(|)\n\t\treturn 1\n", true)]
+    [InlineData("func f():\n\t|\n", false)]
+    [InlineData("func f():\n\tprint(|)\n", false)]
+    [InlineData("func f():\n\tvar g = func(): print(|)\n", false)]
+    [InlineData("func f(a = |):\n\tpass\n", false)]
+    [InlineData("@onready var v = |\n", false)]
+    [InlineData("var v: int:\n\tset(value):\n\t\tprint(|)\n", false)]
+    [InlineData("static func g():\n\tpass\n\n\nfunc f():\n\t|\n", false)]
+    public void A_node_path_is_asked_for_only_where_godot_compiles_one(string written, bool isStatic)
+    {
+        const string Head = "extends Node\n\n";
+        int mark = written.IndexOf('|', StringComparison.Ordinal);
+        foreach (string typed in (string[])["$", "%", "$Bo", "%Bo", "$Body/Ch"])
+        {
+            GDScriptAsked asked = Asked(typed);
+            GDScriptAskedKind expected = isStatic ? GDScriptAskedKind.None : GDScriptAskedKind.NodePath;
+            Assert.True(asked.Kind == expected, $"{typed} in \"{written}\" asked for {asked.Kind}, not {expected}");
+        }
+        Assert.Equal(GDScriptAskedKind.Name, Asked("zz").Kind);
+
+        GDScriptAsked Asked(string typed)
+        {
+            (GDScriptAnalysis analysis, _) = Analyze(Head + written.Replace("|", typed, StringComparison.Ordinal));
+            return analysis.AskedAt(Head.Length + mark + typed.Length);
+        }
+    }
+
     private static Dictionary<string, string> Locals(GDScriptAnalysis analysis) =>
         analysis.Tree!.Members.SelectMany(m => analysis.LocalsAt(m.End - 1)).GroupBy(l => l.Name).ToDictionary(g => g.Key, g => g.First().Type.ToString(), StringComparer.Ordinal);
 }
