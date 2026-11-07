@@ -477,13 +477,14 @@ public abstract class McpRig : IDisposable
         return last is null || !DotnetProcesses.Runs(last.Id) ? string.Empty : ManagedStacks.Describe("Where Passenger's threads were", last.Id);
     }
 
-    /// <summary>What Passenger said before something went wrong: its standard error, and the end of its log and of the
-    /// debugger engine's, which on a machine nobody can watch (CI's) are all there is to go by.</summary>
+    /// <summary>What Passenger said before something went wrong: its standard error, and the end of its log, of its C#
+    /// language server's and of the debugger engine's, which on a machine nobody can watch (CI's) are all there is to go by.</summary>
     protected string Said()
     {
         string[] written = Errors();
         return $"\nPassenger's standard error:{(written.Length == 0 ? " nothing" : "\n  " + string.Join("\n  ", written.TakeLast(40)))}"
             + Tail("Passenger's log", Path.Combine(OwnState, "logs", "passenger.log"), 20)
+            + ServerTold()
             // An attached agent's window and proxy keep the run's own state, not the test's.
             + Tail("The run's Passenger log", Path.Combine(TestRun.Settings, "logs", "passenger.log"), 20)
             + Tail("The run's MCP log", Path.Combine(TestRun.Settings, "logs", "mcp.log"), 30)
@@ -502,6 +503,23 @@ public abstract class McpRig : IDisposable
                 return string.Empty;
             }
         }
+    }
+
+    /// <summary>The newest C# language server's log of the test's own state: when it was told of files changed on disk and
+    /// what it registered to hear of, then its last lines; nothing where no server started.</summary>
+    private string ServerTold()
+    {
+        string folder = Path.Combine(OwnState, "logs", "roslyn");
+        if (!Directory.Exists(folder) || Directory.EnumerateFiles(folder, "server-*.log").Order(StringComparer.Ordinal).LastOrDefault() is not { } log)
+        {
+            return string.Empty;
+        }
+        // Shared, as the server's Passenger may still be writing it.
+        string[] lines = Ui.Shared(log).TrimEnd().Split('\n');
+        string[] told = [.. lines.Where(l => l.Contains("Told the server", StringComparison.Ordinal) || l.Contains("watched for the server", StringComparison.Ordinal)
+            || l.Contains("otherwise than the disk", StringComparison.Ordinal)).TakeLast(20)];
+        return $"\nThe C# language server's log ({Path.GetFileName(log)}), of files told and watched:\n  {(told.Length == 0 ? "nothing" : string.Join("\n  ", told))}"
+            + $"\nThe C# language server's log ends:\n  {string.Join("\n  ", lines.TakeLast(15))}";
     }
 
     protected static string? Local(JsonElement stop, string name) =>
