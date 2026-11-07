@@ -115,6 +115,7 @@
     <Compile Include="../../src/Passenger.App/Aspire/DashboardAddress.cs" Link="App/DashboardAddress.cs" />
     <Compile Include="../../src/Passenger.App/Aspire/AppHostPipeline.cs" Link="App/AppHostPipeline.cs" />
     <Compile Include="../../src/Passenger.App/Aspire/DeployLogins.cs" Link="App/DeployLogins.cs" />
+    <Compile Include="../../src/Passenger.App/Aspire/TakenPorts.cs" Link="App/TakenPorts.cs" />
   </ItemGroup>
 
   <!-- The input events and state macOS's embedded display takes, in Godot's codec's bytes, compiled in since its project is the app's. -->

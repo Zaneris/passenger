@@ -314,8 +314,19 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             https ??= HttpsChoice.None;
             foreach (RunConfiguration chosen in configurations)
             {
-                AspireAppRun app = await StartAppAsync(chosen, mode, group, build, starting.Token, profileTarget, https, said: started.Count == 0 ? https.Said : []);
-                started.Add(app);
+                IReadOnlyList<string> said = started.Count == 0 ? https.Said : [];
+                for (int tries = 1; ; tries++)
+                {
+                    try
+                    {
+                        started.Add(await StartAppAsync(chosen, mode, group, build, starting.Token, profileTarget, https, said));
+                        break;
+                    }
+                    catch (ResourceServicePortTaken taken) when (tries < ResourceServicePortTaken.Tries)
+                    {
+                        said = [.. said, taken.Again];
+                    }
+                }
             }
             if (mode == RunStart.Profile)
             {
@@ -417,6 +428,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         LastAppConsole = app.Console;
         apps.Add(app);
+        // What the AppHost said of the port Passenger chose for its resource service being taken, as its start failed.
+        string? taken = null;
+        int? chosen = null;
         try
         {
             AspireExecutionServer execution = await StartEndpointAsync(app, cancellation);
@@ -447,7 +461,11 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             environment[AspireVariables.DebugSessionRunMode] = mode == RunStart.Debug ? "Debug" : "NoDebug";
             environment["AppHost__FilePath"] = configuration.Project;
             environment[AspireVariables.TelemetryOptOut] = "1";
-            ConfigureResourceService(app, environment);
+            chosen = ConfigureResourceService(app, environment);
+            if (chosen is int port)
+            {
+                app.Runner.Line += (_, line) => taken ??= TakenPorts.SaidIn(line, port) ? line.Trim() : null;
+            }
             ConfigureDashboard(app, environment);
             app.Runner.Exited += (_, _) => BackgroundWork.Track(StopAppAsync(app));
             ProcessStartInfo hostStart = ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory);
@@ -496,6 +514,12 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             }
             Changed?.Invoke(this, EventArgs.Empty);
             return app;
+        }
+        catch (Exception error) when (taken is not null && chosen is int port && app.Runner.Ended.IsCompleted && !cancellation.IsCancellationRequested
+            && error is LaunchException or OperationCanceledException or IOException)
+        {
+            await StopAppAsync(app);
+            throw new ResourceServicePortTaken(port, taken);
         }
         catch
         {
@@ -556,9 +580,12 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
     }
 
-    private static void ConfigureResourceService(AspireAppRun app, IDictionary<string, string> environment)
+    /// <summary>Where the AppHost's resource service listens, and its key: the address its environment gives, else a port
+    /// free now that Passenger chose, which it answers, as the AppHost binds it only as it starts.</summary>
+    private static int? ConfigureResourceService(AspireAppRun app, IDictionary<string, string> environment)
     {
         Uri? endpoint = null;
+        int? chosen = null;
         if (environment.TryGetValue(AspireVariables.ResourceServiceEndpoint, out string? configured))
         {
             Uri.TryCreate(configured.Split(';')[0], UriKind.Absolute, out endpoint);
@@ -572,6 +599,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 && bool.TryParse(allowed, out bool unsecured) && unsecured;
             endpoint = new Uri($"{(allowHttp ? "http" : "https")}://localhost:{number}");
             environment[AspireVariables.ResourceServiceEndpoint] = endpoint.AbsoluteUri;
+            chosen = number;
         }
         if (!endpoint.IsLoopback || endpoint.Scheme is not ("http" or "https"))
         {
@@ -580,6 +608,20 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         app.ResourceServiceEndpoint = endpoint;
         app.ResourceServiceKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         environment[AspireVariables.DashboardResourceServiceKey] = app.ResourceServiceKey;
+        return chosen;
+    }
+
+    /// <summary>An AppHost's start that ended as the port Passenger chose for its resource service was taken before it bound
+    /// it, as it said (<see cref="TakenPorts"/>): another program's socket in the moment between the choice and the bind,
+    /// which on Windows any socket on the port is. It is started again on another, a few times at most.</summary>
+    private sealed class ResourceServicePortTaken(int port, string said)
+        : LaunchException($"The AppHost's resource service could not listen on port {port}, which another program took as the AppHost started: {said}")
+    {
+        public const int Tries = 3;
+
+        /// <summary>What the console of its next start says first.</summary>
+        public string Again { get; } = $"Port {port}, chosen for the AppHost's resource service, was taken by another program as the AppHost started "
+            + $"({said}): it is started again on another port.";
     }
 
     private static void ConfigureDashboard(AspireAppRun app, IDictionary<string, string> environment)

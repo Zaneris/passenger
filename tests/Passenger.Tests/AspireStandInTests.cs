@@ -1032,6 +1032,67 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>An AppHost that says, as its start fails, that the port Passenger chose for its resource service was taken
+    /// before it bound it is started again on another port, the console of that start saying so: the stand-in, whose profile
+    /// names no resource service, says so of the first port it is given, as ASP.NET Core's server does.</summary>
+    [AvaloniaFact]
+    public void An_AppHost_whose_chosen_resource_service_port_was_taken_as_it_started_is_started_again_on_another_saying_so()
+    {
+        project.Reset();
+        const string Taken = "Taken.AppHost";
+        string starts = project.PathOf("taken-starts.txt");
+        File.Delete(starts);
+        Directory.CreateDirectory(project.PathOf($"{Taken}/Properties"));
+        project.Write([
+            ($"{Taken}/{Taken}.csproj", File.ReadAllText(project.ProjectFile)),
+            ($"{Taken}/Program.cs", """
+                using System;
+                using System.IO;
+                using System.Threading;
+
+                // Each start records the port it is given; the first says it was taken, in ASP.NET Core's server's words.
+                string starts = Environment.GetEnvironmentVariable("PASSENGER_STAND_IN_STARTS")!;
+                Uri endpoint = new(Environment.GetEnvironmentVariable("ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL")!);
+                File.AppendAllText(starts, $"{endpoint.Port}\n");
+                if (File.ReadAllLines(starts).Length == 1)
+                {
+                    Console.Error.WriteLine($"Unhandled exception. System.IO.IOException: Failed to bind to address http://127.0.0.1:{endpoint.Port}: address already in use.");
+                    return 1;
+                }
+                Console.WriteLine("The stand-in AppHost is up");
+                Thread.Sleep(Timeout.Infinite);
+                return 0;
+                """),
+            ($"{Taken}/Properties/launchSettings.json", JsonSerializer.Serialize(new { profiles = new { http = new { commandName = "Project", environmentVariables = new Dictionary<string, string>
+            {
+                ["PASSENGER_STAND_IN_STARTS"] = starts,
+                [AspireVariables.AllowUnsecuredTransport] = "true",
+            } } } })),
+            ("StandIn.slnx", $"<Solution>\n  <Project Path=\"{StandInAppHost.Name}/{StandInAppHost.Name}.csproj\" />\n  <Project Path=\"{StandInAppHost.Api}/{StandInAppHost.Api}.csproj\" />\n" +
+                $"  <Project Path=\"{Taken}/{Taken}.csproj\" />\n</Solution>\n"),
+        ]);
+        MainWindow window = project.Open(project.Program, languageServer: false);
+        try
+        {
+            string configuration = $"Aspire: {Taken}: http";
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == configuration), "the AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(configuration));
+            Ui.Run(window, AppActions.RunProgram);
+            Ui.WaitFor(() => File.Exists(starts) && File.ReadAllLines(starts).Length == 2,
+                () => $"the AppHost started again once it said its resource service's port was taken ({window.Status}; given {(File.Exists(starts) ? File.ReadAllText(starts) : "nothing")})",
+                TimeSpan.FromMinutes(3));
+            string[] ports = File.ReadAllLines(starts);
+            Assert.True(ports[0] != ports[1], $"The AppHost was started again on port {ports[1]}, the port it said was taken");
+            string again = $"Port {ports[0]}, chosen for the AppHost's resource service, was taken by another program as the AppHost started";
+            Ui.WaitFor(() => window.AspireRuntime.LastAppConsole?.Document.Snapshot.ToString().Contains(again, StringComparison.Ordinal) == true,
+                () => $"the console of the AppHost's second start to say why it started again; it reads: {window.AspireRuntime.LastAppConsole?.Document.Snapshot}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A run of an AppHost ends with its own AppHosts, whatever another configuration's still runs: with the stand-in
     /// AppHost running, Run of a second AppHost of the folder, whose program then ends, ends that run (what an agent's run
     /// waits on), the first running on.</summary>
