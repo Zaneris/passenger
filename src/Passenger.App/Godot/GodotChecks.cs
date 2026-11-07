@@ -449,7 +449,8 @@ internal static class GodotChecks
             Candidates named = Named(scenes, read.Kind, ScriptsOf(found, read.Class), read.Node, read.Export, read.Member);
             if (named.Whole && !named.Names.Any(n => n.Name == read.Name) && !named.Others.Contains(read.Name))
             {
-                findings.Add(new Finding(read.At, read.End, true, $"No {What(read.Kind)} '{read.Name}' is {named.Where}")
+                bool later = named.Later.TryGetValue(read.Name, out Version? from);
+                findings.Add(new Finding(read.At, read.End, !later, $"No {What(read.Kind)} '{read.Name}' is {named.Where}{(later ? $": the project is of Godot {named.Godot}, and Godot {from} added it" : string.Empty)}")
                 {
                     Offer = new GodotOffer { Near = Core.Spelling.Near(read.Name, named.Names.Select(n => n.Name)), Defines = Defines(scenes, read, ScriptsOf(found, read.Class)) },
                 });
@@ -678,6 +679,13 @@ internal static class GodotChecks
         /// <summary>The names it may name beside those offered, so none is marked missing: a theme item of a class deriving
         /// from the one the code knows the node as, or one the project's themes or scenes give another type.</summary>
         public IReadOnlySet<string> Others { get; init; } = new HashSet<string>();
+
+        /// <summary>The names only a Godot after the project's has, each with the first that does: not offered, and a warning
+        /// where written, as the Godot named is the one that last opened the project, not sure to be the one that runs it.</summary>
+        public IReadOnlyDictionary<string, Version> Later { get; init; } = new Dictionary<string, Version>();
+
+        /// <summary>The Godot the names are of, where the project names one.</summary>
+        public Version? Godot { get; init; }
     }
 
     /// <summary>A kind as its words name it.</summary>
@@ -853,7 +861,7 @@ internal static class GodotChecks
     public static (string Class, string Words)? ThemeDocumented(GodotScenes scenes, GodotStringKind kind, IReadOnlyList<string> scripts, string? node, string? export,
         string? member, string name)
     {
-        GodotThemeTable table = GodotThemeTable.Carried;
+        GodotThemeTable table = scenes.Defined.Theme;
         foreach (string at in ThemeTypes(scenes, scripts, node, export, member).SelectMany(t => t.Chain).Distinct(StringComparer.Ordinal))
         {
             if (table.Described(at, ThemeKind(kind), name) is { } words)
@@ -866,7 +874,7 @@ internal static class GodotChecks
 
     /// <summary>Whether Godot's default theme gives a theme item of a kind and name to a type a call looks in.</summary>
     public static bool InDefaultTheme(GodotScenes scenes, GodotStringKind kind, IReadOnlyList<string> scripts, string? node, string? export, string? member, string name) =>
-        ThemeTypes(scenes, scripts, node, export, member).SelectMany(t => t.Chain).Any(at => GodotThemeTable.Carried.Items(at, ThemeKind(kind)).Contains(name));
+        ThemeTypes(scenes, scripts, node, export, member).SelectMany(t => t.Chain).Any(at => scenes.Defined.Theme.Items(at, ThemeKind(kind)).Contains(name));
 
     /// <summary>The scenes' overrides of a theme item (<c>theme_override_colors/accent</c>) on a node of a type that looks
     /// in a type the project's themes define it for at <paramref name="defined"/>: where each writes its name.</summary>
@@ -878,10 +886,11 @@ internal static class GodotChecks
         return [.. definitions.ThemeOverrides.Where(o => o.Kind == items && o.Name == name && o.Type.Length > 0 && definitions.ThemeChain(o.Type).Any(types.Contains)).Select(o => o.Place)];
     }
 
-    /// <summary>What a theme item's name may be in the theme types the call looks it up in (<see cref="ThemeTypes"/>): the
-    /// items of each type Godot looks in that the project's themes and Godot's default theme give, its custom theme's first;
-    /// beside them, as <see cref="Candidates.Others"/>, the items of every class deriving from one, which the node may be, and
-    /// those the project's themes and scenes give any type. Known whole only for types the carried table or a theme knows.</summary>
+    /// <summary>What a theme item's name may be in the theme types the call looks it up in (<see cref="ThemeTypes"/>): the items
+    /// of each type Godot looks in that the project's themes and the default theme of the Godot it names give, its custom theme's
+    /// first; as <see cref="Candidates.Others"/>, the items of every class deriving from one, which the node may be, and those the
+    /// project's themes and scenes give any type; as <see cref="Candidates.Later"/>, those only a later Godot gives. Known whole
+    /// only for types the carried table or a theme knows, of a Godot the carried table tells.</summary>
     private static Candidates ThemeNamed(GodotDefinitions defined, GodotStringKind kind, IReadOnlyList<(string Type, IReadOnlyList<string> Chain)> types)
     {
         string what = What(kind);
@@ -889,7 +898,7 @@ internal static class GodotChecks
         {
             return new Candidates([], $"among a control's {what}s", false);
         }
-        GodotThemeTable table = GodotThemeTable.Carried;
+        GodotThemeTable table = defined.Theme;
         string items = ThemeKind(kind);
         List<string> chain = [.. types.SelectMany(t => t.Chain).Distinct(StringComparer.Ordinal)];
         List<GodotDefined> names = [];
@@ -901,12 +910,18 @@ internal static class GodotChecks
         {
             names.AddRange(table.Items(at, items).Select(n => new GodotDefined(n, $"{at}'s {what} in Godot's default theme", [])));
         }
-        HashSet<string> others = [.. types.SelectMany(t => table.Below(t.Type)).SelectMany(b => table.Items(b, items)),
+        List<string> below = [.. types.SelectMany(t => table.Below(t.Type))];
+        HashSet<string> others = [.. below.SelectMany(b => table.Items(b, items)), .. chain.Concat(below).SelectMany(t => table.Removed(t, items)),
             .. defined.ThemeItems.Concat(defined.ThemeOverrides).Where(i => i.Kind == items).Select(i => i.Name)];
+        Dictionary<string, Version> later = new(StringComparer.Ordinal);
+        foreach ((string name, Version from) in chain.Concat(below).SelectMany(t => table.Later(t, items)).OrderBy(l => l.Value))
+        {
+            later.TryAdd(name, from);
+        }
         string themes = defined.ThemeItems.Count > 0 ? "Godot's default theme or the project's themes" : "Godot's default theme";
         string named = Core.Plural.Listed([.. types.Select(t => $"{t.Type}'s")]).Replace(" and ", " or ", StringComparison.Ordinal);
-        bool whole = types.All(t => table.Knows(t.Type) || defined.ThemeVariations.ContainsKey(t.Type));
-        return new Candidates(Merged(names), $"among {named} {what}s in {themes}", whole) { Others = others };
+        bool whole = table.IsWhole && types.All(t => table.Knows(t.Type) || defined.ThemeVariations.ContainsKey(t.Type));
+        return new Candidates(Merged(names), $"among {named} {what}{(what.EndsWith('x') ? "es" : "s")} in {themes}", whole) { Others = others, Later = later, Godot = table.Godot };
     }
 
     /// <summary>The nodes an object a string's call is made on is, as the code tells it (by a node's path from the node its

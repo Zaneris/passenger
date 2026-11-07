@@ -86,6 +86,7 @@ public sealed class GodotDefinitions
     private readonly Lazy<(IReadOnlyList<GodotDefined> Keys, IReadOnlyList<string> Files, bool Whole)> translations;
     private readonly Lazy<(IReadOnlyList<GodotDefined> Names, bool Whole)> animations;
     private readonly Lazy<(IReadOnlyList<GodotThemeItem> Defined, IReadOnlyList<GodotThemeItem> Overridden, IReadOnlyDictionary<string, string> Variations)> themes;
+    private readonly Lazy<GodotThemeTable> theme;
     private readonly Dictionary<string, (IReadOnlyList<GodotDefined> Names, bool Whole)> uniforms = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int[]> lines = new(StringComparer.Ordinal);
     private readonly Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal);
@@ -104,6 +105,7 @@ public sealed class GodotDefinitions
         translations = new(ReadTranslations);
         animations = new(ReadAnimations);
         themes = new(ReadThemes);
+        theme = new(() => GodotThemeTable.Carried.For(scenes.Texts.TryGetValue(ProjectRes, out string? text) ? GodotProject.GodotOf(text) : null));
     }
 
     /// <summary>The functions a GDScript gives an input action's name to, at the arguments that take it.</summary>
@@ -280,12 +282,15 @@ public sealed class GodotDefinitions
     /// type it varies, the custom theme's first.</summary>
     public IReadOnlyDictionary<string, string> ThemeVariations => themes.Value.Variations;
 
+    /// <summary>Godot's default theme as the Godot project.godot names has it.</summary>
+    public GodotThemeTable Theme => theme.Value;
+
     /// <summary>The theme types Godot looks an item up in for a node's class and the type variation its scene gives it, as
     /// a theme's type dependencies go: the variation, each type it varies in turn (the project's themes' declarations
     /// before the default theme's) until the class, then the class and its bases; a type named alone, its own chain.</summary>
     public IReadOnlyList<string> ThemeChain(string type, string? variation = null)
     {
-        GodotThemeTable table = GodotThemeTable.Carried;
+        GodotThemeTable table = Theme;
         List<string> chain = [];
         for (string? at = variation; at is { Length: > 0 } && at != type && !chain.Contains(at);
             at = ThemeVariations.TryGetValue(at, out string? varied) || table.Variations.TryGetValue(at, out varied) ? varied : null)

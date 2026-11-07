@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Passenger.Core;
 
 namespace Passenger.Workspace;
@@ -7,10 +9,20 @@ namespace Passenger.Workspace;
 /// loads its C# from (<c>dotnet/project/assembly_name</c>), each null where the file sets none. Read from Godot's
 /// ConfigFile text: <c>[section]</c> lines, then <c>key=value</c>, a value a quoted string with escapes or any other of
 /// Godot's values (numbers, <c>PackedStringArray(…)</c>, a dictionary over several lines), comments after <c>;</c>.</summary>
-public sealed record GodotProject(string Folder, string? Name, string? MainScene, string? AssemblyName)
+public sealed partial record GodotProject(string Folder, string? Name, string? MainScene, string? AssemblyName)
 {
     /// <summary>The file that makes a folder a Godot project.</summary>
     public const string FileName = "project.godot";
+
+    /// <summary>The major and minor version a project.godot's text names in its features (<c>"4.4"</c>), of the Godot editor
+    /// that opened it last; null where it names none.</summary>
+    public static Version? GodotOf(string text) =>
+        Values(text).TryGetValue("application/config/features", out string? features) && NamedVersion().Match(features) is { Success: true } named
+            ? new Version(int.Parse(named.Groups[1].ValueSpan, CultureInfo.InvariantCulture), int.Parse(named.Groups[2].ValueSpan, CultureInfo.InvariantCulture))
+            : null;
+
+    [GeneratedRegex("\"(\\d{1,4})\\.(\\d{1,4})[.\"]")]
+    private static partial Regex NamedVersion();
 
     /// <summary>The Godot project of a folder, or null when it has no project.godot or it cannot be read.</summary>
     public static GodotProject? Read(string folder)

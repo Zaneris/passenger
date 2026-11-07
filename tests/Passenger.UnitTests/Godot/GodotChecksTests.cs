@@ -601,6 +601,38 @@ public class GodotChecksTests
         Assert.Equal("editor_only", colors.Names[^1].Name);
     }
 
+    /// <summary>The theme items of the Godot project.godot names: 4.4's Label has no focus style, so it is not offered and is
+    /// warned of as a later Godot's; 4.5's has it; a typo stays an error; and where the project names a Godot the carried table
+    /// does not tell, or none, nothing older is said to be missing.</summary>
+    [Theory]
+    [InlineData("\"4.4\"", false, "No theme stylebox 'focus' is among Label's theme styleboxes in Godot's default theme: the project is of Godot 4.4, and Godot 4.5 added it")]
+    [InlineData("\"4.5\"", true, "")]
+    [InlineData("\"4.9\"", true, "")]
+    public void A_theme_item_is_read_by_the_godot_the_project_names(string godot, bool offered, string warned)
+    {
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
+        {
+            ["res://main.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n"),
+        }, texts: new Dictionary<string, string> { ["res://project.godot"] = $"[application]\n\nconfig/features=PackedStringArray({godot}, \"C#\")\n" });
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
+        GodotCodeFound found = Found(asked, []) with { Kinds = [new GodotKindRead(GodotStringKind.ThemeStyle, "focus", At, End, true, false, 0, null, null, "Label")] };
+        IReadOnlyList<GodotChecks.Finding> findings = GodotChecks.Findings(scenes, asked, found, _ => true);
+        Assert.Equal(warned.Length == 0 ? [] : [(false, warned)], findings.Select(f => (f.Error, f.Message)));
+        Assert.Equal(offered, GodotChecks.Named(scenes, GodotStringKind.ThemeStyle, [], ".", null, "Label").Names.Any(n => n.Name == "focus"));
+    }
+
+    [Fact]
+    public void A_theme_item_only_an_older_godot_had_is_no_error_where_the_project_names_no_godot()
+    {
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
+        {
+            ["res://main.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n"),
+        }, texts: new Dictionary<string, string> { ["res://project.godot"] = "config_version=5\n" });
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
+        GodotCodeFound found = Found(asked, []) with { Kinds = [new GodotKindRead(GodotStringKind.ThemeIcon, "color_okhsl_hue", At, End, true, false, 0, null, null, "ColorPicker")] };
+        Assert.Empty(GodotChecks.Findings(scenes, asked, found, _ => true));
+    }
+
     /// <summary>A layer's number outside the layers Godot numbers is an error, one inside never; an AnimationTree's parameter
     /// its tree does not make is one where the code tells the tree; a global shader uniform project.godot lacks is one.</summary>
     [Fact]
