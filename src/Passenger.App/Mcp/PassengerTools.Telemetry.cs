@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Passenger.App.Aspire;
+using Passenger.App.Debugging;
 using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
@@ -142,7 +143,8 @@ public sealed partial class PassengerTools
 
     /// <summary>A resource's .NET program's metrics for an agent, as the Aspire window's Stats tab reads them: its runtime's
     /// instruments heard for a few collections (the meters it publishes itself read in a second session), each one's latest
-    /// value and rate, at most <paramref name="limit"/>, saying how many more there were.</summary>
+    /// value and rate, at most <paramref name="limit"/>, saying how many more there were. A program the debugger holds
+    /// paused, whose runtime answers no session's start, is refused at once.</summary>
     private async Task<TelemetryInfo> MetricsOfAsync(ProjectSession current, string? appHost, string? resource, int limit, CancellationToken cancel)
     {
         if (appHost is null && (resource is null ? current.Game : current.Games.FirstOrDefault(g => g.Name.Equals(resource, StringComparison.OrdinalIgnoreCase))) is { } game)
@@ -203,6 +205,10 @@ public sealed partial class PassengerTools
                     published.Add(meter);
                 }
             }, why => enough.TrySetException(new InvalidOperationException($"{selected.Resource.DisplayName}: {why}")));
+            if (current.Debug.Debugging(program) is { State: DebugState.Paused })
+            {
+                throw new InvalidOperationException(Refusals.PausedInDebugger(selected.Resource.DisplayName, "read its metrics"));
+            }
             LiveMetrics live;
             try
             {

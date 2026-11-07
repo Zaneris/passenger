@@ -183,18 +183,20 @@ public sealed class MetricsPane : DockPanel
     /// <summary>The source whose readings it is fed, while it is.</summary>
     public string? Feeding => fed ? name : null;
 
-    /// <summary>Begins reading, in place of the session before (<paramref name="again"/>, with the meters published since),
-    /// asked again for a few seconds while the runtime has yet to open its port.</summary>
+    /// <summary>Begins reading, in place of the session before (<paramref name="again"/>, with the meters published since).
+    /// A start that failed is said at once: asked again, saying so, only while the runtime has yet to open its port (in a
+    /// container, a few times, its tools saying no more); left to <see cref="DebuggerChanged"/> once the debugger pauses the
+    /// program; else said and left.</summary>
     private async Task FollowAsync(int follow, bool again)
     {
-        using IDisposable held = BackgroundWork.Scope();
+        using IDisposable working = BackgroundWork.Scope();
         if (again && live is { } before)
         {
             live = null;
             await before.DisposeAsync();
         }
-        string? failed = null;
-        for (int attempt = 0; attempt < 15 && follow == follows; attempt++)
+        DateTime first = DateTime.UtcNow;
+        for (int attempt = 1; follow == follows; attempt++)
         {
             try
             {
@@ -211,15 +213,30 @@ public sealed class MetricsPane : DockPanel
             }
             catch (ProfilingException error)
             {
-                failed = error.Message;
+                if (follow != follows)
+                {
+                    return;
+                }
+                if (Paused?.Invoke(process, place) == true)
+                {
+                    held = true;
+                    Say(Refusals.MetricsWhilePaused(name));
+                    return;
+                }
+                bool askAgain = place is null ? SessionStarts.AskAgain(error, DateTime.UtcNow - first, HeldStart.PortLimit) : attempt < ContainerAttempts;
+                if (!askAgain)
+                {
+                    Say($"{name}: {error.Message}");
+                    return;
+                }
+                Say(place is null ? $"Waiting for {name}'s runtime to open its diagnostic port…" : $"{name}: {error.Message}; asking again…");
                 await Task.Delay(TimeSpan.FromMilliseconds(200));
             }
         }
-        if (follow == follows && failed is not null)
-        {
-            Say($"{name}: {failed}");
-        }
     }
+
+    /// <summary>How many times a program in a container is asked for its metrics, whose tools say only that they failed.</summary>
+    private const int ContainerAttempts = 15;
 
     /// <summary>What a session hears, taken on the window's thread while it is still the pane's.</summary>
     private MetricsHeard Heard(int follow) => new(

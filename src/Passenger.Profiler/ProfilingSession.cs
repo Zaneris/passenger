@@ -719,4 +719,9 @@ public sealed class ProfilingSession : IAsyncDisposable
 
 /// <summary>Why a program could not be profiled, in words for the person: its folder or program missing, a start that
 /// failed, or a program that never reached the profiler.</summary>
-public sealed class ProfilingException(string message, Exception? inner = null) : Exception(message, inner);
+public sealed class ProfilingException(string message, Exception? inner = null) : Exception(message, inner)
+{
+    /// <summary>Whether the program runs but its runtime has yet to open its diagnostic port, so the same start may succeed a
+    /// moment later (<see cref="SessionStarts.AskAgain"/>).</summary>
+    public bool NotYetOpen { get; init; }
+}

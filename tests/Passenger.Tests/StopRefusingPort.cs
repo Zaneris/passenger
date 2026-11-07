@@ -197,7 +197,7 @@ public sealed class StopRefusingPort : IDisposable
 
     /// <summary>The folder the program's runtime keeps its socket in, where the library looks for it: on Linux the program's
     /// own TMPDIR, read from its environment, else this process's temporary folder.</summary>
-    private static string SocketFolder(int processId)
+    internal static string SocketFolder(int processId)
     {
         if (OperatingSystem.IsLinux()
             && File.ReadAllText($"/proc/{processId}/environ").Split('\0').FirstOrDefault(v => v.StartsWith("TMPDIR=", StringComparison.Ordinal)) is { } set)
