@@ -118,7 +118,7 @@ public sealed class AspireClient(string? program = null)
             JsonElement json = await SnapshotAsync(["describe", "--format", "json", "--include-hidden", "--include-disabled-commands"], appHost, cancel);
             IReadOnlyList<JsonElement> resources = AspireJson.Array(json, "resources", required: true);
             CheckCount(resources.Count, ResourceLimit, "resources");
-            JsonElement[] dashboards = resources.Where(resource => AspireJson.String(resource, "displayName") == "aspire-dashboard").Take(2).ToArray();
+            JsonElement[] dashboards = resources.Where(resource => AspireJson.String(resource, "displayName") == DashboardAddress.Resource).Take(2).ToArray();
             if (dashboards.Length != 1)
             {
                 throw new IOException($"Aspire {SupportedVersion} must expose exactly one aspire-dashboard resource to connect to this AppHost");

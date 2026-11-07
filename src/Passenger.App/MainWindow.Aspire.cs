@@ -136,6 +136,13 @@ public partial class MainWindow
                 containersView?.Regroup();
             }
         };
+        next.Aspire.DashboardPlaced += (_, app) =>
+        {
+            if (session == next && !next.IsEnded)
+            {
+                model.TelemetryMoved(app.Configuration.Project);
+            }
+        };
         next.Aspire.ContainerEnginesChanged += (_, _) =>
         {
             if (session == next && !next.IsEnded)

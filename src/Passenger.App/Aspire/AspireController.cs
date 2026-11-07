@@ -466,7 +466,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             {
                 app.Runner.Line += (_, line) => taken ??= TakenPorts.SaidIn(line, port) ? line.Trim() : null;
             }
-            ConfigureDashboard(app, environment);
+            string? hosting = workspace.Projects.FirstOrDefault(project => PathNames.Same(project.Path, configuration.Project)) is { } host
+                ? AppHostSteps.HostingVersionOf(host) : null;
+            ConfigureDashboard(app, environment, DashboardAddress.PlacedIn(hosting));
             app.Runner.Exited += (_, _) => BackgroundWork.Track(StopAppAsync(app));
             ProcessStartInfo hostStart = ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory);
             hostStart.Environment.Remove(AspireVariables.DebugSessionCertificate);
@@ -561,12 +563,22 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             {
                 ContainersChanged?.Invoke(this, app);
             }
+            if (app.PlacesDashboard && app.DashboardEndpoint is null
+                && DashboardAddress.FromResources(snapshot.Select(resource => resource.Data)) is { } placed)
+            {
+                app.DashboardEndpoint = placed;
+                DashboardPlaced?.Invoke(this, app);
+            }
         };
         app.Following = connection.Follow();
     }
 
     /// <summary>The containers a run's resources name changed (<see cref="AspireAppRun.KnownContainerIds"/>).</summary>
     public event EventHandler<AspireAppRun>? ContainersChanged;
+
+    /// <summary>A run's dashboard, placed by its orchestrator, was read where it was placed: its telemetry is there now
+    /// (<see cref="AspireAppRun.PlacesDashboard"/>).</summary>
+    public event EventHandler<AspireAppRun>? DashboardPlaced;
 
     private static async Task Reported(Task work)
     {
@@ -624,23 +636,33 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             + $"({said}): it is started again on another port.";
     }
 
-    private static void ConfigureDashboard(AspireAppRun app, IDictionary<string, string> environment)
+    /// <summary>Where the AppHost's dashboard is called, and its key: the first HTTP address its environment gives, else one
+    /// Passenger adds. Where its orchestrator <paramref name="places"/> it, that is port 0, the orchestrator's to choose,
+    /// read back from the dashboard's resource (<see cref="Follow"/>); else a port free now, which the dashboard binds only
+    /// as it starts.</summary>
+    private static void ConfigureDashboard(AspireAppRun app, IDictionary<string, string> environment, bool places)
     {
         string urls = environment.TryGetValue(AspNetCoreVariables.Urls, out string? configured) ? configured
             : Environment.GetEnvironmentVariable(AspNetCoreVariables.Urls) ?? string.Empty;
-        Uri? existing = DashboardAddress.FromUrls(urls);
-        using TcpListener port = new(IPAddress.Loopback, 0);
-        if (existing is null)
+        app.DashboardEndpoint = DashboardAddress.FromUrls(urls);
+        string? added = null;
+        if (app.DashboardEndpoint is null && places)
         {
-            port.Start();
+            app.PlacesDashboard = true;
+            added = DashboardAddress.Unplaced;
         }
-        app.DashboardEndpoint = existing ?? new Uri($"http://127.0.0.1:{((IPEndPoint)port.LocalEndpoint).Port}");
+        else if (app.DashboardEndpoint is null)
+        {
+            using TcpListener port = new(IPAddress.Loopback, 0);
+            port.Start();
+            app.DashboardEndpoint = new Uri($"http://127.0.0.1:{((IPEndPoint)port.LocalEndpoint).Port}");
+            added = app.DashboardEndpoint.AbsoluteUri;
+        }
         app.DashboardApiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         environment["AppHost__DashboardApiKey"] = app.DashboardApiKey;
-        if (existing is null)
+        if (added is not null)
         {
-            environment[AspNetCoreVariables.Urls] = string.IsNullOrWhiteSpace(urls) ? app.DashboardEndpoint.AbsoluteUri
-                : $"{urls.TrimEnd(';')};{app.DashboardEndpoint.AbsoluteUri}";
+            environment[AspNetCoreVariables.Urls] = string.IsNullOrWhiteSpace(urls) ? added : $"{urls.TrimEnd(';')};{added}";
         }
     }
 
@@ -1413,6 +1435,10 @@ public sealed class AspireAppRun : ServiceRun
     internal Uri? ResourceServiceEndpoint { get; set; }
     internal string ResourceServiceKey { get; set; } = string.Empty;
     internal Uri? DashboardEndpoint { get; set; }
+
+    /// <summary>Whether its orchestrator places its dashboard's HTTP address, unknown (<see cref="DashboardEndpoint"/> null)
+    /// until the dashboard's resource says where (<see cref="DashboardAddress.FromResources"/>).</summary>
+    internal bool PlacesDashboard { get; set; }
     internal string DashboardApiKey { get; set; } = string.Empty;
     public override Telemetry.TelemetrySource? Telemetry => DashboardEndpoint is { } endpoint && DashboardApiKey.Length > 0 ? new(endpoint, DashboardApiKey) : null;
     internal bool ProfileClaimed { get; set; }

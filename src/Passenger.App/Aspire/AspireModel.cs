@@ -278,6 +278,17 @@ public sealed class AspireModel : IDisposable
         AppSelectionChanged?.Invoke(this, SelectedApp);
     }
 
+    /// <summary>An AppHost's telemetry is read elsewhere now (its dashboard's address found): the Telemetry tab follows it
+    /// where that AppHost is the one shown.</summary>
+    public void TelemetryMoved(string appHostPath)
+    {
+        UiThread.Check();
+        if (!disposed && SelectedApp is { } app && PathNames.Same(app.AppHostPath, appHostPath))
+        {
+            StreamsDue?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     /// <summary>Another row chosen in the view's list (a click, the keys).</summary>
     internal void Choose(RunItem<AspireRow>? item)
     {

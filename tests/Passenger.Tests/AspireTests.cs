@@ -481,6 +481,49 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         }
     }
 
+    /// <summary>The starter whose profile names no address for its dashboard is handed one at port 0, which its orchestrator
+    /// places itself: the dashboard's resource says where, and a request's structured log is read there.</summary>
+    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
+    public void A_starter_whose_profile_names_no_dashboard_address_has_its_logs_read_where_its_orchestrator_placed_the_dashboard()
+    {
+        string settings = $"First/{AspireApp.Name}.AppHost/Properties/launchSettings.json";
+        JsonObject launch = JsonNode.Parse(File.ReadAllText(project.PathOf(settings)))!.AsObject();
+        Assert.True(launch["profiles"]!["http"]!.AsObject().Remove("applicationUrl"), "The starter's http profile names no applicationUrl to take away");
+        project.Rewrite(settings, launch.ToJsonString());
+        MainWindow window = OpenRunning();
+        try
+        {
+            AspireAppRun app = Assert.Single(window.AspireRuntime.Apps);
+            Ui.WaitFor(() => app.Telemetry is not null, () => $"the dashboard's resource to say where its orchestrator placed it ({DashboardUrls(window)})");
+            Uri placed = app.Telemetry!.Endpoint;
+            Assert.True(placed.IsLoopback && placed.Port > 0 && DashboardUrls(window).Contains($":{placed.Port}", StringComparison.Ordinal),
+                $"The dashboard is read at {placed}, where its resource says {DashboardUrls(window)}");
+
+            using HttpClient http = Client();
+            Assert.Equal("5", Ui.Await(http.GetStringAsync(new Uri(HttpUrl(Resource(window, "webfrontend")), "/passenger-test")), "the frontend's cross-service HTTP response"));
+            Roomy(window);
+            FindAction(window, "Show Aspire Structured logs");
+            RefreshUntil(window, () => window.AspireWindow.Telemetry.Logs.Any(log => log.Data.GetRawText().Contains("Passenger request", StringComparison.Ordinal)),
+                "the API's structured request log, read where the dashboard was placed");
+            int[] owned = OwnedPids(window);
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Count == 0 && owned.All(pid => !Processes.IsRunning(pid)), "Stop to end the AppHost and every service");
+        }
+        catch (TimeoutException error)
+        {
+            throw new TimeoutException($"{error.Message}\n{TelemetryDiagnostics(window)}", error);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string DashboardUrls(MainWindow window) => string.Join(", ", window.Aspire.ResourceSnapshots
+            .Where(resource => resource.DisplayName == DashboardAddress.Resource)
+            .SelectMany(resource => JsonMembers.Items(resource.Data, "urls"))
+            .Select(url => $"{JsonMembers.Text(url, "name")} {Redacted(JsonMembers.Text(url, "url") ?? "none")}"));
+    }
+
     [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
     public void A_discovered_single_file_AppHost_runs_through_the_window_with_its_profiles_number_value_and_one_beside_a_project_is_refused_before_starting_a_process()
     {

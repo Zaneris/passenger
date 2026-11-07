@@ -1093,6 +1093,52 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>An AppHost whose profile names no HTTP address for its dashboard is handed one at port 0, which its
+    /// orchestrator places, never a port Passenger chose and let go: its logs are read where the dashboard's resource says
+    /// the orchestrator placed it, the Telemetry tab, shown before then, following them once it says so.</summary>
+    [AvaloniaFact]
+    public void An_AppHost_given_no_dashboard_address_has_its_logs_read_where_its_orchestrator_placed_the_dashboard()
+    {
+        project.Reset();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource { Name = "apiservice", DisplayName = "apiservice", Uid = "api", ResourceType = "Project", State = "Running" });
+        AspireDashboardHost dashboard = Ui.Await(AspireDashboardHost.StartAsync(), "the stand-in dashboard");
+        dashboard.Streams = true;
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            string[] told = File.ReadAllText(project.UrlsFile).Split('\n');
+            Assert.True(told[0] == DashboardAddress.Unplaced,
+                $"The AppHost was told to serve its dashboard at {told[0]}, a port chosen and let go, which another program can take before it binds it");
+            AspireAppRun app = Assert.Single(window.AspireRuntime.Apps);
+            FindAction(window, "Show Aspire Resources");
+            Ui.Click(Tab(window, "Telemetry"));
+            Assert.True(app.Telemetry is null, $"The dashboard was read at {app.Telemetry?.Endpoint} before its resource said where it was placed");
+
+            backend.PushResource(new Resource
+            {
+                Name = "aspire-dashboard-abcdefgh", DisplayName = DashboardAddress.Resource, Uid = "dashboard", ResourceType = "Executable", State = "Running", IsHidden = true,
+                Urls =
+                {
+                    new Url { EndpointName = "otlp-http", FullUrl = "http://127.0.0.1:19065" },
+                    new Url { EndpointName = "http", FullUrl = $"http://127.0.0.1:{dashboard.Endpoint.Port}/login?t=0123abcd" },
+                },
+            });
+            Ui.WaitFor(() => dashboard.Following("logs") == 1,
+                () => $"the Telemetry tab to follow the dashboard's logs where its resource says it was placed (read at {app.Telemetry?.Endpoint.ToString() ?? "nothing"})");
+            int sent = SendLogs(dashboard, 0, 1);
+            Ui.WaitFor(() => LogLanded(window, sent), "the placed dashboard's log to land in the Telemetry tab");
+            Assert.Equal(File.ReadAllText(project.DashboardKeyFile), dashboard.Requests[^1].Key);
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(dashboard.DisposeAsync().AsTask()), "the stand-in dashboard to stop");
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>A run of an AppHost ends with its own AppHosts, whatever another configuration's still runs: with the stand-in
     /// AppHost running, Run of a second AppHost of the folder, whose program then ends, ends that run (what an agent's run
     /// waits on), the first running on.</summary>
