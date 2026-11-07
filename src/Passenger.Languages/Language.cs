@@ -108,11 +108,15 @@ public sealed class Language
 
     private readonly IReadOnlyList<FilePattern> patterns;
 
+    /// <summary>What finds the lines of a file of the language whose indentation is no block's (a continued line, a docstring's),
+    /// which its detected indentation passes over; null for a language with none.</summary>
+    private readonly Func<ReadOnlySpan<char>, IReadOnlySet<int>>? blockless;
+
     private Language([IdentifierOf(typeof(LanguageIds))] string id, string name, IReadOnlyList<FilePattern> patterns, string? line = null,
         (string Start, string End)? block = null, int indent = 4, GrammarFile? grammar = null, Func<TextDocument, IFoldFinder>? folds = null,
         LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false, bool tabs = false,
         bool spacesAlone = false, HashSet<string>? blockWords = null, Func<TextSnapshot, IReadOnlySet<int>>? literals = null,
-        Func<TextSnapshot, IReadOnlySet<int>>? continued = null)
+        Func<TextSnapshot, IReadOnlySet<int>>? continued = null, Func<ReadOnlySpan<char>, IReadOnlySet<int>>? blockless = null)
     {
         Id = id;
         Name = name;
@@ -130,6 +134,7 @@ public sealed class Language
         BlockWords = blockWords;
         Literals = literals;
         Continued = continued;
+        this.blockless = blockless;
         All.Add(this);
     }
 
@@ -236,7 +241,7 @@ public sealed class Language
     public static readonly Language Python = new("python", "Python", ["*.py", "*.pyi", "*.pyw"], line: "#",
         grammar: new("source.python", "MagicPython.tmLanguage.json"),
         blockWords: ["async", "case", "class", "def", "elif", "else", "except", "finally", "for", "if", "match", "try", "while", "with"],
-        continued: ContinuedLines.Python);
+        continued: ContinuedLines.Python, blockless: ContinuedLines.PythonBlockless);
 
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
@@ -313,8 +318,10 @@ public sealed class Language
     /// <summary>The language id a server is told a file of this language is in: its pattern's, else the language's own.</summary>
     public string IdOf(string path) => PatternOf(path)?.Id ?? Id;
 
-    /// <summary>The indentation a file's own lines show, read as tags where the language is markup.</summary>
-    public IndentOptions? Detect(ReadOnlySpan<char> text) => Indentation.Detect(text, Indent.TabWidth, markup: Markup != MarkupKind.None);
+    /// <summary>The indentation a file's own lines show, read as tags where the language is markup, the lines whose indentation is
+    /// no block's taking no step.</summary>
+    public IndentOptions? Detect(ReadOnlySpan<char> text) =>
+        Indentation.Detect(text, Indent.TabWidth, markup: Markup != MarkupKind.None, blockless: blockless?.Invoke(text));
 
     public override string ToString() => Name;
 

@@ -16,36 +16,82 @@ public static class ContinuedLines
     public static IReadOnlySet<int> Python(TextSnapshot text)
     {
         HashSet<int> lines = [];
-        int depth = 0;
-        string? quote = null;
-        bool joined = false;
+        PythonLines reading = new();
         for (int i = 0; i < text.LineCount; i++)
         {
-            string line = text.GetLineText(i).TrimEnd('\r');
-            int lead = line.Length - line.TrimStart(' ', '\t', '\f').Length;
-            if (quote is null && depth > 0 && StatementsAlone.Contains(WordAt(line, lead)))
+            if (reading.Next(text.GetLineText(i).AsSpan().TrimEnd('\r')) is Begins.Continued)
+            {
+                lines.Add(i);
+            }
+        }
+        return lines;
+    }
+
+    /// <summary>The lines of a Python file whose indentation is no block's, by its lines as <c>\n</c> ends them: those going on
+    /// from the line before (<see cref="Python"/>) and those beginning inside a string, a docstring's text among them.</summary>
+    public static IReadOnlySet<int> PythonBlockless(ReadOnlySpan<char> text)
+    {
+        HashSet<int> lines = [];
+        PythonLines reading = new();
+        for (int i = 0; ; i++)
+        {
+            int feed = text.IndexOf('\n');
+            if (reading.Next((feed < 0 ? text : text[..feed]).TrimEnd('\r')) is not Begins.Code)
+            {
+                lines.Add(i);
+            }
+            if (feed < 0)
+            {
+                return lines;
+            }
+            text = text[(feed + 1)..];
+        }
+    }
+
+    private enum Begins
+    {
+        Code,
+        Continued,
+        InString,
+    }
+
+    /// <summary>A Python file read a line at a time, outside strings and comments: the brackets open, the string open, and
+    /// whether the line before ended in a backslash.</summary>
+    private struct PythonLines
+    {
+        private int depth;
+        private char quote;
+        private int quotes;
+        private bool joined;
+
+        /// <summary>Where the next line begins, then reads it.</summary>
+        public Begins Next(ReadOnlySpan<char> line)
+        {
+            int lead = line.Length - line.TrimStart(" \t\f").Length;
+            Begins begins = quotes > 0 ? Begins.InString : Begins.Code;
+            if (quotes == 0 && depth > 0 && StatementsAlone.GetAlternateLookup<ReadOnlySpan<char>>().Contains(WordAt(line, lead)))
             {
                 depth = 0;
             }
-            else if (quote is null && (depth > 0 || joined))
+            else if (quotes == 0 && (depth > 0 || joined))
             {
-                lines.Add(i);
+                begins = Begins.Continued;
             }
             joined = false;
             for (int at = 0; at < line.Length; at++)
             {
                 char c = line[at];
-                if (quote is not null)
+                if (quotes > 0)
                 {
                     if (c == '\\')
                     {
                         at++;
                         joined = at >= line.Length;
                     }
-                    else if (string.CompareOrdinal(line, at, quote, 0, quote.Length) == 0)
+                    else if (c == quote && (quotes == 1 || line[at..].StartsWith([quote, quote, quote])))
                     {
-                        at += quote.Length - 1;
-                        quote = null;
+                        at += quotes - 1;
+                        quotes = 0;
                     }
                 }
                 else if (c == '#')
@@ -54,8 +100,9 @@ public static class ContinuedLines
                 }
                 else if (c is '"' or '\'')
                 {
-                    quote = at + 2 < line.Length && line[at + 1] == c && line[at + 2] == c ? new string(c, 3) : c.ToString();
-                    at += quote.Length - 1;
+                    quote = c;
+                    quotes = at + 2 < line.Length && line[at + 1] == c && line[at + 2] == c ? 3 : 1;
+                    at += quotes - 1;
                 }
                 else if (c is '(' or '[' or '{')
                 {
@@ -71,21 +118,21 @@ public static class ContinuedLines
                 }
             }
             // A string of one quote ends with its line, but for a backslash before the line's end.
-            if (quote is { Length: 1 } && !joined)
+            if (quotes == 1 && !joined)
             {
-                quote = null;
+                quotes = 0;
             }
+            return begins;
         }
-        return lines;
-    }
 
-    private static string WordAt(string line, int at)
-    {
-        int end = at;
-        while (end < line.Length && (char.IsLetterOrDigit(line[end]) || line[end] == '_'))
+        private static ReadOnlySpan<char> WordAt(ReadOnlySpan<char> line, int at)
         {
-            end++;
+            int end = at;
+            while (end < line.Length && (char.IsLetterOrDigit(line[end]) || line[end] == '_'))
+            {
+                end++;
+            }
+            return line[at..end];
         }
-        return line[at..end];
     }
 }

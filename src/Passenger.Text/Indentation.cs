@@ -42,10 +42,10 @@ public static class Indentation
 
     /// <summary>The indentation a file's lines use: tabs when more lines start with a tab than with spaces, else the step most
     /// changes between neighbouring lines take, when more than half take it, 8 being two of 4 where 4 is taken too and a quarter
-    /// of the indented lines stand halfway between 8's levels (continuations 8 deep in a file of 4). Blank lines and a block
-    /// comment's <c>*</c> lines say nothing, nor in <paramref name="markup"/> a line beginning inside a tag or a comment. Null
-    /// when fewer than <paramref name="minimumLines"/> lines are indented, or no step stands out.</summary>
-    public static IndentOptions? Detect(ReadOnlySpan<char> text, int tabWidth, int minimumLines = 2, bool markup = false)
+    /// of the indented lines stand halfway between 8's levels. Blank lines, a block comment's <c>*</c> lines and in <paramref
+    /// name="markup"/> a line inside a tag or a comment say nothing; a <paramref name="blockless"/> line (by <c>\n</c>) takes no
+    /// step. Null when fewer than <paramref name="minimumLines"/> lines are indented, or no step stands out.</summary>
+    public static IndentOptions? Detect(ReadOnlySpan<char> text, int tabWidth, int minimumLines = 2, bool markup = false, IReadOnlySet<int>? blockless = null)
     {
         int tabs = 0;
         int spaces = 0;
@@ -53,7 +53,7 @@ public static class Indentation
         Dictionary<int, int> steps = [];
         int? previous = null;
         MarkupState state = default;
-        while (text.Length > 0)
+        for (int number = 0; text.Length > 0; number++)
         {
             int feed = text.IndexOf('\n');
             ReadOnlySpan<char> line = feed < 0 ? text : text[..feed];
@@ -86,6 +86,10 @@ public static class Indentation
             {
                 spaces++;
                 halfway += lead % WidestStep == WidestStep / 2 ? 1 : 0;
+            }
+            if (blockless?.Contains(number) == true)
+            {
+                continue;
             }
             int step = previous is { } before ? Math.Abs(lead - before) : 0;
             if (step is > 0 and <= WidestStep)
