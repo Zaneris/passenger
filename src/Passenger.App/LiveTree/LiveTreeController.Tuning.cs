@@ -7,15 +7,15 @@ using Passenger.Xaml.Features;
 namespace Passenger.App.LiveTree;
 
 /// <summary>A running Godot game's values tuned from the properties pane, and kept: Keep writes a value where it comes from
-/// (<see cref="GodotKeep"/>), shown before it writes and one command of Undo; Keep All a node's; and the values a game that
-/// ended changed and did not keep listed over the tree until each is kept or the lot discarded.</summary>
+/// (<see cref="GodotKeep"/>), shown before it writes and one command of Undo; Keep All a node's; and the values each game that
+/// ended changed and did not keep listed over the tree in turn, a game's until each is kept or the lot discarded.</summary>
 public sealed partial class LiveTreeController : IGodotTuner
 {
-    /// <summary>What lists the values a game that ended left unkept, while it does.</summary>
+    /// <summary>What lists the values the first of the games that ended left unkept, while one did.</summary>
     private GodotUnkeptPanel? unkept;
 
-    /// <summary>The game whose unkept values are listed.</summary>
-    private GodotGame? unkeptOf;
+    /// <summary>The games that ended with values unkept, each held until they are kept or discarded, the first listed.</summary>
+    private readonly List<GodotGame> unkeptOf = [];
 
     /// <summary>The list of values a game that ended left unkept, while it shows.</summary>
     public GodotUnkeptPanel? Unkept => unkept;
@@ -43,11 +43,10 @@ public sealed partial class LiveTreeController : IGodotTuner
 
     public void Say(string words) => parts.Say(words);
 
-    /// <summary>The tuning a value set belongs to: the game followed's, or the one whose unkept values are listed.</summary>
+    /// <summary>The tuning a value set belongs to: the game followed's, or that of a game whose unkept values are held.</summary>
     private GodotTuning? TuningOf(GodotTuned tuned) =>
         app is GodotGame game && game.Tuning.Of(tuned.Node, tuned.Name) == tuned ? game.Tuning
-        : unkeptOf is { } ended && ended.Tuning.Of(tuned.Node, tuned.Name) == tuned ? ended.Tuning
-        : null;
+        : unkeptOf.FirstOrDefault(ended => ended.Tuning.Of(tuned.Node, tuned.Name) == tuned)?.Tuning;
 
     /// <summary>The followed game's values set or read back: the rows show them where they stand, the chosen node's Keep
     /// All its count, and the list of a game that ended what is left to keep.</summary>
@@ -80,44 +79,69 @@ public sealed partial class LiveTreeController : IGodotTuner
         }
     }
 
-    /// <summary>A game's values left unkept as it ends, listed over the tree with Keep, Keep All and Discard, the window
-    /// shown and the status bar saying so; nothing for a game that left none.</summary>
+    /// <summary>A game left for another while it runs and holds values unkept, whose end says so as no one follows it then.</summary>
+    private void WatchLeft(GodotGame game)
+    {
+        game.StateChanged -= OnLeftGameState;
+        if (game.State != LiveAppState.Ended && game.Tuning.Unkept.Count > 0)
+        {
+            game.StateChanged += OnLeftGameState;
+        }
+    }
+
+    private void OnLeftGameState(object? sender, EventArgs e)
+    {
+        if (sender is GodotGame { State: LiveAppState.Ended } game)
+        {
+            game.StateChanged -= OnLeftGameState;
+            OfferUnkept(game);
+        }
+    }
+
+    /// <summary>A game's values left unkept as it ends, held until they are kept or discarded, listed over the tree with Keep,
+    /// Keep All and Discard once the games before it are done with, the window shown and the status bar saying so; nothing for
+    /// a game that left none.</summary>
     private void OfferUnkept(GodotGame game)
     {
-        if (game.State != LiveAppState.Ended || game.Tuning.Unkept is not { Count: > 0 } values || unkeptOf == game)
+        if (game.State != LiveAppState.Ended || game.Tuning.Unkept is not { Count: > 0 } values || unkeptOf.Contains(game))
         {
             return;
         }
-        if (unkeptOf is { } earlier)
-        {
-            earlier.Tuning.Changed -= OnUnkeptChanged;
-        }
-        unkeptOf = game;
+        unkeptOf.Add(game);
         game.Tuning.Changed += OnUnkeptChanged;
-        unkept = new GodotUnkeptPanel(game.Name, Keep,
-            from => IdeErrors.Observe(KeepAsync($"Keep All of {game.Name}", game.Tuning, game.Tuning.Unkept, from)),
-            () => game.Tuning.Discard());
-        unkept.Show(values);
-        view?.ShowAside(unkept);
+        ShowUnkept();
         ShowWindow();
         parts.Say($"{game.Name} ended with {Plural.Of(values.Count, "value")} changed and not kept: the Live Visual Tree lists them to keep");
     }
 
+    /// <summary>The first held game's values listed, and the games waiting behind it named; nothing over the tree for none.</summary>
+    private void ShowUnkept()
+    {
+        if (unkeptOf.Count == 0)
+        {
+            unkept = null;
+            view?.ShowAside(null);
+            return;
+        }
+        GodotGame game = unkeptOf[0];
+        if (unkept?.Of != game.Tuning)
+        {
+            unkept = new GodotUnkeptPanel(game.Name, game.Tuning, Keep,
+                from => IdeErrors.Observe(KeepAsync($"Keep All of {game.Name}", game.Tuning, game.Tuning.Unkept, from)),
+                () => game.Tuning.Discard());
+            view?.ShowAside(unkept);
+        }
+        unkept.Show(game.Tuning.Unkept, [.. unkeptOf.Skip(1).Select(g => g.Name).Distinct(StringComparer.Ordinal)]);
+    }
+
     private void OnUnkeptChanged(object? sender, EventArgs e)
     {
-        if (unkeptOf is not { } game || unkept is null)
+        foreach (GodotGame done in unkeptOf.Where(g => g.Tuning.Unkept.Count == 0).ToList())
         {
-            return;
+            done.Tuning.Changed -= OnUnkeptChanged;
+            unkeptOf.Remove(done);
         }
-        if (game.Tuning.Unkept is { Count: > 0 } left)
-        {
-            unkept.Show(left);
-            return;
-        }
-        game.Tuning.Changed -= OnUnkeptChanged;
-        unkeptOf = null;
-        unkept = null;
-        view?.ShowAside(null);
+        ShowUnkept();
     }
 
     /// <summary>Values kept where each comes from, planned together (<see cref="GodotKeeping"/>): what each write will be is

@@ -214,7 +214,7 @@ public sealed class GodotUnkeptPanel : DockPanel
     private readonly ListBox list;
     private readonly TextBlock said;
 
-    public GodotUnkeptPanel(string game, Action<GodotTuned, Control> keep, Action<Control> keepAll, Action discard)
+    public GodotUnkeptPanel(string game, GodotTuning of, Action<GodotTuned, Control> keep, Action<Control> keepAll, Action discard)
     {
         said = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(10, 8, 10, 4) };
         SetDock(said, Dock.Top);
@@ -233,10 +233,14 @@ public sealed class GodotUnkeptPanel : DockPanel
         Children.Add(answers);
         Children.Add(list);
         Game = game;
+        Of = of;
         KeepAllButton = all;
     }
 
     public string Game { get; }
+
+    /// <summary>The values of the game it lists.</summary>
+    public GodotTuning Of { get; }
 
     public Button KeepAllButton { get; }
 
@@ -245,9 +249,11 @@ public sealed class GodotUnkeptPanel : DockPanel
 
     public string Said => said.Text ?? string.Empty;
 
-    public void Show(IReadOnlyList<GodotTuned> values)
+    /// <summary>Lists its game's values, saying which other games' values come once these are kept or discarded.</summary>
+    public void Show(IReadOnlyList<GodotTuned> values, IReadOnlyList<string> waiting)
     {
-        said.Text = $"{Game} ended with {Plural.Of(values.Count, "value")} changed and not kept. Keep one where it comes from, or all of them:";
+        string next = waiting.Count == 0 ? string.Empty : $" {Plural.Listed([.. waiting.Select(w => $"{w}'s")])} come next.";
+        said.Text = $"{Game} ended with {Plural.Of(values.Count, "value")} changed and not kept. Keep one where it comes from, or all of them:{next}";
         list.ItemsSource = values;
     }
 

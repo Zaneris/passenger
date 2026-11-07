@@ -544,6 +544,7 @@ public sealed partial class LiveTreeController
             was.LoopChanged -= OnLoopChanged;
             was.Tuning.Changed -= OnTuning;
             OfferUnkept(was);
+            WatchLeft(was);
         }
         app = next;
         pickChosen = false;
