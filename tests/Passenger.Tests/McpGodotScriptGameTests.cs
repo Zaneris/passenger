@@ -93,6 +93,47 @@ public sealed class McpGodotScriptGameTests : McpRig
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>A text box in the main window, and at the same place in a second window, in which a button says its press.</summary>
+    private const string TwoWindows = "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://second.gd\" id=\"1\"]\n\n"
+        + "[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\nlayout_mode = 3\nanchors_preset = 0\noffset_right = 1000.0\noffset_bottom = 600.0\n\n"
+        + "[node name=\"Field\" type=\"LineEdit\" parent=\".\"]\nlayout_mode = 0\noffset_left = 10.0\noffset_top = 60.0\noffset_right = 210.0\noffset_bottom = 90.0\n\n"
+        + "[node name=\"Second\" type=\"Window\" parent=\".\"]\ntitle = \"Second\"\nposition = Vector2i(200, 100)\nsize = Vector2i(300, 200)\n\n"
+        + "[node name=\"Inner\" type=\"LineEdit\" parent=\"Second\"]\noffset_left = 10.0\noffset_top = 60.0\noffset_right = 210.0\noffset_bottom = 90.0\n\n"
+        + "[node name=\"Press\" type=\"Button\" parent=\"Second\"]\noffset_left = 10.0\noffset_top = 100.0\noffset_right = 110.0\noffset_bottom = 130.0\ntext = \"Press\"\n";
+
+    /// <summary>Input aimed at a second window goes to it: a click on its text box, which sits where the main window's does, and
+    /// typing land there, a click at a point of the window named presses what is there, and the main window takes input again
+    /// once aimed at. Godot runs headless, whose windows are embedded in the main one.</summary>
+    [Fact]
+    public async Task Input_aimed_at_a_second_window_goes_to_it_by_control_and_by_a_point_of_the_window_named()
+    {
+        File.WriteAllText(Path.Combine(folder, "main.tscn"), TwoWindows);
+        File.WriteAllText(Path.Combine(folder, "second.gd"), "extends Control\n\nfunc _ready() -> void:\n\t$Second/Press.pressed.connect(func() -> void: print(\"pressed in second\"))\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false,
+            environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
+        await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["waitSeconds"] = 10 });
+        await Until(async () => await Result(client, McpTools.AppTree) is { IsError: not true } tree && Text(tree).Contains("#Inner", StringComparison.Ordinal), "the game's second window");
+
+        string clicked = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Inner" }));
+        Assert.True(clicked.Contains("LineEdit#Inner @", StringComparison.Ordinal) && clicked.Contains("has the focus", StringComparison.Ordinal) && !clicked.Contains("#Field", StringComparison.Ordinal),
+            $"A click on the second window's text box answered: {clicked}");
+        Assert.Contains("it shows \"Ada\"", Text(await Call(client, McpTools.AppType, new() { ["control"] = "#Inner", ["text"] = "Ada" })), StringComparison.Ordinal);
+
+        string pressed = Text(await Call(client, McpTools.AppClick, new() { ["window"] = "#Second", ["x"] = 50, ["y"] = 115 }));
+        Assert.Contains("Button#Press @", pressed, StringComparison.Ordinal);
+        await Until(async () => Text(await Call(client, McpTools.Output)).Contains("pressed in second", StringComparison.Ordinal), $"the game to hear the button pressed ({pressed})");
+
+        string back = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Field" }));
+        Assert.Contains("LineEdit#Field @", back, StringComparison.Ordinal);
+        Assert.Contains("it shows \"Grace\"", Text(await Call(client, McpTools.AppType, new() { ["control"] = "#Field", ["text"] = "Grace" })), StringComparison.Ordinal);
+        string shown = Text(await Call(client, McpTools.AppTree, new() { ["window"] = "#Second" }));
+        Assert.True(shown.Contains("LineEdit#Inner \"Ada\"", StringComparison.Ordinal) && !shown.Contains("#Field", StringComparison.Ordinal), $"The second window's tree, named, reads:\n{shown}");
+
+        CallToolResult none = await Result(client, McpTools.AppClick, new() { ["window"] = "#Nowhere", ["x"] = 1, ["y"] = 1 });
+        Assert.True(none.IsError == true && Text(none).Contains("No window of", StringComparison.Ordinal), $"A window no one named answered: {Text(none)}");
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>A control whose script names a <c>text</c>, <c>disabled</c> and <c>editable</c> of its own, each read counted:
     /// its getter, its <c>_get</c>, and a plain <c>note</c>.</summary>
     private const string Counting = "extends Control\n\nvar getter_reads := 0\nvar get_reads := 0\nvar text := \"stored\":\n\tget:\n\t\tgetter_reads += 1\n\t\treturn \"by getter\"\n"

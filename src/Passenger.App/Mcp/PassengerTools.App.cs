@@ -117,8 +117,10 @@ public sealed partial class PassengerTools
         {
             return $"{name} has no window open";
         }
-        List<AppNode> scope = window is { Length: > 0 } ? Within(nodes, Window(nodes, window, name, own: live is { Plan: null })) : nodes;
-        List<AppNode> roots = control is { Length: > 0 } query ? [AppQuery.One(scope, query)] : [.. scope.Where(n => n.Parent is null)];
+        AppNode? named = window is not { Length: > 0 } ? null
+            : game is not null ? await GameWindowAsync(game, nodes, window) : Window(nodes, window, name, own: live is { Plan: null });
+        List<AppNode> scope = named is null ? nodes : Within(nodes, named);
+        List<AppNode> roots = control is { Length: > 0 } query ? [AppQuery.One(scope, query)] : named is not null ? [named] : [.. scope.Where(n => n.Parent is null)];
         if (filter is { Length: > 0 } wanted)
         {
             List<AppNode> under = roots.Count == 1 && roots[0].Parent is not null ? Within(scope, roots[0]) : scope;
@@ -537,9 +539,12 @@ public sealed partial class PassengerTools
             // Passenger's own: the window the agent works in, whose title is its own.
             return own && windows.FirstOrDefault(w => w.Element.Text == window.Title) is { } mine ? mine : windows[0];
         }
-        return AppQuery.Find(windows, named).FirstOrDefault(n => n.Parent is null)
-            ?? throw new ArgumentException($"No window of {app} is {named}: {string.Join("; ", windows.Select(w => Titled(w.Element)))}");
+        return WindowNamed(windows, named, app);
     }
+
+    /// <summary>The one of an app's windows a query names, else an error listing them.</summary>
+    private static AppNode WindowNamed(List<AppNode> windows, string named, string app) => AppQuery.Find(windows, named).FirstOrDefault()
+        ?? throw new ArgumentException($"No window of {app} is {named}: {string.Join("; ", windows.Select(w => Titled(w.Element)))}");
 
     /// <summary>A window's elements, the window first.</summary>
     private static List<AppNode> Within(List<AppNode> nodes, AppNode? root) =>

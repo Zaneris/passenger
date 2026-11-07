@@ -22,8 +22,9 @@ var _stepping := 0
 var _ends_step := false
 ## Whether a headless game's window was given its size, which the first call gives it.
 var _sized := false
-## Where in the viewport the last press this helper gave landed, which a pick that found nothing is looked at again at.
+## Where in its viewport the last press this helper gave landed, which a pick that found nothing is looked at again at.
 var _pressed_at := Vector2(INF, INF)
+var _pressed_in: Viewport = null
 ## The key, and its modifiers, that hands the keys back to Passenger while the game holds them in its Game window (KEY_NONE
 ## for none).
 var _keys_back := KEY_NONE
@@ -159,14 +160,14 @@ func _disabled(node: Node) -> bool:
     return (disabled is bool and disabled) or (editable is bool and not editable)
 
 
-func _flags(node: Node, view: Rect2) -> int:
+func _flags(node: Node) -> int:
     var flags := 0
     if _disabled(node):
         flags |= 1
     if node is Control:
         if node.has_focus():
             flags |= 2
-        if not view.intersects(node.get_global_rect(), true):
+        if not node.get_viewport().get_visible_rect().intersects(node.get_global_rect(), true):
             flags |= 4
     return flags
 
@@ -185,11 +186,11 @@ func _read_named(node: Node, property: String) -> Array:
 ## Each node's id, box, text and flags, and the values of those of its properties named.
 func layout(ask: int, names: Array) -> void:
     var nodes: Array = []
-    _walk(get_tree().root, nodes, get_viewport().get_visible_rect(), names)
+    _walk(get_tree().root, nodes, names)
     _say(ask, true, [nodes])
 
 
-func _walk(node: Node, nodes: Array, view: Rect2, names: Array) -> void:
+func _walk(node: Node, nodes: Array, names: Array) -> void:
     if node == self:
         return
     var box := _box(node)
@@ -198,9 +199,9 @@ func _walk(node: Node, nodes: Array, view: Rect2, names: Array) -> void:
         var read := _read_named(node, property)
         if not read.is_empty():
             values.append([property, read[0]])
-    nodes.append([node.get_instance_id(), box[0], box[1], box[2], box[3], box[4], _text(node), _flags(node, view), values])
+    nodes.append([node.get_instance_id(), box[0], box[1], box[2], box[3], box[4], _text(node), _flags(node), values])
     for child in node.get_children():
-        _walk(child, nodes, view, names)
+        _walk(child, nodes, names)
 
 
 func windows(ask: int) -> void:
@@ -232,9 +233,28 @@ func _modifiers(event: InputEventWithModifiers, modifiers: int) -> void:
     event.meta_pressed = modifiers & META != 0
 
 
-func _send(event: InputEvent) -> void:
+## Input given to the system's window a viewport is drawn in, which an embedded window's is its embedder's.
+func _send(event: InputEventFromWindow, viewport: Viewport) -> void:
+    event.window_id = viewport.get_window().get_window_id()
     Input.parse_input_event(event)
     Input.flush_buffered_events()
+
+
+## The viewport input is aimed in: a node's own, else the window named, else the game's root.
+func _viewport_of(id: int, window: int) -> Viewport:
+    var node := _node(id)
+    if node != null and node.is_inside_tree():
+        return node.get_viewport()
+    var named := _node(window)
+    return named if named is Viewport and named.is_inside_tree() else get_tree().root
+
+
+## An embedded window given the focus, as a press on it gives it: only the embedded window with the focus takes input. A
+## system's window is left where it is, its input naming it.
+func _bring(viewport: Viewport) -> void:
+    var window := viewport.get_window()
+    if window.is_embedded() and not window.has_focus():
+        window.grab_focus()
 
 
 func _frames(count: int) -> void:
@@ -248,8 +268,11 @@ func _named(node: Node) -> String:
 
 ## The point a pointer goes to in the viewport, or null once why not is said: the middle of what is in view of a Control, or
 ## x, y from its top left.
-func _aim(ask: int, id: int, has_point: bool, x: float, y: float) -> Variant:
+func _aim(ask: int, id: int, viewport: Viewport, has_point: bool, x: float, y: float) -> Variant:
     if id == 0:
+        if viewport is Window and not ClassDB.class_get_property(viewport, "visible"):
+            _say(ask, false, ["%s is hidden" % _named(viewport)])
+            return null
         return Vector2(x, y)
     if _gone(ask, id):
         return null
@@ -264,7 +287,7 @@ func _aim(ask: int, id: int, has_point: bool, x: float, y: float) -> Variant:
         _say(ask, false, ["%s is disabled" % _named(node)])
         return null
     var rect: Rect2 = node.get_global_rect()
-    var view := get_viewport().get_visible_rect()
+    var view := viewport.get_visible_rect()
     if not view.intersects(rect, true):
         _say(ask, false, ["%s is out of view" % _named(node)])
         return null
@@ -274,32 +297,36 @@ func _aim(ask: int, id: int, has_point: bool, x: float, y: float) -> Variant:
     return rect.intersection(view).get_center() if view.intersects(rect) else rect.get_center()
 
 
-## What input came to: the point, what was under it, what has the focus and what that shows (else what is under it).
-func _after(at: Vector2, under: Control, shows: Variant, told: bool) -> Array:
-    var focus := get_viewport().gui_get_focus_owner()
+## What input came to: the point, what was under it, what has the focus and what that shows (else what is under it), and the
+## window it went to.
+func _after(viewport: Viewport, at: Vector2, under: Control, shows: Variant, told: bool) -> Array:
+    var focus := viewport.gui_get_focus_owner()
     if not told:
         shows = _text(focus) if focus != null else _text(under)
-    return [at.x, at.y, under.get_instance_id() if under != null else 0, focus.get_instance_id() if focus != null else 0, shows]
+    return [at.x, at.y, under.get_instance_id() if under != null else 0, focus.get_instance_id() if focus != null else 0, shows, viewport.get_window().get_instance_id()]
 
 
-## Moves the pointer to a point, a frame given for the viewport to say what is under it.
-func _hover(at: Vector2, modifiers: int) -> Control:
-    var viewport := get_viewport()
+## Moves the pointer to a point of a viewport, a frame given for the viewport to say what is under it. Where the game's windows
+## are the system's own Godot reads that from the system's pointer, which this moves not, so the Control aimed at is taken.
+func _hover(viewport: Viewport, at: Vector2, modifiers: int, aimed: Node) -> Control:
+    _bring(viewport)
     var move := InputEventMouseMotion.new()
-    move.position = viewport.get_final_transform() * at
+    move.position = viewport.get_screen_transform() * at
     move.global_position = move.position
     _modifiers(move, modifiers)
-    _send(move)
+    _send(move, viewport)
     await _frames(1)
-    return viewport.gui_get_hovered_control()
+    return viewport.gui_get_hovered_control() if get_tree().root.gui_embed_subwindows else aimed as Control
 
 
-func click(ask: int, id: int, has_point: bool, x: float, y: float, button: int, count: int, modifiers: int) -> void:
-    var at = _aim(ask, id, has_point, x, y)
+func click(ask: int, id: int, window: int, has_point: bool, x: float, y: float, button: int, count: int, modifiers: int) -> void:
+    var viewport := _viewport_of(id, window)
+    var at = _aim(ask, id, viewport, has_point, x, y)
     if at == null:
         return
     _pressed_at = at
-    var under: Control = await _hover(at, modifiers)
+    _pressed_in = viewport
+    var under: Control = await _hover(viewport, at, modifiers, _node(id))
     if _gone(ask, id):
         return
     var target := _node(id)
@@ -310,7 +337,7 @@ func click(ask: int, id: int, has_point: bool, x: float, y: float, button: int, 
         _say(ask, false, ["%s takes no pointer at %d,%d%s" % [_named(target), at.x, at.y,
             ": its mouse_filter is Ignore" if target is Control and target.mouse_filter == Control.MOUSE_FILTER_IGNORE else ", nor does anything there"]])
         return
-    var screen: Vector2 = get_viewport().get_final_transform() * at
+    var screen: Vector2 = viewport.get_screen_transform() * at
     for i in count:
         var down := InputEventMouseButton.new()
         down.button_index = button as MouseButton
@@ -320,7 +347,7 @@ func click(ask: int, id: int, has_point: bool, x: float, y: float, button: int, 
         down.double_click = i == 1
         down.pressed = true
         _modifiers(down, modifiers)
-        _send(down)
+        _send(down, viewport)
         await _frames(1)
         # A pick under Godot's node selection is made at a physics frame between the press and the release.
         await get_tree().physics_frame
@@ -328,33 +355,35 @@ func click(ask: int, id: int, has_point: bool, x: float, y: float, button: int, 
         up.pressed = false
         up.button_mask = 0
         up.double_click = false
-        _send(up)
+        _send(up, viewport)
     await _frames(2)
-    _say(ask, true, _after(at, under, null, false))
+    _say(ask, true, _after(viewport, at, under, null, false))
 
 
 ## The body or area the game's 3D physics space holds under the last press this helper gave, as Godot's node selection
 ## casts its ray there: [whether a press and a camera are known, the node's words or "" for none].
 func shapes(ask: int) -> void:
-    var camera := get_viewport().get_camera_3d()
+    var viewport: Viewport = _pressed_in if is_instance_valid(_pressed_in) else get_viewport()
+    var camera := viewport.get_camera_3d()
     if camera == null or not _pressed_at.is_finite():
         _say(ask, true, [false, ""])
         return
     var from := camera.project_ray_origin(_pressed_at)
     var query := PhysicsRayQueryParameters3D.create(from, from + camera.project_ray_normal(_pressed_at) * camera.far)
     query.collide_with_areas = true
-    var hit := get_viewport().find_world_3d().direct_space_state.intersect_ray(query)
+    var hit := viewport.find_world_3d().direct_space_state.intersect_ray(query)
     _say(ask, true, [true, _named(hit["collider"]) if hit.get("collider") is Node else ""])
 
 
-func scroll(ask: int, id: int, has_point: bool, x: float, y: float, dx: float, dy: float, modifiers: int) -> void:
-    var at = _aim(ask, id, has_point, x, y)
+func scroll(ask: int, id: int, window: int, has_point: bool, x: float, y: float, dx: float, dy: float, modifiers: int) -> void:
+    var viewport := _viewport_of(id, window)
+    var at = _aim(ask, id, viewport, has_point, x, y)
     if at == null:
         return
-    var under: Control = await _hover(at, modifiers)
+    var under: Control = await _hover(viewport, at, modifiers, _node(id))
     if _gone(ask, id):
         return
-    var screen: Vector2 = get_viewport().get_final_transform() * at
+    var screen: Vector2 = viewport.get_screen_transform() * at
     for turn in [[dy, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_UP], [dx, MOUSE_BUTTON_WHEEL_RIGHT, MOUSE_BUTTON_WHEEL_LEFT]]:
         for i in int(round(absf(turn[0]))):
             var wheel := InputEventMouseButton.new()
@@ -364,10 +393,10 @@ func scroll(ask: int, id: int, has_point: bool, x: float, y: float, dx: float, d
             wheel.factor = 1.0
             wheel.pressed = true
             _modifiers(wheel, modifiers)
-            _send(wheel)
+            _send(wheel, viewport)
             var up := wheel.duplicate() as InputEventMouseButton
             up.pressed = false
-            _send(up)
+            _send(up, viewport)
     await _frames(2)
     var scrolled: Node = under
     while scrolled != null and not scrolled is ScrollContainer:
@@ -375,21 +404,23 @@ func scroll(ask: int, id: int, has_point: bool, x: float, y: float, dx: float, d
     var shows: Variant = null
     if scrolled != null:
         shows = "%s at %d,%d" % [_named(scrolled), scrolled.scroll_horizontal, scrolled.scroll_vertical]
-    _say(ask, true, _after(at, under, shows, true))
+    _say(ask, true, _after(viewport, at, under, shows, true))
 
 
-func _focus(id: int) -> Control:
+func _focus(id: int, viewport: Viewport) -> Control:
+    _bring(viewport)
     var node := _node(id)
     if node is Control and node.focus_mode != Control.FOCUS_NONE:
         node.grab_focus()
         return node
-    return get_viewport().gui_get_focus_owner()
+    return viewport.gui_get_focus_owner()
 
 
-func key(ask: int, id: int, chords: Array) -> void:
+func key(ask: int, id: int, window: int, chords: Array) -> void:
     if _gone(ask, id):
         return
-    _focus(id)
+    var viewport := _viewport_of(id, window)
+    _focus(id, viewport)
     for chord in chords:
         var code := OS.find_keycode_from_string(chord[0])
         if code == KEY_NONE:
@@ -403,23 +434,24 @@ func key(ask: int, id: int, chords: Array) -> void:
         _modifiers(press, modifiers)
         if modifiers & (CTRL | ALT | META) == 0 and code >= KEY_SPACE and code <= KEY_ASCIITILDE:
             press.unicode = code + 32 if code >= KEY_A and code <= KEY_Z and modifiers & SHIFT == 0 else code
-        _send(press)
+        _send(press, viewport)
         await _frames(1)
         var release := press.duplicate() as InputEventKey
         release.pressed = false
-        _send(release)
+        _send(release, viewport)
     await _frames(2)
-    _say(ask, true, _after(Vector2.ZERO, null, null, false))
+    _say(ask, true, _after(viewport, Vector2.ZERO, null, null, false))
 
 
-func type(ask: int, id: int, text: String, replace: bool) -> void:
+func type(ask: int, id: int, window: int, text: String, replace: bool) -> void:
     if _gone(ask, id):
         return
     var aimed := _node(id)
     if aimed != null and not (aimed is Control and aimed.focus_mode != Control.FOCUS_NONE):
         _say(ask, false, ["%s takes no focus, so nothing typed would reach it: a LineEdit, a TextEdit or another control that takes the focus does" % _named(aimed)])
         return
-    var focus := _focus(id)
+    var viewport := _viewport_of(id, window)
+    var focus := _focus(id, viewport)
     if replace and focus != null and focus.has_method("select_all"):
         focus.select_all()
     for character in text:
@@ -434,12 +466,12 @@ func type(ask: int, id: int, text: String, replace: bool) -> void:
             var named := OS.find_keycode_from_string(character.to_upper())
             if named != KEY_NONE and character.length() == 1 and character.to_upper() != character.to_lower():
                 press.keycode = named
-        _send(press)
+        _send(press, viewport)
         var release := press.duplicate() as InputEventKey
         release.pressed = false
-        _send(release)
+        _send(release, viewport)
     await _frames(2)
-    _say(ask, true, _after(Vector2.ZERO, null, null, false))
+    _say(ask, true, _after(viewport, Vector2.ZERO, null, null, false))
 
 
 func _process(_delta: float) -> void:

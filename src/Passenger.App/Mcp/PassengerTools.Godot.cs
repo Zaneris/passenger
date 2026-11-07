@@ -126,7 +126,19 @@ public sealed partial class PassengerTools
     private async Task<(List<AppNode> Nodes, AppNode Window)> GameTreeOf(GodotGame game, string? window)
     {
         List<AppNode> nodes = AppQuery.Flatten((await GameTreeAsync(game, [])).Tree.Roots);
-        return (nodes, Window(nodes, window, game.Name, own: false));
+        return (nodes, await GameWindowAsync(game, nodes, window));
+    }
+
+    /// <summary>A window of a game's tree by what names it, a window below its root among them, as app_windows lists them;
+    /// its root for none.</summary>
+    private async Task<AppNode> GameWindowAsync(GodotGame game, List<AppNode> nodes, string? named)
+    {
+        if (named is not { Length: > 0 })
+        {
+            return nodes[0];
+        }
+        HashSet<string> windows = [.. (await GameWindowsAsync(game)).Windows.Select(w => w.Id)];
+        return WindowNamed([.. nodes.Where(n => windows.Contains(Id(n.Element.Id)))], named, game.Name);
     }
 
     private async Task<AppWindows> GameWindowsAsync(GodotGame game)
@@ -160,7 +172,7 @@ public sealed partial class PassengerTools
         using IDisposable asking = GodotGame.Within(GameLimit);
         (AppTree tree, _, GodotNode root) = await GameTreeAsync(game, []);
         List<AppNode> nodes = AppQuery.Flatten(tree.Roots);
-        AppNode chosen = Window(nodes, window, game.Name, own: false);
+        AppNode chosen = await GameWindowAsync(game, nodes, window);
         List<AppNode> found = AppQuery.Find(Within(nodes, window is null ? null : chosen), control);
         if (found.Count == 0)
         {
@@ -272,13 +284,13 @@ public sealed partial class PassengerTools
         return (nodes, null, chosen);
     }
 
-    /// <summary>What the helper said its input came to (the point, what was under it, what has the focus and what that
-    /// shows), as the app_ tools' answers read it, nodes named as the tree read before names them.</summary>
+    /// <summary>What the helper said its input came to (the point, what was under it, what has the focus, what that shows and
+    /// the window it went to), as the app_ tools' answers read it, nodes named as the tree read before names them.</summary>
     private static InputDone GameDone(List<AppNode> nodes, AppNode window, List<object?> said)
     {
         long under = said.Count > 2 ? Whole(said[2]) : 0;
         long focus = said.Count > 3 ? Whole(said[3]) : 0;
-        return new InputDone(window.Element.Id, said.Count > 0 ? Number(said[0]) : null, said.Count > 1 ? Number(said[1]) : null, under is 0 ? null : under,
+        return new InputDone(said.Count > 5 ? Whole(said[5]) : window.Element.Id, said.Count > 0 ? Number(said[0]) : null, said.Count > 1 ? Number(said[1]) : null, under is 0 ? null : under,
             under is 0 ? null : NameOf(under), said.Count > 4 ? said[4] as string : null, focus is 0 ? null : NameOf(focus));
 
         string NameOf(long id) => nodes.FirstOrDefault(n => n.Element.Id == id) is { } node ? AppQuery.Short(node.Element) : Id(id);
@@ -309,7 +321,7 @@ public sealed partial class PassengerTools
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: true, x, y);
         GodotPicking picking = game.Picking;
         int picks = game.Picks;
-        List<object?> said = await game.AskAsync("click", element?.Element.Id ?? 0L, x is not null && y is not null, x ?? 0, y ?? 0, pressed, (long)Math.Max(1, count),
+        List<object?> said = await game.AskAsync("click", element?.Element.Id ?? 0L, target.Element.Id, x is not null && y is not null, x ?? 0, y ?? 0, pressed, (long)Math.Max(1, count),
             GameModifiers(modifiers));
         InputDone done = GameDone(nodes, target, said);
         string clicked = count switch
@@ -341,7 +353,7 @@ public sealed partial class PassengerTools
     {
         using IDisposable asking = GodotGame.Within(GameLimit);
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: false, null, null);
-        InputDone done = GameDone(nodes, target, await game.AskAsync("type", element?.Element.Id ?? 0L, text, replace));
+        InputDone done = GameDone(nodes, target, await game.AskAsync("type", element?.Element.Id ?? 0L, target.Element.Id, text, replace));
         return $"Typed {Plural.Of(text.Length, "character")} into {done.Focused ?? "the window, nothing having the focus"}{Said(done)}";
     }
 
@@ -351,7 +363,7 @@ public sealed partial class PassengerTools
         IReadOnlyList<Chord> chords = Chords(keys);
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: false, null, null);
         List<object?> pressed = [.. chords.Select(c => (object?)new List<object?> { GodotAgent.KeyName(c.Key), GameModifiers(c.Modifiers) })];
-        InputDone done = GameDone(nodes, target, await game.AskAsync("key", element?.Element.Id ?? 0L, pressed));
+        InputDone done = GameDone(nodes, target, await game.AskAsync("key", element?.Element.Id ?? 0L, target.Element.Id, pressed));
         return $"Pressed {keys.Trim()} in {done.Focused ?? "the window, nothing having the focus"}{Said(done)}";
     }
 
@@ -359,7 +371,7 @@ public sealed partial class PassengerTools
     {
         using IDisposable asking = GodotGame.Within(GameLimit);
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: true, x, y);
-        InputDone done = GameDone(nodes, target, await game.AskAsync("scroll", element?.Element.Id ?? 0L, x is not null && y is not null, x ?? 0, y ?? 0, across, down,
+        InputDone done = GameDone(nodes, target, await game.AskAsync("scroll", element?.Element.Id ?? 0L, target.Element.Id, x is not null && y is not null, x ?? 0, y ?? 0, across, down,
             GameModifiers(modifiers)));
         string turned = Plural.Listed([.. ((string[])[Notches(down, "down", "up"), Notches(across, "right", "left")]).Where(n => n.Length > 0)]);
         string scrolled = $"Scrolled {turned} over {Aimed(element, done)}{Took(element, done, "wheel")}";

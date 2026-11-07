@@ -136,10 +136,10 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
 
             foreach ((string call, object?[] arguments) in new (string, object?[])[]
             {
-                ("type", [freed, "stale", false]),
-                ("type", [outside, "stale", false]),
-                ("key", [freed, new List<object?> { new List<object?> { "A", 0L } }]),
-                ("click", [freed, false, 0.0, 0.0, 1L, 1L, 0L]),
+                ("type", [freed, 0L, "stale", false]),
+                ("type", [outside, 0L, "stale", false]),
+                ("key", [freed, 0L, new List<object?> { new List<object?> { "A", 0L } }]),
+                ("click", [freed, 0L, false, 0.0, 0.0, 1L, 1L, 0L]),
             })
             {
                 Task<List<object?>> asked = running.AskAsync(call, arguments);
@@ -148,8 +148,8 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
                     $"{call} at a control gone came to {(asked.IsCompletedSuccessfully ? $"[{string.Join(", ", asked.Result)}]" : asked.Exception?.InnerException?.Message)}");
             }
 
-            List<object?> typed = Ui.AwaitPumped(running.AskAsync("type", 0L, "here", false), "typing with no control aimed at", TimeSpan.FromMinutes(1));
-            Assert.Equal("here", typed[^1]);
+            List<object?> typed = Ui.AwaitPumped(running.AskAsync("type", 0L, 0L, "here", false), "typing with no control aimed at", TimeSpan.FromMinutes(1));
+            Assert.Equal("here", typed[4]);
             Stop(window);
         }
         finally

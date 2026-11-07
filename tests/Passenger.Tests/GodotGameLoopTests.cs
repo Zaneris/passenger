@@ -328,7 +328,7 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
 
     /// <summary>A left click at a point of the game's view, given through Passenger's helper in the game.</summary>
     private static void Click(GodotGame running, double x, double y) =>
-        Ui.AwaitPumped(running.AskAsync("click", 0L, true, x, y, 1L, 1L, 0L), $"the click at {x},{y}", TimeSpan.FromMinutes(1));
+        Ui.AwaitPumped(running.AskAsync("click", 0L, 0L, true, x, y, 1L, 1L, 0L), $"the click at {x},{y}", TimeSpan.FromMinutes(1));
 
     /// <summary>The size of the game's view as its root window has it, which a headless game's display gives.</summary>
     private static (double Width, double Height) View(GodotGame running) =>
