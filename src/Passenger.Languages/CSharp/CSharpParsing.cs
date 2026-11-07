@@ -46,7 +46,7 @@ public static class CSharpParsing
     }
 
     /// <summary>Whether a person's text reads as a type's name.</summary>
-    public static bool ReadsAsType(string text) => !DeepText.TooDeep(text) && DeepText.Read(text.Length, () => !SyntaxFactory.ParseTypeName(text).ContainsDiagnostics);
+    public static bool ReadsAsType(string text) => !DeepText.TooDeep(text, csharp: true) && DeepText.Read(text.Length, () => !SyntaxFactory.ParseTypeName(text).ContainsDiagnostics);
 
     /// <summary>Where a tree's text went too deep, read as nothing; null for a text read.</summary>
     public static int? DeepAt(SyntaxTree tree) => tree.TryGetText(out SourceText? text) && text is Unread unread ? unread.At : null;

@@ -180,7 +180,7 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
             return deep[path] = false;
         }
         // The text as it stands goes first, on this thread: real code passes it.
-        return deep[path] = DeepText.TooDeep(text) && DeepText.Read(text.Length, () =>
+        return deep[path] = DeepText.TooDeep(text, csharp: true) && DeepText.Read(text.Length, () =>
             CodeBrackets.DeepAt(Microsoft.CodeAnalysis.Text.SourceText.From(text), Parsing(info)) is not null);
     }
 

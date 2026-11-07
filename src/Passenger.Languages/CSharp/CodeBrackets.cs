@@ -18,7 +18,7 @@ internal static class CodeBrackets
     public static int? DeepAt(SourceText text, CSharpParseOptions? options)
     {
         char[] stretch = ArrayPool<char>.Shared.Rent(4096);
-        Brackets brackets = new();
+        Brackets brackets = new() { CSharp = true };
         for (int at = 0; at < text.Length && !brackets.TooDeepToLex; at += stretch.Length)
         {
             int count = Math.Min(stretch.Length, text.Length - at);
@@ -35,10 +35,12 @@ internal static class CodeBrackets
 
     /// <summary>A text's brackets as its tokens have them. An interpolated string is a token to the lexer and code to the
     /// parser, as a documentation comment is trivia to one and read by the other, so each is read as it stands, on its own, the
-    /// text around it left as it was: what a template leaves open doesn't add up over a file.</summary>
+    /// text around it left as it was: what a template leaves open doesn't add up over a file. A <c>?</c> is a link only before
+    /// a <c>.</c> or a <c>[</c>, where it is a conditional access, and <c>not</c> only as written, never escaped.</summary>
     private static int? TokensDeepAt(string text, CSharpParseOptions? options)
     {
-        Brackets brackets = new();
+        Brackets brackets = new() { CSharp = true };
+        SyntaxKind before = SyntaxKind.None;
         foreach (SyntaxToken token in SyntaxFactory.ParseTokens(text, options: options))
         {
             if ((DeepIn(token.LeadingTrivia, ref brackets) ?? DeepIn(token.TrailingTrivia, ref brackets)) is int inTrivia)
@@ -47,8 +49,15 @@ internal static class CodeBrackets
             }
             switch (token.Kind())
             {
+                case SyntaxKind.DotToken or SyntaxKind.OpenBracketToken when before == SyntaxKind.QuestionToken:
+                    brackets.Read(token.IsKind(SyntaxKind.DotToken) ? "?." : "?[");
+                    break;
                 case SyntaxKind.OpenParenToken or SyntaxKind.CloseParenToken or SyntaxKind.OpenBracketToken or SyntaxKind.CloseBracketToken
-                    or SyntaxKind.OpenBraceToken or SyntaxKind.CloseBraceToken or SyntaxKind.SemicolonToken:
+                    or SyntaxKind.OpenBraceToken or SyntaxKind.CloseBraceToken or SyntaxKind.SemicolonToken
+                    or SyntaxKind.LessThanToken or SyntaxKind.GreaterThanToken or SyntaxKind.GreaterThanEqualsToken or SyntaxKind.EqualsGreaterThanToken:
+                    brackets.Read(token.Text);
+                    break;
+                case SyntaxKind.IdentifierToken when token.Text == "not":
                     brackets.Read(token.Text);
                     break;
                 case SyntaxKind.InterpolatedStringToken when DeepOnItsOwn(token.Text, brackets):
@@ -58,6 +67,7 @@ internal static class CodeBrackets
             {
                 return token.SpanStart;
             }
+            before = token.Kind();
         }
         return null;
     }

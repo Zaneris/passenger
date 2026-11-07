@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Core;
 using Passenger.Languages.CSharp;
+using Passenger.Text;
 
 namespace Passenger.UnitTests.Languages;
 
@@ -12,15 +13,6 @@ public class CSharpParsingTests
 {
     private static string Nested(string before, string open, string inner, string close, string after, int deep) =>
         before + string.Concat(Enumerable.Repeat(open, deep)) + inner + string.Concat(Enumerable.Repeat(close, deep)) + after;
-
-    [Theory]
-    [InlineData("class C { int x = ", "a?.b", "", "", "; }")]
-    [InlineData("class C { ", "A<", "int", ">", " x; }")]
-    public void Nesting_of_no_bracket_a_stack_cant_hold_reads_whole(string before, string open, string inner, string close, string after)
-    {
-        string text = Nested(before, open, inner, close, after, 20_000);
-        SmallStack.Run(() => Assert.Equal(text.Length, CSharpParsing.Parse(text).GetRoot().FullSpan.Length));
-    }
 
     [Theory]
     [InlineData("class C { int x = ", "(", "1", ")", "; }")]
@@ -41,9 +33,49 @@ public class CSharpParsingTests
         });
     }
 
+    /// <summary>C#'s chains that nest with no bracket, each a level of a parser's and a binder's stack: a conditional access, a
+    /// pattern's <c>not</c>, a type's arguments and a lambda's body.</summary>
+    [Theory]
+    [InlineData("class C { object x = a", "?.b", "", "", "; }")]
+    [InlineData("class C { bool x = a is ", "not ", "null", "", "; }")]
+    [InlineData("class C { ", "A<", "int", ">", " x; }")]
+    [InlineData("class C { object x = ", "x => ", "0", "", "; }")]
+    [InlineData("class C { object x = ", "(int x) => ", "0", "", "; }")]
+    public void Links_past_what_a_parser_is_given_are_a_tree_of_nothing_the_texts_length(string before, string open, string inner, string close, string after)
+    {
+        string text = Nested(before, open, inner, close, after, 10_000);
+        SmallStack.Run(() =>
+        {
+            SyntaxNode root = CSharpParsing.Parse(text).GetRoot();
+            Assert.Empty(((CompilationUnitSyntax)root).Members);
+            Assert.Equal(text.Length, root.FullSpan.Length);
+        });
+    }
+
+    /// <summary>Where a chain of links goes past the bound: at its 1,000th link, the class's brace the first level, or its
+    /// 999th where a link opens a bracket of its own. A conditional access's <c>?</c> is read only before what it accesses,
+    /// which may come after a space.</summary>
+    [Theory]
+    [InlineData("class C { object x = a", "?.b")]
+    [InlineData("class C { object x = a", "? .b")]
+    [InlineData("class C { object x = a", "?[0]")]
+    [InlineData("class C { bool x = a is ", "not ")]
+    [InlineData("class C { ", "A<")]
+    [InlineData("class C { object x = ", "x => ")]
+    [InlineData("class C { object x = ", "(int x) => ")]
+    public void A_chain_of_links_goes_too_deep_at_its_thousandth(string before, string link)
+    {
+        string text = before + string.Concat(Enumerable.Repeat(link, 10_000));
+        int? at = null;
+        SmallStack.Run(() => at = CSharpParsing.DeepAt(TextSnapshot.From(text), CSharpParsing.Default));
+        Assert.InRange(at ?? -1, before.Length + (998 * link.Length), before.Length + (1000 * link.Length) - 1);
+    }
+
     [Theory]
     [InlineData("class C { int x = ", "(", "1", ")", "; }")]
     [InlineData("class C { bool x = a is ", "{ a: ", "1", " }", "; }")]
+    [InlineData("class C { ", "A<", "int", ">", " x; }")]
+    [InlineData("class C { object x = ", "x => ", "0", "", "; }")]
     public void Brackets_deeper_than_a_small_stack_holds_read_whole_where_a_parser_is_given_them(string before, string open, string inner, string close, string after)
     {
         string text = Nested(before, open, inner, close, after, 900);
@@ -55,6 +87,15 @@ public class CSharpParsingTests
     {
         string text = "class C { void M() {\n" + string.Concat(Enumerable.Repeat("    F(\"(\", '[');\n", 5_000)) + "} }\n";
         Assert.False(DeepText.TooDeep(text), "Brackets in strings added up over a file's statements");
+        Assert.NotEmpty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot(TestContext.Current.CancellationToken)).Members);
+    }
+
+    [Fact]
+    public void A_file_of_statements_each_with_links_reads_whole()
+    {
+        string statement = "    x = a?.b?[0] is not null ? F<List<int>>(y => y) : a < b;\n";
+        string text = "class C { void M() {\n" + string.Concat(Enumerable.Repeat(statement, 5_000)) + "} }\n";
+        Assert.False(DeepText.TooDeep(text, csharp: true), "Links added up over a file's statements");
         Assert.NotEmpty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot(TestContext.Current.CancellationToken)).Members);
     }
 
@@ -70,10 +111,15 @@ public class CSharpParsingTests
     [InlineData("class C {\n", "// {\n", "", "}")]
     [InlineData("class C {\n/*", " ( { [", "*/", "}")]
     [InlineData("class C {\n#if NEVER\n", "(((\n", "#endif\n", "}")]
+    [InlineData("class C { string[] x = { ", "\"a?.b\", ", "", "}; }")]
+    [InlineData("class C { string[] x = { ", "\"not\", ", "", "}; }")]
+    [InlineData("class C { string[] x = { ", "\"<\", ", "", "}; }")]
+    [InlineData("class C { string[] x = { ", "\"=>\", ", "", "}; }")]
+    [InlineData("class C {\n", "// is it not here?\n", "", "}")]
     public void Brackets_that_are_only_text_read_whole_however_many(string before, string each, string inner, string after)
     {
         string text = Nested(before, each, inner, string.Empty, after, 5_000);
-        Assert.True(DeepText.TooDeep(text), "The text as it stands is no longer read as deep, so nothing here reads its tokens");
+        Assert.True(DeepText.TooDeep(text, csharp: true), "The text as it stands is no longer read as deep, so nothing here reads its tokens");
         SmallStack.Run(() => Assert.NotEmpty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
     }
 

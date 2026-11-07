@@ -46,9 +46,9 @@ public class XamlFileTests
     }
 
     [Fact]
-    public void A_type_deeper_than_a_stack_holds_reads_as_far_as_a_reference_goes_and_ends_nothing()
+    public void A_type_nested_as_deep_as_passenger_reads_reads_as_far_as_a_reference_goes_and_ends_nothing()
     {
-        string text = "class C { " + string.Concat(Enumerable.Repeat("A<", 100_000)) + "int" + new string('>', 100_000) + " x; }";
+        string text = "class C { " + string.Concat(Enumerable.Repeat("A<", 900)) + "int" + new string('>', 900) + " x; }";
         SmallStack.Run(() =>
         {
             ClrType type = Assert.Single(SourceTypes.Read("/App/C.cs", text, "App", CSharpParsing.Default).Types);

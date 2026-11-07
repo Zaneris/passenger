@@ -63,10 +63,11 @@ public static class DeepText
     /// <summary>Whether a read of so many characters gets all the stack they ask for: one past that may still run out.</summary>
     public static bool Holds(int characters) => Least + ((long)characters * PerCharacter) <= Most;
 
-    /// <summary>Whether a text's brackets go past what's worth a parser's time.</summary>
-    public static bool TooDeep(string text)
+    /// <summary>Whether a text's brackets go past what's worth a parser's time, a C# text's links too (<see
+    /// cref="Brackets.CSharp"/>).</summary>
+    public static bool TooDeep(string text, bool csharp = false)
     {
-        Brackets brackets = new();
+        Brackets brackets = new() { CSharp = csharp };
         brackets.Read(text);
         return brackets.TooDeep;
     }
@@ -82,12 +83,20 @@ public struct Brackets
 
     private static readonly SearchValues<char> Marks = SearchValues.Create("()[]{};#$");
 
+    private static readonly SearchValues<char> CSharpMarks = SearchValues.Create("()[]{};#$<>?n");
+
     private int statement;
     private int braces;
     private int conditions;
     private int holes;
     private bool dollar;
     private int consumed;
+
+    /// <summary>Whether C#'s links count as a statement's brackets do: each <c>?</c>, a pattern's <c>not</c> and a lambda's
+    /// <c>=&gt;</c>, which a parser and a binder nest through with no bracket, and a type's <c>&lt;</c> closed by its
+    /// <c>&gt;</c>. A <c>&lt;</c> before another or an <c>=</c> opens nothing, nor does a <c>&gt;</c> after a <c>-</c>; a
+    /// stretch's first character is read as having nothing before it.</summary>
+    public bool CSharp { get; init; }
 
     public bool TooDeep { get; private set; }
 
@@ -100,15 +109,30 @@ public struct Brackets
 
     public void Read(ReadOnlySpan<char> text)
     {
-        for (int at = text.IndexOfAny(Marks); at >= 0 && !TooDeepToLex; at = text.IndexOfAny(Marks))
+        SearchValues<char> marks = CSharp ? CSharpMarks : Marks;
+        for (int at = text.IndexOfAny(marks); at >= 0 && !TooDeepToLex; at = text.IndexOfAny(marks))
         {
             switch (text[at])
             {
-                case '(' or '[':
+                case '(' or '[' or '?':
                     statement++;
                     break;
                 case ')' or ']':
                     statement = Math.Max(0, statement - 1);
+                    break;
+                case '<':
+                    statement += Before(text, at) == '<' || After(text, at) is '<' or '=' ? 0 : 1;
+                    break;
+                case '>':
+                    statement = Before(text, at) switch
+                    {
+                        '=' => statement + 1,
+                        '-' => statement,
+                        _ => Math.Max(0, statement - 1),
+                    };
+                    break;
+                case 'n':
+                    statement += Not(text, at) ? 1 : 0;
                     break;
                 case '{':
                     braces++;
@@ -141,4 +165,17 @@ public struct Brackets
         }
         consumed += text.Length;
     }
+
+    /// <summary>Whether a text holds the word <c>not</c> at a place, as far as the text shows: a stretch's end may cut it.</summary>
+    private static bool Not(ReadOnlySpan<char> text, int at)
+    {
+        ReadOnlySpan<char> from = text[at..];
+        return !InWord(Before(text, at)) && (from.Length > 3 ? from.StartsWith("not") && !InWord(from[3]) : "not".AsSpan().StartsWith(from));
+    }
+
+    private static char Before(ReadOnlySpan<char> text, int at) => at > 0 ? text[at - 1] : '\0';
+
+    private static char After(ReadOnlySpan<char> text, int at) => at + 1 < text.Length ? text[at + 1] : '\0';
+
+    private static bool InWord(char c) => char.IsLetterOrDigit(c) || c is '_' or '@';
 }
