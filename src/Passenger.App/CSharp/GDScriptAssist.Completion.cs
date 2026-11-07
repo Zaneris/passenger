@@ -210,8 +210,8 @@ internal sealed partial class GDScriptAssist
     }
 
     /// <summary>The names a place may use: the locals in scope there, its class's members, the keywords it may begin with, then
-    /// the project's classes and autoloads and the engine's globals, nothing of an instance in a static place; at a class's
-    /// level a declaration's keywords alone.</summary>
+    /// the project's classes and autoloads and the engine's globals, nothing of an instance in a static place and only what
+    /// can begin a constant in a constant's or an enum's value; at a class's level a declaration's keywords alone.</summary>
     private Listed InScopeListed(GodotScriptTypes.Typed typed, GDScriptAsked at, int caret)
     {
         List<CompletionItem> items = [];
@@ -221,7 +221,8 @@ internal sealed partial class GDScriptAssist
             items.AddRange(ClassKeywords.Select(k => Item(k, CompletionItemKind.Keyword, "keyword", "2", new OfWords($"{k}, a GDScript keyword"))));
             return new Listed(at.Start, items);
         }
-        foreach (GDScriptMemberInfo local in typed.Analysis.LocalsAt(caret))
+        GDScriptConstantPlace constant = typed.Analysis.ConstantAt(caret);
+        foreach (GDScriptMemberInfo local in typed.Analysis.LocalsAt(caret).Where(m => constant.Takes(m)))
         {
             if (seen.Add(local.Name))
             {
@@ -229,7 +230,7 @@ internal sealed partial class GDScriptAssist
             }
         }
         bool isStatic = typed.Analysis.StaticAt(caret);
-        foreach (GDScriptMemberInfo member in typed.Analyzer.MembersInScope(typed.Tree, typed.Analysis.Path, typed.Analysis.ClassAt(caret), isStatic))
+        foreach (GDScriptMemberInfo member in typed.Analyzer.MembersInScope(typed.Tree, typed.Analysis.Path, typed.Analysis.ClassAt(caret), isStatic).Where(m => constant.Takes(m)))
         {
             if (seen.Add(member.Name))
             {
@@ -238,7 +239,7 @@ internal sealed partial class GDScriptAssist
         }
         foreach (string keyword in at.StatementStart ? StatementKeywords.Concat(ExpressionKeywords) : ExpressionKeywords)
         {
-            if (seen.Add(keyword) && !(isStatic && keyword == "self"))
+            if (seen.Add(keyword) && !(isStatic && keyword == "self") && constant.TakesKeyword(keyword))
             {
                 items.Add(Item(keyword, CompletionItemKind.Keyword, "keyword", "2", new OfWords($"{keyword}, a GDScript keyword")));
             }
@@ -260,7 +261,7 @@ internal sealed partial class GDScriptAssist
         }
         if (typed.Analyzer.Engine is { } api)
         {
-            items.AddRange(GlobalsOf(api).Names.Where(i => !seen.Contains(i.Label)));
+            items.AddRange(GlobalsOf(api).Names.Where(i => !seen.Contains(i.Label) && (i.Kind != CompletionItemKind.Function || constant.TakesFunction(api.Functions[i.Label]))));
         }
         return new Listed(at.Start, items);
     }

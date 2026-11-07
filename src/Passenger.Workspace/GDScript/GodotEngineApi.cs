@@ -14,6 +14,10 @@ public sealed record GodotApiMethod(string Name, string Returns, IReadOnlyList<(
     /// <summary>Whether it leaves the value it is called on as it was, as the dump's is_const says.</summary>
     public bool IsConst { get; init; }
 
+    /// <summary>Whether Godot works a call of it out as it compiles, given constants: a utility function of the dump's math
+    /// category, or one of GDScript's own it registers so.</summary>
+    public bool Folds { get; init; }
+
     /// <summary>Each parameter's default as the dump writes it (<c>false</c>, <c>0</c>, <c>&amp;""</c>), null where a call
     /// must give it; empty where none is known.</summary>
     public IReadOnlyList<string?> Defaults { get; init; } = [];
@@ -99,6 +103,9 @@ public sealed class GodotEngineApi
         ("is_instance_of", "bool", 2, false, [("value", "Variant"), ("type", "Variant")]),
     ];
 
+    /// <summary>GDScript's own functions Godot works out as it compiles.</summary>
+    private static readonly HashSet<string> GDScriptFolded = new(StringComparer.Ordinal) { "convert", "type_exists", "char", "ord", "Color8", "len", "is_instance_of" };
+
     /// <summary>Object's virtual methods a script may override, which no dump of the API lists.</summary>
     private static readonly GodotApiMethod[] ObjectVirtuals =
     [
@@ -178,7 +185,7 @@ public sealed class GodotEngineApi
         }
         foreach (JsonElement function in Array(root, "utility_functions"))
         {
-            GodotApiMethod read = Method(function, Text(function, "return_type") ?? "void");
+            GodotApiMethod read = Method(function, Text(function, "return_type") ?? "void") with { Folds = Text(function, "category") == "math" };
             api.Functions[read.Name] = read;
         }
         foreach ((string name, string returns, int required, bool varargs, (string, string)[] parameters) in GDScriptFunctions)
@@ -186,6 +193,7 @@ public sealed class GodotEngineApi
             api.Functions[name] = new GodotApiMethod(name, returns, parameters, required, varargs, false)
             {
                 Defaults = [.. parameters.Select((_, i) => i < required ? null : name == "Color8" ? "255" : null)],
+                Folds = GDScriptFolded.Contains(name),
             };
         }
         if (api.Classes.GetValueOrDefault("Object") is { } baseObject)

@@ -260,6 +260,38 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>A constant's value and an enum's list a constant and none of what Godot refuses there, a variable, a function, a
+    /// signal, <c>self</c>; a variable's value beside them lists them all.</summary>
+    [AvaloniaFact]
+    public void A_constants_value_and_an_enums_complete_only_what_godot_folds()
+    {
+        TestFolders.Write(folder, "main.gd", "extends Node\n\nsignal spent\n\nconst steps := 1\nvar stock := 1\n\n\nfunc spend() -> void:\n\tprint(1)\n");
+        (MainWindow window, _, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "var stock := 1");
+            foreach (string written in new[] { "const C = ", "enum { X = " })
+            {
+                TypeOverLine(window, editor, written);
+                TypeName(window, "s");
+                Listed(window, "steps", $"constant after {written}");
+                Assert.Empty(window.Assist.CompletionLabels.Intersect(["stock", "spend", "spent", "self", "super"]));
+                Ui.Press(window, "ESCAPE", settle: false);
+            }
+
+            TypeOverLine(window, editor, "var other = ");
+            TypeName(window, "s");
+            Listed(window, "stock", "variable in a variable's value");
+            Assert.Superset(new HashSet<string> { "steps", "spend", "spent", "self" }, window.Assist.CompletionLabels.ToHashSet());
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>After a closing bracket the list holds what the bracket closes, a call's result rather than its last argument's
     /// type, and a group's parentheses list what they hold.</summary>
     [AvaloniaFact]

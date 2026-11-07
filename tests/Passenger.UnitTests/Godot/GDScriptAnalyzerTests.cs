@@ -14,7 +14,10 @@ public class GDScriptAnalyzerTests
         {
           "global_enums": [{ "name": "Error", "is_bitfield": false, "values": [{ "name": "OK", "value": 0 }, { "name": "FAILED", "value": 1 }] }],
           "global_constants": [],
-          "utility_functions": [{ "name": "sin", "return_type": "float", "arguments": [{ "name": "angle", "type": "float" }] }],
+          "utility_functions": [{ "name": "sin", "return_type": "float", "category": "math", "arguments": [{ "name": "angle", "type": "float" }] },
+            { "name": "absi", "return_type": "int", "category": "math", "arguments": [{ "name": "x", "type": "int" }] },
+            { "name": "abs", "return_type": "Variant", "category": "math", "arguments": [{ "name": "x", "type": "Variant" }] },
+            { "name": "randi", "return_type": "int", "category": "random" }, { "name": "str", "return_type": "String", "category": "general" }],
           "singletons": [{ "name": "Input", "type": "Input" }],
           "builtin_classes": [
             { "name": "Nil", "operators": [] },
@@ -803,6 +806,84 @@ public class GDScriptAnalyzerTests
             (GDScriptAnalysis held, GDScriptAnalyzer holder) = Analyze(made);
             int caret = made.IndexOf("zz", StringComparison.Ordinal) + 2;
             Assert.DoesNotContain("new", holder.MembersInScope(held.Tree!, held.Path, held.ClassAt(caret), held.StaticAt(caret)).Select(m => m.Name));
+        }
+    }
+
+    /// <summary>A constant's value and an enum's take what Godot folds: whether a name is typed there or nothing yet, none of the
+    /// script's variables, functions and signals, nor the engine's, and of the locals only constants, an enum's value only what
+    /// holds an integer. Godot 4.7.2 compiled every name of the script at each (gen9), a class or enum before a further dot.</summary>
+    [Theory]
+    [InlineData("const C = |\n", GDScriptConstantPlace.Value)]
+    [InlineData("const C := |\n", GDScriptConstantPlace.Value)]
+    [InlineData("const C: int = |\n", GDScriptConstantPlace.Value)]
+    [InlineData("const C = [|]\n", GDScriptConstantPlace.Value)]
+    [InlineData("const C = LIMIT + |\n", GDScriptConstantPlace.Value)]
+    [InlineData("func f(p):\n\tvar v := 1\n\tconst K := 2\n\tconst C = |\n", GDScriptConstantPlace.Value)]
+    [InlineData("static func f(p):\n\tvar v := 1\n\tconst K := 2\n\tconst C = |\n", GDScriptConstantPlace.Value)]
+    [InlineData("func f(p):\n\tvar v := 1\n\tconst K := 2\n\tif p:\n\t\tconst C = |\n", GDScriptConstantPlace.Value)]
+    [InlineData("enum { X = | }\n", GDScriptConstantPlace.Integer)]
+    [InlineData("enum Named { X = | }\n", GDScriptConstantPlace.Integer)]
+    [InlineData("enum Named {\n\tA,\n\tX = |,\n}\n", GDScriptConstantPlace.Integer)]
+    [InlineData("enum Named {\n\tX = |\n", GDScriptConstantPlace.Integer)]
+    [InlineData("var v = |\n", GDScriptConstantPlace.None)]
+    [InlineData("const C = 1\nvar v = |\n", GDScriptConstantPlace.None)]
+    [InlineData("enum { X = 1 }\nvar v = |\n", GDScriptConstantPlace.None)]
+    [InlineData("func f(p):\n\tvar v := 1\n\tconst K := 2\n\tprint(|)\n", GDScriptConstantPlace.None)]
+    [InlineData("func f(p):\n\tvar v := 1\n\tconst K := 2\n\t|\n", GDScriptConstantPlace.None)]
+    public void A_constants_value_finds_what_godot_folds(string written, GDScriptConstantPlace place)
+    {
+        const string Head = "extends Node\n\nsignal rung\nenum Mood { CALM }\nenum { LOOSE }\nconst LIMIT := 3\nconst TEXT := \"x\"\nconst Klass = preload(\"res://worker.gd\")\nstatic var shared := 2\nvar field := 1\n\n"
+            + "func work():\n\treturn 1\n\nstatic func tool_fn():\n\treturn 1\n\nclass Next:\n\tconst K := 1\n\n";
+        string[] constants = ["LIMIT", "Mood", "LOOSE", "Next", "Klass", "PROCESS_MODE_INHERIT"];
+        string[] running = ["field", "shared", "work", "tool_fn", "rung", "name", "get_tree", "ready", "print_orphan_nodes", "new"];
+        int mark = written.IndexOf('|', StringComparison.Ordinal);
+        foreach (string typed in (string[])["zz", string.Empty])
+        {
+            (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(Head + written.Replace("|", typed, StringComparison.Ordinal), Classes);
+            int caret = Head.Length + mark + typed.Length;
+            GDScriptConstantPlace found = analysis.ConstantAt(caret);
+            Assert.True(found == place, $"\"{written}\" with \"{typed}\" typed read as {found}, not {place}");
+            HashSet<string> locals = [.. analysis.LocalsAt(caret).Where(m => found.Takes(m)).Select(l => l.Name)];
+            HashSet<string> names = [.. analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(caret), analysis.StaticAt(caret)).Where(m => found.Takes(m)).Select(m => m.Name)];
+            Assert.Superset(new HashSet<string>(constants), names);
+            Assert.Equal(place != GDScriptConstantPlace.Integer, names.Contains("TEXT"));
+            if (place != GDScriptConstantPlace.None)
+            {
+                Assert.Empty(names.Intersect(running));
+                Assert.Empty(locals.Intersect(["p", "v"]));
+                Assert.Equal(written.Contains("const K", StringComparison.Ordinal), locals.Contains("K"));
+            }
+            else
+            {
+                Assert.Contains("field", names);
+                Assert.Equal(written.Contains("(p)", StringComparison.Ordinal), locals.Contains("p"));
+            }
+        }
+    }
+
+    /// <summary>A constant's value holds only the keywords and utility functions Godot folds, an enum's only functions that may give
+    /// an integer, as Godot 4.7.2 compiled them; a place that asks nothing takes every one.</summary>
+    [Fact]
+    public void A_constant_place_takes_the_keywords_and_functions_godot_folds()
+    {
+        string[] kept = ["true", "false", "null", "not", "and", "or", "in", "is", "as", "preload", "PI", "TAU", "INF", "NAN"];
+        string[] running = ["self", "super", "await", "func"];
+        Assert.All(kept.Concat(running), k => Assert.True(GDScriptConstantPlace.None.TakesKeyword(k)));
+        Assert.All(kept, k => Assert.True(GDScriptConstantPlace.Value.TakesKeyword(k), $"{k} left out of a constant's value"));
+        Assert.All(running, k => Assert.False(GDScriptConstantPlace.Value.TakesKeyword(k), $"{k} offered in a constant's value"));
+        Assert.All(kept.Concat(running), k => Assert.False(GDScriptConstantPlace.Integer.TakesKeyword(k), $"{k} offered in an enum's value"));
+
+        Dictionary<string, (bool Value, bool Integer)> functions = new(StringComparer.Ordinal)
+        {
+            ["sin"] = (true, false), ["absi"] = (true, true), ["abs"] = (true, true), ["randi"] = (false, false), ["str"] = (false, false), ["ord"] = (true, true), ["len"] = (true, true),
+            ["char"] = (true, false), ["Color8"] = (true, false), ["is_instance_of"] = (true, false), ["type_exists"] = (true, false), ["range"] = (false, false), ["load"] = (false, false),
+            ["print_debug"] = (false, false), ["get_stack"] = (false, false),
+        };
+        foreach ((string name, (bool value, bool integer)) in functions)
+        {
+            Assert.True(GDScriptConstantPlace.None.TakesFunction(Engine.Functions[name]));
+            Assert.True(GDScriptConstantPlace.Value.TakesFunction(Engine.Functions[name]) == value, $"{name} in a constant's value: Godot says {value}");
+            Assert.True(GDScriptConstantPlace.Integer.TakesFunction(Engine.Functions[name]) == integer, $"{name} in an enum's value: Godot says {integer}");
         }
     }
 
