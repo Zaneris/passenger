@@ -42,6 +42,17 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(0, exitCode);
     }
 
+    /// <summary>A getter that returns just past the evaluation's time, sleeping where no abort takes, has made its answer by
+    /// the time the expression reaches its end, which runs nothing more: the answer is given, late, never lost there.</summary>
+    [Fact]
+    public async Task An_answer_made_past_the_evaluations_time_is_given_when_only_the_expressions_end_was_left()
+    {
+        await using DebugSession host = await LaunchToBreakpoints(Stop);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        EvaluateResponse late = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Reads.Late", mayStand: true);
+        Assert.True(late.Result == "\"late\"", $"A getter that had returned was answered \"{late.Result}\", its value lost with nothing left to run; the engine's log:\n{host.EngineLog()}");
+    }
+
     [Fact]
     public async Task An_exception_stop_is_still_described_once_an_evaluation_there_could_not_be_stopped()
     {

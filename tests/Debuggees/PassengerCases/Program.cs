@@ -673,6 +673,16 @@ internal static class Reads
 {
 	public static string Input => Console.ReadLine() ?? "none";
 
+	// Past the 3 s the tests give an evaluation, sleeping, where no abort takes, and within the looks that follow.
+	public static string Late
+	{
+		get
+		{
+			Thread.Sleep(3500);
+			return "late";
+		}
+	}
+
 	public static void Run()
 	{
 		Thread worker = new(() =>

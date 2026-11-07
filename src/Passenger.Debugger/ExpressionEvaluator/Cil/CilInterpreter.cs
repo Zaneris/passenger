@@ -188,7 +188,11 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             if (run.Time.Due.PassedAt(now))
             {
                 TellPastItsTime(run, instructions[index], stepped, Stopwatch.GetElapsedTime(steppedAt, now));
-                throw new ManagedDebugger.EvalException($"{TookTooLong}: it was stopped after {Extensions.EvaluationTimeout.TotalSeconds:0.#} s");
+                // A ret runs nothing more, so stopping there would save no time and only lose the answer already made.
+                if (instructions[index].Code is not ILOpCode.Ret)
+                {
+                    throw new ManagedDebugger.EvalException($"{TookTooLong}: it was stopped after {Extensions.EvaluationTimeout.TotalSeconds:0.#} s");
+                }
             }
             steppedAt = now;
             if (run.Leaving.IsCancellationRequested)
