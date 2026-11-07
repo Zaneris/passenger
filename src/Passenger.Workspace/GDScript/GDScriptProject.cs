@@ -40,18 +40,20 @@ public sealed class GDScriptProject(GodotEngineApi? engine, Func<string, GDScrip
     public string Resolved(string path) => path.StartsWith("uid://", StringComparison.Ordinal) && uids?.Invoke(path) is { } found ? found : path;
 
     /// <summary>The class of the resource a path names: a script's, a scene's (<c>PackedScene</c>), a resource file's own.</summary>
-    public string ResourceClass(string path) =>
-        resourceClass?.Invoke(path) ?? Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".tscn" or ".scn" => "PackedScene",
-            ".gd" => "GDScript",
-            ".cs" => "CSharpScript",
-            ".png" or ".jpg" or ".jpeg" or ".webp" or ".svg" or ".bmp" or ".tga" or ".exr" or ".hdr" => "CompressedTexture2D",
-            ".wav" => "AudioStreamWAV",
-            ".ogg" => "AudioStreamOggVorbis",
-            ".mp3" => "AudioStreamMP3",
-            ".gdshader" => "Shader",
-            ".ttf" or ".otf" or ".woff" or ".woff2" => "FontFile",
-            _ => "Resource",
-        };
+    public string ResourceClass(string path) => resourceClass?.Invoke(path) ?? LoadedAs(path) ?? "Resource";
+
+    /// <summary>The class Godot loads a file as by its extension, as its importers do by default; null for any other file.</summary>
+    public static string? LoadedAs(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".tscn" or ".scn" => "PackedScene",
+        ".gd" => "GDScript",
+        ".cs" => "CSharpScript",
+        ".png" or ".jpg" or ".jpeg" or ".webp" or ".svg" or ".bmp" or ".tga" or ".exr" or ".hdr" => "CompressedTexture2D",
+        ".wav" => "AudioStreamWAV",
+        ".ogg" => "AudioStreamOggVorbis",
+        ".mp3" => "AudioStreamMP3",
+        ".gdshader" or ".shader" => "Shader",
+        ".ttf" or ".otf" or ".woff" or ".woff2" or ".fnt" => "FontFile",
+        _ => null,
+    };
 }

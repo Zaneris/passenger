@@ -296,6 +296,12 @@
     <Compile Include="../../src/Passenger.Languages/CSharp/ParameterTypes.cs" Link="Languages/ParameterTypes.cs" />
   </ItemGroup>
 
+  <!-- The files a Godot resource property's picker offers, by the class each loads as, from names and texts alone, compiled
+       in since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Godot/GodotResources.Files.cs" Link="App/GodotResources.Files.cs" />
+  </ItemGroup>
+
   <!-- A running game's values in the code: the members a script's file declares, the helper's answer, a value's words and
        its last minute, from texts and values alone, compiled in since their project is the app's. -->
   <ItemGroup>
