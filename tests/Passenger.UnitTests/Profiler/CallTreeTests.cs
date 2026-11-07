@@ -1,3 +1,4 @@
+using Passenger.App.Profiling;
 using Passenger.Profiler;
 
 namespace Passenger.UnitTests.Profiler;
@@ -41,5 +42,26 @@ public sealed class CallTreeTests
 
         CallNode caller = Assert.Single(Assert.Single(snapshot.Threads).Ordered);
         Assert.Equal([("Shared.Parse(String)", "Library", 6), ("Shared.Parse(String)", "App", 4)], caller.Ordered.Select(c => (c.Name, c.Module, c.Total)));
+    }
+
+    /// <summary>A trace file's stacks may be any depth: a flame graph of one 100,000 frames deep counts its rows and lays its
+    /// bars out on a small stack, one a row, each as wide as its caller's.</summary>
+    [Fact]
+    public void A_flame_graph_of_a_stack_deeper_than_a_stack_holds_counts_its_rows_and_lays_out_a_bar_for_each()
+    {
+        const int Deep = 100_000;
+        Snapshot snapshot = Snapshot.Of([([.. Enumerable.Range(0, Deep).Select(i => ($"Program.Recurse{i % 3}()", "App", (MethodCode?)null))], 7)]);
+        CallNode thread = Assert.Single(snapshot.Threads);
+        List<(CallNode Node, double X, double Width, double Y)> laid = [];
+        int rows = 0;
+        SmallStack.Run(() =>
+        {
+            rows = FlameBars.Rows(thread, new Stack<(CallNode, int)>());
+            FlameBars.Lay(thread, 800, 0, (Deep + 1) * 20, 20, laid, new Stack<(CallNode, double, double, double)>(), []);
+        });
+        Assert.Equal(Deep + 1, rows);
+        Assert.Equal(Deep + 1, laid.Count);
+        Assert.All(laid, bar => Assert.Equal((0d, 800d), (bar.X, bar.Width)));
+        Assert.Equal(Deep * 20d, laid[^1].Y);
     }
 }

@@ -82,6 +82,28 @@ public class GodotProtocolTests
         Assert.Equal(27598521817UL, root!.Children[0].Id);
     }
 
+    /// <summary>A game can nest nodes as deep as it likes, and Godot sends its tree without a stack's limit: the tree reads to
+    /// its bound on a small stack, the node there saying it has more below, and the rest of the message is read past.</summary>
+    [Fact]
+    public void A_scene_tree_nested_past_what_a_stack_holds_reads_to_its_bound_and_says_more_lies_below()
+    {
+        const int Deep = 100_000;
+        List<object?> data = [];
+        for (int i = 0; i < Deep; i++)
+        {
+            data.AddRange([i == Deep - 1 ? 0L : 1L, $"Link{i}", "Node", (long)i, string.Empty, 0L]);
+        }
+        data.AddRange([0L, "After", "Node", -1L, string.Empty, 0L]);
+        GodotNode? root = null;
+        SmallStack.Run(() => root = GodotNode.Tree(data));
+        Assert.NotNull(root);
+        List<GodotNode> all = [];
+        SmallStack.Run(() => all = [.. root!.All()]);
+        Assert.Equal(GodotNode.DeepestNesting, all.Count);
+        Assert.Equal([.. Enumerable.Range(0, GodotNode.DeepestNesting).Select(i => $"Link{i}")], all.Select(n => n.Name));
+        Assert.True(all[^1] is { Children: [], Deeper: true } && all.Take(all.Count - 1).All(n => !n.Deeper), "The node at the bound did not say more lies below it, or another did");
+    }
+
     [Fact]
     public void An_inspected_node_reads_its_properties_under_their_categories_and_says_which_can_be_set()
     {

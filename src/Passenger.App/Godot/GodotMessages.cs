@@ -172,43 +172,66 @@ public static class GodotPicks
 }
 
 /// <summary>A node of a running game's scene tree: its object's id, name, type (a script's class or path where it has one),
-/// the scene file it was made from, whether it shows, and its children.</summary>
-public sealed record GodotNode(ulong Id, string Name, string Type, string SceneFile, bool Visible, IReadOnlyList<GodotNode> Children)
+/// the scene file it was made from, whether it shows, and its children; <c>Deeper</c> where it has children past
+/// <see cref="DeepestNesting"/>, which are not read.</summary>
+public sealed record GodotNode(ulong Id, string Name, string Type, string SceneFile, bool Visible, IReadOnlyList<GodotNode> Children, bool Deeper = false)
 {
     private const int HasVisible = 1;
     private const int VisibleFlag = 2;
 
+    /// <summary>How deep a tree is read: past any scene made by hand, and short of what a walk of the tree reaches on a
+    /// thread's stack, which bounds every such walk; a game can nest nodes as deep as it likes.</summary>
+    public const int DeepestNesting = 256;
+
     /// <summary>The tree a <c>scene:scene_tree</c> message holds: the nodes depth first, six values each (children's count,
-    /// name, type, id, scene file, view flags); null for data of another shape.</summary>
+    /// name, type, id, scene file, view flags), read as deep as <see cref="DeepestNesting"/>; null for data of another shape.</summary>
     public static GodotNode? Tree(IReadOnlyList<object?> data)
     {
-        int at = 0;
-        return data.Count >= 6 ? Read(data, ref at) : null;
-    }
-
-    private static GodotNode? Read(IReadOnlyList<object?> data, ref int at)
-    {
-        if (at + 6 > data.Count || data[at] is not long count || data[at + 1] is not string name || data[at + 2] is not string type
-            || data[at + 3] is not long id || data[at + 4] is not string scene || data[at + 5] is not long flags)
+        // The nodes read whose children are still to come, outermost first, each with how many are left.
+        List<(long Left, ulong Id, string Name, string Type, string Scene, bool Visible, List<GodotNode>? Children, bool Deeper)> open = [];
+        for (int at = 0; at + 6 <= data.Count; at += 6)
         {
-            return null;
-        }
-        at += 6;
-        List<GodotNode> children = [];
-        for (long i = 0; i < count; i++)
-        {
-            if (Read(data, ref at) is not { } child)
+            if (data[at] is not long count || data[at + 1] is not string name || data[at + 2] is not string type
+                || data[at + 3] is not long id || data[at + 4] is not string scene || data[at + 5] is not long flags)
             {
                 return null;
             }
-            children.Add(child);
+            bool visible = (flags & HasVisible) == 0 || (flags & VisibleFlag) != 0;
+            bool kept = open.Count < DeepestNesting;
+            open.Add((count, (ulong)id, name, type, scene, visible, kept ? [] : null, false));
+            while (open[^1].Left <= 0)
+            {
+                (_, ulong doneId, string doneName, string doneType, string doneScene, bool doneVisible, List<GodotNode>? children, bool deeper) = open[^1];
+                GodotNode done = new(doneId, doneName, doneType, doneScene, doneVisible, children ?? [], deeper);
+                open.RemoveAt(open.Count - 1);
+                if (open.Count == 0)
+                {
+                    return done;
+                }
+                (long Left, ulong Id, string Name, string Type, string Scene, bool Visible, List<GodotNode>? Children, bool Deeper) parent = open[^1];
+                open[^1] = parent with { Left = parent.Left - 1, Deeper = parent.Deeper || children is null };
+                if (children is not null)
+                {
+                    parent.Children?.Add(done);
+                }
+            }
         }
-        bool visible = (flags & HasVisible) == 0 || (flags & VisibleFlag) != 0;
-        return new GodotNode((ulong)id, name, type, scene, visible, children);
+        return null;
     }
 
     /// <summary>The nodes from this one down, depth first.</summary>
-    public IEnumerable<GodotNode> All() => Children.SelectMany(c => c.All()).Prepend(this);
+    public IEnumerable<GodotNode> All()
+    {
+        Stack<GodotNode> left = new([this]);
+        while (left.TryPop(out GodotNode? node))
+        {
+            yield return node;
+            for (int i = node.Children.Count - 1; i >= 0; i--)
+            {
+                left.Push(node.Children[i]);
+            }
+        }
+    }
 }
 
 /// <summary>A property of an object a game sent: its name, Variant type, hint and hint's words, usage flags, value, and the

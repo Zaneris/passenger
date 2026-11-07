@@ -29,6 +29,10 @@ public sealed class FlameGraph : Control
     private CallNode? tipped;
     private readonly List<(Rect Bar, CallNode Node)> bars = [];
     private readonly List<CallNode> callers = [];
+    private readonly Stack<(CallNode Node, int Row)> counting = new();
+    private readonly List<(CallNode Node, double X, double Width, double Y)> laid = [];
+    private readonly Stack<(CallNode Node, double X, double Width, double Y)> laying = new();
+    private readonly List<(CallNode Node, double X, double Width, double Y)> row = [];
     private readonly Dictionary<CallNode, BarLook> looks = [];
     private Palette? palette;
 
@@ -96,7 +100,7 @@ public sealed class FlameGraph : Control
     }
 
     protected override Size MeasureOverride(Size availableSize) =>
-        new(0, zoom is null ? 0 : (Ancestors(zoom) + Rows(zoom)) * RowHeight);
+        new(0, zoom is null ? 0 : (Ancestors(zoom) + FlameBars.Rows(zoom, counting)) * RowHeight);
 
     public override void Render(DrawingContext context)
     {
@@ -119,24 +123,10 @@ public sealed class FlameGraph : Control
             Draw(context, colours, callers[i], new Rect(0, y, Bounds.Width, RowHeight - 1), dim: true);
             y += RowHeight;
         }
-        Layout(context, colours, zoom, 0, Bounds.Width, y);
-    }
-
-    private void Layout(DrawingContext context, Palette colours, CallNode node, double x, double width, double y)
-    {
-        if (width < 1 || y > Bounds.Height)
+        FlameBars.Lay(zoom, Bounds.Width, y, Bounds.Height, RowHeight, laid, laying, row);
+        foreach ((CallNode node, double x, double width, double top) in laid)
         {
-            return;
-        }
-        Draw(context, colours, node, new Rect(x, y, width, RowHeight - 1), dim: false);
-        double at = x;
-        IReadOnlyList<CallNode> callees = node.Ordered;
-        for (int i = 0; i < callees.Count; i++)
-        {
-            CallNode child = callees[i];
-            double share = width * child.Total / node.Total;
-            Layout(context, colours, child, at, share, y + RowHeight);
-            at += share;
+            Draw(context, colours, node, new Rect(x, top, width, RowHeight - 1), dim: false);
         }
     }
 
@@ -237,18 +227,6 @@ public sealed class FlameGraph : Control
     }
 
     private string Percent(CallNode node) => root is { Total: > 0 } top ? $"{100.0 * node.Total / top.Total:0.0}%" : "0%";
-
-    /// <summary>How many rows a node and its callees take.</summary>
-    private static int Rows(CallNode node)
-    {
-        int deepest = 0;
-        IReadOnlyList<CallNode> callees = node.Ordered;
-        for (int i = 0; i < callees.Count; i++)
-        {
-            deepest = Math.Max(deepest, Rows(callees[i]));
-        }
-        return 1 + deepest;
-    }
 
     private static int Ancestors(CallNode node)
     {
