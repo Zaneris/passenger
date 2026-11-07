@@ -26,6 +26,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         int thread = stop.ThreadId!.Value;
         EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Reads.Input", mayStand: true);
         Assert.Contains("could not be stopped", stuck.Result, StringComparison.Ordinal);
+        Assert.Contains("so it is held unfinished until the program runs on", stuck.Result, StringComparison.Ordinal);
 
         await host.ContinueAsync();
         StoppedEvent workerStop = await host.WaitForStoppedEvent();

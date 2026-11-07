@@ -1347,8 +1347,8 @@ internal sealed class EvalStatus
     internal CancellationToken Reading { get; set; }
 
     /// <summary>Evaluations given up, by their thread, that could not be stopped or were left to a request that left the
-    /// stop: each runs on in the program until it returns, and its end, whenever it comes, is let go rather than taken for
-    /// another's.</summary>
+    /// stop: each goes on only as the program does, held with it at a stop, until it returns, and its end, whenever it comes,
+    /// is let go rather than taken for another's.</summary>
     internal Dictionary<int, ICorDebugEval> Abandoned { get; } = [];
 
     /// <summary>When the time of each evaluation given up for a request that left its stop is up (a <see cref="System.Diagnostics.Stopwatch"/>

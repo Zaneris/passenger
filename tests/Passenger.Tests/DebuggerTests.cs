@@ -1783,7 +1783,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.True(Value(window, "i") == "1", $"After the evaluation Variables showed {string.Join(", ", view.Tree.Rows.Select(r => $"{r.Name} = {r.Value}"))}: the evaluation's frames were taken for the stop's");
         // No getter runs while it does, though what needs no code run in the program evaluates.
         Assert.True(Member(window, "counted", "Count").StartsWith("Implicit evaluation is disabled", StringComparison.Ordinal),
-            "A getter ran while an evaluation that could not be stopped still ran");
+            "A getter ran while an evaluation that could not be stopped was held unfinished");
         Evaluate(window, "i + 1");
         Ui.WaitFor(() => view.Tree.Rows.Any(r => r.Name == "i + 1"), "the sum evaluated");
         Assert.Equal("2", view.Tree.Rows.First(r => r.Name == "i + 1").Value);

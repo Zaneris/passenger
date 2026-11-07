@@ -131,9 +131,10 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
 
         EvaluateResponse stuck = await host.EvaluateAsync(frame, "locked.Value", mayStand: true);
         Assert.True(NeedsThreads(stuck), $"A property read under a lock a held thread holds was answered \"{stuck.Result}\", not marked as needing another thread to run");
-        // Still running, the first shows that nothing let the thread holding the lock run.
+        // Held unfinished, the first shows that nothing let the thread holding the lock run.
         EvaluateResponse refused = await host.EvaluateAsync(frame, "locked.Value");
-        Assert.True(NeedsThreads(refused), $"An evaluation on the thread while the first runs on was answered \"{refused.Result}\", not marked as needing another thread to run");
+        Assert.True(NeedsThreads(refused), $"An evaluation on the thread while the first is held unfinished was answered \"{refused.Result}\", not marked as needing another thread to run");
+        Assert.Contains("is held unfinished on this thread", refused.Result, StringComparison.Ordinal);
 
         EvaluateResponse ran = await host.EvaluateAsync(frame, "locked.Value", letThreadsRun: true);
         Assert.True(ran.Result == "\"read under the lock\"", $"Run with every thread let go, the property was answered \"{ran.Result}\"; the engine's log:\n{host.EngineLog()}");

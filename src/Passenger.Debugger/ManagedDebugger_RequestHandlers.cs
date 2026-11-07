@@ -993,7 +993,7 @@ public partial class ManagedDebugger
             if (letThreadsRun && frameId is int id && _frameReferenceManager.GetFrameInfoById(id) is var (threadId, _) && EvalStatus.Abandoned.ContainsKey(threadId.Value)
                 && _threads.GetValueOrDefault(threadId.Value)?.Thread is { } thread && !await LetAbandonedReturnAsync(thread))
             {
-                return FailedRow(expression.Trim(), $"The evaluation left running on this thread has not returned {Extensions.EvaluationTimeout.TotalSeconds:0.#} s after every thread was let go, so no other can run on it until it does");
+                return FailedRow(expression.Trim(), $"The evaluation held unfinished on this thread has not returned {Extensions.EvaluationTimeout.TotalSeconds:0.#} s after every thread was let go, so no other can run on it until it does");
             }
             VariableInfo value = await Evaluate(expression, frameId, expression.Trim(), implicitly);
             if (EvalStatus.PassedOver.Count > 0)

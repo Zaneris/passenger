@@ -253,7 +253,7 @@ public static class Extensions
         }
         if (evalStatus.Abandoned.ContainsKey(thread.Id))
         {
-            throw new ManagedDebugger.EvalException($"An evaluation that could not be stopped is still running on this thread, so no other can run on it until it returns: {NeedsThreads}");
+            throw new ManagedDebugger.EvalException($"An evaluation that could not be stopped is held unfinished on this thread, so no other can run on it until it returns: {NeedsThreads}");
         }
 
         try
@@ -345,7 +345,7 @@ public static class Extensions
                 bool aborted = ended && eval.TryGetResult(out _) is Cor.CORDBG_S_FUNC_EVAL_ABORTED;
                 if (!ended)
                 {
-                    // Left to run on in the program, paused as the IDE shows it; its end is let go whenever it comes.
+                    // Left unfinished, held with the program as the IDE shows it; its end is let go whenever it comes.
                     process.Stop(0);
                     evalStatus.Abandoned[thread.Id] = eval;
                     evalStatus.DueAt.Remove(thread.Id);
@@ -360,7 +360,7 @@ public static class Extensions
                     string why = evalStatus.LetThreadsRun ? "" : $": {NeedsThreads}";
                     throw new ManagedDebugger.EvalException(aborted
                         ? $"{took} and was stopped{why}"
-                        : $"{took} and could not be stopped, as {(asked ? "the abort asked of it has not taken" : lastWhy ?? "the program could not be held to look at it")}, so it runs on in the program until it returns, the program paused meanwhile{why}");
+                        : $"{took} and could not be stopped, as {(asked ? "the abort asked of it has not taken" : lastWhy ?? "the program could not be held to look at it")}, so it is held unfinished until the program runs on{why}");
                 }
                 // It ended of itself as it was looked at: its value is read as any other's.
             }
