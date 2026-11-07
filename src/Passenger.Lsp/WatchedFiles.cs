@@ -34,6 +34,10 @@ public sealed class WatchedFiles
     /// <summary>The number of the latest change heard (<see cref="changing"/>).</summary>
     private long heard;
 
+    /// <summary>When the server was last told of each file's change, as far back as <see cref="KeptLimit"/> files: for what a
+    /// command that waited out its time says of the files it waited for.</summary>
+    private readonly Dictionary<string, DateTime> told = new(PathNames.Comparer);
+
     /// <summary>Whether changed files were let go past <see cref="KeptLimit"/>, said once until they are fewer.</summary>
     private bool changesOverflowed;
     private readonly LanguageServer server;
@@ -190,6 +194,16 @@ public sealed class WatchedFiles
         }
     }
 
+    /// <summary>When the server was last told a file changed on disk; null when it was not since it started, or too many
+    /// files ago.</summary>
+    public DateTime? ToldAt(string path)
+    {
+        lock (gate)
+        {
+            return told.TryGetValue(path, out DateTime at) ? at : null;
+        }
+    }
+
     /// <summary>Of the files <see cref="Changing"/> gave as of a number, those not heard changed since let go but those
     /// <paramref name="behind"/>, which the command waits for; of those, each the server was found holding otherwise than the
     /// disk (<paramref name="unread"/>) let go once <see cref="UnreadLimit"/> has passed since it first was, said in the log.</summary>
@@ -278,9 +292,15 @@ public sealed class WatchedFiles
         {
             return;
         }
+        if (told.Count + changes.Count > KeptLimit)
+        {
+            told.Clear();
+        }
+        DateTime now = DateTime.UtcNow;
         foreach (FileEvent change in changes)
         {
             Heard(change.Path);
+            told[change.Path] = now;
         }
         List<FileEvent> gone = HasLoader ? [.. changes.Where(c => c.Change == FileChangeType.Deleted)] : [];
         List<FileEvent> rest = gone.Count == 0 ? changes : [.. changes.Where(c => c.Change != FileChangeType.Deleted)];

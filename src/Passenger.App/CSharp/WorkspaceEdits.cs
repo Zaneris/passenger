@@ -32,26 +32,26 @@ public static class WorkspaceEdits
     /// not open again only once the folder's watcher has told it of the change.</summary>
     public static readonly TimeSpan Catching = TimeSpan.FromSeconds(2);
 
-    /// <summary>Why an edit the language server worked out must not be applied to the files not open it changes, but those
-    /// it <paramref name="made"/> empty for it: one written since the request was sent (<paramref name="since"/>), or a
-    /// moment before, which the server may not have read again, or one whose text the server holds is not the disk's; null
-    /// when each is as the server read it. A command's <paramref name="patience"/> works it out again once the server has read
-    /// those written before the request, and any other file not open of its solution written or deleted then.</summary>
+    /// <summary>Why an edit the language server worked out must not be applied to the files not open it changes, but those it
+    /// <paramref name="made"/> empty for it, or to any, worked out from files it reads from disk (<paramref name="read"/>): one
+    /// written since the request was sent (<paramref name="since"/>), or a moment before, or one whose text the server holds is
+    /// not the disk's; null when each is as the server read it. A command's <paramref name="patience"/> works it out again once
+    /// the server has read those written before the request, and any other file not open of its solution written or deleted then.</summary>
     public static Task<string?> StaleAsync(EditorArea editors, LspDocument? server, JsonElement edit, DateTime? since, Patience? patience = null,
-        IReadOnlyCollection<string>? made = null) =>
+        IReadOnlyCollection<string>? made = null, IReadOnlyCollection<string>? read = null) =>
         StaleAsync(editors, server is null ? null : paths => server.HeldTextsAsync(paths), edit, since, patience, made,
-            server is null ? null : after => server.WrittenSinceAsync(after));
+            server is null ? null : after => server.WrittenSinceAsync(after), read);
 
-    /// <summary>As <see cref="StaleAsync(EditorArea, LspDocument?, JsonElement, DateTime?, Patience?, IReadOnlyCollection{string}?)"/>,
+    /// <summary>As <see cref="StaleAsync(EditorArea, LspDocument?, JsonElement, DateTime?, Patience?, IReadOnlyCollection{string}?, IReadOnlyCollection{string}?)"/>,
     /// the server's texts asked of its session (<paramref name="held"/>, null for a server with none to tell), and the files of
     /// its solution written or gone since a time (<paramref name="elsewhere"/>, null for one that cannot say), and the files
     /// its answer comes from that it reads from disk, open here or not (<paramref name="read"/>).</summary>
     public static async Task<string?> StaleAsync(EditorArea editors, Held? held, JsonElement edit, DateTime? since, Patience? patience = null,
         IReadOnlyCollection<string>? made = null, Written? elsewhere = null, IReadOnlyCollection<string>? read = null)
     {
+        HashSet<string> edited = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri))];
         // With the files written for the command to wait for, which the server must have read as they are, in the edit or not.
-        List<string> closed = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri))
-            .Concat(patience?.Awaited ?? []).Distinct()
+        List<string> closed = [.. edited.Concat(patience?.Awaited ?? []).Distinct()
             .Where(p => editors.Documents.All(d => d.Path != p) && File.Exists(p) && made?.Contains(p) != true)
             .Concat((read ?? []).Where(File.Exists)).Distinct()];
         // One the command saw the server hold as the disk has it, unwritten since, has had its moment.
@@ -97,10 +97,11 @@ public static class WorkspaceEdits
         if (unread.Count > 0)
         {
             string name = Path.GetFileName(unread[0]);
-            string said = $"{name} on disk is not the text the language server read, so the places it gave there would be the wrong ones: "
-                + "nothing was changed; try again once the server has read it";
+            // A file only read from holds none of the edit's places, but what the server made of it (a XAML file's fields).
+            string so = edited.Contains(unread[0]) ? "so the places it gave there would be the wrong ones" : "so what it worked out from it may be from the text before";
+            string said = $"{name} on disk is not the text the language server read, {so}: nothing was changed; try again once the server has read it";
             return patience?.Behind(unread, held, said, $"{name} on disk was still not the text the language server read after "
-                + $"{Patience.Limit.TotalSeconds:0} s, so the places it gave there would be the wrong ones: nothing was changed") ?? said;
+                + $"{Patience.Limit.TotalSeconds:0} s, {so}: nothing was changed") ?? said;
         }
         return null;
     }
@@ -659,9 +660,14 @@ public sealed class Patience
     private readonly List<string> behind = [];
     private readonly HashSet<string> awaited = new(StringComparer.Ordinal);
     private readonly Action<string?> waiting;
+    private readonly Func<RoslynSession?> session;
     private Held? held;
 
-    private Patience(Action<string?> waiting) => this.waiting = waiting;
+    private Patience(Action<string?> waiting, Func<RoslynSession?> session)
+    {
+        this.waiting = waiting;
+        this.session = session;
+    }
 
     /// <summary>The attempt's answer, the attempt made again each time it threw for files the server had yet to read, once
     /// it has read them, <paramref name="waiting"/> told what it waits for meanwhile and null once it waits no more. Each
@@ -679,7 +685,7 @@ public sealed class Patience
     public static async Task<T> RunAsync<T>(CommandHistory writes, Func<RoslynSession?> server, Func<Patience, Task<T>> attempt, Func<T, bool> refused,
         Action<string?> waiting, CancellationToken cancel)
     {
-        Patience patience = new(waiting);
+        Patience patience = new(waiting, server);
         try
         {
             while (true)
@@ -734,11 +740,21 @@ public sealed class Patience
     {
         if (DateTime.UtcNow >= until)
         {
+            IdeLog.Write(IdeLog.Ide, $"Waited {Limit.TotalSeconds:0} s for the language server to read {Told(paths, session()?.Server.WatchedFiles)}");
             return kept;
         }
         behind.AddRange(paths);
         held = server;
         return said;
+    }
+
+    /// <summary>Each file, when it was written and when the server was told it changed (<see cref="WatchedFiles.ToldAt"/>),
+    /// for the log: a server told late, or never, had no word of the file to read it by.</summary>
+    internal static string Told(IEnumerable<string> paths, WatchedFiles? watched)
+    {
+        DateTime now = DateTime.UtcNow;
+        return string.Join("; ", paths.Select(p => $"{Path.GetFileName(p)}, {(File.Exists(p) ? $"written {(now - File.GetLastWriteTimeUtc(p)).TotalSeconds:0.00} s before" : "deleted")}, "
+            + (watched?.ToldAt(p) is { } at ? $"its change told the server {(now - at).TotalSeconds:0.00} s before" : "no change of it told the server since it started")));
     }
 
     /// <summary>Waits until the server holds each file behind as the disk has it, unwritten while it was read, and none

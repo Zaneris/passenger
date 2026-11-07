@@ -1793,6 +1793,53 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             server.WatchedFiles.Settle(heard, asOf, [], []);
         });
 
+    /// <summary>The element's field renamed from the code-behind a moment after the element was renamed in its XAML, the server
+    /// holding the XAML as it was with nothing else to go by (the write past its moment, the watcher's word let go), so knowing
+    /// no field of the new name: the rename waits for the server to read the class's XAML, never saying the field can't be
+    /// renamed, and once it has renames the element and its uses.</summary>
+    [AvaloniaFact]
+    public void A_fields_rename_in_the_code_behind_waits_for_a_server_holding_the_classs_xaml_otherwise_than_the_disk_and_renames_the_element()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        OpenDocument behind = window.EditorArea.Active!;
+        Ui.Settle();
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        string xaml = app.PathOf("MainWindow.axaml");
+        TaskCompletionSource told = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNext(Passenger.Lsp.LspMethods.DidChangeWatchedFiles,
+            p => System.Text.Json.JsonSerializer.Serialize(p).Contains("MainWindow.axaml\"", StringComparison.Ordinal), told.Task);
+        try
+        {
+            TestFolders.Write(app.Folder, "MainWindow.axaml", Named("Start"));
+            File.SetLastWriteTimeUtc(xaml, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => held.IsCompleted, "the watcher's word of the XAML, held from the server");
+            (IReadOnlyList<string> heard, long asOf) = server.WatchedFiles.Changing();
+            server.WatchedFiles.Settle(heard, asOf, [], []);
+            Replace(window.EditorArea.CodeEditor, "Go.Content", "Start.Content");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "        St");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Start", "the rename box on the field's name");
+            window.KeyTextInput("Begin");
+            Ui.Press(window, "ENTER", settle: false);
+            TimeSpan within = Passenger.App.CSharp.Patience.Limit;
+            Assert.True(Ui.Pumped(() => window.Status?.StartsWith("Waiting for the language server to read MainWindow.axaml", StringComparison.Ordinal) == true, within),
+                $"Within {within.Scaled().TotalSeconds:0} s the field's rename from the code-behind did not say it waits for the language server to read the class's "
+                + $"XAML, which it holds as it was and so knows no field of that name: the status says {window.Status}");
+        }
+        finally
+        {
+            told.TrySetResult();
+        }
+        Ui.WaitFor(() => window.Status?.Contains("ename", StringComparison.Ordinal) == true, () => $"the rename's word, the status saying {window.Status}");
+        Ui.Settle();
+        string written = File.ReadAllText(xaml);
+        Assert.True(window.Status == "Renamed in 2 files" && behind.Text.Snapshot.ToString() == Gallery.CodeBehind.Replace("Go.Content", "Begin.Content", StringComparison.Ordinal)
+            && written == Named("Begin"), $"The field's rename said {window.Status}, leaving the code-behind\n{behind.Text.Snapshot}\nand the XAML\n{written}");
+        window.Close();
+
+        static string Named(string name) => Gallery.Window.Replace("Name=\"Go\"", $"Name=\"{name}\"", StringComparison.Ordinal).Replace("#Go.", $"#{name}.", StringComparison.Ordinal);
+    }
+
     /// <summary>The XAML written behind the server's back (what else the test does then, <paramref name="wrote"/>), the
     /// server held from reading it: Rename says it waits, and once the server has read it renames both files.</summary>
     private void RenamedOnceTheServerRead(Action<Passenger.Lsp.LanguageServer, Task, string> wrote)

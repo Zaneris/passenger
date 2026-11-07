@@ -355,9 +355,17 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     private static readonly System.Text.Json.JsonElement NoEdit = System.Text.Json.JsonSerializer.SerializeToElement(new { });
 
     /// <summary>Why a server's edit must not be applied to the files not open it changes (<see cref="WorkspaceEdits.StaleAsync"/>):
-    /// the C# server is asked what it holds of them; another server's files are judged by when they changed alone.</summary>
-    private Task<string?> StaleAsync(OpenDocument document, System.Text.Json.JsonElement edit, Asked? asked, Patience? patience = null) =>
-        WorkspaceEdits.StaleAsync(context.Editors, context.CSharp?.For(document)?.Lsp, edit, asked?.Since, patience);
+    /// the C# server is asked what it holds of them, and of the files it answered from that it reads from disk (<paramref name="read"/>);
+    /// another server's files are judged by when they changed alone.</summary>
+    private Task<string?> StaleAsync(OpenDocument document, System.Text.Json.JsonElement edit, Asked? asked, Patience? patience = null,
+        IReadOnlyCollection<string>? read = null) =>
+        WorkspaceEdits.StaleAsync(context.Editors, context.CSharp?.For(document)?.Lsp, edit, asked?.Since, patience, read: read);
+
+    /// <summary>The XAML whose <c>x:Class</c> is the class around an offset of a C# file, which the server reads from disk to
+    /// make that class's fields of its named elements; none outside such a class.</summary>
+    private async Task<IReadOnlyList<string>> MarkupOfClassAtAsync(OpenDocument document, int offset) =>
+        document.Language == Languages.Language.CSharp && TypeRename.ClassAround(document, offset) is { } className && context.Xaml?.Invoke() is { } service
+            && await service.ClassFileAsync(className, document.Path) is { } xaml ? [xaml] : [];
 
     /// <summary>What the status bar says of a command left unrun: one its server does not run itself (<see cref="LanguageServer.Runs"/>).</summary>
     internal static string NotRun(string what, LspCommand command) => $"{what} needs {command.Command}, which Passenger cannot run";
@@ -503,7 +511,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 
     /// <summary>Writes in the IDE's log a rename the server answered with nothing, none of its files known to be behind: where
     /// it says the name is declared, and each file of its solution written in the last minute, how long before the
-    /// request, and whether it holds the file as the disk has it.</summary>
+    /// request, whether it holds the file as the disk has it, and when it was told the file changed.</summary>
     private async Task NoteNothingToRenameAsync(string name, IReadOnlyList<LspLocation> definitions, Asked asked)
     {
         if (context.CSharp?.Session is not { } session)
@@ -517,7 +525,8 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             IReadOnlyList<Roslyn.Extension.TextHeld> held = await session.HeldTextsAsync([.. lately.Written.Select(w => w.Path)]);
             // Each file read off the window's thread, as files of any size may have been written.
             files = await BackgroundWork.Run(() => string.Join("; ", held.Select(t => $"{Path.GetFileName(t.Path)} {(asked.Since - File.GetLastWriteTimeUtc(t.Path)).TotalSeconds:0.00} s before, "
-                + (t.Hash is { } hash && HeldTexts.OnDisk(t.Path, hash) == true ? "held as on disk" : "held otherwise"))));
+                + (t.Hash is { } hash && HeldTexts.OnDisk(t.Path, hash) == true ? "held as on disk" : "held otherwise")
+                + (session.Server.WatchedFiles.ToldAt(t.Path) is { } told ? $", told {(asked.Since - told).TotalSeconds:0.00} s before" : ", never told"))));
         }
         catch (LanguageServerFailed failed)
         {
@@ -582,8 +591,8 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             : context.CSharp?.Session is { } session ? await session.RenameAsync(component.Name, name) : null;
         if (renamed is not { } edit)
         {
-            // Asked a moment after a file it reads from disk was written (a XAML file making a field), the server may not know the name yet.
-            if (await StaleAsync(document, NoEdit, asked, patience) is { } unread)
+            // A server behind a file it reads from disk (the class's XAML making a field, however long ago written) may not know the name yet.
+            if (await StaleAsync(document, NoEdit, asked, patience, await MarkupOfClassAtAsync(document, at.Offset)) is { } unread)
             {
                 return RefactorOutcome.Refused($"Rename was not applied: {unread}");
             }

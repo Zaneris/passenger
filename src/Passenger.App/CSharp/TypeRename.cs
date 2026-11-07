@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
 using Passenger.App.Navigation;
+using Passenger.App.Workspace;
 using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Lsp;
@@ -326,6 +327,18 @@ public static class TypeRename
             { } declaration when Identifier(declaration) == token => declaration,
             _ => null,
         };
+    }
+
+    /// <summary>The type around an offset of an open C# file, the outermost there, named with its namespaces as an
+    /// <c>x:Class</c> names it, in the file as it stands; null outside every type.</summary>
+    public static string? ClassAround(OpenDocument document, int offset)
+    {
+        if (document.Syntax?.Current is not { } current || offset > current.Text.Length)
+        {
+            return null;
+        }
+        BaseTypeDeclarationSyntax? outermost = current.Root.FindToken(offset).Parent?.AncestorsAndSelf().OfType<BaseTypeDeclarationSyntax>().LastOrDefault();
+        return outermost is null ? null : FullName(outermost, outermost.Identifier.ValueText);
     }
 
     /// <summary>A type's name with the namespaces it is declared in, as an <c>x:Class</c> names it; null for a type nested
