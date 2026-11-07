@@ -54,7 +54,7 @@ internal sealed class Details(Inspector inspector)
         }
         if (visual is ILogical logical)
         {
-            foreach (ILogical child in logical.GetLogicalDescendants().Take(64))
+            foreach (ILogical child in ElementTrees.Below(logical, static l => l.LogicalChildren).Take(64))
             {
                 if (child is StyledElement { TemplatedParent: null } made && Place(made) is { } inside)
                 {

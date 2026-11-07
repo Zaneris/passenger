@@ -145,7 +145,7 @@ internal sealed class Inspector : Inspecting<DependencyObject>
         List<Element> roots = [];
         foreach (Visual top in TopLevels())
         {
-            roots.Add(Node(top, top, look, new Rect(Shown.ClientSize(top))));
+            roots.Add(Node(top, look));
         }
         return new AppTree(roots);
     }
@@ -273,17 +273,30 @@ internal sealed class Inspector : Inspecting<DependencyObject>
         return null;
     }
 
-    /// <summary>An element and what it holds; with an agent's look, also where it is and whether what clips it (its window, a
-    /// scroll viewer) shows any of it, <paramref name="clip"/> being what its ancestors leave shown.</summary>
-    private Element Node(DependencyObject element, Visual top, Look? look, Rect clip)
+    /// <summary>A top level and what it holds (<see cref="ElementTrees.Made"/>); with an agent's look, also where each is and
+    /// whether what clips it (its window, a scroll viewer) shows any of it.</summary>
+    private Element Node(Visual top, Look? look)
     {
-        Rect? box = look is { Layout: true } ? Shown.RectIn(element, top) : null;
-        Rect inside = box is { } own && Shown.Clips(element) ? Rect.Intersect(clip, own) : clip;
-        List<Element> children = [];
-        foreach (DependencyObject child in Children(element))
-        {
-            children.Add(Node(child, top, look, inside));
-        }
+        Rect client = new(Shown.ClientSize(top));
+        return ElementTrees.Made<DependencyObject, Clipped>(top, new Clipped(client, null, client),
+            element => [.. Children(element)],
+            (element, holder) =>
+            {
+                Rect? box = look is { Layout: true } ? Shown.RectIn(element, top) : null;
+                return new Clipped(holder.Inside, box, box is { } own && Shown.Clips(element) ? Rect.Intersect(holder.Inside, own) : holder.Inside);
+            },
+            (element, where, children) => Node(element, look, where, children));
+    }
+
+    /// <summary>Where an element is: what its ancestors leave shown, its box with an agent's look, and what it leaves shown
+    /// of what it holds.</summary>
+    private readonly record struct Clipped(Rect Clip, Rect? Box, Rect Inside);
+
+    /// <summary>An element with what it holds made.</summary>
+    private Element Node(DependencyObject element, Look? look, Clipped where, IReadOnlyList<Element> children)
+    {
+        Rect? box = where.Box;
+        Rect clip = where.Clip;
         FrameworkElement? framed = element as FrameworkElement;
         Element node = new(
             IdOf(element),

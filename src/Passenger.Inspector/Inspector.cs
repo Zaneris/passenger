@@ -112,7 +112,7 @@ internal sealed class Inspector : Inspecting<Visual>
         foreach (TopLevel top in tops)
         {
             List<(Visual Visual, SourcePlace Place)> recorded = [];
-            foreach (Visual visual in top.GetVisualDescendants().Prepend(top))
+            foreach (Visual visual in Below(top).Prepend(top))
             {
                 if (visual.IsEffectivelyVisible && Details.Place(visual) is { } place)
                 {
@@ -160,7 +160,7 @@ internal sealed class Inspector : Inspecting<Visual>
         Look? look = request.Layout == true || request.Properties is { Count: > 0 }
             ? new Look(request.Layout == true, request.Properties ?? [], Shown.Focused())
             : null;
-        return new AppTree([.. TopLevels().Select(top => Node(top, top, look, new Rect(top.ClientSize)))]);
+        return new AppTree([.. TopLevels().Select(top => Node(top, look))]);
     }
 
     /// <summary>What an agent's tree carries beyond each element's identity: layout and text, and property values.</summary>
@@ -205,20 +205,30 @@ internal sealed class Inspector : Inspecting<Visual>
         return tops;
     }
 
-    /// <summary>A visual and what it holds; with an agent's look, also where it is and whether what clips it (its window, a
-    /// scroll viewer) shows any of it, <paramref name="clip"/> being what its ancestors leave shown.</summary>
-    private Element Node(Visual visual, TopLevel top, Look? look, Rect clip)
+    /// <summary>A top level and what it holds (<see cref="ElementTrees.Made"/>); with an agent's look, also where each is and
+    /// whether what clips it (its window, a scroll viewer) shows any of it.</summary>
+    private Element Node(TopLevel top, Look? look)
     {
-        Rect? box = look is { Layout: true } ? Shown.RectIn(visual, top) : null;
-        Rect inside = box is { } own && visual.ClipToBounds ? clip.Intersect(own) : clip;
-        List<Element> children = [];
-        foreach (Visual child in visual.GetVisualChildren())
-        {
-            if (!LeftOut(child))
+        Rect client = new(top.ClientSize);
+        return ElementTrees.Made<Visual, Clipped>(top, new Clipped(client, null, client),
+            visual => [.. visual.GetVisualChildren().Where(child => !LeftOut(child))],
+            (visual, holder) =>
             {
-                children.Add(Node(child, top, look, inside));
-            }
-        }
+                Rect? box = look is { Layout: true } ? Shown.RectIn(visual, top) : null;
+                return new Clipped(holder.Inside, box, box is { } own && visual.ClipToBounds ? holder.Inside.Intersect(own) : holder.Inside);
+            },
+            (visual, where, children) => Node(visual, look, where, children));
+    }
+
+    /// <summary>Where a visual is: what its ancestors leave shown, its box with an agent's look, and what it leaves shown of
+    /// what it holds.</summary>
+    private readonly record struct Clipped(Rect Clip, Rect? Box, Rect Inside);
+
+    /// <summary>A visual with what it holds made.</summary>
+    private Element Node(Visual visual, Look? look, Clipped where, IReadOnlyList<Element> children)
+    {
+        Rect? box = where.Box;
+        Rect clip = where.Clip;
         StyledElement? styled = visual as StyledElement;
         Element node = new(
             IdOf(visual),
@@ -247,6 +257,9 @@ internal sealed class Inspector : Inspecting<Visual>
         }
         return look.Properties.Count == 0 ? node : node with { Values = Shown.Values(visual, look.Properties) };
     }
+
+    /// <summary>What a visual holds, each before what it holds in turn, in Avalonia's order (<see cref="ElementTrees.Below"/>).</summary>
+    public static IEnumerable<Visual> Below(Visual visual) => ElementTrees.Below(visual, static v => v.GetVisualChildren());
 
     /// <summary>A visual as an agent's answer names it: its type and #name (or the text it shows), and the control whose
     /// template made it.</summary>

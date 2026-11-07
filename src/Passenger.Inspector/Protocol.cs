@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 // What Passenger and its inspector inside an Avalonia app (src/Passenger.Inspector) or a WPF app
@@ -15,7 +16,7 @@ namespace Passenger.Inspector;
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 9;
+    public const int Version = 10;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     [IdentifierHome]
@@ -349,15 +350,54 @@ public sealed record BindingFailure(int Id, string Level, string Control, string
     public string Description => $"{Control}.{Property} to {Path}{(ErrorPoint is { Length: > 0 } at && at != Path ? $" at {at}" : string.Empty)}: {Message}";
 }
 
-/// <summary>The app's top-level windows (popups among them), each with the visual tree under it.</summary>
-public sealed record AppTree(IReadOnlyList<Element> Roots);
+/// <summary>The app's top-level windows (popups among them), each with the visual tree under it, carried flat
+/// (<see cref="AppTreeJson"/>).</summary>
+[JsonConverter(typeof(AppTreeJson))]
+public sealed record AppTree(IReadOnlyList<Element> Roots)
+{
+    /// <summary>The elements of <paramref name="level"/> and all they hold, each before what it holds, in tree order, with
+    /// its depth (<paramref name="depth"/> for the level's own) and whether what it holds is walked: where it holds any and
+    /// <paramref name="into"/>, asked as it is reached, says so (always by default). A walk with its own stack, so no tree
+    /// is too deep for its thread.</summary>
+    public static IEnumerable<(Element Element, int Depth, bool Open)> Walk(IReadOnlyList<Element> level, int depth = 0, Func<Element, int, bool>? into = null)
+    {
+        // Each level walked into, outermost first, with where the walk is in it.
+        List<(IReadOnlyList<Element> Elements, int Next)> open = [(level, 0)];
+        while (open.Count > 0)
+        {
+            (IReadOnlyList<Element> elements, int next) = open[^1];
+            if (next >= elements.Count)
+            {
+                open.RemoveAt(open.Count - 1);
+                continue;
+            }
+            open[^1] = (elements, next + 1);
+            Element element = elements[next];
+            int at = depth + open.Count - 1;
+            bool walked = element.Children.Count > 0 && (into?.Invoke(element, at) ?? true);
+            yield return (element, at, walked);
+            if (walked)
+            {
+                open.Add((element.Children, 0));
+            }
+        }
+    }
+}
 
 /// <summary>A visual in the tree: its id (the same for as long as it lives), type, name, style classes, whether a template
-/// made it, whether the app's XAML has it (Avalonia recorded where), whether it shows, and its visual children; asked with
-/// Layout, also where it is in its window, its text, and whether it is disabled or focused, and with Properties their values.</summary>
+/// made it, whether the app's XAML has it (Avalonia recorded where), whether it shows, and its visual children, none read
+/// past <see cref="DeepestNesting"/> levels (<see cref="Deeper"/>); asked with Layout, also where it is in its window, its
+/// text, and whether it is disabled or focused, and with Properties their values.</summary>
 public sealed record Element(long Id, string Type, string? Name, IReadOnlyList<string> Classes, bool FromTemplate, bool Sourced, bool Visible,
     IReadOnlyList<Element> Children)
 {
+    /// <summary>How deep an app's tree is read, its windows the first level: past any app's own layout, a TreeView nested
+    /// fifty deep among it, and short of a tree whose every line an agent's answer could indent.</summary>
+    public const int DeepestNesting = 256;
+
+    /// <summary>True where it holds elements the tree does not carry, being <see cref="DeepestNesting"/> levels down.</summary>
+    public bool? Deeper { get; init; }
+
     /// <summary>Its box in its window's units, transforms included.</summary>
     public Box? Bounds { get; init; }
 
@@ -479,13 +519,114 @@ public static class SetterStates
     public const string Inactive = "Inactive";
 }
 
-/// <summary>How the messages are written: camel case, nulls left out, a tree as deep as an app's visual tree goes (two
-/// levels a control, where System.Text.Json stops at 64), generated for both ends (an app may turn reflection off for
-/// System.Text.Json).</summary>
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    MaxDepth = 4096)]
+/// <summary>An app's tree as the wire carries it, flat: its elements in tree order (<see cref="AppTree.Walk"/>), each
+/// without what it holds, then how many each holds, read back into the tree with a stack of its own. So neither end's
+/// System.Text.Json, which walks what it reads and writes on its thread's stack, goes deeper than an element, however deep
+/// the tree.</summary>
+internal sealed class AppTreeJson : JsonConverter<AppTree>
+{
+    private const string Elements = "elements";
+    private const string Held = "held";
+
+    public override void Write(Utf8JsonWriter writer, AppTree value, JsonSerializerOptions options)
+    {
+        List<int> held = [];
+        writer.WriteStartObject();
+        writer.WriteStartArray(Elements);
+        foreach ((Element element, _, _) in AppTree.Walk(value.Roots))
+        {
+            JsonSerializer.Serialize(writer, element.Children.Count == 0 ? element : element with { Children = [] }, WireJson.Default.Element);
+            held.Add(element.Children.Count);
+        }
+        writer.WriteEndArray();
+        writer.WriteStartArray(Held);
+        foreach (int count in held)
+        {
+            writer.WriteNumberValue(count);
+        }
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+
+    public override AppTree Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        List<Element> elements = [];
+        List<int> held = [];
+        Expect(ref reader, JsonTokenType.StartObject);
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            string? name = reader.GetString();
+            reader.Read();
+            if (name is Elements or Held)
+            {
+                Expect(ref reader, JsonTokenType.StartArray);
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+                {
+                    if (name == Elements)
+                    {
+                        elements.Add(JsonSerializer.Deserialize(ref reader, WireJson.Default.Element) ?? throw new JsonException("An element of an app's tree was null"));
+                    }
+                    else
+                    {
+                        held.Add(reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out int count) && count >= 0
+                            ? count
+                            : throw new JsonException("An app's tree said an element held what is no count"));
+                    }
+                }
+            }
+            else
+            {
+                reader.Skip();
+            }
+        }
+        Expect(ref reader, JsonTokenType.EndObject);
+        return new AppTree(Assembled(elements, held));
+    }
+
+    private static void Expect(ref Utf8JsonReader reader, JsonTokenType token)
+    {
+        if (reader.TokenType != token)
+        {
+            throw new JsonException($"An app's tree had {reader.TokenType} where {token} belonged");
+        }
+    }
+
+    /// <summary>The trees of elements in tree order, each followed by as many as it holds and all they hold.</summary>
+    private static List<Element> Assembled(List<Element> elements, List<int> held)
+    {
+        if (held.Count != elements.Count)
+        {
+            throw new JsonException($"An app's tree said what {held.Count} of its {elements.Count} elements held");
+        }
+        List<Element> roots = [];
+        // The elements whose children are still to come, outermost first, with how many are left.
+        List<(Element Element, int Left, List<Element> Children)> open = [];
+        for (int i = 0; i < elements.Count; i++)
+        {
+            open.Add((elements[i], held[i], []));
+            while (open.Count > 0 && open[^1].Left == 0)
+            {
+                Element done = open[^1].Element with { Children = open[^1].Children };
+                open.RemoveAt(open.Count - 1);
+                if (open.Count == 0)
+                {
+                    roots.Add(done);
+                    continue;
+                }
+                open[^1] = open[^1] with { Left = open[^1].Left - 1 };
+                open[^1].Children.Add(done);
+            }
+        }
+        return open.Count == 0 ? roots : throw new JsonException($"An app's tree ended with {open.Count} of its elements short of what they held");
+    }
+}
+
+/// <summary>How the messages are written: camel case, nulls left out, generated for both ends (an app may turn reflection
+/// off for System.Text.Json).</summary>
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(Request))]
 [JsonSerializable(typeof(Reply))]
+[JsonSerializable(typeof(Element))]
 [JsonSerializable(typeof(BindingFailure))]
 [JsonSerializable(typeof(XamlRead))]
 [JsonSerializable(typeof(XamlValues))]

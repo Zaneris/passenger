@@ -578,17 +578,15 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
         return (KeyTarget(top) ?? taking, true);
     }
 
-    private static IEnumerable<DependencyObject> Descendants(DependencyObject element)
+    /// <summary>What an element holds, each before what it holds in turn, in the visual tree's order (<see cref="ElementTrees.Below"/>).</summary>
+    private static IEnumerable<DependencyObject> Descendants(DependencyObject element) => ElementTrees.Below(element, Children);
+
+    private static IEnumerable<DependencyObject> Children(DependencyObject element)
     {
         int count = element is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetChildrenCount(element) : 0;
         for (int i = 0; i < count; i++)
         {
-            DependencyObject child = VisualTreeHelper.GetChild(element, i);
-            yield return child;
-            foreach (DependencyObject below in Descendants(child))
-            {
-                yield return below;
-            }
+            yield return VisualTreeHelper.GetChild(element, i);
         }
     }
 

@@ -205,7 +205,7 @@ internal sealed class Driver(Inspector inspector) : Driving<Visual, TopLevel>
         }
         InputElement? taking = input.Focusable && input.IsEffectivelyEnabled
             ? input
-            : input.GetVisualDescendants().OfType<InputElement>().FirstOrDefault(d => d.Focusable && d.IsEffectivelyEnabled && d.IsEffectivelyVisible);
+            : Inspector.Below(input).OfType<InputElement>().FirstOrDefault(d => d.Focusable && d.IsEffectivelyEnabled && d.IsEffectivelyVisible);
         if (taking is null || !taking.Focus(NavigationMethod.Pointer))
         {
             throw new Refusal(input.IsEffectivelyEnabled

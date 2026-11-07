@@ -31,6 +31,8 @@
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
     <!-- The serve loop, the request switch and the words both inspectors answer in, and where the debugger stops them. -->
     <Compile Include="../Passenger.Inspector/Serving.cs" Link="Serving.cs" />
+    <!-- The app's tree made into the wire's and walked, with stacks of their own, as both inspectors walk it. -->
+    <Compile Include="../Passenger.Inspector/ElementTrees.cs" Link="ElementTrees.cs" />
     <!-- XAML Hot Reload's reading of a XAML file's two texts and what it refuses, as both inspectors read them. -->
     <Compile Include="../Passenger.Inspector/XamlRoot.cs" Link="XamlRoot.cs" />
     <Compile Include="../Passenger.Inspector/XamlReloading.cs" Link="XamlReloading.cs" />

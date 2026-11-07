@@ -202,7 +202,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
         }
         foreach (TopLevel top in tops())
         {
-            foreach (object made in new object[] { top }.Concat(top.GetVisualDescendants()).Concat(((ILogical)top).GetLogicalDescendants()))
+            foreach (object made in new object[] { top }.Concat(Inspector.Below(top)).Concat(ElementTrees.Below<ILogical>(top, static l => l.LogicalChildren)))
             {
                 if (seen.Add(made))
                 {
@@ -231,7 +231,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
         }
         foreach (TopLevel top in tops())
         {
-            foreach (StyledElement element in new Visual[] { top }.Concat(top.GetVisualDescendants()).OfType<StyledElement>())
+            foreach (StyledElement element in Inspector.Below(top).Prepend(top).OfType<StyledElement>())
             {
                 owners.Add((element.Styles, element.Resources));
             }

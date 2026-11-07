@@ -101,6 +101,13 @@
     <Compile Include="../../src/Passenger.Inspector/XamlPlaces.cs" Link="Inspector/XamlPlaces.cs" />
   </ItemGroup>
 
+  <!-- An app's tree as the inspector makes it and as the wire carries it, from the elements alone, compiled in since their
+       project is the inspector, which an app loads. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Inspector/Protocol.cs" Link="Inspector/Protocol.cs" />
+    <Compile Include="../../src/Passenger.Inspector/ElementTrees.cs" Link="Inspector/ElementTrees.cs" />
+  </ItemGroup>
+
   <!-- Where an AppHost's dashboard is called from where it listens, its deploy steps and their logins, compiled in since
        their project is the app's. -->
   <ItemGroup>
