@@ -213,7 +213,7 @@ internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan
         {
             0 => $"a program Windows does not name {verb}s",
             1 => $"{named[0]} {verb}s",
-            _ => $"{string.Join(" and ", named)} {verb}",
+            _ => $"{Plural.Listed(named)} {verb}",
         };
     }
 

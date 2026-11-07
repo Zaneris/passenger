@@ -923,7 +923,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             + "sealed class Locked\n{\n    private static readonly object Gate = new();\n    public static bool LetGo;\n\n"
             + "    public string Value\n    {\n        get\n        {\n            lock (Gate)\n            {\n                return \"read under the lock\";\n            }\n        }\n    }\n\n"
             + "    public static void Hold()\n    {\n        using ManualResetEventSlim held = new();\n        Thread holder = new(() =>\n        {\n"
-            + "            lock (Gate)\n            {\n                held.Set();\n                Thread.Sleep(1000);\n            }\n            LetGo = true;\n"
+            + "            lock (Gate)\n            {\n                held.Set();\n                Thread.Sleep(1000);\n                LetGo = true;\n            }\n"
             + "        }) { IsBackground = true };\n        holder.Start();\n        held.Wait();\n    }\n}\n");
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
