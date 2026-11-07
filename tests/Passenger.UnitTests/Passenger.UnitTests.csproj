@@ -9,6 +9,10 @@
     <RootNamespace>Passenger.UnitTests</RootNamespace>
     <!-- dotnet test's results under artifacts/ with the builds, as Passenger.Tests' are. -->
     <VSTestResultsDirectory>$([MSBuild]::NormalizeDirectory('$(ArtifactsPath)', 'test-results'))</VSTestResultsDirectory>
+    <!-- Every collection blocking, none in the background: the tests that hold code to what it allocates read
+         GC.GetAllocatedBytesForCurrentThread, which a background collection's mark raises on every thread by the unused rest
+         of its allocation context, up to 8 KB never allocated (#1355). A blocking one counts exactly. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

@@ -186,7 +186,8 @@ public class FuzzyMatchTests
         paths.Select(p => (Path: p, Score: FuzzyMatch.Score(query, p))).Where(m => m.Score is not null).OrderByDescending(m => m.Score).Select(m => m.Path);
 
     /// <summary>What each call allocated on this thread across the measured rounds, kept in arrays made before them so that
-    /// keeping it allocates nothing, with the methods the runtime compiled on this thread in those calls.</summary>
+    /// keeping it allocates nothing: with the methods the runtime compiled on this thread in those calls, and, of the first
+    /// round each allocated in, the thread before and after, the query room before and after, and the collections within.</summary>
     private sealed class Allocations
     {
         public const int Rounds = 1_000;
@@ -196,7 +197,9 @@ public class FuzzyMatchTests
         private readonly int[] rounds;
         private readonly int[] firstRound;
         private readonly long[] compiled;
-        private long compiledAt;
+        private readonly Moment[] before;
+        private readonly Moment[] after;
+        private Moment at;
 
         public Allocations(string[] said)
         {
@@ -205,20 +208,23 @@ public class FuzzyMatchTests
             rounds = new int[said.Length];
             firstRound = new int[said.Length];
             compiled = new long[said.Length];
+            before = new Moment[said.Length];
+            after = new Moment[said.Length];
         }
 
+        /// <summary>Reads what a call may change, the room last, then this thread's count of bytes, which it returns.</summary>
         public long Begin()
         {
-            compiledAt = JitInfo.GetCompiledMethodCount(currentThread: true);
+            at = Moment.Now();
             return GC.GetAllocatedBytesForCurrentThread();
         }
 
-        /// <summary>Notes what the call begun at <paramref name="at"/> allocated in a measured round; round -1 only warms what
+        /// <summary>Notes what the call begun at <paramref name="since"/> allocated in a measured round; round -1 only warms what
         /// the rounds run.</summary>
-        public void End(int call, int round, long at)
+        public void End(int call, int round, long since)
         {
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - at;
-            long methods = JitInfo.GetCompiledMethodCount(currentThread: true) - compiledAt;
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - since;
+            Moment now = Moment.Now();
             if (round < 0 || allocated == 0)
             {
                 return;
@@ -226,10 +232,12 @@ public class FuzzyMatchTests
             if (rounds[call] == 0)
             {
                 firstRound[call] = round;
+                before[call] = at;
+                after[call] = now;
             }
             rounds[call]++;
             bytes[call] += allocated;
-            compiled[call] += methods;
+            compiled[call] += now.Compiled - at.Compiled;
         }
 
         /// <summary>Each call that allocated, and what the rounds allocated outside the calls.</summary>
@@ -241,7 +249,8 @@ public class FuzzyMatchTests
                 if (rounds[call] > 0)
                 {
                     calls.Add($"{said[call]} allocated {bytes[call]:N0} bytes in {rounds[call]:N0} of the {Rounds:N0} rounds, "
-                        + $"first in round {firstRound[call] + 1:N0}, as the runtime compiled {compiled[call]:N0} methods on this thread");
+                        + $"first in round {firstRound[call] + 1:N0}, as the runtime compiled {compiled[call]:N0} methods on this thread; "
+                        + Moment.Said(before[call], after[call]));
                 }
             }
             long between = allocated - bytes.Sum();
@@ -250,6 +259,39 @@ public class FuzzyMatchTests
                 calls.Add($"{between:N0} bytes were allocated between the calls");
             }
             return string.Join("; ", calls) + ".";
+        }
+    }
+
+    /// <summary>What a call may change, read before it or after it.</summary>
+    private struct Moment
+    {
+        public int Thread;
+        public char[]? Room;
+        public int Young;
+        public int Middle;
+        public int Old;
+        public long Compiled;
+        public TimeSpan Paused;
+
+        public static Moment Now() => new()
+        {
+            Thread = Environment.CurrentManagedThreadId,
+            Young = GC.CollectionCount(0),
+            Middle = GC.CollectionCount(1),
+            Old = GC.CollectionCount(2),
+            Compiled = JitInfo.GetCompiledMethodCount(currentThread: true),
+            Paused = GC.GetTotalPauseDuration(),
+            Room = FuzzyMatch.QueryRoom,
+        };
+
+        public static string Said(Moment before, Moment after)
+        {
+            string room = ReferenceEquals(before.Room, after.Room) ? $"kept its query room of {before.Room?.Length ?? 0:N0} characters"
+                : before.Room is null ? $"found no query room and left one of {after.Room?.Length ?? 0:N0} characters"
+                : $"made its query room again, {before.Room.Length:N0} characters before and {after.Room?.Length ?? 0:N0} after";
+            return $"in that round it began on managed thread {before.Thread} and ended on {after.Thread}, {room}, and saw "
+                + $"{after.Young - before.Young}, {after.Middle - before.Middle} and {after.Old - before.Old} collections of "
+                + $"generations 0, 1 and 2 begin within it, and was paused {(after.Paused - before.Paused).TotalMilliseconds:N1} ms by collections";
         }
     }
 }

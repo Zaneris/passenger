@@ -21,6 +21,10 @@ public static class FuzzyMatch
     [ThreadStatic]
     private static char[]? pathRoom;
 
+    /// <summary>This thread's query room as it stands, so a test holding scoring to no allocation can say whether it was made
+    /// again.</summary>
+    internal static char[]? QueryRoom => queryRoom;
+
     public static int? Score(string query, string relativePath)
     {
         if (query.Length == 0)
