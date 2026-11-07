@@ -40,6 +40,11 @@
     <Compile Include="../../src/Passenger.App/Containers/DockerfileStages.cs" Link="App/DockerfileStages.cs" />
   </ItemGroup>
 
+  <!-- The order a program's update handlers run in, compiled in since its project is a hook carried beside the app. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.UpdateHandlers/Handlers.cs" Link="App/UpdateHandlers.cs" />
+  </ItemGroup>
+
   <!-- How a tool window shares out its room, from widths alone, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/ToolWindows/ToolLayout.cs" Link="App/ToolLayout.cs" />

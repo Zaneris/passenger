@@ -9,11 +9,14 @@ namespace Passenger.UpdateHandlers;
 internal static class Handlers
 {
     /// <summary>Calls every handler, answering each failure in words: its type, its method and what it threw.</summary>
-    public static IReadOnlyList<string> Run()
+    public static IReadOnlyList<string> Run() => Run(AppDomain.CurrentDomain.GetAssemblies());
+
+    /// <summary>Calls the handlers of these assemblies, as <see cref="Run()"/> does those of every one loaded.</summary>
+    public static IReadOnlyList<string> Run(IEnumerable<Assembly> assemblies)
     {
         List<string> failures = [];
         List<Type> handlers = [];
-        foreach (Assembly assembly in Ordered(AppDomain.CurrentDomain.GetAssemblies()))
+        foreach (Assembly assembly in Ordered(assemblies))
         {
             try
             {
@@ -45,17 +48,14 @@ internal static class Handlers
         return failures;
     }
 
-    /// <summary>The assemblies loaded, each after those of them it references.</summary>
-    private static List<Assembly> Ordered(Assembly[] assemblies)
+    /// <summary>The assemblies given, each after those of them it references, every load of a name among them: one assembly
+    /// in two load contexts holds two sets of statics, so each has its handlers called.</summary>
+    public static List<Assembly> Ordered(IEnumerable<Assembly> assemblies)
     {
-        Dictionary<string, Assembly> byName = [];
-        foreach (Assembly assembly in assemblies.Where(a => !a.IsDynamic))
-        {
-            byName.TryAdd(assembly.GetName().Name ?? string.Empty, assembly);
-        }
+        ILookup<string, Assembly> byName = assemblies.Where(a => !a.IsDynamic).ToLookup(a => a.GetName().Name ?? string.Empty);
         List<Assembly> ordered = [];
         HashSet<Assembly> visited = [];
-        foreach (Assembly assembly in byName.Values)
+        foreach (Assembly assembly in byName.SelectMany(named => named))
         {
             Visit(assembly);
         }
@@ -69,7 +69,7 @@ internal static class Handlers
             }
             foreach (AssemblyName referenced in assembly.GetReferencedAssemblies())
             {
-                if (referenced.Name is { } name && byName.TryGetValue(name, out Assembly? loaded))
+                foreach (Assembly loaded in byName[referenced.Name ?? string.Empty])
                 {
                     Visit(loaded);
                 }
