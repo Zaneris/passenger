@@ -369,14 +369,21 @@ public partial class ManagedDebugger
         return null;
     }
 
-    /// <summary>A thread paused outside managed code (in a sleep, a wait, a read) has no line to step from: any step runs
-    /// it out to managed code first, where the step completes as one from the caller would.</summary>
+    /// <summary>A thread paused outside managed code (in a sleep, a wait, a read), or, Just My Code, outside the user's code,
+    /// has no line to step from: any step runs it out to the user's managed code first, where it completes as one from the
+    /// caller would. A library method calling native code shows as the top frame, and a step from that frame would end only
+    /// at the thread's next pass through its code, never once the method is compiled again. A thread stopped by its own
+    /// event stands where its top frame shows.</summary>
     private bool StepOutToManagedCode(ICorDebugThread thread)
     {
-        if (thread.ActiveFrame is ICorDebugILFrame)
+        ICorDebugFrame? top = thread.ActiveFrame;
+        if (top is ICorDebugILFrame && (!_justMyCode || _stoppedByEvent == thread.Id || IsUserCodeFrame(top)))
         {
             return false;
         }
+        _logger?.Invoke(top is ICorDebugILFrame
+            ? $"Paused in {FrameTold(top)}, outside the user's code: the step runs out to the user's code"
+            : $"Paused in {(top is null ? "native code" : FrameTold(top))}: the step runs out to managed code");
         BeginStep(thread.CreateStepper(), thread, null, _justMyCode, stepper => stepper.StepOut());
         Continue(clearVariables: true);
         return true;

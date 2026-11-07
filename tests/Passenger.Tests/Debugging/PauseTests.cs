@@ -1,3 +1,4 @@
+using System.Globalization;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
 
@@ -57,6 +58,47 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         StoppedEvent stepped = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Step, stepped.Reason);
         AssertInLoop(await host.TopFrameAsync(stepped.ThreadId!.Value));
+    }
+
+    /// <summary>A step from a pause in the sleep, the thread in the library's code calling native code, comes back as the
+    /// sleep returns, on the turn of the loop it was paused on: one that ended only when the thread next passed through that
+    /// code came back a turn later, and never once the runtime had compiled that code again meanwhile.</summary>
+    [Theory]
+    [InlineData(DapCommands.Next)]
+    [InlineData(DapCommands.StepIn)]
+    public async Task A_step_from_a_pause_in_a_sleep_comes_back_as_the_sleep_returns_on_the_turn_it_was_paused_on(string step)
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Launch(host, sleeps: true);
+
+        StoppedEvent stopped = await Pause(host);
+        // A pause between two sleeps finds the loop's own line, from which a step may pass the count.
+        for (int again = 0; again < 5 && InProgram(await host.TopFrameAsync(stopped.ThreadId!.Value)); again++)
+        {
+            await host.ContinueAsync();
+            stopped = await Pause(host);
+        }
+        int thread = stopped.ThreadId!.Value;
+        DapStackFrame paused = await host.TopFrameAsync(thread);
+        Assert.False(InProgram(paused), $"Six pauses all found the loop's own line, never its sleep: {paused.Name}");
+        long before = await Turns(host, thread);
+
+        await host.RequestAsync(step, new ThreadArguments(thread));
+        StoppedEvent stepped = await host.WaitForStoppedEvent();
+        Assert.Equal(StopReasons.Step, stepped.Reason);
+        AssertInLoop(await host.TopFrameAsync(thread));
+        long after = await Turns(host, thread);
+        Assert.True(after == before, $"A {step} from a pause in {paused.Name} came back on turn {after} of the loop, where it was paused on turn {before}: it waited for "
+            + "the thread to pass through the sleep's code again, which a program whose code is compiled again meanwhile never does");
+
+        static bool InProgram(DapStackFrame frame) => frame.Source?.Path?.EndsWith("Program.cs", StringComparison.Ordinal) == true;
+
+        static async Task<long> Turns(DebugSession host, int thread)
+        {
+            StackTraceResponse stack = await host.StackTraceAsync(thread, levels: null);
+            ScopesResponse scopes = await host.ScopesAsync(stack.StackFrames.First(InProgram).Id);
+            return long.Parse(Assert.Single(await host.VariablesAsync(scopes.Scopes.Single().VariablesReference), v => v.Name == "turns").Value, CultureInfo.InvariantCulture);
+        }
     }
 
     /// <summary>Paused in its sleep, where none of the program's code can run, an interpolated number is written by the

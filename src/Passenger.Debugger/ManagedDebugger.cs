@@ -600,6 +600,10 @@ public partial class ManagedDebugger
     /// an event that comes meanwhile, which the runtime had on its way as a pause stopped the program, waits until then.</summary>
     private bool _stopShown;
 
+    /// <summary>The thread whose own event (a breakpoint, a step's end, an exception) the stop shown is, which stands in the
+    /// managed code its top frame shows; none at a pause, which holds every thread wherever it stood.</summary>
+    private int? _stoppedByEvent;
+
     private void ReportStop(int threadId, string reason, string? filePath = null, int line = 0, int column = 0, IReadOnlyList<int>? hitBreakpointIds = null, string? text = null)
     {
         // A step's calls' values are shown at its own stop; one that stops anywhere else stops showing them.
@@ -612,6 +616,7 @@ public partial class ManagedDebugger
         _stopShown = true;
         // A pause holds threads where they stand, and an exception inside its managed dispatch, neither at a patch.
         _stoppedInDispatch = reason is StopReasons.Pause or StopReasons.Exception ? null : threadId;
+        _stoppedByEvent = reason is StopReasons.Pause ? null : threadId;
         OnStopped?.Invoke(new StopInfo(threadId, reason, filePath, line, column, hitBreakpointIds, text));
     }
 
@@ -790,6 +795,7 @@ public partial class ManagedDebugger
         {
             if (stepType == StepType.StepOut)
             {
+                _logger?.Invoke($"Stepper set on thread {thread.Id}: out of {FrameTold(frame)}");
                 stepper.StepOut();
                 return;
             }
@@ -797,9 +803,11 @@ public partial class ManagedDebugger
             // A module the debugger could not read has no lines: the step is the runtime's own, an instruction's.
             if ((through ?? StepRangeOf(ilFrame)) is not var (start, end))
             {
+                _logger?.Invoke($"Stepper set on thread {thread.Id}: {stepType} an instruction of {FrameTold(frame)}, which has no lines");
                 stepper.Step(stepIn);
                 return;
             }
+            _logger?.Invoke($"Stepper set on thread {thread.Id}: {stepType} IL_{start:X4} to IL_{end:X4} of {FrameTold(frame)}{(justMyCode ? ", Just My Code" : "")}");
             COR_DEBUG_STEP_RANGE range = new() { startOffset = checked((uint)start), endOffset = checked((uint)end) };
             stepper.StepRange(stepIn, [range], 1);
         });
