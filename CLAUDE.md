@@ -250,7 +250,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `NavigateToString` only where WebView2 refuses, and its white is the web view's own (`DrawGround`), never CSS: a
   background on html stops a body's reaching the canvas. Convert Indentation has one refusal
   (`OpenDocument.WhyNotConverted`), a language's literals beyond its strings go in `Language.Literals`, Python's blocks
-  through `Indentation.FirstBlockAtRisk` and `Language.BlockWords`.
+  through `Indentation.FirstBlockAtRisk`, `Language.BlockWords` and `Language.Continued`.
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
