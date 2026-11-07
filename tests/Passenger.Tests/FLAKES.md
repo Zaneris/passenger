@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-07
 
+- `DebuggerTests`' `A_watch_waiting_on_a_lock_another_thread_holds_runs_again_…`, CI's Linux runner at 4004896c7 (run
+  42400907211): "Locked.LetGo never showed true as a watch". **A race in the test's program**: it set `LetGo` after
+  leaving the lock, and the watch's end, the lock taken, can stop it before that line; it is set inside the lock now
+  (dc8b33690, #1366).
+- `ListedNamesTests`, every system at 4004896c7 (run 42400907211): Install .NET SDK's holders joined with " and " of
+  their own. **The rule catching new code**, not a flake: listed through `Plural.Listed` (dc8b33690, #1364).
 - `McpAspireStandInTests`' `An_agent_reads_a_services_request_duration_through_telemetry_metrics`, CI's Windows runner
   at 7150c471f (run 42391194839): "its runtime took no session in 25 s (process 2584 runs, … the pipe … is there but
   answered no other request either)", web never at `app.Run()`. **A hang of .NET 10's**, met by the IDE: a metrics session
