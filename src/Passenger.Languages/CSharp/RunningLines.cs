@@ -20,10 +20,11 @@ public static class RunningLines
             return false;
         }
         LineSpan span = parsed.Text.GetLine(line);
-        int end = span.Start + span.Length;
-        foreach (SyntaxToken token in parsed.Root.DescendantTokens(new Microsoft.CodeAnalysis.Text.TextSpan(span.Start, span.Length)))
+        // At least a character, so a blank line inside a string over several lines finds the string.
+        int end = Math.Max(span.Start + span.Length, span.Start + 1);
+        foreach (SyntaxToken token in parsed.Root.DescendantTokens(Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(span.Start, end)))
         {
-            if (token.Span.Length > 0 && token.Span.Start < Math.Max(end, span.Start + 1) && token.Span.End > span.Start && Runs(token))
+            if (token.Span.Length > 0 && token.Span.Start < end && token.Span.End > span.Start && Runs(token))
             {
                 return true;
             }
@@ -31,14 +32,21 @@ public static class RunningLines
         return false;
     }
 
-    /// <summary>The first line after a line (both from zero) where code may run, or null where none does to the file's end.</summary>
+    /// <summary>The first line after a line (both from zero) where code may run, or null where none does to the file's end,
+    /// found in one walk of the tokens after it, so a long class costs the window's thread its tokens once.</summary>
     public static int? NextAfter(ParsedText parsed, int line)
     {
-        for (int next = line + 1; next < parsed.Text.LineCount; next++)
+        int next = Math.Max(line + 1, 0);
+        if (next >= parsed.Text.LineCount)
         {
-            if (Runs(parsed, next))
+            return null;
+        }
+        int from = parsed.Text.GetLineStart(next);
+        foreach (SyntaxToken token in parsed.Root.DescendantTokens(Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(from, parsed.Text.Length)))
+        {
+            if (token.Span.Length > 0 && token.Span.End > from && Runs(token))
             {
-                return next;
+                return parsed.Text.GetLineFromOffset(Math.Max(token.SpanStart, from));
             }
         }
         return null;

@@ -92,4 +92,43 @@ public sealed class RunningLinesTests
         Assert.Null(RunningLines.NextAfter(parsed, Order.Length - 2));
         Assert.False(RunningLines.Runs(parsed, Order.Length + 5));
     }
+
+    /// <summary>Every line's next is the first later line that runs, a string over several lines running on each of them, with
+    /// either line end, and past the file's end there is none.</summary>
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void The_next_line_is_the_first_later_line_that_runs(string end)
+    {
+        string text = string.Join(end, Order.Select(l => l.Line).Concat(["public sealed class Quoted", "{", "    private string? unset;", "", "    private string said = @\"one", "", "two\";",
+            "    private int after;", "}", ""]));
+        ParsedText parsed = new(CSharpSyntaxTree.ParseText(text, cancellationToken: TestContext.Current.CancellationToken), TextSnapshot.From(text));
+        for (int line = -1; line < parsed.Text.LineCount + 2; line++)
+        {
+            int start = line;
+            int? first = Enumerable.Range(0, parsed.Text.LineCount).Where(l => l > start && RunningLines.Runs(parsed, l)).Select(l => (int?)l).FirstOrDefault();
+            Assert.True(first == RunningLines.NextAfter(parsed, line), $"A breakpoint on line {line + 1} would be said to move to line {RunningLines.NextAfter(parsed, line) + 1}, not {first + 1}");
+        }
+    }
+
+    /// <summary>A class of nothing but auto-properties has no line that runs, so the hover over a breakpoint at its top reads to
+    /// the file's end, on the window's thread: what that allocates, once its tree is read, stays that of one walk however long
+    /// the class, where a walk for each line allocates a little more for every line and takes time by the square of them.</summary>
+    [Fact]
+    public void Finding_the_next_line_that_runs_is_one_walk_however_long_the_class()
+    {
+        long few = WalkBytes(200);
+        long many = WalkBytes(4000);
+        Assert.True(many < (few * 2) + 4096, $"Finding the next line in 4000 properties allocated {many} bytes against {few} in 200: a walk for each line freezes the window on a long class");
+    }
+
+    private static long WalkBytes(int properties)
+    {
+        string text = "public sealed class Many\n{\n" + string.Concat(Enumerable.Range(0, properties).Select(i => $"    public int P{i} {{ get; set; }}\n")) + "}\n";
+        ParsedText parsed = new(CSharpSyntaxTree.ParseText(text, cancellationToken: TestContext.Current.CancellationToken), TextSnapshot.From(text));
+        Assert.Null(RunningLines.NextAfter(parsed, 0));
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Null(RunningLines.NextAfter(parsed, 0));
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
 }
