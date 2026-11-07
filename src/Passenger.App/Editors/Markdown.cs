@@ -19,6 +19,10 @@ namespace Passenger.App.Editors;
 /// image is drawn are the page's (<see cref="MarkdownPage"/>): the notes' a web link alone and no image. Nothing is fetched.</summary>
 internal static partial class Markdown
 {
+    /// <summary>How deep quotes and lists are read inside one another, and emphasis and links, past what a page's width shows
+    /// and short of what a control's layout reaches on a thread's stack: past it what is written reads as words.</summary>
+    private const int DeepestNesting = 32;
+
     /// <summary>Each heading level's class, the first level's first.</summary>
     private static readonly string[] Headings =
         [StyleClasses.MdHeading1, StyleClasses.MdHeading2, StyleClasses.MdHeading3, StyleClasses.MdHeading4, StyleClasses.MdHeading5, StyleClasses.MdHeading6];
@@ -229,14 +233,14 @@ internal static partial class Markdown
 
     /// <summary>Lines into blocks: each block begins where the last ended, a blank line or a line that starts another
     /// kind ending a paragraph. Each block's lines go into <paramref name="spans"/> when given.</summary>
-    private static List<Block> Blocks(IReadOnlyList<string> lines, List<(int Start, int End)>? spans = null)
+    private static List<Block> Blocks(IReadOnlyList<string> lines, List<(int Start, int End)>? spans = null, int depth = 0)
     {
         List<Block> blocks = [];
         int i = 0;
         while (i < lines.Count)
         {
             int start = i;
-            if (BlockAt(lines, ref i) is { } block)
+            if (BlockAt(lines, ref i, depth) is { } block)
             {
                 blocks.Add(block);
                 spans?.Add((start, i));
@@ -247,7 +251,7 @@ internal static partial class Markdown
 
     /// <summary>The block that begins at a line, or null for a line that begins none (a blank one, a comment's), with the
     /// line after it in <paramref name="i"/>.</summary>
-    private static Block? BlockAt(IReadOnlyList<string> lines, ref int i)
+    private static Block? BlockAt(IReadOnlyList<string> lines, ref int i, int depth)
     {
         string line = lines[i];
         if (string.IsNullOrWhiteSpace(line))
@@ -274,7 +278,7 @@ internal static partial class Markdown
             i++;
             return new Rule();
         }
-        if (QuoteLine().IsMatch(line))
+        if (depth < DeepestNesting && QuoteLine().IsMatch(line))
         {
             List<string> quoted = [];
             while (i < lines.Count && QuoteLine().Match(lines[i]) is { Success: true } inside)
@@ -282,11 +286,11 @@ internal static partial class Markdown
                 quoted.Add(inside.Groups[1].Value);
                 i++;
             }
-            return new Quote(Blocks(quoted));
+            return new Quote(Blocks(quoted, depth: depth + 1));
         }
-        if (Marker().Match(line) is { Success: true })
+        if (depth < DeepestNesting && Marker().Match(line) is { Success: true })
         {
-            return ListFrom(lines, ref i);
+            return ListFrom(lines, ref i, depth);
         }
         if (TableAt(lines, i) is { } aligns)
         {
@@ -458,7 +462,7 @@ internal static partial class Markdown
 
     /// <summary>A list from its first marker: each item's lines are those indented to its content, and the lines of its
     /// paragraph that run on unindented, read as blocks of their own; it ends at a line of neither, or another kind of marker.</summary>
-    private static Listing ListFrom(IReadOnlyList<string> lines, ref int i)
+    private static Listing ListFrom(IReadOnlyList<string> lines, ref int i, int depth)
     {
         Match first = Marker().Match(lines[i]);
         int indent = first.Groups[1].Length;
@@ -528,7 +532,7 @@ internal static partial class Markdown
                 }
                 i++;
             }
-            items.Add(Blocks(item));
+            items.Add(Blocks(item, depth: depth + 1));
         }
         return new Listing(ordered, start, items, checks.Any(c => c is not null) ? checks : null);
     }
@@ -558,10 +562,12 @@ internal static partial class Markdown
     }
 
     /// <summary>A block's words: code spans first, then links, strong and emphasis, an escaped mark as itself.</summary>
-    internal static IReadOnlyList<Inline> Inlines(string text)
+    internal static IReadOnlyList<Inline> Inlines(string text, int depth = 0)
     {
         List<Inline> parts = [];
         StringBuilder words = new();
+        // A mark with no close from here on has none further on, so it is looked for once, however many stand in the text.
+        HashSet<(char Mark, int Width)>? unclosed = null;
         int i = 0;
         while (i < text.Length)
         {
@@ -600,13 +606,13 @@ internal static partial class Markdown
                 i += auto.Length;
                 continue;
             }
-            if (c == '[' || (c == '!' && i + 1 < text.Length && text[i + 1] == '['))
+            if (depth < DeepestNesting && (c == '[' || (c == '!' && i + 1 < text.Length && text[i + 1] == '[')))
             {
                 bool image = c == '!';
                 if (LinkAt(text, image ? i + 1 : i) is { } link)
                 {
                     Flush();
-                    parts.Add(image ? new Image(WebUtility.HtmlDecode(link.Label), link.Target) : new Link(Inlines(link.Label), link.Target));
+                    parts.Add(image ? new Image(WebUtility.HtmlDecode(link.Label), link.Target) : new Link(Inlines(link.Label, depth + 1), link.Target));
                     i = link.End;
                     continue;
                 }
@@ -615,13 +621,18 @@ internal static partial class Markdown
             {
                 int run = Run(text, i, c);
                 int width = run >= 2 ? 2 : 1;
-                if (Opens(text, i, width, c) && DelimiterClose(text, i + width, c, width) is var close and >= 0)
+                if (depth < DeepestNesting && Opens(text, i, width, c) && unclosed?.Contains((c, width)) != true)
                 {
-                    Flush();
-                    IReadOnlyList<Inline> inner = Inlines(text[(i + width)..close]);
-                    parts.Add(width == 2 ? new Strong(inner) : new Emphasis(inner));
-                    i = close + width;
-                    continue;
+                    int close = DelimiterClose(text, i + width, c, width);
+                    if (close >= 0)
+                    {
+                        Flush();
+                        IReadOnlyList<Inline> inner = Inlines(text[(i + width)..close], depth + 1);
+                        parts.Add(width == 2 ? new Strong(inner) : new Emphasis(inner));
+                        i = close + width;
+                        continue;
+                    }
+                    (unclosed ??= []).Add((c, width));
                 }
                 words.Append(c, run);
                 i += run;

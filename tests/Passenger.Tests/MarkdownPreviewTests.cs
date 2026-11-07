@@ -206,6 +206,27 @@ public sealed class MarkdownPreviewTests
 
     /// <summary>A page in a folder of its own links to the guide and draws a picture from the open folder's root, a slash
     /// first, as GitHub resolves them: on macOS and Linux too, where such a target also reads as a file's address.</summary>
+    /// <summary>What is written deeper than a page reads is its words, and however deep a file goes the window stays.</summary>
+    [AvaloniaFact]
+    public void A_file_nested_past_what_a_page_reads_shows_the_rest_as_words_and_ends_nothing()
+    {
+        string folder = TestFolders.Create("markdown-deep-");
+        string path = Path.Combine(folder, "deep.md");
+        string quotes = new('>', 100_000);
+        string lists = string.Concat(Enumerable.Repeat("- ", 100_000));
+        string links = new string('[', 100_000) + "linked" + string.Concat(Enumerable.Repeat("](b)", 100_000));
+        File.WriteAllText(path, $"{quotes} quoted\n\n{lists}listed\n\n{links}\n");
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        Assert.Null(window.OpenFile(PathNames.Canonical(path)));
+        Ui.Settle();
+        MarkdownPreview preview = Shown(window.EditorArea.ActiveGroup);
+        foreach (string written in (string[])["quoted", "listed", "linked"])
+        {
+            Assert.Contains(written, preview.Text, StringComparison.Ordinal);
+        }
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_READMEs_headings_nest_by_level_in_Structure_and_File_Structure_follow_its_typing_and_go_to_their_lines()
     {
