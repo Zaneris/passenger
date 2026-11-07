@@ -76,7 +76,8 @@ public sealed class LiveMetrics : IAsyncDisposable
     ];
 
     /// <summary>Starts hearing a running program's instruments of <paramref name="meters"/> at its diagnostic port. A program
-    /// gone, or with no port to reach, is a <see cref="ProfilingException"/> saying why.</summary>
+    /// gone, with no port to reach, or whose runtime takes no session in time, is a <see cref="ProfilingException"/> saying
+    /// why, the last with what its port showed then (<see cref="UnansweredPorts"/>).</summary>
     public static async Task<LiveMetrics> AttachAsync(int processId, IReadOnlyCollection<string> meters, MetricsHeard heard, CancellationToken cancel = default)
     {
         string session = Guid.NewGuid().ToString();
@@ -93,7 +94,8 @@ public sealed class LiveMetrics : IAsyncDisposable
         }
         catch (OperationCanceledException unanswered) when (!cancel.IsCancellationRequested)
         {
-            throw new ProfilingException($"Its metrics could not be read: its runtime took no session in {StartLimit.TotalSeconds:0} s", unanswered);
+            string why = await UnansweredPorts.WhyAsync(processId, cancel);
+            throw new ProfilingException($"Its metrics could not be read: its runtime took no session in {StartLimit.TotalSeconds:0} s ({why})", unanswered);
         }
         return Hear(started.EventStream, session, meters, heard, async () =>
         {

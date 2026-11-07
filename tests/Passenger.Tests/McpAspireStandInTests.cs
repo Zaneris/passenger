@@ -414,6 +414,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             .Any(listed => listed.GetProperty("name").GetString() == "web" && listed.GetProperty("state").GetString() == "Running"), TimeSpan.FromMinutes(1), Cancel),
             $"The IDE never heard that web runs its program.{Said()}");
         using CancellationTokenSource stopAsking = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
+        int served = 0;
         Task asking = Waiting.Apart(async () =>
         {
             using HttpClient http = new() { Timeout = TimeSpan.FromSeconds(5) };
@@ -421,7 +422,11 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             {
                 try
                 {
-                    using HttpResponseMessage _ = await http.GetAsync(address, stopAsking.Token);
+                    using HttpResponseMessage answered = await http.GetAsync(address, stopAsking.Token);
+                    if (answered.IsSuccessStatusCode)
+                    {
+                        Interlocked.Increment(ref served);
+                    }
                 }
                 catch (HttpRequestException)
                 {
@@ -436,12 +441,21 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         try
         {
             JsonElement heard = default;
-            Assert.True(await Waiting.UntilAsync(async () =>
+            if (!await Waiting.UntilAsync(async () =>
             {
-                heard = await Call(client, McpTools.Telemetry, new() { ["kind"] = "metrics", ["resource"] = "web" });
+                CallToolResult answer = await Result(client, McpTools.Telemetry, new() { ["kind"] = "metrics", ["resource"] = "web" });
+                if (answer.IsError == true)
+                {
+                    Assert.Fail($"telemetry failed: {Text(answer)}\n{await WebSaidAsync()}{Said()}");
+                }
+                using JsonDocument read = JsonDocument.Parse(Text(answer));
+                heard = read.RootElement.Clone();
                 return heard.TryGetProperty("metrics", out JsonElement metrics) && metrics.EnumerateArray().Any(m => m.GetProperty("instrument").GetString() == "http.server.request.duration"
                     && m.GetProperty("value").GetString()!.Contains("median", StringComparison.Ordinal));
-            }, TimeSpan.FromMinutes(1), Cancel), $"The agent was not told the web service's request duration: {heard}");
+            }, TimeSpan.FromMinutes(1), Cancel))
+            {
+                Assert.Fail($"The agent was not told the web service's request duration: {heard}\n{await WebSaidAsync()}");
+            }
             JsonElement duration = heard.GetProperty("metrics").EnumerateArray().Single(m => m.GetProperty("instrument").GetString() == "http.server.request.duration");
             Assert.Equal(("Microsoft.AspNetCore.Hosting", "s"), (duration.GetProperty("meter").GetString(), duration.GetProperty("unit").GetString()));
             Assert.Matches(@"^[0-9.,]+/s, median ", duration.GetProperty("value").GetString()!);
@@ -452,6 +466,13 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             await stopAsking.CancelAsync();
             await asking.Ended();
             Processes.Kill(program);
+        }
+
+        // How far web had come: the requests it answered, whether its program runs, and what its console says.
+        async Task<string> WebSaidAsync()
+        {
+            CallToolResult console = await Result(client, McpTools.Output, new() { ["resource"] = "web", ["lines"] = 40 });
+            return $"web answered {Volatile.Read(ref served)} requests, its program {program} {(Processes.IsRunning(program) ? "runs" : "has ended")}, and its console says:\n{Text(console)}";
         }
     }
 
