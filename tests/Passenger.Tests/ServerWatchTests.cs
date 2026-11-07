@@ -1,5 +1,6 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.CSharp;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
@@ -168,6 +169,40 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         bool heardGone = Ui.Pumped(() => gone.Count == Moved, TimeSpan.FromSeconds(60));
         Assert.True(heardGone, $"Of the {Moved} sources in a folder moved out of the project, the language server was told {gone.Count} went: {WatchLog(window)}");
         Ui.PumpUntil(() => !window.FileIndex.Files.Any(f => f.StartsWith("Leaving", StringComparison.Ordinal)), "every source moved out gone from Go to File");
+        window.Close();
+    }
+
+    /// <summary>A folder outside the project watched for the server, its watcher started again with its first walk held, as a
+    /// large folder's (the references' packs) goes on a while on a busy machine: a source written in the project meanwhile
+    /// still reaches the server, never waiting behind that walk.</summary>
+    [AvaloniaFact]
+    public void A_source_written_in_the_project_reaches_the_server_while_an_outside_folders_watcher_makes_its_first_walk()
+    {
+        MainWindow window = project.Open("Program.cs");
+        WatchedFiles watched = Watched(window);
+        ServerWatches watches = window.CSharpService!.Watching!;
+        string inside = PathNames.Canonical(project.Folder);
+        (string Folder, bool Recursive)[] outside = [.. watches.Watching.Where(w => !PathNames.Within(w.Folder, inside)).OrderBy(w => w.Recursive)];
+        Assert.True(outside.Length > 0, $"No folder outside the project is watched for the language server: {string.Join(", ", watches.Watching)}");
+        string walked = outside[0].Folder;
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task holding = watches.HoldNextWalk(folder => PathNames.Same(folder, walked), released.Task);
+        using Told told = new(watched, name => name == "Meanwhile.cs", gone: false);
+        bool heard;
+        try
+        {
+            watches.LetGo([walked]).Dispose();
+            Assert.True(Ui.Pumped(() => holding.IsCompleted, TimeSpan.FromSeconds(30)), $"The watcher of {walked}, started again, never came to its first walk: {WatchLog(window)}");
+            File.WriteAllText(project.PathOf("Meanwhile.cs"), "static class Meanwhile\n{\n}\n");
+            // Pumped, not settled: the held walk is background work, which a settle waits out.
+            heard = Ui.Pumped(() => told.Count == 1, TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            released.TrySetResult();
+        }
+        Assert.True(heard, $"A source written in the project was not told the language server while the watcher of {walked} made its first walk, so whatever is "
+            + $"written in the folder (a file a rename wrote) waits until a walk of a folder outside it ends: {WatchLog(window)}");
         window.Close();
     }
 

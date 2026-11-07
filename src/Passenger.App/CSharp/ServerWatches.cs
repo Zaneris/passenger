@@ -54,6 +54,10 @@ public sealed class ServerWatches : IDisposable
     /// of a large folder watched apart from it (the references' packs) never holds what was written in the folder.</summary>
     private Task tellingHeard = Task.CompletedTask;
 
+    /// <summary>The first walk of a watcher a test holds (<see cref="HoldNextWalk"/>): of which folder, what it waits for, and
+    /// done once it waits.</summary>
+    private (Func<string, bool> Which, Task Until, TaskCompletionSource Holding)? walkHeld;
+
     /// <summary>Watches what the server registered, and what it registers from now on, beside the watcher of a folder
     /// (canonical) whose changes it is given (<see cref="Heard"/>); with none (a server no window has), alone.</summary>
     public ServerWatches(LanguageServer server, string? folder)
@@ -191,6 +195,35 @@ public sealed class ServerWatches : IDisposable
                 }
             }
             watches.Refresh();
+        }
+    }
+
+    /// <summary>Holds the first walk of the next watcher started apart from the folder's for a folder <paramref name="which"/>
+    /// takes, in its turn of telling the server, until <paramref name="until"/> ends, as a large folder's walk goes on a while
+    /// on a busy machine, for a test of what is told meanwhile. Done once it is held.</summary>
+    public Task HoldNextWalk(Func<string, bool> which, Task until)
+    {
+        TaskCompletionSource holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (gate)
+        {
+            walkHeld = (which, until, holding);
+        }
+        return holding.Task;
+    }
+
+    /// <summary>What a watcher's first walk of a folder waits for in its turn: a test's hold of it (<see cref="HoldNextWalk"/>),
+    /// else nothing.</summary>
+    private Task WalkHeld(string top)
+    {
+        lock (gate)
+        {
+            if (walkHeld is not { } held || !held.Which(top))
+            {
+                return Task.CompletedTask;
+            }
+            walkHeld = null;
+            held.Holding.TrySetResult();
+            return held.Until;
         }
     }
 
@@ -456,22 +489,29 @@ public sealed class ServerWatches : IDisposable
 
     /// <summary>Tells the server on the thread pool after what was told before from the same watchers, the folder's
     /// (<paramref name="heard"/>) or this one's own, held as background work until it has.</summary>
-    private void InTurn(Action tell, bool heard = false)
+    private void InTurn(Action tell, bool heard = false) => InTurn(() =>
+    {
+        tell();
+        return Task.CompletedTask;
+    }, heard);
+
+    /// <summary>As <see cref="InTurn(Action, bool)"/>, the next told once what <paramref name="tell"/> waits for has ended.</summary>
+    private void InTurn(Func<Task> tell, bool heard = false)
     {
         IDisposable held = BackgroundWork.Scope();
         lock (gate)
         {
-            Task next = (heard ? tellingHeard : telling).ContinueWith(_ =>
+            Task next = (heard ? tellingHeard : telling).ContinueWith(async _ =>
             {
                 try
                 {
-                    tell();
+                    await tell();
                 }
                 finally
                 {
                     held.Dispose();
                 }
-            }, TaskScheduler.Default);
+            }, TaskScheduler.Default).Unwrap();
             if (heard)
             {
                 tellingHeard = next;
@@ -511,7 +551,11 @@ public sealed class ServerWatches : IDisposable
             {
                 // Told whether or not a registration matches them yet: one the server's load sends later takes those kept for it.
                 DateTime since = owner.watched.Since - Rounding;
-                owner.InTurn(() => owner.watched.Tell(Every(top, recursive, _ => false, since)));
+                owner.InTurn(async () =>
+                {
+                    await owner.WalkHeld(top);
+                    owner.watched.Tell(Every(top, recursive, _ => false, since));
+                });
             }
         }
 
