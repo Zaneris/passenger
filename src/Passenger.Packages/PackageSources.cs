@@ -114,7 +114,7 @@ public sealed class PackageSourceSet
         ISettings settings;
         try
         {
-            settings = NuGet.Configuration.Settings.LoadDefaultSettings(root);
+            settings = NuGetSettings.Load(root);
         }
         catch (Exception failed) when (failed is NuGetConfigurationException or IOException or UnauthorizedAccessException or XmlException)
         {

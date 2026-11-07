@@ -140,7 +140,7 @@ public static class EfTools
     {
         try
         {
-            return NuGet.Configuration.SettingsUtility.GetGlobalPackagesFolder(NuGet.Configuration.Settings.LoadDefaultSettings(folder));
+            return NuGet.Configuration.SettingsUtility.GetGlobalPackagesFolder(Passenger.Packages.NuGetSettings.Load(folder));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or NuGet.Configuration.NuGetConfigurationException)
         {
