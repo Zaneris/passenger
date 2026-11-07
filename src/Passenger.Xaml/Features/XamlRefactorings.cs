@@ -111,6 +111,10 @@ public static partial class XamlRefactorings
         {
             return null;
         }
+        if (WhyNotChanged(file) is { } unread)
+        {
+            return unread;
+        }
         List<XmlAttribute> names = [.. file.Tree.Elements.Select(XamlFile.NameAttribute).OfType<XmlAttribute>().Where(a => a.IsValueClosed)];
         HashSet<XmlElement?> scopes = [.. names.Where(a => a.Value == old).Select(a => XamlNavigation.NameScopeOf(a.Owner))];
         if (names.FirstOrDefault(a => a.Value == name && scopes.Contains(XamlNavigation.NameScopeOf(a.Owner))) is { } other)
@@ -135,6 +139,10 @@ public static partial class XamlRefactorings
     /// use's new name would be another member's of the type it is read from, or the MVVM Toolkit would make none.</summary>
     public static (IReadOnlyList<TextEdit> Edits, string? Problem) CodeRename(XamlFile file, CodeSymbol symbol, IReadOnlyList<TextRange> uses, string name)
     {
+        if (WhyNotChanged(file) is { } unread)
+        {
+            return ([], unread);
+        }
         List<TextEdit> edits = [];
         string where = Path.GetFileName(file.Path);
         foreach (TextRange use in uses)
@@ -161,6 +169,10 @@ public static partial class XamlRefactorings
         }
         return (edits, null);
     }
+
+    /// <summary>Why a change of every use in a file cannot be made: a use past where reading stopped would go unseen.</summary>
+    private static string? WhyNotChanged(XamlFile file) =>
+        file.Tree.Stopped is null ? null : $"{Path.GetFileName(file.Path)} is nested too deeply for Passenger to read whole";
 
     /// <summary>The member of the type a use of a symbol's member is read from that the use's new name would name instead:
     /// one of that name declared elsewhere (a method's overload aside, which its signature tells apart); null for none.</summary>

@@ -197,7 +197,7 @@ public sealed class XamlDocument : IDisposable
         DiagnosedVersion = version;
         ReadsLocalized = localizes;
         gaps.Set(Document.Text, [.. found.Where(d => d.Gap is not null).Select(d => (d.Range, d.Gap!))]);
-        live.Set(Document.Text, [.. found.Select(d => new Marker(d.Range, d.Severity == XamlSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, d.Message)
+        live.Set(Document.Text, [.. found.Select(d => new Marker(d.Range, d.Severity switch { XamlSeverity.Error => MarkerKind.Error, XamlSeverity.Note => MarkerKind.Info, _ => MarkerKind.Warning }, d.Message)
         {
             StartGravity = AnchorGravity.After,
         })]);

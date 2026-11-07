@@ -10,6 +10,9 @@ public enum XamlSeverity
 {
     Error,
     Warning,
+
+    /// <summary>Nothing wrong with the file, said for what it means to the reader of it.</summary>
+    Note,
 }
 
 /// <summary>A problem in a XAML file, where it is and in a person's words, and the fixes it offers.</summary>
@@ -51,6 +54,12 @@ public static class XamlDiagnostics
     public static IReadOnlyList<XamlDiagnostic> Of(XamlFile file)
     {
         List<XamlDiagnostic> found = [.. file.Tree.Problems.Select(p => new XamlDiagnostic(p.Range, XamlSeverity.Error, p.Message))];
+        if (file.Tree.Stopped is { } stopped)
+        {
+            // What the unread text declares would read as missing, so nothing is said of what was read but its markup.
+            found.Add(new XamlDiagnostic(stopped, XamlSeverity.Note, XmlTree.TooDeep));
+            return found;
+        }
         if (!file.Types.XmlnsDefinitions.Any(d => d.Uri == file.Dialect.PresentationUri))
         {
             return found;

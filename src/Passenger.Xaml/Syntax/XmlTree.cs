@@ -8,16 +8,24 @@ namespace Passenger.Xaml.Syntax;
 /// Immutable once read, so any thread may ask it.</summary>
 public sealed class XmlTree
 {
+    /// <summary>How deep elements are read inside one another: past what any file written by hand reaches, and short of what
+    /// a walk of the tree reaches on a thread's stack, which bounds every such walk.</summary>
+    public const int DeepestNesting = 256;
+
+    /// <summary>What is said where reading stopped.</summary>
+    public const string TooDeep = "Passenger read no deeper than this, so the rest of the file is unread and unmarked.";
+
     private readonly List<XmlElement> elements;
     private readonly List<TextRange> comments;
 
-    private XmlTree(string text, List<XmlElement> roots, List<XmlElement> elements, List<TextRange> comments, List<XmlProblem> problems)
+    private XmlTree(string text, List<XmlElement> roots, List<XmlElement> elements, List<TextRange> comments, List<XmlProblem> problems, TextRange? stopped)
     {
         Text = text;
         Roots = roots;
         this.elements = elements;
         this.comments = comments;
         Problems = problems;
+        Stopped = stopped;
     }
 
     public string Text { get; }
@@ -34,6 +42,10 @@ public sealed class XmlTree
 
     /// <summary>Where the markup is not well-formed, in a person's words.</summary>
     public IReadOnlyList<XmlProblem> Problems { get; }
+
+    /// <summary>The tag nested past <see cref="DeepestNesting"/>, the text from it on unread; null for a file read whole. It
+    /// is no problem of the file's, which may well be valid.</summary>
+    public TextRange? Stopped { get; }
 
     public static XmlTree Parse(string text) => new Reader(text).Read();
 
@@ -151,6 +163,7 @@ public sealed class XmlTree
         private readonly List<TextRange> comments = [];
         private readonly List<XmlProblem> problems = [];
         private readonly List<XmlElement> open = [];
+        private TextRange? stopped;
         private int at;
 
         public XmlTree Read()
@@ -202,9 +215,12 @@ public sealed class XmlTree
             foreach (XmlElement unclosed in open)
             {
                 unclosed.End = length;
-                problems.Add(new XmlProblem(unclosed.NameRange, $"Element '{unclosed.Name}' is not closed"));
+                if (stopped is null)
+                {
+                    problems.Add(new XmlProblem(unclosed.NameRange, $"Element '{unclosed.Name}' is not closed"));
+                }
             }
-            return new XmlTree(text, roots, elements, comments, problems);
+            return new XmlTree(text, roots, elements, comments, problems, stopped);
         }
 
         private bool StartsWith(string what) => string.CompareOrdinal(text, at, what, 0, what.Length) == 0;
@@ -270,6 +286,12 @@ public sealed class XmlTree
             at++;
             int nameStart = at;
             SkipName();
+            if (open.Count >= DeepestNesting)
+            {
+                stopped = TextRange.FromBounds(start, at);
+                at = text.Length;
+                return;
+            }
             XmlElement element = new(text.Substring(nameStart, at - nameStart), start, nameStart, at)
             {
                 Parent = open.Count > 0 ? open[^1] : null,

@@ -1,4 +1,7 @@
 using Passenger.Text;
+using Passenger.Xaml;
+using Passenger.Xaml.Dialects;
+using Passenger.Xaml.Features;
 using Passenger.Xaml.Syntax;
 
 namespace Passenger.UnitTests.Xaml;
@@ -143,5 +146,75 @@ public class XmlTreeTests
         Assert.True(tree.InComment(Text.Length));
         Assert.False(XmlTree.Parse("<a/><!-- shut -->").InComment("<a/><!-- shut -->".Length));
         Assert.Equal(new TextRange(4, Text.Length - 4), tree.Comments[0]);
+    }
+
+    private static string Nested(int deep, string open = "<a>", string close = "</a>") =>
+        string.Concat(Enumerable.Repeat(open, deep)) + string.Concat(Enumerable.Repeat(close, deep));
+
+    [Theory]
+    [InlineData("<a>", "</a>")]
+    [InlineData("<a.b>", "</a.b>")]
+    [InlineData("<a DataContext=\"{Binding}\">", "</a>")]
+    [InlineData("<Style Selector=\"^:a\">", "</Style>")]
+    public void Elements_nested_past_what_a_tree_holds_read_as_far_as_it_holds_and_end_nothing(string open, string close)
+    {
+        string text = Nested(100_000, open, close);
+        SmallStack.Run(() =>
+        {
+            foreach (XamlDialect dialect in (XamlDialect[])[AvaloniaDialect.Instance, WpfDialect.Instance])
+            {
+                XamlFile file = XamlFiles.Read("Deep.axaml", text, dialect);
+                XmlTree tree = file.Tree;
+                Assert.Equal(XmlTree.DeepestNesting, tree.Elements.Count);
+                Assert.Equal(XmlTree.DeepestNesting, tree.Root!.DescendantsAndSelf().Count());
+                int stopped = open.Length * XmlTree.DeepestNesting;
+                Assert.Equal(TextRange.FromBounds(stopped, stopped + open.IndexOfAny([' ', '>'])), tree.Stopped);
+                XmlElement last = tree.Elements[^1];
+                Assert.Null(file.ObjectOf(last));
+                Assert.Null(file.DataTypeAt(last));
+                Assert.Null(file.StyleTargetAt(last));
+            }
+        });
+    }
+
+    [Fact]
+    public void Where_reading_stopped_is_a_note_and_nothing_past_it_is_called_wrong()
+    {
+        XamlFile file = XamlFiles.Read("Deep.axaml", Nested(100_000), AvaloniaDialect.Instance);
+        Assert.Empty(file.Tree.Problems);
+        XamlDiagnostic note = Assert.Single(XamlDiagnostics.Of(file));
+        Assert.Equal((XamlSeverity.Note, XmlTree.TooDeep, file.Tree.Stopped), (note.Severity, note.Message, (TextRange?)note.Range));
+    }
+
+    [Fact]
+    public void A_fault_before_reading_stopped_stands_beside_its_note()
+    {
+        XamlFile file = XamlFiles.Read("Deep.axaml", "<b c>" + Nested(100_000), AvaloniaDialect.Instance);
+        Assert.Equal([XamlSeverity.Error, XamlSeverity.Note], XamlDiagnostics.Of(file).Select(d => d.Severity));
+    }
+
+    [Fact]
+    public void A_file_read_in_part_is_neither_laid_out_nor_renamed_in()
+    {
+        string text = Nested(100_000);
+        Assert.NotNull(XamlFormatter.Format(text, new XamlFormatSettings(), new IndentOptions(), "\n").Problem);
+        XamlFile file = XamlFiles.Read("Deep.axaml", text, AvaloniaDialect.Instance);
+        Assert.NotNull(XamlRefactorings.ElementNameProblem(file, "a", "b"));
+    }
+
+    [Fact]
+    public void Elements_as_deep_as_a_tree_holds_read_whole_and_are_laid_out()
+    {
+        string text = Nested(XmlTree.DeepestNesting);
+        SmallStack.Run(() =>
+        {
+            XmlTree tree = XmlTree.Parse(text);
+            Assert.Null(tree.Stopped);
+            Assert.Empty(tree.Problems);
+            Assert.Equal(XmlTree.DeepestNesting, tree.Elements.Count);
+            XamlFormatted laid = XamlFormatter.Format(text, new XamlFormatSettings(), new IndentOptions(), "\n");
+            Assert.Null(laid.Problem);
+            Assert.NotEmpty(laid.Edits);
+        });
     }
 }

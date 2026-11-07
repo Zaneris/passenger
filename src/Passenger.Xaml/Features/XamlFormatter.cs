@@ -19,6 +19,10 @@ public static class XamlFormatter
     public static XamlFormatted Format(string text, XamlFormatSettings settings, IndentOptions indent, string eol, TextRange? within = null)
     {
         XmlTree tree = XmlTree.Parse(text);
+        if (tree.Stopped is not null)
+        {
+            return new XamlFormatted([], "the XAML is nested too deeply for Passenger to read whole");
+        }
         if (tree.Problems.Count > 0)
         {
             XmlProblem first = tree.Problems.OrderBy(p => p.Range.Start).First();
