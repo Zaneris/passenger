@@ -28,6 +28,21 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-07
+
+- `UpdatesTests`' `A_newer_release_is_announced_once_…`, CI's Windows runner at 8252640fb (run 42361075365), a gate test:
+  "the status bar's notice is ''" was a hidden notice, null quoted as `''`, not an empty one. The window's first check
+  came to nothing, most likely past the test's 1 s feed limit, unscaled, as the process's first window test with a
+  debugging test beside it. **The test**: the limit is `ReleaseFeed.ShortTimeout.Scaled()`, and a failure names the notice,
+  the status and the log's checks (cbbe3fc2b, #1357).
+- `JsonTextTests`' `Values_as_deep_as_are_read_read_whole`, CI's Windows runner at 8252640fb, a gate test: "nested too
+  deeply to read at 2395". A Debug build on Windows x64 runs a 512 KB stack out at 479 levels of `{"a":`, so the stack
+  check refused short of the 512 cap. **The IDE's cap**: JSON reads 256 deep (5220006a1).
+- `XmlTreeTests`' `Elements_as_deep_as_a_tree_holds_…`, CI's Windows runner at 9d9a8a504 (run 42354875977), a gate test:
+  "Stack overflow." ended the unit tests' process. The XAML formatter took about five frames a level, and 256 levels
+  fit in 512 KB only on macOS's and Linux's frame sizes. **A gap in the IDE**: every walk checks its stack at each level
+  (`StackLeft`, d05addcc5).
+
 ## 2026-11-04
 
 The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
