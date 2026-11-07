@@ -22,18 +22,34 @@ public interface ITreeRow
 public sealed class TreeRows<T> : ObservableCollection<T>
     where T : class, ITreeRow
 {
-    /// <summary>A level's rows, each open one followed by its own, by <paramref name="children"/>, through every row open.</summary>
+    /// <summary>A level's rows, each open one followed by its own, by <paramref name="children"/>, through every row open: the
+    /// levels open are held on a stack of their own, so a row however deep costs one step and no frame of the thread's.</summary>
     public static IEnumerable<T> Shown(IEnumerable<T> level, Func<T, IEnumerable<T>?> children)
     {
-        foreach (T row in level)
+        Stack<IEnumerator<T>> open = new();
+        open.Push(level.GetEnumerator());
+        try
         {
-            yield return row;
-            if (row.IsExpanded)
+            while (open.TryPeek(out IEnumerator<T>? rows))
             {
-                foreach (T below in Shown(children(row) ?? [], children))
+                if (!rows.MoveNext())
                 {
-                    yield return below;
+                    open.Pop().Dispose();
+                    continue;
                 }
+                T row = rows.Current;
+                yield return row;
+                if (row.IsExpanded)
+                {
+                    open.Push((children(row) ?? []).GetEnumerator());
+                }
+            }
+        }
+        finally
+        {
+            while (open.TryPop(out IEnumerator<T>? left))
+            {
+                left.Dispose();
             }
         }
     }
