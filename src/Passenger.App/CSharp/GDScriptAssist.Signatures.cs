@@ -51,7 +51,7 @@ internal sealed partial class GDScriptAssist : IOwnSignatures
     {
         GodotEngineApi? api = typed.Analyzer.Engine;
         if (call.Name == "emit" && call.Receiver is not null && call.NameStart >= 2
-            && typed.Analysis.NodeAt(call.NameStart - 2) is ({ } before, int from) && before is GDScriptIdentifier signalName
+            && typed.Analysis.ValueBefore(call.NameStart - 1) is ({ } before, int from) && (before as GDScriptIdentifier ?? (before as GDScriptSubscript)?.Attribute) is { } signalName
             && NamedAt(typed, signalName, from + signalName.Start) is { } signalled && signalled is OfScript { Member.Kind: "signal" } or OfEngine { Kind: "signal" })
         {
             return (SignatureOf(typed, signalled), signalled);

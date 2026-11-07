@@ -60,6 +60,13 @@ public sealed class GDScriptParameterInfoTests
 
             Ui.Press(window, "END", settle: false);
             Ui.Press(window, "ENTER", settle: false);
+            window.KeyTextInput("self.scored.emit");
+            Ui.Press(window, "ESCAPE", settle: false);
+            window.KeyTextInput("(");
+            Signed(window, "signal scored(points: int, by: String)", "points: int");
+
+            Ui.Press(window, "END", settle: false);
+            Ui.Press(window, "ENTER", settle: false);
             window.KeyTextInput("g");
             window.KeyTextInput("row");
             bool listed = Ui.Pumped(() => window.Assist.CompletionLabels.FirstOrDefault() == "grow", TimeSpan.FromSeconds(30));

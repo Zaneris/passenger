@@ -359,7 +359,7 @@ public class GDScriptAnalyzerTests
         GDScriptType TypeBefore(string after, bool last = false)
         {
             int dot = last ? text.LastIndexOf(after, StringComparison.Ordinal) : text.IndexOf(after, StringComparison.Ordinal);
-            GDScriptType type = analysis.NodeAt(dot - 1) is ({ } node, _) ? analysis.TypeOf(node) : GDScriptType.Variant;
+            GDScriptType type = TypeBeforeDot(analysis, dot);
             Assert.True(type.Meta, $"What comes before {after} read as {type}, no class");
             return type;
         }
@@ -395,6 +395,66 @@ public class GDScriptAnalyzerTests
             Assert.Superset(new HashSet<string>(listed.Split(' ')), names);
             Assert.Empty(names.Intersect(left.Split(' ')));
         }
+    }
+
+    /// <summary>A dot after a closing bracket reads what the bracket closes, never the last thing written inside it, and a group's
+    /// parentheses read as what they hold; with nothing after the dot yet, or a name. Godot 4.7.2 compiled each name listed.</summary>
+    [Theory]
+    [InlineData("get_node(\"Body\").|", "Node", "name get_tree", "length")]
+    [InlineData("buddy.twin(spot).|", "Worker", "field work", "x length")]
+    [InlineData("buddy.twin(spot).spot.|", "Vector2", "x length", "field")]
+    [InlineData("get_node(\"Body\").get_node(\"Other\").|", "Node", "name get_tree", "length")]
+    [InlineData("twin(buddy.twin(spot)).|", "Worker", "field work", "x")]
+    [InlineData("arr[index].|", "Node", "name get_tree", "length")]
+    [InlineData("arr[0].|", "Node", "name get_tree", "length")]
+    [InlineData("get_children()[0].|", "Node", "name get_tree", "length")]
+    [InlineData("table[spot].|", "Node", "name get_tree", "length x")]
+    [InlineData("Vector2(1, 2).|", "Vector2", "x y length", "name")]
+    [InlineData("[1].|", "Array", "size front", "length")]
+    [InlineData("(Worker.Inner).|", "Inner", "make", "field held")]
+    [InlineData("(buddy).|", "Worker", "field work", "x")]
+    [InlineData("(buddy.spot).|", "Vector2", "x length", "field")]
+    [InlineData("(buddy.twin(spot)).|", "Worker", "field work", "x")]
+    [InlineData("((buddy)).spot.|", "Vector2", "x length", "field")]
+    public void A_dot_after_a_closing_bracket_reads_what_the_bracket_closes(string written, string type, string listed, string left)
+    {
+        const string Worker = "class_name Worker\nextends Node\n\nvar field := 1\nvar spot: Vector2\n\nclass Inner:\n\tvar held := 1\n\tstatic func make() -> int:\n\t\treturn 1\n\n"
+            + "func work() -> int:\n\treturn 1\n\nfunc twin(_with) -> Worker:\n\treturn self\n";
+        const string Head = "extends Node\n\nvar buddy: Worker\nvar spot: Vector2\nvar arr: Array[Node]\nvar table: Dictionary[Vector2, Node]\nvar index := 0\n\n"
+            + "func twin(_with) -> Worker:\n\treturn buddy\n\nfunc f():\n\t";
+        foreach (string place in (string[])["print(|)", "|", "var kept = |", "return |", "if |:\n\t\tpass"])
+        {
+            foreach (string after in (string[])[string.Empty, "zz"])
+            {
+                string line = place.Replace("|", written.Replace("|", after, StringComparison.Ordinal), StringComparison.Ordinal);
+                string text = $"{Head}{line}\n";
+                (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, new() { ["res://worker.gd"] = Worker });
+                int dot = Head.Length + place.IndexOf('|', StringComparison.Ordinal) + written.IndexOf('|', StringComparison.Ordinal) - 1;
+                GDScriptType owner = TypeBeforeDot(analysis, dot);
+                Assert.True(owner.Name == type, $"What stands before the dot of {line} read as {owner}, not {type}");
+                HashSet<string> names = [.. analyzer.Members(owner).Select(m => m.Name)];
+                Assert.Superset(new HashSet<string>(listed.Split(' ')), names);
+                Assert.Empty(names.Intersect(left.Split(' ')));
+            }
+        }
+    }
+
+    /// <summary>What a call is made on reads through the brackets before its dot, its own parenthesis open or closed, as Parameter
+    /// Info and the strings a call takes read it; a signal read off a value keeps the name <c>emit</c> is called on.</summary>
+    [Theory]
+    [InlineData("get_node(\"Body\").get_node(|", "Node")]
+    [InlineData("buddy.twin(spot).twin(|)", "Worker")]
+    [InlineData("arr[0].get_node(|)", "Node")]
+    [InlineData("(buddy).twin(|)", "Worker")]
+    [InlineData("buddy.hit.emit(|)", "Signal")]
+    public void What_a_call_is_made_on_reads_through_the_brackets_before_its_dot(string written, string type)
+    {
+        const string Head = "extends Node\n\nvar buddy: Worker\nvar spot: Vector2\nvar arr: Array[Node]\n\nfunc f():\n\t";
+        string text = Head + written.Replace("|", string.Empty, StringComparison.Ordinal) + "\n";
+        (GDScriptAnalysis analysis, _) = Analyze(text, new() { ["res://worker.gd"] = "class_name Worker\nextends Node\n\nsignal hit\n\nfunc twin(_with) -> Worker:\n\treturn self\n" });
+        GDScriptCallAt? call = GDScriptAsked.At(text, Head.Length + written.IndexOf('|', StringComparison.Ordinal)).Call;
+        Assert.NotNull(call);
+        Assert.Equal(type, TypeBeforeDot(analysis, call.NameStart - 1).Name);
     }
 
     /// <summary>A function read off a member is a Callable before its dot, and a name a type gives nothing stays no type.</summary>
@@ -481,7 +541,7 @@ public class GDScriptAnalyzerTests
     };
 
     /// <summary>The type of what stands before a dot, found as a list opened after it finds it.</summary>
-    private static GDScriptType TypeBeforeDot(GDScriptAnalysis analysis, int dot) => analysis.NodeAt(dot - 1) is ({ } node, _) ? analysis.TypeOf(node) : GDScriptType.Variant;
+    private static GDScriptType TypeBeforeDot(GDScriptAnalysis analysis, int dot) => analysis.ValueBefore(dot) is ({ } node, _) ? analysis.TypeOf(node) : GDScriptType.Variant;
 
     /// <summary>The locals in scope where a name is typed (the bar), the nearest first, whether the name is typed yet or, on a line
     /// of its own, the caret only stands at its indentation. Each was compiled by Godot 4.7.2 with every name of its script

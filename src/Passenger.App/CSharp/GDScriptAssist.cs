@@ -70,7 +70,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
     /// none where the value is no such node.</summary>
     internal static async Task<IReadOnlyList<GodotCSharpMember>> CSharpMembersAsync(AssistContext context, OpenDocument document, GodotScriptTypes.Typed typed, int dot)
     {
-        if (dot < 1 || typed.Analysis.NodeAt(dot - 1) is not ({ } node, _) || node is not GDScriptExpression
+        if (dot < 1 || typed.Analysis.ValueBefore(dot) is not ({ } node, _)
             || typed.Analysis.TypeOf(node) is not { CSharpScript: { } res } || context.GodotOf(document.Path) is not ({ } index, { } folder)
             || (await index.ScenesAsync(folder)).FileOf(res) is not { } file)
         {

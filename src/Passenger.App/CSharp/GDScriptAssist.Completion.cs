@@ -354,7 +354,7 @@ internal sealed partial class GDScriptAssist
     {
         int dot = at.Start - 1;
         IReadOnlyList<GodotCSharpMember> csharp = await CSharpMembersAsync(context, shown, typed, dot);
-        if (typed.Analysis.NodeAt(dot - 1) is not ({ } node, _) || node is not GDScriptExpression)
+        if (typed.Analysis.ValueBefore(dot) is not ({ } node, _))
         {
             return null;
         }
@@ -598,7 +598,7 @@ internal sealed partial class GDScriptAssist
     /// before it or it is not read.</summary>
     private static GDScriptType? ReceiverType(GodotScriptTypes.Typed typed, GDScriptCallAt call)
     {
-        if (call.Receiver is null || call.NameStart < 2 || typed.Analysis.NodeAt(call.NameStart - 2) is not ({ } node, _) || node is not GDScriptExpression)
+        if (call.Receiver is null || call.NameStart < 2 || typed.Analysis.ValueBefore(call.NameStart - 1) is not ({ } node, _))
         {
             return null;
         }

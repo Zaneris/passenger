@@ -103,6 +103,29 @@ public sealed class GDScriptAnalysis
         return null;
     }
 
+    /// <summary>What the dot at an offset reads a member of, with the offset its positions count from: the base of the attribute
+    /// the dot belongs to, whatever closes that (a call's parenthesis, a subscript's bracket, a group's), with a name after the
+    /// dot or none yet; else what stands just before the dot, where no attribute was read of it.</summary>
+    public (GDScriptExpression Node, int Offset)? ValueBefore(int dot)
+    {
+        foreach (GDScriptMember member in Tree?.Members ?? [])
+        {
+            if (dot < member.Start || dot > member.End)
+            {
+                continue;
+            }
+            int relative = dot - member.Offset;
+            for (GDScriptNode? at = member.Node; at is not null; at = at.Children.LastOrDefault(c => c.Start >= 0 && c.Start <= relative && relative <= c.End))
+            {
+                if (at is GDScriptSubscript { Base: { } taken, Index: null } read && taken.End <= relative && relative < (read.Attribute?.Start ?? read.End))
+                {
+                    return (taken, member.Offset);
+                }
+            }
+        }
+        return NodeAt(dot - 1) is ({ } node, int from) && node is GDScriptExpression before ? (before, from) : null;
+    }
+
     /// <summary>The locals, parameters, loop variables and pattern binds in scope at an offset, the nearest first: those of its
     /// block and the blocks around it, a function's being a lambda's too, once what declares them has ended, which is when
     /// Godot's parser adds a name to its block (_find_identifiers_in_suite).</summary>

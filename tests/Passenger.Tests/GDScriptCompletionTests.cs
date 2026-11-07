@@ -202,6 +202,33 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>After a closing bracket the list holds what the bracket closes, a call's result rather than its last argument's
+    /// type, and a group's parentheses list what they hold.</summary>
+    [AvaloniaFact]
+    public void After_a_closing_bracket_the_list_holds_what_the_bracket_closes()
+    {
+        TestFolders.Write(folder, "worker.gd", "class_name Worker\nextends Node\n\nvar instance_field := 1\n\n\nfunc twin(other: Vector2) -> Worker:\n\treturn self\n");
+        (MainWindow window, _, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "\tcounter += 1");
+            window.KeyTextInput("Worker.new().twin(Vector2.ZERO)");
+            window.KeyTextInput(".");
+            Listed(window, "instance_field", "variable of what the call gives after its closing parenthesis");
+            Ui.Press(window, "ESCAPE", settle: false);
+
+            TypeOverLine(window, editor, "(Worker.new())");
+            window.KeyTextInput(".");
+            Listed(window, "instance_field", "variable of what a group holds after its closing parenthesis");
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>After a member read off a class or a value the list holds that member's own, however many dots came before.</summary>
     [AvaloniaFact]
     public void After_a_member_read_off_another_the_list_holds_what_that_member_has()
