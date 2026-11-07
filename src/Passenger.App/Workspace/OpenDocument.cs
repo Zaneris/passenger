@@ -841,11 +841,12 @@ public sealed class OpenDocument : Observable
 
     /// <summary>Why converting the indentation could change what the file means, so is refused: it is read-only, its language
     /// takes no tabs, the lines that begin inside a string are not known, as C#'s are from its syntax at once and another
-    /// language's once its grammar has read the whole file (a language with neither has none known unless it holds none), or
-    /// its language would read a block of the result otherwise.</summary>
+    /// language's once its grammar has read the whole file (never, once it failed; a language with neither has none known
+    /// unless it holds none), or its language would read a block of the result otherwise.</summary>
     public string? WhyNotConverted(bool toTabs) =>
         IsReadOnly ? Refusals.ReadOnly(Name)
         : toTabs && Language.IndentsWithSpacesAlone ? Refusals.SpacesAlone(Name, Language.Name)
+        : parser is TextMateHighlighter { Failure: { } failure } ? Refusals.GrammarFailed(Name, Language.Name, failure.Message)
         : parser is TextMateHighlighter grammar && !grammar.HasRead(Text.Snapshot) ? Refusals.ReadingStrings(Name)
         : parser is null && !Language.HoldsNoStrings(Path) ? Refusals.UnreadStrings(Name)
         : Language.BlockWords is { } words && FirstBlockAtRisk(toTabs, words) is { } line ? Refusals.BlockAtRisk(Name, Language.Name, line + 1)

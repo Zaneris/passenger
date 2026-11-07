@@ -286,6 +286,51 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A file whose grammar failed reading it can never tell the lines inside its strings, so Convert Indentation is
+    /// refused at once saying the grammar failed, where the agent waited out its minute for a reading that never came and
+    /// was then told the file was still being read.</summary>
+    [AvaloniaFact]
+    public void An_agents_action_on_a_file_whose_grammar_failed_is_refused_at_once_saying_so()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-grammar-failed-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "tool.py"), "def twice(a):\n    return a * 2\n");
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        string variable = global::Passenger.Languages.TextMate.TextMateHighlighter.LineTimeVariable;
+        string? was = Environment.GetEnvironmentVariable(variable);
+        McpClient? client = null;
+        try
+        {
+            // A time no grammar's pass takes, which fails it.
+            Environment.SetEnvironmentVariable(variable, "0");
+            window.OpenFile(Path.Combine(folder, "tool.py"));
+            global::Passenger.Languages.TextMate.TextMateHighlighter grammar = window.EditorArea.Active?.Grammar ?? throw new InvalidOperationException("tool.py opened with no grammar");
+            Ui.WaitFor(() => grammar.Failure is not null, "tool.py's grammar to fail");
+            Environment.SetEnvironmentVariable(variable, was);
+            Assert.Equal(Refusals.GrammarFailed("tool.py", "Python", grammar.Failure!.Message), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+            Task<CallToolResult> converting = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.ConvertIndentationToTabs }));
+            Press(Question(window, "the question for the agent's action"), "Allow");
+            CallToolResult refused = Await(converting, "Convert Indentation on tool.py");
+            string said = Text(refused);
+            Assert.True(refused.IsError == true && said.Contains(Refusals.GrammarFailed("tool.py", "Python", grammar.Failure.Message), StringComparison.Ordinal),
+                $"Convert Indentation on a file whose grammar failed answered: {said}");
+            Assert.Contains(IdeErrors.Errors, e => e.Message == grammar.Failure.Message);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, was);
+            if (client is not null)
+            {
+                Gone(client);
+            }
+            window.Close();
+            // The grammar's failure, which the window reports as the IDE's own error, is the test's.
+            IdeErrors.Clear();
+        }
+    }
+
     /// <summary>An agent saves one of the folder's own run configurations as a launch profile through ide_action, naming
     /// it: the answer says where it went, the window lists it as generated from the profile, and one generated already is
     /// refused, saying why.</summary>

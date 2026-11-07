@@ -303,6 +303,10 @@ public static class Refusals
     /// <summary>A file whose grammar has yet to read it whole, so the lines inside its strings are not yet known.</summary>
     public static string ReadingStrings(string name) => $"{name} is still being read, to tell the lines inside its strings";
 
+    /// <summary>A file whose grammar failed as it read it, and stopped, so the lines inside its strings will never be known.</summary>
+    public static string GrammarFailed(string name, string language, string why) =>
+        $"Passenger can't tell which lines of {name} begin inside a string: its {language} grammar failed reading it ({why})";
+
     /// <summary>A file in a language with no parse or grammar here, whose lines may begin inside a string that converting
     /// their indentation would change.</summary>
     public static string UnreadStrings(string name) => $"Passenger can't tell which lines of {name} begin inside a string, whose text a conversion would change";

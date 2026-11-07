@@ -2361,13 +2361,21 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     /// <summary>Waits for the file in front's grammar where that alone stands in an action's way: a file opened or edited a moment
-    /// before is read as the call waits, so an agent never has to ask again. Past the limit the action says what stands in its way.</summary>
+    /// before is read as the call waits, so an agent never has to ask again, and one whose grammar fails meanwhile is refused at
+    /// once. Past the limit the action says what stands in its way.</summary>
     private async Task GrammarReadForAsync(string action, CancellationToken cancel)
     {
         ActionContext context = Beside ? window.Actions.Context().ForAgent() : window.Actions.Context();
         if (context.File is { Grammar: { } grammar } file && window.Actions.WhyNot(action, context) == Refusals.ReadingStrings(file.Name))
         {
-            await When(() => grammar.HasRead(file.Text.Snapshot), GrammarLimit, cancel, On(h => grammar.Changed += h, h => grammar.Changed -= h));
+            Wake failed = look =>
+            {
+                EventHandler<Exception> heard = (_, _) => UiThread.Post(look);
+                grammar.Failed += heard;
+                return () => grammar.Failed -= heard;
+            };
+            await When(() => grammar.HasRead(file.Text.Snapshot) || grammar.Failure is not null, GrammarLimit, cancel,
+                On(h => grammar.Changed += h, h => grammar.Changed -= h), failed);
         }
     }
 
