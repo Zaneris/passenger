@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Text;
+using System.Runtime.CompilerServices;
 
 namespace Passenger.App.Godot;
 
@@ -133,7 +134,7 @@ public static class GodotVariant
     /// <summary>The value at <paramref name="at"/>, which is moved past it.</summary>
     public static object? Read(ReadOnlySpan<byte> bytes, ref int at, int depth)
     {
-        if (depth > Deepest)
+        if (depth > Deepest || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
             throw new GodotVariantException("The value is nested too deep");
         }
@@ -213,7 +214,7 @@ public static class GodotVariant
 
     private static void Write(List<byte> bytes, object? value, int depth)
     {
-        if (depth > Deepest)
+        if (depth > Deepest || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
             throw new GodotVariantException("The value is nested too deep");
         }

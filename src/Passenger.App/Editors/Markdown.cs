@@ -9,6 +9,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using Passenger.Editor;
+using System.Runtime.CompilerServices;
 
 namespace Passenger.App.Editors;
 
@@ -278,7 +279,7 @@ internal static partial class Markdown
             i++;
             return new Rule();
         }
-        if (depth < DeepestNesting && QuoteLine().IsMatch(line))
+        if (depth < DeepestNesting && RuntimeHelpers.TryEnsureSufficientExecutionStack() && QuoteLine().IsMatch(line))
         {
             List<string> quoted = [];
             while (i < lines.Count && QuoteLine().Match(lines[i]) is { Success: true } inside)
@@ -288,7 +289,7 @@ internal static partial class Markdown
             }
             return new Quote(Blocks(quoted, depth: depth + 1));
         }
-        if (depth < DeepestNesting && Marker().Match(line) is { Success: true })
+        if (depth < DeepestNesting && RuntimeHelpers.TryEnsureSufficientExecutionStack() && Marker().Match(line) is { Success: true })
         {
             return ListFrom(lines, ref i, depth);
         }
@@ -606,7 +607,7 @@ internal static partial class Markdown
                 i += auto.Length;
                 continue;
             }
-            if (depth < DeepestNesting && (c == '[' || (c == '!' && i + 1 < text.Length && text[i + 1] == '[')))
+            if (depth < DeepestNesting && RuntimeHelpers.TryEnsureSufficientExecutionStack() && (c == '[' || (c == '!' && i + 1 < text.Length && text[i + 1] == '[')))
             {
                 bool image = c == '!';
                 if (LinkAt(text, image ? i + 1 : i) is { } link)
@@ -621,7 +622,7 @@ internal static partial class Markdown
             {
                 int run = Run(text, i, c);
                 int width = run >= 2 ? 2 : 1;
-                if (depth < DeepestNesting && Opens(text, i, width, c) && unclosed?.Contains((c, width)) != true)
+                if (depth < DeepestNesting && RuntimeHelpers.TryEnsureSufficientExecutionStack() && Opens(text, i, width, c) && unclosed?.Contains((c, width)) != true)
                 {
                     int close = DelimiterClose(text, i + width, c, width);
                     if (close >= 0)

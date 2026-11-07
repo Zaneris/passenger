@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Runtime.CompilerServices;
 
 namespace Passenger.App.Templates;
 
@@ -52,7 +53,7 @@ public static class TemplateConditions
 
         bool Not()
         {
-            if (++nesting > DeepestNesting)
+            if (++nesting > DeepestNesting || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
             {
                 throw new FormatException();
             }

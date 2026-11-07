@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Core;
+using Passenger.Xaml.Syntax;
 
 namespace Passenger.Xaml.Metadata;
 
@@ -367,7 +368,7 @@ public sealed class SourceTypes
 
     private static TypeRef Reference(TypeSyntax syntax, SourceScope scope, int depth)
     {
-        if (depth > DeepestType)
+        if (depth > DeepestType || !StackLeft.Enough())
         {
             return TypeRef.Named("System.Object");
         }

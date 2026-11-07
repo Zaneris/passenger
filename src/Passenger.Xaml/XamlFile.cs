@@ -258,11 +258,12 @@ public sealed class XamlFile
     /// object element it is in.</summary>
     public ClrType? ObjectOf(XmlElement element)
     {
-        if (!element.IsPropertyElement)
+        XmlElement? at = element;
+        while (at is { IsPropertyElement: true })
         {
-            return TypeOf(element);
+            at = at.Parent;
         }
-        return element.Parent is { } parent ? ObjectOf(parent) : null;
+        return at is null ? null : TypeOf(at);
     }
 
     /// <summary>What an attribute sets on its element.</summary>
@@ -357,6 +358,11 @@ public sealed class XamlFile
     /// <c>DataContext</c> bound to a path of the one above, and a template's items, from its control's <c>ItemsSource</c>.</summary>
     public ClrType? DataTypeAt(XmlElement element, bool inherit = true, bool stopAtTemplates = false, bool? hints = null)
     {
+        // What a data context above reads in turn reaches here again, a level up: short of stack, none is known.
+        if (!StackLeft.Enough())
+        {
+            return null;
+        }
         bool reading = hints ?? !Dialect.CompilesBindings;
         if (reading && IsColumn(element))
         {
@@ -471,6 +477,11 @@ public sealed class XamlFile
     /// element nothing resolves gives a type, unknown.</summary>
     public (CompiledContext Context, XmlElement? At) CompiledContextOf(XmlElement element, XamlProperty? property, bool dataContext)
     {
+        // Short of stack, typed but unknown, as for an element nothing resolves: no binding is called wrong for it.
+        if (!StackLeft.Enough())
+        {
+            return (CompiledContext.Typed, null);
+        }
         if (!dataContext && property is not null && PresentedItems(element, property, stopAtTemplates: true) is { Inferred: true })
         {
             return (CompiledContext.Typed, element);

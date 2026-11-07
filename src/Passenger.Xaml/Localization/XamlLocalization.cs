@@ -88,6 +88,10 @@ public static class XamlLocalization
 
     private static void Visit(XamlFile file, XmlElement element, MarkupExtension extension, Dictionary<ClrType, LocalizedClass?> classes, List<LocalizedStatic> reads)
     {
+        if (!StackLeft.Enough())
+        {
+            return;
+        }
         if (extension.LocalName == "Static" && IsLanguage(file, element, extension.Prefix)
             && (extension.Argument(null) ?? extension.Argument("Member")) is { Nested: null, Value.Length: > 0 } member
             && Read(file, element, member.Value, member.ValueStart, classes) is { } read)

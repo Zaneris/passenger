@@ -15,6 +15,9 @@ public sealed class XmlTree
     /// <summary>What is said where reading stopped.</summary>
     public const string TooDeep = "Passenger read no deeper than this, so the rest of the file is unread and unmarked.";
 
+    /// <summary>What is said where a walk of the file ran short of its thread's stack (<see cref="StackLeft"/>).</summary>
+    public const string CheckedInPart = "Passenger ran out of room to read a file nested this deeply, so only its markup is marked.";
+
     private readonly List<XmlElement> elements;
     private readonly List<TextRange> comments;
 
@@ -555,15 +558,16 @@ public sealed class XmlElement
         }
     }
 
-    /// <summary>It and everything under it, in document order.</summary>
+    /// <summary>It and everything under it, in document order, walked with a stack of its own.</summary>
     public IEnumerable<XmlElement> DescendantsAndSelf()
     {
-        yield return this;
-        foreach (XmlElement child in Children)
+        Stack<XmlElement> left = new([this]);
+        while (left.TryPop(out XmlElement? element))
         {
-            foreach (XmlElement below in child.DescendantsAndSelf())
+            yield return element;
+            for (int i = element.Children.Count - 1; i >= 0; i--)
             {
-                yield return below;
+                left.Push(element.Children[i]);
             }
         }
     }

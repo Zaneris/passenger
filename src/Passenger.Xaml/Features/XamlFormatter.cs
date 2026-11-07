@@ -16,12 +16,15 @@ public sealed record XamlFormatted(IReadOnlyList<TextEdit> Edits, string? Proble
 /// anything under <c>xml:space="preserve"</c>. Markup that is not well-formed is left alone, saying where.</summary>
 public static class XamlFormatter
 {
+    /// <summary>Why a file nested past what Passenger reads, or past the stack its thread has left, is not laid out.</summary>
+    public const string TooDeep = "the XAML is nested too deeply for Passenger to read whole";
+
     public static XamlFormatted Format(string text, XamlFormatSettings settings, IndentOptions indent, string eol, TextRange? within = null)
     {
         XmlTree tree = XmlTree.Parse(text);
         if (tree.Stopped is not null)
         {
-            return new XamlFormatted([], "the XAML is nested too deeply for Passenger to read whole");
+            return new XamlFormatted([], TooDeep);
         }
         if (tree.Problems.Count > 0)
         {
@@ -30,9 +33,11 @@ public static class XamlFormatter
             return new XamlFormatted([], $"the XAML is not well-formed: {first.Message} on line {line}");
         }
         Writer writer = new(text, settings, indent, eol);
-        if (!writer.Document(tree))
+        // A measure that ran short may have been taken while the layout went on, so either is refused.
+        bool laid = writer.Document(tree);
+        if (!laid || writer.ShortOfStack)
         {
-            return new XamlFormatted([], "the XAML holds markup Reformat Code does not read");
+            return new XamlFormatted([], writer.ShortOfStack ? TooDeep : "the XAML holds markup Reformat Code does not read");
         }
         IEnumerable<TextEdit> edits = writer.Edits.OrderBy(e => e.Start);
         if (within is { } range)
@@ -79,6 +84,9 @@ public static class XamlFormatter
 
         public List<TextEdit> Edits { get; } = [];
 
+        /// <summary>Whether the layout stopped where its thread had no stack left for a level more (<see cref="StackLeft"/>).</summary>
+        public bool ShortOfStack { get; private set; }
+
         public bool Document(XmlTree tree)
         {
             if (Items(0, text.Length, tree.Roots) is not { } items)
@@ -113,6 +121,11 @@ public static class XamlFormatter
 
         private bool Element(XmlElement element, string lineIndent, int column)
         {
+            if (!StackLeft.Enough())
+            {
+                ShortOfStack = true;
+                return false;
+            }
             bool preserved = Preserves(element);
             int closer = element.IsSelfClosing ? element.StartTagEnd - 2 : element.StartTagEnd - 1;
             bool collapse = settings.CollapseEmptyElements && !element.IsSelfClosing && !preserved && element.EndTagStart is { } endTag
@@ -362,6 +375,12 @@ public static class XamlFormatter
             if (spans.TryGetValue(element, out bool known))
             {
                 return known;
+            }
+            // Short of stack, the layout stops at the next element it lays out, so what this says goes unused.
+            if (!StackLeft.Enough())
+            {
+                ShortOfStack = true;
+                return true;
             }
             bool spanning = TagSpans(element, column) || ContentSpans(element, column + indent.Size);
             spans[element] = spanning;

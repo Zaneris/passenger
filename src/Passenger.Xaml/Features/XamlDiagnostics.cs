@@ -64,6 +64,8 @@ public static class XamlDiagnostics
         {
             return found;
         }
+        int shortfalls = StackLeft.Shortfalls;
+        int markup = found.Count;
         found.AddRange(ThemeVariants.Of(file));
         Dictionary<string, XmlAttribute> named = new(StringComparer.Ordinal);
         bool islands = file.Tree.Elements.Any(e => e.LocalName == "XData");
@@ -117,6 +119,12 @@ public static class XamlDiagnostics
                     named[name.Value] = name;
                 }
             }
+        }
+        if (StackLeft.Shortfalls != shortfalls)
+        {
+            // A walk short of stack knew less than it would have, so its markup alone is said, as of a file read in part.
+            found.RemoveRange(markup, found.Count - markup);
+            found.Add(new XamlDiagnostic(file.Tree.Root?.NameRange ?? new TextRange(0, 0), XamlSeverity.Note, XmlTree.CheckedInPart));
         }
         return found;
     }
@@ -354,7 +362,7 @@ public static class XamlDiagnostics
     private static void Extension(XamlFile file, XmlAttribute attribute, MarkupExtension extension, List<XamlDiagnostic> found, string? within = null)
     {
         XmlElement element = attribute.Owner;
-        if (extension.Name.Length == 0)
+        if (extension.Name.Length == 0 || !StackLeft.Enough())
         {
             return;
         }

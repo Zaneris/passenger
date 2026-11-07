@@ -8,7 +8,10 @@ internal static class SmallStack
 {
     private const int Size = 512 * 1024;
 
-    public static void Run(Action work)
+    public static void Run(Action work) => Run(Size, work);
+
+    /// <summary>Work on a stack of <paramref name="size"/> bytes.</summary>
+    public static void Run(int size, Action work)
     {
         ExceptionDispatchInfo? failed = null;
         Thread thread = new(() =>
@@ -21,7 +24,7 @@ internal static class SmallStack
             {
                 failed = ExceptionDispatchInfo.Capture(failure);
             }
-        }, Size);
+        }, size);
         thread.Start();
         thread.Join();
         failed?.Throw();

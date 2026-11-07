@@ -2,6 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Passenger.Core;
+using System.Runtime.CompilerServices;
 
 namespace Passenger.Workspace;
 
@@ -487,7 +488,7 @@ public static class JsonText
             {
                 throw new FormatException("it ends where a value should be");
             }
-            if (++nesting > DeepestNesting)
+            if (++nesting > DeepestNesting || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
             {
                 throw new FormatException($"it is nested too deeply to read at {at}");
             }

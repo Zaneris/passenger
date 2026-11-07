@@ -30,28 +30,44 @@ public static class MSBuildSyntax
 
     public static MSBuildRole RoleOf(XmlElement element)
     {
-        if (element.Parent is not { } parent)
+        // Up to the nearest element whose parent says what it is, then down again, each taking its role from its parent's.
+        List<XmlElement> below = [];
+        XmlElement at = element;
+        MSBuildRole role;
+        while (true)
         {
-            return element.LocalName == "Project" ? MSBuildRole.Project : MSBuildRole.Unknown;
+            if (at.Parent is not { } parent)
+            {
+                role = at.LocalName == "Project" ? MSBuildRole.Project : MSBuildRole.Unknown;
+                break;
+            }
+            MSBuildRole? said = parent.LocalName switch
+            {
+                "PropertyGroup" => MSBuildRole.Property,
+                "ItemGroup" or "ItemDefinitionGroup" => MSBuildRole.Item,
+                "Target" => at.LocalName is "PropertyGroup" or "ItemGroup" or "OnError" ? MSBuildRole.Structure : MSBuildRole.Task,
+                "ProjectExtensions" or "ParameterGroup" => MSBuildRole.Unknown,
+                _ => null,
+            };
+            if (said is { } known)
+            {
+                role = known;
+                break;
+            }
+            below.Add(at);
+            at = parent;
         }
-        switch (parent.LocalName)
+        for (int i = below.Count - 1; i >= 0; i--)
         {
-            case "PropertyGroup":
-                return MSBuildRole.Property;
-            case "ItemGroup" or "ItemDefinitionGroup":
-                return MSBuildRole.Item;
-            case "Target":
-                return element.LocalName is "PropertyGroup" or "ItemGroup" or "OnError" ? MSBuildRole.Structure : MSBuildRole.Task;
-            case "ProjectExtensions" or "ParameterGroup":
-                return MSBuildRole.Unknown;
+            role = role switch
+            {
+                MSBuildRole.Item => MSBuildRole.Metadata,
+                MSBuildRole.Task => below[i].LocalName == "Output" ? MSBuildRole.Structure : MSBuildRole.Unknown,
+                MSBuildRole.Property or MSBuildRole.Metadata or MSBuildRole.Unknown => MSBuildRole.Unknown,
+                _ => MSBuildRole.Structure,
+            };
         }
-        return RoleOf(parent) switch
-        {
-            MSBuildRole.Item => MSBuildRole.Metadata,
-            MSBuildRole.Task => element.LocalName == "Output" ? MSBuildRole.Structure : MSBuildRole.Unknown,
-            MSBuildRole.Property or MSBuildRole.Metadata or MSBuildRole.Unknown => MSBuildRole.Unknown,
-            _ => MSBuildRole.Structure,
-        };
+        return role;
     }
 
     /// <summary>Whether a character may be in a property's, item type's or metadata's name.</summary>

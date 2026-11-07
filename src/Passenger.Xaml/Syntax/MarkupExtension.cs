@@ -88,7 +88,7 @@ public sealed class MarkupExtension
         }
         extension.NameEnd = at;
         extension.Name = text[extension.NameStart..at];
-        if (depth == Deepest)
+        if (depth == Deepest || !StackLeft.Enough())
         {
             at = end;
             extension.End = end;

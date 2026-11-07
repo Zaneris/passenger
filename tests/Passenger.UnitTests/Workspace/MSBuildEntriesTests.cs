@@ -47,4 +47,24 @@ public class MSBuildEntriesTests
         Assert.Equal(("r&", "r&amp;"), At("r&amp;;d", 1));
         Assert.Equal(("d", "d"), At("r&amp;;d", 8));
     }
+
+    /// <summary>What an element of a project file is, read from its parents: the nearest that says, then down again, each
+    /// level's from the one above; as deep as a tree is read, on a stack too small to walk it by recursing.</summary>
+    [Fact]
+    public void An_elements_role_comes_from_its_parents_however_deep()
+    {
+        Passenger.Xaml.Syntax.XmlTree tree = Passenger.Xaml.Syntax.XmlTree.Parse("<Project><PropertyGroup><Name /></PropertyGroup><ItemGroup><Compile><Link /></Compile></ItemGroup>"
+            + "<Target><Exec><Output /><Other /></Exec><PropertyGroup /></Target><Choose><When><ItemGroup><Item><Meta><Deeper /></Meta></Item></ItemGroup></When></Choose></Project>");
+        Assert.Equal(
+            [MSBuildRole.Project, MSBuildRole.Structure, MSBuildRole.Property, MSBuildRole.Structure, MSBuildRole.Item, MSBuildRole.Metadata, MSBuildRole.Structure, MSBuildRole.Task,
+                MSBuildRole.Structure, MSBuildRole.Unknown, MSBuildRole.Structure, MSBuildRole.Structure, MSBuildRole.Structure, MSBuildRole.Structure, MSBuildRole.Item,
+                MSBuildRole.Metadata, MSBuildRole.Unknown],
+            tree.Elements.Select(MSBuildSyntax.RoleOf));
+        int deep = Passenger.Xaml.Syntax.XmlTree.DeepestNesting;
+        Passenger.Xaml.Syntax.XmlTree nested = Passenger.Xaml.Syntax.XmlTree.Parse("<Project><Target>" + string.Concat(Enumerable.Repeat("<Task>", deep - 2))
+            + string.Concat(Enumerable.Repeat("</Task>", deep - 2)) + "</Target></Project>");
+        MSBuildRole last = MSBuildRole.Project;
+        SmallStack.Run(64 * 1024, () => last = MSBuildSyntax.RoleOf(nested.Elements[^1]));
+        Assert.Equal(MSBuildRole.Unknown, last);
+    }
 }

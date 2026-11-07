@@ -453,6 +453,11 @@ public static class XamlNavigation
 
     private static void Uses(MarkupExtension extension, string name, List<TextRange> uses)
     {
+        // Short of stack, what is nested deeper goes unread, as what is nested past what is read does.
+        if (!StackLeft.Enough())
+        {
+            return;
+        }
         foreach (MarkupArgument argument in extension.Arguments)
         {
             if (argument.Nested is { } nested)
@@ -506,6 +511,10 @@ public static class XamlNavigation
 
     private static void ResourceUses(MarkupExtension extension, string key, List<TextRange> uses)
     {
+        if (!StackLeft.Enough())
+        {
+            return;
+        }
         if (extension.LocalName is "StaticResource" or "DynamicResource" && extension.Argument(null) is { Nested: null } argument && argument.Value == key)
         {
             uses.Add(argument.ValueRange);

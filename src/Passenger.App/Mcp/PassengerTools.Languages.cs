@@ -117,9 +117,15 @@ public sealed partial class PassengerTools
         XmlTree tree = msbuild.MSBuild.Tree;
         TextSnapshot snapshot = TextSnapshot.From(tree.Text);
         System.Text.StringBuilder text = new();
-        foreach (XmlElement root in tree.Roots)
+        // Walked with a stack of its own, so a tree as deep as it is read costs no thread its stack.
+        Stack<(XmlElement Element, int Depth)> left = new(tree.Roots.Reverse().Select(r => (r, 0)));
+        while (left.TryPop(out (XmlElement Element, int Depth) at))
         {
-            Write(root, 0);
+            Write(at.Element, at.Depth);
+            for (int i = at.Element.Children.Count - 1; i >= 0; i--)
+            {
+                left.Push((at.Element.Children[i], at.Depth + 1));
+            }
         }
         return text.Length == 0 ? "The file has no elements" : text.ToString().TrimEnd();
 
@@ -146,10 +152,6 @@ public sealed partial class PassengerTools
                 _ => string.Empty,
             };
             text.Append(" (").Append(kind).Append("line ").Append(snapshot.GetLineFromOffset(Math.Min(element.Start, snapshot.Length)) + 1).Append(")\n");
-            foreach (XmlElement child in element.Children)
-            {
-                Write(child, depth + 1);
-            }
         }
     }
 
@@ -310,9 +312,15 @@ public sealed partial class PassengerTools
     {
         System.Text.StringBuilder text = new();
         TextSnapshot snapshot = TextSnapshot.From(xaml.File.Text);
-        foreach (XmlElement root in xaml.File.Tree.Roots)
+        // Walked with a stack of its own, so a tree as deep as it is read costs no thread its stack.
+        Stack<(XmlElement Element, int Depth)> left = new(xaml.File.Tree.Roots.Reverse().Select(r => (r, 0)));
+        while (left.TryPop(out (XmlElement Element, int Depth) at))
         {
-            Write(root, 0);
+            Write(at.Element, at.Depth);
+            for (int i = at.Element.Children.Count - 1; i >= 0; i--)
+            {
+                left.Push((at.Element.Children[i], at.Depth + 1));
+            }
         }
         return text.Length == 0 ? "The file has no elements" : text.ToString().TrimEnd();
 
@@ -325,10 +333,6 @@ public sealed partial class PassengerTools
                 text.Append(' ').Append(attribute.Name).Append("=\"").Append(attribute.Value).Append('"');
             }
             text.Append(" (line ").Append(snapshot.GetLineFromOffset(Math.Min(element.Start, snapshot.Length)) + 1).Append(")\n");
-            foreach (XmlElement child in element.Children)
-            {
-                Write(child, depth + 1);
-            }
         }
     }
 

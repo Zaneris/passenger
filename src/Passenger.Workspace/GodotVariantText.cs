@@ -1,5 +1,6 @@
 using System.Buffers.Text;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace Passenger.Workspace;
 
@@ -250,7 +251,7 @@ public static class GodotVariantText
 
         public string? Value(Token token, int depth)
         {
-            if (depth > Deepest)
+            if (depth > Deepest || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
             {
                 return "it is nested too deeply";
             }

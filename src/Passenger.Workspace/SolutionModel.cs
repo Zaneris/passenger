@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Passenger.Core;
 using Passenger.Host;
+using System.Runtime.CompilerServices;
 
 namespace Passenger.Workspace;
 
@@ -149,7 +150,7 @@ public sealed record SolutionModel(string Path, string Name, IReadOnlyList<Solut
             ? folder with
             {
                 Path = $"{parent}{folder.Name}/",
-                Children = depth < DeepestNesting ? Placed(folder.Children, $"{parent}{folder.Name}/", depth + 1) : Unfoldered(folder),
+                Children = depth < DeepestNesting && RuntimeHelpers.TryEnsureSufficientExecutionStack() ? Placed(folder.Children, $"{parent}{folder.Name}/", depth + 1) : Unfoldered(folder),
             }
             : entry)];
 

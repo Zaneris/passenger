@@ -202,8 +202,10 @@ public class XmlTreeTests
         Assert.NotNull(XamlRefactorings.ElementNameProblem(file, "a", "b"));
     }
 
+    /// <summary>How much stack a level of layout takes is the platform's: on a stack a third of the thread pool's a tree as
+    /// deep as it is read is laid out, or refused as too deep where that stack runs short, and never ends the process.</summary>
     [Fact]
-    public void Elements_as_deep_as_a_tree_holds_read_whole_and_are_laid_out()
+    public void Elements_as_deep_as_a_tree_holds_read_whole_and_are_laid_out_or_refused_where_the_stack_runs_short()
     {
         string text = Nested(XmlTree.DeepestNesting);
         SmallStack.Run(() =>
@@ -213,8 +215,34 @@ public class XmlTreeTests
             Assert.Empty(tree.Problems);
             Assert.Equal(XmlTree.DeepestNesting, tree.Elements.Count);
             XamlFormatted laid = XamlFormatter.Format(text, new XamlFormatSettings(), new IndentOptions(), "\n");
-            Assert.Null(laid.Problem);
-            Assert.NotEmpty(laid.Edits);
+            Assert.True(laid.Problem is null ? laid.Edits.Count > 0 : laid.Problem == XamlFormatter.TooDeep, $"The layout came to {laid.Problem ?? "no edits"}");
+        });
+    }
+
+    /// <summary>A stack too small for a tree as deep as it is read, as a platform whose levels take more would leave: the
+    /// layout is refused saying so, and every other walk of the tree answers as it does past where reading stops, or walks
+    /// with a stack of its own.</summary>
+    [Theory]
+    [InlineData("<a>", "</a>")]
+    [InlineData("<a.b>", "</a.b>")]
+    [InlineData("<a DataContext=\"{Binding}\">", "</a>")]
+    [InlineData("<Style Selector=\"^:a\">", "</Style>")]
+    public void Walks_of_a_tree_on_a_stack_too_small_for_it_refuse_or_answer_as_past_the_bound_and_end_nothing(string open, string close)
+    {
+        string text = Nested(XmlTree.DeepestNesting, open, close);
+        SmallStack.Run(192 * 1024, () =>
+        {
+            Assert.Equal(XamlFormatter.TooDeep, XamlFormatter.Format(text, new XamlFormatSettings(), new IndentOptions(), "\n").Problem);
+            foreach (XamlDialect dialect in (XamlDialect[])[AvaloniaDialect.Instance, WpfDialect.Instance])
+            {
+                XamlFile file = XamlFiles.Read("Deep.axaml", text, dialect);
+                Assert.Equal(XmlTree.DeepestNesting, file.Tree.Root!.DescendantsAndSelf().Count());
+                XmlElement last = file.Tree.Elements[^1];
+                Assert.Null(file.ObjectOf(last));
+                Assert.Null(file.DataTypeAt(last));
+                Assert.Null(file.StyleTargetAt(last));
+                Assert.DoesNotContain(XamlDiagnostics.Of(file), d => d.Severity == XamlSeverity.Error);
+            }
         });
     }
 }
