@@ -111,7 +111,8 @@ public sealed class Language
     private Language([IdentifierOf(typeof(LanguageIds))] string id, string name, IReadOnlyList<FilePattern> patterns, string? line = null,
         (string Start, string End)? block = null, int indent = 4, GrammarFile? grammar = null, Func<TextDocument, IFoldFinder>? folds = null,
         LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false, bool tabs = false,
-        bool spacesAlone = false, HashSet<string>? blockWords = null, Func<TextSnapshot, IReadOnlySet<int>>? literals = null)
+        bool spacesAlone = false, HashSet<string>? blockWords = null, Func<TextSnapshot, IReadOnlySet<int>>? literals = null,
+        Func<TextSnapshot, IReadOnlySet<int>>? continued = null)
     {
         Id = id;
         Name = name;
@@ -128,6 +129,7 @@ public sealed class Language
         IndentsWithSpacesAlone = spacesAlone;
         BlockWords = blockWords;
         Literals = literals;
+        Continued = continued;
         All.Add(this);
     }
 
@@ -233,7 +235,8 @@ public sealed class Language
 
     public static readonly Language Python = new("python", "Python", ["*.py", "*.pyi", "*.pyw"], line: "#",
         grammar: new("source.python", "MagicPython.tmLanguage.json"),
-        blockWords: ["async", "case", "class", "def", "elif", "else", "except", "finally", "for", "if", "match", "try", "while", "with"]);
+        blockWords: ["async", "case", "class", "def", "elif", "else", "except", "finally", "for", "if", "match", "try", "while", "with"],
+        continued: ContinuedLines.Python);
 
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
@@ -277,6 +280,10 @@ public sealed class Language
     /// <summary>What finds the lines of a file of the language whose whitespace its reader keeps though its grammar's strings
     /// don't show them; null for a language with none.</summary>
     public Func<TextSnapshot, IReadOnlySet<int>>? Literals { get; }
+
+    /// <summary>What finds the lines of a file of the language its reader takes as going on from the line before, where it reads
+    /// no block's indentation (<see cref="BlockWords"/>); null for a language with none.</summary>
+    public Func<TextSnapshot, IReadOnlySet<int>>? Continued { get; }
 
     internal GrammarFile? Grammar { get; }
 

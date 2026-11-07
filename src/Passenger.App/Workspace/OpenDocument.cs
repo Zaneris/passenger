@@ -852,7 +852,7 @@ public sealed class OpenDocument : Observable
         : null;
 
     /// <summary>The first line whose block converting could change, read once for each text, indent and way, as a menu or Find
-    /// Action asks of every action it lists.</summary>
+    /// Action asks of every action it lists: a line inside a string or going on from the line before opens none.</summary>
     private int? FirstBlockAtRisk(bool toTabs, IReadOnlySet<string> words)
     {
         TextSnapshot text = Text.Snapshot;
@@ -860,7 +860,9 @@ public sealed class OpenDocument : Observable
         int way = toTabs ? 1 : 0;
         if (!ReferenceEquals(blocksAtRisk[way].Text, text) || blocksAtRisk[way].From != from)
         {
-            blocksAtRisk[way] = (text, from, Passenger.Text.Indentation.FirstBlockAtRisk(text, from, toTabs, LinesInStrings(), words));
+            IReadOnlySet<int>? strings = LinesInStrings();
+            IReadOnlySet<int>? none = Language.Continued?.Invoke(text) is { } continued ? (strings?.Union(continued) ?? continued).ToHashSet() : strings;
+            blocksAtRisk[way] = (text, from, Passenger.Text.Indentation.FirstBlockAtRisk(text, from, toTabs, none, words));
         }
         return blocksAtRisk[way].Line;
     }

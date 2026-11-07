@@ -421,6 +421,21 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A comprehension's <c>for</c> and <c>if</c> on lines of their own between levels open no block, Python reading no
+    /// indentation inside brackets, so tabs are taken there, where each was refused.</summary>
+    [AvaloniaFact]
+    public void Converting_Python_to_tabs_takes_a_comprehension_continued_between_levels()
+    {
+        const string Code = "class Loader:\n    def read(self):\n        return [x\n                  for x in self.items\n                  if x]\n";
+        Write("comprehension.py", Code);
+        MainWindow window = Open("comprehension.py");
+        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Tabs");
+        Assert.Equal("class Loader:\n\tdef read(self):\n\t\treturn [x\n\t\t\t\t  for x in self.items\n\t\t\t\t  if x]\n", Text(window));
+        window.Close();
+    }
+
     /// <summary>A YAML file's block scalar keeps every line, the first whose indentation the scalar takes its own from among
     /// them, as the lines around it convert; tabs, which no YAML indents with, are refused saying why.</summary>
     [AvaloniaFact]

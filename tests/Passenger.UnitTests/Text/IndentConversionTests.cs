@@ -82,6 +82,23 @@ public sealed class IndentConversionTests
         Assert.Equal(0, AtRisk("  \fif a:\n    b()\n", 4));
     }
 
+    /// <summary>A comprehension's <c>for</c> and <c>if</c>, and a conditional's <c>else</c>, on lines of their own between levels
+    /// open no block inside their brackets, nor does a line after a backslash, which Python reads no indentation of; a real
+    /// block between levels is still refused.</summary>
+    [Fact]
+    public void A_line_going_on_from_the_one_before_opens_no_block()
+    {
+        const string Code = "class A:\n    def f(self):\n        return [x\n                  for x in self.items\n                  if x]\n\n"
+            + "    def g(self):\n        y = (1 if self.a\n             else 2)\n        z = self.b + \\\n          if_value\n        return y\n";
+        TextSnapshot text = TextSnapshot.From(Code);
+        IReadOnlySet<int> continued = ContinuedLines.Python(text);
+        HashSet<string> words = new(StringComparer.Ordinal) { "class", "def", "if", "for", "else" };
+        Assert.Equal(3, Indentation.FirstBlockAtRisk(text, new IndentOptions(4), true, null, words));
+        Assert.Null(Indentation.FirstBlockAtRisk(text, new IndentOptions(4), true, continued, words));
+        Assert.Equal(14, Indentation.FirstBlockAtRisk(TextSnapshot.From(Code + "        if y:\n          pass\n  if z:\n            pass\n"), new IndentOptions(4), true,
+            ContinuedLines.Python(TextSnapshot.From(Code + "        if y:\n          pass\n  if z:\n            pass\n")), words));
+    }
+
     /// <summary>A reader's tab reaches the next multiple of 8 and counts as one column too. Tabs before spaces keep that order at
     /// any width up to 8; a tab after a space, or a width past 8, may not, so either way of converting waits on it.</summary>
     [Fact]
