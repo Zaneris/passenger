@@ -34,13 +34,13 @@ internal static class CodeBrackets
     }
 
     /// <summary>A text's brackets as its tokens have them. An interpolated string is a token to the lexer and code to the
-    /// parser, as a documentation comment is trivia to one and read by the other, so each is read as it stands, on its own, the
-    /// text around it left as it was: what a template leaves open doesn't add up over a file. A <c>?</c> is a link only before
+    /// parser, as a documentation comment is trivia to one and read by the other, so each is read on its own, the text around it
+    /// left as it was: what a template leaves open doesn't add up over a file, and a string's text closes nothing in its holes. A <c>?</c> is a link only before
     /// a <c>.</c> or a <c>[</c>, where it is a conditional access, and <c>not</c> only as written, never escaped. A token after
     /// a closing brace that no expression goes on with ends the conditional accesses read ahead through at its level.</summary>
     private static int? TokensDeepAt(string text, CSharpParseOptions? options)
     {
-        Brackets brackets = new() { CSharp = true };
+        Brackets brackets = new() { CSharp = true, Tokens = true };
         SyntaxKind before = SyntaxKind.None;
         foreach (SyntaxToken token in SyntaxFactory.ParseTokens(text, options: options))
         {
@@ -65,7 +65,7 @@ internal static class CodeBrackets
                 case SyntaxKind.IdentifierToken when token.Text == "not":
                     brackets.Read(token.Text);
                     break;
-                case SyntaxKind.InterpolatedStringToken when DeepOnItsOwn(token.Text, brackets):
+                case SyntaxKind.InterpolatedStringToken when DeepOnItsOwn(token.Text, brackets with { Tokens = false }):
                     return token.SpanStart;
             }
             if (brackets.TooDeep)

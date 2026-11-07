@@ -75,8 +75,9 @@ public static class DeepText
 
 /// <summary>How deep a text's brackets and conditions go, read a stretch at a time. Strings and comments count, for a text no
 /// parser has read: a statement's round and square brackets stop counting at its semicolon, so those a text's strings leave
-/// open don't add up over a file, and what nests through blocks is in its braces. Real code goes some tens deep.</summary>
-public struct Brackets
+/// open don't add up over a file, and what nests through blocks is in its braces. Real code goes some tens deep. In a C# text
+/// as it stands a closer or a semicolon counts only where the text certainly is code (<see cref="ReadCode"/>).</summary>
+public partial struct Brackets
 {
     /// <summary>Past any code written or generated, and where a parser's cost is still seconds at its worst.</summary>
     private const int Deepest = 1000;
@@ -89,22 +90,47 @@ public struct Brackets
 
     private static readonly SearchValues<char> CSharpMarks = SearchValues.Create("()[]{};#$<>?n");
 
-    private int statement;
-    private int braces;
-    private int conditions;
-    private int holes;
-    private bool dollar;
+    private Counts counts;
     private int consumed;
-    private int depth;
-    private LinkLevels links;
-    private int linkLevels;
-    private int linked;
+
+    /// <summary>Where a C# text as it stands is read to (<see cref="ReadCode"/>).</summary>
+    private Place place;
+
+    /// <summary>Whether the line a stretch starts in has more than spaces and tabs before it.</summary>
+    private bool lineWritten;
+
+    /// <summary>Whether a stretch starts past its line's first character.</summary>
+    private bool midLine;
+
+    private int directive;
+    private int named;
+    private int directiveAt;
+
+    /// <summary>The interpolated strings read into, each within a hole of the one before.</summary>
+    private Interpolations strings;
+
+    private int nestings;
+
+    /// <summary>The dollars before an interpolated string's quote.</summary>
+    private int dollars;
+
+    /// <summary>A raw string's quotes: how many open it, how many in a row are read, and whether it takes lines.</summary>
+    private int quotes;
+
+    private int run;
+    private bool lines;
+
+    /// <summary>What was open before the string or comment being read, set back at its end.</summary>
+    private Counts held;
 
     /// <summary>Whether C#'s links count as a statement's brackets do: each <c>?</c>, a pattern's <c>not</c> and a lambda's
     /// <c>=&gt;</c>, which a parser and a binder nest through with no bracket, and a type's <c>&lt;</c> closed by its
     /// <c>&gt;</c>, a <c>&lt;</c> before another or an <c>=</c> opening nothing, nor a <c>&gt;</c> after a <c>-</c>; and each
     /// <c>?[</c> once more as a conditional access (<see cref="MostLinks"/>). A stretch's first character has nothing before it.</summary>
     public bool CSharp { get; init; }
+
+    /// <summary>Whether what's read is a lexer's tokens, or text read as code on its own, every closer real.</summary>
+    public bool Tokens { get; init; }
 
     public bool TooDeep { get; private set; }
 
@@ -117,106 +143,125 @@ public struct Brackets
 
     public void Read(ReadOnlySpan<char> text)
     {
+        if (CSharp && !Tokens)
+        {
+            ReadCode(text);
+            return;
+        }
         SearchValues<char> marks = CSharp ? CSharpMarks : Marks;
         for (int at = text.IndexOfAny(marks); at >= 0 && !TooDeepToLex; at = text.IndexOfAny(marks))
         {
-            switch (text[at])
-            {
-                case '?':
-                    statement++;
-                    if (CSharp && OpensElement(text, at))
-                    {
-                        Link();
-                    }
-                    break;
-                case '(' or '[':
-                    statement++;
-                    depth++;
-                    break;
-                case ')' or ']':
-                    statement = Math.Max(0, statement - 1);
-                    Close();
-                    break;
-                case '<':
-                    statement += Before(text, at) == '<' || After(text, at) is '<' or '=' ? 0 : 1;
-                    break;
-                case '>':
-                    statement = Before(text, at) switch
-                    {
-                        '=' => statement + 1,
-                        '-' => statement,
-                        _ => Math.Max(0, statement - 1),
-                    };
-                    break;
-                case 'n':
-                    statement += Not(text, at) ? 1 : 0;
-                    break;
-                case '{':
-                    braces++;
-                    depth++;
-                    holes += dollar ? 1 : 0;
-                    dollar = false;
-                    break;
-                case '}':
-                    braces = Math.Max(0, braces - 1);
-                    holes = Math.Max(0, holes - 1);
-                    Close();
-                    break;
-                case '$':
-                    dollar = true;
-                    break;
-                case '#':
-                    conditions += text[(at + 1)..].StartsWith("if") ? 1 : text[(at + 1)..].StartsWith("endif") ? -1 : 0;
-                    conditions = Math.Max(0, conditions);
-                    break;
-                default:
-                    statement = 0;
-                    EndLinks(depth);
-                    break;
-            }
-            if (!TooDeep && (statement + braces + conditions > Deepest || linked > MostLinks))
-            {
-                TooDeep = true;
-                DeepAt = consumed + at;
-            }
-            TooDeepToLex = conditions > Deepest || holes > Deepest;
+            Mark(text, at, closes: true);
             consumed += at + 1;
             text = text[(at + 1)..];
         }
         consumed += text.Length;
     }
 
+    /// <summary>Counts a mark; a closer, a semicolon or an <c>#endif</c> only where it <paramref name="closes"/> what's open,
+    /// which nothing may lie in a string or a comment to do.</summary>
+    private void Mark(ReadOnlySpan<char> text, int at, bool closes)
+    {
+        switch (text[at])
+        {
+            case '?':
+                counts.Statement++;
+                if (CSharp && OpensElement(text, at))
+                {
+                    Link();
+                }
+                break;
+            case '(' or '[':
+                counts.Statement++;
+                counts.Depth++;
+                break;
+            case ')' or ']' when closes:
+                counts.Statement = Math.Max(0, counts.Statement - 1);
+                Close();
+                break;
+            case '<':
+                counts.Statement += Before(text, at) == '<' || After(text, at) is '<' or '=' ? 0 : 1;
+                break;
+            case '>':
+                counts.Statement = Before(text, at) switch
+                {
+                    '=' => counts.Statement + 1,
+                    '-' => counts.Statement,
+                    _ when closes => Math.Max(0, counts.Statement - 1),
+                    _ => counts.Statement,
+                };
+                break;
+            case 'n':
+                counts.Statement += Not(text, at) ? 1 : 0;
+                break;
+            case '{':
+                counts.Braces++;
+                counts.Depth++;
+                counts.Holes += counts.Dollar ? 1 : 0;
+                counts.Dollar = false;
+                break;
+            case '}' when closes:
+                counts.Braces = Math.Max(0, counts.Braces - 1);
+                counts.Holes = Math.Max(0, counts.Holes - 1);
+                Close();
+                break;
+            case '$':
+                counts.Dollar = true;
+                break;
+            case '#':
+                counts.Conditions += text[(at + 1)..].StartsWith("if") ? 1 : closes && text[(at + 1)..].StartsWith("endif") ? -1 : 0;
+                counts.Conditions = Math.Max(0, counts.Conditions);
+                break;
+            case ';' when closes:
+                counts.Statement = 0;
+                EndLinks(counts.Depth);
+                break;
+        }
+        Check(consumed + at);
+    }
+
+    /// <summary>Notes where the text first goes too deep, and whether it goes too deep to lex.</summary>
+    private void Check(int at)
+    {
+        if (!TooDeep && (counts.Statement + counts.Braces + counts.Conditions > Deepest || counts.Linked > MostLinks))
+        {
+            TooDeep = true;
+            DeepAt = at;
+        }
+        TooDeepToLex = counts.Conditions > Deepest || counts.Holes > Deepest;
+    }
+
     /// <summary>The expression a lexer's tokens are at ended where a closing brace left it, as the token after says: the
     /// conditional accesses read ahead through at its level end with it.</summary>
-    public void Ended() => EndLinks(depth);
+    public void Ended() => EndLinks(counts.Depth);
 
     /// <summary>A conditional access, or a conditional with a collection, whose <c>?[</c> a parser reads past to see which it
     /// is: what follows to the end of the expression it starts, a nested one's own reading among it.</summary>
     private void Link()
     {
-        if (linkLevels > 0 && links[linkLevels - 1].Depth == depth)
+        if (counts.Levels > 0 && counts.Links[counts.Levels - 1].Depth == counts.Depth)
         {
-            links[linkLevels - 1].Count++;
+            counts.Links[counts.Levels - 1].Count++;
         }
-        else if (linkLevels < MostLinks + 1)
+        else if (counts.Levels < MostLinks + 1)
         {
-            links[linkLevels++] = (depth, 1);
+            counts.Links[counts.Levels++] = (counts.Depth, 1);
         }
-        linked++;
+        counts.Linked++;
     }
 
     private void Close()
     {
-        depth = Math.Max(0, depth - 1);
-        EndLinks(depth + 1);
+        counts.Depth = Math.Max(0, counts.Depth - 1);
+        EndLinks(counts.Depth + 1);
     }
 
     /// <summary>Ends the links read ahead from this depth and those within it.</summary>
     private void EndLinks(int from)
     {
-        while (linkLevels > 0 && links[linkLevels - 1].Depth >= from)
+        while (counts.Levels > 0 && counts.Links[counts.Levels - 1].Depth >= from)
         {
-            linked -= links[--linkLevels].Count;
+            counts.Linked -= counts.Links[--counts.Levels].Count;
         }
     }
 
@@ -240,6 +285,20 @@ public struct Brackets
     private static char After(ReadOnlySpan<char> text, int at) => at + 1 < text.Length ? text[at + 1] : '\0';
 
     private static bool InWord(char c) => char.IsLetterOrDigit(c) || c is '_' or '@';
+
+    /// <summary>What's open where the text is read to, kept whole so a string read on its own can be set aside.</summary>
+    private struct Counts
+    {
+        public int Statement;
+        public int Braces;
+        public int Conditions;
+        public int Holes;
+        public bool Dollar;
+        public int Depth;
+        public LinkLevels Links;
+        public int Levels;
+        public int Linked;
+    }
 
     /// <summary>The depths conditional accesses are read ahead from, and how many at each: one past the most is too deep.</summary>
     [InlineArray(MostLinks + 1)]

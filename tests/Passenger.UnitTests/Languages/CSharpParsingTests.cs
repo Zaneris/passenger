@@ -148,7 +148,8 @@ public class CSharpParsingTests
     }
 
     /// <summary>The shapes of real test and data files, whose brackets are only text: a list of a parser's inputs in one
-    /// statement, with no semicolon to stop the count, and braces that never close.</summary>
+    /// statement, with no semicolon to stop the count, and braces that never close. The text count reads past a string or a
+    /// comment it knows, and hands the lexer one it doesn't (a raw string, a branch left out).</summary>
     [Theory]
     [InlineData("class C { string[] x = { ", "\"(\", ", "", "}; }")]
     [InlineData("class C { string[] x = { ", "@\"[\", ", "", "}; }")]
@@ -167,8 +168,62 @@ public class CSharpParsingTests
     public void Brackets_that_are_only_text_read_whole_however_many(string before, string each, string inner, string after)
     {
         string text = Nested(before, each, inner, string.Empty, after, 5_000);
-        Assert.True(DeepText.TooDeep(text, csharp: true), "The text as it stands is no longer read as deep, so nothing here reads its tokens");
         SmallStack.Run(() => Assert.NotEmpty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
+    }
+
+    /// <summary>A string, a character or a comment the text count reads as the lexer does opens nothing, so a file of them
+    /// never waits on the lexer.</summary>
+    [Theory]
+    [InlineData("class C { string[] x = { ", "\"(\\\"{[\", ")]
+    [InlineData("class C { string[] x = { ", "@\"(\n\"\"{\", ")]
+    [InlineData("class C { char[] x = { ", "'(', '\\'', ")]
+    [InlineData("class C { string[] x = { ", "$\"({{{x}\", ")]
+    [InlineData("class C { string[] x = { ", "$\"{F(\"(\")}({x:N2}\", ")]
+    [InlineData("class C { string[] x = { ", "$@\"{x}(\n\"\"{{\", ")]
+    [InlineData("class C { string[] x = { ", "@$\"{F(\"(\")}(\", ")]
+    [InlineData("class C { string[] x = { ", "$\"{F($\"{x}(\")}(\", ")]
+    [InlineData("class C { string[] x = { ", "\"\"\"\n    (({{\"\"\n    \"\"\", ")]
+    [InlineData("class C { string[] x = { ", "\"\"\"\"(\"\"\"\"\"\", ")]
+    [InlineData("class C { string[] x = { ", "$$\"\"\"{{x}}(({\"\"\", ")]
+    [InlineData("class C { string[] x = { ", "$\"\"\"\n    {F(\"(\")}(\n    \"\"\", ")]
+    [InlineData("class C {\n", "// ( { [\n")]
+    [InlineData("class C {\n", "/* ( { [ */\n")]
+    [InlineData("class C {\n", "/// <see cref=\"A{B}\"/> (\nint x;\n")]
+    public void Strings_and_comments_the_text_count_reads_open_nothing(string before, string each)
+    {
+        Assert.False(DeepText.TooDeep(before + string.Concat(Enumerable.Repeat(each, 5_000)) + "}", csharp: true), "What a string or a comment holds counted as open");
+    }
+
+    /// <summary>What a string, a character, a comment or a branch left out holds closes nothing, so brackets nested past
+    /// what a parser is given around them are still too deep: in the text as it stands, and in an interpolated string's text
+    /// read on its own before its holes.</summary>
+    [Theory]
+    [InlineData("class C { object x = ", "(\";\" + ", ")")]
+    [InlineData("class C { object x = ", "(\"\\\";\" + ", ")")]
+    [InlineData("class C { object x = ", "(\")]}\" + ", ")")]
+    [InlineData("class C { object x = ", "(';' + ", ")")]
+    [InlineData("class C { object x = ", "(@\"\n;\n\" + ", ")")]
+    [InlineData("class C { object x = ", "($\";{0}\" + ", ")")]
+    [InlineData("class C { object x = ", "($\"{\";\"}\" + ", ")")]
+    [InlineData("class C { object x = ", "(/*;)*/", ")")]
+    [InlineData("class C { object x = ", "(// ;\n", ")")]
+    [InlineData("class C { object x = ", "(\n#if NEVER\n;\n#endif\n", ")")]
+    [InlineData("class C { object x = ", "(@$\"\n;\n\" + ", ")")]
+    [InlineData("class C { object x = ", "($\"{$\";\"}\" + ", ")")]
+    [InlineData("class C { object x = ", "(\"\"\"\n;)\n\"\"\" + ", ")")]
+    [InlineData("class C { object x = ", "($$\"\"\"{{\";\"}};)\"\"\" + ", ")")]
+    [InlineData("class C { object x = ", "(\n/// ;)\n", ")")]
+    [InlineData("class C { ", "A</*>*/", ">")]
+    public void Brackets_around_what_closes_nothing_are_still_too_deep(string before, string open, string close)
+    {
+        string text = before + string.Concat(Enumerable.Repeat(open, 1_200)) + "int" + string.Concat(Enumerable.Repeat(close, 1_200)) + " x; }";
+        SmallStack.Run(() =>
+        {
+            Assert.NotNull(CSharpParsing.DeepAt(TextSnapshot.From(text), CSharpParsing.Default));
+            Assert.Empty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members);
+        });
+        string around = before + new string('(', 600) + "$\"; {" + new string('(', 600) + "1" + new string(')', 600) + "}\"" + new string(')', 600) + "; }";
+        SmallStack.Run(() => Assert.NotNull(CSharpParsing.DeepAt(TextSnapshot.From(around), CSharpParsing.Default)));
     }
 
     /// <summary>What a text reader would take for a string or a comment left open is what the lexer reads past: a branch left
