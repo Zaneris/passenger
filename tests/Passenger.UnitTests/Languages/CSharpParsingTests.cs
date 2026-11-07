@@ -278,6 +278,42 @@ public class CSharpParsingTests
         });
     }
 
+    /// <summary>A documentation comment's elements nested past what a parser is given are too deep, as brackets are: its parser
+    /// recurses through each unchecked, some 3,000 deep running a thread pool's thread out of stack, which would end the C#
+    /// language server reading the file. On one line or many, in a block comment, with attributes, opened alone or closed.</summary>
+    [Theory]
+    [InlineData("/// ", "<a>", "", "\nclass C { }\n")]
+    [InlineData("/// ", "<a>", "</a>", "\nclass C { }\n")]
+    [InlineData("", "/// <a>\n", "/// </a>\n", "class C { }\n")]
+    [InlineData("/** ", "<a>", "", " */\nclass C { }\n")]
+    [InlineData("/// ", "<a b='x'>", "", "\nclass C { }\n")]
+    [InlineData("class C {\n", "/// <a>\n", "", "int x;\n}\n")]
+    public void A_documentation_comments_elements_nested_past_what_a_parser_is_given_are_too_deep(string before, string open, string close, string after)
+    {
+        Assert.Null(CSharpParsing.DeepAt(CSharpParsing.Parse(Nested(before, open, string.Empty, close, after, 900))));
+        string text = Nested(before, open, string.Empty, close, after, 1_001);
+
+        SyntaxTree tree = CSharpParsing.Parse(text);
+
+        Assert.True(CSharpParsing.DeepAt(tree) is not null, $"A documentation comment's elements 1,001 deep, {open}, read as a parser's tree");
+        Assert.Empty(((CompilationUnitSyntax)tree.GetRoot(TestContext.Current.CancellationToken)).Members);
+    }
+
+    /// <summary>An element typed into a documentation comment nested as deep as a parser is given takes it too deep, as the
+    /// file opened so would be.</summary>
+    [Fact]
+    public void Typing_an_element_into_a_documentation_comment_as_deep_as_a_parser_is_given_reads_as_too_deep()
+    {
+        SourceText text = SourceText.From(Nested("/// ", "<a>", string.Empty, string.Empty, "\nclass C { }\n", 1_000));
+        SyntaxTree tree = CSharpParsing.Parse(text);
+        Assert.Null(CSharpParsing.DeepAt(tree));
+        int at = text.ToString().IndexOf("\nclass", StringComparison.Ordinal);
+
+        SyntaxTree after = CSharpParsing.Changed(tree, text.WithChanges(new TextChange(new TextSpan(at, 0), "<a>")));
+
+        Assert.True(CSharpParsing.DeepAt(after) is not null, "An element typed into a documentation comment 1,000 deep left a parser's tree");
+    }
+
     private static string Links(int count) => string.Concat(Enumerable.Repeat("?[0]", count));
 
     /// <summary>Typing that makes a run of conditional accesses one past the eleventh, by a link typed, a semicolon taken

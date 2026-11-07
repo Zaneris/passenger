@@ -103,11 +103,42 @@ internal static class CodeBrackets
                         return one.SpanStart;
                     }
                     break;
-                case SyntaxKind.SingleLineDocumentationCommentTrivia or SyntaxKind.MultiLineDocumentationCommentTrivia when DeepOnItsOwn(one.ToFullString(), brackets):
+                case SyntaxKind.SingleLineDocumentationCommentTrivia or SyntaxKind.MultiLineDocumentationCommentTrivia
+                    when DeepOnItsOwn(one.ToFullString(), brackets) || ElementsTooDeep(one.GetStructure(), brackets):
                     return one.SpanStart;
             }
         }
         return null;
+    }
+
+    /// <summary>Whether a documentation comment's elements, each a level of the parser that reads it, nest too deep from where
+    /// the brackets stand, a copy leaving them as they were. An element's tags, each closed, are no mark of how deep it is.</summary>
+    private static bool ElementsTooDeep(SyntaxNode? comment, Brackets brackets)
+    {
+        brackets.Nest(ElementDepth(comment));
+        return brackets.TooDeep;
+    }
+
+    /// <summary>How many elements a documentation comment's deepest one sits within, itself among them, read with a stack of its
+    /// own rather than the thread's.</summary>
+    private static int ElementDepth(SyntaxNode? comment)
+    {
+        int deepest = 0;
+        Stack<(SyntaxNode Node, int Depth)> nodes = new();
+        if (comment is not null)
+        {
+            nodes.Push((comment, 0));
+        }
+        while (nodes.TryPop(out (SyntaxNode Node, int Depth) at))
+        {
+            int depth = at.Depth + (at.Node.IsKind(SyntaxKind.XmlElement) ? 1 : 0);
+            deepest = Math.Max(deepest, depth);
+            foreach (SyntaxNode child in at.Node.ChildNodes())
+            {
+                nodes.Push((child, depth));
+            }
+        }
+        return deepest;
     }
 
     /// <summary>Whether a text goes too deep from where the brackets stand, which a copy leaves as they were.</summary>

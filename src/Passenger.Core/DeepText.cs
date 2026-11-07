@@ -220,6 +220,14 @@ public partial struct Brackets
         Check(consumed + at);
     }
 
+    /// <summary>Counts levels a parser nests through where what's read has no mark of them, as a documentation comment's
+    /// elements, whose tags its lexer's tokens close.</summary>
+    public void Nest(int levels)
+    {
+        counts.Statement += levels;
+        Check(consumed);
+    }
+
     /// <summary>Notes where the text first goes too deep, and whether it goes too deep to lex.</summary>
     private void Check(int at)
     {
