@@ -140,9 +140,92 @@ public sealed class ExplorerFilesTests : IDisposable
             window.KeyTextInput("// typed while it waited ");
             Assert.True(window.EditorArea.Active is { IsModified: true }, "Code.cs took no typing while its folder's delete waited");
             File.WriteAllText(release, "go");
-            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)), $"Lib was not deleted: {window.Status}");
+            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)), $"Lib was not deleted: {window.Status}{Holders(window, library)}");
             Assert.Equal("// typed while it waited class Code\n{\n}\n", File.ReadAllText(Path.Combine(trash, "Lib", "Code.cs")));
             Assert.Empty(window.EditorArea.Documents);
+        }
+        finally
+        {
+            File.WriteAllText(release, "go");
+            window.Close();
+        }
+    }
+
+    /// <summary>A loaded project's folder, whose build output is watched for the C# language server, goes to the Trash, takes a
+    /// new name or moves into another folder: what watches inside it lets go first, as Windows moves and deletes no folder
+    /// with one inside it watched, and nothing under it is watched once it is gone.</summary>
+    [AvaloniaTheory]
+    [InlineData("delete")]
+    [InlineData("rename")]
+    [InlineData("move")]
+    public void A_loaded_projects_folder_watched_for_the_language_server_goes_renames_and_moves(string change)
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        MainWindow window = Ui.OpenFolder(folder);
+        string lib = PathNames.Canonical(library);
+        Ui.WaitFor(() => window.CSharpService?.Watching?.Watching.Any(w => PathNames.Within(w.Folder, lib)) == true,
+            () => $"Lib's build output to be watched for the C# language server, where {string.Join(", ", (window.CSharpService?.Watching?.Watching ?? []).Select(w => w.Folder))} are",
+            TimeSpan.FromMinutes(2));
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        string models = PathNames.Canonical(Path.Combine(folder, "Models"));
+        string? refused = change switch
+        {
+            "delete" => Ui.Await(window.DeleteAsync(lib), "the delete") ? null : "it was not deleted",
+            "rename" => Ui.Await(window.RenameAsync(lib, "Core"), "the rename"),
+            _ => Ui.Await(window.PutAsync([lib], models, copy: false), "the move").Count > 0 ? null : "nothing was moved",
+        };
+
+        Assert.True(refused is null && !Directory.Exists(lib), $"Lib's {change} was refused: {refused}, the status bar saying {window.Status}{Holders(window, lib)}");
+        string went = change switch
+        {
+            "delete" => Path.Combine(trash, "Lib"),
+            "rename" => Path.Combine(folder, "Core"),
+            _ => Path.Combine(models, "Lib"),
+        };
+        Assert.True(File.Exists(Path.Combine(went, "Lib.csproj")), $"Lib's {change} did not take it to {went}: {window.Status}");
+        Ui.Settle();
+        Assert.DoesNotContain(window.CSharpService?.Watching?.Watching ?? [], w => PathNames.Within(w.Folder, lib));
+        window.Close();
+    }
+
+    /// <summary>A project's folder renamed, or moved into another folder, while its design-time build runs waits for the build
+    /// to end, as a delete does: the build, still writing its obj/, would make the folder again where it was, and on Windows
+    /// the folder it works in would not move.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_folders_rename_or_move_waits_for_the_design_time_build_of_its_project_to_end(bool move)
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        string release = Path.Combine(folder, "release");
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(release));
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        window.OpenFolder(folder);
+        string change = move ? "move" : "rename";
+        try
+        {
+            // Pumped, not settled: the language server's load waits for the design-time build.
+            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")), "Lib's design-time build to be held", TimeSpan.FromMinutes(2));
+            string lib = PathNames.Canonical(library);
+            string models = PathNames.Canonical(Path.Combine(folder, "Models"));
+            Task<string?> changing = move ? Moved(window.PutAsync([lib], models, copy: false)) : window.RenameAsync(lib, "Core");
+            string went = move ? Path.Combine(models, "Lib") : Path.Combine(folder, "Core");
+            Ui.PumpUntil(() => changing.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
+                $"the {change} to wait for Lib's design-time build");
+            Assert.False(changing.IsCompleted, $"The {change} of Lib did not wait for its design-time build, which still writes its obj/: {window.Status}");
+
+            File.WriteAllText(release, "go");
+            string? refused = Ui.AwaitPumped(changing, $"the {change} of Lib", TimeSpan.FromMinutes(2));
+            Assert.True(refused is null && File.Exists(Path.Combine(went, "Lib.csproj")),
+                $"Lib's {change} did not take it to {went}: {refused ?? "it said it did"}, the status bar saying {window.Status}{Holders(window, library)}");
+            Assert.False(Directory.Exists(library), $"Lib is there again after its {change}, holding [{string.Join(", ", Left(library))}]: its design-time build wrote where it had been");
         }
         finally
         {
@@ -192,7 +275,7 @@ public sealed class ExplorerFilesTests : IDisposable
                     $"The delete of Lib went on once its own design-time build landed, while the round's build session, still building Shop, could work in Lib: {window.Status}");
                 File.WriteAllText(releaseShop, "go");
             }
-            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)), $"Lib was not deleted: {window.Status}");
+            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)), $"Lib was not deleted: {window.Status}{Holders(window, library)}");
             Assert.False(Directory.Exists(library), $"Lib is still there, holding [{string.Join(", ", Left(library))}]");
             Assert.True(File.Exists(Path.Combine(trash, "Lib", "Lib.csproj")), "Lib is not in the Trash");
         }
@@ -770,6 +853,20 @@ public sealed class ExplorerFilesTests : IDisposable
             return Task.FromResult(true);
         };
         return asked;
+    }
+
+    /// <summary>A move's refusal, as the status bar says it, or null once it put what it moved.</summary>
+    private static async Task<string?> Moved(Task<IReadOnlyList<string>> moving) => (await moving).Count > 0 ? null : "nothing was moved";
+
+    /// <summary>What may hold a folder that would not go or move, for a failure to name: the folders under it watched for the
+    /// C# language server, and on Windows the programs holding it, or a folder under it, open (the IDE's own aside).</summary>
+    private static string Holders(MainWindow window, string folder)
+    {
+        string[] watched = [.. (window.CSharpService?.Watching?.Watching ?? []).Select(w => w.Folder).Where(w => PathNames.Within(w, folder))];
+        string[] open = !Directory.Exists(folder) ? [] : [.. Directory.EnumerateDirectories(folder, "*", SearchOption.AllDirectories).Prepend(folder)
+            .Select(path => (Path: path, By: FileHolders.Of(path))).Where(held => held.By.Count > 0)
+            .Select(held => $"{held.Path} by {string.Join(", ", held.By.Select(id => DotnetProcesses.Describe(id)?.Program ?? $"process {id}"))}")];
+        return $". Watched for the C# language server under it: [{string.Join(", ", watched)}]; held open: [{string.Join("; ", open)}]";
     }
 
     /// <summary>What a folder holds, by its paths inside it, for a failure to name.</summary>

@@ -35,6 +35,12 @@ public sealed class ServerWatches : IDisposable
 
     /// <summary>The folders a watcher could not be started for, said once each.</summary>
     private readonly HashSet<string> unwatchable = new(PathNames.Comparer);
+
+    /// <summary>The folders about to go or move, under which nothing is watched until they are let go of (<see cref="LetGo"/>).</summary>
+    private readonly List<string> going = [];
+
+    /// <summary>Watchers no longer needed, stopped once those replacing them watch: one under a folder about to go stops at once.</summary>
+    private readonly HashSet<Watched> retiring = [];
     private string? folder;
     private bool refreshRunning;
     private bool refreshAgain;
@@ -132,6 +138,57 @@ public sealed class ServerWatches : IDisposable
     }
 
     private void OnRegistered(object? sender, EventArgs e) => Refresh();
+
+    /// <summary>Stops watching what is under folders about to go or move (deleted, renamed or moved by the IDE), and starts
+    /// nothing there until disposed, when what the registrations need is watched again: Windows moves and deletes no folder
+    /// with a folder inside it watched. Done once no refresh still starts a watcher there.</summary>
+    public IDisposable LetGo(IReadOnlyList<string> folders)
+    {
+        List<Watched> stopped;
+        // Taken as a refresh takes it, so none starts a watcher under them after this.
+        lock (refreshing)
+        {
+            lock (gate)
+            {
+                going.AddRange(folders);
+                List<(string Folder, bool Recursive)> under = [.. own.Keys.Where(k => Going(k.Folder))];
+                stopped = [.. under.Select(k => own[k]), .. retiring.Where(w => Going(w.Top))];
+                under.ForEach(k => own.Remove(k));
+            }
+        }
+        stopped.ForEach(w => w.Dispose());
+        if (stopped.Count > 0)
+        {
+            IdeErrors.Write($"C# language server (process {server.ProcessId}): no longer watched for it, as {Plural.Listed([.. folders])} {(folders.Count == 1 ? "goes or moves" : "go or move")}: "
+                + string.Join(", ", stopped.Select(w => w.Top)));
+        }
+        return new LettingGo(this, folders);
+    }
+
+    /// <summary>Whether a folder is under one about to go or move; asked under the gate.</summary>
+    private bool Going(string folder) => going.Any(g => PathNames.Within(folder, g));
+
+    private sealed class LettingGo(ServerWatches watches, IReadOnlyList<string> folders) : IDisposable
+    {
+        private bool released;
+
+        public void Dispose()
+        {
+            if (released)
+            {
+                return;
+            }
+            released = true;
+            lock (watches.gate)
+            {
+                foreach (string folder in folders)
+                {
+                    watches.going.Remove(folder);
+                }
+            }
+            watches.Refresh();
+        }
+    }
 
     /// <summary>A file of the open folder Passenger is saving is kept as changing from now, on whatever thread saves it: a
     /// command asked before the folder's watcher hears of the save still waits for the server to read it.</summary>
@@ -250,7 +307,7 @@ public sealed class ServerWatches : IDisposable
                     own.Remove(made);
                 }
                 renewed.Clear();
-                starting = [.. needed.Where(k => !own.ContainsKey(k))];
+                starting = [.. needed.Where(k => !own.ContainsKey(k) && !Going(k.Folder))];
                 kept = [.. own.Values];
             }
             renewing.ForEach(w => w.Dispose());
@@ -265,7 +322,7 @@ public sealed class ServerWatches : IDisposable
                 bool taken = false;
                 lock (gate)
                 {
-                    if (!disposed && !own.ContainsKey((at, recursive)) && tree.Watches.Count > 0)
+                    if (!disposed && !own.ContainsKey((at, recursive)) && !Going(at) && tree.Watches.Count > 0)
                     {
                         own[(at, recursive)] = tree;
                         taken = true;
@@ -291,11 +348,19 @@ public sealed class ServerWatches : IDisposable
             }
             if (stopped.Count > 0)
             {
+                lock (gate)
+                {
+                    retiring.UnionWith(stopped);
+                }
                 // Where each folder is watched on its own, the new watchers' folders are watched as their first walk goes.
                 IdeErrors.Observe(BackgroundWork.Run(async () =>
                 {
                     await Task.WhenAll(started.Select(tree => tree.Ready));
                     stopped.ForEach(w => w.Dispose());
+                    lock (gate)
+                    {
+                        retiring.ExceptWith(stopped);
+                    }
                 }));
             }
             if (started.Count > 0 || stopped.Count > 0)

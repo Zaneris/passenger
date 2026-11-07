@@ -388,6 +388,9 @@ public partial class MainWindow
         {
             return $"{held}: nothing was renamed";
         }
+        using IDisposable? releasing = Directory.Exists(path)
+            ? await LetGoAsync([path], $"Waiting for the design-time build of {Path.GetFileName(path)} to end before it is renamed…")
+            : null;
         using CommandHistory.Recording recording = Editors.Commands.Record($"Rename {Path.GetFileName(path)} to {name}");
         string? failed = Following([.. moves.SelectMany(m => new[] { m.From, m.To })], () =>
         {
@@ -481,7 +484,8 @@ public partial class MainWindow
         return true;
     }
 
-    /// <summary>How long a delete waits for the design-time builds of the projects it takes to end.</summary>
+    /// <summary>How long a delete, or a folder's rename or move, waits for the design-time builds of the projects it takes
+    /// to end.</summary>
     private static readonly TimeSpan BuildsGoing = TimeSpan.FromSeconds(60);
 
     /// <summary>Deletes a file or folder to the Trash, once asked (unless it was already); its open files are saved first,
@@ -502,21 +506,7 @@ public partial class MainWindow
         }
         History.LocalHistory? keeping = session.LocalHistory;
         History.HistoryDeletion? taken = keeping is null ? null : await keeping.CaptureAsync(path);
-        // A design-time build of a project in it, still writing its obj/, would make the folder again once it had gone.
-        (IDisposable held, Task built) = session.DesignTimeBuilds.HoldOff(path);
-        using IDisposable releasing = held;
-        if (!built.IsCompleted)
-        {
-            status.Text = $"Waiting for the design-time build of {what} to end before it goes to the Trash…";
-            try
-            {
-                await built.WaitAsync(BuildsGoing);
-            }
-            catch (TimeoutException)
-            {
-                // Moved anyway: what the build writes after makes only build output there again.
-            }
-        }
+        using IDisposable releasing = await LetGoAsync([path], $"Waiting for the design-time build of {what} to end before it goes to the Trash…");
         // Nothing is awaited from here to the move, so what was typed while it waited goes with it.
         if (SavedFirst() is not { } typed)
         {
@@ -561,6 +551,39 @@ public partial class MainWindow
                 saved.Add(document.Path);
             }
             return saved;
+        }
+    }
+
+    /// <summary>Lets go of what is about to go or move until disposed: the design-time builds of the projects under it are
+    /// held off, done once those running have ended or <see cref="BuildsGoing"/> has passed, saying <paramref name="waiting"/>
+    /// meanwhile, and nothing under it is watched for the C# language server. A build still writing a project's obj/ would
+    /// make its folder again where it was; on Windows a folder the build works in, or with one inside it watched, won't move.</summary>
+    private async Task<IDisposable> LetGoAsync(IReadOnlyList<string> paths, string waiting)
+    {
+        (IDisposable held, Task built) = session.DesignTimeBuilds.HoldOff(paths);
+        IDisposable? unwatched = session.CSharp?.Watching?.LetGo(paths);
+        if (!built.IsCompleted)
+        {
+            status.Text = waiting;
+            try
+            {
+                await built.WaitAsync(BuildsGoing);
+            }
+            catch (TimeoutException)
+            {
+                // Gone or moved anyway: what the build writes after makes only build output there again.
+            }
+        }
+        return new LetGo(held, unwatched);
+    }
+
+    /// <summary>What was let go of for a move or a delete (<see cref="LetGoAsync"/>), taken up again once it is done.</summary>
+    private sealed class LetGo(IDisposable builds, IDisposable? watches) : IDisposable
+    {
+        public void Dispose()
+        {
+            builds.Dispose();
+            watches?.Dispose();
         }
     }
 

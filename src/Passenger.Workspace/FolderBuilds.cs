@@ -2,8 +2,8 @@ using Passenger.Core;
 
 namespace Passenger.Workspace;
 
-/// <summary>What a folder about to go waits for of the project host's design-time builds: each build of a project in it
-/// still running, as MSBuild writes its obj/ until it ends; on Windows also the end of the round that built one, as
+/// <summary>What a folder about to go or move waits for of the project host's design-time builds: each build of a project
+/// in it still running, as MSBuild writes its obj/ until it ends; on Windows also the end of the round that built one, as
 /// MSBuild leaves the process that built a project (the host, or one of its nodes) working in the project's folder until
 /// the round's build session ends, and Windows moves no folder a process works in.</summary>
 public static class FolderBuilds

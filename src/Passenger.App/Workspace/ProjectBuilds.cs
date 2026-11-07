@@ -305,23 +305,23 @@ public sealed class ProjectBuilds
         queued.Add(path);
     }
 
-    /// <summary>The folders about to go (to the Trash) whose projects' builds are held off (<see cref="HoldOff"/>).</summary>
+    /// <summary>The folders about to go (to the Trash) or move whose projects' builds are held off (<see cref="HoldOff"/>).</summary>
     private readonly List<string> heldOff = [];
 
-    /// <summary>Holds off the design-time builds of the projects under a folder about to go until disposed, and is done
-    /// (<c>Built</c>) once those already running have ended, each landing as its builds end, and on Windows once the round
-    /// that built one has ended too (<see cref="FolderBuilds"/>): MSBuild writes a build's obj/ as it goes, so one still
-    /// running would make the folder again once it had gone.</summary>
-    public (IDisposable Held, Task Built) HoldOff(string going)
+    /// <summary>Holds off the design-time builds of the projects under folders about to go or move until disposed, and is
+    /// done (<c>Built</c>) once those already running have ended, each landing as its builds end, and on Windows once the
+    /// round that built one has ended too (<see cref="FolderBuilds"/>): MSBuild writes a build's obj/ as it goes, so one
+    /// still running would make a folder again where it was.</summary>
+    public (IDisposable Held, Task Built) HoldOff(IReadOnlyList<string> going)
     {
         UiThread.Check();
-        heldOff.Add(going);
-        Task built = FolderBuilds.Awaited(going, [.. waiting.Where(w => !queued.Contains(w.Key)).Select(w => (w.Key, (Task)w.Value.Task))], running,
-            FolderBuilds.WorkingFoldersHeld);
+        heldOff.AddRange(going);
+        List<(string Project, Task Landed)> building = [.. waiting.Where(w => !queued.Contains(w.Key)).Select(w => (w.Key, (Task)w.Value.Task))];
+        Task built = Task.WhenAll(going.Select(folder => FolderBuilds.Awaited(folder, building, running, FolderBuilds.WorkingFoldersHeld)));
         return (new HeldOff(this, going), built);
     }
 
-    private sealed class HeldOff(ProjectBuilds builds, string going) : IDisposable
+    private sealed class HeldOff(ProjectBuilds builds, IReadOnlyList<string> going) : IDisposable
     {
         private bool released;
 
@@ -330,8 +330,11 @@ public sealed class ProjectBuilds
             if (!released)
             {
                 released = true;
-                builds.heldOff.Remove(going);
-                // Those it held build now: gone, they fail to load and write nothing.
+                foreach (string folder in going)
+                {
+                    builds.heldOff.Remove(folder);
+                }
+                // Those it held build now: where their folder went or moved, they fail to load and write nothing.
                 builds.Pump();
             }
         }

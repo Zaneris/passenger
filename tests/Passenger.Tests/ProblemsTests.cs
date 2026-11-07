@@ -812,7 +812,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         long deleted = System.Diagnostics.Stopwatch.GetTimestamp();
         double completed;
         double erred;
-        (IDisposable held, _) = window.Session.DesignTimeBuilds.HoldOff(project.Folder);
+        (IDisposable held, _) = window.Session.DesignTimeBuilds.HoldOff([project.Folder]);
         try
         {
             for (int i = 0; i < Files; i++)
