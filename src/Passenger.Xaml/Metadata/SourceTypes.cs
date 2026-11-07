@@ -47,7 +47,7 @@ public sealed class SourceTypes
 
     /// <summary>A text's tree, its parser running out of no stack; a text nested too deeply for it holds nothing.</summary>
     internal static SyntaxTree Parsed(string text, CSharpParseOptions parsing, string path = "") =>
-        DeepText.Read(text.Length, () => CSharpSyntaxTree.ParseText(CodeBrackets.TooDeep(SourceText.From(text), parsing) ? string.Empty : text, parsing, path));
+        DeepText.Read(text.Length, () => CSharpSyntaxTree.ParseText(CodeBrackets.DeepAt(SourceText.From(text), parsing) is null ? text : string.Empty, parsing, path));
 
     /// <summary>A C# file's, parsed with what its project compiles it with (<paramref name="parsing"/>), its documentation
     /// comments passed over.</summary>

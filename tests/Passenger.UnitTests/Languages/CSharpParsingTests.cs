@@ -99,6 +99,18 @@ public class CSharpParsingTests
     }
 
     [Fact]
+    public void A_text_too_deep_says_where_it_went_too_deep_and_one_read_says_nothing()
+    {
+        string text = Nested("class C { int x = ", "(", "1", ")", "; }", 100_000);
+        // The class's brace and 999 round ones before it make 1,000.
+        SmallStack.Run(() => Assert.Equal("class C { int x = ".Length + 999, CSharpParsing.DeepAt(CSharpParsing.Parse(text))));
+        string strings = Nested("class C { string[] x = { ", "\"(\", ", "", string.Empty, "}; }", 5_000);
+        SmallStack.Run(() => Assert.Null(CSharpParsing.DeepAt(CSharpParsing.Parse(strings))));
+        string commented = "// (((\n" + text;
+        SmallStack.Run(() => Assert.Equal("// (((\nclass C { int x = ".Length + 999, CSharpParsing.DeepAt(CSharpParsing.Parse(commented))));
+    }
+
+    [Fact]
     public void A_change_reads_again_only_what_changed_and_a_paste_too_deep_leaves_a_tree_of_nothing()
     {
         SourceText written = SourceText.From("class C { int x = 1; }\n");

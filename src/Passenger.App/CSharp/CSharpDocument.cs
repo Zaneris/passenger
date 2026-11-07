@@ -36,7 +36,19 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         diagnostics.Adopt(document.Markers);
         document.Text.Changed += OnChanged;
         document.Saved += OnSaved;
+        if (document.Syntax is { } syntax)
+        {
+            syntax.Parsed += OnParsed;
+            if (syntax.DeepAt is int at)
+            {
+                SayTooDeep(at);
+            }
+        }
     }
+
+    /// <summary>Whether the file's text goes too deep to read (<see cref="CSharpParsing.TooDeep"/>), as its note says: the
+    /// server is never given it, as its parser has no such bound and its process would end.</summary>
+    public bool TooDeep { get; private set; }
 
     public LspDocument? Lsp { get; private set; }
 
@@ -46,7 +58,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     /// <summary>Opens the file in the server unless it is open there already; whether it was opened now.</summary>
     internal bool Connect(RoslynSession session)
     {
-        if (Lsp is not null)
+        if (Lsp is not null || TooDeep || document.Syntax is { } syntax && CSharpParsing.DeepAt(document.Text.Snapshot, syntax.Options) is not null)
         {
             return false;
         }
@@ -205,6 +217,10 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         diagnostics.Stop();
         document.Text.Changed -= OnChanged;
         document.Saved -= OnSaved;
+        if (document.Syntax is { } syntax)
+        {
+            syntax.Parsed -= OnParsed;
+        }
         if (semantic is not null)
         {
             semantic.Dispose();
@@ -230,6 +246,45 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     }
 
     private void OnSaved(object? sender, EventArgs e) => Lsp?.Saved();
+
+    /// <summary>A parse landed for the text as it stands: one gone too deep is said to be and taken from the server, and one
+    /// read again goes back to it.</summary>
+    private void OnParsed(object? sender, ParsedText parsed)
+    {
+        if (parsed.DeepAt is int at)
+        {
+            SayTooDeep(at);
+        }
+        else if (TooDeep)
+        {
+            TooDeep = false;
+            document.Markers = diagnostics.Take([], DiagnosticMarks.Marker);
+            service.FileProblemsChanged(document);
+            service.Reconnect();
+        }
+    }
+
+    /// <summary>The note where the text goes too deep, its only mark: a file the server has is taken from it first, its
+    /// features made again for a file it hasn't (<see cref="CSharpService.Reattach"/>).</summary>
+    private void SayTooDeep(int at)
+    {
+        if (Lsp is not null)
+        {
+            service.Reattach(document);
+            return;
+        }
+        TooDeep = true;
+        ServerLines lines = ServerLines.Of(document.Text.Snapshot);
+        Diagnostic note = new()
+        {
+            Range = new LspRange(lines.PositionOf(at), lines.PositionOf(Math.Min(at + 1, lines.Text.Length))),
+            Severity = DiagnosticSeverity.Information,
+            Source = "Passenger",
+            Message = CSharpParsing.TooDeep,
+        };
+        document.Markers = diagnostics.Take([note], DiagnosticMarks.Marker);
+        service.FileProblemsChanged(document);
+    }
 
     /// <summary>Pulls after <paramref name="delay"/>. An ask for now (the server's refresh, a file the pull reads changed)
     /// while a pull waits out typing's pause is left to that pull, which then asks for the text as it stands: typing

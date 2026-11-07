@@ -99,6 +99,10 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         }
     }
 
+    /// <summary>Where the text the newest parse read went too deep to read (<see cref="CSharpParsing.DeepAt(SyntaxTree)"/>);
+    /// null where it was read, or before a parse has landed.</summary>
+    public int? DeepAt => tree is { } read ? CSharpParsing.DeepAt(read) : null;
+
     /// <summary>What folds in the text (<see cref="FoldRegions"/>), from the newest parse of the text as it stands.</summary>
     public IReadOnlyList<FoldRegion> Folds { get; private set; } = [];
 

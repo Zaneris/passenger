@@ -901,6 +901,22 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     public CSharpDocument? For(OpenDocument document) => documents.GetValueOrDefault(document);
 
+    /// <summary>A file's features let go of and made again: one gone too deep to give the server, closed there.</summary>
+    internal void Reattach(OpenDocument document)
+    {
+        Detach(document);
+        Attach(document);
+    }
+
+    /// <summary>Opens in the server the files it can have now: one read again after it went too deep.</summary>
+    internal void Reconnect()
+    {
+        if (session is { } running)
+        {
+            ConnectLoaded(running);
+        }
+    }
+
     /// <summary>Lets the open files go and ends the server, or with a <see cref="WarmServer"/> leaves a loaded one there,
     /// its files closed and nothing of this service's hung on it. The server's end (shutdown, exit, a kill when it will
     /// not go) runs on a worker thread, so the process can wait for it once the window's loop has stopped.</summary>

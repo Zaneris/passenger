@@ -9,4 +9,7 @@ namespace Passenger.Languages.CSharp;
 public sealed record ParsedText(SyntaxTree Tree, TextSnapshot Text)
 {
     public SyntaxNode Root => Tree.GetRoot();
+
+    /// <summary>Where the text went too deep to read, null where it was read (<see cref="CSharpParsing.DeepAt(SyntaxTree)"/>).</summary>
+    public int? DeepAt => CSharpParsing.DeepAt(Tree);
 }

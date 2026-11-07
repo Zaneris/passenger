@@ -30,6 +30,9 @@ public static class Refusals
     /// <summary>The folder has no C# language server: it has neither a solution nor a project, or its window starts none.</summary>
     public const string NoCSharp = "No C# language server runs for this folder";
 
+    /// <summary>A C# file nested past what Passenger reads, which the C# language server is never given.</summary>
+    public static string TooDeep(string file) => $"{file} is nested too deeply for Passenger to read, so the C# language server is not given it";
+
     /// <summary>What the Game window shows while it holds no game: which game draws there, and the keys that take the keys
     /// back from a game that has them.</summary>
     public static string NoGameInWindow(string keys) =>

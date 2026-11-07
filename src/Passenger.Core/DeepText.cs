@@ -87,8 +87,12 @@ public struct Brackets
     private int conditions;
     private int holes;
     private bool dollar;
+    private int consumed;
 
     public bool TooDeep { get; private set; }
+
+    /// <summary>Where in all that was read the text first went too deep.</summary>
+    public int DeepAt { get; private set; }
 
     /// <summary>Whether what goes too deep is conditions or an interpolation's holes, each reached by a <c>$</c> of its own:
     /// a lexer's cost goes as their square, so these are too deep to ask a lexer about, and reading stops.</summary>
@@ -126,9 +130,15 @@ public struct Brackets
                     statement = 0;
                     break;
             }
-            TooDeep |= statement + braces + conditions > Deepest;
+            if (!TooDeep && statement + braces + conditions > Deepest)
+            {
+                TooDeep = true;
+                DeepAt = consumed + at;
+            }
             TooDeepToLex = conditions > Deepest || holes > Deepest;
+            consumed += at + 1;
             text = text[(at + 1)..];
         }
+        consumed += text.Length;
     }
 }

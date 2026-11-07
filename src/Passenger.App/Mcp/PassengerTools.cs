@@ -250,6 +250,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return new Finding(m.Kind switch { MarkerKind.Error => "error", MarkerKind.Warning => "warning", _ => "info" }, m.Code, m.Said, Relative(marked.Path), at.Line + 1, at.Column + 1);
             }), .. missing];
         }
+        if (await DocumentAsync(path, cancel) is { Syntax: { } syntax } deep && (await syntax.CurrentAsync()).DeepAt is int at)
+        {
+            // Read as nothing, a file is never the server's: its note is all there is to say of it.
+            TextPosition place = deep.Text.Snapshot.GetPosition(Math.Min(at, deep.Text.Snapshot.Length));
+            return (IReadOnlyList<Finding>)[new Finding("info", null, Languages.CSharp.CSharpParsing.TooDeep, Relative(deep.Path), place.Line + 1, place.Column + 1)];
+        }
         (OpenDocument document, LspDocument lsp) = await Code(path, cancel);
         (IReadOnlyList<Diagnostic> found, _) = await lsp.LastDiagnosticsAsync(Session.CSharp?.SolutionWide == true, cancel);
         // Passenger's own markers too: a service's missing references, unset AppHost parameters and configuration keys.
@@ -2901,6 +2907,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException($"This is the C# language server's, which answers for C# and Razor files, not {LanguageOf(document)} ones such as {Path.GetFileName(document.Path)}");
         }
         // Answers before the solution has loaded are wrong; looked at every 50 ms: a server document raises nothing.
+        if (document.Syntax is { } syntax && (await syntax.CurrentAsync()).DeepAt is not null)
+        {
+            throw new InvalidOperationException(Refusals.TooDeep(Path.GetFileName(document.Path)));
+        }
         await Until(() => Session.CSharp is not { } csharp || csharp.IsReady && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
         if (!takenIn)
         {

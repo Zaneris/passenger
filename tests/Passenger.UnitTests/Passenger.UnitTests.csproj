@@ -295,6 +295,7 @@
     <Compile Include="../../src/Passenger.App/Godot/GodotConsoleFold.cs" Link="App/GodotConsoleFold.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/CSharpParsing.cs" Link="Languages/CSharpParsing.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/CodeBrackets.cs" Link="Languages/CodeBrackets.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/SnapshotText.cs" Link="Languages/SnapshotText.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/ParameterTypes.cs" Link="Languages/ParameterTypes.cs" />
   </ItemGroup>
 

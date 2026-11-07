@@ -718,6 +718,33 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Text pasted past what Passenger reads would end the C# language server if it read it: the file says so where
+    /// it goes too deep and is taken from the server, and once the paste is undone the file goes back to it, its error marked.</summary>
+    [AvaloniaFact]
+    public void A_paste_past_what_passenger_reads_is_said_and_kept_from_the_server_until_it_is_undone()
+    {
+        MainWindow window = project.Open("Separators.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Passenger.App.CSharp.CSharpService server = window.CSharpService!;
+        Ui.PlaceAfter(editor, "int total = 1;");
+        window.KeyTextInput(" int wrong = \"text\";");
+        Ui.WaitFor(() => document.Markers.Any(m => m.Kind == MarkerKind.Error), "the squiggle under the error typed");
+
+        // The caret moved first, so the paste is a step of Undo of its own.
+        Ui.PlaceAfter(editor, "\"text\";");
+        window.KeyTextInput(" int deep = " + new string('(', 2_000) + "1" + new string(')', 2_000) + ";");
+        Ui.WaitFor(() => document.Markers is [{ Kind: MarkerKind.Info }], "the note where the paste goes too deep");
+        Assert.Equal(Languages.CSharp.CSharpParsing.TooDeep, document.Markers[0].Message);
+        Assert.Equal('(', editor.Document.Snapshot[document.Markers[0].Range.Start]);
+        Assert.Null(server.For(document)?.Lsp);
+
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => server.For(document)?.Lsp is not null && document.Markers.Any(m => m.Kind == MarkerKind.Error), "the file back at the server, its error marked");
+        Assert.DoesNotContain(document.Markers, m => m.Message == Languages.CSharp.CSharpParsing.TooDeep);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Code_typed_below_a_comment_holding_line_breaks_only_roslyn_counts_is_squiggled_coloured_and_reformatted_in_place()
     {
