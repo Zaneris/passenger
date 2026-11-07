@@ -55,22 +55,47 @@ public sealed class GodotTreeNode
     public (string Scene, GodotNode Node) Declared => Written[0];
 
     /// <summary>Its path from the tree's root: "." for the root, else its names below the root ("Hud/Score").</summary>
-    public string Path => Parent is null ? "." : Parent.Parent is null ? Name : $"{Parent.Path}/{Name}";
+    public string Path
+    {
+        get
+        {
+            List<string> names = [];
+            for (GodotTreeNode at = this; at.Parent is { } above; at = above)
+            {
+                names.Add(at.Name);
+            }
+            names.Reverse();
+            return names.Count == 0 ? "." : string.Join('/', names);
+        }
+    }
 
     /// <summary>The root of its tree.</summary>
-    public GodotTreeNode Root => Parent?.Root ?? this;
+    public GodotTreeNode Root
+    {
+        get
+        {
+            GodotTreeNode top = this;
+            while (top.Parent is { } above)
+            {
+                top = above;
+            }
+            return top;
+        }
+    }
 
     public GodotTreeNode? Child(string name) => children.FirstOrDefault(c => c.Name == name);
 
     /// <summary>It and every node below it, in the scene's order.</summary>
     public IEnumerable<GodotTreeNode> Below()
     {
-        yield return this;
-        foreach (GodotTreeNode child in children)
+        Stack<GodotTreeNode> left = new();
+        left.Push(this);
+        while (left.TryPop(out GodotTreeNode? node))
         {
-            foreach (GodotTreeNode below in child.Below())
+            yield return node;
+            for (int child = node.children.Count - 1; child >= 0; child--)
             {
-                yield return below;
+                left.Push(node.children[child]);
             }
         }
     }
@@ -129,9 +154,23 @@ public sealed class GodotTreeNode
         return top;
     }
 
-    private static GodotTreeNode Copied(GodotTreeNode node, GodotTreeNode? parent, Dictionary<GodotTreeNode, GodotTreeNode> made)
+    private static GodotTreeNode Copied(GodotTreeNode root, GodotTreeNode? parent, Dictionary<GodotTreeNode, GodotTreeNode> made)
     {
-        GodotTreeNode copy = new(node.Name, parent, node.Declared)
+        GodotTreeNode top = Single(root, parent);
+        Stack<(GodotTreeNode Was, GodotTreeNode Copy)> left = new();
+        left.Push((root, top));
+        while (left.TryPop(out (GodotTreeNode Was, GodotTreeNode Copy) next))
+        {
+            foreach (GodotTreeNode child in next.Was.children)
+            {
+                GodotTreeNode copy = Single(child, next.Copy);
+                next.Copy.children.Add(copy);
+                left.Push((child, copy));
+            }
+        }
+        return top;
+
+        GodotTreeNode Single(GodotTreeNode node, GodotTreeNode? above) => made[node] = new GodotTreeNode(node.Name, above, node.Declared)
         {
             Written = node.Written,
             Type = node.Type,
@@ -141,12 +180,6 @@ public sealed class GodotTreeNode
             Placeholder = node.Placeholder,
             NodesUnread = node.NodesUnread,
         };
-        made[node] = copy;
-        foreach (GodotTreeNode child in node.children)
-        {
-            copy.children.Add(Copied(child, copy, made));
-        }
-        return copy;
     }
 
     internal void Own(GodotTreeNode? owner) => Owner = owner;

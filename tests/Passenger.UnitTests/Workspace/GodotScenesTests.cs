@@ -856,4 +856,35 @@ public class GodotScenesTests
             return [.. edits.Select(e => e.Text)];
         }
     }
+
+    /// <summary>A scene of a chain of nodes, instancing the next scene at its last.</summary>
+    private static GodotFile Chained(int scene, int deep)
+    {
+        System.Text.StringBuilder text = new($"[gd_scene format=3]\n\n[ext_resource type=\"PackedScene\" path=\"res://{scene + 1}.tscn\" id=\"1\"]\n\n[node name=\"r\" type=\"Node\"]\n");
+        string parent = ".";
+        for (int node = 0; node < deep; node++)
+        {
+            text.Append($"\n[node name=\"a\" type=\"Node\" parent=\"{parent}\"]\n");
+            parent = parent == "." ? "a" : parent + "/a";
+        }
+        text.Append($"\n[node name=\"next\" parent=\"{parent}\" instance=ExtResource(\"1\")]\n");
+        return GodotFile.Parse(text.ToString());
+    }
+
+    [Fact]
+    public void A_tree_deeper_than_a_stack_holds_is_built_and_walked_and_ends_nothing()
+    {
+        const int Scenes = 20;
+        const int Deep = 300;
+        GodotScenes scenes = new("/nowhere", Enumerable.Range(0, Scenes).ToDictionary(scene => $"res://{scene}.tscn", scene => Chained(scene, Deep)));
+        SmallStack.Run(() =>
+        {
+            GodotTreeNode root = scenes.Tree("res://0.tscn")!;
+            GodotTreeNode last = root.Below().Last();
+            Assert.Equal(root, last.Root);
+            int nodes = (Scenes * (Deep + 1)) + 1;
+            Assert.Equal(nodes, root.Below().Count());
+            Assert.Equal(nodes - 1, last.Path.Split('/').Length);
+        });
+    }
 }
