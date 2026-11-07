@@ -41,7 +41,7 @@ public partial class ManagedDebugger
             string name = metadata.GetTypeDefProps(corClass.Token).szTypeDef;
             if (name is "System.Object" or "System.ValueType"
                 || metadata.TryGetCustomAttributeByName(corClass.Token, "System.Diagnostics.DebuggerDisplayAttribute", out _, out _) is Cor.S_OK
-                || TargetedAt(metadata, corClass.Token).Any(t => t.Display is not null))
+                || TargetedAt(each).Any(t => t.Display is not null))
             {
                 return null;
             }

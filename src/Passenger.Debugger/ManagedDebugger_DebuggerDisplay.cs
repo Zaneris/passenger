@@ -35,7 +35,7 @@ public partial class ManagedDebugger
             {
                 return null;
             }
-            if (TargetedAt(metadata, corClass.Token).LastOrDefault(t => t.Display is not null)?.Display is { } targeted)
+            if (TargetedAt(each).LastOrDefault(t => t.Display is not null)?.Display is { } targeted)
             {
                 return targeted;
             }
@@ -62,9 +62,10 @@ public partial class ManagedDebugger
 
     private int _targetedFor = -1;
 
-    /// <summary>The [DebuggerDisplay] and [DebuggerTypeProxy] attributes the program's assemblies declare for a type
-    /// definition, as though it carried them, the last loaded last; gathered again once the modules change.</summary>
-    private IReadOnlyList<TargetedAttribute> TargetedAt(IMetaDataImport metadata, mdTypeDef token)
+    /// <summary>The [DebuggerDisplay] and [DebuggerTypeProxy] attributes the program's assemblies declare for a type, its
+    /// definition or just this construction of it, as though it carried them, the last loaded last and one for the
+    /// construction after any for the definition; gathered again once the modules change.</summary>
+    private IReadOnlyList<TargetedAttribute> TargetedAt(ICorDebugType type)
     {
         if (_targetedFor != ModuleSet_Version)
         {
@@ -72,7 +73,36 @@ public partial class ManagedDebugger
                 .ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.Ordinal);
             _targetedFor = ModuleSet_Version;
         }
-        return _targeted.Count == 0 ? [] : _targeted.GetValueOrDefault(MetadataTypeNames.Of(metadata, token)) ?? [];
+        if (_targeted.Count == 0)
+        {
+            return [];
+        }
+        ICorDebugClass corClass = type.Class;
+        string definition = MetadataTypeNames.Of(corClass.Module.GetMetaDataInterface<IMetaDataImport>(), corClass.Token);
+        return _targeted.TryGetValue(definition, out TargetedAttribute[]? declared) ? TargetedAttribute.Fitting(declared, ConstructedName(type)) : [];
+    }
+
+    /// <summary>A type's name as <see cref="TargetNames"/> compares it.</summary>
+    private static string ConstructedName(ICorDebugType type)
+    {
+        if (MetadataTypeNames.PrimitiveOf(type.Type) is { } primitive)
+        {
+            return primitive.SystemName;
+        }
+        if (type.Type is CorElementType.SZARRAY)
+        {
+            return TargetNames.Array(ConstructedName(type.FirstTypeParameter), 1);
+        }
+        if (type.Type is CorElementType.ARRAY)
+        {
+            return TargetNames.Array(ConstructedName(type.FirstTypeParameter), type.Rank);
+        }
+        if (type.Type is CorElementType.PTR)
+        {
+            return $"{ConstructedName(type.FirstTypeParameter)}*";
+        }
+        ICorDebugClass corClass = type.Class;
+        return TargetNames.Constructed(MetadataTypeNames.Of(corClass.Module.GetMetaDataInterface<IMetaDataImport>(), corClass.Token), type.TypeParameters.Select(ConstructedName));
     }
 
     /// <summary>A display format rendered against a value, whether any fragment failed, and, for a format that is one

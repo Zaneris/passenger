@@ -98,6 +98,23 @@ public class PresentationsTests(ITestOutputHelper testOutputHelper)
             $"The bookcase opens to {Typed(bookcase)}, not to the view the program's assembly declares for it");
     }
 
+    /// <summary>An assembly's displays and views for constructions of one generic type each reach their own: a box of numbers
+    /// and a box of words read differently, through an array and a nested box too, a box of anything else by the display for
+    /// the definition, and only the box of numbers opens to the view declared for it, which is generic in nothing.</summary>
+    [Fact]
+    public async Task An_assemblys_displays_and_views_for_constructions_of_a_generic_type_reach_only_their_own()
+    {
+        await using DebugSession host = await LaunchTargeted();
+        List<DapVariable> locals = await host.LocalsAsync(await host.WaitForStoppedEvent());
+        List<DapVariable> boxes = [.. locals.Where(v => v.Name is "numberBox" or "textBox" or "otherBox" or "boxes")];
+        Assert.True(boxes.Select(v => (v.Name, v.Value)).SequenceEqual([("numberBox", "number box 5"), ("textBox", "text box words"), ("otherBox", "any box"), ("boxes", "a box of boxes")]),
+            $"The boxes read {Typed(boxes)}, one construction's display shown on another");
+        List<DapVariable> numbers = await host.VariablesAsync(boxes[0].VariablesReference);
+        Assert.True(numbers.Select(r => (r.Name, r.Value)).SequenceEqual([("Doubled", "10"), ("Raw View", "")]), $"The box of numbers opens to {Typed(numbers)}, not to the view declared for it");
+        List<DapVariable> words = await host.VariablesAsync(boxes[1].VariablesReference);
+        Assert.True(words.Select(r => (r.Name, r.Value)).SequenceEqual([("Held", "\"words\"")]), $"The box of words opens to {Typed(words)}, where only its own member was to show");
+    }
+
     private static string Listed(List<DapVariable> rows) => string.Join(", ", rows.Select(r => $"{r.Name} = {r.Value}"));
 
     private static string Typed(IEnumerable<DapVariable> rows) => string.Join(", ", rows.Select(r => $"{r.Name} = {r.Value} ({r.Type})"));

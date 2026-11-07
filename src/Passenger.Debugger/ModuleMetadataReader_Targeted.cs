@@ -3,10 +3,42 @@ using System.Reflection.Metadata;
 namespace Passenger.Debugger;
 
 /// <summary>A debugger attribute an assembly declares for a type it names ([assembly: DebuggerDisplay(…, Target = …)] or
-/// TargetTypeName): the type's full name, as reflection writes a definition's ("Ns.Outer+Inner`1"), and the display it
-/// gives the type, or the view a [DebuggerTypeProxy] does, its name qualified by the declaring assembly where it names
-/// none, as the runtime resolves it.</summary>
-internal sealed record TargetedAttribute(string Target, DebuggerDisplay? Display, string? Proxy);
+/// TargetTypeName): the type's definition, as reflection writes its full name ("Ns.Outer+Inner`1"), the one construction of
+/// it the attribute names, where it names one (<see cref="TargetNames"/>), and the display it gives the type, or the view a
+/// [DebuggerTypeProxy] does, its name qualified by the declaring assembly where it names none, as the runtime resolves it.</summary>
+internal sealed record TargetedAttribute(string Target, string? Constructed, DebuggerDisplay? Display, string? Proxy)
+{
+    /// <summary>Those of a definition's attributes that reach a type constructed so: each for the definition, then each for
+    /// that construction, which a reader taking the last prefers.</summary>
+    public static IReadOnlyList<TargetedAttribute> Fitting(IEnumerable<TargetedAttribute> attributes, string constructed) =>
+        [.. attributes.Where(t => t.Constructed is null || t.Constructed == constructed).OrderBy(t => t.Constructed is not null)];
+}
+
+/// <summary>Types' names compared without their assemblies, each argument of a constructed type in brackets after its
+/// definition ("Ns.Pair`2[System.Int32,System.String[]]"): a type's home is rarely the assembly a name was compiled against,
+/// which only forwards to it.</summary>
+internal static class TargetNames
+{
+    /// <summary>The definition a serialized name names and its whole name where it constructs one; null for text that names
+    /// no type.</summary>
+    public static (string Definition, string? Constructed)? Read(string serialized) =>
+        !TypeName.TryParse(serialized.Trim(), out TypeName? named) ? null
+        : named.IsConstructedGenericType ? (named.GetGenericTypeDefinition().FullName, Written(named))
+        : (named.FullName, null);
+
+    /// <summary>A definition's name with these arguments' names, if it has any.</summary>
+    public static string Constructed(string definition, IEnumerable<string> arguments) =>
+        string.Join(',', arguments) is { Length: > 0 } listed ? $"{definition}[{listed}]" : definition;
+
+    /// <summary>An array's name, in the form both a serialized name and the runtime's type give it.</summary>
+    public static string Array(string element, int rank) => $"{element}[{new string(',', rank - 1)}]";
+
+    private static string Written(TypeName type) =>
+        type.IsConstructedGenericType ? Constructed(type.GetGenericTypeDefinition().FullName, type.GetGenericArguments().Select(Written))
+        : type.IsArray ? Array(Written(type.GetElementType()), type.GetArrayRank())
+        : type.IsPointer ? $"{Written(type.GetElementType())}*"
+        : type.FullName;
+}
 
 public partial class ModuleMetadataReader
 {
@@ -40,13 +72,14 @@ public partial class ModuleMetadataReader
             {
                 BlobReader blob = reader.GetBlobReader(attribute.Value);
                 (string first, Dictionary<string, string?> named) = ReadStringAttribute(ref blob);
-                if ((named.GetValueOrDefault("Target") ?? named.GetValueOrDefault("TargetTypeName")) is not { Length: > 0 } target)
+                if ((named.GetValueOrDefault("Target") ?? named.GetValueOrDefault("TargetTypeName")) is not { Length: > 0 } target
+                    || TargetNames.Read(target) is not { } type)
                 {
                     continue;
                 }
                 targeted.Add(kind is DisplayAttribute
-                    ? new TargetedAttribute(DefinitionName(target), new DebuggerDisplay(first, named.GetValueOrDefault("Name"), named.GetValueOrDefault("Type")), null)
-                    : new TargetedAttribute(DefinitionName(target), null, Qualified(first, assembly)));
+                    ? new TargetedAttribute(type.Definition, type.Constructed, new DebuggerDisplay(first, named.GetValueOrDefault("Name"), named.GetValueOrDefault("Type")), null)
+                    : new TargetedAttribute(type.Definition, type.Constructed, null, Qualified(first, assembly)));
             }
             catch (BadImageFormatException)
             {
@@ -77,13 +110,6 @@ public partial class ModuleMetadataReader
             named[name] = blob.ReadSerializedString();
         }
         return (first, named);
-    }
-
-    /// <summary>The definition a type's name names, without its type arguments or assembly.</summary>
-    private static string DefinitionName(string serialized)
-    {
-        int end = serialized.IndexOfAny(['[', ',']);
-        return (end < 0 ? serialized : serialized[..end]).Trim();
     }
 
     /// <summary>A type's name qualified by an assembly where it names none at its top level.</summary>

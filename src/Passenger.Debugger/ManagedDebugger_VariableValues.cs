@@ -49,8 +49,9 @@ public partial class ManagedDebugger
             (ICorDebugModule? module, string proxyName) = FindProxyType(debuggerProxyTypeName, valueToProxy.ExactType.Class.Module);
             if (module is not null)
             {
+                // A view of one construction of a generic type may itself be generic in nothing.
                 proxyInstance = await CreateDebuggerProxyInstance(valueToProxy, threadId, module, proxyName,
-                    ProxyTypeArguments(debuggerProxyTypeName, valueToProxy.ExactType.Class.Module) ?? valueToProxy.ExactType.TypeParameters);
+                    ProxyTypeArguments(debuggerProxyTypeName, valueToProxy.ExactType.Class.Module) ?? (proxyName.Contains('`', StringComparison.Ordinal) ? valueToProxy.ExactType.TypeParameters : []));
             }
             else
             {
@@ -328,7 +329,7 @@ public partial class ManagedDebugger
         bool hasDebuggerTypeProxyAttribute = metaDataImport.TryGetCustomAttributeByName(corDebugObjectValue.Class.Token, "System.Diagnostics.DebuggerTypeProxyAttribute", out nint debuggerTypeProxyAttributePointer, out uint debuggerTypeProxyAttributeSize) is Cor.S_OK;
 
         // A view an assembly declares for the type is taken as its own, before the one it carries.
-        string? debugProxyTypeName = TargetedAt(metaDataImport, corDebugObjectValue.Class.Token).LastOrDefault(t => t.Proxy is not null)?.Proxy
+        string? debugProxyTypeName = TargetedAt(corDebugObjectValue.ExactType).LastOrDefault(t => t.Proxy is not null)?.Proxy
             ?? (hasDebuggerTypeProxyAttribute ? GetCustomAttributeResultString(debuggerTypeProxyAttributePointer, debuggerTypeProxyAttributeSize) : null);
         if (IsTupleType(typeName))
         {
