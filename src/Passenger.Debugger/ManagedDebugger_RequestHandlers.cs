@@ -370,13 +370,20 @@ public partial class ManagedDebugger
     }
 
     /// <summary>A thread paused outside managed code (in a sleep, a wait, a read), or, Just My Code, outside the user's code,
-    /// has no line to step from: any step runs it out to the user's managed code first, where it completes as one from the
-    /// caller would. A library method calling native code shows as the top frame, and a step from that frame would end only
-    /// at the thread's next pass through its code, never once the method is compiled again. A thread stopped by its own
-    /// event stands where its top frame shows.</summary>
+    /// has no line to step from: any step runs it out to the user's managed code first, or without Just My Code out of the
+    /// library's frame whose native call holds it, completing as one from the caller would. A step from a frame calling native
+    /// code would end only at the thread's next pass through its code, never once the method is compiled again. A thread
+    /// stopped by its own event stands where its top frame shows.</summary>
     private bool StepOutToManagedCode(ICorDebugThread thread)
     {
         ICorDebugFrame? top = thread.ActiveFrame;
+        if (!_justMyCode && _stoppedByEvent != thread.Id && LibraryInNativeCall(thread) is { } caller)
+        {
+            _logger?.Invoke($"Paused in native code {FrameTold(caller)} called: the step runs out of it");
+            BeginStep(caller.CreateStepper(), thread, caller, justMyCode: false, stepper => stepper.StepOut());
+            Continue(clearVariables: true);
+            return true;
+        }
         if (top is ICorDebugILFrame && (!_justMyCode || _stoppedByEvent == thread.Id || IsUserCodeFrame(top)))
         {
             return false;
@@ -387,6 +394,40 @@ public partial class ManagedDebugger
         BeginStep(thread.CreateStepper(), thread, null, _justMyCode, stepper => stepper.StepOut());
         Continue(clearVariables: true);
         return true;
+    }
+
+    /// <summary>The library's frame whose native call (a P/Invoke compiled into its code) holds a paused thread: its first
+    /// managed frame, below a transition into native code where the stack shows one (Windows), else where the runtime tells
+    /// the thread as at no safe point, a place in that frame's own code being a safe one. Null for the user's own frame,
+    /// which a step out of the native code comes back to.</summary>
+    private ICorDebugILFrame? LibraryInNativeCall(ICorDebugThread thread)
+    {
+        bool transition = false;
+        List<ICorDebugFrame> frames;
+        try
+        {
+            frames = [.. EnumerateFramesForThread(thread).Take(8)];
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return null;
+        }
+        foreach (ICorDebugFrame frame in frames)
+        {
+            if (frame is ICorDebugInternalFrame { FrameType: CorDebugInternalFrameType.STUBFRAME_M2U })
+            {
+                transition = true;
+                continue;
+            }
+            if (frame is not ICorDebugILFrame caller || FindModule(caller.Function.Module) is not { IsUserCode: false })
+            {
+                return null;
+            }
+            bool unsafePoint = thread.TryGetUserState(out CorDebugUserState state) is Cor.S_OK && (state & CorDebugUserState.USER_UNSAFE_POINT) != 0;
+            _logger?.Invoke($"Paused on thread {thread.Id} in {FrameTold(caller)}{(transition ? ", below a transition into native code" : string.Empty)}, {state}");
+            return transition || unsafePoint ? caller : null;
+        }
+        return null;
     }
 
     /// <summary>Steps a thread on, or refuses saying why: a step answered as taken that never set the program going would

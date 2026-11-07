@@ -61,15 +61,18 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A step from a pause in the sleep, the thread in the library's code calling native code, comes back as the
-    /// sleep returns, on the turn of the loop it was paused on: one that ended only when the thread next passed through that
-    /// code came back a turn later, and never once the runtime had compiled that code again meanwhile.</summary>
+    /// sleep returns, on the turn of the loop it was paused on, in the loop, or without Just My Code where the library's frame
+    /// returns: one that ended only when the thread next passed through that code came back a turn later, and never once the
+    /// runtime had compiled that code again meanwhile.</summary>
     [Theory]
-    [InlineData(DapCommands.Next)]
-    [InlineData(DapCommands.StepIn)]
-    public async Task A_step_from_a_pause_in_a_sleep_comes_back_as_the_sleep_returns_on_the_turn_it_was_paused_on(string step)
+    [InlineData(DapCommands.Next, true)]
+    [InlineData(DapCommands.StepIn, true)]
+    [InlineData(DapCommands.Next, false)]
+    [InlineData(DapCommands.StepIn, false)]
+    public async Task A_step_from_a_pause_in_a_sleep_comes_back_as_the_sleep_returns_on_the_turn_it_was_paused_on(string step, bool justMyCode)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await Launch(host, sleeps: true);
+        await Launch(host, sleeps: true, justMyCode);
 
         StoppedEvent stopped = await Pause(host);
         // A pause between two sleeps finds the loop's own line, from which a step may pass the count.
@@ -81,15 +84,26 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         int thread = stopped.ThreadId!.Value;
         DapStackFrame paused = await host.TopFrameAsync(thread);
         Assert.False(InProgram(paused), $"Six pauses all found the loop's own line, never its sleep: {paused.Name}");
+        List<DapStackFrame> pausedStack = [.. (await host.StackTraceAsync(thread, levels: null)).StackFrames];
+        string pausedIn = string.Join(" < ", pausedStack.Take(4).Select(f => f.Name));
         long before = await Turns(host, thread);
 
         await host.RequestAsync(step, new ThreadArguments(thread));
         StoppedEvent stepped = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Step, stepped.Reason);
-        AssertInLoop(await host.TopFrameAsync(thread));
+        DapStackFrame came = await host.TopFrameAsync(thread);
         long after = await Turns(host, thread);
-        Assert.True(after == before, $"A {step} from a pause in {paused.Name} came back on turn {after} of the loop, where it was paused on turn {before}: it waited for "
-            + "the thread to pass through the sleep's code again, which a program whose code is compiled again meanwhile never does");
+        string log = host.EngineLog();
+        // Without Just My Code the step may come back in a library frame the sleep returns to, as the runtime compiled them.
+        bool back = InProgram(came) || !justMyCode && pausedStack.Skip(1).Any(f => f.Name == came.Name);
+        Assert.True(back && after == before,
+            $"A {step} from a pause in {pausedIn}{(justMyCode ? string.Empty : ", without Just My Code,")} stopped in {came.Name}, line {came.Line}, on turn {after} of the "
+            + $"loop, where it was paused on turn {before}: one that waits for the thread to pass through the sleep's code again never comes back where the program's "
+            + $"code is compiled again meanwhile. The engine's log from the pause:\n{log[Math.Max(0, log.LastIndexOf("] Pause", StringComparison.Ordinal))..]}");
+        if (InProgram(came))
+        {
+            AssertInLoop(came);
+        }
 
         static bool InProgram(DapStackFrame frame) => frame.Source?.Path?.EndsWith("Program.cs", StringComparison.Ordinal) == true;
 
@@ -221,14 +235,14 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("iteration 200", thrown.Details?.Message);
     }
 
-    private static async Task Launch(DebugSession host, bool sleeps)
+    private static async Task Launch(DebugSession host, bool sleeps, bool justMyCode = true)
     {
-        await Start(host, sleeps ? ["sleep"] : []);
+        await Start(host, sleeps ? ["sleep"] : [], justMyCode: justMyCode);
         // The program says when it is in its loop.
         await host.WaitForEvent<OutputEvent>(output => output.Output.Contains("looping", StringComparison.Ordinal));
     }
 
-    private static async Task Start(DebugSession host, List<string> arguments, Func<DebugSession, Task>? configure = null)
+    private static async Task Start(DebugSession host, List<string> arguments, Func<DebugSession, Task>? configure = null, bool justMyCode = true)
     {
         string program = Debuggees.Program(Looping);
         await host.InitializeAsync().RequestAsync(DapCommands.Launch, new LaunchArguments
@@ -237,7 +251,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
             Args = arguments,
             Cwd = Path.GetDirectoryName(program),
             Console = "internalConsole",
-            JustMyCode = true,
+            JustMyCode = justMyCode,
             StopAtEntry = false,
         });
         await host.WaitForInitializedEvent();
