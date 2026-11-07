@@ -26,4 +26,11 @@ public class SnippetTests
     {
         Assert.Equal(text, Snippet.FromProtocol(protocol).Text);
     }
+
+    [Fact]
+    public void Placeholders_nested_past_what_is_read_are_their_text_and_end_nothing()
+    {
+        string snippet = string.Concat(Enumerable.Repeat("${1:", 100_000)) + "name" + new string('}', 100_000);
+        SmallStack.Run(() => Assert.Contains("name", Snippet.FromProtocol(snippet).Text, StringComparison.Ordinal));
+    }
 }

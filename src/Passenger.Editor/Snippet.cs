@@ -11,6 +11,10 @@ public readonly record struct SnippetVariable(string Name, string Value, bool St
 /// them, and where the caret ends up (or what is selected at the end, as try...catch's selects its catch's body).</summary>
 public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>> Fields, TextRange End)
 {
+    /// <summary>How deep the protocol's placeholders are read inside one another, past what any server sends and short of
+    /// what its reader reaches on a thread's stack: past it they read as the text they are written as.</summary>
+    private const int DeepestNesting = 64;
+
     /// <summary>The live template syntax: <c>$NAME$</c> a variable (its places one field, each filled with its value),
     /// <c>$END$</c> where the caret goes after the last, <c>$SELSTART$</c> and <c>$SELEND$</c> what is selected there
     /// instead, <c>$SELECTION$</c> the text the template wraps, <c>$$</c> a dollar. Tab visits the variables in the
@@ -125,6 +129,7 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
         StringBuilder text = new();
         SortedDictionary<int, List<TextRange>> stops = [];
         int at = 0;
+        int nesting = 0;
         Read(null);
         return (text.ToString(), stops);
 
@@ -144,10 +149,12 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
                     at++;
                     return;
                 }
-                else if (c == '$' && at + 1 < snippet.Length && (char.IsAsciiDigit(snippet[at + 1]) || snippet[at + 1] == '{' || IsName(snippet[at + 1])))
+                else if (c == '$' && nesting < DeepestNesting && at + 1 < snippet.Length && (char.IsAsciiDigit(snippet[at + 1]) || snippet[at + 1] == '{' || IsName(snippet[at + 1])))
                 {
                     at++;
+                    nesting++;
                     Placeholder();
+                    nesting--;
                 }
                 else
                 {
