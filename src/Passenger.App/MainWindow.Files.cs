@@ -536,7 +536,7 @@ public partial class MainWindow
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            status.Text = $"{what} could not be deleted: {error.Message}";
+            status.Text = $"{what} could not be deleted: {error.Message}{await HeldByAsync(path)}";
             return false;
         }
         foreach (OpenDocument document in Editors.Documents.Where(d => PathNames.Within(d.Path, path)).ToList())
@@ -562,6 +562,15 @@ public partial class MainWindow
             }
             return saved;
         }
+    }
+
+    /// <summary>The programs holding a file or folder that would not go, as Windows names them (" Held by Passenger.Host
+    /// (process 1234)."), read off the window's thread; nothing where none is told.</summary>
+    private static async Task<string> HeldByAsync(string path)
+    {
+        List<string> named = await BackgroundWork.Run(() => FileHolders.Of(path)
+            .Select(id => DotnetProcesses.Describe(id) is { } process ? $"{process.Program} (process {id})" : $"process {id}").ToList());
+        return named.Count == 0 ? string.Empty : $" Held by {Plural.Listed(named)}.";
     }
 
     /// <summary>Runs a change of files the IDE makes itself, then follows only what it came to: what it made, moved or

@@ -120,14 +120,7 @@ public sealed class ExplorerFilesTests : IDisposable
         string release = Path.Combine(folder, "release");
         File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
         File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
-        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), $$"""
-            <Project>
-              <Target Name="Hold" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' == 'true' And !Exists('{{release}}')">
-                <Exec Condition="'$(OS)' == 'Windows_NT'" Timeout="120000" Command="powershell -NoProfile -Command &quot;Set-Content -Path held -Value held; while (-not (Test-Path '{{release}}')) { Start-Sleep -Milliseconds 100 }&quot;" />
-                <Exec Condition="'$(OS)' != 'Windows_NT'" Timeout="120000" Command="echo held &gt; held; while [ ! -f '{{release}}' ]; do sleep 0.1; done" />
-              </Target>
-            </Project>
-            """);
+        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(release));
         Restore.Run(Path.Combine(library, "Lib.csproj"));
         MainWindow window = new() { Width = 1200, Height = 800 };
         window.Show();
@@ -157,6 +150,99 @@ public sealed class ExplorerFilesTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>Where no folder a process works in can go (Windows), a project's folder deleted while its design-time build
+    /// runs beside another project's goes only once that whole round has ended, not as its own build lands: the round's
+    /// build session leaves the MSBuild node that built it working in its folder until it ends. Elsewhere it goes as its
+    /// own build lands, the other project still building.</summary>
+    [AvaloniaFact]
+    public void A_folders_delete_waits_for_the_round_of_design_time_builds_that_built_its_project_to_end_only_where_a_folder_worked_in_is_held()
+    {
+        // The project host gives MSBuild half the processors, and only two nodes build Shop and Lib at once.
+        Assert.SkipWhen(Environment.ProcessorCount / 2 < 2,
+            $"The project host builds two projects at once only on two MSBuild nodes, half of four processors, and this machine has {Environment.ProcessorCount}");
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        string releaseLib = Path.Combine(folder, "release-lib");
+        string releaseShop = Path.Combine(folder, "release-shop");
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(releaseLib));
+        File.WriteAllText(Path.Combine(folder, "Directory.Build.targets"), Holding(releaseShop));
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        Restore.Run(Path.Combine(folder, "Shop.csproj"));
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        window.OpenFolder(folder);
+        try
+        {
+            // Pumped, not settled: the language server's load waits for the design-time builds.
+            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")) && File.Exists(Path.Combine(folder, "held")),
+                "Shop's and Lib's design-time builds to be held at once, in one round", TimeSpan.FromMinutes(2));
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Task<bool> deleting = window.DeleteAsync(PathNames.Canonical(library));
+            Ui.PumpUntil(() => deleting.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
+                "the delete to wait for Lib's design-time build");
+            Assert.False(deleting.IsCompleted, $"The delete of Lib did not wait for its design-time build: {window.Status}");
+
+            File.WriteAllText(releaseLib, "go");
+            Ui.PumpUntil(() => deleting.IsCompleted || window.Session.DesignTimeBuilds.Builds > 0, "Lib's design-time build to land, Shop's still held");
+            if (Passenger.Workspace.FolderBuilds.WorkingFoldersHeld)
+            {
+                Assert.False(Ui.Pumped(() => deleting.IsCompleted, TimeSpan.FromSeconds(2)),
+                    $"The delete of Lib went on once its own design-time build landed, while the round's build session, still building Shop, could work in Lib: {window.Status}");
+                File.WriteAllText(releaseShop, "go");
+            }
+            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)), $"Lib was not deleted: {window.Status}");
+            Assert.False(Directory.Exists(library), $"Lib is still there, holding [{string.Join(", ", Left(library))}]");
+            Assert.True(File.Exists(Path.Combine(trash, "Lib", "Lib.csproj")), "Lib is not in the Trash");
+        }
+        finally
+        {
+            File.WriteAllText(releaseLib, "go");
+            File.WriteAllText(releaseShop, "go");
+            window.Close();
+        }
+    }
+
+    /// <summary>On Windows a folder some program works in will not go to the Trash, and the refusal names that program, so
+    /// the person knows what holds it.</summary>
+    [AvaloniaFact]
+    public void A_folder_a_program_works_in_is_refused_on_Windows_naming_the_program()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows keeps a folder a program works in from going");
+        string library = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName);
+        File.WriteAllText(Path.Combine(library, "Notes.txt"), "kept\n");
+        string shell = Programs.OnPath("powershell.exe") ?? throw new InvalidOperationException("Windows has no powershell.exe on its PATH");
+        MainWindow window = Open();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        string started = Path.Combine(folder, "started");
+        using System.Diagnostics.Process working = ChildProcesses.Start(ChildProcesses.Command(shell,
+            ["-NoProfile", "-Command", $"Set-Content -Path '{started}' -Value started; Start-Sleep -Seconds 120"], library));
+        try
+        {
+            Ui.WaitFor(() => File.Exists(started), "powershell to start, working in Lib");
+            Assert.False(Ui.Await(window.DeleteAsync(library), "the delete"), $"Lib went to the Trash while powershell worked in it: {window.Status}");
+            Assert.True(window.Status?.Contains($"Held by powershell (process {working.Id})", StringComparison.Ordinal) == true,
+                $"The refusal does not name powershell, which works in Lib, so the person cannot tell what to close: {window.Status}");
+            Assert.True(File.Exists(Path.Combine(library, "Notes.txt")), "Lib lost its file although the delete was refused");
+        }
+        finally
+        {
+            ChildProcesses.Kill(working);
+        }
+        window.Close();
+    }
+
+    /// <summary>A Directory.Build.targets holding the design-time builds of the projects below it before CoreCompile, each
+    /// writing held into its project's folder, until <paramref name="release"/> is there.</summary>
+    private static string Holding(string release) => $$"""
+        <Project>
+          <Target Name="Hold" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' == 'true' And !Exists('{{release}}')">
+            <Exec Condition="'$(OS)' == 'Windows_NT'" Timeout="120000" Command="powershell -NoProfile -Command &quot;Set-Content -Path held -Value held; while (-not (Test-Path '{{release}}')) { Start-Sleep -Milliseconds 100 }&quot;" />
+            <Exec Condition="'$(OS)' != 'Windows_NT'" Timeout="120000" Command="echo held &gt; held; while [ ! -f '{{release}}' ]; do sleep 0.1; done" />
+          </Target>
+        </Project>
+        """;
 
     [AvaloniaFact]
     public void Delete_on_a_project_in_its_own_folder_moves_that_folder_to_the_Trash_only_once_asked_again_and_one_beside_its_solution_leaves_the_folder()

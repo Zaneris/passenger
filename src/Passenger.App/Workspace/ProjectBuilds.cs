@@ -47,6 +47,10 @@ public sealed class ProjectBuilds
     /// would hold it (<see cref="FolderChanged"/>).</summary>
     private (ProjectHost Host, List<string> Projects)? inHost;
 
+    /// <summary>The round the host builds now, from its asking to the end of its build session, which a folder going waits
+    /// for on Windows (<see cref="HoldOff"/>).</summary>
+    private DesignTimeRound? running;
+
     /// <param name="projects">The open workspace's projects to load, those of the file shown (and those it references)
     /// apart, asked on the UI thread as the server is ready for them.</param>
     /// <param name="solution">The global properties the open solution gives its projects, as a build of it would.</param>
@@ -119,6 +123,7 @@ public sealed class ProjectBuilds
         queued.Clear();
         building = false;
         inHost = null;
+        running = null;
         foreach (TaskCompletionSource<BuiltProject> waiter in waiting.Values)
         {
             waiter.TrySetResult(new BuiltProject(string.Empty, RawJson.EmptyArray, [], Closed));
@@ -304,13 +309,15 @@ public sealed class ProjectBuilds
     private readonly List<string> heldOff = [];
 
     /// <summary>Holds off the design-time builds of the projects under a folder about to go until disposed, and is done
-    /// (<c>Built</c>) once those already running have ended, each landing as its builds end: MSBuild writes a build's obj/
-    /// as it goes, so one still running would make the folder again once it had gone.</summary>
+    /// (<c>Built</c>) once those already running have ended, each landing as its builds end, and on Windows once the round
+    /// that built one has ended too (<see cref="FolderBuilds"/>): MSBuild writes a build's obj/ as it goes, so one still
+    /// running would make the folder again once it had gone.</summary>
     public (IDisposable Held, Task Built) HoldOff(string going)
     {
         UiThread.Check();
         heldOff.Add(going);
-        Task built = Task.WhenAll([.. waiting.Where(w => PathNames.Within(w.Key, going) && !queued.Contains(w.Key)).Select(w => (Task)w.Value.Task)]);
+        Task built = FolderBuilds.Awaited(going, [.. waiting.Where(w => !queued.Contains(w.Key)).Select(w => (w.Key, (Task)w.Value.Task))], running,
+            FolderBuilds.WorkingFoldersHeld);
         return (new HeldOff(this, going), built);
     }
 
@@ -363,8 +370,10 @@ public sealed class ProjectBuilds
         List<string> round = [.. queued.Where(p => !heldOff.Any(h => PathNames.Within(p, h)))];
         queued.RemoveAll(round.Contains);
         Dictionary<string, string> properties = Properties(solution());
+        TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        running = new DesignTimeRound(round, ended.Task);
         // Not background work: only the language server's load waits on it, and a large solution's round takes minutes.
-        IdeErrors.Observe(RoundAsync(generation, folder, round, properties, ending.Token));
+        IdeErrors.Observe(RoundAsync(generation, folder, round, properties, ended, ending.Token));
     }
 
     /// <summary>The global properties the projects are built with at design time under a solution's.</summary>
@@ -377,7 +386,10 @@ public sealed class ProjectBuilds
     /// <summary>The solution the projects are built under now, by the path its global properties give.</summary>
     private string? Under() => solution().GetValueOrDefault(MSBuildNames.SolutionPath);
 
-    private async Task RoundAsync(int mine, string following, List<string> round, Dictionary<string, string> properties, CancellationToken cancel)
+    /// <summary>Builds a round in the host, <paramref name="over"/> once the host has answered for all of it, which it does
+    /// only once its build session has ended, or once the folder is let go.</summary>
+    private async Task RoundAsync(int mine, string following, List<string> round, Dictionary<string, string> properties, TaskCompletionSource over,
+        CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
         HashSet<string> landed = new(StringComparer.Ordinal);
@@ -423,10 +435,12 @@ public sealed class ProjectBuilds
         }
         finally
         {
+            over.TrySetResult();
             if (mine == generation)
             {
                 building = false;
                 inHost = null;
+                running = null;
                 Pump();
             }
         }
