@@ -30,6 +30,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-07
 
+- `McpAspireStandInTests`' `An_agent_reads_a_services_request_duration_through_telemetry_metrics`, CI's Windows runner
+  at 7150c471f (run 42391194839): "its runtime took no session in 25 s (process 2584 runs, … the pipe … is there but
+  answered no other request either)", web never at `app.Run()`. **A hang of .NET 10's**, met by the IDE: a metrics session
+  begun as a program starts deadlocks its EventSource lock against the program's first `ArrayPool` rent
+  (dotnet/runtime#119014, fixed in .NET 11), proven by dumps in the Windows VM on 10.0.14; a live session now waits out a
+  pre-11 program's start (`ProgramStarts`, 1f368d4ef, #1340).
+- `NoDotnetTests`' `Install_dotnet_SDK_asks_then_installs_…`, CI's Windows runner at 7150c471f (run 42391194839): held 3
+  minutes moving `shared`. Windows refuses a folder's rename while any file under it is open; the runner's Defender is
+  off, and the IDE's own Local History reads what arrives in the open folder, where the test installs. **A gap in the
+  IDE**: a folder refused whole comes in file by file, what makes it count to the host last (9fdbc8d99, #1364). The entry
+  of 00200fd83 below was the same, its raised limit no fix.
 - `UpdatesTests`' `A_newer_release_is_announced_once_…`, CI's Windows runner at 8252640fb (run 42361075365), a gate test:
   "the status bar's notice is ''" was a hidden notice, null quoted as `''`, not an empty one. The window's first check
   came to nothing, most likely past the test's 1 s feed limit, unscaled, as the process's first window test with a

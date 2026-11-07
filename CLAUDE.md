@@ -500,7 +500,9 @@ a new name, and `just site-shots` retakes its images.
   outlive it, so hold a child whose descendants must end with it with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket with
   unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
-  leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener`).
+  leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener`); a folder can't be renamed
+  while any file under it is open, however it is shared, where a file opened sharing deletion can be (`DotnetMerge`
+  moves what others may read file by file); what holds a file is `FileHolders`.
 - **macOS**: a zombie gives no process info (`DotnetProcesses.Runs` counts it gone); `SystemFonts` lists the hidden
   `.AppleSystemUIFont` only once loaded and `TryGetGlyphTypeface` answers an unknown name with Helvetica (`WindowFonts`
   checks the face); Chrome waits for good on a keychain where HOME has none (`--use-mock-keychain`); a hardened-runtime
@@ -558,7 +560,9 @@ a new name, and `just site-shots` retakes its images.
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads its `FilterSpecs`, so a category takes no
   `:Level` there (`LiveRequests.LogsSpec`). Its sampler takes a thread only where it can stop it, so a test program's
   method that must own its samples spins in a loop that calls nothing. A program the debugger holds answers no session's
-  start or stop and gives no heap, so the profiler refuses it (`Refusals.PausedInDebugger`).
+  start or stop and gives no heap, so the profiler refuses it (`Refusals.PausedInDebugger`). A session enabling a managed
+  EventSource as a program before .NET 11 RC starts hangs it for good (dotnet/runtime#119014): every live session starts
+  through `SessionStarts`, which waits out `ProgramStarts`.
 
 ## Tests
 
