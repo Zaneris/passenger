@@ -149,7 +149,7 @@ public class GDScriptAnalyzerTests
         (GDScriptAnalysis analysis, _) = Analyze("extends Node2D\n\nvar items: Array[int] = []\nvar state := State.IDLE\nenum State { IDLE, RUN }\n\n"
             + "func f():\n\tvar a := 2 * 3\n\tvar b := 2 * 1.5\n\tvar c := position.x\n\tvar d := position * 2.0\n\tvar e := items[0]\n\tvar g := $Child\n"
             + "\tvar h := Input.is_action_pressed(\"jump\")\n\tvar i := get_tree().change_scene_to_file(\"x\")\n\tvar j := \"a\" + \"b\"\n\tvar k := sin(1.0)\n"
-            + "\tvar l := Vector2(1, 2).length()\n\tvar m := process_mode\n\tvar n := items.size() < 3\n\tvar o := \"word\".length()\n\tfor each in items:\n\t\tvar p := each\n");
+            + "\tvar l := Vector2(1, 2).length()\n\tvar m := process_mode\n\tvar n := items.size() < 3\n\tvar o := \"word\".length()\n\tfor each in items:\n\t\tvar p := each\n\t\tpass\n");
         Dictionary<string, string> types = Locals(analysis);
         Assert.Equal("int", types["a"]);
         Assert.Equal("float", types["b"]);
@@ -174,7 +174,7 @@ public class GDScriptAnalyzerTests
     {
         (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(
             "extends \"res://enemy.gd\"\n\nvar boss := Boss.new()\nvar loot := Game.score\nvar inner := Shape.new()\nvar hp := health\n\nclass Shape:\n\tvar sides := 3\n\n"
-            + "func f():\n\tvar s := inner.sides\n\tvar w := boss.weight()\n\tvar t := tree_of()\n",
+            + "func f():\n\tvar s := inner.sides\n\tvar w := boss.weight()\n\tvar t := tree_of()\n\tpass\n",
             new() { ["res://enemy.gd"] = "class_name Enemy\nextends Node\nvar health := 10\nfunc tree_of() -> SceneTree:\n\treturn get_tree()\n",
                 ["res://boss.gd"] = "class_name Boss\nextends Enemy\nfunc weight() -> float:\n\treturn 1.0\n",
                 ["res://game.gd"] = "extends Node\nvar score := 0\n" },
@@ -360,6 +360,114 @@ public class GDScriptAnalyzerTests
             Assert.True(type.Meta, $"What comes before {after} read as {type}, no class");
             return type;
         }
+    }
+
+    /// <summary>The locals in scope where a name is typed (the bar), the nearest first, whether the name is typed yet or, on a line
+    /// of its own, the caret only stands at its indentation. Each was compiled by Godot 4.7.2 with every name of its script
+    /// typed there: it accepted those listed and rejected the rest.</summary>
+    [Theory]
+    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\t|\n", "a")]
+    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\t\t|\n", "hidden a")]
+    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\t|\n\tprint(a)\n", "a")]
+    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\telse:\n\t\t|\n", "a")]
+    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\telif |:\n\t\tpass\n", "a")]
+    [InlineData("func f(a, b):\n\tif a:\n\t\tvar hidden := 1\n\telif b:\n\t\tvar shown := 2\n\t\t|\n", "shown b a")]
+    [InlineData("func f(a, b):\n\tif a:\n\t\tpass\n\telif b:\n\t\tvar shown := 2\n\t|\n", "b a")]
+    [InlineData("func f(a):\n\twhile a:\n\t\tvar hidden := 1\n\t|\n", "a")]
+    [InlineData("func f(a):\n\tvar top := 1\n\tif a:\n\t\tvar mid := 2\n\t\tif a:\n\t\t\tvar low := 3\n\t\t|\n", "mid top a")]
+    [InlineData("func f():\n\t|\n\tvar later := 1\n", "")]
+    [InlineData("func f():\n\tvar me := |\n", "")]
+    [InlineData("func f():\n\tconst ME = |\n", "")]
+    [InlineData("func f():\n\tvar me = func(): return |\n", "")]
+    [InlineData("func f(a):\n\tif a:\n\t\tconst KEPT = 1\n\t\t|\n", "KEPT a")]
+    [InlineData("func f():\n\tfor i in 3:\n\t\t|\n", "i")]
+    [InlineData("func f():\n\tfor i in 3:\n\t\tpass\n\t|\n", "")]
+    [InlineData("func f():\n\tfor i in |:\n\t\tpass\n", "")]
+    [InlineData("func f(x):\n\tmatch x:\n\t\tvar b:\n\t\t\t|\n", "b x")]
+    [InlineData("func f(x):\n\tmatch x:\n\t\tvar b when |:\n\t\t\tpass\n", "b x")]
+    [InlineData("func f(x):\n\tmatch x:\n\t\tvar b:\n\t\t\tpass\n\t\t2:\n\t\t\t|\n", "x")]
+    [InlineData("func f(x):\n\tmatch x:\n\t\tvar b:\n\t\t\tpass\n\t|\n", "x")]
+    [InlineData("func f():\n\tvar a := 1\n\tvar g = func(p):\n\t\tvar inner = p\n\t\t|\n\tvar later := 2\n", "inner p a")]
+    [InlineData("func f():\n\tvar g = func(p):\n\t\tvar inner = p\n\t|\n", "g")]
+    [InlineData("func f():\n\tprint(func(p): return p, |)\n", "")]
+    [InlineData("func f(a, b = |):\n\tpass\n", "a")]
+    [InlineData("var v: int:\n\tset(value):\n\t\t|\n\tget:\n\t\treturn 1\n", "value")]
+    [InlineData("var v: int:\n\tset(value):\n\t\tpass\n\tget:\n\t\treturn |\n", "")]
+    [InlineData("func f(a):\n\tvar x = a\n\n\nfunc g(b):\n\t|\n", "b")]
+    [InlineData("class In:\n\tfunc f(a):\n\t\tvar x = a\n\tfunc g(b):\n\t\t|\n", "b")]
+    [InlineData("func f(a):\n\tif a: var hidden := 1\n\t|\n", "a")]
+    [InlineData("func f(a):\n\tpass\n\n\n|\n", "")]
+    [InlineData("func f():\n\tvar a := 1; print(|)\n", "a")]
+
+    public void Only_the_locals_whose_scope_holds_the_caret_are_in_scope_there(string written, string expected)
+    {
+        string[] names = expected.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        const string Head = "extends Node\n\n";
+        int mark = written.IndexOf('|', StringComparison.Ordinal);
+        string typed = Head + written.Replace("|", "zz", StringComparison.Ordinal);
+        (GDScriptAnalysis analysis, _) = Analyze(typed);
+        Assert.Equal(names, analysis.LocalsAt(Head.Length + mark + 2).Select(l => l.Name));
+
+        int lineStart = written.LastIndexOf('\n', mark) + 1;
+        if (written[lineStart..mark].Trim('\t').Length == 0 && written[mark + 1] == '\n')
+        {
+            (GDScriptAnalysis blank, _) = Analyze(Head + written.Replace("|", string.Empty, StringComparison.Ordinal));
+            Assert.Equal(names, blank.LocalsAt(Head.Length + mark).Select(l => l.Name));
+        }
+    }
+
+    /// <summary>A name the script's own text gives a type carries it to the list: a loop's variable its element's, a pattern's
+    /// bind none, a local its value's.</summary>
+    [Fact]
+    public void A_local_in_scope_says_its_type_and_where_it_is_declared()
+    {
+        string text = "extends Node\n\nfunc f(items: Array[Node], x):\n\tfor item in items:\n\t\tvar count := 1\n\t\tmatch x:\n\t\t\tvar b:\n\t\t\t\tzz\n";
+        (GDScriptAnalysis analysis, _) = Analyze(text);
+        IReadOnlyList<GDScriptMemberInfo> locals = analysis.LocalsAt(text.IndexOf("zz", StringComparison.Ordinal) + 2);
+        Assert.Equal(["b Variant", "count int", "item Node", "x Variant", "items Array[Node]"], locals.Select(l => $"{l.Name} {l.Type}"));
+        Assert.Equal(text.IndexOf("item in", StringComparison.Ordinal), locals.Single(l => l.Name == "item").Declaration!.Start);
+        Assert.Equal(text.IndexOf("count :=", StringComparison.Ordinal), locals.Single(l => l.Name == "count").Declaration!.Start);
+    }
+
+    /// <summary>A function an edit above it moved, its nodes kept by the tree parsed again, has the same locals in scope.</summary>
+    [Fact]
+    public void A_function_an_edit_moved_keeps_its_scopes()
+    {
+        string text = "extends Node\n\nvar a := 1\n\nfunc f(p):\n\tif p:\n\t\tvar hidden = 1\n\t\tyy\n\tzz\n";
+        TextEdit edit = new(text.IndexOf('1', StringComparison.Ordinal), 1, "2000");
+        string moved = TextSnapshot.From(text).Apply([edit]).ToString();
+        GDScriptTree tree = GDScriptTree.Parse(text).Reparse(moved, edit);
+        GDScriptAnalysis analysis = new GDScriptAnalyzer(new GDScriptProject(Engine, _ => tree, new Dictionary<string, string>(StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal))).Analyze(tree, "res://main.gd");
+        Assert.Equal(["hidden", "p"], analysis.LocalsAt(moved.IndexOf("yy", StringComparison.Ordinal) + 2).Select(l => l.Name));
+        Assert.Equal(["p"], analysis.LocalsAt(moved.IndexOf("zz", StringComparison.Ordinal) + 2).Select(l => l.Name));
+    }
+
+    /// <summary>Godot 4.7.2 lets an inner class's code name its own members, wherever declared, and the constants, enums and
+    /// classes of the classes around it, and rejects their variables, functions and signals, static ones too.</summary>
+    [Fact]
+    public void An_inner_classs_code_finds_its_own_members_and_what_the_classes_around_it_declare_for_all()
+    {
+        string text = "extends Node\n\nsignal rung\nenum Mood { CALM }\nconst LIMIT := 3\nstatic var shared := 2\nvar outer_field := 1\n\n"
+            + "func outer_work():\n\tpass\n\nstatic func outer_static():\n\tpass\n\nclass Next:\n\tpass\n\n"
+            + "class Inner:\n\tvar own := 1\n\n\tclass Deep:\n\t\tconst DEEP := 1\n\t\tfunc deep_work():\n\t\t\tzz\n\n\tfunc work():\n\t\tyy\n\n\tvar later := 2\n";
+        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text);
+        HashSet<string> Names(int at) => [.. analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(at)).Select(m => m.Name)];
+
+        int work = text.IndexOf("yy", StringComparison.Ordinal);
+        Assert.Equal("Inner", analysis.ClassAt(work)?.Identifier?.Name);
+        HashSet<string> inner = Names(work);
+        Assert.Superset(new HashSet<string> { "own", "later", "work", "Deep", "LIMIT", "Mood", "Next", "Inner" }, inner);
+        Assert.Empty(inner.Intersect(["rung", "shared", "outer_field", "outer_work", "outer_static", "name", "get_tree", "DEEP"]));
+
+        int deep = text.IndexOf("zz", StringComparison.Ordinal);
+        Assert.Equal("Deep", analysis.ClassAt(deep)?.Identifier?.Name);
+        HashSet<string> deepest = Names(deep);
+        Assert.Superset(new HashSet<string> { "DEEP", "deep_work", "LIMIT", "Deep", "Inner" }, deepest);
+        Assert.Empty(deepest.Intersect(["own", "later", "work", "outer_field"]));
+
+        int outer = text.IndexOf("pass", StringComparison.Ordinal);
+        Assert.Null(analysis.ClassAt(outer));
+        Assert.Superset(new HashSet<string> { "outer_field", "outer_work", "rung", "shared", "LIMIT", "name", "get_tree" }, Names(outer));
     }
 
     private static Dictionary<string, string> Locals(GDScriptAnalysis analysis) =>

@@ -132,6 +132,36 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>A local declared in a block is offered in that block and not after it, where Godot rejects it; a local around
+    /// the block is offered at both.</summary>
+    [AvaloniaFact]
+    public void A_blocks_local_completes_in_its_block_and_not_after_it()
+    {
+        TestFolders.Write(folder, "main.gd", "extends Node\n\n\nfunc _ready() -> void:\n\tvar here_value := 2\n\tif here_value > 0:\n\t\tvar hidden_value := 1\n"
+            + "\t\tprint(hidden_value)\n\tprint(1)\n");
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "print(hidden_value)");
+            TypeName(window, "h");
+            Listed(window, "hidden_value", "local of the block the caret is in");
+            Assert.Contains("here_value", window.Assist.CompletionLabels);
+            Ui.Press(window, "ESCAPE", settle: false);
+            Erase(window, 1);
+
+            NewLineAfter(window, editor, "print(1)");
+            TypeName(window, "h");
+            Listed(window, "here_value", "local around the block after it");
+            Assert.DoesNotContain("hidden_value", window.Assist.CompletionLabels);
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>A list opened on a name typed before it, by its key or as typing outruns the list, shows its first item's card
     /// as it opens, the item chosen before the list shows.</summary>
     [AvaloniaFact]

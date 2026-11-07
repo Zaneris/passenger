@@ -582,9 +582,10 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No("it makes a new one each time round, and a default makes one for the call");
         }
-        if (function.Parameters.Any(p => p.Identifier?.Name == name) || Taken(analysis, located.Offset + expression.Start, name) is { } taken && !taken.StartsWith("the script", StringComparison.Ordinal))
+        // Every block of the function has the parameter around it, and Godot refuses a local of its name in any of them.
+        if (Below(body).OfType<GDScriptSuite>().Any(block => block.Locals?.ContainsKey(name) == true))
         {
-            return GDScriptRefactored.No($"'{name}' is already a parameter or local there");
+            return GDScriptRefactored.No($"'{name}' is already a parameter or local of the function");
         }
         if (Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(i => i.Name == name && ReadsAsAName(i, parents)) is { } shadowed)
         {

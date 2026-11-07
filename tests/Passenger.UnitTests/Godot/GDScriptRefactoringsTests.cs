@@ -610,6 +610,25 @@ public class GDScriptRefactoringsTests
         Assert.Contains("reads 'b'", GDScriptRefactorings.IntroduceParameter(One(local), Over(local, "a + b"), "sum").Refused);
     }
 
+    /// <summary>Godot refuses a local of a parameter's name in any block of its function, and takes one of a name whose block
+    /// ended before it: a new parameter's name is checked against the whole function, a new local's against what is in scope.</summary>
+    [Theory]
+    [InlineData("func f(a):\n\tif a:\n\t\tvar step = 1\n\treturn a + 10\n")]
+    [InlineData("func f(a):\n\tvar total = a + 10\n\tfor step in 3:\n\t\tprint(step)\n\treturn total\n")]
+    [InlineData("func f(a):\n\tprint(a + 10)\n\tif a:\n\t\tconst step = 1\n")]
+    public void A_new_parameter_takes_no_name_a_block_of_its_function_declares(string text) =>
+        Assert.Contains("'step' is already a parameter or local", GDScriptRefactorings.IntroduceParameter(One(text), Over(text, "10"), "step").Refused);
+
+    [Fact]
+    public void A_new_local_may_take_the_name_of_one_whose_block_has_ended_and_none_still_in_scope()
+    {
+        string ended = "func f(a):\n\tif a:\n\t\tvar step = 1\n\tprint(a * 2)\n";
+        Assert.Equal("func f(a):\n\tif a:\n\t\tvar step = 1\n\tvar step = a * 2\n\tprint(step)\n",
+            After(GDScriptRefactorings.ExtractVariable(One(ended), Over(ended, "a * 2"), "step"), "res://main.gd", ended));
+        string around = "func f(a):\n\tvar step = 1\n\tif a:\n\t\tprint(a * 2)\n";
+        Assert.Contains("'step' is already a local there", GDScriptRefactorings.ExtractVariable(One(around), Over(around, "a * 2"), "step").Refused);
+    }
+
     [Fact]
     public void Introduce_parameter_is_refused_for_what_a_default_would_run_at_another_time_or_share_between_rounds()
     {

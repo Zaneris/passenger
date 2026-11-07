@@ -342,7 +342,7 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
         return true;
     }
 
-    private static int Indent(string text, int lineStart)
+    internal static int Indent(string text, int lineStart)
     {
         int at = lineStart;
         while (at < text.Length && text[at] is ' ' or '\t')

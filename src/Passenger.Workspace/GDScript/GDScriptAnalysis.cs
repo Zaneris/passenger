@@ -103,24 +103,96 @@ public sealed class GDScriptAnalysis
         return null;
     }
 
-    /// <summary>The locals and parameters of the member an offset is in, declared before it, the nearest last.</summary>
+    /// <summary>The locals, parameters, loop variables and pattern binds in scope at an offset, the nearest first: those of its
+    /// block and the blocks around it, a function's being a lambda's too, once what declares them has ended, which is when
+    /// Godot's parser adds a name to its block (_find_identifiers_in_suite).</summary>
     public IReadOnlyList<GDScriptMemberInfo> LocalsAt(int offset)
     {
-        if (Tree?.Members.FirstOrDefault(m => offset >= m.Start && offset <= m.End) is not { Node: { } member } within)
+        (_, GDScriptSuite? innermost, int from) = ScopeAt(offset);
+        if (innermost is null)
         {
             return [];
         }
         List<(int Start, GDScriptMemberInfo Local)> locals = [];
-        foreach ((GDScriptNode node, int at) in Offsets)
+        for (GDScriptSuite? block = innermost; block is not null; block = block.Parent)
         {
-            if (at == within.Offset && node != member && node is GDScriptAssignable { Identifier: { } name } && at + name.Start >= within.Start && at + name.Start < offset)
+            foreach ((string name, (_, GDScriptNode node)) in block.Locals ?? [])
             {
-                GDScriptType type = TypeOf(node);
-                locals.Add((at + name.Start, new GDScriptMemberInfo(name.Name, node is GDScriptConstant ? "const" : "var", type, new GDScriptDeclaration(Path, at + name.Start, name.Name, type))));
+                // A variable's own lambda may end before the offset by what was read, its block going on by indentation.
+                if (from + node.End < offset && !(node.Start < innermost.Start && innermost.Start < node.End))
+                {
+                    int start = from + ((node as GDScriptAssignable)?.Identifier ?? node).Start;
+                    GDScriptType type = TypeOf(node);
+                    locals.Add((start, new GDScriptMemberInfo(name, node is GDScriptConstant ? "const" : "var", type, new GDScriptDeclaration(Path, start, name, type))));
+                }
             }
         }
         return [.. locals.OrderByDescending(l => l.Start).Select(l => l.Local)];
     }
+
+    /// <summary>The innermost inner class an offset is in; null in the script's own.</summary>
+    public GDScriptClass? ClassAt(int offset) => ScopeAt(offset).Class;
+
+    /// <summary>The innermost inner class and block an offset is in, with the offset their positions count from. On a line of
+    /// code the nodes around it say; on a line with nothing yet before it, or past what could be read, its indentation
+    /// does, as a name typed there would end what is less indented.</summary>
+    private (GDScriptClass? Class, GDScriptSuite? Block, int From) ScopeAt(int offset)
+    {
+        if (Tree?.Members.LastOrDefault(m => m.Start <= offset) is not { Node: { } member } within)
+        {
+            return default;
+        }
+        int relative = offset - within.Offset;
+        int lineStart = offset > 0 ? Tree.Text.LastIndexOf('\n', offset - 1) + 1 : 0;
+        int column = GDScriptAsked.Indent(Tree.Text, lineStart);
+        bool byIndent = lineStart + column >= offset;
+        int IndentOf(GDScriptNode node)
+        {
+            int at = within.Offset + node.Start;
+            return GDScriptAsked.Indent(Tree.Text, at > 0 ? Tree.Text.LastIndexOf('\n', at - 1) + 1 : 0);
+        }
+        GDScriptClass? @class = null;
+        GDScriptSuite? block = null;
+        int around = -1;
+        for (GDScriptNode? at = member; at is not null;)
+        {
+            GDScriptNode? next = LastBegunBy(at, relative);
+            switch (at)
+            {
+                case GDScriptClass inner:
+                    if ((byIndent || relative > inner.End) && column <= IndentOf(inner))
+                    {
+                        return (@class, block, within.Offset);
+                    }
+                    @class = inner;
+                    break;
+                case GDScriptFunction { Body: { } body } function:
+                    if (relative <= function.HeaderEnd)
+                    {
+                        return (@class, body, within.Offset);
+                    }
+                    next = body;
+                    break;
+                // An elif's block holds only its if, at the indentation of the if before it.
+                case GDScriptSuite { Statements: [GDScriptIf { IsElif: true }] }:
+                    break;
+                case GDScriptSuite suite:
+                    int indent = suite.Statements.Count > 0 ? IndentOf(suite.Statements[0]) : around + 1;
+                    if ((byIndent || relative > suite.End) && (indent <= around || column < indent))
+                    {
+                        return (@class, block, within.Offset);
+                    }
+                    block = suite;
+                    break;
+            }
+            around = Math.Max(around, IndentOf(at));
+            at = next;
+        }
+        return (@class, block, within.Offset);
+    }
+
+    /// <summary>The last of a node's children to begin by an offset.</summary>
+    private static GDScriptNode? LastBegunBy(GDScriptNode node, int offset) => node.Children.Where(c => c.Start >= 0 && c.Start <= offset).MaxBy(c => c.Start);
 
     /// <summary>The types inferred where nothing is written: each <c>:=</c> variable's and constant's, and each untyped
     /// parameter's with a default value, after its name.</summary>

@@ -206,7 +206,7 @@ internal sealed partial class GDScriptAssist
         return item;
     }
 
-    /// <summary>The names a place may use: its function's locals, its class's members, the keywords it may begin with, then
+    /// <summary>The names a place may use: the locals in scope there, its class's members, the keywords it may begin with, then
     /// the project's classes and autoloads and the engine's globals; at a class's level a declaration's keywords alone.</summary>
     private Listed InScopeListed(GodotScriptTypes.Typed typed, GDScriptAsked at, int caret)
     {
@@ -224,7 +224,7 @@ internal sealed partial class GDScriptAssist
                 items.Add(MemberItem(typed, local, null, "0"));
             }
         }
-        foreach (GDScriptMemberInfo member in typed.Analyzer.Members(GDScriptAnalyzer.ScriptClass(typed.Tree, typed.Analysis.Path)))
+        foreach (GDScriptMemberInfo member in typed.Analyzer.MembersInScope(typed.Tree, typed.Analysis.Path, typed.Analysis.ClassAt(caret)))
         {
             if (seen.Add(member.Name))
             {

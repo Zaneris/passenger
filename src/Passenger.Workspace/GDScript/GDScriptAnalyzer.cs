@@ -548,6 +548,26 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
+    /// <summary>The members a class's code finds by their names alone, an inner class's where <paramref name="inner"/> says
+    /// (<see cref="GDScriptAnalysis.ClassAt"/>): the class's own and its bases', then of each class it is written in, nearest
+    /// first, only the constants, enums and classes it declares (Godot's _find_identifiers_in_class).</summary>
+    public IReadOnlyList<GDScriptMemberInfo> MembersInScope(GDScriptTree tree, string path, GDScriptClass? inner)
+    {
+        GDScriptType script = ScriptClass(tree, path);
+        if (inner is not { Identifier.Name: { } name } || Enclosing(script, tree.Members.Select(m => (m.Node, m.Offset)), inner) is not { Count: > 0 } holders
+            || Member(holders[^1], name) is not { Type: { } own })
+        {
+            return Members(script);
+        }
+        List<GDScriptMemberInfo> all = [.. Members(own.Instance)];
+        HashSet<string> seen = new(all.Select(m => m.Name), StringComparer.Ordinal);
+        foreach (GDScriptType holder in Enumerable.Reverse(holders))
+        {
+            all.AddRange(Members(holder).Where(m => m is { Kind: "const" or "enum" or "class", Declaration.Script: not null } && seen.Add(m.Name)));
+        }
+        return all;
+    }
+
     private static IEnumerable<string> Names(GDScriptNode node) => node switch
     {
         GDScriptVariable { Identifier: { } name } => [name.Name],
