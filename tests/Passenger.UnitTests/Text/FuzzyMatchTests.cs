@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime;
 using Passenger.Text;
 
 namespace Passenger.UnitTests.Text;
@@ -90,6 +91,9 @@ public class FuzzyMatchTests
         }
     }
 
+    /// <summary>Each call is measured apart, so a failure names the calls that allocated, in how many rounds, and how many
+    /// methods the runtime compiled on this thread meanwhile: bytes in every round are the scoring's garbage, bytes in one
+    /// round alone something done once.</summary>
     [Fact]
     public void Scoring_names_paths_and_labels_allocates_nothing()
     {
@@ -97,27 +101,49 @@ public class FuzzyMatchTests
         string longQuery = string.Join('\\', Enumerable.Repeat("fold", 70));
         PathLetters letters = PathLetters.Of(longPath);
         ulong wanted = FuzzyMatch.Wanted("ced");
+        string[] said =
+        [
+            .. Files.SelectMany(path => new[] { $"Score(\"ced\", \"{path}\")", $"Score(\"editor/code\", \"{path}\")" }),
+            $"Score of a query of {longQuery.Length} characters with slashes against a path of {longPath.Length}",
+            "Score(\"ced\") of that path read with its letters",
+            "Label(\"sb\", \"StringBuilder\")",
+            "Label(\"gTOD\", \"GetTypeOrDefault\")",
+        ];
+        Allocations seen = new(said);
         int matched = 0;
-        void Ask()
+        void Ask(int round)
         {
+            int call = 0;
             foreach (string path in Files)
             {
+                long at = seen.Begin();
                 matched += FuzzyMatch.Score("ced", path) is null ? 0 : 1;
+                seen.End(call++, round, at);
+                at = seen.Begin();
                 matched += FuzzyMatch.Score("editor/code", path) is null ? 0 : 1;
+                seen.End(call++, round, at);
             }
+            long since = seen.Begin();
             matched += FuzzyMatch.Score(longQuery, longPath) is null ? 0 : 1;
+            seen.End(call++, round, since);
+            since = seen.Begin();
             matched += FuzzyMatch.Score("ced", wanted, longPath, letters) is null ? 0 : 1;
+            seen.End(call++, round, since);
+            since = seen.Begin();
             matched += FuzzyMatch.Label("sb", "StringBuilder") is null ? 0 : 1;
+            seen.End(call++, round, since);
+            since = seen.Begin();
             matched += FuzzyMatch.Label("gTOD", "GetTypeOrDefault") is null ? 0 : 1;
+            seen.End(call, round, since);
         }
-        Ask();
+        Ask(round: -1);
         long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1_000; i++)
+        for (int round = 0; round < Allocations.Rounds; round++)
         {
-            Ask();
+            Ask(round);
         }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.True(allocated == 0, $"A thousand rounds of scoring allocated {allocated:N0} bytes: Go To File would make garbage on every key for every file");
+        Assert.True(allocated == 0, $"A thousand rounds of scoring allocated {allocated:N0} bytes: Go To File would make garbage on every key for every file. {seen.Said(allocated)}");
         Assert.True(matched > 0);
     }
 
@@ -158,4 +184,72 @@ public class FuzzyMatchTests
 
     private static IEnumerable<string> Ranked(string query, IEnumerable<string> paths) =>
         paths.Select(p => (Path: p, Score: FuzzyMatch.Score(query, p))).Where(m => m.Score is not null).OrderByDescending(m => m.Score).Select(m => m.Path);
+
+    /// <summary>What each call allocated on this thread across the measured rounds, kept in arrays made before them so that
+    /// keeping it allocates nothing, with the methods the runtime compiled on this thread in those calls.</summary>
+    private sealed class Allocations
+    {
+        public const int Rounds = 1_000;
+
+        private readonly string[] said;
+        private readonly long[] bytes;
+        private readonly int[] rounds;
+        private readonly int[] firstRound;
+        private readonly long[] compiled;
+        private long compiledAt;
+
+        public Allocations(string[] said)
+        {
+            this.said = said;
+            bytes = new long[said.Length];
+            rounds = new int[said.Length];
+            firstRound = new int[said.Length];
+            compiled = new long[said.Length];
+        }
+
+        public long Begin()
+        {
+            compiledAt = JitInfo.GetCompiledMethodCount(currentThread: true);
+            return GC.GetAllocatedBytesForCurrentThread();
+        }
+
+        /// <summary>Notes what the call begun at <paramref name="at"/> allocated in a measured round; round -1 only warms what
+        /// the rounds run.</summary>
+        public void End(int call, int round, long at)
+        {
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - at;
+            long methods = JitInfo.GetCompiledMethodCount(currentThread: true) - compiledAt;
+            if (round < 0 || allocated == 0)
+            {
+                return;
+            }
+            if (rounds[call] == 0)
+            {
+                firstRound[call] = round;
+            }
+            rounds[call]++;
+            bytes[call] += allocated;
+            compiled[call] += methods;
+        }
+
+        /// <summary>Each call that allocated, and what the rounds allocated outside the calls.</summary>
+        public string Said(long allocated)
+        {
+            List<string> calls = [];
+            for (int call = 0; call < said.Length; call++)
+            {
+                if (rounds[call] > 0)
+                {
+                    calls.Add($"{said[call]} allocated {bytes[call]:N0} bytes in {rounds[call]:N0} of the {Rounds:N0} rounds, "
+                        + $"first in round {firstRound[call] + 1:N0}, as the runtime compiled {compiled[call]:N0} methods on this thread");
+                }
+            }
+            long between = allocated - bytes.Sum();
+            if (between != 0)
+            {
+                calls.Add($"{between:N0} bytes were allocated between the calls");
+            }
+            return string.Join("; ", calls) + ".";
+        }
+    }
 }
