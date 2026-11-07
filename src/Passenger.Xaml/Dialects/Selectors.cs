@@ -130,7 +130,7 @@ public static class Selectors
     }
 
     /// <summary>The type a selector's first alternative ends at, in a style at <paramref name="scope"/>: the last type
-    /// written (one inside <c>:is()</c> too), or for a nested selector with none its parent style's target.</summary>
+    /// written (one inside <c>:is()</c> too); null for a nested selector with none, whose target is its parent style's.</summary>
     public static ClrType? TargetOf(XamlFile file, XmlElement scope, string selector)
     {
         IReadOnlyList<SelectorToken> tokens = Tokenize(selector);
@@ -166,11 +166,7 @@ public static class Selectors
         {
             return file.ResolveType(scope, type.Replace('|', ':'));
         }
-        if (nested && scope.Parent is { } parent)
-        {
-            return file.StyleTargetAt(parent);
-        }
-        return file.Types.Find("Avalonia.Controls.Control");
+        return nested && scope.Parent is not null ? null : file.Types.Find("Avalonia.Controls.Control");
     }
 
     /// <summary>What a caret at <paramref name="at"/> in a selector is writing.</summary>

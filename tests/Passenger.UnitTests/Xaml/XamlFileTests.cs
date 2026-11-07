@@ -32,4 +32,12 @@ public class XamlFileTests
         Assert.True(file.ClassName is null, $"x:Class with x declared for a CLR namespace read as naming {file.ClassName}, a class XAML's compilers never make it");
         Assert.Null(XamlFile.ClassAttribute(file.Tree));
     }
+
+    [Fact]
+    public void A_nested_style_with_no_type_asks_each_style_above_it_once()
+    {
+        string text = string.Concat(Enumerable.Repeat("<Style Selector=\"^:a\">", 64)) + string.Concat(Enumerable.Repeat("</Style>", 64));
+        XamlFile file = XamlFiles.Read("Styles.axaml", text, AvaloniaDialect.Instance);
+        Assert.Null(file.StyleTargetAt(file.Tree.Elements[^1]));
+    }
 }
