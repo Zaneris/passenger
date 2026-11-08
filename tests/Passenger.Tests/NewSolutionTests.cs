@@ -55,6 +55,29 @@ public sealed class NewSolutionTests : IDisposable
         TestFolders.Delete(place);
     }
 
+    /// <summary>New Solution reads the templates of the SDK the directory chosen builds with, as dotnet new runs there: a
+    /// directory, not made yet, under a global.json naming an SDK no one installed says the templates could not be read,
+    /// and the directory chosen back where the SDK is found takes that back, its templates listed again.</summary>
+    [AvaloniaFact]
+    public void New_Solution_reads_the_templates_of_the_SDK_the_directory_chosen_builds_with()
+    {
+        Write("Pinned/global.json", "{ \"sdk\": { \"version\": \"1.0.100\", \"rollForward\": \"disable\" } }\n");
+        MainWindow window = Started();
+        Ui.Click(window.Welcome.NewSolutionButton);
+        NewProjectDialog dialog = Templates(window);
+        int listed = dialog.Templates.Count;
+
+        dialog.Folder = Path.Combine(place, "Pinned", "Apps");
+        Ui.WaitFor(() => dialog.Problem is not null, "the templates read for the directory whose global.json pins SDK 1.0.100", TimeSpan.FromMinutes(1));
+        Assert.StartsWith("The templates could not be read: ", dialog.Problem, StringComparison.Ordinal);
+
+        dialog.Folder = place;
+        Ui.WaitFor(() => dialog.Problem is null, () => $"the templates read again for {place}, where the dialog still says: {dialog.Problem}", TimeSpan.FromMinutes(1));
+        Assert.Equal(listed, dialog.Templates.Count);
+        dialog.Close();
+        window.Close();
+    }
+
     /// <summary>New Solution from the Welcome screen lists what dotnet new list reports, refuses a name already taken or a
     /// directory not empty with why before anything is made, and makes a console app with the option chosen, opens it
     /// built and runs it.</summary>

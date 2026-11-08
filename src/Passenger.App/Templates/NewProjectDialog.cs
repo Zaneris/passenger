@@ -60,7 +60,11 @@ public enum ProjectSetup
 public sealed class NewProjectDialog : IdeWindow
 {
     private readonly ProjectTarget? target;
-    private readonly string readFrom;
+
+    /// <summary>The folder whose SDK's templates are shown: the nearest that exists of the directory chosen, as dotnet new
+    /// runs there and its global.json decides what it can make.</summary>
+    private string readFrom;
+    private readonly Passenger.Editor.Debounce followFolder;
     private readonly TextBox search = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Search", Margin = new Thickness(8, 8, 8, 6) };
     private readonly ListBox list;
     private readonly TextBlock loading;
@@ -74,6 +78,9 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly TextBox directory = new() { Classes = { StyleClasses.Search } };
     private readonly CheckBox sameDirectory = new() { Content = "Put solution and project in the same directory" };
     private readonly ComboBox format = new() { Classes = { StyleClasses.Form } };
+
+    /// <summary>Whether what the dialog says is a read of the templates that failed, which a later read takes back.</summary>
+    private bool readFailed;
     private readonly TextBlock formatNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly Control projectRow;
     private readonly Control sameRow;
@@ -153,6 +160,7 @@ public sealed class NewProjectDialog : IdeWindow
     /// <param name="godot">The Godot Settings names for a Godot game, its command line; null for the one found.</param>
     public NewProjectDialog(string folder, ProjectTarget? target, Task<string?>? containers = null, string? godot = null)
     {
+        followFolder = new Passenger.Editor.Debounce(TimeSpan.FromMilliseconds(400), FollowFolderAsync);
         godotFound = BackgroundWork.Run(() => GodotLaunch.Found(godot));
         runtimes = BackgroundWork.Run(() => DotnetMachine.Read().Installation?.Runtimes ?? []);
         create.IsEnabled = false;
@@ -205,7 +213,11 @@ public sealed class NewProjectDialog : IdeWindow
         Grid folderRow = BrowseRow.Of(directory, browse);
         solutionName.TextChanged += (_, _) => NameChanged(solution: true);
         projectName.TextChanged += (_, _) => NameChanged(solution: false);
-        directory.TextChanged += (_, _) => ShowWhere();
+        directory.TextChanged += (_, _) =>
+        {
+            ShowWhere();
+            followFolder.Restart();
+        };
         sameDirectory.IsCheckedChanged += (_, _) =>
         {
             sameChosen |= !sameSetting;
@@ -285,7 +297,11 @@ public sealed class NewProjectDialog : IdeWindow
         // What a read brings while the dialog is open (an install, another SDK) fills it in.
         Action changed = () => IdeErrors.Observe(RefreshAsync());
         ProjectTemplates.Changed += changed;
-        Closed += (_, _) => ProjectTemplates.Changed -= changed;
+        Closed += (_, _) =>
+        {
+            ProjectTemplates.Changed -= changed;
+            followFolder.Stop();
+        };
         DockPanel.SetDock(left, Dock.Left);
         Content = DialogFooter.Page(new DockPanel { Children = { left, rightPane } }, DialogFooter.OkCancel(create, Cancel, new Panel { Children = { problem, working } }));
         ShowTemplate(null);
@@ -1070,6 +1086,7 @@ public sealed class NewProjectDialog : IdeWindow
     /// the dialog has nothing yet, what dotnet new listed last, then the read itself (a memory of it once read ahead).</summary>
     private async Task RefreshAsync()
     {
+        string folder = readFrom;
         try
         {
             if (catalog is null)
@@ -1077,28 +1094,67 @@ public sealed class NewProjectDialog : IdeWindow
                 TemplateCatalog? last = null;
                 try
                 {
-                    last = await BackgroundWork.Run(() => ProjectTemplates.LastListedAsync(readFrom));
+                    last = await BackgroundWork.Run(() => ProjectTemplates.LastListedAsync(folder));
                 }
                 catch (Exception error) when (ProjectTemplates.Unreadable(error))
                 {
                     // The read itself says why.
                 }
-                if (last is not null && catalog is null)
+                if (last is not null && catalog is null && PathNames.Same(folder, readFrom))
                 {
                     Show(last);
                 }
             }
-            Show(await BackgroundWork.Run(() => ProjectTemplates.LoadAsync(readFrom)));
+            TemplateCatalog read = await BackgroundWork.Run(() => ProjectTemplates.LoadAsync(folder));
+            if (!PathNames.Same(folder, readFrom))
+            {
+                return;
+            }
+            Show(read);
+            if (readFailed)
+            {
+                readFailed = false;
+                Fail(null);
+            }
         }
         catch (Exception error) when (ProjectTemplates.Unreadable(error))
         {
+            if (!PathNames.Same(folder, readFrom))
+            {
+                return;
+            }
             if (catalog is null)
             {
                 loading.Text = $"The templates could not be read: {error.Message}";
                 loading.IsVisible = true;
             }
+            readFailed = true;
             Fail($"The templates could not be read: {error.Message}");
         }
+    }
+
+    /// <summary>The templates read again once the directory chosen is under another folder than those shown: the SDK there
+    /// may be another, making other templates and formats, or none.</summary>
+    private async Task FollowFolderAsync()
+    {
+        if (Existing(Folder) is { } there && !PathNames.Same(there, readFrom))
+        {
+            readFrom = there;
+            await RefreshAsync();
+        }
+    }
+
+    /// <summary>The nearest folder that exists of a full path, the path itself where it does; null for none.</summary>
+    private static string? Existing(string path)
+    {
+        for (string? at = path.Length > 0 && Path.IsPathFullyQualified(path) ? path : null; at is not null; at = Path.GetDirectoryName(at))
+        {
+            if (Directory.Exists(at))
+            {
+                return at;
+            }
+        }
+        return null;
     }
 
     /// <summary>The templates of a read, in families, the family and Type chosen kept where they still are (a Type not
