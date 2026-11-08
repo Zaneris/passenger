@@ -74,6 +74,7 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly TextBox directory = new() { Classes = { StyleClasses.Search } };
     private readonly CheckBox sameDirectory = new() { Content = "Put solution and project in the same directory" };
     private readonly ComboBox format = new() { Classes = { StyleClasses.Form } };
+    private readonly TextBlock formatNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly Control projectRow;
     private readonly Control sameRow;
     private readonly Control? formatRow;
@@ -219,7 +220,8 @@ public sealed class NewProjectDialog : IdeWindow
         sameRow = Row(null, sameDirectory);
         if (target is null)
         {
-            formatRow = Row("Solution format:", format);
+            format.HorizontalAlignment = HorizontalAlignment.Left;
+            formatRow = Row("Solution format:", new StackPanel { Spacing = 6, Children = { format, formatNote } });
             fields.Children.Add(Row("Solution name:", solutionName));
             fields.Children.Add(projectRow);
             fields.Children.Add(Row("Solution directory:", folderRow));
@@ -1115,6 +1117,9 @@ public sealed class NewProjectDialog : IdeWindow
         List<string> formats = [.. read.SolutionFormats.Select(f => $".{f}")];
         format.ItemsSource = formats;
         format.SelectedIndex = formatWas is not null && formats.Contains(formatWas) ? formats.IndexOf(formatWas) : 0;
+        // An SDK before 9.0.200 has dotnet new sln make no .slnx, which a list of one leaves unsaid.
+        formatNote.Text = formats is [".sln"] ? $"SDK {read.Sdk} makes no .slnx: SDK 9.0.200 and later do" : string.Empty;
+        formatNote.IsVisible = formatNote.Text.Length > 0;
         setting = false;
         Filter(searched: false);
     }
