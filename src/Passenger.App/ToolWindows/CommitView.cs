@@ -61,7 +61,8 @@ public sealed class CommitGroup(string name, IReadOnlyList<CommitRow> rows) : Ob
 /// Conflicts, with its Resolve link and no box; Amend, Sign-off (kept for the folder) and whether this commit is signed
 /// and with which key (git's config, turned on or off for one commit; Commit Signing… sets it up), then the message (a
 /// merge's own message while one is under way); Commit and Commit and Push. Double-click opens a file's diff, or a
-/// conflicted file's merge; Rollback puts the chosen ones back.</summary>
+/// conflicted file's merge; Rollback puts the chosen ones back. In a folder of no repository it shows its empty state
+/// alone.</summary>
 public sealed class CommitView : DockPanel, IOwnKeys
 {
     private VcsController vcs;
@@ -84,6 +85,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private readonly Button commit;
     private readonly Button commitAndPush;
     private readonly EmptyState placeholder;
+    private readonly Border form;
     private readonly StackPanel underWay;
     private readonly TextBlock underWayText;
     private readonly Button continueRebase;
@@ -233,13 +235,14 @@ public sealed class CommitView : DockPanel, IOwnKeys
             Margin = new Thickness(10, 0, 10, 10),
             Children = { commit, commitAndPush },
         };
-        Border bottom = new()
+        // A window shorter than the form scrolls it, so Commit is still reached sharing a column with another window.
+        form = new Border
         {
             [DockProperty] = Dock.Bottom,
             BorderThickness = new Thickness(0, 1, 0, 0),
-            Child = new StackPanel { Children = { underWay, options, unsigned, message, buttons } },
+            Child = new ScrollViewer { Content = new StackPanel { Children = { underWay, options, unsigned, message, buttons } } },
         };
-        bottom.Bind(Border.BorderBrushProperty, bottom.GetResourceObservable(TokenKeys.Divider));
+        form.Bind(Border.BorderBrushProperty, form.GetResourceObservable(TokenKeys.Divider));
 
         StackPanel tools = new()
         {
@@ -263,7 +266,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         Border top = ToolBars.Top(tools);
 
         Children.Add(top);
-        Children.Add(bottom);
+        Children.Add(form);
         Children.Add(new Panel { Children = { list, placeholder } });
         vcs.Changed += OnChanged;
         vcs.BusyChanged += OnBusyChanged;
@@ -547,6 +550,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
         bool creates = vcs.Repository is null && vcs.WhyNotCreate is null;
         placeholder.Offer(creates ? AppActions.CreateRepository : null, VcsController.CreateRepository);
         placeholder.IsVisible = rows.Count == 0;
+        // Nothing of the form can be used before there is a repository, and the window is its empty state's.
+        form.IsVisible = vcs.Repository is not null;
         underWay.IsVisible = vcs.Merge.UnderWay is not null;
         underWayText.Text = vcs.Merge.UnderWay;
         continueRebase.IsVisible = vcs.Merge.Operation is MergeOperation.Rebase;

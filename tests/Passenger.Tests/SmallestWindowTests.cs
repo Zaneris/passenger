@@ -3,15 +3,18 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.ToolWindows;
+using Passenger.App.Vcs;
 
 namespace Passenger.Tests;
 
 /// <summary>At the smallest window (MainWindow.SmallestWidth wide and SmallestHeight tall) everything shown can be read
 /// and reached: the Welcome page scrolls to each of its tiles, Find in Files stands inside the window, the toolbar's long
-/// names give way with an ellipsis and never draw over each other, and what the status bar says stands whole in front of
-/// the file's path.</summary>
+/// names give way with an ellipsis and never draw over each other, what the status bar says stands whole in front of
+/// the file's path, and the Commit window sharing its column draws nothing over its form.</summary>
 public sealed class SmallestWindowTests
 {
     [AvaloniaFact]
@@ -139,12 +142,87 @@ public sealed class SmallestWindowTests
         }
     }
 
+    /// <summary>At the smallest window, the Commit window sharing its column with Bookmarks: in a folder of no repository it
+    /// shows its words and Create Git Repository whole, taking a click, and nothing of a form no repository can use; in a
+    /// repository with nothing to commit its words are cut where the form begins, never drawn over it, and the form,
+    /// taller than the window leaves it, scrolls to its Commit button.</summary>
+    [AvaloniaFact]
+    public void At_the_smallest_window_the_commit_windows_empty_state_never_draws_over_its_form_which_scrolls_to_commit()
+    {
+        string plain = TestFolders.Create("smallest-commit-plain-");
+        string repository = TestFolders.Create("smallest-commit-git-");
+        foreach (string folder in (string[])[plain, repository])
+        {
+            File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(1);\n");
+        }
+        TestGit.Init(repository);
+        try
+        {
+            MainWindow window = Ui.OpenFolder(plain, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
+            CommitView commit = Shown(window);
+            Assert.Null(window.Vcs.Repository);
+            Assert.False(Form(commit).IsEffectivelyVisible, "In a folder of no repository the Commit window shows Amend, Sign and the message, none of which it can use");
+            EmptyState empty = commit.GetVisualDescendants().OfType<EmptyState>().Single();
+            foreach (Control shown in empty.GetVisualChildren().OfType<Control>().Where(c => c.IsEffectivelyVisible))
+            {
+                Assert.True(Drawn(window, shown) == Placed(window, shown),
+                    $"The Commit window's '{Words(shown)}' at {Placed(window, shown)} is cut to {Drawn(window, shown)} in a window with room for it");
+            }
+            Button create = empty.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == VcsController.CreateRepository);
+            Visual? hit = window.InputHitTest(Placed(window, create).Center) as Visual;
+            Assert.True(hit is not null && hit.GetSelfAndVisualAncestors().Contains(create),
+                $"Create Git Repository at {Placed(window, create)} is covered by {hit?.GetType().Name ?? "nothing"}: a click on it misses");
+            window.Close();
+
+            window = Ui.OpenFolder(repository, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
+            commit = Shown(window);
+            Assert.True(window.Vcs.Repository is not null && commit.Rows.Count == 0, $"A repository with nothing to commit lists {commit.Rows.Count} rows");
+            ScrollViewer form = Form(commit);
+            Assert.True(form.Extent.Height > form.Viewport.Height + 1,
+                $"The form ({form.Extent.Height:0.#} tall) fits the {form.Viewport.Height:0.#} the Commit window leaves it: the test no longer reaches a short window");
+            empty = commit.GetVisualDescendants().OfType<EmptyState>().Single();
+            Assert.Equal("No changes", empty.Text);
+            foreach (Control shown in empty.GetVisualChildren().OfType<Control>().Where(c => c.IsEffectivelyVisible))
+            {
+                Assert.False(Drawn(window, shown).Intersects(Drawn(window, form)),
+                    $"The Commit window's '{Words(shown)}' draws at {Drawn(window, shown)}, over its form at {Drawn(window, form)}");
+            }
+            Button commitButton = form.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Commit");
+            commitButton.BringIntoView();
+            Ui.Settle();
+            Assert.True(commitButton.Bounds.Height > 0 && Drawn(window, commitButton) == Placed(window, commitButton),
+                $"The Commit button at {Placed(window, commitButton)}, scrolled to, is shown only as {Drawn(window, commitButton)}");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(plain);
+            TestFolders.Delete(repository);
+        }
+
+        static CommitView Shown(MainWindow window)
+        {
+            window.Perform(AppActions.ShowCommit);
+            window.Perform(AppActions.ShowBookmarks);
+            Ui.Settle();
+            return window.CommitView;
+        }
+
+        static ScrollViewer Form(CommitView commit) =>
+            commit.GetLogicalDescendants().OfType<CheckBox>().Single(c => c.Content as string == "Amend").FindLogicalAncestorOfType<ScrollViewer>()!;
+    }
+
     private static Control Named(MainWindow window, string name) =>
         window.GetVisualDescendants().OfType<Control>().FirstOrDefault(c => c.Name == name) ?? throw new Xunit.Sdk.XunitException($"The window has no {name}");
 
     private static string Name(Control control) => control.Name ?? control.GetType().Name;
 
-    private static string Words(Control control) => string.Join(" ", control.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).Take(1));
+    private static string Words(Control control) => string.Join(" ", control.GetSelfAndVisualDescendants().OfType<TextBlock>().Select(t => t.Text).Take(1));
 
     private static Rect Placed(Visual window, Visual control) => new(control.TranslatePoint(default, window)!.Value, control.Bounds.Size);
+
+    /// <summary>What of the control is drawn: its place cut by every visual above it that clips.</summary>
+    private static Rect Drawn(Visual window, Visual control) =>
+        control.GetSelfAndVisualAncestors().TakeWhile(v => v != window).Where(v => v.ClipToBounds)
+            .Aggregate(Placed(window, control), (drawn, clip) => drawn.Intersect(Placed(window, clip)));
 }

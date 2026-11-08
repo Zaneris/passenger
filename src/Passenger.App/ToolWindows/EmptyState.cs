@@ -7,7 +7,8 @@ namespace Passenger.App.ToolWindows;
 /// <summary>What a tool window's list says while it has nothing to show, over where its rows would be: its words, muted
 /// and centred as every such text is (<c>emptyText</c>), and under them, while one is offered, a link to the action that
 /// would give it something to show (Create Git Repository where the folder is in no repository), which
-/// <see cref="ActionRequested"/> asks the window for.</summary>
+/// <see cref="ActionRequested"/> asks the window for. Where its window leaves it less room than its words take, they are
+/// cut, never drawn over what is beside it.</summary>
 public sealed class EmptyState : StackPanel
 {
     private readonly TextBlock words = new() { Classes = { StyleClasses.EmptyText } };
@@ -17,6 +18,7 @@ public sealed class EmptyState : StackPanel
     public EmptyState()
     {
         VerticalAlignment = VerticalAlignment.Center;
+        ClipToBounds = true;
         Children.Add(words);
         Children.Add(link);
         link.Click += (_, _) =>
