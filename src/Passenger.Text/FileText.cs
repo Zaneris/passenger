@@ -213,12 +213,33 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         }
     }
 
+    /// <summary>A file's bytes, read into one array of the length it has as it opens, on to its end where it has grown since
+    /// (another program writing it), short where it has shrunk; one that is no file of a length (a pipe) read as it comes.</summary>
     private static byte[] FromDisk(string path)
     {
-        using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using MemoryStream bytes = new();
-        stream.CopyTo(bytes);
-        return bytes.ToArray();
+        using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, bufferSize: 0);
+        if (!stream.CanSeek || stream.Length > Array.MaxLength)
+        {
+            using MemoryStream all = new();
+            stream.CopyTo(all);
+            return all.ToArray();
+        }
+        byte[] bytes = new byte[stream.Length];
+        int read = stream.ReadAtLeast(bytes, bytes.Length, throwOnEndOfStream: false);
+        if (read < bytes.Length)
+        {
+            return bytes[..read];
+        }
+        int more = stream.ReadByte();
+        if (more < 0)
+        {
+            return bytes;
+        }
+        using MemoryStream grown = new();
+        grown.Write(bytes);
+        grown.WriteByte((byte)more);
+        stream.CopyTo(grown);
+        return grown.ToArray();
     }
 
     /// <summary>A file about to be written by a save, so a folder watcher takes it for the change it is rather than a
