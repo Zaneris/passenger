@@ -375,31 +375,15 @@ public sealed class SheetTable(Workbook book, SheetCell[] cells, int[] rows, int
     /// <summary>Where a row's cell in a column is among the cells, or -1 where the row has none there.</summary>
     private int At(int row, int column)
     {
-        int low = rows[row];
-        int high = rows[row + 1] - 1;
+        int start = rows[row];
+        int end = rows[row + 1];
         // A row with no gap before the column holds it at its own place.
-        int direct = low + column;
-        if (direct <= high && cells[direct].Column == column)
+        int direct = start + column;
+        if (direct < end && cells[direct].Column == column)
         {
             return direct;
         }
-        while (low <= high)
-        {
-            int middle = low + ((high - low) / 2);
-            int found = cells[middle].Column;
-            if (found == column)
-            {
-                return middle;
-            }
-            if (found < column)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle - 1;
-            }
-        }
-        return -1;
+        int at = start + Passenger.Core.Sorted.FirstAtOrAfter<SheetCell, int>(cells.AsSpan(start, end - start), static c => c.Column, column);
+        return at < end && cells[at].Column == column ? at : -1;
     }
 }

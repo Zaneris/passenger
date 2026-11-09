@@ -55,22 +55,7 @@ public sealed class XmlTree
     /// <summary>Whether an offset is inside a comment (its <c>&lt;!--</c> and <c>--&gt;</c> included).</summary>
     public bool InComment(int offset)
     {
-        int low = 0;
-        int high = comments.Count - 1;
-        int before = -1;
-        while (low <= high)
-        {
-            int middle = (low + high) / 2;
-            if (comments[middle].Start < offset)
-            {
-                before = middle;
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle - 1;
-            }
-        }
+        int before = Passenger.Core.Sorted.FirstAtOrAfter(comments, static c => c.Start, offset) - 1;
         if (before < 0)
         {
             return false;
@@ -89,33 +74,15 @@ public sealed class XmlTree
         IReadOnlyList<XmlElement> level = Roots;
         while (true)
         {
-            XmlElement? next = null;
-            int low = 0;
-            int high = level.Count - 1;
-            while (low <= high)
-            {
-                int middle = (low + high) / 2;
-                XmlElement element = level[middle];
-                if (offset <= element.Start)
-                {
-                    high = middle - 1;
-                }
-                else if (offset > element.End || (offset == element.End && element.IsClosed))
-                {
-                    low = middle + 1;
-                }
-                else
-                {
-                    next = element;
-                    break;
-                }
-            }
-            if (next is null)
+            // The first not wholly before the offset holds it, unless it begins at or after it.
+            int at = Passenger.Core.Sorted.FirstNotBefore(level.Count, (level, offset),
+                static (siblings, i) => siblings.offset > siblings.level[i].End || (siblings.offset == siblings.level[i].End && siblings.level[i].IsClosed));
+            if (at == level.Count || offset <= level[at].Start)
             {
                 return found;
             }
-            found = next;
-            level = next.Children;
+            found = level[at];
+            level = found.Children;
         }
     }
 

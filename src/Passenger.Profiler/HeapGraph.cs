@@ -587,24 +587,8 @@ internal sealed class HeapGraph
         }
 
         /// <summary>Where a key's dependent handles begin among them, or past their end when it has none.</summary>
-        private static int FirstDependent((ulong Key, ulong Value)[] dependents, ulong key)
-        {
-            int low = 0;
-            int high = dependents.Length;
-            while (low < high)
-            {
-                int middle = (low + high) >>> 1;
-                if (dependents[middle].Key < key)
-                {
-                    low = middle + 1;
-                }
-                else
-                {
-                    high = middle;
-                }
-            }
-            return low;
-        }
+        private static int FirstDependent((ulong Key, ulong Value)[] dependents, ulong key) =>
+            Passenger.Core.Sorted.FirstAtOrAfter<(ulong Key, ulong Value), ulong>(dependents, static d => d.Key, key);
 
         private static string FieldName(ClrReference reference)
         {

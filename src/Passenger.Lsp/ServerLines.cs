@@ -152,20 +152,7 @@ public sealed class ServerLines
         }
         line = Math.Clamp(line, 0, LineCount - 1);
         // How many extra breaks come before the line: they and the editor's lines before it add up to its number.
-        int low = 0;
-        int high = extra.Length;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (LineAfter(middle) <= line)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
+        int low = Passenger.Core.Sorted.FirstAfter(extra.Length, this, static (lines, index) => lines.LineAfter(index), line);
         LineSpan span = Text.GetLine(line - low);
         int start = low > 0 && LineAfter(low - 1) == line ? extra[low - 1] : span.Start;
         int end = low < extra.Length && extra[low] <= span.End ? extra[low] - 1 : span.End;

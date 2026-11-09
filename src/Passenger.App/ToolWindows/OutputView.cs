@@ -933,24 +933,7 @@ public sealed class OutputView : DockPanel
             return merged;
         }
 
-        /// <summary>The first stretch reaching past an offset, found by halving: they are in order and apart.</summary>
-        private int First(int offset)
-        {
-            int low = 0;
-            int high = spans.Count;
-            while (low < high)
-            {
-                int middle = (low + high) / 2;
-                if (spans[middle].End <= offset)
-                {
-                    low = middle + 1;
-                }
-                else
-                {
-                    high = middle;
-                }
-            }
-            return low;
-        }
+        /// <summary>The first stretch reaching past an offset: they are in order and apart.</summary>
+        private int First(int offset) => Passenger.Core.Sorted.FirstAfter(spans, static s => s.End, offset);
     }
 }

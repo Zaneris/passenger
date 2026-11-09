@@ -139,26 +139,7 @@ public sealed class MarkdownBlocks : Panel
     }
 
     /// <summary>The index of the block at a line of the file (from zero) or the last before it, -1 for none.</summary>
-    internal int IndexAtLine(int line)
-    {
-        int low = 0;
-        int high = entries.Length - 1;
-        int found = -1;
-        while (low <= high)
-        {
-            int middle = (low + high) / 2;
-            if (entries[middle].Placed.Line <= line)
-            {
-                found = middle;
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle - 1;
-            }
-        }
-        return found;
-    }
+    internal int IndexAtLine(int line) => Passenger.Core.Sorted.FirstAfter<Entry, int>(entries, static e => e.Placed.Line, line) - 1;
 
     /// <summary>Where a block's words are drawn down the page and how tall, its margins aside: the block is drawn now if it
     /// was not, so a scroll to it lands on its words.</summary>
@@ -351,26 +332,7 @@ public sealed class MarkdownBlocks : Panel
     }
 
     /// <summary>The index of the block at a place down the page: the last whose top is at or above it.</summary>
-    private int IndexAt(double y)
-    {
-        int low = 0;
-        int high = entries.Length - 1;
-        int found = 0;
-        while (low <= high)
-        {
-            int middle = (low + high) / 2;
-            if (tops[middle] <= y)
-            {
-                found = middle;
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle - 1;
-            }
-        }
-        return found;
-    }
+    private int IndexAt(double y) => Math.Max(0, Passenger.Core.Sorted.FirstAfter<double>(tops.AsSpan(0, entries.Length), y) - 1);
 
     /// <summary>Each block's top again where a height changed, a block not yet estimated estimated at the page's width.</summary>
     private void Tops()

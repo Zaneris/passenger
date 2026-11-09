@@ -289,24 +289,8 @@ public sealed class FileIndex
 
     /// <summary>The first file at a depth that is under a folder or after it in the walk's order, as the files of each
     /// depth under one folder lie together.</summary>
-    private int FirstUnder(string folder, int level)
-    {
-        int low = 0;
-        int high = count;
-        while (low < high)
-        {
-            int middle = low + (high - low) / 2;
-            if (WalkOrder.BeforeUnder(files[middle], folder, level))
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
-    }
+    private int FirstUnder(string folder, int level) =>
+        Passenger.Core.Sorted.FirstNotBefore(count, (files, folder, level), static (under, at) => WalkOrder.BeforeUnder(under.files[at], under.folder, under.level));
 
     private static int Taken(List<(int Start, int End)> runs)
     {

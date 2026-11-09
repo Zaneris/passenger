@@ -485,8 +485,7 @@ internal sealed class FoundText(SearchPattern pattern, TextSnapshot? snapshot, s
     public int InLines(int offset)
     {
         _ = Lines;
-        int before = Array.BinarySearch(returns, offset);
-        return offset - (before >= 0 ? before : ~before);
+        return offset - Sorted.FirstAtOrAfter<int>(returns, offset);
     }
 
     /// <summary>How many '\n's of <see cref="Lines"/> from <paramref name="from"/> to <paramref name="to"/> stand after
@@ -494,9 +493,7 @@ internal sealed class FoundText(SearchPattern pattern, TextSnapshot? snapshot, s
     public int Lone(int from, int to)
     {
         int[] at = lone ??= Lones(Lines);
-        int first = Array.BinarySearch(at, from);
-        int last = Array.BinarySearch(at, to);
-        return (last >= 0 ? last : ~last) - (first >= 0 ? first : ~first);
+        return Sorted.FirstAtOrAfter<int>(at, to) - Sorted.FirstAtOrAfter<int>(at, from);
     }
 
     /// <summary>Match <paramref name="index"/>, found at <paramref name="found"/> in the text itself.</summary>

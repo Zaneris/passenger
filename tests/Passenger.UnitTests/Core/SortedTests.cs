@@ -3,7 +3,7 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>The editor's sorted lists searched by halving: each search answers what a scan from the start answers, over
-/// keys that repeat, in spans, lists and keys read at a place alike.</summary>
+/// keys that repeat, in spans, lists, keys read at a place (of a span too) and a test of each place alike.</summary>
 public class SortedTests
 {
     [Fact]
@@ -32,6 +32,11 @@ public class SortedTests
                 Assert.True(after == Sorted.FirstAfter(list, static i => i.Key, value), $"The first item after {where} in a list is wrong");
                 Assert.True(atOrAfter == Sorted.FirstAtOrAfter(keys.Length, keys, static (all, at) => all[at], value), $"The first place at or after {where} by its key is wrong, so a comment on screen is passed over");
                 Assert.True(after == Sorted.FirstAfter(keys.Length, keys, static (all, at) => all[at], value), $"The first place after {where} by its key is wrong");
+                ReadOnlySpan<int> span = keys;
+                Assert.True(atOrAfter == Sorted.FirstAtOrAfter(span.Length, span, static (all, at) => all[at], value), $"The first place at or after {where} by its key in a span is wrong, so a wide character is drawn one column wide");
+                Assert.True(after == Sorted.FirstAfter(span.Length, span, static (all, at) => all[at], value), $"The first place after {where} by its key in a span is wrong");
+                Assert.True(atOrAfter == Sorted.FirstNotBefore(keys.Length, (keys, value), static (state, at) => state.keys[at] < state.value), $"The first place a test puts at or after {where} is wrong, so a folder's files are looked for in the wrong place");
+                Assert.True(after == Sorted.FirstNotBefore(keys.Length, (keys, value), static (state, at) => state.keys[at] <= state.value), $"The first place a test puts after {where} is wrong");
             }
         }
     }
@@ -41,6 +46,7 @@ public class SortedTests
     {
         Assert.Equal(0, Sorted.FirstAtOrAfter<int>([], 5));
         Assert.Equal(0, Sorted.FirstAfter(new List<int>(), static k => k, 5));
+        Assert.Equal(0, Sorted.FirstNotBefore(0, 0, static (_, _) => true));
         Int128[] wide = [0, Int128.MaxValue / 2, Int128.MaxValue];
         Assert.Equal(1, Sorted.FirstAfter<Int128>(wide, 0));
         Assert.Equal(2, Sorted.FirstAfter<Int128>(wide, Int128.MaxValue / 2));

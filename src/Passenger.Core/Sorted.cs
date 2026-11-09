@@ -2,7 +2,7 @@ namespace Passenger.Core;
 
 /// <summary>Places in what rises by a key, found by halving: the first item whose key is at or after a value, or after it,
 /// which is also how many come before; the count when none does. Keys may repeat. A key is read by a static lambda, so a
-/// search allocates nothing.</summary>
+/// search allocates nothing; where no key tells the order, a test of each place says whether it comes before.</summary>
 public static class Sorted
 {
     /// <summary>The first of the items whose key is at or after <paramref name="value"/>.</summary>
@@ -30,16 +30,24 @@ public static class Sorted
         where T : IComparable<T> => Halve(new SpanValues<T>(values, value, past: true));
 
     /// <summary>The first of the places 0 to <paramref name="count"/> whose key, read from <paramref name="state"/> at the
-    /// place, is at or after <paramref name="value"/>: for keys no list holds, or a struct's list that an interface would
-    /// box.</summary>
+    /// place, is at or after <paramref name="value"/>: for keys no list holds (a span of runs), or a struct's list that an
+    /// interface would box.</summary>
     public static int FirstAtOrAfter<TState, TKey>(int count, TState state, Func<TState, int, TKey> keyAt, TKey value)
+        where TState : allows ref struct
         where TKey : IComparable<TKey> => Halve(new StateKeys<TState, TKey>(count, state, keyAt, value, past: false));
 
     /// <summary>The first of the places 0 to <paramref name="count"/> whose key, read from <paramref name="state"/> at the
-    /// place, is after <paramref name="value"/>: for keys no list holds, or a struct's list that an interface would
-    /// box.</summary>
+    /// place, is after <paramref name="value"/>: for keys no list holds (a span of runs), or a struct's list that an
+    /// interface would box.</summary>
     public static int FirstAfter<TState, TKey>(int count, TState state, Func<TState, int, TKey> keyAt, TKey value)
+        where TState : allows ref struct
         where TKey : IComparable<TKey> => Halve(new StateKeys<TState, TKey>(count, state, keyAt, value, past: true));
+
+    /// <summary>The first of the places 0 to <paramref name="count"/> that a test, given <paramref name="state"/> and the
+    /// place, says does not come before the answer: for an order no key tells. The test holds for every place up to some
+    /// one and for none after it.</summary>
+    public static int FirstNotBefore<TState>(int count, TState state, Func<TState, int, bool> before)
+        where TState : allows ref struct => Halve(new Tested<TState>(count, state, before));
 
     private static int Halve<TProbe>(scoped in TProbe probe)
         where TProbe : IProbe, allows ref struct
@@ -97,12 +105,25 @@ public static class Sorted
         public bool Before(int index) => Ahead(values[index].CompareTo(value), past);
     }
 
-    private readonly struct StateKeys<TState, TKey>(int count, TState state, Func<TState, int, TKey> keyAt, TKey value, bool past) : IProbe
+    private readonly ref struct StateKeys<TState, TKey>(int count, TState state, Func<TState, int, TKey> keyAt, TKey value, bool past) : IProbe
+        where TState : allows ref struct
         where TKey : IComparable<TKey>
     {
+        private readonly TState state = state;
+
         public int Count => count;
 
         public bool Before(int index) => Ahead(keyAt(state, index).CompareTo(value), past);
+    }
+
+    private readonly ref struct Tested<TState>(int count, TState state, Func<TState, int, bool> before) : IProbe
+        where TState : allows ref struct
+    {
+        private readonly TState state = state;
+
+        public int Count => count;
+
+        public bool Before(int index) => before(state, index);
     }
 
     /// <summary>Whether a key that compares so with the value comes before the answer: below it, or with

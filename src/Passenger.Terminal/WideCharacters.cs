@@ -4,7 +4,7 @@ namespace Passenger.Terminal;
 
 /// <summary>The characters a terminal draws two columns wide: East Asian Wide and Fullwidth, and those presented as
 /// emoji (the regional indicators besides).</summary>
-internal static class WideCharacters
+internal static partial class WideCharacters
 {
     /// <summary>The first and last code point of each range, in order.</summary>
     private static ReadOnlySpan<int> Ranges =>
@@ -31,32 +31,4 @@ internal static class WideCharacters
         0x1FA70, 0x1FA7C, 0x1FA80, 0x1FA89, 0x1FA8F, 0x1FAC6, 0x1FACE, 0x1FADC, 0x1FADF, 0x1FAE9, 0x1FAF0, 0x1FAF8,
         0x20000, 0x2FFFD, 0x30000, 0x3FFFD,
     ];
-
-    public static bool Contains(int rune)
-    {
-        ReadOnlySpan<int> ranges = Ranges;
-        if (rune < ranges[0] || rune > ranges[^1])
-        {
-            return false;
-        }
-        int low = 0;
-        int high = (ranges.Length / 2) - 1;
-        while (low <= high)
-        {
-            int middle = (low + high) / 2;
-            if (rune < ranges[middle * 2])
-            {
-                high = middle - 1;
-            }
-            else if (rune > ranges[(middle * 2) + 1])
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 }

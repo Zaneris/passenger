@@ -9,8 +9,12 @@ looks past, and those after which a combining dot above is hidden (i, j, dotless
 confusables.txt reads as one of them). VERSION is the Unicode version of the ICU Godot carries (ICU 78.3 in Godot 4.7).
 The files are fetched once into artifacts/unicode/<version>/. THIRD_PARTY_NOTICES.md carries the Unicode licence.
 """
+import importlib.util
 import os
-import urllib.request
+
+_spec = importlib.util.spec_from_file_location("unicode", os.path.join(os.path.dirname(os.path.abspath(__file__)), "unicode.py"))
+unicode = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(unicode)
 
 VERSION = "17.0.0"
 FILES = {
@@ -23,50 +27,18 @@ FILES = {
     "PropList.txt": f"https://www.unicode.org/Public/{VERSION}/ucd/PropList.txt",
 }
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "src", "Passenger.Workspace", "GDScript", "UnicodeIdentifiers.cs")
+OUT = os.path.join(unicode.ROOT, "src", "Passenger.Workspace", "GDScript", "UnicodeIdentifiers.cs")
+rows = unicode.rows
+points = unicode.points
+ranges = unicode.ranges
 
 
 def fetch(name, cache):
-    path = os.path.join(cache, name)
-    if not os.path.exists(path):
-        with urllib.request.urlopen(FILES[name]) as response:
-            data = response.read()
-        with open(path, "wb") as out:
-            out.write(data)
-    with open(path, encoding="utf-8-sig") as text:
-        return text.read()
-
-
-def rows(text):
-    for line in text.splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            yield [field.strip() for field in line.split(";")]
-
-
-def points(field):
-    if ".." in field:
-        first, last = field.split("..")
-        return range(int(first, 16), int(last, 16) + 1)
-    return [int(field, 16)]
-
-
-def ranges(values):
-    """Runs of consecutive code points with one value: (first, last, value)."""
-    out = []
-    for point in sorted(values):
-        value = values[point]
-        if out and out[-1][1] == point - 1 and out[-1][2] == value:
-            out[-1][1] = point
-        else:
-            out.append([point, point, value])
-    return out
+    return unicode.fetch(FILES, name, cache)
 
 
 def main():
-    cache = os.path.join(ROOT, "artifacts", "unicode", VERSION)
-    os.makedirs(cache, exist_ok=True)
+    cache = unicode.cache(VERSION)
     allowed = set()
     for fields in rows(fetch("IdentifierStatus.txt", cache)):
         if fields[1] == "Allowed":
