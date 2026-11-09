@@ -4,16 +4,9 @@ using Passenger.App.Tables;
 
 namespace Passenger.App.Database;
 
-public enum DatabaseKind
-{
-    Sqlite,
-    Postgres,
-    SqlServer,
-    MySql,
-}
-
 public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folder)
 {
+    public Guid Id { get; init; } = Guid.NewGuid();
     internal string ConnectionString { get; init; } = string.Empty;
 
     public override string ToString() => ContainerSecrets.InSaid($"{Name} · {Kind}");

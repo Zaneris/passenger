@@ -150,6 +150,10 @@ public static class AppActions
     public const string DatabaseRefresh = "app.database.refresh";
     public const string DatabaseConnect = "app.database.connect";
     public const string DatabaseAdd = "app.database.add";
+    public const string DatabaseConnectionEdit = "app.database.connectionEdit";
+    public const string DatabaseConnectionRename = "app.database.connectionRename";
+    public const string DatabaseOpenTable = "app.database.openTable";
+    public const string DatabaseCancel = "app.database.cancel";
     public const string DatabaseBrowse = "app.database.browse";
     public const string DatabaseQuery = "app.database.query";
     public const string DatabaseNext = "app.database.next";

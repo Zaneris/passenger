@@ -35,6 +35,8 @@
   <!-- What the container runs read of Compose's and Docker's files, as text and paths alone, compiled in since their
        project is the app's. -->
   <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Database/DatabaseKind.cs" Link="App/DatabaseKind.cs" />
+    <Compile Include="../../src/Passenger.App/Database/DatabaseSql.cs" Link="App/DatabaseSql.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ComposeFiles.cs" Link="App/ComposeFiles.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ContainerPaths.cs" Link="App/ContainerPaths.cs" />
     <Compile Include="../../src/Passenger.App/Containers/DockerRunWords.cs" Link="App/DockerRunWords.cs" />

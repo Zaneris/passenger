@@ -39,6 +39,8 @@ public static class FileIcons
     /// <summary>A diff's tab's icon, in its file's tint.</summary>
     public static Geometry ForDiff => Find<Geometry>(IconKeys.Diff);
 
+    public static Geometry ForDatabase => Find<Geometry>(IconKeys.Database);
+
     /// <summary>A row's look in the set, or null for what it draws as a folder or a link: a plain folder, a solution
     /// folder and a target framework.</summary>
     private static FileIconLook? Look(ExplorerNode node) => node.Kind switch

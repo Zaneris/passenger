@@ -15,6 +15,8 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
     private CancellationTokenSource lifetime = new();
     private DatabaseSource? connected;
     private readonly List<DatabaseSource> manual = [];
+    private readonly HashSet<(DatabaseKind Kind, string Connection)> overridden = [];
+    private readonly Dictionary<DatabaseTable, DatabaseSchema> schemas = [];
 
     public event EventHandler? Changed;
     public IReadOnlyList<DatabaseSource> Sources { get; private set; } = [];
@@ -54,6 +56,7 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
         History = kept?.Value.Queries ?? [];
         Sources = [];
         manual.Clear();
+        overridden.Clear();
         Discovered = false;
         Source = null;
         Forget();
@@ -93,6 +96,7 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
         Table = null;
         Schema = null;
         Rows = null;
+        schemas.Clear();
         Said = "Choose a connection and Connect to browse its tables.";
     }
 
@@ -109,6 +113,49 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
         Choose(source);
     }
 
+    public void ReplaceConnection(DatabaseSource original, DatabaseSource replacement)
+    {
+        UiThread.Check();
+        overridden.Add((original.Kind, original.ConnectionString));
+        manual.RemoveAll(s => s.Id == original.Id);
+        manual.Add(replacement);
+        Sources = [.. Sources.Select(s => s.Id == original.Id ? replacement : s)];
+        if (Source?.Id == original.Id)
+        {
+            bool same = original.Kind == replacement.Kind && original.ConnectionString == replacement.ConnectionString;
+            Source = replacement;
+            if (same && connected?.Id == original.Id)
+            {
+                connected = replacement;
+            }
+            else
+            {
+                Forget();
+            }
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public bool HasConnection(DatabaseSource source) => Sources.Any(s => s.Id == source.Id && s.Kind == source.Kind && s.ConnectionString == source.ConnectionString);
+
+    public void CancelOperation() { UiThread.Check(); running?.Cancel(); }
+
+    public DatabaseSchema? SchemaOf(DatabaseTable table) => schemas.GetValueOrDefault(table);
+
+    public Task ReadSchemaAsync(DatabaseTable table) => RunAsync(AppActions.DatabaseBrowse, "Reading table structure…", async cancel =>
+    {
+        DatabaseSource source = RequireConnection();
+        if (!schemas.ContainsKey(table))
+        {
+            schemas[table] = await CurrentAsync(BackgroundWork.Run(() => DatabaseClient.SchemaAsync(source, table, cancel), cancel), cancel);
+        }
+        if (Table == table)
+        {
+            Schema = schemas[table];
+        }
+        Said = $"{table} · columns, keys and indexes read";
+    });
+
     public Task RefreshAsync() => RunAsync(AppActions.DatabaseRefresh, "Finding database connections…", async cancel =>
     {
         if (session is null)
@@ -116,13 +163,15 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
             return;
         }
         DatabaseSource? previous = Source;
+        IReadOnlyList<DatabaseSource> before = Sources;
         Forget();
         Sources = [.. manual];
         Source = manual.FirstOrDefault();
         IReadOnlyList<DatabaseSource> found = await CurrentAsync(DatabaseDiscovery.ReadAsync(session, cancel), cancel);
-        Sources = [.. manual, .. found];
+        Sources = [.. manual, .. found.Where(s => !overridden.Contains((s.Kind, s.ConnectionString)))
+            .Select(s => before.FirstOrDefault(old => old.Name == s.Name && old.Kind == s.Kind && old.ConnectionString == s.ConnectionString) is { } old ? s with { Id = old.Id } : s)];
         Discovered = true;
-        Source = Sources.FirstOrDefault(s => previous is not null && s.Kind == previous.Kind && s.ConnectionString == previous.ConnectionString) ?? Sources.FirstOrDefault();
+        Source = Sources.FirstOrDefault(s => s.Id == previous?.Id) ?? Sources.FirstOrDefault();
         Forget();
         Said = Sources.Count == 0 ? "No supported connection strings found in this folder's runs. Add Database Connection… to enter one." : "Connections found. Choose one and Connect.";
     });
@@ -143,6 +192,7 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
         DatabaseSchema schema = await CurrentAsync(BackgroundWork.Run(() => DatabaseClient.SchemaAsync(source, table, cancel), cancel), cancel);
         DatabaseRows rows = await CurrentAsync(BackgroundWork.Run(() => DatabaseClient.PageAsync(source, schema, offset, cancel), cancel), cancel);
         Schema = schema;
+        schemas[table] = schema;
         Rows = rows;
         Said = $"{table} · rows {offset + (Rows.RowCount > 0 ? 1 : 0)}–{offset + Rows.RowCount}{(Rows.More ? " · more available" : string.Empty)}"
             + (Schema.Columns.Any(c => c.Primary) ? " · Enter or double-click a cell to edit; writes ask first. NULL clears a nullable cell." : " · no primary key; rows are read-only.");
@@ -151,7 +201,9 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
     public Task QueryAsync() => RunAsync(AppActions.DatabaseQuery, "Running SQL…", async cancel =>
     {
         DatabaseSource source = RequireConnection();
-        string sql = Sql;
+        string sql = DatabaseSql.Limited(Sql, source.Kind);
+        Sql = sql;
+        Changed?.Invoke(this, EventArgs.Empty);
         if (string.IsNullOrWhiteSpace(sql))
         {
             throw new InvalidOperationException("Enter SQL first");
@@ -215,6 +267,11 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
             working.Tell(true, Said);
         }
         catch (OperationCanceledException)
+        {
+            Said = "Database operation cancelled.";
+            working.Tell(false, Said);
+        }
+        catch (DbException) when (stop.IsCancellationRequested)
         {
             Said = "Database operation cancelled.";
             working.Tell(false, Said);

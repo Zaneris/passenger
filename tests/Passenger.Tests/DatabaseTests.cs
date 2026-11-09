@@ -12,6 +12,104 @@ namespace Passenger.Tests;
 public sealed class DatabaseTests
 {
     [AvaloniaFact]
+    public void Tables_are_searchable_expandable_and_open_filtered_editor_tabs()
+    {
+        MainWindow window = OpenShop();
+        try
+        {
+            ListBox list = View<ListBox>(window, "DatabaseTables");
+            ChooseTable(window, "Products");
+            Ui.Click(list.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.DataContext == list.SelectedItem));
+            window.KeyTextInput("ord");
+            Assert.Equal("ord", View<TextBox>(window, "DatabaseTableSearch").Text);
+            Assert.Equal(["OrderLines", "Orders"], list.Items.OfType<DatabaseTreeRow>().Select(r => r.Table.Name));
+            Ui.Press(window, "ESCAPE");
+            Assert.Equal(3, list.ItemCount);
+            ChooseTable(window, "Products");
+            Control item = list.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.DataContext == list.SelectedItem);
+            Ui.Click(item);
+            Ui.Press(window, "RIGHT");
+            Ui.WaitFor(() => !window.Database.Busy && list.ItemCount == 6, () => window.Database.Said);
+            Assert.Contains(list.Items.OfType<DatabaseTreeRow>(), r => r.Title == "Columns");
+            Ui.Press(window, "DOWN");
+            Ui.Press(window, "RIGHT");
+            Assert.Contains(list.Items.OfType<DatabaseTreeRow>(), r => r.Depth == 2 && r.Title.StartsWith("Name ·", StringComparison.Ordinal));
+            ChooseTable(window, "Products");
+            item = list.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.DataContext == list.SelectedItem);
+            Ui.Click(item);
+            Ui.Press(window, "CTRL+ENTER");
+            Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is not null, "a database editor tab");
+            T Tab<T>(string name) where T : Control => window.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
+            Ui.WaitFor(() => Tab<CellGrid>("DatabaseTabResults").Table?.RowCount == 3, "table rows in the editor");
+            Passenger.App.Workspace.OpenDocument opened = window.EditorArea.Active!;
+            Assert.DoesNotContain(opened, window.EditorArea.Documents);
+            Tab<ComboBox>("DatabaseFilterColumn").SelectedItem = "Name";
+            Tab<TextBox>("DatabaseFilterValue").Text = "tea";
+            Ui.Click(Tab<Button>("DatabaseApplyFilter"));
+            Ui.WaitFor(() => Tab<CellGrid>("DatabaseTabResults").Table?.RowCount == 1, "filtered rows");
+            Assert.Equal("Tea", Tab<CellGrid>("DatabaseTabResults").Table!.Cell(0, 1));
+            Tab<TextBox>("DatabaseFilterValue").Text = "%";
+            Ui.Click(Tab<Button>("DatabaseApplyFilter"));
+            Ui.WaitFor(() => Tab<CellGrid>("DatabaseTabResults").Table?.RowCount == 0, "a literal wildcard filter");
+            Ui.Click(Tab<Button>("DatabaseClearFilter"));
+            Ui.WaitFor(() => Tab<CellGrid>("DatabaseTabResults").Table?.RowCount == 3, "unfiltered rows");
+            Ui.DoubleClick(item, new Avalonia.Point(item.Bounds.Width - 15, item.Bounds.Height / 2));
+            Ui.Settle();
+            Assert.Same(opened, window.EditorArea.Active);
+            Assert.Single(window.EditorArea.Groups.SelectMany(g => g.Tabs), t => t.Document.DatabaseTable is not null);
+            Assert.False(File.Exists(opened.Path));
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public void Unbounded_queries_are_limited_and_running_SQL_can_be_cancelled()
+    {
+        MainWindow window = OpenShop();
+        try
+        {
+            TextBox sql = View<TextBox>(window, "DatabaseSql");
+            sql.Text = "SELECT * FROM Products";
+            Tool(window, AppActions.DatabaseQuery);
+            Ui.ClickButton(Question(window), "Run");
+            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
+            Assert.Contains("LIMIT 1000", sql.Text, StringComparison.Ordinal);
+            Assert.Equal(3, window.Database.Rows!.RowCount);
+            sql.Text = "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1000000000) SELECT sum(x) FROM n";
+            Tool(window, AppActions.DatabaseQuery);
+            ChoiceDialog question = Question(window);
+            Ui.Click(question.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Run"), settle: false);
+            Assert.True(window.Database.Busy);
+            Assert.True(View<Button>(window, AppActions.DatabaseCancel).IsEnabled);
+            Ui.Click(View<Button>(window, AppActions.DatabaseCancel), settle: false);
+            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
+            Assert.Contains("cancelled", window.Database.Said, StringComparison.OrdinalIgnoreCase);
+            Assert.False(View<Button>(window, AppActions.DatabaseCancel).IsEnabled);
+        }
+        finally { window.Close(); }
+    }
+
+    private static MainWindow OpenShop()
+    {
+        string folder = TestFolders.Create("database-tree");
+        TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+        TestFolders.Write(folder, "appsettings.json", """{"ConnectionStrings":{"Shop":"Data Source=shop.db"}}""");
+        using (SqliteConnection connection = new($"Data Source={Path.Combine(folder, "shop.db")};Pooling=False"))
+        {
+            connection.Open();
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE Products(Id INTEGER PRIMARY KEY, Name TEXT); CREATE INDEX ProductName ON Products(Name); CREATE TABLE Orders(Id INTEGER); CREATE TABLE OrderLines(Id INTEGER); INSERT INTO Products VALUES(1,'Coffee'),(2,'Tea'),(3,'Milk')";
+            command.ExecuteNonQuery();
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.ShowToolWindow(ToolWindowIds.Database);
+        Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+        Run(window, AppActions.DatabaseConnect);
+        return window;
+    }
+
+    [AvaloniaFact]
     public void A_manual_connection_is_entered_validated_connected_and_kept_through_refresh()
     {
         string folder = TestFolders.Create("database-manual");
@@ -59,9 +157,29 @@ public sealed class DatabaseTests
             Assert.Single(window.Database.Sources);
             Assert.Equal("Manual shop", window.Database.Source!.Name);
             Run(window, AppActions.DatabaseConnect);
-            View<ListBox>(window, "DatabaseTables").SelectedItem = window.Database.Tables.Single();
+            ChooseTable(window, window.Database.Tables.Single().Name);
             Run(window, AppActions.DatabaseBrowse);
             Assert.Equal("Coffee", window.Database.Rows!.Cell(0, 1));
+            Tool(window, AppActions.DatabaseConnectionRename);
+            Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible), "rename connection dialog");
+            ConfirmDialog rename = window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible);
+            rename.GetVisualDescendants().OfType<TextBox>().Single(c => c.Name == "DatabaseRenameName").Text = "Renamed shop";
+            Ui.ClickButton(rename, "Rename");
+            Assert.Equal("Renamed shop", window.Database.Source!.Name);
+            Assert.True(window.Database.Connected);
+            Tool(window, AppActions.DatabaseConnectionEdit);
+            Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "edit connection dialog");
+            dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+            Assert.Equal((int)DatabaseKind.Sqlite, Field<ComboBox>("DatabaseProvider").SelectedIndex);
+            Assert.Equal("Renamed shop", Field<TextBox>("DatabaseConnectionName").Text);
+            Field<TextBox>("DatabaseConnectionName").Text = "Edited shop";
+            Ui.ClickButton(dialog, "Save and Connect");
+            Ui.WaitFor(() => window.Database.Connected && !window.Database.Busy, () => window.Database.Said);
+            Assert.Equal("Edited shop", window.Database.Source!.Name);
+            Run(window, AppActions.DatabaseRefresh);
+            Assert.Single(window.Database.Sources);
+            Assert.Equal("Edited shop", window.Database.Source!.Name);
+            Run(window, AppActions.DatabaseConnect);
             Tool(window, AppActions.DatabaseAdd);
             Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "another manual connection dialog");
             Ui.ClickButton(window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible), "Cancel");
@@ -130,7 +248,7 @@ public sealed class DatabaseTests
             Run(window, AppActions.DatabaseConnect);
             Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
             ListBox tables = View<ListBox>(window, "DatabaseTables");
-            tables.SelectedItem = window.Database.Tables.Single();
+            ChooseTable(window, window.Database.Tables.Single().Name);
             Assert.True(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
             Run(window, AppActions.DatabaseBrowse);
             Assert.Equal(100, window.Database.Rows!.RowCount);
@@ -170,7 +288,7 @@ public sealed class DatabaseTests
             Ui.ClickButton(Question(window), "Cancel");
             Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
             Assert.Single(window.Database.History);
-            tables.SelectedItem = window.Database.Tables.Single();
+            ChooseTable(window, window.Database.Tables.Single().Name);
             Run(window, AppActions.DatabaseBrowse);
             Assert.Equal(100, window.Database.Rows!.RowCount);
 
@@ -256,6 +374,12 @@ public sealed class DatabaseTests
     {
         Ui.Settle();
         Ui.Click(window.DatabaseView.GetVisualDescendants().OfType<Button>().Single(b => b.Name == action), settle: false);
+    }
+
+    internal static void ChooseTable(MainWindow window, string name)
+    {
+        ListBox list = View<ListBox>(window, "DatabaseTables");
+        list.SelectedItem = list.Items.OfType<DatabaseTreeRow>().Single(r => r.Depth == 0 && r.Table.Name == name);
     }
 
     private static ChoiceDialog Question(MainWindow window)

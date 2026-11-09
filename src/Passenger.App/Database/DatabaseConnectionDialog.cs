@@ -24,10 +24,12 @@ public sealed class DatabaseConnectionDialog : IdeWindow
     private readonly CheckBox integrated = new() { Name = "DatabaseIntegrated", Content = "Windows authentication" };
     private readonly TextBox connection = new() { Name = "DatabaseConnectionString", PasswordChar = '•', RevealPassword = false, PlaceholderText = "Optional: overrides the fields above" };
     private readonly TextBlock error = new() { Name = "DatabaseConnectionError", TextWrapping = TextWrapping.Wrap };
+    private readonly DatabaseSource? initial;
 
-    public DatabaseConnectionDialog(string folder)
+    public DatabaseConnectionDialog(string folder, DatabaseSource? initial = null)
     {
-        Title = "Add Database Connection";
+        this.initial = initial;
+        Title = initial is null ? "Add Database Connection" : "Edit Database Connection";
         Width = 480;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
@@ -43,7 +45,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         TextBlock integratedLabel = Row(string.Empty, integrated);
         provider.SelectionChanged += (_, _) => ShowProvider();
         integrated.IsCheckedChanged += (_, _) => ShowAuthentication();
-        Button connect = DialogFooter.Default("Connect");
+        Button connect = DialogFooter.Default(initial is null ? "Connect" : "Save and Connect");
         connect.Name = "DatabaseConnectionConnect";
         connect.Click += (_, _) =>
         {
@@ -66,7 +68,8 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 }
                 string title = name.Text?.Trim() is { Length: > 0 } named ? named
                     : TitleOf(kind, written);
-                Close(new DatabaseSource(title, kind, folder) { ConnectionString = written });
+                Close(initial is null ? new DatabaseSource(title, kind, folder) { ConnectionString = written }
+                    : initial with { Name = title, Kind = kind, ConnectionString = written });
             }
             catch (Exception failed) when (failed is ArgumentException or FormatException or OverflowException or IOException or UnauthorizedAccessException)
             {
@@ -80,13 +83,39 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             Children =
             {
                 fields,
-                new Expander { Header = "Connection string (advanced)", Content = connection, HorizontalAlignment = HorizontalAlignment.Stretch },
+                new StackPanel { Spacing = 6, Children = { new TextBlock { Text = "Connection string (advanced)" }, connection } },
                 MutedText.Wrapped("Connections are kept for this open folder. Credentials are not saved to disk."),
                 error,
             },
         }, DialogFooter.OkCancel(connect, () => Close(null)));
         error.IsVisible = false;
         ShowProvider();
+        if (initial is not null)
+        {
+            name.Text = initial.Name;
+            provider.SelectedIndex = (int)initial.Kind;
+            switch (initial.Kind)
+            {
+                case DatabaseKind.Sqlite:
+                    database.Text = new SqliteConnectionStringBuilder(initial.ConnectionString).DataSource;
+                    break;
+                case DatabaseKind.Postgres:
+                    NpgsqlConnectionStringBuilder pg = new(initial.ConnectionString);
+                    host.Text = pg.Host; port.Value = pg.Port; database.Text = pg.Database; user.Text = pg.Username; password.Text = pg.Password;
+                    break;
+                case DatabaseKind.SqlServer:
+                    SqlConnectionStringBuilder sql = new(initial.ConnectionString);
+                    string[] address = sql.DataSource.Split(',', 2);
+                    host.Text = address[0];
+                    port.Value = address.Length == 2 && int.TryParse(address[1], out int number) ? number : 1433;
+                    database.Text = sql.InitialCatalog; user.Text = sql.UserID; password.Text = sql.Password; integrated.IsChecked = sql.IntegratedSecurity;
+                    break;
+                case DatabaseKind.MySql:
+                    MySqlConnectionStringBuilder mysql = new(initial.ConnectionString);
+                    host.Text = mysql.Server; port.Value = mysql.Port; database.Text = mysql.Database; user.Text = mysql.UserID; password.Text = mysql.Password;
+                    break;
+            }
+        }
 
         TextBlock Row(string label, Control control)
         {
@@ -153,17 +182,28 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             throw new ArgumentException("Enter a whole port number between 1 and 65535");
         }
         int number = decimal.ToInt32(value);
+        string baseline = initial?.Kind == kind ? initial.ConnectionString : string.Empty;
         return kind switch
         {
-            DatabaseKind.Sqlite => new SqliteConnectionStringBuilder { DataSource = database.Text ?? string.Empty }.ConnectionString,
-            DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder { Host = host.Text!.Trim(), Port = number, Database = database.Text!.Trim(), Username = user.Text ?? string.Empty, Password = password.Text ?? string.Empty }.ConnectionString,
-            DatabaseKind.SqlServer => new SqlConnectionStringBuilder
+            DatabaseKind.Sqlite => new SqliteConnectionStringBuilder(baseline) { DataSource = database.Text ?? string.Empty }.ConnectionString,
+            DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(baseline) { Host = host.Text!.Trim(), Port = number, Database = database.Text!.Trim(), Username = user.Text ?? string.Empty, Password = password.Text ?? string.Empty }.ConnectionString,
+            DatabaseKind.SqlServer => new SqlConnectionStringBuilder(baseline)
             {
-                DataSource = $"{host.Text!.Trim()},{number}", InitialCatalog = database.Text!.Trim(), IntegratedSecurity = integrated.IsChecked == true,
+                DataSource = SqlAddress(host.Text!.Trim(), number), InitialCatalog = database.Text!.Trim(), IntegratedSecurity = integrated.IsChecked == true,
                 UserID = integrated.IsChecked == true ? string.Empty : user.Text ?? string.Empty, Password = integrated.IsChecked == true ? string.Empty : password.Text ?? string.Empty,
             }.ConnectionString,
-            _ => new MySqlConnectionStringBuilder { Server = host.Text!.Trim(), Port = (uint)number, Database = database.Text!.Trim(), UserID = user.Text ?? string.Empty, Password = password.Text ?? string.Empty }.ConnectionString,
+            _ => new MySqlConnectionStringBuilder(baseline) { Server = host.Text!.Trim(), Port = (uint)number, Database = database.Text!.Trim(), UserID = user.Text ?? string.Empty, Password = password.Text ?? string.Empty }.ConnectionString,
         };
+    }
+
+    private string SqlAddress(string written, int number)
+    {
+        if (initial?.Kind == DatabaseKind.SqlServer)
+        {
+            string original = new SqlConnectionStringBuilder(initial.ConnectionString).DataSource;
+            if (!original.Contains(',', StringComparison.Ordinal) && original == written && number == 1433) { return original; }
+        }
+        return $"{written},{number}";
     }
 
     private static void MarkConnection(string text)
