@@ -59,10 +59,10 @@ func _size_headless() -> void:
 
 
 ## The keys that hand the keys back to Passenger, heard in every input the game takes, before the game's own.
-func keys_back(ask: int, key: String, modifiers: int) -> void:
-    _keys_back = OS.find_keycode_from_string(key)
+func keys_back(ask: int, key_name: String, modifiers: int) -> void:
+    _keys_back = OS.find_keycode_from_string(key_name)
     _keys_back_modifiers = modifiers
-    _say(ask, _keys_back != KEY_NONE, [] if _keys_back != KEY_NONE else ["Godot has no key %s" % key])
+    _say(ask, _keys_back != KEY_NONE, [] if _keys_back != KEY_NONE else ["Godot has no key %s" % key_name])
 
 
 ## A game whose project draws at its window's size in pixels laid out at the project's size and scaled to its window, so it
@@ -80,10 +80,10 @@ func _input(event: InputEvent) -> void:
     if _letting_go:
         get_viewport().set_input_as_handled()
         return
-    var key := event as InputEventKey
-    if _keys_back == KEY_NONE or key == null or not key.pressed or key.echo or key.keycode != _keys_back:
+    var pressed_key := event as InputEventKey
+    if _keys_back == KEY_NONE or pressed_key == null or not pressed_key.pressed or pressed_key.echo or pressed_key.keycode != _keys_back:
         return
-    var modifiers := (SHIFT if key.shift_pressed else 0) | (CTRL if key.ctrl_pressed else 0) | (ALT if key.alt_pressed else 0) | (META if key.meta_pressed else 0)
+    var modifiers := (SHIFT if pressed_key.shift_pressed else 0) | (CTRL if pressed_key.ctrl_pressed else 0) | (ALT if pressed_key.alt_pressed else 0) | (META if pressed_key.meta_pressed else 0)
     if modifiers == _keys_back_modifiers:
         get_viewport().set_input_as_handled()
         EngineDebugger.send_message("passenger:keys", [])
@@ -180,9 +180,9 @@ func _flags(node: Node) -> int:
 ## A property an agent named, in a list of its own, none for a node without it. A C# script's member has no way to it but its
 ## getter, which only such a name asks.
 func _read_named(node: Node, property: String) -> Array:
-    var held = _held(node, property)
-    if held != null:
-        return [held]
+    var value = _held(node, property)
+    if value != null:
+        return [value]
     if node.get_script() is GDScript:
         return [null] if _stored(node).has(StringName(property)) else []
     return [node.get(property)] if property in node else []
@@ -199,12 +199,12 @@ func _walk(node: Node, nodes: Array, names: Array) -> void:
     if node == self:
         return
     var box := _box(node)
-    var values: Array = []
+    var named: Array = []
     for property in names:
         var read := _read_named(node, property)
         if not read.is_empty():
-            values.append([property, read[0]])
-    nodes.append([node.get_instance_id(), box[0], box[1], box[2], box[3], box[4], _text(node), _flags(node), values])
+            named.append([property, read[0]])
+    nodes.append([node.get_instance_id(), box[0], box[1], box[2], box[3], box[4], _text(node), _flags(node), named])
     for child in node.get_children():
         _walk(child, nodes, names)
 
@@ -289,8 +289,8 @@ func _let_go(viewport: Viewport) -> void:
     _letting_go = false
 
 
-func _frames(count: int) -> void:
-    for i in count:
+func _frames(frames: int) -> void:
+    for i in frames:
         await get_tree().process_frame
 
 
@@ -351,7 +351,7 @@ func _hover(viewport: Viewport, at: Vector2, modifiers: int, aimed: Node) -> Con
     return viewport.gui_get_hovered_control() if get_tree().root.gui_embed_subwindows else aimed as Control
 
 
-func click(ask: int, id: int, window: int, has_point: bool, x: float, y: float, button: int, count: int, modifiers: int) -> void:
+func click(ask: int, id: int, window: int, has_point: bool, x: float, y: float, button: int, clicks: int, modifiers: int) -> void:
     var viewport := _viewport_of(id, window)
     var at = _aim(ask, id, viewport, has_point, x, y)
     if at == null:
@@ -370,7 +370,7 @@ func click(ask: int, id: int, window: int, has_point: bool, x: float, y: float, 
             ": its mouse_filter is Ignore" if target is Control and target.mouse_filter == Control.MOUSE_FILTER_IGNORE else ", nor does anything there"]])
         return
     var screen: Vector2 = viewport.get_screen_transform() * at
-    for i in count:
+    for i in clicks:
         var down := InputEventMouseButton.new()
         down.button_index = button as MouseButton
         down.button_mask = 1 << (button - 1)
@@ -452,8 +452,8 @@ func _focus(id: int, viewport: Viewport) -> Control:
 ## What keys came to: where they went, an embedded window that had them before the viewport aimed at, and whether that
 ## one is exclusive, which no aim takes them from.
 func _keyed(viewport: Viewport, holding: Window) -> Array:
-    var held := is_instance_valid(holding)
-    return _after(holding if held else viewport, Vector2.ZERO, null, null, false) + [1 if held and holding.exclusive else 0]
+    var holds := is_instance_valid(holding)
+    return _after(holding if holds else viewport, Vector2.ZERO, null, null, false) + [1 if holds and holding.exclusive else 0]
 
 
 func key(ask: int, id: int, window: int, chords: Array) -> void:
