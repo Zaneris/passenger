@@ -24,9 +24,9 @@ public sealed record ReleaseNotes(string Folder, string Version)
     public static string TitleOf(string version) => $"What's New in {version}";
 
     /// <summary>The version whose notes a file (by its canonical path) is, when it is notes the app carries; null for any
-    /// other file.</summary>
+    /// other file, read without a string made for it, as each key and caret move asks of the file shown.</summary>
     public static string? VersionOf(string path) =>
-        Path.GetExtension(path).Equals(".md", StringComparison.OrdinalIgnoreCase)
+        Path.GetExtension(path.AsSpan()).Equals(".md", StringComparison.OrdinalIgnoreCase)
         && Path.GetDirectoryName(path) is { } folder && PathNames.Same(folder, Canonical.Value)
             ? Path.GetFileNameWithoutExtension(path)
             : null;

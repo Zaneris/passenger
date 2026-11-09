@@ -22,6 +22,11 @@ public sealed partial record Problem(ProblemSeverity Severity, string Message, s
     /// of one framework, or a problem no build found.</summary>
     public string? Framework { get; init; }
 
+    /// <summary>Whether another problem is this one, wherever in its file each is.</summary>
+    public bool SaysWhat(Problem other) => ReferenceEquals(this, other)
+        || (Severity == other.Severity && Message == other.Message && Code == other.Code && Path == other.Path && Project == other.Project
+            && Link == other.Link && LinkText == other.LinkText && Framework == other.Framework);
+
     /// <summary>The first web address in a message, less the punctuation ending its sentence; null without one.</summary>
     public static Uri? LinkIn(string message) =>
         Address().Match(message) is { Success: true } found

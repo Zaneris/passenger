@@ -440,6 +440,92 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         window.Close();
     }
 
+    /// <summary>The server's diagnostics landing after a typing pause cost the UI thread about what they do among forty
+    /// warnings among four thousand in a file as long, the File tab of Problems listing them: after a key that changes none
+    /// of them, after a key that adds an error and a warning beside it and the Backspace that takes them away, and after a
+    /// name typed at two carets at once (a rename by hand), which moves every warning past the first caret and back. Every
+    /// warning then still stands under its local, listed once.</summary>
+    [AvaloniaFact]
+    public void Diagnostics_landing_among_thousands_of_warnings_cost_what_they_do_among_a_few()
+    {
+        MainWindow window = project.Open("FewLocals.cs");
+        Landings few = Landed(window, "FewLocals.cs", 40);
+        Landings many = Landed(window, "Warned.cs", 4000);
+        const int More = 4000 - 40;
+        foreach ((string what, long fewBytes, long manyBytes, long most) in new (string, long, long, long)[]
+        {
+            ("a key that changes no diagnostic", few.Same, many.Same, 512),
+            ("a key adding an error and a warning, and its Backspace", few.Changed, many.Changed, 2048),
+            ("a name typed at two carets and its Undo", few.Renamed, many.Renamed, 1536),
+        })
+        {
+            long each = (manyBytes - fewBytes) / More;
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"The diagnostics landing after {what} allocated {fewBytes / 1024:N0} KB on the UI thread among 40 warnings, {manyBytes / 1024:N0} KB among 4,000: {each} bytes a warning");
+            Assert.True(each < most,
+                $"The diagnostics landing after {what} allocated {manyBytes / 1024:N0} KB on the UI thread among 4,000 warnings, {fewBytes / 1024:N0} KB among 40: {each} bytes for each warning, where they were reported as they stood");
+        }
+        window.Close();
+    }
+
+    /// <summary>What the diagnostics landing after each kind of edit allocate on the UI thread, with the edit and its frame,
+    /// the caret's blinks taken out: the least of three rounds.</summary>
+    private readonly record struct Landings(long Same, long Changed, long Renamed);
+
+    private Landings Landed(MainWindow window, string file, int warned)
+    {
+        window.OpenFile(project.PathOf(file));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => editor.ProblemCount.Warnings == warned, $"the warnings of {file}'s {warned} locals never read");
+        string source = document.Text.Snapshot.ToString();
+        int declared = source.IndexOf("int total", StringComparison.Ordinal) + "int ".Length;
+        int returned = source.IndexOf("return total;", StringComparison.Ordinal) + "return ".Length;
+        editor.Focus();
+        long blink = Ui.BlinkBytes(editor);
+        long Landing(Action edit)
+        {
+            Ui.Settle();
+            GC.Collect();
+            long blinks = editor.Blinks;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            edit();
+            Ui.Settle();
+            return GC.GetAllocatedBytesForCurrentThread() - before - ((editor.Blinks - blinks) * blink);
+        }
+        string undo = Ui.Shortcut(EditorActions.Undo);
+        Landings least = new(long.MaxValue, long.MaxValue, long.MaxValue);
+        for (int round = 0; round < 3; round++)
+        {
+            editor.Selections = SelectionSet.Single(declared + "total = 0".Length);
+            long same = Landing(() => window.KeyTextInput("1"));
+            Ui.Press(window, "BACK_SPACE");
+            editor.Selections = SelectionSet.Single(declared + "total".Length);
+            long changed = Landing(() => window.KeyTextInput("x"));
+            Assert.True(editor.ProblemCount.Errors == 1, $"With total named totalx, {file} shows {editor.ProblemCount.Errors} errors, not the 1 its return of total makes");
+            changed += Landing(() => Ui.Press(window, "BACK_SPACE", settle: false));
+            editor.Selections = SelectionSet.Single(new Selection(declared, declared + "total".Length)).Add(new Selection(returned, returned + "total".Length));
+            long renamed = Landing(() => window.KeyTextInput("sum"));
+            Assert.Contains("return sum;", document.Text.Snapshot.ToString(), StringComparison.Ordinal);
+            renamed += Landing(() => Ui.Press(window, undo, settle: false));
+            least = new(Math.Min(least.Same, same), Math.Min(least.Changed, changed), Math.Min(least.Renamed, renamed));
+        }
+        Assert.Equal(source, document.Text.Snapshot.ToString());
+        Assert.Equal(0, editor.ProblemCount.Errors);
+        TextSnapshot text = document.Text.Snapshot;
+        List<Marker> warnings = [.. document.Markers.Where(m => m.Kind == MarkerKind.Warning)];
+        Assert.Equal(warned, warnings.Count);
+        foreach (Marker warning in warnings)
+        {
+            Assert.True(text.GetText(warning.Range.Start, "unused".Length) == "unused",
+                $"After the edits, a warning of {file} stands on '{text.GetText(warning.Range.Start, Math.Min(12, text.Length - warning.Range.Start))}' on line {text.GetLineFromOffset(warning.Range.Start) + 1}");
+        }
+        IReadOnlyList<Passenger.App.Run.Problem> listed = window.BottomPanel.Problems.FileProblems;
+        Assert.Equal(warned, listed.Count(p => p.Severity == Passenger.App.Run.ProblemSeverity.Warning));
+        return least;
+    }
+
     /// <summary>The bytes a key and the frame after it allocate on the UI thread, the middle of five, typed above a file's warnings
     /// once they have come; every warning then still stands under its local.</summary>
     private long WarnedKeys(MainWindow window, string file, int warned)
@@ -618,6 +704,11 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
 
         public static readonly string FewWarned = Locals("FewWarned", 4000, 40);
 
+        /// <summary>FewLocals.cs: Warned.cs's method but for the first forty of its locals, the rest each handed to a method
+        /// of its own, so its total is named only where Warned.cs names it.</summary>
+        public static readonly string FewLocals = Locals("FewLocals", 4000, 40,
+            rest: i => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"        Read({i});\n"), members: "    private static void Read(int value)\n    {\n    }\n\n");
+
         /// <summary>Long.cs: two hundred methods of a hundred lines and more, every fiftieth with an error, a string given a number.</summary>
         public static readonly string Long = TwentyThousandLines(errors: true, "Long", "}\n");
 
@@ -636,6 +727,7 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             File.WriteAllText(PathOf("Few.cs"), Few);
             File.WriteAllText(PathOf("Warned.cs"), Warned);
             File.WriteAllText(PathOf("FewWarned.cs"), FewWarned);
+            File.WriteAllText(PathOf("FewLocals.cs"), FewLocals);
             // The server's first load makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
         }
@@ -653,15 +745,20 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         }
 
         /// <summary>A method of <paramref name="lines"/> statements, the first <paramref name="warned"/> a local never read,
-        /// the rest adding to a total it returns.</summary>
-        private static string Locals(string name, int lines, int warned)
+        /// the rest adding to a total it returns, or what <paramref name="rest"/> makes of their number, after the class's
+        /// other <paramref name="members"/>.</summary>
+        private static string Locals(string name, int lines, int warned, Func<int, string>? rest = null, string members = "")
         {
-            StringBuilder text = new($"static class {name}\n{{\n    public static int Typed()\n    {{\n        int total = 0;\n");
+            StringBuilder text = new($"static class {name}\n{{\n{members}    public static int Typed()\n    {{\n        int total = 0;\n");
             for (int i = 0; i < lines; i++)
             {
                 if (i < warned)
                 {
                     text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{i} = {i};\n");
+                }
+                else if (rest is not null)
+                {
+                    text.Append(rest(i));
                 }
                 else
                 {

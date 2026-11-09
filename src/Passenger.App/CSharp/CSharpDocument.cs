@@ -270,7 +270,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         {
             TooDeep = false;
             readAgain = true;
-            document.Markers = diagnostics.Take([], DiagnosticMarks.Marker);
+            Show(diagnostics.Take([], DiagnosticMarks.Marker));
             service.FileProblemsChanged(document);
             service.Reconnect();
         }
@@ -294,8 +294,22 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
             Source = "Passenger",
             Message = CSharpParsing.TooDeep,
         };
-        document.Markers = diagnostics.Take([note], DiagnosticMarks.Marker);
+        Show(diagnostics.Take([note], DiagnosticMarks.Marker));
         service.FileProblemsChanged(document);
+    }
+
+    /// <summary>The markers a report gave the file, or for one that changed none (null), those the text carries already,
+    /// unless the file's own carrying of them went otherwise than the diagnostics' ranges did.</summary>
+    private void Show(IReadOnlyList<Marker>? markers)
+    {
+        if (markers is not null)
+        {
+            document.Markers = markers;
+        }
+        else if (!diagnostics.Carries(document.Markers))
+        {
+            document.Markers = diagnostics.Markers;
+        }
     }
 
     /// <summary>Pulls after <paramref name="delay"/>. An ask for now (the server's refresh, a file the pull reads changed)
@@ -382,7 +396,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         }
         IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization, .. godot, .. classes];
         IReadOnlyList<Diagnostic> carried = lsp.PullsProjectWide ? diagnostics.Late : [];
-        document.Markers = diagnostics.Take([.. own, .. carried], DiagnosticMarks.Marker, carried.Count);
+        Show(diagnostics.Take([.. own, .. carried], DiagnosticMarks.Marker, carried.Count));
         ShowGodotMarks();
         service.FileProblemsChanged(document);
         return own;
@@ -398,7 +412,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         {
             return;
         }
-        document.Markers = diagnostics.Take([.. own, .. late], DiagnosticMarks.Marker, late.Count);
+        Show(diagnostics.Take([.. own, .. late], DiagnosticMarks.Marker, late.Count));
         service.FileProblemsChanged(document);
     }
 

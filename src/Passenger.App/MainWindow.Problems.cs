@@ -121,19 +121,35 @@ public partial class MainWindow
     /// <summary>The version of the file's text the File tab last listed problems for.</summary>
     private int problemsShownAt = -1;
 
+    /// <summary>The File tab's problems as last listed, in the order of their markers, and the file they are of, by its name then.</summary>
+    private Problem[] fileProblems = [];
+    private OpenDocument? fileProblemsOf;
+    private string? fileProblemsName;
+
+    /// <summary>Lists the file's problems from its markers: one listed before, saying the same in the same place, is listed
+    /// as it was, so a pause that moved or found a few of thousands makes those alone, and one that changed none lists none.</summary>
     private void ShowFileProblems()
     {
         if (problemsFile is not { } file)
         {
+            fileProblems = [];
+            fileProblemsOf = null;
+            fileProblemsName = null;
             Bottom.Problems.ShowFile(null, []);
             return;
         }
         TextSnapshot text = file.Text.Snapshot;
         problemsShownAt = file.Text.Version;
-        List<Problem> problems = [];
-        string? project = null;
-        foreach (Marker marker in file.Markers)
+        IReadOnlyList<Marker> markers = file.Markers;
+        bool again = fileProblemsOf == file && fileProblemsName == file.Name;
+        Problem[] before = again ? fileProblems : [];
+        List<Problem> problems = new(Math.Min(markers.Count, before.Length + 16));
+        string? project = markers.Count > 0 ? ProjectNameOf(file.Path) : null;
+        int next = 0;
+        bool same = again;
+        for (int i = 0; i < markers.Count; i++)
         {
+            Marker marker = markers[i];
             ProblemSeverity? severity = marker.Kind switch
             {
                 MarkerKind.Error => ProblemSeverity.Error,
@@ -145,11 +161,34 @@ public partial class MainWindow
             {
                 continue;
             }
-            int start = Math.Min(marker.Range.Start, text.Length);
-            problems.Add(new Problem(severity.Value, marker.Message, null,
-                file.Path, text.GetPosition(start), project ??= ProjectNameOf(file.Path)) { Link = marker.Link, LinkText = marker.LinkText });
+            TextPosition at = text.GetPosition(Math.Min(marker.Range.Start, text.Length));
+            // The markers and the problems listed from them are both in order of place: those before this one's are gone.
+            while (next < before.Length && before[next].Position.CompareTo(at) < 0)
+            {
+                next++;
+            }
+            Problem? kept = null;
+            for (int k = next; k < before.Length && before[k].Position == at; k++)
+            {
+                Problem listed = before[k];
+                if (listed.Severity == severity && listed.Message == marker.Message && listed.Link == marker.Link && listed.LinkText == marker.LinkText
+                    && listed.Path == file.Path && listed.Project == project)
+                {
+                    kept = listed;
+                    break;
+                }
+            }
+            same &= kept is not null && problems.Count < before.Length && ReferenceEquals(before[problems.Count], kept);
+            problems.Add(kept ?? new Problem(severity.Value, marker.Message, null, file.Path, at, project) { Link = marker.Link, LinkText = marker.LinkText });
         }
-        Bottom.Problems.ShowFile(file.Name, problems);
+        if (same && problems.Count == before.Length)
+        {
+            return;
+        }
+        fileProblems = [.. problems];
+        fileProblemsOf = file;
+        fileProblemsName = file.Name;
+        Bottom.Problems.ShowFile(file.Name, fileProblems);
     }
 
     /// <summary>Problems' Solution tab made to list the solution's problems: every file's, or only those of the files named,

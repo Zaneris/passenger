@@ -120,9 +120,19 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
     /// (<see cref="DiagnosticPull.ProjectWide"/>), which answers after the file's own.</summary>
     private int late;
 
-    /// <summary>The markers last given, each on the range that carries it, in the order of their starts, which the ranges
-    /// keep through every edit.</summary>
-    private (AnchoredRange Range, Marker Marker)[] shown = [];
+    /// <summary>The markers last given, in the order of their starts, as they were given (the array handed out, never changed
+    /// since), and the range that carries each through every edit.</summary>
+    private Marker[] shown = [];
+    private AnchoredRange[] shownRanges = [];
+
+    /// <summary>Where in <see cref="shown"/> each of <see cref="found"/> drew its marker (-1 for one drawing none), and what
+    /// made them.</summary>
+    private int[] drawnAt = [];
+    private Func<Diagnostic, TextRange, Marker?>? drawnBy;
+
+    /// <summary>The markers a report draws as it is taken, before they are put in order: kept from one report to the next,
+    /// emptied after each.</summary>
+    private Marker?[] making = [];
 
     /// <summary>The diagnostics placed on the server's lines of the text as it stands, made when first asked for after an
     /// edit, so a key costs a move of each range rather than a line table of the file.</summary>
@@ -145,10 +155,28 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
             Marker[] markers = new Marker[shown.Length];
             for (int i = 0; i < markers.Length; i++)
             {
-                markers[i] = shown[i].Marker with { Range = shown[i].Range.Range };
+                markers[i] = shown[i] with { Range = shownRanges[i].Range };
             }
             return markers;
         }
+    }
+
+    /// <summary>Whether a file's markers are those last given, marker for marker, where the text has carried them: what a
+    /// report <see cref="Take"/> found unchanged leaves the file showing, read without a list made for it.</summary>
+    public bool Carries(IReadOnlyList<Marker> markers)
+    {
+        if (markers.Count != shown.Length)
+        {
+            return false;
+        }
+        for (int i = 0; i < shown.Length; i++)
+        {
+            if (markers[i] != shown[i] with { Range = shownRanges[i].Range })
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>The text changed: the diagnostics' ranges moved with it, and are placed on the server's lines again when
@@ -165,25 +193,184 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
     public void Adopt(IReadOnlyList<Marker> markers)
     {
         Release();
-        shown = [.. markers.OrderBy(m => m.Range.Start).Select(m => (Anchored(m.Range), m))];
+        shown = [.. markers.OrderBy(m => m.Range.Start)];
+        shownRanges = [.. shown.Select(m => Anchored(m.Range))];
     }
 
     /// <summary>Takes diagnostics reported for the text as it stands, the last <paramref name="late"/> of them a project-wide
-    /// pull's (<see cref="Late"/>), and gives the markers they draw as.</summary>
-    public IReadOnlyList<Marker> Take(IReadOnlyList<Diagnostic> diagnostics, Func<Diagnostic, TextRange, Marker?> marker, int late = 0)
+    /// pull's (<see cref="Late"/>), and gives the markers they draw as; null when those are the markers it gave last, where
+    /// the text has carried them (<see cref="Markers"/>), each diagnostic keeping its range and marker.</summary>
+    public IReadOnlyList<Marker>? Take(IReadOnlyList<Diagnostic> diagnostics, Func<Diagnostic, TextRange, Marker?> marker, int late = 0)
     {
         ServerLines lines = ServerLines.Of(document.Text.Snapshot);
-        Release();
-        found = [.. diagnostics];
-        this.late = late;
-        TextRange[] reported = DiagnosticMarks.Offsets(lines, found);
-        ranges = new AnchoredRange[reported.Length];
-        for (int i = 0; i < reported.Length; i++)
+        Diagnostic[] taken = [.. diagnostics];
+        TextRange[] reported = DiagnosticMarks.Offsets(lines, taken);
+        bool sameMarks = marker.Equals(drawnBy);
+        // Markers adopted from another server are carried by none of the diagnostics taken.
+        bool own = found.Length > 0 || shown.Length == 0;
+        if (sameMarks && own && taken.Length == found.Length && SameInStep(taken, reported))
         {
-            ranges[i] = Anchored(reported[i]);
+            found = taken;
+            this.late = late;
+            placed = diagnostics;
+            return null;
         }
+        int[] was = Kept(taken, reported);
+        if (sameMarks && own && taken.Length == found.Length && Array.IndexOf(was, -1) < 0)
+        {
+            // The same diagnostics in another order (an analyzer's come in any): each keeps its range and marker.
+            AnchoredRange[] same = new AnchoredRange[taken.Length];
+            int[] at = new int[taken.Length];
+            for (int i = 0; i < taken.Length; i++)
+            {
+                same[i] = ranges[was[i]];
+                at[i] = drawnAt[was[i]];
+            }
+            found = taken;
+            ranges = same;
+            drawnAt = at;
+            this.late = late;
+            placed = diagnostics;
+            return null;
+        }
+        AnchoredRange[] carried = new AnchoredRange[taken.Length];
+        Marker?[] made = Making(taken.Length);
+        bool[] reused = new bool[ranges.Length];
+        for (int i = 0; i < taken.Length; i++)
+        {
+            if (was[i] >= 0)
+            {
+                carried[i] = ranges[was[i]];
+                reused[was[i]] = true;
+                made[i] = !sameMarks ? marker(taken[i], carried[i].Range) : drawnAt[was[i]] is >= 0 and int at ? shown[at] with { Range = carried[i].Range } : null;
+            }
+            else
+            {
+                carried[i] = Anchored(reported[i]);
+                made[i] = marker(taken[i], carried[i].Range);
+            }
+        }
+        // Adopted markers' ranges are their own, carried by no diagnostic.
+        if (found.Length == 0)
+        {
+            foreach (AnchoredRange range in shownRanges)
+            {
+                range.Remove();
+            }
+        }
+        for (int i = 0; i < ranges.Length; i++)
+        {
+            if (!reused[i])
+            {
+                ranges[i].Remove();
+            }
+        }
+        found = taken;
+        ranges = carried;
+        this.late = late;
         placed = diagnostics;
-        return Show(marker);
+        return Show(made, marker);
+    }
+
+    /// <summary>For each diagnostic taken, the one of those taken before it carries on: the same words, codes and tags on
+    /// the same range of the text as it stands, where the text carried the one before; -1 for one that is new. Read in step
+    /// from both ends first, as a pull mostly gives the same diagnostics in the same order, and only the rest by place.</summary>
+    private int[] Kept(Diagnostic[] taken, TextRange[] reported)
+    {
+        int[] was = new int[taken.Length];
+        Array.Fill(was, -1);
+        int head = 0;
+        while (head < taken.Length && head < found.Length && SameAt(head, head))
+        {
+            was[head] = head;
+            head++;
+        }
+        int tail = 0;
+        while (tail < taken.Length - head && tail < found.Length - head && SameAt(taken.Length - 1 - tail, found.Length - 1 - tail))
+        {
+            was[taken.Length - 1 - tail] = found.Length - 1 - tail;
+            tail++;
+        }
+        int news = taken.Length - head - tail;
+        int olds = found.Length - head - tail;
+        if (news == 0 || olds == 0)
+        {
+            return was;
+        }
+        // The rest in order of place, those on one range paired by their words.
+        long[] newPlaces = new long[news];
+        int[] newOrder = new int[news];
+        for (int k = 0; k < news; k++)
+        {
+            newPlaces[k] = Place(reported[head + k]);
+            newOrder[k] = head + k;
+        }
+        long[] oldPlaces = new long[olds];
+        int[] oldOrder = new int[olds];
+        for (int k = 0; k < olds; k++)
+        {
+            oldPlaces[k] = Place(ranges[head + k].Range);
+            oldOrder[k] = head + k;
+        }
+        Array.Sort(newPlaces, newOrder);
+        Array.Sort(oldPlaces, oldOrder);
+        int a = 0;
+        for (int b = 0; b < news; b++)
+        {
+            while (a < olds && oldPlaces[a] < newPlaces[b])
+            {
+                a++;
+            }
+            for (int c = a; c < olds && oldPlaces[c] == newPlaces[b]; c++)
+            {
+                if (oldOrder[c] >= 0 && Same(found[oldOrder[c]], taken[newOrder[b]]))
+                {
+                    was[newOrder[b]] = oldOrder[c];
+                    oldOrder[c] = -1;
+                    break;
+                }
+            }
+        }
+        return was;
+
+        bool SameAt(int now, int before) => ranges[before].Range == reported[now] && Same(found[before], taken[now]);
+    }
+
+    /// <summary>Whether the diagnostics taken are those taken before, one for one in the same order, where the text carried them.</summary>
+    private bool SameInStep(Diagnostic[] taken, TextRange[] reported)
+    {
+        for (int i = 0; i < taken.Length; i++)
+        {
+            if (ranges[i].Range != reported[i] || !Same(found[i], taken[i]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>A range as one number, ordered by its start, then its end.</summary>
+    private static long Place(TextRange range) => ((long)range.Start << 32) | (uint)range.End;
+
+    /// <summary>Whether two diagnostics say the same: what draws a marker reads of them, all but their range.</summary>
+    private static bool Same(Diagnostic one, Diagnostic other) =>
+        one.Severity == other.Severity && one.Code == other.Code && one.CodeIsNumber == other.CodeIsNumber && one.Source == other.Source
+        && one.Message == other.Message && one.CodeDescription == other.CodeDescription && SameTags(one.Tags, other.Tags);
+
+    private static bool SameTags(List<DiagnosticTag>? one, List<DiagnosticTag>? other)
+    {
+        if ((one?.Count ?? 0) != (other?.Count ?? 0))
+        {
+            return false;
+        }
+        for (int i = 0; i < (one?.Count ?? 0); i++)
+        {
+            if (one![i] != other![i])
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>Leaves out the diagnostics <paramref name="which"/> names, giving the markers the rest draw as, or null when
@@ -196,35 +383,82 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
         }
         int[] kept = [.. Enumerable.Range(0, found.Length).Where(i => !which(found[i]))];
         late = kept.Count(i => i >= found.Length - late);
-        foreach (AnchoredRange dropped in ranges.Except(kept.Select(i => ranges[i])).Concat(shown.Select(s => s.Range).Except(ranges)))
+        foreach (AnchoredRange dropped in ranges.Except(kept.Select(i => ranges[i])).Concat(shownRanges.Except(ranges)))
         {
             dropped.Remove();
         }
         ranges = [.. kept.Select(i => ranges[i])];
         found = [.. kept.Select(i => found[i])];
         placed = null;
-        return Show(marker);
+        Marker?[] made = Making(found.Length);
+        for (int i = 0; i < made.Length; i++)
+        {
+            made[i] = marker(found[i], ranges[i].Range);
+        }
+        return Show(made, marker);
     }
 
-    /// <summary>The markers the diagnostics draw as, on their ranges as they stand, put in order once here (the server's
-    /// sources and Passenger's own each give theirs apart) so a key carries them in order.</summary>
-    private IReadOnlyList<Marker> Show(Func<Diagnostic, TextRange, Marker?> marker)
+    /// <summary>The list <see cref="making"/> for a report of <paramref name="count"/> diagnostics.</summary>
+    private Marker?[] Making(int count)
     {
-        List<(AnchoredRange, Marker)> drawn = [];
+        if (making.Length < count)
+        {
+            making = new Marker?[Math.Max(count, making.Length * 2)];
+        }
+        return making;
+    }
+
+    /// <summary>The markers the diagnostics draw as (<paramref name="made"/>, each of <see cref="found"/>'s or null), on their
+    /// ranges as they stand, put in order once here (the server's sources and Passenger's own each give theirs apart) so a
+    /// key carries them in order, two starting together in the order given.</summary>
+    private Marker[] Show(Marker?[] made, Func<Diagnostic, TextRange, Marker?> marker)
+    {
+        drawnBy = marker;
+        drawnAt = new int[found.Length];
+        int count = 0;
+        bool inOrder = true;
+        int last = int.MinValue;
         for (int i = 0; i < found.Length; i++)
         {
-            if (marker(found[i], ranges[i].Range) is { } made)
+            if (made[i] is { } m)
             {
-                drawn.Add((ranges[i], made));
+                drawnAt[i] = count++;
+                inOrder &= m.Range.Start >= last;
+                last = m.Range.Start;
+            }
+            else
+            {
+                drawnAt[i] = -1;
             }
         }
-        shown = [.. drawn.OrderBy(d => d.Item2.Range.Start)];
-        Marker[] markers = new Marker[shown.Length];
-        for (int i = 0; i < markers.Length; i++)
+        shown = new Marker[count];
+        shownRanges = new AnchoredRange[count];
+        for (int i = 0; i < found.Length; i++)
         {
-            markers[i] = shown[i].Marker;
+            if (made[i] is { } m)
+            {
+                shown[drawnAt[i]] = m;
+                shownRanges[drawnAt[i]] = ranges[i];
+            }
         }
-        return markers;
+        Array.Clear(made, 0, found.Length);
+        if (!inOrder)
+        {
+            // Put in order by start, those starting together as they came, each diagnostic told where its marker went.
+            int[] order = [.. Enumerable.Range(0, count).OrderBy(k => shown[k].Range.Start)];
+            int[] placedAt = new int[count];
+            for (int k = 0; k < count; k++)
+            {
+                placedAt[order[k]] = k;
+            }
+            shown = [.. order.Select(k => shown[k])];
+            shownRanges = [.. order.Select(k => shownRanges[k])];
+            for (int i = 0; i < drawnAt.Length; i++)
+            {
+                drawnAt[i] = drawnAt[i] >= 0 ? placedAt[drawnAt[i]] : -1;
+            }
+        }
+        return shown;
     }
 
     /// <summary>A range of the text, carried as a squiggle is: what is typed at its end goes inside it while it holds text.</summary>
@@ -233,7 +467,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
     /// <summary>Lets every range go, the text no longer carrying them, and the diagnostics they carried.</summary>
     private void Release()
     {
-        foreach (AnchoredRange range in ranges.Concat(shown.Select(s => s.Range)))
+        foreach (AnchoredRange range in ranges.Concat(shownRanges))
         {
             range.Remove();
         }
@@ -241,6 +475,9 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
         ranges = [];
         placed = [];
         shown = [];
+        shownRanges = [];
+        drawnAt = [];
+        drawnBy = null;
         late = 0;
     }
 

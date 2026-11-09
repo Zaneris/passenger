@@ -362,18 +362,35 @@ public sealed class OpenDocument : Observable
     public DocumentDecorations Decorations { get; }
 
     /// <summary>The language service's markers (diagnostics), in this text's offsets: set when a service reports, and
-    /// carried with the text between reports (<see cref="DocumentDecorations.Markers"/>).</summary>
+    /// carried with the text between reports (<see cref="DocumentDecorations.Markers"/>). A report of the markers the text
+    /// carries already, marker for marker, changes nothing, so nothing that lists them lists them again.</summary>
     public IReadOnlyList<Marker> Markers
     {
         get => Decorations.Markers;
         set
         {
-            if (!ReferenceEquals(Decorations.Markers, value))
+            if (!ReferenceEquals(Decorations.Markers, value) && !SameMarkers(Decorations.Markers, value))
             {
                 Decorations.SetMarkers(value);
                 Raise();
             }
         }
+    }
+
+    private static bool SameMarkers(IReadOnlyList<Marker> carried, IReadOnlyList<Marker> reported)
+    {
+        if (carried.Count != reported.Count)
+        {
+            return false;
+        }
+        for (int i = 0; i < carried.Count; i++)
+        {
+            if (carried[i] != reported[i])
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private int checks;

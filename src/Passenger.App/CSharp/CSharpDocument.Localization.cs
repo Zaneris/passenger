@@ -136,12 +136,14 @@ public sealed partial class CSharpDocument
         return found;
     }
 
-    /// <summary>Whether the file's text names any of some words: looked through a piece at a time, never copied whole.</summary>
+    /// <summary>Whether the file's text names any of some words (none longer than <see cref="Seam"/>): looked through a
+    /// piece at a time, never copied, the end of each piece kept with the start of the next in one small buffer.</summary>
     private bool Holds(string[] words)
     {
         TextSnapshot text = document.Text.Snapshot;
+        char[] seam = new char[2 * Seam];
+        int carried = 0;
         bool found = false;
-        string carry = string.Empty;
         text.VisitChunks(0, text.Length, chunk =>
         {
             if (found)
@@ -150,13 +152,28 @@ public sealed partial class CSharpDocument
             }
             ReadOnlySpan<char> piece = chunk.Span;
             // A word split between two pieces is found where the end of one meets the start of the next.
-            string seam = carry + new string(piece[..Math.Min(piece.Length, 24)]);
+            int head = Math.Min(piece.Length, Seam);
+            piece[..head].CopyTo(seam.AsSpan(carried));
+            ReadOnlySpan<char> joined = seam.AsSpan(0, carried + head);
             foreach (string word in words)
             {
-                found |= piece.Contains(word, StringComparison.Ordinal) || seam.Contains(word, StringComparison.Ordinal);
+                found |= piece.Contains(word, StringComparison.Ordinal) || joined.Contains(word, StringComparison.Ordinal);
             }
-            carry = piece.Length >= 24 ? new string(piece[^24..]) : (carry + new string(piece))[^Math.Min(24, carry.Length + piece.Length)..];
+            if (piece.Length >= Seam)
+            {
+                piece[^Seam..].CopyTo(seam);
+                carried = Seam;
+            }
+            else
+            {
+                int kept = Math.Min(Seam, carried + piece.Length);
+                seam.AsSpan(carried + piece.Length - kept, kept).CopyTo(seam);
+                carried = kept;
+            }
         });
         return found;
     }
+
+    /// <summary>How much of a piece's end <see cref="Holds"/> keeps to meet the next piece's start.</summary>
+    private const int Seam = 24;
 }

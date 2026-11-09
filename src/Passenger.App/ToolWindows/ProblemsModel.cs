@@ -419,7 +419,7 @@ public sealed class ProblemsModel
         }
         for (int i = 0; i < before.Count; i++)
         {
-            if (before[i] != after[i] with { Position = before[i].Position })
+            if (!before[i].SaysWhat(after[i]))
             {
                 return false;
             }
@@ -724,10 +724,7 @@ public sealed class ProblemsModel
     /// <summary>Problems by severity, file, line and column, then the order they came.</summary>
     private static readonly Comparison<(Problem Problem, int Came)> ByPlace = static (a, b) =>
     {
-        int order = ((int)a.Problem.Severity).CompareTo((int)b.Problem.Severity);
-        order = order != 0 ? order : string.CompareOrdinal(a.Problem.Path, b.Problem.Path);
-        order = order != 0 ? order : a.Problem.Position.Line.CompareTo(b.Problem.Position.Line);
-        order = order != 0 ? order : a.Problem.Position.Column.CompareTo(b.Problem.Position.Column);
+        int order = PlaceOrder(a.Problem, b.Problem);
         return order != 0 ? order : a.Came.CompareTo(b.Came);
     };
 
@@ -774,10 +771,7 @@ public sealed class ProblemsModel
         switch (Shown)
         {
             case ProblemsTab.File:
-                foreach (Problem problem in file.Where(Filter.Passes))
-                {
-                    made.Add(new ProblemRow(0, problem.Message, problem.Where, problem));
-                }
+                FileRows(made, again);
                 EmptyText = fileName is null ? Refusals.NoFile : "No problems in this file";
                 break;
             case ProblemsTab.Solution:
@@ -862,6 +856,42 @@ public sealed class ProblemsModel
     }
 
     private static string Count(int count) => Core.Plural.Of(count, "problem");
+
+    /// <summary>The File tab's rows: the row listed already for a problem listed again (the same problem, as the file lists
+    /// one it found again) kept, so a report that adds or takes away a few of thousands makes those rows alone. The rows
+    /// and the problems are both in order of place (<see cref="ByPlace"/>), so they are read side by side.</summary>
+    private void FileRows(List<ProblemRow> made, bool again)
+    {
+        int k = 0;
+        foreach (Problem problem in file)
+        {
+            if (!Filter.Passes(problem))
+            {
+                continue;
+            }
+            while (again && k < rows.Count && rows[k].Problem is { } listed && PlaceOrder(listed, problem) < 0)
+            {
+                k++;
+            }
+            if (again && k < rows.Count && ReferenceEquals(rows[k].Problem, problem))
+            {
+                made.Add(rows[k++]);
+            }
+            else
+            {
+                made.Add(new ProblemRow(0, problem.Message, problem.Where, problem));
+            }
+        }
+    }
+
+    /// <summary>Two problems by severity, file, line and column, as <see cref="ByPlace"/> orders them but for the order they came.</summary>
+    private static int PlaceOrder(Problem one, Problem other)
+    {
+        int order = ((int)one.Severity).CompareTo((int)other.Severity);
+        order = order != 0 ? order : string.CompareOrdinal(one.Path, other.Path);
+        order = order != 0 ? order : one.Position.Line.CompareTo(other.Position.Line);
+        return order != 0 ? order : one.Position.Column.CompareTo(other.Position.Column);
+    }
 
     /// <summary>Problems under their projects and files, each group in its key's order and its problems as they came.</summary>
     private static void Grouped(List<ProblemRow> made, IEnumerable<Problem> problems)
