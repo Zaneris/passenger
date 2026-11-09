@@ -1356,6 +1356,32 @@ public sealed class FindInFilesTests : IDisposable
         return drawn.Contains(font.CharacterToGlyphMap['=']) && drawn.Contains(font.CharacterToGlyphMap['>']);
     }
 
+    /// <summary>Find in Files closed with a match in its preview: the popup, its preview editor and the file it showed go,
+    /// so each search made leaves nothing behind for the window's life.</summary>
+    [AvaloniaFact]
+    public void Find_in_files_closed_is_let_go_with_its_preview_and_the_file_it_showed()
+    {
+        MainWindow window = Open();
+        WeakReference<FindInFilesPopup> closed = SearchAndClose(window);
+        Ui.Collected(closed, "the closed Find in Files popup to be let go: held from the dispatcher by its preview's timer, "
+            + "each search would keep its popup, its matches and the file its preview showed, colours and all, for good");
+        window.Close();
+    }
+
+    /// <summary>Searches with a match shown in the preview, then closes the popup by Escape: held only weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference<FindInFilesPopup> SearchAndClose(MainWindow window)
+    {
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
+        Search(popup, "count");
+        Ui.Settle();
+        CodeEditor preview = popup.GetVisualDescendants().OfType<CodeEditor>().Single();
+        Assert.True(preview.Document.Snapshot.ToString().Contains("count", StringComparison.Ordinal), "The preview shows no file with a match");
+        Ui.Press(window, "ESCAPE");
+        Assert.False(window.IsPopupOpen, "Escape left Find in Files open");
+        return new WeakReference<FindInFilesPopup>(popup);
+    }
+
     /// <summary>Searches for a text and waits for the search in force to show its matches: the box tells of its new text
     /// after the frame, before the search begins; another change that lands meanwhile searches again, cancelling this one.</summary>
     private static void Search(FindInFilesPopup popup, string text)
