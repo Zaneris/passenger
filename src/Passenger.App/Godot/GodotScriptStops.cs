@@ -114,7 +114,8 @@ public static class GodotScriptValues
     private static bool IsWhole(GodotType type) => type is GodotType.Vector2I or GodotType.Vector3I or GodotType.Vector4I or GodotType.Rect2I;
 
     /// <summary>A number of a value as its own value: a whole one's a whole number, a single a single, a double a double.</summary>
-    private static object Component(GodotMath math, int i) => IsWhole(math.Type) ? (long)math.Values[i] : math.Wide ? math.Values[i] : (float)math.Values[i];
+    private static object Component(GodotMath math, int i) =>
+        IsWhole(math.Type) ? (object)(long)math.Values[i] : math.Wide ? (object)math.Values[i] : (object)(float)math.Values[i];
 
     /// <summary>The names of a value's numbers, where GDScript names each.</summary>
     private static string[]? Components(GodotType type) => type switch
