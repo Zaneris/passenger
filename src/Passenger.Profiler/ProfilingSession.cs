@@ -9,8 +9,8 @@ namespace Passenger.Profiler;
 /// <summary>A program to profile: what to start, where, with what arguments and environment.</summary>
 public sealed record ProfileTarget(string Program, IReadOnlyList<string> Arguments, string WorkingDirectory, IReadOnlyDictionary<string, string> Environment)
 {
-    /// <summary>What the snapshot is named for, where the program is another's host (Godot, running a game's assembly);
-    /// null for <see cref="Name"/>'s own.</summary>
+    /// <summary>What the snapshot is named for where the program's file name does not say it: another's host (Godot, running a
+    /// game's assembly), or an apphost, whose name a dot in its assembly's would cut short; null for <see cref="Name"/>'s own.</summary>
     public string? Called { get; init; }
 
     /// <summary>Why the program starts on Windows on a desktop of its own, which nobody sees (<see cref="ChildProcesses.OnDesktopOfItsOwn"/>);

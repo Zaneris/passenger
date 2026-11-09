@@ -733,7 +733,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     {
         Write("src/Hello/Program.cs", $$"""
             Console.WriteLine($"started as {Path.GetFileNameWithoutExtension(Environment.ProcessPath)}");
-            Console.WriteLine($"runtime from {Environment.GetEnvironmentVariable("{{RuntimeVariables.Root}}")}");
+            Console.WriteLine($"runtime from {Environment.GetEnvironmentVariable("{{RuntimeVariables.Root}}_" + System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant())}");
 
             """);
         MainWindow window = Open();

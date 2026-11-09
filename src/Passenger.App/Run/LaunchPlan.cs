@@ -24,8 +24,8 @@ public sealed record WebBuild(string Sdk, string Intermediate, IReadOnlyDictiona
 /// <summary>Why a configuration cannot be launched, in words for the person.</summary>
 public class LaunchException(string message) : Exception(message);
 
-/// <summary>What a run configuration launches, worked out once: the program (the project's built assembly under the
-/// <c>dotnet</c> that builds it, or another program), its arguments, working folder and environment, and the build that
+/// <summary>What a run configuration launches, worked out once: the program (the project's apphost, its built assembly under
+/// the <c>dotnet</c> that builds it, or another program), its arguments, working folder and environment, and the build that
 /// comes first. Run, Debug, Profile and a debugged test host each start a plan, so they launch the same thing.</summary>
 public sealed partial record LaunchPlan
 {
@@ -35,8 +35,13 @@ public sealed partial record LaunchPlan
     /// <summary>The copy of its configuration's game it starts, where it starts one of several (<see cref="GameCopies"/>).</summary>
     public GameCopy? Copy { get; init; }
 
-    /// <summary>The program started: the <c>dotnet</c> host for an assembly, or an executable.</summary>
+    /// <summary>The program started: the project's apphost (<see cref="ByAppHost"/>), the <c>dotnet</c> host for an assembly,
+    /// or an executable.</summary>
     public required string Program { get; init; }
+
+    /// <summary>Whether <see cref="Program"/> is the apphost the SDK made beside <see cref="Built"/>, which runs it
+    /// (<see cref="AppHosts"/>).</summary>
+    public bool ByAppHost { get; init; }
 
     /// <summary>The program's arguments, the assembly first when it runs under <c>dotnet</c>.</summary>
     public IReadOnlyList<string> Arguments { get; init; } = [];
@@ -197,15 +202,15 @@ public sealed partial record LaunchPlan
     /// executable, without its extension.</summary>
     public string ProgramName => GameName ?? System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
 
-    /// <summary>Null when the plan can launch now, its build done: else that the build made no program (unless what starts
-    /// it builds it), that the working folder is gone ("Could not run Hello: its working folder ... does not exist"),
+    /// <summary>Null when the plan can launch now, its build done: else that the build made no program or apphost (unless
+    /// what starts it builds it), that the working folder is gone ("Could not run Hello: its working folder ... does not exist"),
     /// unless what starts it builds it there (<see cref="WorksWhereBuilt"/>), or that its windows would reach the person's
     /// screen from a Passenger nobody sees (<see cref="UnseenApps.WhyNot"/>).</summary>
     public string? WhyNot(string verb, bool built = true)
     {
-        if (built && Built is { } file && !File.Exists(file))
+        if (built && (Built is { } file && !File.Exists(file) ? file : ByAppHost && !File.Exists(Program) ? Program : null) is { } missing)
         {
-            return $"Could not {verb} {ProgramName}: {System.IO.Path.GetFileName(file)} has not been built";
+            return $"Could not {verb} {ProgramName}: {System.IO.Path.GetFileName(missing)} has not been built";
         }
         return !Directory.Exists(WorkingDirectory) && (built || !WorksWhereBuilt)
             ? $"Could not {verb} {ProgramName}: its working folder {WorkingDirectory} does not exist"
@@ -266,7 +271,8 @@ public sealed partial record LaunchPlan
         {
             throw new LaunchException($"{configuration.Name} cannot run here: {windows}");
         }
-        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase) { CarriedProperties.TargetPath, MSBuildNames.ProjectDir, MSBuildNames.RunWorkingDirectory, MSBuildNames.RunArguments, MSBuildNames.RunCommand };
+        HashSet<string> names = new([CarriedProperties.TargetPath, MSBuildNames.ProjectDir, MSBuildNames.RunWorkingDirectory, MSBuildNames.RunArguments, .. AppHosts.Properties],
+            StringComparer.OrdinalIgnoreCase);
         if (project.GodotFolder is not null)
         {
             names.Add(MSBuildNames.GodotSdkVersion);
@@ -309,7 +315,8 @@ public sealed partial record LaunchPlan
         string program;
         string? built = null;
         int leading = 0;
-        bool appHost = false;
+        AppHost? host = null;
+        string? underDotnet = null;
         if (configuration.Program is { Length: > 0 } named)
         {
             program = Executable(Expand(named), project.Folder);
@@ -325,14 +332,14 @@ public sealed partial record LaunchPlan
         {
             ofProject = arguments.Count == 0 ? ProjectArguments(properties, target) : [];
             arguments.AddRange(ofProject);
-            if (properties.GetValueOrDefault(MSBuildNames.RunCommand) is { Length: > 0 } host && IsAppHost(host, target))
+            bool assembly = target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
+            (host, underDotnet) = assembly ? AppHosts.Of(properties, target) : (null, null);
+            if (host is not null)
             {
-                // As dotnet run: only the apphost carries the app's manifest, icon and name (#1416).
-                program = PathNames.Canonical(host);
+                program = host.Program;
                 built = target;
-                appHost = true;
             }
-            else if (target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            else if (assembly)
             {
                 program = Dotnet.Host();
                 arguments.Insert(0, target);
@@ -349,10 +356,11 @@ public sealed partial record LaunchPlan
             ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)))
             : System.IO.Path.GetDirectoryName(target)!;
         Dictionary<string, string> environment = Variables();
-        if (appHost && !environment.Keys.Any(k => string.Equals(k, RuntimeVariables.Root, StringComparison.OrdinalIgnoreCase)))
+        // The apphost takes its runtime from the .NET that builds it, as dotnet run's does, or the one the configuration names, over any the IDE inherited.
+        if (host is not null && !environment.Keys.Any(k => k.Equals(host.RootVariable, StringComparison.OrdinalIgnoreCase)))
         {
-            // The apphost runs on the .NET Passenger builds with, as dotnet run gives it, never one it finds itself.
-            environment[RuntimeVariables.Root] = Dotnet.Root();
+            environment[host.RootVariable] = environment.Where(v => v.Key.Equals(RuntimeVariables.Root, StringComparison.OrdinalIgnoreCase)).Select(v => v.Value).FirstOrDefault()
+                ?? Dotnet.Root();
         }
         string? other = DesktopPrograms.NamedProject(program, arguments, working) is { } runs && !PathNames.Same(runs, project.Path) && !PathNames.Same(runs, project.Folder) ? runs : null;
         if (SandboxedState(built ?? program, environment, stateFolder) is { } sandbox)
@@ -363,6 +371,7 @@ public sealed partial record LaunchPlan
         {
             Name = configuration.Name,
             Program = program,
+            ByAppHost = host is not null,
             Arguments = arguments,
             Leading = leading,
             ArgumentsOfProject = ofProject.Count > 0,
@@ -382,6 +391,7 @@ public sealed partial record LaunchPlan
             Page = configuration.BrowserUrl.Length > 0 ? BrowserLaunch.Address(Expand(configuration.BrowserUrl)) : null,
             Web = WebOf(project, framework, properties, workspace, projects),
             Unseen = headless,
+            Notes = underDotnet is null ? [] : [$"{configuration.Name} runs as dotnet {System.IO.Path.GetFileName(target)}, not by its apphost: {underDotnet}"],
         };
     }
 
@@ -442,7 +452,7 @@ public sealed partial record LaunchPlan
         {
             return given is ["exec", { } assembly, ..] && PathNames.Same(PathNames.Canonical(assembly), target) ? [.. given.Skip(2)] : [];
         }
-        return IsAppHost(command, target) ? given : [];
+        return AppHosts.Is(command, target) ? given : [];
     }
 
     /// <summary>The program dotnet run starts in place of the project's own, with the RunArguments it is given: what the
@@ -458,13 +468,8 @@ public sealed partial record LaunchPlan
             return run is [{ } assembly, ..] && assembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) && !PathNames.Same(PathNames.Canonical(assembly), target)
                 ? (command, given) : null;
         }
-        return command.Length > 0 && !IsAppHost(command, target) ? (command, given) : null;
+        return command.Length > 0 && !AppHosts.Is(command, target) ? (command, given) : null;
     }
-
-    /// <summary>Whether a RunCommand is the apphost the SDK makes beside the assembly, which runs it.</summary>
-    private static bool IsAppHost(string command, string target) =>
-        System.IO.Path.GetDirectoryName(command) is { Length: > 0 } folder && PathNames.Same(PathNames.Canonical(folder), System.IO.Path.GetDirectoryName(target)!)
-        && PathNames.NamesIn(folder).Equals(System.IO.Path.GetFileNameWithoutExtension(command), System.IO.Path.GetFileNameWithoutExtension(target));
 
     /// <summary>A program a configuration names: the .NET command line by name is the one the IDE builds with, a path is
     /// the project folder's when relative, and a bare name is looked for on the PATH as a shell would.</summary>

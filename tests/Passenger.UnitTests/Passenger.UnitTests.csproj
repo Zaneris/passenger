@@ -289,6 +289,12 @@
     <Compile Include="../../src/Passenger.App/Run/DesktopPrograms.cs" Link="App/DesktopPrograms.cs" />
   </ItemGroup>
 
+  <!-- Whether a plan starts a project's apphost and with which variable of its .NET, from an evaluation's properties alone,
+       compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Run/AppHosts.cs" Link="App/AppHosts.cs" />
+  </ItemGroup>
+
   <!-- What a publish profile is written with for the Publish dialog's options, from their values alone, compiled in since
        its project is the app's. -->
   <ItemGroup>

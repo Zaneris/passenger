@@ -51,6 +51,13 @@ public static class RuntimeVariables
     /// <summary>The folder of the .NET installation a program's apphost takes its runtime from, before the system's own.</summary>
     public const string Root = "DOTNET_ROOT";
 
+    /// <summary><see cref="Root"/> for an apphost of one processor ("arm64", a runtime identifier's), which an apphost from
+    /// .NET 6 on reads before <see cref="Root"/>.</summary>
+    public static string RootFor(string processor) => $"{Root}_{processor.ToUpperInvariant()}";
+
+    /// <summary>What a 32-bit apphost before .NET 6 reads on 64-bit Windows in <see cref="Root"/>'s place.</summary>
+    public const string RootX86 = "DOTNET_ROOT(x86)";
+
     /// <summary>"1" has WPF record where in its XAML each object was made (VisualDiagnostics.GetXamlSourceInfo) and
     /// raise BindingDiagnostics.BindingFailed; read as WPF first loads XAML, so it stays in the environment.</summary>
     public const string XamlDiagnosticsSourceInfo = "ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO";

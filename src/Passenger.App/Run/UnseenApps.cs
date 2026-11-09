@@ -42,8 +42,11 @@ public static class UnseenApps
             + $"sees opens none there. {unseen}; a person's Passenger (--mcp-attach) runs it on their screen";
     }
 
-    /// <summary>What desktop app a plan starts where nobody is to see it; null for a plan people see run, a Godot game's (whose
-    /// launch hides it itself), or a program with no windows of its own.</summary>
+    /// <summary>What desktop app a plan starts where nobody is to see it, its apphost read as the assembly it runs; null for a
+    /// plan people see run, a Godot game's (whose launch hides it itself), or a program with no windows of its own.</summary>
     private static DesktopProgram? Hidden(LaunchPlan plan) =>
-        plan.Unseen && plan.Godot is null ? DesktopPrograms.Started(plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Built, plan.Target, plan.DesktopProject, plan.NamedProject) : null;
+        plan.Unseen && plan.Godot is null
+            ? DesktopPrograms.Started(plan.ByAppHost && plan.Built is { } assembly ? assembly : plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Built, plan.Target,
+                plan.DesktopProject, plan.NamedProject)
+            : null;
 }

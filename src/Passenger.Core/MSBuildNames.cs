@@ -61,6 +61,15 @@ public static class MSBuildNames
     /// <summary>The runtime identifier of the SDK's own machine.</summary>
     public const string NETCoreSdkRuntimeIdentifier = "NETCoreSdkRuntimeIdentifier";
 
+    /// <summary>The portable runtime identifier of the SDK's own machine ("linux-x64" of a distribution's "fedora.40-x64").</summary>
+    public const string NETCoreSdkPortableRuntimeIdentifier = "NETCoreSdkPortableRuntimeIdentifier";
+
+    /// <summary>The runtime identifier a project of none builds its apphost for.</summary>
+    public const string DefaultAppHostRuntimeIdentifier = "DefaultAppHostRuntimeIdentifier";
+
+    /// <summary>The version of the framework a project builds for, after a "v" ("v10.0").</summary>
+    public const string TargetFrameworkVersion = "TargetFrameworkVersion";
+
     // Where a project is and what its build makes.
     public const string ProjectDir = "ProjectDir";
     public const string AssemblyName = "AssemblyName";
