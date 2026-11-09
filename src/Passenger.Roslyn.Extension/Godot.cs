@@ -381,9 +381,9 @@ internal static partial class GodotSource
         }
         (string? nested, GodotNameKind kind) = at switch
         {
-            IPropertySymbol => ("PropertyName", GodotNameKind.Property),
-            IMethodSymbol { MethodKind: MethodKind.Ordinary } => ("MethodName", GodotNameKind.Method),
-            IEventSymbol => ("SignalName", GodotNameKind.Signal),
+            IPropertySymbol => (GodotSharpIl.PropertyName, GodotNameKind.Property),
+            IMethodSymbol { MethodKind: MethodKind.Ordinary } => (GodotSharpIl.MethodName, GodotNameKind.Method),
+            IEventSymbol => (GodotSharpIl.SignalName, GodotNameKind.Signal),
             _ => (null, GodotNameKind.Property),
         };
         return nested is not null && GodotSharpNames.Of(compilation, owner, nested, at.Name) is { } named

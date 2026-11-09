@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 
 namespace Passenger.Workspace;
@@ -83,12 +82,12 @@ public sealed class GodotEngineClasses
                     named[handle] = ClassName(metadata, type) ?? (own == "GodotObject" ? "Object" : own);
                 }
             }
-            Dictionary<(string Owner, string Nested, string Member), string> names = NamesOf(pe, metadata);
+            Dictionary<(string Owner, string Nested, string Member), string> names = GodotSharpIl.NamesOf(pe, metadata, [GodotSharpIl.MethodName, GodotSharpIl.SignalName]);
             // Each class's method names apart, in the order read, so a class looks through its own alone.
             Dictionary<string, List<(string Member, string Godot)>> methodNames = new(StringComparer.Ordinal);
             foreach (((string owner, string nested, string member), string godot) in names)
             {
-                if (nested == "MethodName")
+                if (nested == GodotSharpIl.MethodName)
                 {
                     (methodNames.TryGetValue(owner, out List<(string Member, string Godot)>? owned) ? owned : methodNames[owner] = []).Add((member, godot));
                 }
@@ -116,7 +115,7 @@ public sealed class GodotEngineClasses
                 Dictionary<string, GodotEngineSignal> declared = new(StringComparer.Ordinal);
                 foreach (EventDefinition signal in type.GetEvents().Select(metadata.GetEventDefinition))
                 {
-                    if (names.GetValueOrDefault((own, "SignalName", metadata.GetString(signal.Name))) is { } godot)
+                    if (names.GetValueOrDefault((own, GodotSharpIl.SignalName, metadata.GetString(signal.Name))) is { } godot)
                     {
                         declared[godot] = new GodotEngineSignal(godot, ParametersOf(metadata, signal.Type, named));
                     }
@@ -173,49 +172,6 @@ public sealed class GodotEngineClasses
         MethodSignature<string> signature = invoke.DecodeSignature(new TypeNames(named), null);
         List<string> names = [.. invoke.GetParameters().Select(metadata.GetParameter).Where(p => p.SequenceNumber > 0).OrderBy(p => p.SequenceNumber).Select(p => metadata.GetString(p.Name))];
         return [.. signature.ParameterTypes.Select((type, i) => (i < names.Count ? names[i] : $"arg{i}", type))];
-    }
-
-    /// <summary>Every name the nested <c>MethodName</c> and <c>SignalName</c> classes' static constructors set: each field stored
-    /// with the string last loaded before it, by its owner's C# name, the nested class and the field.</summary>
-    private static Dictionary<(string Owner, string Nested, string Member), string> NamesOf(PEReader pe, MetadataReader metadata)
-    {
-        Dictionary<(string, string, string), string> names = [];
-        foreach (TypeDefinitionHandle handle in metadata.TypeDefinitions)
-        {
-            TypeDefinition type = metadata.GetTypeDefinition(handle);
-            string nested = metadata.GetString(type.Name);
-            if (nested is not ("MethodName" or "SignalName") || type.GetDeclaringType().IsNil)
-            {
-                continue;
-            }
-            string owner = metadata.GetString(metadata.GetTypeDefinition(type.GetDeclaringType()).Name);
-            foreach (MethodDefinition method in type.GetMethods().Select(metadata.GetMethodDefinition).Where(m => metadata.GetString(m.Name) == ".cctor" && m.RelativeVirtualAddress != 0))
-            {
-                BlobReader il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILReader();
-                string? loaded = null;
-                while (il.RemainingBytes > 0)
-                {
-                    byte code = il.ReadByte();
-                    if (code == (byte)ILOpCode.Ldstr)
-                    {
-                        loaded = metadata.GetUserString(MetadataTokens.UserStringHandle(il.ReadInt32() & 0xFFFFFF));
-                    }
-                    else if (code is (byte)ILOpCode.Call or (byte)ILOpCode.Newobj)
-                    {
-                        il.ReadInt32();
-                    }
-                    else if (code == (byte)ILOpCode.Stsfld && MetadataTokens.EntityHandle(il.ReadInt32()) is { Kind: HandleKind.FieldDefinition } field && loaded is not null)
-                    {
-                        names[(owner, nested, metadata.GetString(metadata.GetFieldDefinition((FieldDefinitionHandle)field).Name))] = loaded;
-                    }
-                    else if (code != (byte)ILOpCode.Nop)
-                    {
-                        break;
-                    }
-                }
-            }
-        }
-        return names;
     }
 
     /// <summary>A parameter's type as GDScript writes it: an engine class by its Godot name, C#'s numbers, strings and truths
