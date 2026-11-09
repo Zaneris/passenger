@@ -458,6 +458,26 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         window.Close();
     }
 
+    /// <summary>A C# file outside every project of a folder that has one, opened, has the language server's colours from the
+    /// server's Miscellaneous Files: a local's use, which no parse alone tells from any other name, is coloured a local
+    /// (#1352).</summary>
+    [AvaloniaFact]
+    public void A_file_in_no_project_beside_a_project_has_the_language_servers_colours()
+    {
+        string root = PathNames.Canonical(TestFolders.Create("loose-"));
+        Write(root, "App/App.csproj", TestProjects.Library());
+        Write(root, "App/App.cs", "class App { }\n");
+        string loose = Write(root, "Scripts/Loose.cs", "class Loose\n{\n    int Twice(int value)\n    {\n        int doubled = value * 2;\n        return doubled;\n    }\n}\n");
+        Restore.Run(Path.Combine(root, "App", "App.csproj"));
+        MainWindow window = Ui.OpenFolder(root);
+        window.OpenFile(loose);
+        OpenDocument document = window.EditorArea.Active!;
+        int use = document.Text.Snapshot.ToString().IndexOf("doubled;", StringComparison.Ordinal);
+        Ui.WaitFor(() => document.Highlighter?.GetSpans(document.Text.Snapshot, use, 1).Any(s => s.Start == use && s.Kind == TokenKind.Local) == true,
+            () => $"the language server's colour on the loose file's local ({window.CSharpService?.State})", TimeSpan.FromMinutes(2));
+        window.Close();
+    }
+
     /// <summary>The file's own parse (its brackets' pairs, its folds, what Safe Delete reads) takes the symbols of the
     /// framework chosen in the editor: the member only net11.0 compiles is disabled text to it in the other framework and
     /// code in net11.0.</summary>

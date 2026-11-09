@@ -56,6 +56,14 @@ public static class Handlers
     ];
 }
 
+/// <summary>Requests of the server that the extension answers itself, as an LSP method of its own.</summary>
+public static class ExtensionMethods
+{
+    /// <summary>A request about a file in no project, its <c>textDocument</c> and, for part of it, its <c>range</c>: its
+    /// colours, as the server's semantic tokens encode them; null for a file a project holds.</summary>
+    public const string LooseColours = "passenger/looseSemanticTokens";
+}
+
 /// <summary>Files the solution has, by their paths, whose texts as the server holds them are asked for: an edit to a file
 /// not open is placed by the server's lines and columns, so it lands where meant only on the text the server read.</summary>
 public sealed record TextsAsked([property: JsonPropertyName("paths")] IReadOnlyList<string> Paths);

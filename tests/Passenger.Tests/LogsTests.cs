@@ -69,8 +69,8 @@ public sealed class LogsTests : IDisposable
         window.OpenFile(Path.Combine("Scripts", "Loose.cs"));
         Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to finish loading ({window.CSharpService?.State})");
         int server = window.CSharpService!.Session!.Server.ProcessId;
-        // The server's own project for the loose file is loaded and restored; the server gives such a file no colours.
-        Ui.WaitFor(() => LoadedAndRestored(ServerLog(server), "Loose.cs"), "the language server's own project for the loose file to be loaded and restored");
+        // The loose file's colours are the server's once its own project for it is restored and loaded.
+        Ui.WaitFor(() => Ui.IdeLog().Contains($"(process {server}) gave an open file its colours", StringComparison.Ordinal), "the loose file's colours from the server");
         Ui.WaitFor(() => window.FindControl<TextBlock>("LanguageText")!.Text == "C#", "the server's work to leave the status bar");
 
         string shown = string.Join(" | ", languageShown.Distinct());
@@ -105,7 +105,7 @@ public sealed class LogsTests : IDisposable
             window.OpenFile(Path.Combine("Scripts", "Loose.cs"));
             Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to finish loading ({window.CSharpService?.State})");
             int server = window.CSharpService!.Session!.Server.ProcessId;
-            Ui.WaitFor(() => LoadedAndRestored(ServerLog(server), "Loose.cs"), "the language server's own project for the loose file to be loaded and restored");
+            Ui.WaitFor(() => Ui.IdeLog().Contains($"(process {server}) gave an open file its colours", StringComparison.Ordinal), "the loose file's colours from the server");
             int Asked() => Logged("lsp.log").Split('\n').Count(line => line.Contains($"[server {server}] --> ", StringComparison.Ordinal)
                 && line.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.GetProjectContexts}\"", StringComparison.Ordinal));
             int before = Asked();
@@ -409,17 +409,6 @@ public sealed class LogsTests : IDisposable
         trace.Split('\n').Any(line => line.Contains(from, StringComparison.Ordinal) && line.Contains(part, StringComparison.Ordinal));
 
     private static string Start(string text) => text.Length > 2000 ? text[..2000] : text;
-
-    /// <summary>The log of the language server with this process, as a person opening the logs folder would find it.</summary>
-    private static string ServerLog(int process) =>
-        Directory.EnumerateFiles(Passenger.App.CSharp.CSharpService.LogFolder, $"server-*-{process}.log").FirstOrDefault() is { } path
-            ? Ui.Shared(path) : string.Empty;
-
-    /// <summary>Whether a server's log says it loaded its own project for a loose file and restored that project.</summary>
-    private static bool LoadedAndRestored(string log, string file) =>
-        log.Contains("[FileBasedProgramsProjectSystem] Restore complete", StringComparison.Ordinal)
-        && log.Split('\n').Any(line => line.Contains("[FileBasedProgramsProjectSystem] Successfully completed load of ", StringComparison.Ordinal)
-            && line.TrimEnd().EndsWith(file, StringComparison.Ordinal));
 
     private sealed class Watcher(Action<string?> next) : IObserver<string?>
     {

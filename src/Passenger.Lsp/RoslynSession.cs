@@ -867,7 +867,7 @@ public sealed class LspDocument : IDisposable
         {
             Server.Follow(parameters, sent);
         }
-        SemanticTokens? tokens = await Server.RequestAsync<SemanticTokens>(LspMethods.SemanticTokensFull, parameters, cancel);
+        SemanticTokens? tokens = await OrLooseAsync(await Server.RequestAsync<SemanticTokens>(LspMethods.SemanticTokensFull, parameters, cancel), parameters, cancel);
         Came(ref coloured, asked);
         if (tokens is { Data.Length: > 0 })
         {
@@ -887,9 +887,20 @@ public sealed class LspDocument : IDisposable
         {
             Server.Follow(parameters, sent);
         }
-        SemanticTokens? tokens = await Server.RequestAsync<SemanticTokens>(LspMethods.SemanticTokensRange, parameters, cancel);
+        SemanticTokens? tokens = await OrLooseAsync(await Server.RequestAsync<SemanticTokens>(LspMethods.SemanticTokensRange, parameters, cancel), parameters, cancel);
         Came(ref coloured, asked);
         return (tokens, version);
+    }
+
+    /// <summary>The server's colours, or where it gave none, those Passenger's extension gives a file in no project, which
+    /// the server leaves uncoloured; asked with the same document and range.</summary>
+    private async Task<SemanticTokens?> OrLooseAsync(SemanticTokens? tokens, object parameters, CancellationToken cancel)
+    {
+        if (tokens is { Data.Length: > 0 } || Server.ExtensionProblem is not null)
+        {
+            return tokens;
+        }
+        return await Server.RequestAsync<SemanticTokens>(ExtensionMethods.LooseColours, parameters, cancel) ?? tokens;
     }
 
     /// <summary>The symbol at an offset as a call hierarchy's root, if it is one that calls or is called.</summary>
