@@ -8,12 +8,14 @@ namespace Passenger.Profiler;
 /// thrown, so what follows it (the stream read to its end, the session let go) always runs.</summary>
 internal static class EventPipeStops
 {
-    /// <summary>Stops <paramref name="session"/>, given up after <paramref name="limit"/>: true once its runtime took the
-    /// stop; false for one gone, unreachable or refusing (<see cref="DiagnosticsFailures.Of"/>), or past the limit.</summary>
-    public static async Task<bool> StopAsync(EventPipeSession session, TimeSpan limit)
+    /// <summary>Stops <paramref name="session"/>, given up after <paramref name="limit"/> or once <paramref name="cancel"/>
+    /// is: true once its runtime took the stop; false for one gone, unreachable or refusing
+    /// (<see cref="DiagnosticsFailures.Of"/>), past the limit, or canceled.</summary>
+    public static async Task<bool> StopAsync(EventPipeSession session, TimeSpan limit, CancellationToken cancel = default)
     {
         // A program gone mid-request would leave a port's endpoint waiting for its runtime for good.
-        using CancellationTokenSource timer = new(limit);
+        using CancellationTokenSource timer = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        timer.CancelAfter(limit);
         try
         {
             await session.StopAsync(timer.Token).ConfigureAwait(false);

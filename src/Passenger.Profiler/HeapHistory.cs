@@ -460,7 +460,7 @@ internal sealed class HeapHistory : IAsyncDisposable
                 found = e.Count;
             }
         });
-        bool stopped = await EventPipeStops.StopAsync(inducing, TimeSpan.FromSeconds(30));
+        bool stopped = await EventPipeStops.StopAsync(inducing, TimeSpan.FromSeconds(30), cancel);
         bool read = await Task.WhenAny(reading, Task.Delay(TimeSpan.FromSeconds(30), cancel)) == reading;
         if (!read)
         {
