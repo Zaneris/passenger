@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -23,7 +22,9 @@ public static partial class OpenApiSources
 
     private static readonly HttpClient Client = OutboundHttp.Client(TimeSpan.FromSeconds(10), 16 * 1024 * 1024, followsRedirects: false);
 
-    private static readonly ConcurrentDictionary<string, (Task<OpenApiDocument?> Read, long At)> Read = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>The documents read of late, by origin and paths: an app's port changes from run to run, and a document kept
+    /// holds its JSON whole, several times the size of its text.</summary>
+    private static readonly FreshReads<OpenApiDocument?> Read = new(Fresh, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The document an app at <paramref name="address"/> serves (its own path <paramref name="mapped"/> first, then the
     /// defaults); null where none answers with one, or the address is not on this machine, which is never asked.</summary>
@@ -35,12 +36,13 @@ public static partial class OpenApiSources
         }
         string origin = address.GetLeftPart(UriPartial.Authority);
         string key = $"{origin}\n{string.Join('\n', mapped)}";
-        if (Read.TryGetValue(key, out (Task<OpenApiDocument?> Read, long At) known) && (!known.Read.IsCompleted || Stopwatch.GetElapsedTime(known.At) < Fresh))
+        long now = Stopwatch.GetTimestamp();
+        if (Read.TryGet(key, now, out Task<OpenApiDocument?>? known))
         {
-            return known.Read.WaitAsync(cancel);
+            return known.WaitAsync(cancel);
         }
         Task<OpenApiDocument?> reading = AskAsync(new Uri(origin), [.. mapped.Concat(Defaults).Distinct(StringComparer.OrdinalIgnoreCase)]);
-        Read[key] = (reading, Stopwatch.GetTimestamp());
+        Read.Add(key, reading, now);
         return reading.WaitAsync(cancel);
     }
 
