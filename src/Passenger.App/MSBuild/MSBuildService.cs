@@ -3,6 +3,7 @@ using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Host;
 using Passenger.Packages;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.MSBuild;
@@ -91,7 +92,7 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
 
     /// <summary>A project's evaluation landed for one of its files: the project's other open files take it up too, without
     /// asking for it again.</summary>
-    internal void Inspected(MSBuildDocument from, MSBuildInsight insight, IReadOnlyDictionary<string, string> texts)
+    internal void Inspected(MSBuildDocument from, MSBuildInsight insight, IReadOnlyDictionary<string, TextSnapshot> texts)
     {
         foreach (MSBuildDocument other in documents.Values.Where(d => d != from && d.Project is { } own && PathNames.Same(own, insight.Project)).ToList())
         {
@@ -134,13 +135,28 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
         }
     }
 
-    /// <summary>The open MSBuild files whose text differs from the disk's, which an evaluation reads in its place.</summary>
-    internal Dictionary<string, string> Texts()
+    /// <summary>The open MSBuild files whose text differs from the disk's, which an evaluation reads in its place: their
+    /// snapshots, made into text on the evaluation's worker (<see cref="TextsOf"/>), never on the window's thread.</summary>
+    internal Dictionary<string, TextSnapshot> Texts()
     {
-        Dictionary<string, string> texts = new(StringComparer.Ordinal);
-        foreach (OpenDocument document in documents.Keys.Where(d => d.IsModified))
+        Dictionary<string, TextSnapshot> texts = new(StringComparer.Ordinal);
+        foreach (OpenDocument document in documents.Keys)
         {
-            texts[document.Path] = document.Text.Snapshot.ToString();
+            if (document.IsModified)
+            {
+                texts[document.Path] = document.Text.Snapshot;
+            }
+        }
+        return texts;
+    }
+
+    /// <summary>The text of each snapshot <see cref="Texts"/> took, as the project host reads it; off the window's thread.</summary>
+    internal static Dictionary<string, string> TextsOf(IReadOnlyDictionary<string, TextSnapshot> snapshots)
+    {
+        Dictionary<string, string> texts = new(snapshots.Count, StringComparer.Ordinal);
+        foreach ((string path, TextSnapshot snapshot) in snapshots)
+        {
+            texts[path] = snapshot.ToString();
         }
         return texts;
     }

@@ -51,7 +51,8 @@ public sealed class MSBuildDocument : IDisposable
     /// <summary>The file's first evaluation, which hover and Go to Declaration wait for.</summary>
     public Task First { get; }
 
-    /// <summary>The file's markup as it stands, parsed once a version.</summary>
+    /// <summary>The file's markup as it stands, parsed once a version: for an action that changes the text at once (a
+    /// completion's commit) or an agent's call; what each pause reads is parsed on a worker (<see cref="ParsedAsync"/>).</summary>
     public XmlTree Tree
     {
         get
@@ -65,6 +66,23 @@ public sealed class MSBuildDocument : IDisposable
             parsed = (version, tree);
             return tree;
         }
+    }
+
+    /// <summary>The file's markup as it stands as this is asked, with that text: parsed once a version, on a worker.</summary>
+    private async Task<(TextSnapshot Text, XmlTree Tree)> ParsedAsync()
+    {
+        int version = Document.Text.Version;
+        TextSnapshot text = Document.Text.Snapshot;
+        if (parsed is { } kept && kept.Version == version)
+        {
+            return (text, kept.Tree);
+        }
+        XmlTree tree = await BackgroundWork.Run(() => XmlTree.Parse(text.ToString()));
+        if (Document.Text.Version == version)
+        {
+            parsed = (version, tree);
+        }
+        return (text, tree);
     }
 
     /// <summary>Whether the last evaluation read one of these files, or the file is one of them; with files come or gone
@@ -82,7 +100,7 @@ public sealed class MSBuildDocument : IDisposable
 
     private async Task<MSBuildContext> ContextAsync()
     {
-        XmlTree tree = Tree;
+        (_, XmlTree tree) = await ParsedAsync();
         IReadOnlyList<string> sdks = await service.SdksAsync();
         MSBuildSchema schema = await BackgroundWork.Run(() => MSBuildSchema.Instance);
         return new MSBuildContext(Document.Path, tree, schema, Insight, sdks);
@@ -180,7 +198,7 @@ public sealed class MSBuildDocument : IDisposable
             return;
         }
         int version = Document.Text.Version;
-        Dictionary<string, string> texts = service.Texts();
+        Dictionary<string, TextSnapshot> texts = service.Texts();
         Dictionary<string, string> properties = service.Properties();
         MSBuildInsight insight;
         try
@@ -189,7 +207,7 @@ public sealed class MSBuildDocument : IDisposable
             {
                 return;
             }
-            insight = await BackgroundWork.Run(async () => new MSBuildInsight(await host.InspectAsync(project, properties, texts)));
+            insight = await BackgroundWork.Run(async () => new MSBuildInsight(await host.InspectAsync(project, properties, MSBuildService.TextsOf(texts))));
         }
         catch (ProjectHostFailed failed)
         {
@@ -210,13 +228,15 @@ public sealed class MSBuildDocument : IDisposable
 
     /// <summary>Another open file's evaluation of this file's project, taken up when it read this file's text as it stands
     /// (its unsaved text, or the disk's when it has none), so the project's files never ask again of each other.</summary>
-    internal async Task AdoptAsync(MSBuildInsight insight, IReadOnlyDictionary<string, string> texts)
+    internal async Task AdoptAsync(MSBuildInsight insight, IReadOnlyDictionary<string, TextSnapshot> texts)
     {
         using IDisposable held = BackgroundWork.Scope();
         using IDisposable checking = Document.Checking(Checker);
         int version = Document.Text.Version;
+        TextSnapshot now = Document.Text.Snapshot;
         bool same = Document.IsModified
-            ? texts.TryGetValue(Document.Path, out string? read) && read == Document.Text.Snapshot.ToString()
+            ? texts.TryGetValue(Document.Path, out TextSnapshot? read)
+                && (ReferenceEquals(read, now) || read.Length == now.Length && await BackgroundWork.Run(() => read.ToString() == now.ToString()))
             : !texts.ContainsKey(Document.Path);
         if (same && !disposed)
         {
@@ -244,14 +264,19 @@ public sealed class MSBuildDocument : IDisposable
         EvaluatedVersion = version;
         diagnostics = [.. insight.Raw.Diagnostics.Where(d => d.File.Length > 0 && PathNames.Same(PathNames.Canonical(d.File), Document.Path)
             || (d.File.Length == 0 && PathNames.Same(insight.Project, Document.Path)))];
-        Show(await AdvisoriesAsync(version));
+        (TextSnapshot text, XmlTree tree) = await ParsedAsync();
+        IReadOnlyList<Marker> advisories = await AdvisoriesAsync(tree, version);
+        // Typed on meanwhile, the next pause evaluates the text as it stands and shows what that finds.
+        if (Document.Text.Version == version)
+        {
+            Show(text, tree, advisories);
+        }
     }
 
     /// <summary>The packages this file references or pins whose version a known advisory affects: NuGet's audit warning on
     /// the version (or the id, when the version is the central one).</summary>
-    private async Task<IReadOnlyList<Marker>> AdvisoriesAsync(int version)
+    private async Task<IReadOnlyList<Marker>> AdvisoriesAsync(XmlTree tree, int version)
     {
-        XmlTree tree = Tree;
         List<(XmlElement Element, string Id, string Version, TextRange Range)> packages = [];
         IReadOnlyDictionary<string, (string Version, MSBuildPlace Place)> central = Insight?.CentralVersions() ?? new Dictionary<string, (string, MSBuildPlace)>();
         foreach (XmlElement element in tree.Elements.Where(e => MSBuildSyntax.PackageItems.Contains(e.LocalName) && MSBuildSyntax.RoleOf(e) == MSBuildRole.Item))
@@ -296,15 +321,14 @@ public sealed class MSBuildDocument : IDisposable
             }, $"Package '{id}' {version} has a known {gravest.Severity.ToString().ToLowerInvariant()} severity vulnerability, {gravest.Address}")
             : null;
 
-    /// <summary>The evaluation's problems in this file placed on its lines, with the advisories.</summary>
-    private void Show(IReadOnlyList<Marker> advisories)
+    /// <summary>The evaluation's problems in this file placed on its lines, with the advisories, in the text as it stands and
+    /// its markup.</summary>
+    private void Show(TextSnapshot text, XmlTree tree, IReadOnlyList<Marker> advisories)
     {
         if (disposed)
         {
             return;
         }
-        TextSnapshot text = Document.Text.Snapshot;
-        XmlTree tree = Tree;
         IEnumerable<Marker> found = diagnostics.Select(d => Marker.Coded(RangeOf(text, tree, d), d.Error ? MarkerKind.Error : MarkerKind.Warning, d.Code, Plain(d.Message)));
         // Text typed at a problem's start goes before it.
         Document.Markers = [.. found.Concat(advisories).Select(m => m with { Range = Clamped(m.Range, text.Length), StartGravity = AnchorGravity.After })];

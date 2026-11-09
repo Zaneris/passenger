@@ -1,3 +1,4 @@
+using System.Text;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
@@ -432,6 +433,70 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
 
     /// <summary>A window on the solution, with no C# language server unless asked for, since the project files' help is the
     /// MSBuild host's; asked for, on the server the class's last window left.</summary>
+    /// <summary>A typing pause in a project file of 4,000 items costs the window's thread about what one in a file of 40
+    /// does: the project is evaluated again with the text as typed, which the evaluation's worker makes into text, and the
+    /// file's markup its markers are placed by is read on a worker too, never on the window's thread.</summary>
+    [AvaloniaFact]
+    public void A_typing_pause_in_a_project_file_of_thousands_of_items_costs_the_window_what_one_of_forty_does()
+    {
+        string own = TestFolders.Create("project-pause-");
+        string small = Path.Combine(own, "Small", "Small.csproj");
+        string large = Path.Combine(own, "Large", "Large.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(small)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(large)!);
+        File.WriteAllText(small, Items(40));
+        File.WriteAllText(large, Items(4000));
+        MainWindow window = Ui.OpenFolder(own, languageServer: false);
+        long few = Paused(window, small);
+        long many = Paused(window, large);
+        long each = (many - few) / (4000 - 40);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"A typing pause allocated {few / 1024:N0} KB on the UI thread in a project file of 40 items, {many / 1024:N0} KB in one of 4,000: {each} bytes an item");
+        Assert.True(each < 64,
+            $"A typing pause allocated {many / 1024:N0} KB on the UI thread in a project file of 4,000 items, {few / 1024:N0} KB in one of 40: {each} bytes for each item, where the file was copied or read on the window's thread");
+        window.Close();
+
+        static string Items(int count)
+        {
+            StringBuilder text = new($"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <Version>1.0.0</Version>\n  </PropertyGroup>\n  <ItemGroup>\n");
+            for (int i = 0; i < count; i++)
+            {
+                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    <None Include=\"Notes{i}.txt\" CopyToOutputDirectory=\"Never\" />\n");
+            }
+            return text.Append("  </ItemGroup>\n</Project>\n").ToString();
+        }
+    }
+
+    /// <summary>The least a key typed into a project file's version and the pause after it allocate on the UI thread, of
+    /// three, the project evaluated again with the text as typed, the caret's blinks set aside.</summary>
+    private static long Paused(MainWindow window, string path)
+    {
+        window.OpenFile(path);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        MSBuildDocument help = window.Session.MSBuild.For(document)!;
+        Ui.PlaceAfter(editor, "1.0.0");
+        editor.Focus();
+        Ui.Settle();
+        long blink = Ui.BlinkBytes(editor);
+        long least = long.MaxValue;
+        for (int round = 0; round < 4; round++)
+        {
+            GC.Collect();
+            long blinks = editor.Blinks;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            window.KeyTextInput("1");
+            Ui.Settle();
+            long used = GC.GetAllocatedBytesForCurrentThread() - before - ((editor.Blinks - blinks) * blink);
+            Assert.True(help.EvaluatedVersion == document.Text.Version, $"{Path.GetFileName(path)} was not evaluated again with the key typed");
+            Ui.Press(window, "BACK_SPACE");
+            // The first round's key meets what the file's opening left.
+            least = round > 0 ? Math.Min(least, used) : least;
+        }
+        return least;
+    }
+
     private MainWindow Open(string file, bool autosaves = false, bool languageServer = false)
     {
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = autosaves, WarmServer = shop.Server, StartsLanguageServer = languageServer };
