@@ -41,6 +41,7 @@ public sealed class DatabaseView : DockPanel
         toolbar.Children.Add(sources);
         foreach ((string action, string icon, string title) in new (string, string, string)[]
         {
+            (AppActions.DatabaseAdd, IconKeys.Add, "Add Database Connection…"),
             (AppActions.DatabaseRefresh, IconKeys.Rerun, "Refresh Database Connections"), (AppActions.DatabaseConnect, IconKeys.Database, "Connect to Database"),
             (AppActions.DatabaseBrowse, IconKeys.DocumentText, "Browse Database Rows"), (AppActions.DatabasePrevious, IconKeys.ArrowUp, "Previous Database Page"),
             (AppActions.DatabaseNext, IconKeys.ArrowDown, "Next Database Page"), (AppActions.DatabaseQuery, IconKeys.Run, "Run Database SQL…"),

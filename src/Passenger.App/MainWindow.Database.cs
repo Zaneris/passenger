@@ -41,6 +41,8 @@ public partial class MainWindow
             }
         };
         Closed += (_, _) => controller.Stop();
+        Add(AppActions.DatabaseAdd, "Add Database Connection…", AddDatabaseConnectionAsync,
+            () => Folder is null ? Refusals.NoFolder : AgentsOwn || Mcp.AgentCall.Current is not null ? Refusals.AsksThePerson : null);
         Add(AppActions.DatabaseRefresh, "Refresh Database Connections", controller.RefreshAsync, () => Folder is null ? Refusals.NoFolder : null);
         Add(AppActions.DatabaseConnect, "Connect to Database", controller.ConnectAsync, () => controller.Source is null ? "Choose a database connection first" : null);
         Add(AppActions.DatabaseBrowse, "Browse Database Rows", () => controller.BrowseAsync(), () => !controller.Connected ? "Connect to a database first" : controller.Table is null ? "Choose a table first" : null);
@@ -66,6 +68,22 @@ public partial class MainWindow
                 WhyNot = _ => controller.Busy ? "A database operation is under way" : why(),
                 Menus = [new MenuPlace("Tools/Database", 0, 0)],
             });
+        }
+    }
+
+    private async Task AddDatabaseConnectionAsync()
+    {
+        ProjectSession current = session;
+        if (current.Folder is not { } folder)
+        {
+            return;
+        }
+        DatabaseConnectionDialog dialog = new(folder);
+        if (await dialog.ShowDialog<DatabaseSource?>(this) is { } source && session == current)
+        {
+            database!.AddConnection(source);
+            ShowToolWindow(ToolWindowIds.Database);
+            Request(AppActions.DatabaseConnect);
         }
     }
 

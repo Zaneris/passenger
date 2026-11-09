@@ -12,6 +12,69 @@ namespace Passenger.Tests;
 public sealed class DatabaseTests
 {
     [AvaloniaFact]
+    public void A_manual_connection_is_entered_validated_connected_and_kept_through_refresh()
+    {
+        string folder = TestFolders.Create("database-manual");
+        TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+        using (SqliteConnection connection = new($"Data Source={Path.Combine(folder, "shop.db")};Pooling=False"))
+        {
+            connection.Open();
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE Products(Id INTEGER PRIMARY KEY, Name TEXT); INSERT INTO Products VALUES(1,'Coffee')";
+            command.ExecuteNonQuery();
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Database);
+            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+            Tool(window, AppActions.DatabaseAdd);
+            Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the manual database connection dialog");
+            DatabaseConnectionDialog dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+            Ui.Settle();
+            DialogButtonsTests.Check(dialog);
+            T Field<T>(string name) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
+            Assert.NotEqual(default, Field<TextBox>("DatabasePassword").PasswordChar);
+            Assert.False(Field<TextBox>("DatabasePassword").RevealPassword);
+            Ui.ClickButton(dialog, "Connect");
+            Assert.True(dialog.IsVisible);
+            Assert.Contains("host and database", Field<TextBlock>("DatabaseConnectionError").Text, StringComparison.Ordinal);
+            Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)DatabaseKind.SqlServer;
+            Field<CheckBox>("DatabaseIntegrated").IsChecked = true;
+            Assert.Equal(1433m, Field<NumericUpDown>("DatabasePort").Value);
+            Assert.False(Field<TextBox>("DatabaseUser").IsEnabled);
+            Assert.False(Field<TextBox>("DatabasePassword").IsEnabled);
+            Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)DatabaseKind.MySql;
+            Assert.Equal(3306m, Field<NumericUpDown>("DatabasePort").Value);
+            Assert.True(Field<TextBox>("DatabasePassword").IsEnabled);
+            Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)DatabaseKind.Sqlite;
+            Field<TextBox>("DatabaseConnectionName").Text = "Manual shop";
+            Field<TextBox>("DatabaseName").Text = "shop.db";
+            Ui.ClickButton(dialog, "Connect");
+            Ui.WaitFor(() => window.Database.Connected && !window.Database.Busy, () => window.Database.Said);
+            Assert.Equal("Manual shop", window.Database.Source!.Name);
+            Assert.Single(window.Database.Tables);
+            Run(window, AppActions.DatabaseRefresh);
+            Assert.Single(window.Database.Sources);
+            Assert.Equal("Manual shop", window.Database.Source!.Name);
+            Run(window, AppActions.DatabaseConnect);
+            View<ListBox>(window, "DatabaseTables").SelectedItem = window.Database.Tables.Single();
+            Run(window, AppActions.DatabaseBrowse);
+            Assert.Equal("Coffee", window.Database.Rows!.Cell(0, 1));
+            Tool(window, AppActions.DatabaseAdd);
+            Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "another manual connection dialog");
+            Ui.ClickButton(window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible), "Cancel");
+            Assert.Single(window.Database.Sources);
+            Assert.True(window.Database.Connected);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void A_folder_without_connections_explains_why_connect_and_browse_are_disabled()
     {
         string folder = TestFolders.Create("database-empty");

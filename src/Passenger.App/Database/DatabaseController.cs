@@ -14,6 +14,7 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
     private StateDocument<DatabaseHistory>? kept;
     private CancellationTokenSource lifetime = new();
     private DatabaseSource? connected;
+    private readonly List<DatabaseSource> manual = [];
 
     public event EventHandler? Changed;
     public IReadOnlyList<DatabaseSource> Sources { get; private set; } = [];
@@ -52,6 +53,7 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
         kept = next.State?.Database;
         History = kept?.Value.Queries ?? [];
         Sources = [];
+        manual.Clear();
         Discovered = false;
         Source = null;
         Forget();
@@ -94,20 +96,35 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
         Said = "Choose a connection and Connect to browse its tables.";
     }
 
+    public void AddConnection(DatabaseSource source)
+    {
+        UiThread.Check();
+        if (Busy)
+        {
+            throw new InvalidOperationException("A database operation is under way");
+        }
+        manual.Add(source);
+        Sources = [.. Sources, source];
+        Discovered = true;
+        Choose(source);
+    }
+
     public Task RefreshAsync() => RunAsync(AppActions.DatabaseRefresh, "Finding database connections…", async cancel =>
     {
         if (session is null)
         {
             return;
         }
+        DatabaseSource? previous = Source;
         Forget();
-        Sources = [];
-        Source = null;
-        Sources = await CurrentAsync(DatabaseDiscovery.ReadAsync(session, cancel), cancel);
+        Sources = [.. manual];
+        Source = manual.FirstOrDefault();
+        IReadOnlyList<DatabaseSource> found = await CurrentAsync(DatabaseDiscovery.ReadAsync(session, cancel), cancel);
+        Sources = [.. manual, .. found];
         Discovered = true;
-        Source = Sources.FirstOrDefault();
+        Source = Sources.FirstOrDefault(s => previous is not null && s.Kind == previous.Kind && s.ConnectionString == previous.ConnectionString) ?? Sources.FirstOrDefault();
         Forget();
-        Said = Sources.Count == 0 ? "No supported connection strings found in this folder's runs." : "Connections found. Choose one and Connect.";
+        Said = Sources.Count == 0 ? "No supported connection strings found in this folder's runs. Add Database Connection… to enter one." : "Connections found. Choose one and Connect.";
     });
 
     public Task ConnectAsync() => RunAsync(AppActions.DatabaseConnect, "Connecting to the database…", async cancel =>
