@@ -9,7 +9,8 @@ namespace Passenger.Tests;
 
 /// <summary>What the C# language server registered to hear of in a folder only Passenger's watchers of its own watch for
 /// it, a project's obj: a burst there, a build's or a script's, more at once than macOS's watcher names, still reaches the
-/// server, every file of it, as the folder's watcher's bursts do. The class's windows share one project, restored once.</summary>
+/// server, every file of it, as the folder's watcher's bursts do, and so does what a project below another's writes in its
+/// own obj. The class's windows share one project, restored once, but that last test's, which makes its own.</summary>
 public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
 {
     private const int Files = 1000;
@@ -205,6 +206,37 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
             + $"written in the folder (a file a rename wrote) waits until a walk of a folder outside it ends: {WatchLog(window)}");
         window.Close();
     }
+
+    /// <summary>A project in a folder below another project's, whose obj the server's watch of the folder above reaches and
+    /// only a watcher of Passenger's own hears: a global using added to its project file, which its design-time build
+    /// writes into a source in its obj, reaches the server, which then finds the type it names.</summary>
+    [AvaloniaFact]
+    public void A_global_using_a_project_below_another_projects_folder_writes_into_its_obj_reaches_the_server()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("nested-"));
+        string shop = TestFolders.Write(folder, "Shop.csproj", TestProjects.Library().With("  <ItemGroup>\n    <Compile Remove=\"Lib/**\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "Shop.cs", "class Shop\n{\n}\n");
+        string implicitUsings = "<ImplicitUsings>enable</ImplicitUsings>";
+        string library = TestFolders.Write(folder, Path.Combine("Lib", "Lib.csproj"), TestProjects.Library(implicitUsings));
+        string code = TestFolders.Write(folder, Path.Combine("Lib", "Code.cs"), "class Code\n{\n    public object Text() => new StringBuilder();\n}\n");
+        Restore.Run(shop);
+        Restore.Run(library);
+        MainWindow window = Ui.OpenFolder(folder);
+        window.OpenFile(code);
+        Ui.WaitFor(() => Codes(window, code).Contains("CS0246"), () => $"the language server's error on StringBuilder in Lib's Code.cs: {WatchLog(window)}", TimeSpan.FromMinutes(2));
+
+        File.WriteAllText(library, TestProjects.Library(implicitUsings).With("  <ItemGroup>\n    <Using Include=\"System.Text\" />\n  </ItemGroup>\n"));
+        Ui.WaitFor(() => !Codes(window, code).Contains("CS0246"),
+            () => $"the language server to take the global using of System.Text its design-time build wrote into Lib's obj, where Code.cs still has "
+                + $"[{string.Join(", ", Codes(window, code))}], so the type it names stays unknown: {WatchLog(window)}", TimeSpan.FromMinutes(2));
+        window.Close();
+    }
+
+    /// <summary>The codes of the server's diagnostics in an open file.</summary>
+    private static List<string?> Codes(MainWindow window, string path) =>
+        window.EditorArea.Documents.FirstOrDefault(d => PathNames.Same(d.Path, path)) is { } open && window.CSharpService?.For(open) is { } served
+            ? [.. served.Diagnostics.Select(d => d.Code?.ToString())]
+            : [];
 
     /// <summary>The server's watched files, once obj is watched for it by a watcher of Passenger's own whose first walk is done.</summary>
     private WatchedFiles Watched(MainWindow window)
