@@ -79,6 +79,118 @@ public abstract class Updater
     /// <summary>The other processes running from this install, by id: each system's own look.</summary>
     protected abstract IReadOnlyList<int> RunningHere();
 
+    /// <summary>This system's package of a release and the release's SHA256SUMS, or null where it carries either not, which
+    /// <see cref="Announced"/> says.</summary>
+    protected static ReleasePackage? PackageOf(LatestRelease release) =>
+        Releases.ThisSystemsAsset() is { } asset && release.File(asset) is { } download && release.File(ReleaseSums.Name) is { } sums
+            ? new ReleasePackage(download, sums)
+            : null;
+
+    /// <summary>A release only announced, saying what it does not carry: this system's package, <paramref name="kind"/> where
+    /// this processor has no asset's name, else its SHA256SUMS.</summary>
+    protected static UpdateOutcome.Unavailable Announced(LatestRelease release, string kind)
+    {
+        string? asset = Releases.ThisSystemsAsset();
+        string missing = asset is null || release.File(asset) is null ? asset ?? kind : ReleaseSums.Name;
+        return new UpdateOutcome.Unavailable($"Passenger {release.Version} is only announced: its release carries no {missing}");
+    }
+
+    /// <summary>Downloads a release's package into <paramref name="folder"/>, checked against the SHA-256 the release's
+    /// SHA256SUMS gives it: the file saved and that SHA-256. An <see cref="UpdateRefusedException"/> where the sums give
+    /// none or the download's differs; the file is the caller's to remove then.</summary>
+    protected static async Task<(string Saved, string Sha256)> DownloadCheckedAsync(ReleasePackage package, string folder, Action<int> progress, CancellationToken cancel)
+    {
+        string name = package.Download.Name;
+        string expected = ReleaseSums.Of(await Releases.ReadTextAsync(package.Sums, cancel).ConfigureAwait(false), name)
+            ?? throw new UpdateRefusedException($"the release's {ReleaseSums.Name} gives no SHA-256 for {name}");
+        string saved = Path.Combine(folder, name);
+        string actual = await Releases.DownloadAsync(package.Download, saved, progress, cancel).ConfigureAwait(false);
+        if (actual != expected)
+        {
+            throw new UpdateRefusedException($"{name} does not match the SHA-256 the release's {ReleaseSums.Name} gives", $"it is {actual}; {ReleaseSums.Name} says {expected}");
+        }
+        return (saved, expected);
+    }
+
+    /// <summary>The other Passenger processes whose executable is <paramref name="executable"/>, as the system names a
+    /// process's executable, links resolved: the look of macOS and Linux.</summary>
+    protected static IReadOnlyList<int> RunningAs(string executable)
+    {
+        string named = PathNames.Canonical(executable);
+        List<int> here = [];
+        foreach (Process running in Process.GetProcessesByName("Passenger"))
+        {
+            using (running)
+            {
+                if (running.Id != Environment.ProcessId && Libc.ExecutableOf(running.Id) is { } path && PathNames.Same(path, named))
+                {
+                    here.Add(running.Id);
+                }
+            }
+        }
+        return here;
+    }
+
+    /// <summary>The Passengers but the agents' relays running from <paramref name="from"/>, named, for which the install of
+    /// <paramref name="version"/> waits, as the log says; null where none runs.</summary>
+    protected static string? WaitsFor(IReadOnlyList<OtherCopy> others, string version, string from)
+    {
+        if (!others.Any(other => !other.Relay))
+        {
+            return null;
+        }
+        string named = Listed(others.Where(other => !other.Relay));
+        IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {from}: {named}");
+        return named;
+    }
+
+    /// <summary>Removes a folder an update made, a failure logged.</summary>
+    protected static void Remove(string? folder)
+    {
+        try
+        {
+            if (folder is not null && Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Updates: {folder} could not be removed: {error.Message}");
+        }
+    }
+
+    /// <summary>Starts the install again through <paramref name="start"/> for Restart to Update, a failure logged.</summary>
+    protected void Restart(bool restart, Func<string, Task> start)
+    {
+        if (!restart)
+        {
+            return;
+        }
+        try
+        {
+            // As the process ends, after its last window: nothing is left to await it.
+            Synchronously.Run(() => start(Installed));
+        }
+        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or TimeoutException or InvalidOperationException)
+        {
+            IdeErrors.Write($"Updates: {Installed} could not be started again: {error.Message}");
+        }
+    }
+
+    /// <summary>A tool run where a failure to start or finish is an exit code of -1 saying why.</summary>
+    protected static async Task<ChildResult> ToolAsync(ProcessStartInfo command, TimeSpan limit, CancellationToken cancel)
+    {
+        try
+        {
+            return await ChildProcesses.RunAsync(command, limit: limit, cancel: cancel).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is TimeoutException or System.ComponentModel.Win32Exception)
+        {
+            return new ChildResult(-1, string.Empty, error.Message);
+        }
+    }
+
     /// <summary>What runs from this install besides this process, whose files an install would change under it: agents'
     /// relays (<c>--mcp-attach</c>), which the install has follow it (<see cref="FollowRelays"/>), each with the folder it
     /// works in, and anything else, which holds the install back until it closes.</summary>
@@ -320,6 +432,9 @@ public abstract class Updater
         return null;
     }
 }
+
+/// <summary>A release's package for this system, and the SHA256SUMS that gives its SHA-256.</summary>
+public sealed record ReleasePackage(ReleaseFile Download, ReleaseFile Sums);
 
 /// <summary>Another process running from the install: an agent's relay, with the folder it works in, when
 /// <paramref name="Folder"/> is given.</summary>

@@ -160,13 +160,9 @@ public sealed partial class LinuxUpdater : Updater
     protected override async Task<UpdateOutcome> PrepareAsync(LatestRelease release, Action<int> progress, CancellationToken cancel)
     {
         asker = null;
-        string? archive = Releases.ThisSystemsAsset();
-        ReleaseFile? download = archive is null ? null : release.File(archive);
-        ReleaseFile? sums = release.File(ReleaseSums.Name);
-        if (download is null || sums is null)
+        if (PackageOf(release) is not { } package)
         {
-            string missing = download is null ? archive ?? "archive for this processor" : ReleaseSums.Name;
-            return new UpdateOutcome.Unavailable($"Passenger {release.Version} is only announced: its release carries no {missing}");
+            return Announced(release, "archive for this processor");
         }
         string unpacked = UnpackedFolder(release.Version);
         string passenger = Path.Combine(unpacked, "passenger");
@@ -186,20 +182,12 @@ public sealed partial class LinuxUpdater : Updater
             }
         }
         string folder = Directory.CreateDirectory(Path.Combine(Staging, release.Version)).FullName;
-        string expected = ReleaseSums.Of(await Releases.ReadTextAsync(sums, cancel).ConfigureAwait(false), download.Name)
-            ?? throw new UpdateRefusedException($"the release's {ReleaseSums.Name} gives no SHA-256 for {download.Name}");
-        string saved = Path.Combine(folder, download.Name);
-        string actual = await Releases.DownloadAsync(download, saved, progress, cancel).ConfigureAwait(false);
-        if (actual != expected)
-        {
-            throw new UpdateRefusedException($"{download.Name} does not match the SHA-256 the release's {ReleaseSums.Name} gives",
-                $"it is {actual}; {ReleaseSums.Name} says {expected}");
-        }
+        (string saved, string expected) = await DownloadCheckedAsync(package, folder, progress, cancel).ConfigureAwait(false);
         await UnpackAsync(saved, unpacked, cancel).ConfigureAwait(false);
         File.Delete(saved);
         Check(passenger, release.Version);
         return await MadeAsync(release.Version, passenger,
-            $"Passenger {release.Version} downloaded to {saved} and unpacked to {passenger}: {download.Name}'s SHA-256 is {ReleaseSums.Name}' {expected}", cancel).ConfigureAwait(false);
+            $"Passenger {release.Version} downloaded to {saved} and unpacked to {passenger}: {package.Download.Name}'s SHA-256 is {ReleaseSums.Name}' {expected}", cancel).ConfigureAwait(false);
     }
 
     /// <summary>A release unpacked and checked: ready to install as Passenger ends, unless this user cannot write the
@@ -319,11 +307,9 @@ public sealed partial class LinuxUpdater : Updater
             return;
         }
         IReadOnlyList<OtherCopy> others = Others();
-        if (others.Any(other => !other.Relay))
+        if (WaitsFor(others, version, Folder) is { } named)
         {
-            string named = Listed(others.Where(other => !other.Relay));
             NotInstalled = $"another Passenger ran from {Folder} ({named})";
-            IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {Folder}: {named}");
             return;
         }
         FollowRelays(others, version);
@@ -334,7 +320,7 @@ public sealed partial class LinuxUpdater : Updater
         {
             NotInstalled = why;
             IdeErrors.Write($"Updates: Passenger {version} was not installed in {Folder}: {why}");
-            Restart(restart);
+            Restart(restart, start);
             IdeErrors.Flush();
             return;
         }
@@ -343,7 +329,7 @@ public sealed partial class LinuxUpdater : Updater
             Refresh();
         }
         IdeErrors.Write($"Updates: Passenger {version} installed in {Folder}{(restart ? ", and started" : string.Empty)}");
-        Restart(restart);
+        Restart(restart, start);
         Ready = null;
         // An install for everyone left the release it replaced there, for the new one's start to remove (TidyAsync).
         if (kind != InstallKind.System)
@@ -468,58 +454,11 @@ public sealed partial class LinuxUpdater : Updater
         }
     }
 
-    protected override IReadOnlyList<int> RunningHere()
-    {
-        string executable = PathNames.Canonical(Path.Combine(Folder, "app", "Passenger"));
-        List<int> here = [];
-        foreach (Process process in Process.GetProcessesByName("Passenger"))
-        {
-            using (process)
-            {
-                if (process.Id != Environment.ProcessId && Libc.ExecutableOf(process.Id) is { } path && PathNames.Same(path, executable))
-                {
-                    here.Add(process.Id);
-                }
-            }
-        }
-        return here;
-    }
+    protected override IReadOnlyList<int> RunningHere() => RunningAs(Path.Combine(Folder, "app", "Passenger"));
 
     /// <summary>Whether this user can write the install and the folder it is in, as replacing it needs.</summary>
     private bool Writable() =>
         Path.GetDirectoryName(Folder) is { } parent && Libc.Access(parent, Libc.MayWrite) == 0 && Libc.Access(Folder, Libc.MayWrite) == 0;
-
-    private static void Remove(string folder)
-    {
-        try
-        {
-            if (Directory.Exists(folder))
-            {
-                Directory.Delete(folder, recursive: true);
-            }
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            IdeErrors.Write($"Updates: {folder} could not be removed: {error.Message}");
-        }
-    }
-
-    private void Restart(bool restart)
-    {
-        if (!restart)
-        {
-            return;
-        }
-        try
-        {
-            // As the process ends, after its last window: nothing is left to await it.
-            Synchronously.Run(() => start(Folder));
-        }
-        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or TimeoutException or InvalidOperationException)
-        {
-            IdeErrors.Write($"Updates: {Folder} could not be started again: {error.Message}");
-        }
-    }
 
     /// <summary>The install's launcher, started apart from this process, which it outlives, with this process's
     /// environment (its state folder, release feed and Discord as they were given).</summary>
@@ -537,19 +476,6 @@ public sealed partial class LinuxUpdater : Updater
             command.Environment[name] = value;
         }
         return Synchronously.Run(() => ToolAsync(command, ScriptLimit, CancellationToken.None));
-    }
-
-    /// <summary>A tool run where a failure to start or finish is an exit code of -1 saying why.</summary>
-    private static async Task<ChildResult> ToolAsync(ProcessStartInfo command, TimeSpan limit, CancellationToken cancel)
-    {
-        try
-        {
-            return await ChildProcesses.RunAsync(command, limit: limit, cancel: cancel).ConfigureAwait(false);
-        }
-        catch (Exception error) when (error is TimeoutException or System.ComponentModel.Win32Exception)
-        {
-            return new ChildResult(-1, string.Empty, error.Message);
-        }
     }
 
     /// <summary>AT_FDCWD: a path relative to the working folder, or absolute.</summary>

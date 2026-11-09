@@ -32,6 +32,16 @@ public static partial class Releases
         return await DownloadAsync(file, into, long.MaxValue, progress, cancel).ConfigureAwait(false);
     }
 
+    /// <summary>A release's file on disk, downloaded before, its SHA-256 given as <see cref="DownloadAsync(ReleaseFile, string, Action{int}?, CancellationToken)"/>
+    /// gives one.</summary>
+    public static async Task<string> Sha256Async(string path, CancellationToken cancel)
+    {
+        await using FileStream file = File.OpenRead(path);
+        return Hex(await SHA256.HashDataAsync(file, cancel).ConfigureAwait(false));
+    }
+
+    private static string Hex(byte[] sha256) => Convert.ToHexStringLower(sha256);
+
     private static async Task<string> DownloadAsync(ReleaseFile file, Stream into, long limit, Action<int>? progress, CancellationToken cancel)
     {
         if (!WebAddress.Secure(file.Url))
@@ -93,7 +103,7 @@ public static partial class Releases
             throw new UpdateFailedException($"{file.Name}: {error.Message}", error);
         }
         progress?.Invoke(100);
-        return Convert.ToHexStringLower(sha256.GetHashAndReset());
+        return Hex(sha256.GetHashAndReset());
     }
 
     /// <summary>A step of a download, given up when no byte comes for <see cref="Stall"/>.</summary>

@@ -75,13 +75,9 @@ public sealed partial class DiskImageUpdater : Updater
 
     protected override async Task<UpdateOutcome> PrepareAsync(LatestRelease release, Action<int> progress, CancellationToken cancel)
     {
-        string? image = Releases.ThisSystemsAsset();
-        ReleaseFile? download = image is null ? null : release.File(image);
-        ReleaseFile? sums = release.File(Sums);
-        if (download is null || sums is null)
+        if (PackageOf(release) is not { } package)
         {
-            string missing = download is null ? image ?? "disk image for this processor" : Sums;
-            return new UpdateOutcome.Unavailable($"Passenger {release.Version} is only announced: its release carries no {missing}");
+            return Announced(release, "disk image for this processor");
         }
         string folder = Path.Combine(Staging, release.Version);
         string app = Path.Combine(folder, Staged);
@@ -105,18 +101,11 @@ public sealed partial class DiskImageUpdater : Updater
             }
         }
         Directory.CreateDirectory(folder);
-        string expected = ReleaseSums.Of(await Releases.ReadTextAsync(sums, cancel).ConfigureAwait(false), download.Name)
-            ?? throw new UpdateRefusedException($"the release's {Sums} gives no SHA-256 for {download.Name}");
-        string saved = Path.Combine(folder, download.Name);
-        string actual = await Releases.DownloadAsync(download, saved, progress, cancel).ConfigureAwait(false);
-        if (actual != expected)
-        {
-            throw new UpdateRefusedException($"{download.Name} does not match the SHA-256 the release's {Sums} gives", $"it is {actual}; {Sums} says {expected}");
-        }
+        (string saved, string expected) = await DownloadCheckedAsync(package, folder, progress, cancel).ConfigureAwait(false);
         await CopyOutAsync(saved, folder, app, cancel).ConfigureAwait(false);
         File.Delete(saved);
         await CheckAsync(app, identifier, release.Version, team, cancel).ConfigureAwait(false);
-        return new UpdateOutcome.Ready($"Passenger {release.Version} downloaded to {app}: {download.Name}'s SHA-256 is {Sums}' {expected}, and the app's signature holds{Signed(team)}");
+        return new UpdateOutcome.Ready($"Passenger {release.Version} downloaded to {app}: {package.Download.Name}'s SHA-256 is {Sums}' {expected}, and the app's signature holds{Signed(team)}");
     }
 
     public override void Install(bool restart)
@@ -144,9 +133,8 @@ public sealed partial class DiskImageUpdater : Updater
             return;
         }
         IReadOnlyList<OtherCopy> others = Others();
-        if (others.Any(other => !other.Relay))
+        if (WaitsFor(others, version, Bundle) is not null)
         {
-            IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {Bundle}: {Listed(others.Where(other => !other.Relay))}");
             return;
         }
         FollowRelays(others, version);
@@ -156,14 +144,14 @@ public sealed partial class DiskImageUpdater : Updater
         if (why is not null)
         {
             IdeErrors.Write($"Updates: Passenger {version} was not installed: {app} could not take the place of {Bundle}: {why}");
-            Restart(restart);
+            Restart(restart, start);
             IdeErrors.Flush();
             return;
         }
         // LaunchServices notices a bundle that changed by its date.
         Directory.SetLastWriteTimeUtc(Bundle, DateTime.UtcNow);
         IdeErrors.Write($"Updates: Passenger {version} installed in {Bundle}{(restart ? ", and started" : string.Empty)}");
-        Restart(restart);
+        Restart(restart, start);
         Remove(old);
         Ready = null;
         // As the process ends, after its last window: nothing is left to await it.
@@ -233,23 +221,7 @@ public sealed partial class DiskImageUpdater : Updater
         await CleanAsync(keep: null).ConfigureAwait(false);
     }
 
-    protected override IReadOnlyList<int> RunningHere()
-    {
-        // As the system names a process's executable, links resolved.
-        string executable = PathNames.Canonical(Path.Combine(Bundle, "Contents", "MacOS", "Passenger"));
-        List<int> here = [];
-        foreach (Process running in Process.GetProcessesByName("Passenger"))
-        {
-            using (running)
-            {
-                if (running.Id != Environment.ProcessId && Libc.ExecutableOf(running.Id) is { } path && PathNames.Same(path, executable))
-                {
-                    here.Add(running.Id);
-                }
-            }
-        }
-        return here;
-    }
+    protected override IReadOnlyList<int> RunningHere() => RunningAs(Path.Combine(Bundle, "Contents", "MacOS", "Passenger"));
 
     /// <summary>The app at the image's top, copied out of it mounted read-only (hdiutil checks the image's own checksums
     /// as it mounts it), and the image let go of, a failure included.</summary>
@@ -353,38 +325,6 @@ public sealed partial class DiskImageUpdater : Updater
         }
     }
 
-    private static void Remove(string? folder)
-    {
-        try
-        {
-            if (folder is not null && Directory.Exists(folder))
-            {
-                Directory.Delete(folder, recursive: true);
-            }
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            IdeErrors.Write($"Updates: {folder} could not be removed: {error.Message}");
-        }
-    }
-
-    private void Restart(bool restart)
-    {
-        if (!restart)
-        {
-            return;
-        }
-        try
-        {
-            // As the process ends, after its last window: nothing is left to await it.
-            Synchronously.Run(() => start(Bundle));
-        }
-        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or TimeoutException or InvalidOperationException)
-        {
-            IdeErrors.Write($"Updates: {Bundle} could not be started again: {error.Message}");
-        }
-    }
-
     /// <summary>LaunchServices starts the app as a new instance (this one is still ending), with the state folder, release
     /// feed and Discord this one was given, so a Passenger run on its own settings stays on them. The app is launchd's
     /// child, not Passenger's; open itself ends once it has asked.</summary>
@@ -406,23 +346,15 @@ public sealed partial class DiskImageUpdater : Updater
     }
 
     private static Task<ChildResult> RunAsync(string tool, IEnumerable<string> arguments, CancellationToken cancel) =>
-        ChildProcesses.RunAsync(ChildProcesses.Command(Path.Combine("/usr/bin", tool), arguments), limit: ToolLimit, cancel: cancel);
+        ChildProcesses.RunAsync(Tool(tool, arguments), limit: ToolLimit, cancel: cancel);
+
+    private static ProcessStartInfo Tool(string tool, IEnumerable<string> arguments) => ChildProcesses.Command(Path.Combine("/usr/bin", tool), arguments);
 
     /// <summary>A tool waited for where nothing awaits: the install, as the process ends.</summary>
     private static ChildResult Run(string tool, IEnumerable<string> arguments) => Synchronously.Run(() => ToolAsync(tool, arguments));
 
     /// <summary>A tool run where nothing can be given up: one that could not start or finish is an exit code of -1 saying why.</summary>
-    private static async Task<ChildResult> ToolAsync(string tool, IEnumerable<string> arguments)
-    {
-        try
-        {
-            return await RunAsync(tool, arguments, CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception error) when (error is TimeoutException or System.ComponentModel.Win32Exception)
-        {
-            return new ChildResult(-1, string.Empty, error.Message);
-        }
-    }
+    private static Task<ChildResult> ToolAsync(string tool, IEnumerable<string> arguments) => ToolAsync(Tool(tool, arguments), ToolLimit, CancellationToken.None);
 
     private static string Signed(string? team) => team is null ? " (signed ad hoc, as the installed app is)" : $" and is {team}'s";
 

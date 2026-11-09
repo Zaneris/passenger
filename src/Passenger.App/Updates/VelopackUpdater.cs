@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Security.Cryptography;
 using Passenger.Core;
 using Velopack;
 using Velopack.Exceptions;
@@ -44,7 +43,7 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
         }
         // Velopack takes a package already there as downloaded; one left from before is checked again instead.
         string local = Path.Combine(locator.PackagesDir!, target.FileName);
-        if (File.Exists(local) && !string.Equals(await Sha256Async(local, cancel).ConfigureAwait(false), target.SHA256, StringComparison.OrdinalIgnoreCase))
+        if (File.Exists(local) && !string.Equals(await Releases.Sha256Async(local, cancel).ConfigureAwait(false), target.SHA256, StringComparison.OrdinalIgnoreCase))
         {
             File.Delete(local);
         }
@@ -69,9 +68,9 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
             return;
         }
         IReadOnlyList<OtherCopy> others = Others();
-        if (others.Any(other => !other.Relay))
+        // None runs from a locator with no content folder (RunningHere).
+        if (WaitsFor(others, version, locator.AppContentDir ?? Installed) is not null)
         {
-            IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {locator.AppContentDir}: {Listed(others.Where(other => !other.Relay))}");
             return;
         }
         // Update.exe would find their files in use.
@@ -135,12 +134,6 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
             }
         }
         return here;
-    }
-
-    private static async Task<string> Sha256Async(string path, CancellationToken cancel)
-    {
-        await using FileStream file = File.OpenRead(path);
-        return Convert.ToHexString(await SHA256.HashDataAsync(file, cancel).ConfigureAwait(false));
     }
 
     private static void Delete(string path)
