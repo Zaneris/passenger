@@ -40,4 +40,17 @@ public class GodotScriptStringsTests
         Assert.Equal([false, true], tokens.Where(t => t.Word && t.Text == "Globals").Select(t => t.AfterDot));
         Assert.DoesNotContain(tokens, t => t.Text is "tr" or "no");
     }
+
+    /// <summary>Every escape Godot's tokenizer reads, a code point past the first plane and a surrogate pair among them, so an
+    /// action written with one is the action it names; one Godot refuses says nothing, and a raw string's backslash before
+    /// another keeps both and closes no string.</summary>
+    [Fact]
+    public void A_strings_escapes_are_read_as_Godots_tokenizer_reads_them()
+    {
+        const string text = "if Input.is_action_pressed(\"caf\\u00e9\"):\n\tsay(\"\\a\\b\\f\\v\\t\\U01F600\\uD83D\\uDE00\\q\")\n\tsay(r\"C:\\\\\", \"next\")\n";
+        IReadOnlyList<GodotScriptToken> strings = [.. GodotScriptStrings.Read(text).Where(t => !t.Word)];
+        Assert.Equal(["caf\u00e9", "\a\b\f\v\t\U0001F600\U0001F600", "C:\\\\", "next"], strings.Select(s => s.Text));
+        Assert.Equal([("caf\u00e9", "is_action_pressed", 0), ("next", "say", 1)], strings.Where(s => s.Text is "caf\u00e9" or "next").Select(s => (s.Text, s.Call, s.Argument)));
+        Assert.Equal([false, false, true, true], strings.Select(s => s.Plain));
+    }
 }

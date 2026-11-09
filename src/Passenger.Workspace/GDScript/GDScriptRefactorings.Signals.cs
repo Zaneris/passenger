@@ -40,7 +40,7 @@ public static partial class GDScriptRefactorings
         IReadOnlyList<GDScriptParameterChange> was = SignalParametersOf(own, target);
         bool reshaped = parameters.Count != was.Count || parameters.Select((p, i) => p.From != i).Any(x => x);
         bool renamed = name != target.Named;
-        if (renamed && own.Tree.Members.Any(m => NameOf(m.Node) == name))
+        if (renamed && own.Tree.Members.Any(m => GDScriptNodes.NameOf(m.Node) == name))
         {
             return GDScriptRefactored.No($"the script already has a member '{name}'");
         }

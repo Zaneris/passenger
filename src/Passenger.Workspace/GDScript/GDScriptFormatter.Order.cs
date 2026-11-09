@@ -83,7 +83,7 @@ public static partial class GDScriptFormatter
             return new GDScriptFormatted([], text, "something after its last member belongs to none");
         }
         List<(GDScriptMember Member, int Start, int End, int Group, int Index)> ordered = [.. blocks.OrderBy(b => b.Group)
-            .ThenBy(b => NameOfMember(b.Member.Node)?.StartsWith('_') == true ? 1 : 0).ThenBy(b => b.Index)];
+            .ThenBy(b => GDScriptNodes.NameOf(b.Member.Node)?.StartsWith('_') == true ? 1 : 0).ThenBy(b => b.Index)];
         if (Reads(tree, blocks, ordered, engine) is { } refused)
         {
             return new GDScriptFormatted([], text, refused);
@@ -143,16 +143,6 @@ public static partial class GDScriptFormatter
         _ => 160,
     };
 
-    private static string? NameOfMember(GDScriptNode node) => node switch
-    {
-        GDScriptFunction function => function.Identifier?.Name,
-        GDScriptAssignable assignable => assignable.Identifier?.Name,
-        GDScriptSignal signal => signal.Identifier?.Name,
-        GDScriptEnum enumerated => enumerated.Identifier?.Name,
-        GDScriptClass inner => inner.Identifier?.Name,
-        _ => null,
-    };
-
     /// <summary>When a variable's value runs: as the class loads, as an object is made, or as its node is ready.</summary>
     private static int PhaseOf(GDScriptVariable variable) => variable.IsStatic ? 0 : variable.Annotations.Any(a => a.Name == "@onready") ? 2 : 1;
 
@@ -172,7 +162,7 @@ public static partial class GDScriptFormatter
         Dictionary<string, int> byWord = new(StringComparer.Ordinal);
         foreach ((GDScriptMember member, _, _, _, int index) in blocks)
         {
-            if (DeclaringNameOf(member.Node) is { } name)
+            if (GDScriptNodes.DeclaringName(member.Node) is { } name)
             {
                 byName[member.Offset + name.Start] = index;
                 byWord.TryAdd(name.Name, index);
@@ -187,7 +177,7 @@ public static partial class GDScriptFormatter
                 GDScriptEnum enumerated => (enumerated.Identifier?.Name ?? "the enum", enumerated.Values.Select(v => v.Value).OfType<GDScriptExpression>()),
                 _ => (null, []),
             };
-            foreach (GDScriptIdentifier read in values.SelectMany(Descendants).OfType<GDScriptIdentifier>())
+            foreach (GDScriptIdentifier read in values.SelectMany(GDScriptNodes.Below).OfType<GDScriptIdentifier>())
             {
                 // A name the analyzer resolves to no member (one in an enum's value) is taken as the member of its name.
                 int other = analysis.DeclarationOf(read) is { } declared ? byName.GetValueOrDefault(declared.Start, -1) : byWord.GetValueOrDefault(read.Name, -1);
@@ -211,30 +201,6 @@ public static partial class GDScriptFormatter
             }
         }
         return null;
-    }
-
-    private static GDScriptIdentifier? DeclaringNameOf(GDScriptNode node) => node switch
-    {
-        GDScriptFunction function => function.Identifier,
-        GDScriptAssignable assignable => assignable.Identifier,
-        GDScriptSignal signal => signal.Identifier,
-        GDScriptEnum enumerated => enumerated.Identifier,
-        GDScriptClass inner => inner.Identifier,
-        _ => null,
-    };
-
-    private static IEnumerable<GDScriptNode> Descendants(GDScriptNode root)
-    {
-        Stack<GDScriptNode> left = new([root]);
-        while (left.Count > 0)
-        {
-            GDScriptNode node = left.Pop();
-            yield return node;
-            foreach (GDScriptNode child in node.Children)
-            {
-                left.Push(child);
-            }
-        }
     }
 
     /// <summary>Why a script ordered anew is not the same script: it no longer parses, or its members, each as written, or

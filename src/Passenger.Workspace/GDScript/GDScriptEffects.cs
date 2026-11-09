@@ -37,7 +37,7 @@ internal sealed class GDScriptEffects
         this.analysis = analysis;
         foreach (GDScriptMember member in analysis.Tree?.Members ?? [])
         {
-            foreach (GDScriptNode node in GDScriptRefactorings.Below(member.Node).OfType<GDScriptFunction>().SelectMany(GDScriptRefactorings.Below))
+            foreach (GDScriptNode node in GDScriptNodes.Below(member.Node).OfType<GDScriptFunction>().SelectMany(GDScriptNodes.Below))
             {
                 GDScriptIdentifier? name = node switch
                 {
@@ -186,7 +186,7 @@ internal sealed class GDScriptEffects
     /// <paramref name="moved"/> says is done there, read late where <paramref name="late"/>; null for none.</summary>
     public GDScriptNode? RunsFirst(GDScriptExpression expression, GDScriptNode statement, GDScriptEffect moved, bool late)
     {
-        HashSet<GDScriptNode> own = [.. GDScriptRefactorings.Below(expression)];
+        HashSet<GDScriptNode> own = [.. GDScriptNodes.Below(expression)];
         foreach (GDScriptNode node in InOrder(statement, late ? new HashSet<GDScriptExpression> { expression } : null))
         {
             if (own.Contains(node))

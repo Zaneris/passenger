@@ -88,7 +88,7 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
             if (c is '"' or '\'' || c is 'r' or '&' or '^' && at + 1 < text.Length && text[at + 1] is '"' or '\'' && !(at > 0 && IsWordChar(text[at - 1])))
             {
                 int quote = c is '"' or '\'' ? at : at + 1;
-                (int start, int stop, int next) = Quoted(text, quote, c == 'r');
+                (int start, int stop, int next) = GDScriptTokenizer.StringBounds(text, quote, c == 'r');
                 bool given = open.Count > 0 && open[^1].Mark == '(' && LastCodeBefore(text, at) is '(' or ',';
                 if (caret >= start && caret <= stop)
                 {
@@ -211,35 +211,6 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
     public static IEnumerable<string> Annotations(bool classLevel) => GDScriptParser.AnnotationNames(classLevel);
 
     private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
-
-    /// <summary>A string from its opening quote: where its characters start and end, and where the code goes on; one left
-    /// open ends at its line's end, a tripled one at the text's.</summary>
-    private static (int Start, int End, int Next) Quoted(string text, int quote, bool raw)
-    {
-        char mark = text[quote];
-        bool tripled = quote + 2 < text.Length && text[quote + 1] == mark && text[quote + 2] == mark;
-        int start = quote + (tripled ? 3 : 1);
-        int at = start;
-        while (at < text.Length)
-        {
-            char c = text[at];
-            if (c == '\\' && at + 1 < text.Length && !(raw && text[at + 1] != mark))
-            {
-                at += 2;
-                continue;
-            }
-            if (c == mark && (!tripled || at + 2 < text.Length && text[at + 1] == mark && text[at + 2] == mark))
-            {
-                return (start, at, at + (tripled ? 3 : 1));
-            }
-            if (c == '\n' && !tripled)
-            {
-                return (start, at, at);
-            }
-            at++;
-        }
-        return (start, at, at);
-    }
 
     /// <summary>The last character before an offset that is not a space, on its line or the ones before.</summary>
     private static char LastCodeBefore(string text, int at)

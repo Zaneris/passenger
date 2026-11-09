@@ -536,30 +536,6 @@ public sealed class GDScriptTokenizer
                 bool valid = true;
                 switch (code)
                 {
-                    case 'a':
-                        escaped = '\a';
-                        break;
-                    case 'b':
-                        escaped = '\b';
-                        break;
-                    case 'f':
-                        escaped = '\f';
-                        break;
-                    case 'n':
-                        escaped = '\n';
-                        break;
-                    case 'r':
-                        escaped = '\r';
-                        break;
-                    case 't':
-                        escaped = '\t';
-                        break;
-                    case 'v':
-                        escaped = '\v';
-                        break;
-                    case '\'' or '"' or '\\':
-                        escaped = code;
-                        break;
                     case 'U' or 'u':
                         for (int j = 0, digits = code == 'U' ? 6 : 4; j < digits; j++)
                         {
@@ -591,8 +567,12 @@ public sealed class GDScriptTokenizer
                         valid = false;
                         break;
                     default:
-                        PushError(ErrorAt("Invalid escape in string.", position - 2, position));
-                        valid = false;
+                        escaped = Escaped(code);
+                        if (escaped < 0)
+                        {
+                            PushError(ErrorAt("Invalid escape in string.", position - 2, position));
+                            valid = false;
+                        }
                         break;
                 }
                 if (valid)
@@ -674,6 +654,103 @@ public sealed class GDScriptTokenizer
                 lead = 0;
             }
         }
+    }
+
+    /// <summary>The character an escape of one letter after its backslash stands for; -1 for none.</summary>
+    private static int Escaped(char code) => code switch
+    {
+        'a' => '\a',
+        'b' => '\b',
+        'f' => '\f',
+        'n' => '\n',
+        'r' => '\r',
+        't' => '\t',
+        'v' => '\v',
+        '\'' or '"' or '\\' => code,
+        _ => -1,
+    };
+
+    /// <summary>A string from its opening quote (single, double or tripled, after any <c>r</c>, <c>&amp;</c> or <c>^</c>): what
+    /// it says, its escapes read as <see cref="String"/> reads them, those it refuses left out; where its characters start and
+    /// end, and where the code goes on. One left open ends at its line's end, a tripled one at the text's.</summary>
+    public static (string Said, int Start, int End, int Next) ReadString(string text, int quote, bool raw)
+    {
+        StringBuilder said = new();
+        (int start, int end, int next) = ReadString(text, quote, raw, said);
+        return (said.ToString(), start, end, next);
+    }
+
+    /// <summary>Where a string's characters start and end and where the code goes on, read as <see cref="ReadString(string, int, bool)"/>
+    /// reads them, without what it says.</summary>
+    public static (int Start, int End, int Next) StringBounds(string text, int quote, bool raw) => ReadString(text, quote, raw, null);
+
+    private static (int Start, int End, int Next) ReadString(string text, int quote, bool raw, StringBuilder? said)
+    {
+        char mark = text[quote];
+        bool tripled = quote + 2 < text.Length && text[quote + 1] == mark && text[quote + 2] == mark;
+        int start = quote + (tripled ? 3 : 1);
+        int lead = 0;
+        int at = start;
+        while (at < text.Length)
+        {
+            char c = text[at];
+            if (c == '\\' && at + 1 < text.Length)
+            {
+                char code = text[at + 1];
+                if (raw)
+                {
+                    // A raw string keeps its backslash; one before its quote or another backslash takes that one too.
+                    int kept = code == mark || code == '\\' ? 2 : 1;
+                    said?.Append(text.AsSpan(at, kept));
+                    at += kept;
+                    continue;
+                }
+                at += 2;
+                int escaped = Escaped(code);
+                if (code is 'u' or 'U')
+                {
+                    escaped = 0;
+                    for (int digits = code == 'U' ? 6 : 4; digits > 0 && escaped >= 0; digits--, at++)
+                    {
+                        escaped = at < text.Length && IsHexDigit(text[at]) ? (escaped << 4) | (IsDigit(text[at]) ? text[at] - '0' : (text[at] | 0x20) - 'a' + 10) : -1;
+                    }
+                    at -= escaped < 0 ? 1 : 0;
+                }
+                else if (code == '\r')
+                {
+                    // Before a lone carriage return the backslash stays and what follows goes; before a line break the break stays.
+                    said?.Append(at >= text.Length || text[at] != '\n' ? '\\' : '\n');
+                    at++;
+                }
+                if (escaped is >= 0xD800 and <= 0xDBFF)
+                {
+                    lead = escaped;
+                    continue;
+                }
+                if (escaped is >= 0xDC00 and <= 0xDFFF && lead != 0)
+                {
+                    escaped = char.ConvertToUtf32((char)lead, (char)escaped);
+                }
+                lead = 0;
+                if (escaped is >= 0 and <= 0x10FFFF and not (>= 0xD800 and <= 0xDFFF))
+                {
+                    said?.Append(char.ConvertFromUtf32(escaped));
+                }
+                continue;
+            }
+            lead = 0;
+            if (c == mark && (!tripled || at + 2 < text.Length && text[at + 1] == mark && text[at + 2] == mark))
+            {
+                return (start, at, at + (tripled ? 3 : 1));
+            }
+            if (c == '\n' && !tripled)
+            {
+                return (start, at, at);
+            }
+            said?.Append(c);
+            at++;
+        }
+        return (start, at, at);
     }
 
     private void CheckIndent()

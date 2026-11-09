@@ -77,8 +77,8 @@ public static partial class GDScriptRefactorings
         {
             if (offset >= member.Start && offset <= member.End)
             {
-                named = Below(member.Node).OfType<GDScriptIdentifier>().FirstOrDefault(i => offset >= member.Offset + i.Start && offset <= member.Offset + i.End);
-                if (named is not null && NameOf(member.Node) == named.Name && DeclaringName(member.Node) == named)
+                named = GDScriptNodes.Below(member.Node).OfType<GDScriptIdentifier>().FirstOrDefault(i => offset >= member.Offset + i.Start && offset <= member.Offset + i.End);
+                if (named is not null && GDScriptNodes.NameOf(member.Node) == named.Name && GDScriptNodes.DeclaringName(member.Node) == named)
                 {
                     return new GDScriptTarget(read.Script, member.Node, member.Offset, named);
                 }
@@ -90,8 +90,8 @@ public static partial class GDScriptRefactorings
             return null;
         }
         GDScriptRead? declaring = scripts.FirstOrDefault(s => s.Script == script);
-        return declaring?.Tree.Members.Where(m => DeclaringName(m.Node) is { } n && m.Offset + n.Start == declared.Start)
-            .Select(m => new GDScriptTarget(script, m.Node, m.Offset, DeclaringName(m.Node)!)).FirstOrDefault();
+        return declaring?.Tree.Members.Where(m => GDScriptNodes.DeclaringName(m.Node) is { } n && m.Offset + n.Start == declared.Start)
+            .Select(m => new GDScriptTarget(script, m.Node, m.Offset, GDScriptNodes.DeclaringName(m.Node)!)).FirstOrDefault();
     }
 
     /// <summary>The member a name at an offset declares or refers to at any depth: the script's class's
@@ -124,7 +124,7 @@ public static partial class GDScriptRefactorings
         }
         foreach (GDScriptNode member in inner.Members)
         {
-            if (DeclaringName(member) is { } name && named(offset + name.Start, offset + name.End))
+            if (GDScriptNodes.DeclaringName(member) is { } name && named(offset + name.Start, offset + name.End))
             {
                 return new GDScriptTarget(script, member, offset, name) { Within = inner };
             }
@@ -135,16 +135,6 @@ public static partial class GDScriptRefactorings
         }
         return null;
     }
-
-    private static GDScriptIdentifier? DeclaringName(GDScriptNode node) => node switch
-    {
-        GDScriptFunction function => function.Identifier,
-        GDScriptAssignable assignable => assignable.Identifier,
-        GDScriptSignal signal => signal.Identifier,
-        GDScriptEnum enumerated => enumerated.Identifier,
-        GDScriptClass inner => inner.Identifier,
-        _ => null,
-    };
 
     /// <summary>A member's uses in every script: the names the analyzer resolves to it, the strings naming it (a call's,
     /// <c>get</c>'s and <c>set</c>'s, <c>self["f"]</c>, <c>"f" in self</c>), and, as unsure, one built at run time, a group's
@@ -402,7 +392,7 @@ public static partial class GDScriptRefactorings
             GDScriptExpression statement => statement,
             _ => null,
         };
-        if (body is null || Below(only).Any(n => n is GDScriptAwait or GDScriptLambda or GDScriptAssignment))
+        if (body is null || GDScriptNodes.Below(only).Any(n => n is GDScriptAwait or GDScriptLambda or GDScriptAssignment))
         {
             return GDScriptRefactored.No("only a function returning an expression, or of one call, inlines");
         }
@@ -416,7 +406,7 @@ public static partial class GDScriptRefactorings
         }
         // Each parameter's reads in the body.
         Dictionary<int, List<GDScriptIdentifier>> reads = [];
-        foreach (GDScriptIdentifier name in Below(body).OfType<GDScriptIdentifier>())
+        foreach (GDScriptIdentifier name in GDScriptNodes.Below(body).OfType<GDScriptIdentifier>())
         {
             if (own.Analysis.DeclarationOf(name) is { } declared && declared.Script == target.Script
                 && function.Parameters.FindIndex(p => p.Identifier is { } n && target.Offset + n.Start == declared.Start) is >= 0 and int index)
@@ -482,7 +472,7 @@ public static partial class GDScriptRefactorings
                     swaps.Add((target.Offset + name.Start - bodyStart, target.Offset + name.End - bodyStart, Placed(given, name, compound, bodyParents)));
                 }
             }
-            if (Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(n => !reads.Values.Any(r => r.Contains(n)) && ReadsAsAName(n, bodyParents) && LocalOver(call, n.Name, parents)) is { } captured)
+            if (GDScriptNodes.Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(n => !reads.Values.Any(r => r.Contains(n)) && ReadsAsAName(n, bodyParents) && LocalOver(call, n.Name, parents)) is { } captured)
             {
                 return GDScriptRefactored.No($"'{captured.Name}' would read the local where it is called, not the member", [GDScriptUses.Place(use.Script, use.Offset, call, "calls it")]);
             }
@@ -594,7 +584,7 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No(GodotsOwn(target.Named));
         }
-        if (renamed && own.Tree.Members.Any(m => NameOf(m.Node) == name))
+        if (renamed && own.Tree.Members.Any(m => GDScriptNodes.NameOf(m.Node) == name))
         {
             return GDScriptRefactored.No($"the script already has a member '{name}'");
         }
@@ -629,7 +619,7 @@ public static partial class GDScriptRefactorings
         }
         // A parameter removed must be read no more.
         Dictionary<int, List<GDScriptIdentifier>> reads = [];
-        foreach (GDScriptIdentifier read in function.Body is { } body ? Below(body).OfType<GDScriptIdentifier>() : [])
+        foreach (GDScriptIdentifier read in function.Body is { } body ? GDScriptNodes.Below(body).OfType<GDScriptIdentifier>() : [])
         {
             if (own.Analysis.DeclarationOf(read) is { } declared && declared.Script == target.Script
                 && function.Parameters.FindIndex(p => p.Identifier is { } n && target.Offset + n.Start == declared.Start) is >= 0 and int index)

@@ -1,3 +1,5 @@
+using Passenger.Workspace.GDScript;
+
 namespace Passenger.Workspace;
 
 /// <summary>A word or string of a GDScript's code: what it says, where its characters lie, whether they are written as it
@@ -52,7 +54,7 @@ public static class GodotScriptStrings
             {
                 bool raw = c == 'r';
                 int quote = c is '"' or '\'' ? at : at + 1;
-                (string said, int start, int stop, int next) = Quoted(text, quote, raw);
+                (string said, int start, int stop, int next) = GDScriptTokenizer.ReadString(text, quote, raw);
                 (string? call, int argument, string? receiver) = open.Count > 0 ? open[^1] : (null, 0, null);
                 bool opens = before is '(' or ',' || wordLast && lastWord == "else";
                 tokens.Add(new GodotScriptToken(false, said, start, stop, stop - start == said.Length, call, argument, false)
@@ -165,46 +167,4 @@ public static class GodotScriptStrings
     }
 
     private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
-
-    /// <summary>A string from its opening quote: what it says, where its characters start and end, and where the code goes on.</summary>
-    private static (string Said, int Start, int End, int Next) Quoted(string text, int quote, bool raw)
-    {
-        char mark = text[quote];
-        bool tripled = quote + 2 < text.Length && text[quote + 1] == mark && text[quote + 2] == mark;
-        int start = quote + (tripled ? 3 : 1);
-        System.Text.StringBuilder said = new();
-        int at = start;
-        while (at < text.Length)
-        {
-            char c = text[at];
-            if (c == '\\' && at + 1 < text.Length)
-            {
-                // A raw string keeps its backslash, though one still keeps its quote from closing it.
-                char escaped = text[at + 1];
-                said.Append(raw ? text.AsSpan(at, 2) : Escaped(escaped).AsSpan());
-                at += 2;
-                continue;
-            }
-            if (c == mark && (!tripled || at + 2 < text.Length && text[at + 1] == mark && text[at + 2] == mark))
-            {
-                return (said.ToString(), start, at, at + (tripled ? 3 : 1));
-            }
-            if (c == '\n' && !tripled)
-            {
-                return (said.ToString(), start, at, at);
-            }
-            said.Append(c);
-            at++;
-        }
-        return (said.ToString(), start, at, at);
-    }
-
-    private static string Escaped(char c) => c switch
-    {
-        'n' => "\n",
-        't' => "\t",
-        'r' => "\r",
-        '0' => "\0",
-        _ => c.ToString(),
-    };
 }

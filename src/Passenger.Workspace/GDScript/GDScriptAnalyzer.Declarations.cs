@@ -359,13 +359,10 @@ public sealed partial class GDScriptAnalyzer
     {
         GDScriptLiteral => Sure(value, context),
         GDScriptIdentifier name => !getter.Parameters.Any(p => p.Identifier?.Name == name.Name)
-            && !Within(getter.Body!).Any(d => d is GDScriptAssignable { Identifier.Name: var held } && held == name.Name || d is GDScriptFor { Variable.Name: var looped } && looped == name.Name)
+            && !GDScriptNodes.Below(getter.Body!).Any(d => d is GDScriptAssignable { Identifier.Name: var held } && held == name.Name || d is GDScriptFor { Variable.Name: var looped } && looped == name.Name)
             && Sure(value, context),
         _ => false,
     };
-
-    /// <summary>A node's nodes below it, every level down.</summary>
-    private static IEnumerable<GDScriptNode> Within(GDScriptNode node) => node.Children.SelectMany(child => Within(child).Prepend(child));
 
     /// <summary>The type a setter function's parameter takes: written or inferred from its default, else Variant; null for a
     /// default this reading is unsure of.</summary>

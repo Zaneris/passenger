@@ -952,6 +952,19 @@ public class GDScriptAnalyzerTests
         }
     }
 
+    /// <summary>A raw string's backslash before another backslash leaves its quote to close it, so what is typed after it is a
+    /// name, and a caret inside it is in the string.</summary>
+    [Fact]
+    public void A_name_typed_after_a_raw_string_ending_in_a_backslash_is_asked_for_as_a_name()
+    {
+        const string Text = "extends Node\n\nfunc f(named):\n\tvar p = r\"C:\\\\\" + na\n";
+        int caret = Text.IndexOf(" + na", StringComparison.Ordinal) + " + na".Length;
+        GDScriptAsked asked = GDScriptAsked.At(Text, caret);
+        Assert.True(asked is { Kind: GDScriptAskedKind.Name } && asked.Start == caret - 2, $"The caret after r\"C:\\\\\" read as {asked.Kind} from {asked.Start}");
+        int inside = Text.IndexOf("C:", StringComparison.Ordinal) + 2;
+        Assert.True(GDScriptAsked.At(Text, inside) is { Kind: GDScriptAskedKind.String } within && within.End == inside + 2, "A caret inside the raw string read as outside it");
+    }
+
     /// <summary>An enum's value finds the values before it by their names, a named enum's too, and neither itself, those after it
     /// nor its enum, whatever the class calls the same: what's listed compiled at each under Godot 4.7.2 and what's left out didn't.</summary>
     [Theory]

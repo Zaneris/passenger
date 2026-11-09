@@ -444,6 +444,28 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>A name typed after a raw string whose backslash comes before another completes, the string closed at its
+    /// quote as Godot closes it.</summary>
+    [AvaloniaFact]
+    public void A_name_typed_after_a_raw_string_ending_in_a_backslash_completes()
+    {
+        TestFolders.Write(folder, "main.gd", "extends Node\n\n\nfunc _ready() -> void:\n\tvar named_path := \"x\"\n\tvar p = r\"C:\\\\\" + \n");
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "r\"C:\\\\\" + ");
+            editor.Focus();
+            TypeName(window, "na");
+            Listed(window, "named_path", "local after the raw string");
+        }
+        finally
+        {
+            window.Close();
+            release.TrySetResult();
+        }
+    }
+
     /// <summary>A list opened on a name typed before it, by its key or as typing outruns the list, shows its first item's card
     /// as it opens, the item chosen before the list shows.</summary>
     [AvaloniaFact]

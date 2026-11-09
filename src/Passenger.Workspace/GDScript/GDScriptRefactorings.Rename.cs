@@ -165,7 +165,7 @@ public static partial class GDScriptRefactorings
     /// <summary>The names a class declares: its members' and its unnamed enums' values.</summary>
     private static IEnumerable<string> Scope(GDScriptClass declared, GDScriptRead script) =>
         (declared == script.Tree.Class ? script.Tree.Members.Select(m => m.Node) : declared.Members)
-            .SelectMany(n => n is GDScriptEnum { Identifier: null } unnamed ? unnamed.Values.Select(v => v.Name.Name) : NameOf(n) is { } named ? [named] : []);
+            .SelectMany(n => n is GDScriptEnum { Identifier: null } unnamed ? unnamed.Values.Select(v => v.Name.Name) : GDScriptNodes.NameOf(n) is { } named ? [named] : []);
 
     /// <summary>A script's inner classes at any depth.</summary>
     private static IEnumerable<GDScriptClass> ClassesOf(GDScriptRead script)
@@ -234,12 +234,12 @@ public static partial class GDScriptRefactorings
         }
         int declared = read.Analysis.DeclarationOf(identifier) is { } resolved && resolved.Script == read.Script ? resolved.Start
             : read.Analysis.Declaring.Contains(identifier) ? from + identifier.Start : -1;
-        if (declared < member.Start || declared > member.End || DeclaringName(member.Node) is { } memberName && member.Offset + memberName.Start == declared)
+        if (declared < member.Start || declared > member.End || GDScriptNodes.DeclaringName(member.Node) is { } memberName && member.Offset + memberName.Start == declared)
         {
             return null;
         }
         // A local is declared inside a function, its name aside: an inner class's members are no locals.
-        if (!Below(member.Node).OfType<GDScriptFunction>().Any(f => member.Offset + f.Start <= declared && declared <= member.Offset + f.End
+        if (!GDScriptNodes.Below(member.Node).OfType<GDScriptFunction>().Any(f => member.Offset + f.Start <= declared && declared <= member.Offset + f.End
             && !(f.Identifier is { } own && member.Offset + own.Start == declared)))
         {
             return null;
@@ -254,7 +254,7 @@ public static partial class GDScriptRefactorings
             ? new GDScriptNamePlaces([.. LocalNames(read, member, declared).Select(i => (read.Script, member.Offset + i.Start, member.Offset + i.End))], []) : null;
 
     private static IEnumerable<GDScriptIdentifier> LocalNames(GDScriptRead read, GDScriptMember member, int declared) =>
-        Below(member.Node).OfType<GDScriptIdentifier>().Where(i => member.Offset + i.Start == declared
+        GDScriptNodes.Below(member.Node).OfType<GDScriptIdentifier>().Where(i => member.Offset + i.Start == declared
             || read.Analysis.DeclarationOf(i) is { } resolved && resolved.Script == read.Script && resolved.Start == declared).DistinctBy(i => i.Start);
 
     /// <summary>Rename of a local or parameter: its declaration and each name resolved to it in its member; refused where
@@ -274,7 +274,7 @@ public static partial class GDScriptRefactorings
             return GDScriptRefactored.No($"'{name}' is its name already");
         }
         List<GDScriptIdentifier> renamed = [.. LocalNames(read, member, declared)];
-        if (Below(member.Node).OfType<GDScriptIdentifier>().FirstOrDefault(i => i.Name == name && !renamed.Contains(i)) is { } taken)
+        if (GDScriptNodes.Below(member.Node).OfType<GDScriptIdentifier>().FirstOrDefault(i => i.Name == name && !renamed.Contains(i)) is { } taken)
         {
             return GDScriptRefactored.No($"the function already uses a '{name}'", [GDScriptUses.Place(read, member.Offset, taken, "names it")]);
         }

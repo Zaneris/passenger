@@ -115,20 +115,6 @@ public static partial class GDScriptRefactorings
         return parents;
     }
 
-    internal static IEnumerable<GDScriptNode> Below(GDScriptNode root)
-    {
-        Stack<GDScriptNode> left = new([root]);
-        while (left.Count > 0)
-        {
-            GDScriptNode node = left.Pop();
-            yield return node;
-            foreach (GDScriptNode child in node.Children)
-            {
-                left.Push(child);
-            }
-        }
-    }
-
     /// <summary>The expression lying exactly over a range of the text (written in parentheses or not), the outermost such.</summary>
     private static GDScriptExpression? ExpressionOver(GDScriptNode root, int offset, string text, TextRange range)
     {
@@ -138,7 +124,7 @@ public static partial class GDScriptRefactorings
             (start, end) = Trimmed(text, start + 1, end - 1);
         }
         GDScriptExpression? found = null;
-        foreach (GDScriptNode node in Below(root))
+        foreach (GDScriptNode node in GDScriptNodes.Below(root))
         {
             if (node is GDScriptExpression expression && offset + node.Start == start && offset + node.End == end
                 && (found is null || node.End - node.Start >= found.End - found.Start))
@@ -204,7 +190,7 @@ public static partial class GDScriptRefactorings
     /// <summary>Where each line begun inside a string of a node starts: what it starts with is the string's, no indentation.</summary>
     private static IEnumerable<int> StringLines(GDScriptNode node, int offset, string text)
     {
-        foreach (GDScriptLiteral literal in Below(node).OfType<GDScriptLiteral>())
+        foreach (GDScriptLiteral literal in GDScriptNodes.Below(node).OfType<GDScriptLiteral>())
         {
             int start = offset + literal.Start;
             int end = offset + literal.End;
@@ -299,22 +285,12 @@ public static partial class GDScriptRefactorings
         {
             return $"'{name}' is already a local there";
         }
-        if (analysis.Tree?.Members.Any(m => NameOf(m.Node) == name) == true)
+        if (analysis.Tree?.Members.Any(m => GDScriptNodes.NameOf(m.Node) == name) == true)
         {
             return $"the script already has a member '{name}'";
         }
         return null;
     }
-
-    private static string? NameOf(GDScriptNode node) => node switch
-    {
-        GDScriptFunction function => function.Identifier?.Name,
-        GDScriptAssignable assignable => assignable.Identifier?.Name,
-        GDScriptSignal signal => signal.Identifier?.Name,
-        GDScriptEnum enumerated => enumerated.Identifier?.Name,
-        GDScriptClass inner => inner.Identifier?.Name,
-        _ => null,
-    };
 
     /// <summary>Extract Variable: the expression selected given a local of a name, declared before the statement it is in
     /// (<c>:=</c> where its type is known), the expression replaced by the name; refused where it can't run ahead of what
@@ -417,7 +393,7 @@ public static partial class GDScriptRefactorings
     {
         GDScriptEffect effect = effects.Of(value);
         GDScriptNode statement = StatementOf(use, parents)?.Statement ?? use;
-        GDScriptNode? before = Below(body).Where(n => parents.GetValueOrDefault(n) is GDScriptSuite && n.Start > declaration.End && n.Start < statement.Start).OrderBy(n => n.Start)
+        GDScriptNode? before = GDScriptNodes.Below(body).Where(n => parents.GetValueOrDefault(n) is GDScriptSuite && n.Start > declaration.End && n.Start < statement.Start).OrderBy(n => n.Start)
             .SelectMany(s => effects.InOrder(s)).FirstOrDefault(n => !GDScriptEffects.Commute(effects.Own(n), effect));
         return before ?? effects.RunsFirst(use, statement, effect, effects.MayBeLate(value));
     }
@@ -433,18 +409,18 @@ public static partial class GDScriptRefactorings
             return GDScriptRefactored.No("put the caret on a local variable");
         }
         string text = tree.Text;
-        GDScriptIdentifier? at = Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(i => offset >= located.Offset + i.Start && offset <= located.Offset + i.End);
+        GDScriptIdentifier? at = GDScriptNodes.Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(i => offset >= located.Offset + i.Start && offset <= located.Offset + i.End);
         if (at is null || analysis.DeclarationOf(at) is not { } declaration || declaration.Script != analysis.Path)
         {
             return GDScriptRefactored.No("put the caret on a local variable");
         }
         Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(body);
-        GDScriptVariable? variable = Below(body).OfType<GDScriptVariable>().FirstOrDefault(v => v.Identifier is { } n && located.Offset + n.Start == declaration.Start);
+        GDScriptVariable? variable = GDScriptNodes.Below(body).OfType<GDScriptVariable>().FirstOrDefault(v => v.Identifier is { } n && located.Offset + n.Start == declaration.Start);
         if (variable is not { Identifier: { } own, Initializer: { } value } || StatementOf(variable, parents) is not ({ } statement, _) || statement != variable)
         {
             return GDScriptRefactored.No(variable is null ? "only a local variable inlines" : $"'{declaration.Name}' has no value to inline");
         }
-        List<GDScriptIdentifier> uses = [.. Below(body).OfType<GDScriptIdentifier>().Where(i => i != own && analysis.DeclarationOf(i) is { } d && d.Script == declaration.Script && d.Start == declaration.Start)
+        List<GDScriptIdentifier> uses = [.. GDScriptNodes.Below(body).OfType<GDScriptIdentifier>().Where(i => i != own && analysis.DeclarationOf(i) is { } d && d.Script == declaration.Script && d.Start == declaration.Start)
             .OrderBy(i => i.Start)];
         foreach (GDScriptIdentifier use in uses)
         {
@@ -458,9 +434,9 @@ public static partial class GDScriptRefactorings
         GDScriptEffect effect = effects.Of(value);
         bool calls = effect == GDScriptEffect.Acts;
         bool steady = effect == GDScriptEffect.None;
-        HashSet<(string?, int)> read = [.. Below(value).OfType<GDScriptIdentifier>().Select(analysis.DeclarationOf).OfType<GDScriptDeclaration>().Select(d => (d.Script, d.Start))];
+        HashSet<(string?, int)> read = [.. GDScriptNodes.Below(value).OfType<GDScriptIdentifier>().Select(analysis.DeclarationOf).OfType<GDScriptDeclaration>().Select(d => (d.Script, d.Start))];
         int last = uses.Count > 0 ? uses[^1].End : variable.End;
-        foreach (GDScriptAssignment assignment in Below(body).OfType<GDScriptAssignment>().Where(a => a.Start > variable.End && a.End < last).OrderBy(a => a.Start))
+        foreach (GDScriptAssignment assignment in GDScriptNodes.Below(body).OfType<GDScriptAssignment>().Where(a => a.Start > variable.End && a.End < last).OrderBy(a => a.Start))
         {
             GDScriptExpression? written = assignment.Assignee;
             while (written is GDScriptSubscript { Base: { } inside })
@@ -560,14 +536,14 @@ public static partial class GDScriptRefactorings
             return GDScriptRefactored.No($"{Path.GetFileName(first.Script)} overrides '{first.What}', and Godot refuses an override of other parameters", overrides);
         }
         GDScriptEffects effects = analysis.Effects;
-        foreach (GDScriptNode node in Below(expression))
+        foreach (GDScriptNode node in GDScriptNodes.Below(expression))
         {
             if (node is GDScriptAwait or GDScriptSelf or GDScriptGetNode or GDScriptLambda || node is GDScriptCall call && effects.Own(call) != GDScriptEffect.None)
             {
                 return GDScriptRefactored.No("its value would be read as the function is called: choose an expression of constants and literals");
             }
             if (node is GDScriptIdentifier identifier && analysis.DeclarationOf(identifier) is { } read && read.Script == analysis.Path
-                && Below(tree.Members.First(m => m.Offset == located.Offset).Node).OfType<GDScriptAssignable>().FirstOrDefault(a => a.Identifier is { } n && located.Offset + n.Start == read.Start) is
+                && GDScriptNodes.Below(tree.Members.First(m => m.Offset == located.Offset).Node).OfType<GDScriptAssignable>().FirstOrDefault(a => a.Identifier is { } n && located.Offset + n.Start == read.Start) is
                     GDScriptVariable or GDScriptParameter)
             {
                 return GDScriptRefactored.No($"it reads '{identifier.Name}', which a default can't");
@@ -583,11 +559,11 @@ public static partial class GDScriptRefactorings
             return GDScriptRefactored.No("it makes a new one each time round, and a default makes one for the call");
         }
         // Every block of the function has the parameter around it, and Godot refuses a local of its name in any of them.
-        if (Below(body).OfType<GDScriptSuite>().Any(block => block.Locals?.ContainsKey(name) == true))
+        if (GDScriptNodes.Below(body).OfType<GDScriptSuite>().Any(block => block.Locals?.ContainsKey(name) == true))
         {
             return GDScriptRefactored.No($"'{name}' is already a parameter or local of the function");
         }
-        if (Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(i => i.Name == name && ReadsAsAName(i, parents)) is { } shadowed)
+        if (GDScriptNodes.Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(i => i.Name == name && ReadsAsAName(i, parents)) is { } shadowed)
         {
             return GDScriptRefactored.No($"'{name}' is read in the function, and would read the parameter",
                 [new GDScriptPlace(analysis.Path, located.Offset + shadowed.Start, located.Offset + shadowed.End, "reads it")]);
@@ -640,14 +616,14 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No("select statements in a function's body");
         }
-        if (tree.Members.Any(m => NameOf(m.Node) == name))
+        if (tree.Members.Any(m => GDScriptNodes.NameOf(m.Node) == name))
         {
             return GDScriptRefactored.No($"the script already has a member '{name}'");
         }
         int offset = located.Offset;
         (int from, int to) = Trimmed(text, selection.Start, selection.End);
         Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(body);
-        GDScriptSuite? suite = Below(body).OfType<GDScriptSuite>()
+        GDScriptSuite? suite = GDScriptNodes.Below(body).OfType<GDScriptSuite>()
             .Where(s => s.Statements.Any(st => offset + st.Start >= from && offset + st.End <= to))
             .OrderBy(s => s.End - s.Start).FirstOrDefault();
         if (suite is null)
@@ -661,7 +637,7 @@ public static partial class GDScriptRefactorings
         }
         int firstStart = offset + chosen[0].Start;
         int lastEnd = offset + chosen[^1].End;
-        foreach (GDScriptNode node in chosen.SelectMany(Below))
+        foreach (GDScriptNode node in chosen.SelectMany(GDScriptNodes.Below))
         {
             switch (node)
             {
@@ -676,7 +652,7 @@ public static partial class GDScriptRefactorings
         // The locals and parameters declared before the statements that they read, in order of first reading.
         List<(string Name, GDScriptDeclaration Declaration)> inputs = [];
         HashSet<int> inside = [];
-        foreach (GDScriptNode node in chosen.SelectMany(Below))
+        foreach (GDScriptNode node in chosen.SelectMany(GDScriptNodes.Below))
         {
             if (node is GDScriptAssignable { Identifier: { } declaring })
             {
@@ -687,10 +663,10 @@ public static partial class GDScriptRefactorings
                 inside.Add(offset + iterator.Start);
             }
         }
-        List<GDScriptIdentifier> reads = [.. chosen.SelectMany(Below).OfType<GDScriptIdentifier>().OrderBy(i => i.Start)];
-        HashSet<int> locals = [.. Below(function).OfType<GDScriptAssignable>().Where(a => a is GDScriptVariable or GDScriptConstant or GDScriptParameter).Select(a => a.Identifier is { } n ? offset + n.Start : -1),
-            .. Below(function).OfType<GDScriptFor>().Select(f => f.Variable is { } v ? offset + v.Start : -1),
-            .. Below(function).OfType<GDScriptPattern>().Select(p => p.Bind is { } b ? offset + b.Start : -1)];
+        List<GDScriptIdentifier> reads = [.. chosen.SelectMany(GDScriptNodes.Below).OfType<GDScriptIdentifier>().OrderBy(i => i.Start)];
+        HashSet<int> locals = [.. GDScriptNodes.Below(function).OfType<GDScriptAssignable>().Where(a => a is GDScriptVariable or GDScriptConstant or GDScriptParameter).Select(a => a.Identifier is { } n ? offset + n.Start : -1),
+            .. GDScriptNodes.Below(function).OfType<GDScriptFor>().Select(f => f.Variable is { } v ? offset + v.Start : -1),
+            .. GDScriptNodes.Below(function).OfType<GDScriptPattern>().Select(p => p.Bind is { } b ? offset + b.Start : -1)];
         locals.Remove(-1);
         foreach (GDScriptIdentifier read in reads)
         {
@@ -702,7 +678,7 @@ public static partial class GDScriptRefactorings
         }
         // What they set that is read after them: a local of their own, or one from before they assign.
         List<GDScriptDeclaration> outputs = [];
-        foreach (GDScriptIdentifier later in Below(body).OfType<GDScriptIdentifier>().Where(i => offset + i.Start > lastEnd))
+        foreach (GDScriptIdentifier later in GDScriptNodes.Below(body).OfType<GDScriptIdentifier>().Where(i => offset + i.Start > lastEnd))
         {
             if (analysis.DeclarationOf(later) is not { } declared || declared.Script != analysis.Path || !locals.Contains(declared.Start) || outputs.Any(o => o.Start == declared.Start))
             {
@@ -718,7 +694,7 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No($"the statements set {Plural.Listed([.. outputs.Select(o => $"'{o.Name}'")])}, which are read after them: one function returns one value");
         }
-        bool awaits = chosen.SelectMany(Below).Any(n => n is GDScriptAwait);
+        bool awaits = chosen.SelectMany(GDScriptNodes.Below).Any(n => n is GDScriptAwait);
         string unit = Unit(tree);
         int lineFrom = LineStart(text, firstStart);
         int lineTo = NextLine(text, lastEnd);
@@ -760,7 +736,7 @@ public static partial class GDScriptRefactorings
         {
             if (at is GDScriptFor or GDScriptWhile)
             {
-                return chosen.Any(c => Below(c).Contains(at));
+                return chosen.Any(c => GDScriptNodes.Below(c).Contains(at));
             }
         }
         return false;

@@ -27,6 +27,41 @@ public abstract class GDScriptNode
     internal static IEnumerable<GDScriptNode> Of(params GDScriptNode?[] nodes) => nodes.OfType<GDScriptNode>();
 }
 
+/// <summary>What GDScript's syntax trees say of any node: the name a member declares, and every node below one.</summary>
+public static class GDScriptNodes
+{
+    /// <summary>The name a member declares: a function's, a variable's, a constant's or a parameter's, a signal's, an enum's,
+    /// an inner class's; null for a node that declares none.</summary>
+    public static GDScriptIdentifier? DeclaringName(GDScriptNode node) => node switch
+    {
+        GDScriptFunction function => function.Identifier,
+        GDScriptAssignable assignable => assignable.Identifier,
+        GDScriptSignal signal => signal.Identifier,
+        GDScriptEnum enumerated => enumerated.Identifier,
+        GDScriptClass inner => inner.Identifier,
+        _ => null,
+    };
+
+    /// <summary>The name a member declares, as written; null for none.</summary>
+    public static string? NameOf(GDScriptNode node) => DeclaringName(node)?.Name;
+
+    /// <summary>A node and every node below it, every level down, walked on a stack of its own so no depth of nesting runs
+    /// out of the thread's.</summary>
+    public static IEnumerable<GDScriptNode> Below(GDScriptNode root)
+    {
+        Stack<GDScriptNode> left = new([root]);
+        while (left.Count > 0)
+        {
+            GDScriptNode node = left.Pop();
+            yield return node;
+            foreach (GDScriptNode child in node.Children)
+            {
+                left.Push(child);
+            }
+        }
+    }
+}
+
 public abstract class GDScriptExpression : GDScriptNode;
 
 public sealed class GDScriptAnnotation : GDScriptNode

@@ -25,7 +25,7 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No($"'{target.Named}' is Godot's own, which Godot calls on the node it is declared for");
         }
-        if (to.Tree.Members.Any(m => NameOf(m.Node) == target.Named))
+        if (to.Tree.Members.Any(m => GDScriptNodes.NameOf(m.Node) == target.Named))
         {
             return GDScriptRefactored.No($"{destination} already has a member '{target.Named}'");
         }
@@ -34,11 +34,11 @@ public static partial class GDScriptRefactorings
         string? receiver = inherited ? null
             : function.IsStatic ? to.Tree.Class.Identifier?.Name
             : autoloads.FirstOrDefault(a => a.Value == destination).Key;
-        HashSet<string> theirs = [.. to.Tree.Members.Select(m => NameOf(m.Node)).OfType<string>(), .. Ancestors(scripts, destination)
-            .SelectMany(a => scripts.FirstOrDefault(s => s.Script == a)?.Tree.Members.Select(m => NameOf(m.Node)).OfType<string>() ?? [])];
+        HashSet<string> theirs = [.. to.Tree.Members.Select(m => GDScriptNodes.NameOf(m.Node)).OfType<string>(), .. Ancestors(scripts, destination)
+            .SelectMany(a => scripts.FirstOrDefault(s => s.Script == a)?.Tree.Members.Select(m => GDScriptNodes.NameOf(m.Node)).OfType<string>() ?? [])];
         // What it reads of its own script must be the other's too, and self means another object away from its class.
-        HashSet<int> members = [.. own.Tree.Members.Select(m => DeclaringName(m.Node) is { } n ? m.Offset + n.Start : -1)];
-        foreach (GDScriptNode node in function.Body is { } body ? Below(body) : [])
+        HashSet<int> members = [.. own.Tree.Members.Select(m => GDScriptNodes.DeclaringName(m.Node) is { } n ? m.Offset + n.Start : -1)];
+        foreach (GDScriptNode node in function.Body is { } body ? GDScriptNodes.Below(body) : [])
         {
             if (node is GDScriptSelf && !inherited)
             {
