@@ -533,6 +533,9 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             Assert.True(frames.Rows.Any(r => r.Method?.Name.Contains("Ledger.Tally", StringComparison.Ordinal) == true && r.All > 0),
                 $"The Frames page names no time of the C# method GDScript called: {listed}");
             Assert.Contains("ran headless", frames.Summary, StringComparison.Ordinal);
+            // In the window's bottom pane, however short, the band over the table leaves the table its rows.
+            Assert.True(frames.Table.Bounds.Height >= Passenger.App.Profiling.BandOverTable.RowsKept * ListRow.Height,
+                $"The Frames page's table is {frames.Table.Bounds.Height} high under its band in a page {frames.Bounds.Height} high, so fewer than {Passenger.App.Profiling.BandOverTable.RowsKept} of its rows are in view to read and choose");
 
             Ui.Click(Ui.Row(frames.Table, script));
             Ui.Press(window, "ENTER");

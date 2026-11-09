@@ -69,7 +69,7 @@ public sealed class GameFramesView : DockPanel
     private readonly TreeRows<GameRow> rows = [];
     private readonly ListBox table;
     private readonly TextBlock placeholder;
-    private readonly DockPanel shown;
+    private readonly BandOverTable shown;
     private IReadOnlyList<GameFrame> frames = [];
     private GameProfile? profile;
     private Func<IReadOnlyList<GameFrame>, GameJoin>? join;
@@ -109,15 +109,6 @@ public sealed class GameFramesView : DockPanel
                 FrameOpened?.Invoke(this, frame);
             }
         };
-        Border band = new()
-        {
-            [DockProperty] = Dock.Top,
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Children = { new DockPanel { Children = { legend, frameLink } }, strip, summary, joining } },
-            Padding = new Thickness(0, 4, 0, 0),
-        };
-        band.Bind(Border.BorderBrushProperty, band.GetResourceObservable(TokenKeys.Divider));
-
         ColumnTitles titles = ColumnTitles.OfNumbers(("Function", 0), ("Own time", NumberWidth), ("Time in all", NumberWidth), ("Calls", NumberWidth),
             ("In Godot's API", NumberWidth + 16));
         table = new ListBox
@@ -132,7 +123,7 @@ public sealed class GameFramesView : DockPanel
         });
         table.DoubleTapped += (_, _) => Open();
         TreeKeys.Attach<GameRow>(table, Toggle, OpenRow);
-        shown = new DockPanel { Children = { band, titles, table } };
+        shown = new BandOverTable(new StackPanel { Children = { new DockPanel { Children = { legend, frameLink } }, strip, summary, joining } }, titles, table);
         placeholder = Muted(NoFrames);
         placeholder.HorizontalAlignment = HorizontalAlignment.Center;
         placeholder.VerticalAlignment = VerticalAlignment.Center;

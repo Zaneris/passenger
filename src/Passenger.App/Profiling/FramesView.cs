@@ -46,7 +46,7 @@ public sealed class FramesView : DockPanel
     private readonly TreeRows<LayoutRow> rows = [];
     private readonly ListBox table;
     private readonly TextBlock placeholder;
-    private readonly DockPanel shown;
+    private readonly BandOverTable shown;
     private IReadOnlyList<UiFrame> frames = [];
     private double origin;
 
@@ -70,15 +70,6 @@ public sealed class FramesView : DockPanel
         summary = Muted(string.Empty);
         summary.Margin = new Thickness(12, 6, 12, 6);
         summary.TextWrapping = TextWrapping.Wrap;
-        Border band = new()
-        {
-            [DockProperty] = Dock.Top,
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Children = { legend, strip, summary } },
-            Padding = new Thickness(0, 4, 0, 0),
-        };
-        band.Bind(Border.BorderBrushProperty, band.GetResourceObservable(TokenKeys.Divider));
-
         ColumnTitles titles = ColumnTitles.OfNumbers(("Control", 0), ("Own time", NumberWidth), ("Measures", NumberWidth), ("Measure time", NumberWidth),
             ("Arranges", NumberWidth), ("Arrange time", NumberWidth + 16));
         table = new ListBox
@@ -93,7 +84,7 @@ public sealed class FramesView : DockPanel
         });
         table.DoubleTapped += (_, _) => Open();
         TreeKeys.Attach<LayoutRow>(table, Toggle, OpenControl);
-        shown = new DockPanel { Children = { band, titles, table } };
+        shown = new BandOverTable(new StackPanel { Children = { legend, strip, summary } }, titles, table);
         placeholder = Muted(NoFrames);
         placeholder.HorizontalAlignment = HorizontalAlignment.Center;
         placeholder.VerticalAlignment = VerticalAlignment.Center;

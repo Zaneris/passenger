@@ -42,6 +42,9 @@ public sealed class AvaloniaFramesTests : IClassFixture<RestoredFolders>, IDispo
         view.ShowPage(ProfilerPage.Frames);
         Ui.Settle();
         FramesView frames = view.FramesPage;
+        // In the window's bottom pane, however short, the band over the table leaves the table its rows.
+        Assert.True(frames.Table.Bounds.Height >= BandOverTable.RowsKept * ListRow.Height,
+            $"The Frames page's table is {frames.Table.Bounds.Height} high under its band in a page {frames.Bounds.Height} high, so fewer than {BandOverTable.RowsKept} of its rows are in view to read and choose");
 
         IReadOnlyList<UiFrame> slow = [.. frames.Frames.Where(f => f.Controls.Any(c => c.Control.Type == "SlowPanel"))];
         Assert.True(slow.Count >= 31, $"{slow.Count} of the app's {frames.Frames.Count} frames measured the slow panel, not the window's first and its 30 after");
