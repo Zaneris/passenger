@@ -114,6 +114,107 @@ public sealed class RetainedRowsTests
             $"After the keys the view differs from its rows drawn afresh at {differs / 4 % PixelWidth(rig, editor)}, {differs / 4 / PixelWidth(rig, editor)} (pixels): a row kept through a key shows what it showed before");
     }
 
+    [AvaloniaFact]
+    public void Rows_where_lines_were_deleted_or_put_back_show_what_an_editor_opened_on_the_text_shows()
+    {
+        // A file shorter than the view, as a new console project's Program.cs is.
+        EditorRig small = new(string.Join('\n', SmallFile));
+        int LineStart(EditorRig rig, int line) => rig.Document.Snapshot.GetLineStart(line);
+        List<Seen> seen = [];
+        small.PlaceCaret(LineStart(small, 5));
+        small.Press("BACK_SPACE");
+        See(seen, small, "Backspace at the start of line 6");
+        small.PlaceCaret(LineStart(small, 2));
+        small.Press("shift DOWN");
+        small.Press("shift DOWN");
+        small.Press("shift DOWN");
+        small.Press("DELETE");
+        See(seen, small, "Lines 3 to 5 selected and deleted");
+        small.PlaceCaret(LineStart(small, 3) + 2);
+        small.Press("meta X");
+        See(seen, small, "Line 4 cut");
+        small.Press("meta Z");
+        See(seen, small, "The cut undone");
+        small.Press("meta A");
+        small.Press("DELETE");
+        See(seen, small, "Every line selected and deleted");
+        small.Press("meta Z");
+        See(seen, small, "Every line put back");
+
+        // A file longer than the view, seen at its end, where no row comes into view in place of those deleted.
+        EditorRig large = new(string.Join('\n', Enumerable.Range(1, 120).Select(i => string.Create(CultureInfo.InvariantCulture, $"Console.WriteLine(\"line {i}\");"))));
+        large.Editor.ScrollToEnd();
+        large.PlaceCaret(LineStart(large, 115));
+        large.Press("shift DOWN");
+        large.Press("shift DOWN");
+        large.Press("DELETE");
+        See(seen, large, "Lines 116 and 117 of 120 selected and deleted at the file's end");
+        large.Press("BACK_SPACE");
+        See(seen, large, "Backspace at the start of line 116 at the file's end");
+
+        foreach (Seen one in seen)
+        {
+            AssertDrawnAsAfresh(one);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_line_typed_into_after_rows_scrolled_away_shows_what_was_typed()
+    {
+        EditorRig rig = new(string.Join('\n', SmallFile));
+        // A row scrolled out of view above and none come into view below, as a scroll in a short file leaves it.
+        rig.Editor.ScrollTo(new Vector(0, rig.Editor.LineHeight));
+        Ui.Settle();
+        rig.PlaceCaret(rig.Document.Snapshot.GetLineStart(4) + 2);
+        Ui.Settle();
+        rig.Type("x");
+        List<Seen> seen = [];
+        See(seen, rig, "A letter typed on line 5 with line 1 scrolled out of view");
+        rig.Press("BACK_SPACE");
+        See(seen, rig, "The letter deleted again");
+        foreach (Seen one in seen)
+        {
+            AssertDrawnAsAfresh(one);
+        }
+    }
+
+    private static readonly string[] SmallFile =
+    [
+        "// A new console program", "Console.WriteLine(\"Hello, World!\");", "", "int x = 1;", "int y = 2;", "Console.WriteLine(x + y);", "",
+        "var z = x * y;", "Console.WriteLine(z);", "", "Console.WriteLine(\"Done\");", "return;",
+    ];
+
+    /// <summary>What an editor showed after a step: its pixels, and the text, selections and scroll it showed them for.</summary>
+    private sealed record Seen(string What, byte[] Drawn, string Text, SelectionSet Selections, Vector Scroll);
+
+    private static void See(List<Seen> seen, EditorRig rig, string what)
+    {
+        Ui.Settle();
+        seen.Add(new Seen(what, Pixels(rig, rig.Editor), rig.Text, rig.Editor.Selections, rig.Editor.ScrollOffset));
+    }
+
+    /// <summary>Holds what an editor showed after a step to what a new editor opened on the same text, selections and scroll
+    /// shows, its rows each drawn once. The new editor takes the keys, so it is made only once every step is seen.</summary>
+    private static void AssertDrawnAsAfresh(Seen seen)
+    {
+        EditorRig fresh = new(seen.Text);
+        try
+        {
+            fresh.Editor.Selections = seen.Selections;
+            fresh.Editor.ScrollTo(seen.Scroll);
+            Ui.Settle();
+            byte[] drawn = Pixels(fresh, fresh.Editor);
+            int differs = seen.Drawn.AsSpan().CommonPrefixLength(drawn);
+            Assert.True(differs == seen.Drawn.Length && drawn.Length == seen.Drawn.Length,
+                $"{seen.What}: the view differs from an editor opened on the same text at {differs / 4 % PixelWidth(fresh, fresh.Editor)}, "
+                + $"{differs / 4 / PixelWidth(fresh, fresh.Editor)} (pixels): a row the edit took away still shows what it showed before, over or under the row now there");
+        }
+        finally
+        {
+            fresh.Window.Close();
+        }
+    }
+
     private static string Line(int i) => (i % 10) switch
     {
         9 => "        // " + string.Concat(Enumerable.Repeat("a note long enough to wrap at the window's edge, ", 3)),

@@ -258,9 +258,7 @@ public sealed partial class CodeEditor
         {
             if (!slot.Showing && slot.Span is not null)
             {
-                slot.Span = null;
-                slot.Forget();
-                slot.Visual.Redraw();
+                slot.LetGo();
             }
         }
     }
@@ -419,7 +417,8 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>The rows the slots draw carried through an edit, as the views are: a row of a line it did not reach is the
-    /// same row, moved with the text after it; one it reached is let go, to be drawn again.</summary>
+    /// same row, moved with the text after it; one it reached is let go, its drawing with it, for the next frame to give
+    /// the slot a row or leave it empty.</summary>
     private void FollowSlots(DocumentChangedEventArgs change)
     {
         IReadOnlyList<TextEdit> edits = change.Edits;
@@ -446,8 +445,7 @@ public sealed partial class CodeEditor
             }
             else if (line.EndIncludingBreak >= first)
             {
-                slot.Span = null;
-                slot.Forget();
+                slot.LetGo();
             }
         }
         frameText = change.After;
@@ -662,6 +660,15 @@ public sealed partial class CodeEditor
         {
             Placeholder = null;
             Annotations.Clear();
+        }
+
+        /// <summary>Lets go of its row and of the drawing it holds, so the slot shows nothing until given another: a drawing
+        /// left standing stays on screen where the row stood, under or over the row that comes there.</summary>
+        public void LetGo()
+        {
+            Span = null;
+            Forget();
+            Visual.Redraw();
         }
     }
 }
