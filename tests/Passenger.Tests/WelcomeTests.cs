@@ -98,6 +98,40 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         window.Close();
     }
 
+    /// <summary>The Welcome screen is let go of while a folder is open, and made again as the folder closes, the folder
+    /// among its recent ones.</summary>
+    [AvaloniaFact]
+    public void The_Welcome_screen_is_let_go_while_a_folder_is_open_and_made_again_with_the_recent_ones_as_it_closes()
+    {
+        MainWindow window = Started(LaunchOptions.Empty);
+        try
+        {
+            Ui.Collected(HiddenByFolder(window, alpha), "the Welcome screen to be let go while a folder is open: hidden behind the folder, "
+                + "it would keep its rows and controls for as long as the folder stays open");
+            Assert.Null(window.CloseSolution());
+            Ui.Settle();
+            Assert.True(TopLevel.GetTopLevel(window.Welcome) == window, "Closing the folder showed no Welcome screen");
+            Assert.True(window.Welcome.Rows.Any(r => r.Name == Name(alpha)),
+                $"The Welcome screen made again lists [{string.Join(", ", window.Welcome.Rows.Select(r => r.Name))}], not the folder just closed");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The Welcome screen shown, then a folder opened over it: the screen held only weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference<WelcomeView> HiddenByFolder(MainWindow window, string folder)
+    {
+        WeakReference<WelcomeView> shown = new(window.Welcome);
+        Assert.True(TopLevel.GetTopLevel(window.Welcome) == window, "The window started on nothing shows no Welcome screen");
+        window.OpenFolder(folder);
+        Ui.Settle();
+        Assert.Equal(PathNames.Canonical(folder), window.Folder);
+        return shown;
+    }
+
     [AvaloniaFact]
     public void One_removed_from_the_Welcome_screen_is_gone_for_good_and_one_deleted_on_disk_is_marked_and_says_so_when_opened()
     {

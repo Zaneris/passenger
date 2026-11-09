@@ -82,11 +82,11 @@ public partial class MainWindow
         AgentsGoTo(null, null);
         ProjectName.Text = "No solution";
         ProjectBadge.IsVisible = false;
-        Editors.ShowWelcome(welcome);
-        welcome.Say(null);
+        SayOnWelcome(null);
+        Editors.ShowWelcome(Welcome);
         ShowRecent();
         UpdateStatus();
-        welcome.FocusSearch();
+        Welcome.FocusSearch();
         return null;
     }
 

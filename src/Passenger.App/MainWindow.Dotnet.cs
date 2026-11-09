@@ -165,13 +165,13 @@ public partial class MainWindow
             said = $"{said}. {Refusals.LooseWithoutSdk(loose)}";
         }
         DotnetBanner.Say(said);
-        // The Welcome screen's New Solution greys as the action does, saying why on its tip.
         if (actions![AppActions.NewSolution] is not null)
         {
-            string? whyNot = actions.WhyNot(AppActions.NewSolution, actions.Context());
-            welcome.NewSolutionButton.IsEnabled = whyNot is null;
-            ToolTip.SetTip(welcome.NewSolutionButton, whyNot);
-            ToolTip.SetShowOnDisabled(welcome.NewSolutionButton, true);
+            newSolutionWhyNot = actions.WhyNot(AppActions.NewSolution, actions.Context());
+            if (welcome is { } shown)
+            {
+                GreyNewSolution(shown);
+            }
         }
         bool wants = DotnetWant.Install is not null;
         installLink!.IsVisible = wants;

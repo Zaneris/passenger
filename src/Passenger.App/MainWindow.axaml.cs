@@ -370,7 +370,7 @@ public partial class MainWindow : IdeWindow
         }
         if (session.Folder is null && Editors.Documents.Count == 0)
         {
-            welcome.FocusSearch();
+            Welcome.FocusSearch();
         }
         if (options.Starts is { } start)
         {

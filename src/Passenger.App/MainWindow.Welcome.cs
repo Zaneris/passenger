@@ -13,30 +13,62 @@ namespace Passenger.App;
 /// (MainWindow.ProjectWindows). Clone Repository is beside them.</summary>
 public partial class MainWindow
 {
-    private readonly WelcomeView welcome = new();
+    /// <summary>The Welcome screen while it is shown or asked for: let go of while a folder is open, made again as it shows.</summary>
+    private WelcomeView? welcome;
+
+    /// <summary>What the Welcome screen says (a recent one gone, a file that would not open), kept while it is not made.</summary>
+    private string? welcomeSays;
+
+    /// <summary>Why the Welcome screen's New Solution greys, as the action does; null where it runs. Kept while it is not made.</summary>
+    private string? newSolutionWhyNot;
 
     /// <summary>What Open's panel offers beside All Files, which it lists first since Open takes any file.</summary>
     private static readonly FilePickerFileType SolutionsAndProjects = new("Solutions and Projects") { Patterns = ["*.sln", "*.slnx", "*.slnf", "*.csproj"] };
 
-    /// <summary>The Welcome screen, which the editor area shows until a folder opens.</summary>
-    public WelcomeView Welcome => welcome;
+    /// <summary>The Welcome screen, which the editor area shows until a folder opens: made as it is first asked for, with the
+    /// recent ones, what it says and New Solution's state.</summary>
+    public WelcomeView Welcome => welcome ??= MadeWelcome();
 
     private void AddWelcome()
     {
-        Editors.ShowWelcome(welcome);
-        welcome.NewSolutionRequested += (_, _) => Request(AppActions.NewSolution);
-        welcome.OpenRequested += (_, _) => Request(AppActions.Open);
-        welcome.OpenFolderRequested += (_, _) => Request(AppActions.OpenFolder);
-        welcome.CloneRequested += (_, _) => Request(AppActions.CloneRepository);
-        welcome.Chosen += (_, row) => OpenRecent(row.Path);
-        welcome.RemoveRequested += (_, row) => ForgetRecent(row.Path);
-        welcome.RevealRequested += (_, row) => ShowInFileManager(row.Path);
+        Editors.ShowWelcome(Welcome);
         AddNewProjectActions();
         actions!.Add(new IdeAction(AppActions.OpenFolder, "Open Folder…", "IDE", context => IdeErrors.Observe(PickFolder())) { Menus = [new MenuPlace("File", 0, 1)] });
         actions.Add(new IdeAction(AppActions.CloneRepository, "Clone Repository…", "Git", _ => ShowCloneRepository())
         {
             Menus = [new MenuPlace("File", 0, 2), new MenuPlace("Git", 4, 0)],
         });
+    }
+
+    private WelcomeView MadeWelcome()
+    {
+        WelcomeView made = new();
+        made.NewSolutionRequested += (_, _) => Request(AppActions.NewSolution);
+        made.OpenRequested += (_, _) => Request(AppActions.Open);
+        made.OpenFolderRequested += (_, _) => Request(AppActions.OpenFolder);
+        made.CloneRequested += (_, _) => Request(AppActions.CloneRepository);
+        made.Chosen += (_, row) => OpenRecent(row.Path);
+        made.RemoveRequested += (_, row) => ForgetRecent(row.Path);
+        made.RevealRequested += (_, row) => ShowInFileManager(row.Path);
+        made.Show(RecentSolutions);
+        made.Say(welcomeSays);
+        GreyNewSolution(made);
+        return made;
+    }
+
+    /// <summary>What the Welcome screen says, now where it is made and as it is made next.</summary>
+    private void SayOnWelcome(string? text)
+    {
+        welcomeSays = text;
+        welcome?.Say(text);
+    }
+
+    /// <summary>The Welcome screen's New Solution greys as the action does, saying why on its tip.</summary>
+    private void GreyNewSolution(WelcomeView shown)
+    {
+        shown.NewSolutionButton.IsEnabled = newSolutionWhyNot is null;
+        ToolTip.SetTip(shown.NewSolutionButton, newSolutionWhyNot);
+        ToolTip.SetShowOnDisabled(shown.NewSolutionButton, true);
     }
 
     /// <summary>Opens what File, Open or Open Folder chose (or a recent one, the system's, a new solution or a clone): a
@@ -50,7 +82,7 @@ public partial class MainWindow
         if (File.Exists(full) && Folder is null && WorkspaceModel.OpensAsProgram(full))
         {
             // Its folder makes it a project of its own, which runs and which the language server loads.
-            welcome.Say(null);
+            SayOnWelcome(null);
             OpenChosen(Path.GetDirectoryName(full)!, window =>
             {
                 window.OpenFile(full);
@@ -61,11 +93,11 @@ public partial class MainWindow
         if (File.Exists(full) && !WorkspaceModel.Opens(full))
         {
             string? problem = OpenFile(full);
-            welcome.Say(problem);
+            SayOnWelcome(problem);
             return problem;
         }
         string? why = Directory.Exists(full) || File.Exists(full) ? null : $"{RecentRow.Home(full)} was not opened: it does not exist";
-        welcome.Say(why);
+        SayOnWelcome(why);
         if (why is not null)
         {
             status.Text = why;
@@ -147,7 +179,7 @@ public partial class MainWindow
         {
             string gone = $"{RecentRow.Home(path)} no longer exists: it was moved or deleted, or its drive is not connected";
             status.Text = gone;
-            welcome.Say(gone);
+            SayOnWelcome(gone);
             ShowRecent();
             return gone;
         }
@@ -160,7 +192,7 @@ public partial class MainWindow
         if (keepsWorkspace)
         {
             state!.Recent.Set(state.Recent.Value.Without(path));
-            welcome.Say(null);
+            SayOnWelcome(null);
             ShowRecent();
         }
     }
@@ -178,7 +210,7 @@ public partial class MainWindow
         ShowRecent();
     }
 
-    private void ShowRecent() => welcome.Show(RecentSolutions);
+    private void ShowRecent() => welcome?.Show(RecentSolutions);
 
     /// <summary>Started with nothing named, the window that keeps state reopens what was open as Passenger last quit,
     /// unless Reopen projects on startup is off: the oldest here and each other in a window of its own, the newest last
@@ -197,7 +229,7 @@ public partial class MainWindow
             {
                 string gone = $"{row.Name} was not reopened: {row.Shown} no longer exists";
                 status.Text = gone;
-                welcome.Say(gone);
+                SayOnWelcome(gone);
                 continue;
             }
             PassengerApp.OpenProject(path, here ? OpenTarget.ThisWindow : OpenTarget.NewWindow, this);

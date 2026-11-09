@@ -213,6 +213,8 @@ public partial class MainWindow
         opened.Start();
         FindTests();
         Editors.ShowFolderHint(folder);
+        // Hidden while the folder is open; made again as it shows (Welcome).
+        welcome = null;
         RestoreWorkspace();
         ShowWorkspaceName();
         UpdateStatus();
