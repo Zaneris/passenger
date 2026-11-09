@@ -1044,75 +1044,32 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     /// <summary>A hover card's words as an agent reads them: Markdown made plain text, its code fences, backslash escapes,
-    /// entities and line-break spaces taken out, the code in it kept as written, and no image's data.</summary>
-    private static string HoverText(Hover hover) =>
-        JsonMembers.Text(hover.Contents, "kind") == "plaintext"
-            ? DataUri().Replace(Shapes.Text(hover.Contents), string.Empty).Trim()
-            : Plain(Shapes.Text(hover.Contents));
-
-    /// <summary>A Markdown image (the CSS server's Baseline icon), whose words an agent has beside it and whose data it cannot read.</summary>
-    [System.Text.RegularExpressions.GeneratedRegex(@"!\[[^\]]*\]\([^)]*\)[ \t]*")]
-    private static partial System.Text.RegularExpressions.Regex MarkdownImage();
-
-    /// <summary>A data URI's base64 bytes, as text no agent can read.</summary>
-    [System.Text.RegularExpressions.GeneratedRegex(@"\bdata:[\w.+/-]*(?:;[\w.+=-]+)*;base64,[A-Za-z0-9+/=]+")]
-    private static partial System.Text.RegularExpressions.Regex DataUri();
-
-    /// <summary>Markdown as plain text, a run of blank lines kept as one (<see cref="HoverText"/>).</summary>
-    private static string Plain(string markdown)
+    /// entities and line-break spaces taken out, the code in it kept as written, and no image's data
+    /// (<see cref="HoverMarkdown.Text"/>), a run of blank lines kept as one.</summary>
+    private static string HoverText(Hover hover)
     {
-        System.Text.StringBuilder text = new();
-        bool fenced = false;
-        bool gap = false;
-        foreach (string raw in markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        if (JsonMembers.Text(hover.Contents, "kind") == "plaintext")
         {
-            string line = raw.TrimEnd();
-            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            return HoverMarkdown.Dataless(Shapes.Text(hover.Contents)).Trim();
+        }
+        System.Text.StringBuilder text = new();
+        bool gap = false;
+        foreach ((IReadOnlyList<string> lines, bool code) in HoverMarkdown.Blocks(Shapes.Text(hover.Contents)))
+        {
+            foreach (string line in lines)
             {
-                fenced = !fenced;
-                continue;
+                string plain = code ? line.TrimEnd() : HoverMarkdown.Text(line);
+                if (plain.Trim().Length == 0)
+                {
+                    gap = text.Length > 0;
+                    continue;
+                }
+                text.Append(gap ? "\n" : string.Empty).Append(plain).Append('\n');
+                gap = false;
             }
-            string plain = fenced ? line : Unescaped(DataUri().Replace(MarkdownImage().Replace(line, string.Empty), string.Empty));
-            if (plain.Trim().Length == 0)
-            {
-                gap = text.Length > 0;
-                continue;
-            }
-            text.Append(gap ? "\n" : string.Empty).Append(plain).Append('\n');
-            gap = false;
         }
         return text.ToString().TrimEnd();
-
-        // Outside a code span, a backslash before punctuation and an entity are Markdown's, not the text's.
-        static string Unescaped(string line)
-        {
-            System.Text.StringBuilder plain = new(line.Length);
-            bool code = false;
-            for (int i = 0; i < line.Length; i++)
-            {
-                char c = line[i];
-                if (c == '`')
-                {
-                    code = !code;
-                }
-                else if (!code && c == '\\' && i + 1 < line.Length && char.IsAscii(line[i + 1]) && (char.IsPunctuation(line[i + 1]) || char.IsSymbol(line[i + 1])))
-                {
-                    plain.Append(line[++i]);
-                    continue;
-                }
-                else if (!code && c == '&' && Entities.FirstOrDefault(e => string.CompareOrdinal(line, i, e.Written, 0, e.Written.Length) == 0) is { Written: { } written } entity)
-                {
-                    plain.Append(entity.Meant);
-                    i += written.Length - 1;
-                    continue;
-                }
-                plain.Append(c);
-            }
-            return plain.ToString();
-        }
     }
-
-    private static readonly (string Written, char Meant)[] Entities = [("&nbsp;", ' '), ("&lt;", '<'), ("&gt;", '>'), ("&amp;", '&'), ("&quot;", '"'), ("&#39;", '\'')];
 
     /// <summary>Usages in the order an agent reads them: by file, then line and column, a source generator's files (their
     /// copies, <see cref="GeneratedCode"/>) last.</summary>

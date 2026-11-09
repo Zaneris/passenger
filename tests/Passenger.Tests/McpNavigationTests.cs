@@ -421,7 +421,8 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         entries.EnumerateArray().Select(e => $"{e.GetProperty("path").GetString()}:{e.GetProperty("line").GetInt32()}:{e.GetProperty("column").GetInt32()}");
 
     private const string Shelf = "sealed class Shelf\n{\n    private readonly string[] books = [\"a\", \"b\"];\n\n"
-        + "    /// <summary>The book_at a place on the shelf, from a List&lt;string&gt; of them.</summary>\n    public string this[int at] => books[at];\n\n"
+        + "    /// <summary>The book_at a place on the shelf, from a List&lt;string&gt; of them kept under <c>C:\\temp</c> in C:\\temp\\books.</summary>\n"
+        + "    public string this[int at] => books[at];\n\n"
         + "    public int Size()\n    {\n        int unused = 1;\n        return books.Length;\n    }\n}\n";
 
     [Fact]
@@ -446,10 +447,11 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         JsonElement used = await Call(client, McpTools.Usages, new() { ["symbol"] = "Shelf.Item" });
         Assert.Equal(("Shelf.this[int] (property)", "Shelf.cs:6"), (used.GetProperty("symbol").GetString(), string.Join(", ", Used(used).Select(u => $"{u.Path}:{u.Line}"))));
 
-        // The hover card's words, with none of Markdown's escapes or fences.
+        // The hover card's words, with none of Markdown's escapes or fences, a path's backslashes kept as code and in words.
         string card = (await Call(client, McpTools.SymbolInfo, new() { ["symbol"] = "Shelf.this[int]" })).GetString()!;
-        Assert.True(card.Contains("string Shelf.this[int at] { get; }", StringComparison.Ordinal) && card.Contains("The book_at a place on the shelf, from a List<string> of them.", StringComparison.Ordinal)
-            && !card.Contains('\\', StringComparison.Ordinal) && !card.Contains("```", StringComparison.Ordinal), $"symbol_info of the indexer said:\n{card}");
+        Assert.True(card.Contains("string Shelf.this[int at] { get; }", StringComparison.Ordinal)
+            && card.Contains(@"The book_at a place on the shelf, from a List<string> of them kept under `C:\temp` in C:\temp\books.", StringComparison.Ordinal)
+            && !card.Contains("```", StringComparison.Ordinal), $"symbol_info of the indexer said:\n{card}");
 
         // A warning's Suppress and Configure choices are counted, and listed when the agent names that action.
         Dictionary<string, object?> unused = new() { ["path"] = "Shelf.cs", ["line"] = 10, ["column"] = 13 };

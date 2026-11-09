@@ -209,6 +209,23 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
+    /// <summary>MSBuild's places are an XML reader's, which ends a line at a lone '\r' where the editor does not: Go to
+    /// Declaration of a target defined below such a break lands on the target's own line, where it landed two lines on.</summary>
+    [AvaloniaFact]
+    public void Go_to_declaration_lands_on_a_target_defined_below_a_lone_carriage_return()
+    {
+        Write("App/Shared.targets", "<Project>\n  <!-- Pasted:\ra\rb -->\n  <Target Name=\"Greet\" BeforeTargets=\"Build\" />\n</Project>\n");
+        Write("App/App.csproj", Project.Replace("DependsOnTargets=\"Build\"", "DependsOnTargets=\"Greet\"", StringComparison.Ordinal));
+        MainWindow window = Open("App/App.csproj");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "DependsOnTargets=\"Gre");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.Equal("Shared.targets", window.EditorArea.Active?.Name);
+        string landed = CaretLine(window.EditorArea.CodeEditor);
+        Assert.True(landed == "  |<Target Name=\"Greet\" BeforeTargets=\"Build\" />", $"Go to Declaration of Greet landed on another line: {landed}");
+        window.Close();
+    }
+
     /// <summary>Core takes in its own folder's C# by the SDK's wildcard and Shared's by its own element, so a file come into or
     /// gone from either folder, whether another program or the IDE made it, changes what the cards count with nothing typed.</summary>
     [Gate]

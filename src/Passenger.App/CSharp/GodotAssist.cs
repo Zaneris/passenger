@@ -117,23 +117,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
             ? (scenes, res, file) : null;
     }
 
-    public override async Task<bool> DefinitionAsync(int offset)
-    {
-        if (context.Editors.Active is not { } shown || !GodotFile.IsText(shown.Path))
-        {
-            return false;
-        }
-        Declared? declared = await DeclaredAsync(shown, offset);
-        if (declared is null)
-        {
-            context.Say(Refusals.NoDeclaration);
-        }
-        else if (context.Editors.Active == shown)
-        {
-            navigation.Go(declared, offset);
-        }
-        return true;
-    }
+    public override Task<bool> DefinitionAsync(int offset) => GoToDeclarationAsync(context, navigation, offset, shown => GodotFile.IsText(shown.Path));
 
     public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
     {

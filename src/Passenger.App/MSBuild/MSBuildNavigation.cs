@@ -108,11 +108,12 @@ public static class MSBuildNavigation
         return null;
     }
 
-    /// <summary>The 1-based line and column of an offset, as MSBuild counts its places.</summary>
+    /// <summary>The 1-based line and column of an offset, as MSBuild counts its places: an XML reader's lines
+    /// (<see cref="Lsp.ServerLines.OfXml"/>).</summary>
     public static (int Line, int Column) PlaceOf(string text, int offset)
     {
-        TextPosition position = TextSnapshot.From(text).GetPosition(Math.Min(offset, text.Length));
-        return (position.Line + 1, position.Column + 1);
+        Lsp.LspPosition position = Lsp.ServerLines.OfXml(TextSnapshot.From(text)).PositionOf(Math.Min(offset, text.Length));
+        return (position.Line + 1, position.Character + 1);
     }
 
     /// <summary>The hover card's words: what the name is and, from the evaluation, its value now and where that was set.</summary>

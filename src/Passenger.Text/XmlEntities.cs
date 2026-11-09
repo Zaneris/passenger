@@ -68,20 +68,31 @@ public static class XmlEntities
         };
     }
 
+    /// <summary>The characters a character reference at <paramref name="at"/> names (<c>&amp;lt;</c>, <c>&amp;#39;</c>)
+    /// and how long it is written; null where none starts there, or one names no character.</summary>
+    public static string? ReferenceAt(string text, int at, out int length) => ReferenceAt(text, at, text.Length, out length);
+
+    private static string? ReferenceAt(string raw, int at, int to, out int length)
+    {
+        // A reference read ends within ten characters of its '&'.
+        int semicolon = at < to && raw[at] == '&' ? raw.IndexOf(';', at, Math.Min(to - at, 11)) : -1;
+        string? named = semicolon > at ? Entity(raw.AsSpan(at + 1, semicolon - at - 1)) : null;
+        length = named is null ? 0 : semicolon + 1 - at;
+        return named;
+    }
+
     private static void Decode(string raw, int from, int to, StringBuilder decoded)
     {
         int i = from;
         while (i < to)
         {
-            char c = raw[i];
-            int semicolon = c == '&' ? raw.IndexOf(';', i, to - i) : -1;
-            if (semicolon > i && semicolon - i <= 10 && Entity(raw.AsSpan(i + 1, semicolon - i - 1)) is { } replaced)
+            if (ReferenceAt(raw, i, to, out int length) is { } replaced)
             {
                 decoded.Append(replaced);
-                i = semicolon + 1;
+                i += length;
                 continue;
             }
-            decoded.Append(c);
+            decoded.Append(raw[i]);
             i++;
         }
     }

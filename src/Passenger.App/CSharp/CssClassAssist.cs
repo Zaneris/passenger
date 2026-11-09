@@ -83,18 +83,7 @@ internal sealed class CssClassAssist(AssistContext context, CodeCompletion compl
         return true;
     }
 
-    public override async Task<bool> DefinitionAsync(int offset)
-    {
-        if (context.Editors.Active is not { } shown || await DeclaredAsync(shown, offset) is not { } declared)
-        {
-            return false;
-        }
-        if (context.Editors.Active == shown)
-        {
-            navigation.Go(declared, offset);
-        }
-        return true;
-    }
+    public override Task<bool> DefinitionAsync(int offset) => GoToDeclarationAsync(context, navigation, offset);
 
     /// <summary>Each rule that names the class at an offset, in its stylesheet; the words for there being none, a stylesheet
     /// that could not be read named, where the class is written but none defines it.</summary>

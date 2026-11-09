@@ -13,7 +13,7 @@ namespace Passenger.App.CSharp;
 /// <summary>A card over the editor: hover information, a diagnostic's message, a signature. Code is
 /// set in the editor's font, prose in the interface's, a problem in its severity's colour. A paused program's value with
 /// members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for.</summary>
-internal sealed partial class InfoCard : Border, IHoverCard
+internal sealed class InfoCard : Border, IHoverCard
 {
     /// <summary>The most a card of words is wide; one of a value's rows takes a width of the popups' (<see cref="PopupFrame"/>).</summary>
     private const double WordsWidth = 640;
@@ -189,74 +189,29 @@ internal sealed partial class InfoCard : Border, IHoverCard
         }
     }
 
-    /// <summary>Hover markdown, as Roslyn writes it: fenced code blocks and prose between them.</summary>
+    /// <summary>A hover's Markdown: its fenced code as code, the prose between as its words (<see cref="HoverMarkdown"/>).</summary>
     public void AddMarkdown(string markdown)
     {
-        bool code = false;
-        List<string> block = [];
-        foreach (string raw in markdown.Replace("\r\n", "\n").Split('\n'))
+        foreach ((IReadOnlyList<string> lines, bool code) in HoverMarkdown.Blocks(markdown))
         {
-            if (raw.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            string text = string.Join('\n', code ? lines : lines.Select(HoverMarkdown.Words)).Trim('\n', ' ');
+            if (text.Length == 0)
             {
-                Flush(block, code);
-                code = !code;
                 continue;
             }
-            block.Add(code ? raw : Plain(raw));
-        }
-        Flush(block, code);
-    }
-
-    private void Flush(List<string> block, bool code)
-    {
-        string text = string.Join('\n', block).Trim('\n', ' ');
-        block.Clear();
-        if (text.Length == 0)
-        {
-            return;
-        }
-        if (code)
-        {
-            AddCode(text);
-        }
-        else
-        {
-            AddText(text);
+            if (code)
+            {
+                AddCode(text);
+            }
+            else
+            {
+                AddText(text);
+            }
         }
     }
-
-    /// <summary>Markdown's emphasis, escapes, images and links' addresses taken out, leaving the words.</summary>
-    private static string Plain(string line) => MarkdownItalic().Replace(MarkdownLink().Replace(Imageless(line), "$1")
-            .Replace("**", string.Empty)
-            .Replace("__", string.Empty), "$1$2")
-        .Replace("`", string.Empty)
-        .Replace("\\", string.Empty)
-        .Replace("&nbsp;", " ")
-        .Replace("&lt;", "<")
-        .Replace("&gt;", ">")
-        .Replace("&amp;", "&");
 
     internal static IBrush Brush(string key) =>
         Application.Current is { } app && app.TryFindResource(key, app.ActualThemeVariant, out object? value) && value is IBrush brush ? brush : Brushes.Transparent;
-
-    /// <summary>A line without its images, and without the space one began it with.</summary>
-    private static string Imageless(string line)
-    {
-        string without = MarkdownImage().Replace(line, string.Empty);
-        return without.Length != line.Length && line.TrimStart().StartsWith("![", StringComparison.Ordinal) ? without.TrimStart() : without;
-    }
-
-    /// <summary>Markdown's _italic_ and *italic* (TypeScript's *@param*), shown as their words.</summary>
-    [System.Text.RegularExpressions.GeneratedRegex(@"(?<!\w)_([^_\n]+)_(?!\w)|(?<![\w*])\*(\S(?:[^*\n]*\S)?)\*(?![\w*])")]
-    private static partial System.Text.RegularExpressions.Regex MarkdownItalic();
-
-    /// <summary>A Markdown image, which a card of text cannot show (the CSS server's Baseline icon, a data URI): left out.</summary>
-    [System.Text.RegularExpressions.GeneratedRegex(@"!\[[^\]]*\]\([^)]*\)")]
-    private static partial System.Text.RegularExpressions.Regex MarkdownImage();
-
-    /// <summary>A Markdown link, shown as its words (the CSS server's MDN Reference).</summary>
-    [System.Text.RegularExpressions.GeneratedRegex(@"\[([^\]]+)\]\([^)\s]*\)")]
-    private static partial System.Text.RegularExpressions.Regex MarkdownLink();
 }
 
 /// <summary>One completion row: the badge for its kind (a coloured letter, its colour the theme's resource of that key,

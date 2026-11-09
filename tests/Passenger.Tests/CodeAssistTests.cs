@@ -1820,6 +1820,21 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>The card over a member whose documentation names a path as code and in its words shows its backslashes as
+    /// written, where it took every backslash out of the server's Markdown, a code span's too, so a path read "C:temp".</summary>
+    [AvaloniaFact]
+    public void The_hover_card_shows_a_documented_paths_backslashes_and_quotes_as_written()
+    {
+        MainWindow window = project.Open("Paths.cs");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int Kee");
+        Ui.Run(window, AppActions.QuickDocumentation);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Keeps", StringComparison.Ordinal) == true, "the card over Keep with its documentation");
+        string card = window.Assist.HoverText!;
+        Assert.True(card.Contains(@"Keeps its logs under C:\temp, in C:\temp\logs, ""never"" elsewhere.", StringComparison.Ordinal),
+            $"The card showed the documentation's path without its backslashes, or Markdown's marks:\n{card}");
+        window.Close();
+    }
+
     private static T Await<T>(Task<T> task, string what) => Ui.Await(task, what, TimeSpan.FromSeconds(30));
 
     /// <summary>Chooses an item of the open list of choices by its words, with the keys a person would press.</summary>
@@ -2644,6 +2659,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 + "    /// <param name=\"values\">The values to join.</param>\n"
                 + "    public static string Join(string separator, IEnumerable<string> values) => string.Join(separator, values);\n\n"
                 + "    public static string Both(List<string> names) => Join(\", \", names) + string.Join(\", \", names);\n}\n");
+            // Documentation naming a path in its words and as code, and quoting a word.
+            File.WriteAllText(PathOf("Paths.cs"), "static class Paths\n{\n"
+                + "    /// <summary>Keeps its logs under <c>C:\\temp</c>, in C:\\temp\\logs, &quot;never&quot; elsewhere.</summary>\n"
+                + "    public static int Keep() => 1;\n}\n");
             // A statement's completion with no usings, and with the usings a project's implicit ones bring.
             const string Statement = "\nstatic class Statement\n{\n    public static int Sum()\n    {\n        int total = 0;\n        return total;\n    }\n}\n";
             File.WriteAllText(PathOf("Bare.cs"), Statement.Replace("Statement", "Bare", StringComparison.Ordinal));

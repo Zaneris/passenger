@@ -446,8 +446,17 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return;
         }
-        RenameBox box = new(text.GetText(word));
+        RenameBox box = ShowRenameBox(document, text, word);
         box.RenamesFilesChanged += (_, on) => RenameSettings = RenameSettings with { RenameFiles = on };
+        IdeErrors.Observe(OfferFileRenames(box, document, word.Start));
+    }
+
+    /// <summary>The rename box over a name of a file, C#'s, a web language's or a GDScript's: the name is renamed as the box
+    /// closes with one, held on it through what is typed meanwhile, with a type's files where the box offers them and they
+    /// are chosen.</summary>
+    private RenameBox ShowRenameBox(OpenDocument document, TextSnapshot text, TextRange word)
+    {
+        RenameBox box = new(text.GetText(word));
         ChangeTracker opened = new(Editor.Document);
         popups.ShowModal(box, word.Start, async name =>
         {
@@ -474,7 +483,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             }
         });
         popups.WhenClosed(opened.Dispose);
-        IdeErrors.Observe(OfferFileRenames(box, document, word.Start));
+        return box;
     }
 
     /// <summary>Whether a name can be written as a C# identifier: as it is, or after an @ (a keyword's name).</summary>

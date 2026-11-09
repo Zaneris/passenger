@@ -97,8 +97,11 @@ internal sealed class MSBuildAssist : LanguageAssist
             return null;
         }
         IReadOnlyList<MSBuildTarget> targets = await msbuild.TargetsAsync(offset) is { } found ? found.Targets : [];
-        return new Declared(Declared.Served(targets.Select(t => (t.Place.Path, new TextPosition(Math.Max(0, t.Place.Line - 1), Math.Max(0, t.Place.Column - 1)))),
-            ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration) { Names = [.. targets.Select(t => (string?)t.Title)] };
+        Func<string, TextSnapshot?> texts = ServerPlaces.Texts(context.Editors);
+        return new Declared(Declared.Served(targets.Select(t => (t.Place.Path, PositionOf(texts(t.Place.Path), t.Place))), texts), Refusals.NoDeclaration)
+        {
+            Names = [.. targets.Select(t => (string?)t.Title)],
+        };
     }
 
     /// <summary>Whether what was just typed in an MSBuild file opens completion.</summary>
@@ -335,8 +338,13 @@ internal sealed class MSBuildAssist : LanguageAssist
         });
     }
 
-    private void ArriveAt(MSBuildPlace place) =>
-        context.Navigate((place.Path, new TextPosition(Math.Max(0, place.Line - 1), Math.Max(0, place.Column - 1))));
+    private void ArriveAt(MSBuildPlace place) => context.Navigate((place.Path, PositionOf(ServerPlaces.TextOf(context.Editors, place.Path), place)));
+
+    /// <summary>A place of MSBuild's evaluation, an XML reader's line and column, as the editor's in its file's text
+    /// (<see cref="ServerPlaces.XmlPositionOf(TextSnapshot?, int, int)"/>); its line and column as they are where the file
+    /// cannot be read, and the file's start for a place of no line.</summary>
+    private static TextPosition PositionOf(TextSnapshot? text, MSBuildPlace place) =>
+        ServerPlaces.XmlPositionOf(text, place.Line, place.Column) ?? new TextPosition(Math.Max(0, place.Line - 1), Math.Max(0, place.Column - 1));
 
     /// <summary>The hover card for a name in an MSBuild file: what it is (a property and its value) as code, then where it
     /// was set and MSBuild's documentation.</summary>

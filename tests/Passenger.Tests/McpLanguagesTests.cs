@@ -454,14 +454,16 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     }
 
     /// <summary>A project whose property comes from its Directory.Build.props and whose target another names: what MSBuild's
-    /// evaluation makes of each name, where each is defined (the SDK's own files among them), the file's elements, and the
-    /// commands MSBuild files lack said plainly.</summary>
+    /// evaluation makes of each name, where each is defined (the SDK's own files among them, and a target below a lone
+    /// '\r', which ends a line for MSBuild alone), the file's elements, and the commands MSBuild files lack said plainly.</summary>
     [Fact]
     public async Task An_agent_reads_a_project_files_evaluated_values_and_goes_where_each_name_is_defined()
     {
         string shop = Made("mcpmsbuild-", made =>
         {
             File.WriteAllText(Path.Combine(made, "Directory.Build.props"), "<Project>\n  <PropertyGroup>\n    <Company>Passenger</Company>\n  </PropertyGroup>\n</Project>\n");
+            File.WriteAllText(Path.Combine(made, "Directory.Build.targets"), "<Project>\n  <!-- Pasted:\ra\rb -->\n  <Target Name=\"Bow\" />\n"
+                + "  <Target Name=\"Curtsy\" DependsOnTargets=\"Bow\" />\n</Project>\n");
             File.WriteAllText(Path.Combine(made, "Shop.csproj"), $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
                 + "    <Product>$(Company) Shop</Product>\n  </PropertyGroup>\n  <Target Name=\"Greet\" AfterTargets=\"Build\">\n    <Message Text=\"$(Product)\" />\n  </Target>\n"
                 + "  <Target Name=\"Wave\" DependsOnTargets=\"Greet\" />\n</Project>\n");
@@ -480,6 +482,10 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         Assert.Equal("<Company>Passenger</Company>", set.GetProperty("text").GetString());
         JsonElement target = Assert.Single((await Call(client, McpTools.Definition, At(project, "Shop.csproj", "DependsOnTargets=\"Gre"))).EnumerateArray());
         Assert.Equal(("Shop.csproj", 6), (target.GetProperty("path").GetString(), target.GetProperty("line").GetInt32()));
+        JsonElement bow = Assert.Single((await Call(client, McpTools.Definition,
+            At(File.ReadAllText(Path.Combine(shop, "Directory.Build.targets")), "Directory.Build.targets", "DependsOnTargets=\"Bo"))).EnumerateArray());
+        Assert.True((bow.GetProperty("path").GetString(), bow.GetProperty("line").GetInt32()) == ("Directory.Build.targets", 3),
+            $"Go to Declaration of a target below a lone '\\r' led to another line: {bow}");
         string[] sdk = [.. (await Call(client, McpTools.Definition, At(project, "Shop.csproj", "Sdk=\"Microsoft.NE"))).EnumerateArray().Select(p => p.GetProperty("path").GetString()!)];
         Assert.True(sdk.Length > 0 && sdk.All(Path.IsPathRooted) && sdk.Any(p => p.EndsWith("Sdk.props", StringComparison.Ordinal)),
             $"The SDK's definition is not its own files: {string.Join(", ", sdk)}");

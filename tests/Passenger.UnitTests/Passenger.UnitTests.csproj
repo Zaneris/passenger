@@ -223,6 +223,12 @@
     <Compile Include="../../src/Passenger.Roslyn.Extension/Messages.cs" Link="App/RoslynMessages.cs" />
   </ItemGroup>
 
+  <!-- What a hover's Markdown says, as the card shows it and an agent reads it, from its text alone, compiled in since its
+       project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/CSharp/HoverMarkdown.cs" Link="App/HoverMarkdown.cs" />
+  </ItemGroup>
+
   <!-- How a language server's messages are followed for the protocol trace, from their bytes alone, whether two of its
        URIs name one document, from their paths, and what an HTML server is sent of Razor's files, against a stand-in,
        compiled in since their project carries the servers. -->

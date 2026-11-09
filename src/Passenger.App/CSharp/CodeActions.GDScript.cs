@@ -448,31 +448,7 @@ internal sealed partial class CodeActions
         {
             return;
         }
-        RenameBox box = new(text.GetText(word));
-        ChangeTracker opened = new(Editor.Document);
-        popups.ShowModal(box, word.Start, async name =>
-        {
-            int at = opened.MapOffset(word.Start);
-            if (name is null)
-            {
-                return;
-            }
-            Anchor held = HeldAt(document, at);
-            try
-            {
-                RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, patience => RenameSymbolAsync(document, held, name, false, patience));
-                Told("Rename", made);
-            }
-            catch (LanguageServerFailed failed)
-            {
-                context.Failed("Rename", failed);
-            }
-            finally
-            {
-                held.Remove();
-            }
-        });
-        popups.WhenClosed(opened.Dispose);
+        ShowRenameBox(document, text, word);
     }
 
     /// <summary>A selection taken to the whole lines it touches, as Extract Function takes statements.</summary>

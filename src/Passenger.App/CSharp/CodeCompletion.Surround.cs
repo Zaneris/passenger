@@ -35,26 +35,7 @@ internal sealed partial class CodeCompletion
             context.Say("Nothing here to surround: choose code, not a comment or a string");
             return;
         }
-        ChangeTracker opened = new(document.Text);
-        // At the caret, below the code chosen when the caret ends it.
-        popups.ShowModal(new ChoicePopup("Surround With", [.. offered.Select(t => new Choice(t.Abbreviation, t.Description, t, Mnemonic: t.Mnemonic))]),
-            context.Caret, "Surround With", choice =>
-            {
-                IReadOnlyList<TextEdit>? still = opened.Map([new TextEdit(target.Range.Start, target.Range.Length, string.Empty)]);
-                opened.Dispose();
-                if (choice?.Value is not LiveTemplate template)
-                {
-                    return Task.CompletedTask;
-                }
-                if (still is not [TextEdit wrapped] || Editor.Document != document.Text)
-                {
-                    context.Say("Surround With was not applied: the code it wraps was edited meanwhile");
-                    return Task.CompletedTask;
-                }
-                TextRange wrapping = new(wrapped.Start, wrapped.Length);
-                Surround(template, wrapping, SurroundScopes.InStrings(parser.Current, wrapping));
-                return Task.CompletedTask;
-            });
+        OfferSurround(document, target.Range, offered, wrapping => SurroundScopes.InStrings(parser.Current, wrapping));
     }
 
     /// <summary>XAML's Surround With: the templates that fit the elements chosen (the element at the caret with nothing
@@ -70,11 +51,19 @@ internal sealed partial class CodeCompletion
         }
         bool avalonia = tree.Root?.Attribute("xmlns")?.Value == AvaloniaDialect.Uri;
         IReadOnlyList<LiveTemplate> offered = [.. LiveTemplates.Xaml.Where(t => (target.Count == 1 || !t.OneChild) && (avalonia || !t.AvaloniaOnly)).Select(t => t.Template)];
+        OfferSurround(document, target.Range, offered, _ => null);
+    }
+
+    /// <summary>The surround templates offered, each with its digit, at the caret (below the code chosen when the caret ends
+    /// it); the one chosen goes around <paramref name="range"/> as it then stands, its lines that begin inside a string
+    /// (<paramref name="inStrings"/>) kept as written, unless that code was edited meanwhile.</summary>
+    private void OfferSurround(OpenDocument document, TextRange range, IReadOnlyList<LiveTemplate> offered, Func<TextRange, IReadOnlySet<int>?> inStrings)
+    {
         ChangeTracker opened = new(document.Text);
         popups.ShowModal(new ChoicePopup("Surround With", [.. offered.Select(t => new Choice(t.Abbreviation, t.Description, t, Mnemonic: t.Mnemonic))]),
             context.Caret, "Surround With", choice =>
             {
-                IReadOnlyList<TextEdit>? still = opened.Map([new TextEdit(target.Range.Start, target.Range.Length, string.Empty)]);
+                IReadOnlyList<TextEdit>? still = opened.Map([new TextEdit(range.Start, range.Length, string.Empty)]);
                 opened.Dispose();
                 if (choice?.Value is not LiveTemplate template)
                 {
@@ -85,7 +74,8 @@ internal sealed partial class CodeCompletion
                     context.Say("Surround With was not applied: the code it wraps was edited meanwhile");
                     return Task.CompletedTask;
                 }
-                Surround(template, new TextRange(wrapped.Start, wrapped.Length));
+                TextRange wrapping = new(wrapped.Start, wrapped.Length);
+                Surround(template, wrapping, inStrings(wrapping));
                 return Task.CompletedTask;
             });
     }

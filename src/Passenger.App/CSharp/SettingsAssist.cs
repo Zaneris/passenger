@@ -68,18 +68,7 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
 
     /// <summary>Go to Declaration from a key in a settings file or a secrets.json; false where the caret is on no key, for
     /// the JSON server's.</summary>
-    public override async Task<bool> DefinitionAsync(int offset)
-    {
-        if (context.Editors.Active is not { } shown || await DeclaredAsync(shown, offset) is not { } declared)
-        {
-            return false;
-        }
-        if (context.Editors.Active == shown)
-        {
-            navigation.Go(declared, offset);
-        }
-        return true;
-    }
+    public override Task<bool> DefinitionAsync(int offset) => GoToDeclarationAsync(context, navigation, offset);
 
     /// <summary>Where Go to Declaration goes from a key in a settings file or a secrets.json: the options property it sets,
     /// else the code that reads it or binds its section; null where the offset is on no key.</summary>

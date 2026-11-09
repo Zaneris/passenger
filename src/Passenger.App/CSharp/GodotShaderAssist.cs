@@ -312,23 +312,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
         return true;
     }
 
-    public override async Task<bool> DefinitionAsync(int offset)
-    {
-        if (context.Editors.Active is not { } shown || !InShader(shown, offset))
-        {
-            return false;
-        }
-        Declared? declared = await DeclaredAsync(shown, offset);
-        if (declared is null)
-        {
-            context.Say(Refusals.NoDeclaration);
-        }
-        else if (context.Editors.Active == shown)
-        {
-            navigation.Go(declared, offset);
-        }
-        return true;
-    }
+    public override Task<bool> DefinitionAsync(int offset) => GoToDeclarationAsync(context, navigation, offset, shown => InShader(shown, offset));
 
     /// <summary>Where a name of the shader is declared (the shader's own, or an include's), or the file an <c>#include</c>
     /// names; null for a built-in, which only Godot declares.</summary>

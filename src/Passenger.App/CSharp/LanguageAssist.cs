@@ -65,6 +65,30 @@ internal abstract class LanguageAssist
     /// shown, for an agent; it answers for the same files, and passes (null) where that passes.</summary>
     public virtual Task<Declared?> DeclaredAsync(OpenDocument document, int offset) => NotDeclared;
 
+    /// <summary>Go to Declaration from an offset of the file shown, to where <see cref="DeclaredAsync"/> leads unless another
+    /// file came to be shown meanwhile. A file is the language's where <paramref name="owns"/> says so, the status bar saying
+    /// so where it leads nowhere; with no <paramref name="owns"/>, only where it leads somewhere, else passed on (false).</summary>
+    protected async Task<bool> GoToDeclarationAsync(AssistContext context, CodeNavigation navigation, int offset, Func<OpenDocument, bool>? owns = null)
+    {
+        if (context.Editors.Active is not { } shown || owns?.Invoke(shown) == false)
+        {
+            return false;
+        }
+        if (await DeclaredAsync(shown, offset) is not { } declared)
+        {
+            if (owns is not null)
+            {
+                context.Say(Refusals.NoDeclaration);
+            }
+            return owns is not null;
+        }
+        if (context.Editors.Active == shown)
+        {
+            navigation.Go(declared, offset);
+        }
+        return true;
+    }
+
     /// <summary>Find Usages from an offset, or Show Usages' popup there (<paramref name="inPopup"/>).</summary>
     public virtual Task<bool> UsagesAsync(int offset, bool inPopup) => Passed;
 
