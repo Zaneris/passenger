@@ -1477,7 +1477,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             return null;
         }
         console.Write($"{(services.All(s => unmade.Contains(s.Name)) ? "Starting" : "Restarting")} {string.Join(", ", services.Select(s => s.Name))}: "
-            + $"{why ?? (services.Count == 1 ? "its build changed" : "their builds changed")}\n");
+            + $"{why ?? Plural.Agreeing(services.Count, "its build changed", "their builds changed")}\n");
         // One started later has no container yet: made, as one whose hold changed since it was made is made anew.
         List<string> made = [.. services.Select(s => s.Name).Where(s => Plan.Mode == ContainerMode.Images || unmade.Contains(s)
             || madeHeld.Contains(s) != (HeldFor(s) is not null || heldOnce.Contains(s)))];

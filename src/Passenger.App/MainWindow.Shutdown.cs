@@ -107,7 +107,7 @@ public partial class MainWindow
     /// <summary>Why an agent may not leave the folder now (<paramref name="leaving"/> it), or null: it would stop a program
     /// Hot Reload changed, which is the person's to choose, so the agent stops it first itself.</summary>
     public string? WhyNotLeave(string leaving) => HeldByLeaving() is { Count: > 0 } held
-        ? $"{HeldWords(held, leaving)}; {Mcp.McpTools.Stop} {(held.Count == 1 ? "it" : "them")} first to go on (session {string.Join(", ", held.Select(t => t.Name))})"
+        ? $"{HeldWords(held, leaving)}; {Mcp.McpTools.Stop} {Plural.Agreeing(held.Count, "it", "them")} first to go on (session {string.Join(", ", held.Select(t => t.Name))})"
         : null;
 
     /// <summary>Asks the person whether to stop programs Hot Reload changed that <paramref name="leaving"/> would stop
@@ -116,8 +116,8 @@ public partial class MainWindow
     private async Task<bool> StopHeldAskedAsync(IReadOnlyList<DebugTab> held, string leaving, string stopAnd)
     {
         ProjectSession asked = session;
-        string them = held.Count == 1 ? "it" : "them";
-        string? answer = await Choose(held.Count == 1 ? "Program Changed by Hot Reload" : "Programs Changed by Hot Reload",
+        string them = Plural.Agreeing(held.Count, "it", "them");
+        string? answer = await Choose($"{Plural.Noun(held.Count, "Program")} Changed by Hot Reload",
             $"{HeldWords(held, leaving)}.\n\nStop {them}, or Cancel to go on debugging {them}.", [stopAnd], null);
         if (answer != stopAnd || session != asked)
         {

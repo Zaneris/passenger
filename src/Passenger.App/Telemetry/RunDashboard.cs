@@ -101,7 +101,7 @@ public sealed class RunDashboard : ITelemetryRun, IDisposable
         {
             return plan with
             {
-                Notes = [.. plan.Notes, $"{plan.Name} sends its logs and traces where its own {Plural.Listed(elsewhere)} {(elsewhere.Count == 1 ? "says" : "say")}, so Passenger's dashboard is not started for it"],
+                Notes = [.. plan.Notes, $"{plan.Name} sends its logs and traces where its own {Plural.Listed(elsewhere)} {Plural.Agreeing(elsewhere.Count, "says", "say")}, so Passenger's dashboard is not started for it"],
             };
         }
         (RunDashboard? dashboard, string? why) = await StartAsync(plan.Name, engine, containers, folder, stateFolder, cancel);
@@ -122,7 +122,7 @@ public sealed class RunDashboard : ITelemetryRun, IDisposable
             + "Telemetry tab and an agent's telemetry read"];
         if (told.Elsewhere.Count > 0)
         {
-            notes.Add($"The rest of what {plan.Name} sends goes where its own {Plural.Listed(told.Elsewhere)} {(told.Elsewhere.Count == 1 ? "says" : "say")}, without the dashboard's key");
+            notes.Add($"The rest of what {plan.Name} sends goes where its own {Plural.Listed(told.Elsewhere)} {Plural.Agreeing(told.Elsewhere.Count, "says", "say")}, without the dashboard's key");
         }
         if (told.Kept.Count > 0)
         {

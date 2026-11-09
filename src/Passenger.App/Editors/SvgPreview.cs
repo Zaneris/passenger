@@ -26,7 +26,7 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
     private readonly TextBlock problem = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
     private readonly Banner leftOut = new();
     private readonly Debounce typing;
-    private OpenDocument? document;
+    private readonly FollowedDocument followed;
 
     /// <summary>Drawings begun, which numbers each: only the newest one's picture is shown.</summary>
     private int drawings;
@@ -53,6 +53,7 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
         Children.Add(problem);
         Children.Add(picture);
         typing = new Debounce(Pause, DrawAsync);
+        followed = FollowedDocument.OfText(OnChanged);
         KeyDown += (_, e) =>
         {
             if (picture.CommandFor(e) is { } zoom)
@@ -65,7 +66,7 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
     }
 
     /// <summary>The file it draws, null for none.</summary>
-    public OpenDocument? Document => document;
+    public OpenDocument? Document => followed.Document;
 
     /// <summary>The picture and its zoom.</summary>
     public ZoomedPicture Picture => picture;
@@ -82,16 +83,11 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
     /// <summary>Draws a file's text, or nothing; its edits drawn again as typing pauses.</summary>
     internal void Show(OpenDocument? next)
     {
-        if (next == document)
+        if (!followed.Show(next))
         {
             return;
         }
         typing.Stop();
-        if (document is not null)
-        {
-            document.Text.Changed -= OnChanged;
-        }
-        document = next;
         drawn = null;
         drawings++;
         picture.Picture = null;
@@ -102,7 +98,6 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
         {
             return;
         }
-        next.Text.Changed += OnChanged;
         picture.FitDown();
         IdeErrors.Observe(DrawAsync());
     }
@@ -112,7 +107,7 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
     /// <summary>The text as it stands drawn off the window's thread, shown unless a later drawing or another file came first.</summary>
     private async Task DrawAsync()
     {
-        if (document is not { } shown || ReferenceEquals(shown.Text.Snapshot, drawn))
+        if (followed.Document is not { } shown || ReferenceEquals(shown.Text.Snapshot, drawn))
         {
             return;
         }
@@ -120,7 +115,7 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
         string file = shown.Path;
         int mine = ++drawings;
         (SvgPicture? read, string? why) = await BackgroundWork.Run(() => SvgPicture.Read(text.ToString(), file));
-        if (mine != drawings || document != shown)
+        if (mine != drawings || followed.Document != shown)
         {
             return;
         }

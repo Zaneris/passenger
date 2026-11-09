@@ -227,7 +227,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             if (marked.Unanswered is { Count: > 0 } unanswered)
             {
                 // Each check that has not answered for the text as it stands, within the wait or its own.
-                string who = unanswered.Count == 1 ? "it" : "they";
+                string who = Plural.Agreeing(unanswered.Count, "it", "they");
                 string within = marked.IsChecking ? $", still checking after a wait of {(int)Math.Round(waited.TotalSeconds)} s" : string.Empty;
                 missing.Add(new Finding("info", null, $"Not yet checked as it stands by {string.Join(", ", unanswered)}{within}: what {who} found before is listed",
                     Relative(marked.Path), 1, 1));

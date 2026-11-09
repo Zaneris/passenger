@@ -361,7 +361,7 @@ internal sealed partial class CodeActions
         }
         RefactorOutcome renamed = await ApplyGDScriptAsync(title, $"Rename {old} to {name}", made, scripts, folder, document, beside, "Renamed", patience);
         return renamed.Problem is null && made.Places.Count > 0
-            ? renamed with { Said = $"{renamed.Said}, leaving {Plural.Of(made.Places.Count, "place")} it can't see as {(made.Places.Count == 1 ? "it is" : "they are")} ({string.Join("; ", Shown(scripts, made.Places))})" }
+            ? renamed with { Said = $"{renamed.Said}, leaving {Plural.Of(made.Places.Count, "place")} it can't see as {Plural.Agreeing(made.Places.Count, "it is", "they are")} ({string.Join("; ", Shown(scripts, made.Places))})" }
             : renamed;
     }
 

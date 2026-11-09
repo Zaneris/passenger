@@ -548,7 +548,7 @@ public sealed class CommandHistory
             }
             editors.Step(text.Document, redo);
         }
-        return changed.Count == 0 ? null : $"{string.Join(", ", changed)} {(changed.Count == 1 ? "has" : "have")} been changed since";
+        return changed.Count == 0 ? null : $"{string.Join(", ", changed)} {Plural.Agreeing(changed.Count, "has", "have")} been changed since";
     }
 
     /// <summary>A command's parts that go first (<see cref="Part.First"/>), in the order taking it back (or making it again,

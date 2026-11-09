@@ -597,7 +597,7 @@ internal static class StateFile
     /// <summary>A file's values passed over, logged and said when they differ from those said last.</summary>
     private static void Passed(string file, List<string> passed)
     {
-        string? said = passed.Count == 0 ? null : $"{Path.GetFileName(file)}'s {string.Join("; ", passed)}: {(passed.Count == 1 ? "its default stands" : "their defaults stand")}";
+        string? said = passed.Count == 0 ? null : $"{Path.GetFileName(file)}'s {string.Join("; ", passed)}: {Plural.Agreeing(passed.Count, "its default stands", "their defaults stand")}";
         lock (Unsaid)
         {
             (string? Passed, string? Unread) last = LastSaid.GetValueOrDefault(file);

@@ -11,9 +11,11 @@ namespace Passenger.App.Vcs;
 /// them. A click on a line is <see cref="Pressed"/>'s.</summary>
 public sealed class BlameColumn : IGutterColumn
 {
-    private OpenDocument? file;
+    private readonly FollowedDocument file;
     private IReadOnlyList<string?> measured = [];
     private int longest;
+
+    public BlameColumn() => file = FollowedDocument.OfProperties(OnFileChanged);
 
     public event EventHandler? Changed;
 
@@ -21,25 +23,15 @@ public sealed class BlameColumn : IGutterColumn
     public event EventHandler<int>? Pressed;
 
     /// <summary>Text per line, null for a line with none; empty for no column.</summary>
-    public IReadOnlyList<string?> Labels => file?.GutterAnnotations ?? [];
+    public IReadOnlyList<string?> Labels => file.Document?.GutterAnnotations ?? [];
 
     /// <summary>Shows a file's annotations, followed as it changes them; none for no file.</summary>
     public void Show(OpenDocument? document)
     {
-        if (ReferenceEquals(document, file))
+        if (file.Show(document))
         {
-            return;
+            Measure();
         }
-        if (file is not null)
-        {
-            file.PropertyChanged -= OnFileChanged;
-        }
-        file = document;
-        if (file is not null)
-        {
-            file.PropertyChanged += OnFileChanged;
-        }
-        Measure();
     }
 
     private void OnFileChanged(object? sender, PropertyChangedEventArgs e)

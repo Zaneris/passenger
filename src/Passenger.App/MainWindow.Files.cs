@@ -584,7 +584,7 @@ public partial class MainWindow
     {
         List<string> there = [.. folders.Where(Directory.Exists).Select(Path.GetFileName).OfType<string>()];
         return LetGoAsync(folders,
-            $"Waiting for the design-time {Plural.Noun(there.Count, "build")} of {Plural.Listed(there)} to end before {verb} moves {(there.Count == 1 ? "it" : "them")}…");
+            $"Waiting for the design-time {Plural.Noun(there.Count, "build")} of {Plural.Listed(there)} to end before {verb} moves {Plural.Agreeing(there.Count, "it", "them")}…");
     }
 
     /// <summary>What was let go of for a move or a delete (<see cref="LetGoAsync"/>), taken up again once it is done.</summary>

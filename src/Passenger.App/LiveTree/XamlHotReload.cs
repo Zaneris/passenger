@@ -181,7 +181,7 @@ public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts
         }
         if (unmade.Count > 0)
         {
-            said.Add($"Nothing open in {app.Name} was made from {Plural.Listed(unmade)}: what it makes from {(unmade.Count == 1 ? "it" : "them")} from now takes the edit");
+            said.Add($"Nothing open in {app.Name} was made from {Plural.Listed(unmade)}: what it makes from {Plural.Agreeing(unmade.Count, "it", "them")} from now takes the edit");
         }
         said.AddRange(refused);
         HotReloadResult result = refused.Count == 0 ? (applied.Count > 0 ? HotReloadResult.Applied : HotReloadResult.NothingToApply)

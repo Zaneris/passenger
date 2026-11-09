@@ -342,7 +342,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
                     }
                     Editor.ApplyEdits(placed);
                     int runs = placed.Count - 1;
-                    context.Say(runs == 0 ? "Renamed" : $"Renamed, and in {Plural.Of(runs, "script")} that run{(runs == 1 ? "s" : "")} it");
+                    context.Say(runs == 0 ? "Renamed" : $"Renamed, and in {Plural.Of(runs, "script")} that {Plural.Agreeing(runs, "runs", "run")} it");
                     return Task.CompletedTask;
                 });
                 // Let go as the box closes, however it closes; what was typed until then is still carried.

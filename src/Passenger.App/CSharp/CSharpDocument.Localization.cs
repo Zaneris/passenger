@@ -107,7 +107,7 @@ public sealed partial class CSharpDocument
                     Severity = DiagnosticSeverity.Warning,
                     Source = LocalizationDiagnosticSource,
                     Message = $"No .resx gives {resource.Type}'s strings, so each shows as written: {Plural.Listed([.. near.Files.Select(f => f.Name)])} "
-                        + $"{(near.Files.Count == 1 ? "is" : "are")} named for {near.Name}, not {resource.Name.Split('.')[^1]}",
+                        + $"{Plural.Agreeing(near.Files.Count, "is", "are")} named for {near.Name}, not {resource.Name.Split('.')[^1]}",
                 });
             }
             if (read.Key.Length == 0 || localized.Sets[read.Resource] is not { } set)

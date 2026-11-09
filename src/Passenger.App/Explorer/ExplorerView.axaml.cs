@@ -476,7 +476,7 @@ public partial class ExplorerView : UserControl
             return;
         }
         Tree.Filter(found.Files);
-        more.Text = $"{found.More:N0} more {Plural.Noun(found.More, "file")} {(found.More == 1 ? "matches" : "match")}: a longer filter narrows them";
+        more.Text = $"{found.More:N0} more {Plural.Noun(found.More, "file")} {Plural.Agreeing(found.More, "matches", "match")}: a longer filter narrows them";
         more.IsVisible = found.More > 0;
         ShowHint();
     }

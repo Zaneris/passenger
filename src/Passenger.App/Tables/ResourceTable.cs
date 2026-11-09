@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Xaml.Localization;
 
@@ -75,7 +76,7 @@ public sealed class ResourceTable : Table
 
     public override bool IsNewRow(int row) => IsResx && row == File.Entries.Count;
 
-    public override string? DeleteTitle(int rows) => IsResx ? rows == 1 ? "Delete Key" : "Delete Keys" : null;
+    public override string? DeleteTitle(int rows) => IsResx ? $"Delete {Plural.Noun(rows, "Key")}" : null;
 
     /// <summary>A .resx's every cell, but the new row's value and comment until it has its name; an XLIFF unit's target.</summary>
     public override bool IsEditable(int row, int column) => IsResx ? !IsNewRow(row) || column == Name : column == Target;

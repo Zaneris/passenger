@@ -258,9 +258,9 @@ public sealed partial record BackingService(string Service, string Image, string
     internal IReadOnlyList<string> Comments(IReadOnlyList<string> databases) => Service switch
     {
         "sqlserver" when databases.Count > 0 =>
-            [$"SQL Server's image makes no database: {string.Join(", ", databases)} {(databases.Count == 1 ? "is" : "are")} the app's to make (EF Core's Migrate or EnsureCreated) or yours, with sqlcmd"],
+            [$"SQL Server's image makes no database: {Plural.Listed(databases)} {Plural.Agreeing(databases.Count, "is", "are")} the app's to make (EF Core's Migrate or EnsureCreated) or yours, with sqlcmd"],
         "postgres" when databases.Count > 1 =>
-            [$"Postgres makes POSTGRES_DB's database alone: {string.Join(", ", databases.Skip(1))} {(databases.Count == 2 ? "is" : "are")} the app's to make (EF Core's Migrate or EnsureCreated)"],
+            [$"Postgres makes POSTGRES_DB's database alone: {Plural.Listed([.. databases.Skip(1)])} {Plural.Agreeing(databases.Count - 1, "is", "are")} the app's to make (EF Core's Migrate or EnsureCreated)"],
         _ => [],
     };
 

@@ -29,7 +29,7 @@ public sealed class HtmlPreview : Panel
     private readonly Debounce typing;
     private readonly TextBlock said = new() { Classes = { StyleClasses.EmptyText }, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
     private NativeWebView? view;
-    private OpenDocument? document;
+    private readonly FollowedDocument followed;
 
     /// <summary>On Windows, what answers the web view's requests of the page and its folder; null elsewhere, before the
     /// web view is ready, and where WebView2 refused.</summary>
@@ -57,6 +57,7 @@ public sealed class HtmlPreview : Panel
     {
         this.area = area;
         typing = new Debounce(Pause, GiveAsync);
+        followed = FollowedDocument.OfText(OnChanged);
         Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         if (WhyNone() is { } why)
         {
@@ -73,7 +74,7 @@ public sealed class HtmlPreview : Panel
     public string? Said => said.Parent is null ? null : said.Text;
 
     /// <summary>The file it shows, null for none.</summary>
-    public OpenDocument? Document => document;
+    public OpenDocument? Document => followed.Document;
 
     /// <summary>The text the page was last given, with the address its relative ones are read from; null for none.</summary>
     public (string Html, Uri Base)? Given { get; private set; }
@@ -87,23 +88,17 @@ public sealed class HtmlPreview : Panel
     /// <summary>Shows a file's page, or nothing; its edits given again as typing pauses, each where the last was scrolled to.</summary>
     internal void Show(OpenDocument? next)
     {
-        if (next == document)
+        if (!followed.Show(next))
         {
             return;
         }
         typing.Stop();
-        if (document is not null)
-        {
-            document.Text.Changed -= OnChanged;
-        }
-        document = next;
         // Hidden or showing another file, the web view may have let its page go: a file shown again starts at its top.
         held = null;
         if (next is null)
         {
             return;
         }
-        next.Text.Changed += OnChanged;
         IdeErrors.Observe(GiveAsync());
     }
 
@@ -113,7 +108,7 @@ public sealed class HtmlPreview : Panel
     /// first for where it was scrolled to, unless the last one given has yet to load.</summary>
     private async Task GiveAsync()
     {
-        if (document is not { } shown || said.Parent is not null)
+        if (followed.Document is not { } shown || said.Parent is not null)
         {
             return;
         }
@@ -137,7 +132,7 @@ public sealed class HtmlPreview : Panel
         else if (!landing)
         {
             place = await PlaceOf(web);
-            if (mine != gives || document != shown)
+            if (mine != gives || followed.Document != shown)
             {
                 return;
             }
@@ -184,7 +179,7 @@ public sealed class HtmlPreview : Panel
         served?.Dispose();
         served = e.TryGetPlatformHandle() is IWindowsWebView2PlatformHandle handle ? WebView2Pages.Over(handle) : null;
         held = null;
-        if (document is not null)
+        if (followed.Document is not null)
         {
             IdeErrors.Observe(GiveAsync());
         }

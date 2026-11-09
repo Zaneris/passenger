@@ -326,7 +326,7 @@ public abstract class Updater
         }
         if (holding.Count > 0)
         {
-            IdeErrors.Write($"Updates: {Plural.Of(holding.Count, "agent's relay", "agents' relays")} did not let go of the app within {limit.TotalSeconds:0} s, and {(holding.Count == 1 ? "is" : "are")} ended");
+            IdeErrors.Write($"Updates: {Plural.Of(holding.Count, "agent's relay", "agents' relays")} did not let go of the app within {limit.TotalSeconds:0} s, and {Plural.Agreeing(holding.Count, "is", "are")} ended");
             EndRelays(holding, version);
         }
     }

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.App;
@@ -114,7 +115,7 @@ public partial class MainWindow
         {
             string names = string.Join('\n', unsaved.Select(d => locked.Contains(d) ? $"{d.Name} (read-only)" : d.Name));
             answer = await Choose(locked.Count > 0 ? "Clear Read-Only Status" : "Unsaved Changes",
-                $"{(unsaved.Count == 1 ? "This file's changes" : "These files' changes")} could not be saved:\n{names}",
+                $"{Plural.Agreeing(unsaved.Count, "This file's", "These files'")} changes could not be saved:\n{names}",
                 locked.Count > 0 ? ["Make Writable", "Close Without Saving"] : ["Close Without Saving"], locked.Count > 0 ? "Make Writable" : null);
         }
         finally

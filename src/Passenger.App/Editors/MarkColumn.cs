@@ -42,12 +42,14 @@ public sealed class MarkColumn : IGutterColumn
     private readonly HashSet<int> runs = [];
     private readonly Dictionary<int, Color> colours = [];
     private readonly HashSet<int> scenes = [];
-    private OpenDocument? file;
+    private readonly FollowedDocument file;
 
     /// <summary>The line the dragged arrow is over, while it is dragged.</summary>
     private int arrowAt = -1;
 
     private int arrowFrom = -1;
+
+    public MarkColumn() => file = FollowedDocument.OfProperties(OnFileChanged);
 
     public event EventHandler? Changed;
 
@@ -58,33 +60,23 @@ public sealed class MarkColumn : IGutterColumn
     public Func<GutterClick, bool>? Pressed { get; set; }
 
     /// <summary>The debugger's marks: breakpoints and the execution point.</summary>
-    public IReadOnlyList<LineMark> LineMarks => file?.LineMarks ?? [];
+    public IReadOnlyList<LineMark> LineMarks => file.Document?.LineMarks ?? [];
 
-    public IReadOnlyList<TestMark> TestMarks => file?.TestMarks ?? [];
+    public IReadOnlyList<TestMark> TestMarks => file.Document?.TestMarks ?? [];
 
-    public IReadOnlyList<RunMark> RunMarks => file?.GutterRunMarks ?? [];
+    public IReadOnlyList<RunMark> RunMarks => file.Document?.GutterRunMarks ?? [];
 
-    public IReadOnlyList<ColourMark> ColourMarks => file?.ColourMarks ?? [];
+    public IReadOnlyList<ColourMark> ColourMarks => file.Document?.ColourMarks ?? [];
 
-    public IReadOnlyList<SceneMark> SceneMarks => file?.SceneMarks ?? [];
+    public IReadOnlyList<SceneMark> SceneMarks => file.Document?.SceneMarks ?? [];
 
     /// <summary>Shows a file's marks, followed as it changes them; none for no file.</summary>
     public void Show(OpenDocument? document)
     {
-        if (ReferenceEquals(document, file))
+        if (file.Show(document))
         {
-            return;
+            Changed?.Invoke(this, EventArgs.Empty);
         }
-        if (file is not null)
-        {
-            file.PropertyChanged -= OnFileChanged;
-        }
-        file = document;
-        if (file is not null)
-        {
-            file.PropertyChanged += OnFileChanged;
-        }
-        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnFileChanged(object? sender, PropertyChangedEventArgs e)

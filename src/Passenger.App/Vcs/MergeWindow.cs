@@ -137,13 +137,13 @@ public sealed class MergeWindow : IdeWindow, IOwnKeys
         List<string> left = [];
         if (changes > 0)
         {
-            left.Add(changes == 1 ? "one change" : $"{changes} changes");
+            left.Add(Plural.Of(changes, "change"));
         }
         if (conflicts > 0)
         {
-            left.Add(conflicts == 1 ? "one conflict" : $"{conflicts} conflicts");
+            left.Add(Plural.Of(conflicts, "conflict"));
         }
-        string verb = (changes > 0 ? changes : conflicts) == 1 ? "is" : "are";
+        string verb = Plural.Agreeing(changes > 0 ? changes : conflicts, "is", "are");
         return $"There {verb} {Plural.Listed(left)} left unprocessed.\nSave changes and mark the conflict resolved anyway?";
     }
 

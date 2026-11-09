@@ -366,7 +366,7 @@ public partial class MainWindow
         List<string> saved = [.. scripts.Select(script => script.Name).Except(refused)];
         return refused.Count > 0 || unlanded is not null
             ? $"Not every script of {game} was saved, so not every edit reaches it: {unlanded ?? $"{Plural.Listed(refused)} could not be saved"}"
-            : $"Saved {Plural.Listed(saved)}: Godot reloads {(saved.Count == 1 ? "it" : "them")} in {game}";
+            : $"Saved {Plural.Listed(saved)}: Godot reloads {Plural.Agreeing(saved.Count, "it", "them")} in {game}";
     }
 
     /// <summary>The restart for edits Hot Reload could not apply, as an agent asks it: never the question, which is the

@@ -167,7 +167,7 @@ public sealed class ServerWatches : IDisposable
         stopped.ForEach(w => w.Dispose());
         if (stopped.Count > 0)
         {
-            IdeErrors.Write($"C# language server (process {server.ProcessId}): no longer watched for it, as {Plural.Listed([.. folders])} {(folders.Count == 1 ? "goes or moves" : "go or move")}: "
+            IdeErrors.Write($"C# language server (process {server.ProcessId}): no longer watched for it, as {Plural.Listed([.. folders])} {Plural.Agreeing(folders.Count, "goes or moves", "go or move")}: "
                 + string.Join(", ", stopped.Select(w => w.Top)));
         }
         return new LettingGo(this, folders);

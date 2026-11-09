@@ -199,7 +199,7 @@ public sealed partial class PassengerTools
         document.Save();
         await LandedAsync(CancellationToken.None);
         int runs = placed.Count - 1;
-        return $"Renamed {old} to {newName} in {Relative(document.Path)}{(runs == 0 ? string.Empty : $", and in {Plural.Of(runs, "script")} that run{(runs == 1 ? "s" : "")} it")}";
+        return $"Renamed {old} to {newName} in {Relative(document.Path)}{(runs == 0 ? string.Empty : $", and in {Plural.Of(runs, "script")} that {Plural.Agreeing(runs, "runs", "run")} it")}";
     }
 
     /// <summary>ESLint's fixes for the problems on a web file's line, which Show Context Actions lists first, once the file's

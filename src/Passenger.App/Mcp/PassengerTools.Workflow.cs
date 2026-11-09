@@ -95,7 +95,7 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException(failed);
         }
         int left = vcs.Conflicts.Count;
-        return left == 0 ? $"{Relative(full)} resolved; no conflicts are left" : $"{Relative(full)} resolved; {Plural.Of(left, "file")} {(left == 1 ? "is" : "are")} still in conflict";
+        return left == 0 ? $"{Relative(full)} resolved; no conflicts are left" : $"{Relative(full)} resolved; {Plural.Of(left, "file")} {Plural.Agreeing(left, "is", "are")} still in conflict";
     });
 
     /// <summary>vcs_status of a file: its changes since the last commit, as the repository was read just before.</summary>

@@ -361,7 +361,7 @@ public sealed partial class PassengerTools
     /// <summary>Wheel notches in words: "3 notches down", "1 notch left"; none for none.</summary>
     private static string Notches(double notches, string ahead, string back) => notches == 0
         ? string.Empty
-        : string.Create(CultureInfo.InvariantCulture, $"{Math.Abs(notches):0.#} notch{(Math.Abs(notches) == 1 ? "" : "es")} {(notches < 0 ? back : ahead)}");
+        : string.Create(CultureInfo.InvariantCulture, $"{Math.Abs(notches):0.#} {Plural.Noun(Math.Abs(notches), "notch", "notches")} {(notches < 0 ? back : ahead)}");
 
     [McpServerTool(Name = McpTools.AppBindingErrors, Title = "The app's failed bindings", ReadOnly = true), Description(
         "The failed bindings of the apps Run and Debug started last and an AppHost's services (or app's), each once: control, property, path, the " +

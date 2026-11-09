@@ -16,32 +16,24 @@ public readonly record struct ErrorPin(int Line, int Count, string Last, bool Wa
 /// press on a badge is <see cref="Pressed"/>'s.</summary>
 public sealed class ErrorPinColumn : IGutterColumn
 {
-    private OpenDocument? file;
+    private readonly FollowedDocument file;
     private readonly Dictionary<int, ErrorPin> shown = [];
+
+    public ErrorPinColumn() => file = FollowedDocument.OfProperties(OnFileChanged);
 
     public event EventHandler? Changed;
 
     /// <summary>A press on a line's badge: whether it did something.</summary>
     public Func<GutterClick, bool>? Pressed { get; set; }
 
-    public IReadOnlyList<ErrorPin> Pins => file?.ErrorPins ?? [];
+    public IReadOnlyList<ErrorPin> Pins => file.Document?.ErrorPins ?? [];
 
     public void Show(OpenDocument? document)
     {
-        if (ReferenceEquals(document, file))
+        if (file.Show(document))
         {
-            return;
+            Changed?.Invoke(this, EventArgs.Empty);
         }
-        if (file is not null)
-        {
-            file.PropertyChanged -= OnFileChanged;
-        }
-        file = document;
-        if (file is not null)
-        {
-            file.PropertyChanged += OnFileChanged;
-        }
-        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnFileChanged(object? sender, PropertyChangedEventArgs e)

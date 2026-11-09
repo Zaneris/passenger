@@ -478,7 +478,7 @@ public sealed class NuGetView : DockPanel
         if (answer.Failed.Count > 0)
         {
             string names = string.Join(", ", answer.Failed.Select(f => f.Feed));
-            said.Add(answer.Failed.Count == 1 ? $"Unable to fetch packages: {names} is invalid ({answer.Failed[0].Problem})" : $"Unable to fetch packages: {names} are invalid");
+            said.Add($"Unable to fetch packages: {names} {Plural.Agreeing(answer.Failed.Count, "is", "are")} invalid{(answer.Failed.Count == 1 ? $" ({answer.Failed[0].Problem})" : string.Empty)}");
         }
         else if (answer.Packages.Count == 0)
         {

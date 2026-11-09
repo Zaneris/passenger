@@ -1088,7 +1088,7 @@ public sealed class LanguageServer : IAsyncDisposable
         long check = Interlocked.Read(ref checkAnsweredAt);
         List<string> parts =
         [
-            asking.Count == 0 ? "no request waits on it" : $"{asking.Count} request{(asking.Count == 1 ? "" : "s")} wait{(asking.Count == 1 ? "s" : "")} on it ("
+            asking.Count == 0 ? "no request waits on it" : $"{Plural.Of(asking.Count, "request")} {Plural.Agreeing(asking.Count, "waits", "wait")} on it ("
                 + string.Join(", ", asking.Take(6).Select(a => $"{a.Method} {a.Age.TotalSeconds:0} s")) + (asking.Count > 6 ? ", …" : string.Empty) + ")",
             check == 0 ? "it has answered no check" : $"it answered Passenger's check {Stopwatch.GetElapsedTime(check).TotalSeconds:0} s ago",
             heard == 0 ? "it has sent nothing" : $"it last sent a message {Stopwatch.GetElapsedTime(heard).TotalSeconds:0} s ago",

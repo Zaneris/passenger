@@ -123,7 +123,7 @@ public partial class MainWindow
         string said = lines == 0
             ? $"Every line of {document.Name} outside its strings already indents with {kind}"
             : $"Converted the indentation of {Core.Plural.Of(lines, "line")} of {document.Name} to {kind}, {(tabs ? "a tab" : Core.Plural.Of(document.Indentation.Options.Size, "space"))} a level";
-        status.Text = inStrings == 0 ? said : $"{said}; {Core.Plural.Of(inStrings, "line")} inside strings left as {(inStrings == 1 ? "it is" : "they are")}";
+        status.Text = inStrings == 0 ? said : $"{said}; {Core.Plural.Of(inStrings, "line")} inside strings left as {Core.Plural.Agreeing(inStrings, "it is", "they are")}";
     }
 
     private void ChooseIndent(OpenDocument document, IndentOptions? options)

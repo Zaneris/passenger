@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Core;
 using Passenger.Host;
 using Passenger.Text;
 using Passenger.Xaml.Syntax;
@@ -143,7 +144,7 @@ public static class MSBuildNavigation
                 if (insight?.Target(symbol.Name) is { } target && target.Defined.Count > 0)
                 {
                     card.AppendLine($"MSBuild target, defined in {Where(insight.Place(target.Defined[0]))}"
-                        + (target.Defined.Count > 1 ? $" (and {target.Defined.Count - 1} other place{(target.Defined.Count == 2 ? "" : "s")})" : string.Empty));
+                        + (target.Defined.Count > 1 ? $" (and {Plural.Of(target.Defined.Count - 1, "other place")})" : string.Empty));
                 }
                 else
                 {
@@ -300,7 +301,7 @@ public static class MSBuildNavigation
         PropertyOrigin.Environment => "from an environment variable",
         PropertyOrigin.Reserved => "reserved, set by MSBuild",
         _ when property.Set.Count > 0 => $"set in {Where(insight.Place(property.Set[0]))}"
-            + (property.Set.Count > 1 ? $" (over {property.Set.Count - 1} earlier definition{(property.Set.Count == 2 ? "" : "s")})" : string.Empty),
+            + (property.Set.Count > 1 ? $" (over {Plural.Of(property.Set.Count - 1, "earlier definition")})" : string.Empty),
         _ => "set by MSBuild",
     };
 

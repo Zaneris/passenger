@@ -511,7 +511,7 @@ public partial class MainWindow
         string on = string.Join(", ", folders.Distinct(PathNames.Comparer));
         return OperatingSystem.IsWindows()
             ? $"\nInstalling it ends {Plural.Of(folders.Length, "agent's connection", "agents' connections")} to Passenger, on {on}: each agent reconnects to go on (/mcp in Claude Code)."
-            : $"\n{Plural.Of(folders.Length, "agent's connection", "agents' connections")} to Passenger, on {on}, {(folders.Length == 1 ? "goes" : "go")} on into the new version.";
+            : $"\n{Plural.Of(folders.Length, "agent's connection", "agents' connections")} to Passenger, on {on}, {Plural.Agreeing(folders.Length, "goes", "go")} on into the new version.";
     }
 
     /// <summary>The update held back by programs running from the install, each named in full, with what to do; a click

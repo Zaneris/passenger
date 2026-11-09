@@ -111,7 +111,7 @@ public partial class MainWindow
         // The folders moving elsewhere, whose projects' design-time builds a move waits for.
         List<string> elsewhere = [.. paths.Where(p => Directory.Exists(p) && !PathNames.Within(into, p) && !PathNames.Same(Path.Combine(into, Path.GetFileName(p)), p))];
         using IDisposable? releasing = copy ? null : await LetGoAsync(elsewhere,
-            $"Waiting for the design-time {Plural.Noun(elsewhere.Count, "build")} of {Plural.Listed([.. elsewhere.Select(Path.GetFileName).OfType<string>()])} to end before {(elsewhere.Count == 1 ? "it moves" : "they move")}…");
+            $"Waiting for the design-time {Plural.Noun(elsewhere.Count, "build")} of {Plural.Listed([.. elsewhere.Select(Path.GetFileName).OfType<string>()])} to end before {Plural.Agreeing(elsewhere.Count, "it moves", "they move")}…");
         using CommandHistory.Recording? recording = copy ? null
             : Editors.Commands.RecordWrites($"Move {Plural.Listed([.. paths.Where(p => !dependents.Contains(p)).Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         List<string> put = [];
