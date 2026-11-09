@@ -2,7 +2,7 @@ using Passenger.Core;
 
 namespace Passenger.UnitTests.Core;
 
-/// <summary>Which Godot runs a Godot project's C#, found as the SDK is: the person's choice, then GODOT, then the PATH, then
+/// <summary>Which Godot runs a Godot project's C#, found as the SDK is: the person's choice, then GODOT, else GODOT4, then the PATH, then
 /// the app bundles in Applications, a .NET build of Godot 4 taken over one without .NET and the newest over the rest; a
 /// console wrapper taken for the Godot it starts, and each refusal saying why.</summary>
 public sealed class GodotExecutablesTests : IDisposable
@@ -40,12 +40,35 @@ public sealed class GodotExecutablesTests : IDisposable
         string onPath = Download(Folder("bin"), "4.7.2");
         string named = Download(Folder("opt"), "4.6.1");
         string chosen = Download(Folder("chosen"), "4.5");
-        Assert.Equal(chosen, GodotExecutables.Find((chosen, "Settings | Godot"), named, [Path.GetDirectoryName(onPath)!], [], windows: false)?.Executable);
-        Assert.Equal(named, GodotExecutables.Find(null, named, [Path.GetDirectoryName(onPath)!], [], windows: false)?.Executable);
+        Assert.Equal(chosen, GodotExecutables.Find((chosen, "Settings | Godot"), (named, GodotExecutables.Variable), [Path.GetDirectoryName(onPath)!], [], windows: false)?.Executable);
+        Assert.Equal(named, GodotExecutables.Find(null, (named, GodotExecutables.Variable), [Path.GetDirectoryName(onPath)!], [], windows: false)?.Executable);
         GodotFound? path = GodotExecutables.Find(null, null, [Folder("empty"), Path.GetDirectoryName(onPath)!], [], windows: false);
         Assert.True(path is { WhyNot: null, Version: "4.7.2", From: GodotExecutables.PathWords } && path.Executable == onPath, $"The PATH's Godot was found as {path}");
         string gone = Path.Combine(root, "gone", "godot");
-        Assert.Equal($"Settings | Godot names {gone}, which is not there", GodotExecutables.Find((gone, "Settings | Godot"), named, [], [], windows: false)?.WhyNot);
+        Assert.Equal($"Settings | Godot names {gone}, which is not there", GodotExecutables.Find((gone, "Settings | Godot"), (named, GodotExecutables.Variable), [], [], windows: false)?.WhyNot);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void GODOT4_names_Godot_where_GODOT_is_unset_or_empty_before_the_PATH_and_says_so_where_it_names_none_there(string? godot)
+    {
+        string onPath = Download(Folder("bin"), "4.7.2");
+        string four = Download(Folder("opt"), "4.6.1");
+        GodotFound? found = GodotExecutables.Find(null, GodotExecutables.Named(godot, four), [Path.GetDirectoryName(onPath)!], [], windows: false);
+        Assert.True(found is { WhyNot: null, From: GodotExecutables.Variable4 } && found.Executable == four,
+            $"GODOT4 naming {four}, GODOT {(godot is null ? "unset" : "empty")}, gave {found}, so a Godot set up as Godot's own C# documentation says would go unfound");
+        string gone = Path.Combine(root, "gone", "godot");
+        Assert.Equal($"GODOT4 names {gone}, which is not there", GodotExecutables.Find(null, GodotExecutables.Named(godot, gone), [], [], windows: false)?.WhyNot);
+    }
+
+    [Fact]
+    public void GODOT_names_Godot_over_GODOT4_and_neither_set_names_none()
+    {
+        Assert.Equal(("/opt/godot", GodotExecutables.Variable), GodotExecutables.Named("/opt/godot", "/opt/godot4"));
+        Assert.Equal(("/opt/godot4", GodotExecutables.Variable4), GodotExecutables.Named(string.Empty, "/opt/godot4"));
+        Assert.Null(GodotExecutables.Named(null, string.Empty));
+        Assert.Null(GodotExecutables.Named(string.Empty, null));
     }
 
     [Fact]
@@ -122,6 +145,11 @@ public sealed class GodotExecutablesTests : IDisposable
     [InlineData("$(GODOT)", false)]
     [InlineData(" \"%GODOT%\" ", false)]
     [InlineData("%godot%", true)]
+    [InlineData("%GODOT4%", false)]
+    [InlineData("$GODOT4", false)]
+    [InlineData("${GODOT4}", false)]
+    [InlineData("$(GODOT4)", false)]
+    [InlineData("%godot4%", true)]
     [InlineData("/Applications/Godot_mono.app/Contents/MacOS/Godot", false)]
     [InlineData("/Applications/Godot_v4.7.2-stable_mono.app", false)]
     [InlineData("/usr/local/bin/godot4-mono", false)]
@@ -137,6 +165,9 @@ public sealed class GodotExecutablesTests : IDisposable
     [Theory]
     [InlineData("%GODOT_HOME%", false)]
     [InlineData("%godot%", false)]
+    [InlineData("%godot4%", false)]
+    [InlineData("$GODOT45", false)]
+    [InlineData("${GODOT4", false)]
     [InlineData("dotnet", false)]
     [InlineData("/Applications/Blender.app/Contents/MacOS/Godot", false)]
     [InlineData("/usr/bin/godotenv", false)]
@@ -145,6 +176,17 @@ public sealed class GodotExecutablesTests : IDisposable
     public void A_launch_profiles_other_program_is_not_Godot(string program, bool windows)
     {
         Assert.False(GodotExecutables.NamesGodot(program, windows), $"{program} was taken for Godot, so its launch profile would run the project's game in its place");
+    }
+
+    [Theory]
+    [InlineData("%GODOT%", "GODOT")]
+    [InlineData("${GODOT4}", "GODOT4")]
+    [InlineData(" \"$(GODOT4)\" ", "GODOT4")]
+    [InlineData("/usr/local/bin/godot4", null)]
+    public void A_launch_profile_naming_Godot_by_a_variable_names_that_variable(string program, string? variable)
+    {
+        Assert.True(GodotExecutables.VariableNamed(program, windows: false) == variable,
+            $"{program} was read as naming {GodotExecutables.VariableNamed(program, windows: false) ?? "no variable"}, so its game would not be given the variable it runs Godot by");
     }
 
     [Fact]

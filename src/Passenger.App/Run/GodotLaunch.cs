@@ -94,11 +94,12 @@ public static class GodotLaunch
             own = GodotExecutables.WithoutPath(own, working, folder) ?? throw new LaunchException($"{configuration.Name} cannot run: it runs Godot with a --path that is not "
                 + $"{project.Name}'s Godot project ({folder}): make its --path name that folder, or leave it out");
             own = configuration.GodotEditor ? GodotExecutables.WithoutEditorFlags(own) : own;
-            if (string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable(GodotExecutables.Variable))
-                && !environment.Keys.Any(k => string.Equals(k, GodotExecutables.Variable, StringComparison.OrdinalIgnoreCase)))
+            string variable = GodotExecutables.VariableNamed(configuration.Program, OperatingSystem.IsWindows()) ?? GodotExecutables.Variable;
+            if (string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable(variable))
+                && !environment.Keys.Any(k => string.Equals(k, variable, StringComparison.OrdinalIgnoreCase)))
             {
                 // What the profile named, for the game and the tools it starts.
-                environment = new Dictionary<string, string>(environment, StringComparer.Ordinal) { [GodotExecutables.Variable] = found.Executable };
+                environment = new Dictionary<string, string>(environment, StringComparer.Ordinal) { [variable] = found.Executable };
             }
         }
         string? starts = configuration.GodotEditor ? null : configuration.GodotScene;

@@ -2,8 +2,8 @@ using System.Text.RegularExpressions;
 
 namespace Passenger.Core;
 
-/// <summary>A Godot executable found, and where: the person's choice (<see cref="From"/> naming it), GODOT, the PATH, or an
-/// app bundle in Applications. Godot's .NET build carries GodotSharp beside its executable (in a bundle's Resources),
+/// <summary>A Godot executable found, and where: the person's choice (<see cref="From"/> naming it), GODOT or GODOT4, the
+/// PATH, or an app bundle in Applications. Godot's .NET build carries GodotSharp beside its executable (in a bundle's Resources),
 /// with the packages a project restores (<see cref="Packages"/>); a build without it cannot run C#, and Godot 3's runs it
 /// on Mono.</summary>
 public sealed record GodotFound(string Executable, string From)
@@ -37,14 +37,18 @@ public sealed record GodotFound(string Executable, string From)
     public int? Major => Version?.Split('.')[0] is { } major && int.TryParse(major, System.Globalization.CultureInfo.InvariantCulture, out int number) ? number : null;
 }
 
-/// <summary>Godot found the way the .NET SDK is: the person's choice first, then GODOT, then the PATH as the login shell
-/// gives it (<see cref="ShellEnvironment"/>), then on macOS the app bundles in /Applications and ~/Applications. Among
+/// <summary>Godot found the way the .NET SDK is: the person's choice first, then GODOT, else GODOT4, then the PATH as the
+/// login shell gives it (<see cref="ShellEnvironment"/>), then on macOS the app bundles in /Applications and ~/Applications. Among
 /// those the PATH and the bundles offer, the first Godot 4 .NET build is taken, else the first found, which says why it
 /// cannot run C#.</summary>
 public static partial class GodotExecutables
 {
     /// <summary>The variable naming Godot's executable, as Godot's own tools take it.</summary>
     public const string Variable = "GODOT";
+
+    /// <summary>The variable Godot's C# documentation names Godot 4's executable by, read where <see cref="Variable"/> names
+    /// none.</summary>
+    public const string Variable4 = "GODOT4";
 
     /// <summary>What the PATH is called where it holds Godot.</summary>
     public const string PathWords = "the PATH";
@@ -197,26 +201,32 @@ public static partial class GodotExecutables
     private static readonly string[] Names = ["godot", "godot4", "godot-mono", "godot4-mono", "godot-dotnet", "godot4-dotnet"];
 
     /// <summary>Godot as this computer has it: <paramref name="chosen"/> (a path, with the words for where it is chosen) when
-    /// given, else as GODOT, the PATH and Applications offer it; null when nothing does.</summary>
+    /// given, else as GODOT or GODOT4, the PATH and Applications offer it; null when nothing does.</summary>
     public static GodotFound? Find((string Path, string From)? chosen)
     {
         ShellEnvironment.Ready();
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Find(chosen, Environment.GetEnvironmentVariable(Variable),
+        return Find(chosen, Named(Environment.GetEnvironmentVariable(Variable), Environment.GetEnvironmentVariable(Variable4)),
             Programs.PathFolders(),
             OperatingSystem.IsMacOS() ? ["/Applications", Path.Combine(home, "Applications")] : [], OperatingSystem.IsWindows());
     }
 
-    /// <summary><see cref="Find((string, string)?)"/> over the folders given, as a system of that kind names its programs.</summary>
-    public static GodotFound? Find((string Path, string From)? chosen, string? variable, IReadOnlyList<string> pathFolders, IReadOnlyList<string> applications, bool windows)
+    /// <summary>The Godot the variables name, with the variable naming it: GODOT's value, else GODOT4's; null where both are
+    /// unset or empty.</summary>
+    public static (string Path, string From)? Named(string? godot, string? godot4) =>
+        godot is { Length: > 0 } ? (godot, Variable) : godot4 is { Length: > 0 } ? (godot4, Variable4) : null;
+
+    /// <summary><see cref="Find((string, string)?)"/> over the variable's Godot (<see cref="Named"/>) and the folders given,
+    /// as a system of that kind names its programs.</summary>
+    public static GodotFound? Find((string Path, string From)? chosen, (string Path, string From)? named, IReadOnlyList<string> pathFolders, IReadOnlyList<string> applications, bool windows)
     {
         if (chosen is ({ Length: > 0 } path, { } from))
         {
             return At(path, from, windows);
         }
-        if (variable is { Length: > 0 } named)
+        if (named is ({ Length: > 0 } variable, { } by))
         {
-            return At(named, Variable, windows);
+            return At(variable, by, windows);
         }
         GodotFound? first = null;
         foreach (GodotFound found in OnPath(pathFolders, windows).Concat(Bundles(applications)))
@@ -258,14 +268,13 @@ public static partial class GodotExecutables
         return Read(new GodotFound(file, from) { Exists = true }, sharp, Path.GetFileName(file));
     }
 
-    /// <summary>Whether a program a launch profile names is Godot: GODOT as cmd, a shell or MSBuild names it (%GODOT%,
-    /// $GODOT, ${GODOT}, $(GODOT)), or a path whose file is Godot as it is installed (a name a PATH holds it under, an
-    /// official download's executable or console wrapper, a Godot app bundle or the program inside one).</summary>
+    /// <summary>Whether a program a launch profile names is Godot: GODOT or GODOT4 (<see cref="VariableNamed"/>), or a path
+    /// whose file is Godot as it is installed (a name a PATH holds it under, an official download's executable or console
+    /// wrapper, a Godot app bundle or the program inside one).</summary>
     public static bool NamesGodot(string program, bool windows)
     {
         string named = program.Trim().Trim('"').Trim();
-        if (named is "%" + Variable + "%" or "$" + Variable or "${" + Variable + "}" or "$(" + Variable + ")"
-            || (windows && named.Equals("%" + Variable + "%", StringComparison.OrdinalIgnoreCase)))
+        if (VariableNamed(named, windows) is not null)
         {
             return true;
         }
@@ -278,6 +287,15 @@ public static partial class GodotExecutables
         }
         string bare = windows && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name[..^".exe".Length] : name;
         return Names.Contains(bare, StringComparer.OrdinalIgnoreCase) || DownloadVersion().IsMatch(name);
+    }
+
+    /// <summary>The variable naming Godot that a launch profile's program is, as cmd, a shell or MSBuild names it (%GODOT%,
+    /// $GODOT, ${GODOT}, $(GODOT), and GODOT4 so); null for any other program.</summary>
+    public static string? VariableNamed(string program, bool windows)
+    {
+        string named = program.Trim().Trim('"').Trim();
+        return ((string[])[Variable, Variable4]).FirstOrDefault(v => named == $"%{v}%" || named == $"${v}" || named == $"${{{v}}}" || named == $"$({v})"
+            || (windows && named.Equals($"%{v}%", StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>The Godot a Windows console wrapper starts (Godot_v4.7_console.exe starts Godot_v4.7.exe beside it), or
