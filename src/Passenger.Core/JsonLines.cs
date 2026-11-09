@@ -9,7 +9,7 @@ namespace Passenger.Core;
 /// and one that does not read goes to the reader's own rule for it, which may write it down, pass over it, take it as
 /// output or throw to end the reading. Framework-free, since it is linked into what Passenger starts that carries none of
 /// its assemblies (the project host, WPF's previewer, the inspectors).</summary>
-public static class JsonLines
+public static partial class JsonLines
 {
     /// <summary>The messages read until the reader ends.</summary>
     public static async IAsyncEnumerable<T> ReadAsync<T>(TextReader reader, JsonTypeInfo<T> type, Action<string, JsonException> unread,

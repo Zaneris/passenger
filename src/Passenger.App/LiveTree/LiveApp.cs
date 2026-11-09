@@ -1,7 +1,6 @@
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
-using System.Text;
 using System.Text.Json;
 using Passenger.App.Run;
 using Passenger.App.State;
@@ -477,8 +476,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         stream = network;
         try
         {
-            using StreamReader reader = new(network, new UTF8Encoding(false));
-            await foreach (Reply reply in JsonLines.ReadAsync(reader, WireJson.Default.Reply,
+            await foreach (Reply reply in JsonLines.ReadAsync(network, WireJson.Default.Reply,
                 (_, error) => IdeErrors.Write($"The Live Visual Tree could not read what {Name} said: {error.Message}"), closing.Token))
             {
                 if (reply.Id is int id)
