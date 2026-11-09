@@ -1,3 +1,5 @@
+using Passenger.Workspace;
+
 namespace Passenger.App.Godot;
 
 /// <summary>A game's place in the Game window, in pixels from the pane's top left.</summary>

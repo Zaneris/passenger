@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 

@@ -1,6 +1,7 @@
 using Passenger.App.Debugging;
 using Passenger.Core;
 using Passenger.Dap;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 
@@ -535,7 +536,7 @@ public sealed class GodotScriptAdapter
         {
             GodotObjectId id => Reference(() => PropertiesAsync(id.Id, expression)),
             _ when GodotScriptValues.Inside(value, expression) is { Count: > 0 } held => Reference(() => Task.FromResult<IReadOnlyList<DapVariable>>(
-                [.. held.Select(h => Row(h.Name, h.Expression, h.Value, GodotScriptValues.TypeOf(h.Value), string.Empty) with { Unsettable = NoPartSet })])),
+                [.. held.Select(h => Row(h.Name, h.Expression, h.Value, GodotVariant.TypeOf(h.Value), string.Empty) with { Unsettable = NoPartSet })])),
             _ => 0,
         };
         return new DapVariable { Name = name, Value = GodotScriptValues.Shown(value, hint), Type = GodotScriptValues.TypeName(type, hint), EvaluateName = expression, VariablesReference = reference };
@@ -600,7 +601,7 @@ public sealed class GodotScriptAdapter
         string shown = GodotScriptValues.Shown(after);
         if (shown == GodotScriptValues.Shown(before) && GodotScriptValues.Shown(value) != shown)
         {
-            throw new DapException(DapCommands.SetExpression, $"Godot kept {target.Property} as it was, {shown}: it takes no {GodotScriptValues.TypeName(GodotScriptValues.TypeOf(value))} "
+            throw new DapException(DapCommands.SetExpression, $"Godot kept {target.Property} as it was, {shown}: it takes no {GodotScriptValues.TypeName(GodotVariant.TypeOf(value))} "
                 + $"{GodotScriptValues.Shown(value)} there");
         }
         return new SetExpressionResponse { Value = shown, Type = GodotScriptValues.TypeName(now) };

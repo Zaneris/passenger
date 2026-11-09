@@ -15,16 +15,9 @@ public static class GDScriptExports
 {
     private const long Range = 1;
     private const long Enum = 2;
+    private const long ResourceType = 17;
     private const long ColorNoAlpha = 21;
-
-    /// <summary>Variant types by the name GDScript writes them.</summary>
-    private static readonly Dictionary<string, int> Variants = new(StringComparer.Ordinal)
-    {
-        ["bool"] = 1, ["int"] = 2, ["float"] = 3, ["String"] = 4, ["Vector2"] = 5, ["Vector2i"] = 6, ["Rect2"] = 7, ["Rect2i"] = 8,
-        ["Vector3"] = 9, ["Vector3i"] = 10, ["Transform2D"] = 11, ["Vector4"] = 12, ["Vector4i"] = 13, ["Plane"] = 14, ["Quaternion"] = 15,
-        ["AABB"] = 16, ["Basis"] = 17, ["Transform3D"] = 18, ["Projection"] = 19, ["Color"] = 20, ["StringName"] = 21, ["NodePath"] = 22,
-        ["Dictionary"] = 27, ["Array"] = 28,
-    };
+    private const long NodeType = 34;
 
     /// <summary>The exports of a script's text alone, in the order it writes them.</summary>
     public static IReadOnlyList<GodotScriptExport> Of(string text)
@@ -45,14 +38,14 @@ public static class GDScriptExports
         {
             if (project.Script(script) is { } read)
             {
-                exports.AddRange(Own(at, read.Text, script == path ? null : Path.GetFileName(script), analyzer));
+                exports.AddRange(Own(at, read.Text, script == path ? null : Path.GetFileName(script), analyzer, project));
             }
         }
         return exports;
     }
 
     /// <summary>The exports a class declares itself, in the order it writes them.</summary>
-    private static IEnumerable<GodotScriptExport> Own(GDScriptType owner, string text, string? inherited, GDScriptAnalyzer analyzer)
+    private static IEnumerable<GodotScriptExport> Own(GDScriptType owner, string text, string? inherited, GDScriptAnalyzer analyzer, GDScriptProject project)
     {
         foreach ((GDScriptNode node, int offset) in analyzer.OwnMembers(owner))
         {
@@ -64,7 +57,8 @@ public static class GDScriptExports
             GDScriptType? written = variable.Type is { Chain.Count: > 0 } type ? analyzer.TypeWritten(type, owner, offset) : null;
             GDScriptType? enumerated = written is { Kind: GDScriptTypeKind.Enum } ? written : EnumOf(variable.Initializer, owner, analyzer);
             string? typed = variable.Type is { Chain.Count: > 0 } chain ? string.Join('.', chain.Chain.Select(c => c.Name)) : TypeOf(variable.Initializer);
-            int variant = enumerated is not null ? 2 : typed is null ? 0 : Variants.GetValueOrDefault(typed);
+            (int Type, long Hint, string Words)? held = enumerated is null ? ObjectOf(written, analyzer, project) : null;
+            int variant = enumerated is not null ? (int)GodotType.Int : held is { } kept ? kept.Type : typed is not null && GodotTypes.Named(typed) is { } named ? (int)named : 0;
             (long hint, string words) = export.Name switch
             {
                 "@export_enum" => (Enum, string.Join(',', export.Arguments.OfType<GDScriptLiteral>().Select(a => a.Value as string).OfType<string>())),
@@ -72,14 +66,37 @@ public static class GDScriptExports
                 "@export_color_no_alpha" => (ColorNoAlpha, string.Empty),
                 _ when enumerated is { ValuesPartial: false, Values: { } values } =>
                     (Enum, string.Join(',', values.Select(v => $"{v.Key}:{v.Value.ToString(CultureInfo.InvariantCulture)}"))),
+                "@export" when held is { } objected => (objected.Hint, objected.Words),
                 _ => (0, string.Empty),
             };
             if (export.Name == "@export_enum" && variant == 0)
             {
-                variant = 2;
+                variant = (int)GodotType.Int;
             }
             yield return new GodotScriptExport(name.Name, variant, hint, words, Default(text, offset, variable.Initializer, owner, analyzer), inherited);
         }
+    }
+
+    /// <summary>An engine class's or script class's export as Godot's inspector takes it: an object, with a resource's or a
+    /// node's hint naming the nearest engine class or global script class it is, as the engine's classes say which it is;
+    /// null for a type of no class.</summary>
+    private static (int Type, long Hint, string Words)? ObjectOf(GDScriptType? written, GDScriptAnalyzer analyzer, GDScriptProject project)
+    {
+        if (written?.Instance is not { Kind: GDScriptTypeKind.Native or GDScriptTypeKind.Class } type)
+        {
+            return null;
+        }
+        string? named = null;
+        int depth = 0;
+        for (GDScriptType? at = type; at is not null && named is null && depth++ < 64; at = analyzer.BaseOf(at))
+        {
+            named = at.Kind == GDScriptTypeKind.Native || at.Script is { } script && project.ClassPath(at.Name) == script ? at.Name : null;
+        }
+        long hint = analyzer.NativeBase(type) is not { } native || analyzer.Engine is not { } engine ? 0
+            : engine.Extends(native, "Resource") ? ResourceType
+            : engine.Extends(native, "Node") ? NodeType
+            : 0;
+        return ((int)GodotType.Object, hint, hint == 0 ? string.Empty : named ?? string.Empty);
     }
 
     /// <summary>The enum a value is a member of, written as <c>Enum.MEMBER</c>; null for any other.</summary>
@@ -93,7 +110,7 @@ public static class GDScriptExports
         GDScriptLiteral { Value: long } => "int",
         GDScriptLiteral { Value: double } => "float",
         GDScriptLiteral { Value: string } => "String",
-        GDScriptCall { Callee: GDScriptIdentifier { Name: { } called } } when Variants.ContainsKey(called) => called,
+        GDScriptCall { Callee: GDScriptIdentifier { Name: { } called } } when GodotTypes.Named(called) is not null => called,
         _ => null,
     };
 
@@ -104,7 +121,7 @@ public static class GDScriptExports
         GDScriptLiteral { Value: bool or long or double or string } => Written(text, offset, value),
         GDScriptSubscript { IsAttribute: true, Attribute.Name: { } member } when EnumOf(value, owner, analyzer) is { ValuesPartial: false, Values: { } values } =>
             values.TryGetValue(member, out long found) ? found.ToString(CultureInfo.InvariantCulture) : null,
-        GDScriptCall { Callee: GDScriptIdentifier { Name: { } called } } call when Variants.ContainsKey(called) && call.Arguments.All(a => a is GDScriptLiteral or GDScriptUnary)
+        GDScriptCall { Callee: GDScriptIdentifier { Name: { } called } } call when GodotTypes.Named(called) is not null && call.Arguments.All(a => a is GDScriptLiteral or GDScriptUnary)
             => Written(text, offset, value),
         _ => null,
     };

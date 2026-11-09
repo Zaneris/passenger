@@ -8,6 +8,7 @@ using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Inspector;
+using Passenger.Workspace;
 using Passenger.Xaml.Features;
 
 namespace Passenger.App.Godot;

@@ -8,6 +8,7 @@ using Passenger.App.LiveTree;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Inspector;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 

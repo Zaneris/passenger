@@ -2,18 +2,9 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Text;
 using System.Runtime.CompilerServices;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
-
-/// <summary>Godot's Variant types, by the number its encoding writes in a value's header.</summary>
-public enum GodotType
-{
-    Nil, Bool, Int, Float, String,
-    Vector2, Vector2I, Rect2, Rect2I, Vector3, Vector3I, Transform2D, Vector4, Vector4I, Plane, Quaternion, Aabb, Basis, Transform3D, Projection,
-    Color, StringName, NodePath, Rid, Object, Callable, Signal, Dictionary, Array,
-    PackedByteArray, PackedInt32Array, PackedInt64Array, PackedFloat32Array, PackedFloat64Array, PackedStringArray, PackedVector2Array,
-    PackedVector3Array, PackedColorArray, PackedVector4Array,
-}
 
 /// <summary>A StringName, which Godot tells apart from a String.</summary>
 public sealed record GodotName(string Name)
@@ -33,7 +24,7 @@ public sealed record GodotNodePath(IReadOnlyList<string> Names, IReadOnlyList<st
 /// them; whole numbers for the integer kinds.</summary>
 public sealed record GodotMath(GodotType Type, IReadOnlyList<double> Values)
 {
-    public override string ToString() => $"({string.Join(", ", Values.Select(GodotVariant.Number))})";
+    public override string ToString() => $"({string.Join(", ", Values.Select(GodotText.Number))})";
 
     public bool Equals(GodotMath? other) => other is not null && Type == other.Type && Values.SequenceEqual(other.Values);
 
@@ -377,20 +368,7 @@ public static class GodotVariant
     }
 
     /// <summary>A Variant type's name as Godot writes it ("int", "Vector2i", "AABB"); "Variant" for Nil, any value.</summary>
-    public static string TypeName(GodotType type) => type switch
-    {
-        GodotType.Nil => "Variant",
-        GodotType.Bool => "bool",
-        GodotType.Int => "int",
-        GodotType.Float => "float",
-        GodotType.Vector2I => "Vector2i",
-        GodotType.Vector3I => "Vector3i",
-        GodotType.Vector4I => "Vector4i",
-        GodotType.Rect2I => "Rect2i",
-        GodotType.Aabb => "AABB",
-        GodotType.Rid => "RID",
-        _ => type.ToString(),
-    };
+    public static string TypeName(GodotType type) => type == GodotType.Nil ? "Variant" : GodotTypes.NameOf(type);
 
     /// <summary>The Variant type of a value as read (<see cref="Read(ReadOnlySpan{byte})"/>).</summary>
     public static GodotType TypeOf(object? value) => value switch
@@ -824,14 +802,14 @@ public static class GodotVariant
         null => "null",
         bool flag => flag ? "true" : "false",
         long whole => whole.ToString(CultureInfo.InvariantCulture),
-        double real => Number(real),
-        string text => quoted ? GodotText.Escaped(text) : text,
-        GodotName name => quoted ? "&" + GodotText.Escaped(name.Name) : name.Name,
-        GodotNodePath path => quoted ? "^" + GodotText.Escaped(path.ToString()) : path.ToString(),
+        double real => GodotText.Number(real),
+        string text => quoted ? CSharpLiterals.Quoted(text) : text,
+        GodotName name => quoted ? "&" + CSharpLiterals.Quoted(name.Name) : name.Name,
+        GodotNodePath path => quoted ? "^" + CSharpLiterals.Quoted(path.ToString()) : path.ToString(),
         List<object?> items => $"[{string.Join(", ", items.Select(i => Shown(i, quoted: true)))}]",
-        string[] strings => $"[{string.Join(", ", strings.Select(GodotText.Escaped))}]",
+        string[] strings => $"[{string.Join(", ", strings.Select(CSharpLiterals.Quoted))}]",
         byte[] packed => $"[{packed.Length} bytes]",
-        System.Array packed => $"[{string.Join(", ", packed.Cast<object?>().Select(i => i is float f ? Number(f) : Shown(i, quoted: true)))}]",
+        System.Array packed => $"[{string.Join(", ", packed.Cast<object?>().Select(i => i is float f ? GodotText.Number(f) : Shown(i, quoted: true)))}]",
         GodotMath { Type: GodotType.Transform2D or GodotType.Basis or GodotType.Transform3D or GodotType.Aabb or GodotType.Plane or GodotType.Projection } math => Parts(math),
         _ => value.ToString() ?? string.Empty,
     };
@@ -854,22 +832,23 @@ public static class GodotVariant
     /// projection's columns.</summary>
     private static string Parts(GodotMath math)
     {
-        string Of(int from, int count) => $"({string.Join(", ", math.Values.Skip(from).Take(count).Select(Number))})";
+        string Of(int from, int count) => $"({string.Join(", ", math.Values.Skip(from).Take(count).Select(GodotText.Number))})";
         return math.Type switch
         {
             GodotType.Transform2D => $"x: {Of(0, 2)}, y: {Of(2, 2)}, origin: {Of(4, 2)}",
             GodotType.Basis => $"({Of(0, 3)}, {Of(3, 3)}, {Of(6, 3)})",
             GodotType.Transform3D => $"basis: ({Of(0, 3)}, {Of(3, 3)}, {Of(6, 3)}), origin: {Of(9, 3)}",
             GodotType.Aabb => $"position: {Of(0, 3)}, size: {Of(3, 3)}",
-            GodotType.Plane => $"normal: {Of(0, 3)}, d: {Number(math.Values[3])}",
+            GodotType.Plane => $"normal: {Of(0, 3)}, d: {GodotText.Number(math.Values[3])}",
             _ => $"({Of(0, 4)}, {Of(4, 4)}, {Of(8, 4)}, {Of(12, 4)})",
         };
     }
 
-    /// <summary>The value of a type a text gives, as a person types it: true or false, a number, the text itself for a string
-    /// or a name, a path for a node path, and the numbers of a vector, colour, rectangle, transform, basis, box, plane,
-    /// quaternion or projection separated by commas, their parentheses and parts' names as <see cref="Shown"/> writes
-    /// them or left out; null with why not for text the type does not read or a type text cannot give.</summary>
+    /// <summary>The value of a type a text gives, as a person types it: true or false, a number (nan, inf and inf_neg as
+    /// <see cref="GodotText.Number"/> writes them), the text itself for a string or a name, a path for a node path, and the
+    /// numbers of a vector, colour, rectangle, transform, basis, box, plane, quaternion or projection separated by commas,
+    /// their parentheses and parts' names as <see cref="Shown"/> writes them or left out; null with why not for text the type
+    /// does not read or a type text cannot give.</summary>
     public static (object? Value, string? WhyNot) Parse(GodotType type, string text)
     {
         string trimmed = text.Trim();
@@ -887,7 +866,13 @@ public static class GodotVariant
             case GodotType.Int:
                 return long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out long whole) ? (whole, null) : (null, "a whole number");
             case GodotType.Float:
-                return double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out double real) ? (real, null) : (null, "a number");
+                return trimmed switch
+                {
+                    "inf" => (double.PositiveInfinity, null),
+                    "-inf" or "inf_neg" => (double.NegativeInfinity, null),
+                    "nan" => (double.NaN, null),
+                    _ => double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out double real) ? (real, null) : (null, "a number"),
+                };
         }
         int count = Count(type);
         if (count == 0)
@@ -1099,7 +1084,4 @@ public static class GodotVariant
             return true;
         }
     }
-
-    /// <summary>A real number as Godot writes it: whole ones without a fraction, the rest in their shortest round-trip form.</summary>
-    public static string Number(double value) => value.ToString(value == Math.Floor(value) && Math.Abs(value) < 1e15 ? "0" : "R", CultureInfo.InvariantCulture);
 }

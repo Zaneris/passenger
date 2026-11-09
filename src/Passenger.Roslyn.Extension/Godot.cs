@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Workspace;
 using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
@@ -389,13 +390,11 @@ internal static partial class GodotSource
             ? new GodotEngineMember(of, kind, named) : new GodotEngineMember(of, null, null);
     }
 
-    /// <summary>Variant types by the number Godot gives them, of the types an export takes.</summary>
-    private static readonly Dictionary<string, int> Variants = new(StringComparer.Ordinal)
-    {
-        ["Vector2"] = 5, ["Vector2I"] = 6, ["Rect2"] = 7, ["Rect2I"] = 8, ["Vector3"] = 9, ["Vector3I"] = 10, ["Transform2D"] = 11,
-        ["Vector4"] = 12, ["Vector4I"] = 13, ["Plane"] = 14, ["Quaternion"] = 15, ["Aabb"] = 16, ["Basis"] = 17, ["Transform3D"] = 18,
-        ["Projection"] = 19, ["Color"] = 20, ["StringName"] = 21, ["NodePath"] = 22, ["Rid"] = 23,
-    };
+    /// <summary>The Variant type of a Godot value type C# names (<c>Vector2I</c>, Godot's <c>Vector2i</c>), of those an
+    /// export takes, Vector2 to RID; null for any other.</summary>
+    private static GodotType? VariantOf(INamedTypeSymbol type) =>
+        type.ContainingNamespace.Name == Namespace && GodotTypes.Named(TextNames.GetValueOrDefault(type.Name, type.Name)) is { } variant
+            && variant is >= GodotType.Vector2 and <= GodotType.Rid ? variant : null;
 
     /// <summary>What Godot's inspector takes an exported member as, as Godot's source generator writes its property: its
     /// Variant type, an enum's names and values as its hint (flags for a <c>[Flags]</c> one), an <c>[Export]</c>'s own
@@ -404,17 +403,18 @@ internal static partial class GodotSource
     {
         (int type, long hint, string hintString) = of switch
         {
-            { SpecialType: SpecialType.System_Boolean } => (1, 0L, string.Empty),
-            INamedTypeSymbol { TypeKind: TypeKind.Enum } named => (2, named.GetAttributes().Any(a => a.AttributeClass?.Name == "FlagsAttribute") ? 6L : 2L,
+            { SpecialType: SpecialType.System_Boolean } => ((int)GodotType.Bool, 0L, string.Empty),
+            INamedTypeSymbol { TypeKind: TypeKind.Enum } named => ((int)GodotType.Int, named.GetAttributes().Any(a => a.AttributeClass?.Name == "FlagsAttribute") ? 6L : 2L,
                 string.Join(",", named.GetMembers().OfType<IFieldSymbol>().Where(f => f.HasConstantValue).Select(f => $"{f.Name}:{Convert.ToInt64(f.ConstantValue, System.Globalization.CultureInfo.InvariantCulture)}"))),
             { SpecialType: SpecialType.System_Byte or SpecialType.System_SByte or SpecialType.System_Int16 or SpecialType.System_UInt16 or SpecialType.System_Int32
-                or SpecialType.System_UInt32 or SpecialType.System_Int64 or SpecialType.System_UInt64 } => (2, 0L, string.Empty),
-            { SpecialType: SpecialType.System_Single or SpecialType.System_Double } => (3, 0L, string.Empty),
-            { SpecialType: SpecialType.System_String } => (4, 0L, string.Empty),
-            INamedTypeSymbol { ContainingNamespace.Name: Namespace } godot when Variants.TryGetValue(godot.Name, out int variant) => (variant, 0L, string.Empty),
-            INamedTypeSymbol { ContainingNamespace.Name: "Collections" } collection when collection.Name is "Array" or "Dictionary" => (collection.Name == "Array" ? 28 : 27, 0L, string.Empty),
-            INamedTypeSymbol given when engine.Type("Resource") is { } resource && Derives(given, resource) => (24, 17L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
-            INamedTypeSymbol given when engine.Type("Node") is { } node && (SymbolEqualityComparer.Default.Equals(given, node) || Derives(given, node)) => (24, 34L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
+                or SpecialType.System_UInt32 or SpecialType.System_Int64 or SpecialType.System_UInt64 } => ((int)GodotType.Int, 0L, string.Empty),
+            { SpecialType: SpecialType.System_Single or SpecialType.System_Double } => ((int)GodotType.Float, 0L, string.Empty),
+            { SpecialType: SpecialType.System_String } => ((int)GodotType.String, 0L, string.Empty),
+            INamedTypeSymbol godot when VariantOf(godot) is { } variant => ((int)variant, 0L, string.Empty),
+            INamedTypeSymbol { ContainingNamespace.Name: "Collections" } collection when collection.Name is "Array" or "Dictionary" =>
+                ((int)(collection.Name == "Array" ? GodotType.Array : GodotType.Dictionary), 0L, string.Empty),
+            INamedTypeSymbol given when engine.Type("Resource") is { } resource && Derives(given, resource) => ((int)GodotType.Object, 17L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
+            INamedTypeSymbol given when engine.Type("Node") is { } node && (SymbolEqualityComparer.Default.Equals(given, node) || Derives(given, node)) => ((int)GodotType.Object, 34L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
             _ => (0, 0L, string.Empty),
         };
         if (member.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "ExportAttribute")?.ConstructorArguments is [{ Value: int asked }, { Value: string words }, ..] && asked != 0)
@@ -461,7 +461,7 @@ internal static partial class GodotSource
     /// <summary>Godot's names of the built-in types a C# initializer makes, where its text writes them otherwise.</summary>
     private static readonly Dictionary<string, string> TextNames = new(StringComparer.Ordinal)
     {
-        ["Vector2I"] = "Vector2i", ["Vector3I"] = "Vector3i", ["Vector4I"] = "Vector4i", ["Rect2I"] = "Rect2i", ["Aabb"] = "AABB",
+        ["Vector2I"] = "Vector2i", ["Vector3I"] = "Vector3i", ["Vector4I"] = "Vector4i", ["Rect2I"] = "Rect2i", ["Aabb"] = "AABB", ["Rid"] = "RID",
     };
 
     /// <summary>A Godot built-in value an initializer makes of constants (<c>new Vector2(1, 2)</c>, <c>new Color(1, 0, 0)</c>), as
@@ -472,7 +472,7 @@ internal static partial class GodotSource
         {
             made = operand;
         }
-        if (made is not IObjectCreationOperation { Type: INamedTypeSymbol { ContainingNamespace.Name: Namespace } type } creation || !Variants.ContainsKey(type.Name))
+        if (made is not IObjectCreationOperation { Type: INamedTypeSymbol type } creation || VariantOf(type) is null)
         {
             return null;
         }

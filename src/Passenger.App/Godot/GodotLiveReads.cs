@@ -1,4 +1,5 @@
 using System.Globalization;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 
@@ -88,14 +89,14 @@ public static class GodotLiveWords
     {
         if (!double.IsFinite(value))
         {
-            return GodotVariant.Number(value);
+            return GodotText.Number(value);
         }
         double rounded = Math.Round(value, 3);
         if (rounded == 0)
         {
             return value == 0 ? "0" : value.ToString("G3", CultureInfo.InvariantCulture);
         }
-        return GodotVariant.Number(rounded);
+        return GodotText.Number(rounded);
     }
 
     /// <summary>A value's numbers, for a chart of it: a number, true as 1 and false as 0, a vector's or colour's parts; null

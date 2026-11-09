@@ -1,4 +1,5 @@
 using Passenger.App.Godot;
+using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Godot;
 

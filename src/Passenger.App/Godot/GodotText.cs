@@ -1,14 +1,16 @@
 using System.Globalization;
-using System.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 
 /// <summary>A running game's value as a scene writes it (<see cref="Scene"/>: <c>Vector2(100, 50)</c>, <c>2.0</c>,
 /// <c>Color(1, 0, 0, 1)</c>) and as C# writes it for a member's default (<see cref="CSharp"/>: <c>new Vector2(100f, 50f)</c>,
-/// <c>2f</c>), each number in its shortest form: a single's as a single, so 0.3 sent as one reads 0.3.</summary>
+/// <c>2f</c>), each number as <see cref="Number"/> writes it: a single's as a single, so 0.3 sent as one reads 0.3.</summary>
 public static class GodotText
 {
-    /// <summary>A number in its shortest form, a single's as a single.</summary>
+    /// <summary>A number as the Godot Engine's VariantWriter writes it (core/variant/variant_parser.cpp, MIT): the shortest
+    /// digits reading back as the single it is where a single holds it, else as the double, in fixed notation from 1e-4 up to
+    /// 1e15 and as <c>1.5e-05</c> beyond, as its grisu2 lays them out; zero as 0, and nan, inf and inf_neg.</summary>
     public static string Number(double value)
     {
         if (double.IsNaN(value))
@@ -19,9 +21,30 @@ public static class GodotText
         {
             return value > 0 ? "inf" : "inf_neg";
         }
-        return (double)(float)value == value
+        if (value == 0)
+        {
+            return "0";
+        }
+        string shortest = (double)(float)value == value
             ? ((float)value).ToString("R", CultureInfo.InvariantCulture)
             : value.ToString("R", CultureInfo.InvariantCulture);
+        bool negative = shortest[0] == '-';
+        string unsigned = negative ? shortest[1..] : shortest;
+        int e = unsigned.IndexOfAny(['E', 'e']);
+        string mantissa = e < 0 ? unsigned : unsigned[..e];
+        int exponent = e < 0 ? 0 : int.Parse(unsigned.AsSpan(e + 1), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        int dot = mantissa.IndexOf('.', StringComparison.Ordinal);
+        string digits = dot < 0 ? mantissa : mantissa.Remove(dot, 1);
+        int point = (dot < 0 ? mantissa.Length : dot) + exponent;
+        int lead = digits.Length - digits.TrimStart('0').Length;
+        digits = digits[lead..].TrimEnd('0');
+        point -= lead;
+        int count = digits.Length;
+        string written = point >= count && point <= 15 ? digits + new string('0', point - count)
+            : point > 0 && point <= 15 ? $"{digits[..point]}.{digits[point..]}"
+            : point > -4 && point <= 0 ? $"0.{new string('0', -point)}{digits}"
+            : $"{(count == 1 ? digits : $"{digits[0]}.{digits[1..]}")}e{(point - 1 < 0 ? '-' : '+')}{Math.Abs(point - 1).ToString("00", CultureInfo.InvariantCulture)}";
+        return negative ? "-" + written : written;
     }
 
     /// <summary>The step Godot's inspector shows a float with no range of its own at (its interface/inspector/default_float_step).</summary>
@@ -53,9 +76,9 @@ public static class GodotText
         bool flag => flag ? "true" : "false",
         long whole => whole.ToString(CultureInfo.InvariantCulture),
         double real => Real(real),
-        string text => Quoted(text),
-        GodotName name => "&" + Quoted(name.Name),
-        GodotNodePath path => $"NodePath({Quoted(path.ToString())})",
+        string text => GodotWrites.Quoted(text),
+        GodotName name => "&" + GodotWrites.Quoted(name.Name),
+        GodotNodePath path => $"NodePath({GodotWrites.Quoted(path.ToString())})",
         GodotMath math => $"{SceneName(math.Type)}({string.Join(", ", math.Values.Select(v => math.Type is GodotType.Vector2I or GodotType.Vector3I or GodotType.Vector4I or GodotType.Rect2I ? ((long)v).ToString(CultureInfo.InvariantCulture) : Number(v)))})",
         GodotDictionary dictionary => Each(dictionary.Entries.SelectMany(e => new[] { e.Key, e.Value })) is { } parts
             ? Typed($"{{{string.Join(", ", parts.Chunk(2).Select(p => $"{p[0]}: {p[1]}"))}}}", dictionary.KeyType, dictionary.ValueType)
@@ -103,21 +126,6 @@ public static class GodotText
             || written == "nan" ? written : written + ".0";
     }
 
-    /// <summary>A string as a scene quotes it: its backslashes and quotes escaped, its lines as they are.</summary>
-    public static string Quoted(string text)
-    {
-        StringBuilder written = new("\"");
-        foreach (char c in text)
-        {
-            if (c is '\\' or '"')
-            {
-                written.Append('\\');
-            }
-            written.Append(c);
-        }
-        return written.Append('"').ToString();
-    }
-
     /// <summary>A Variant type's name as a scene writes a value of it.</summary>
     private static string SceneName(GodotType type) => GodotVariant.TypeName(type);
 
@@ -134,9 +142,9 @@ public static class GodotText
             long whole => whole.ToString(CultureInfo.InvariantCulture),
             double real when type is "double" or "System.Double" or "Double" => Literal(real, "d"),
             double real => Literal(real, "f"),
-            string text => Escaped(text),
-            GodotName name => Escaped(name.Name),
-            GodotNodePath path => $"new NodePath({Escaped(path.ToString())})",
+            string text => CSharpLiterals.Quoted(text),
+            GodotName name => CSharpLiterals.Quoted(name.Name),
+            GodotNodePath path => $"new NodePath({CSharpLiterals.Quoted(path.ToString())})",
             GodotMath { Type: GodotType.Vector2I or GodotType.Vector3I or GodotType.Vector4I or GodotType.Rect2I } math =>
                 $"new {CSharpName(math.Type)}({string.Join(", ", math.Values.Select(v => ((long)v).ToString(CultureInfo.InvariantCulture)))})",
             GodotMath { Type: GodotType.Vector2 or GodotType.Vector3 or GodotType.Vector4 or GodotType.Color or GodotType.Rect2 or GodotType.Quaternion or GodotType.Plane } math =>
@@ -170,24 +178,5 @@ public static class GodotText
         }
         string written = suffix == "f" ? ((float)value).ToString("R", CultureInfo.InvariantCulture) : value.ToString("R", CultureInfo.InvariantCulture);
         return suffix == "f" ? written + "f" : written.Contains('.', StringComparison.Ordinal) || written.Contains('E', StringComparison.OrdinalIgnoreCase) ? written : written + ".0";
-    }
-
-    /// <summary>A string as a C# or GDScript literal, its escapes written.</summary>
-    public static string Escaped(string text)
-    {
-        StringBuilder written = new("\"");
-        foreach (char c in text)
-        {
-            written.Append(c switch
-            {
-                '\\' => "\\\\",
-                '"' => "\\\"",
-                '\n' => "\\n",
-                '\r' => "\\r",
-                '\t' => "\\t",
-                _ => c.ToString(),
-            });
-        }
-        return written.Append('"').ToString();
     }
 }

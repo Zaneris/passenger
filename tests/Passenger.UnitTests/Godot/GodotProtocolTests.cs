@@ -1,4 +1,5 @@
 using Passenger.App.Godot;
+using GodotType = Passenger.Workspace.GodotType;
 
 namespace Passenger.UnitTests.Godot;
 
@@ -225,6 +226,32 @@ public class GodotProtocolTests
     {
         (object? value, string? whyNot) = GodotVariant.Parse(type, text);
         Assert.True(whyNot is null && GodotVariant.Shown(value) == shown, $"'{text}' as a {type} read as {GodotVariant.Shown(value)} ({whyNot})");
+    }
+
+    /// <summary>Each number as Godot's variant text writes it: a single's shortest digits where a single holds it, else a
+    /// double's, fixed from 1e-4 to 1e15 and with an exponent beyond, zero unsigned, and Godot's words for the rest.</summary>
+    [Theory]
+    [InlineData(0.30000001192092896, "0.3")]
+    [InlineData(0.30000000000000004, "0.30000000000000004")]
+    [InlineData(-2.5, "-2.5")]
+    [InlineData(100.0, "100")]
+    [InlineData(1e10, "10000000000")]
+    [InlineData(123456.789, "123456.789")]
+    [InlineData(1e15, "1e+15")]
+    [InlineData(1.2345678901234568e17, "1.2345678901234568e+17")]
+    [InlineData(0.0001, "0.0001")]
+    [InlineData(1.5e-5, "1.5e-05")]
+    [InlineData(-0.0, "0")]
+    [InlineData(double.NaN, "nan")]
+    [InlineData(double.PositiveInfinity, "inf")]
+    [InlineData(double.NegativeInfinity, "inf_neg")]
+    public void A_number_is_written_as_Godots_variant_text_writes_it(double value, string written)
+    {
+        Assert.Equal(written, GodotText.Number(value));
+        Assert.Equal(written, GodotVariant.Shown(value));
+        (object? read, string? whyNot) = GodotVariant.Parse(GodotType.Float, written);
+        Assert.True(whyNot is null && read is double back && (double.IsNaN(value) ? double.IsNaN(back) : back == value || (float)back == (float)value),
+            $"{written} read back as {read} ({whyNot}), not {value}");
     }
 
     [Theory]

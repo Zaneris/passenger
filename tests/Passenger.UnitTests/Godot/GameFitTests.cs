@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using Passenger.App.Godot;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Godot;
 

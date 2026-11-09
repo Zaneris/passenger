@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 
@@ -81,14 +82,8 @@ public static class GodotScriptValues
     public static string TypeName(GodotType type, string hint = "") => type switch
     {
         GodotType.Nil => "null",
-        GodotType.Bool => "bool",
-        GodotType.Int => "int",
-        GodotType.Float => "float",
-        GodotType.Object => hint.Length > 0 ? hint : "Object",
-        GodotType.Aabb => "AABB",
-        GodotType.Rid => "RID",
-        GodotType.Vector2I or GodotType.Vector3I or GodotType.Vector4I or GodotType.Rect2I => type.ToString()[..^1] + "i",
-        _ => type.ToString(),
+        GodotType.Object when hint.Length > 0 => hint,
+        _ => GodotTypes.NameOf(type),
     };
 
     /// <summary>A value as the debugger shows it: a string in quotes, an object by its class (<paramref name="hint"/>) and id.</summary>
@@ -126,33 +121,6 @@ public static class GodotScriptValues
         GodotType.Vector4 or GodotType.Vector4I or GodotType.Quaternion => ["x", "y", "z", "w"],
         GodotType.Color => ["r", "g", "b", "a"],
         _ => null,
-    };
-
-    /// <summary>The Variant type of a value as read.</summary>
-    public static GodotType TypeOf(object? value) => value switch
-    {
-        null => GodotType.Nil,
-        bool => GodotType.Bool,
-        long => GodotType.Int,
-        double => GodotType.Float,
-        string => GodotType.String,
-        GodotName => GodotType.StringName,
-        GodotNodePath => GodotType.NodePath,
-        GodotMath math => math.Type,
-        GodotObjectId or GodotObject => GodotType.Object,
-        GodotRid => GodotType.Rid,
-        GodotCallable => GodotType.Callable,
-        GodotSignal => GodotType.Signal,
-        GodotDictionary => GodotType.Dictionary,
-        List<object?> => GodotType.Array,
-        byte[] => GodotType.PackedByteArray,
-        int[] => GodotType.PackedInt32Array,
-        long[] => GodotType.PackedInt64Array,
-        float[] => GodotType.PackedFloat32Array,
-        double[] => GodotType.PackedFloat64Array,
-        string[] => GodotType.PackedStringArray,
-        GodotPackedMath packed => packed.Type,
-        _ => GodotType.Array,
     };
 
     /// <summary>Why an evaluation failed, as the error it raised says it: its description (Godot's own words of the parse or

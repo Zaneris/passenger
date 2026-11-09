@@ -134,7 +134,7 @@ public sealed partial class GDScriptAnalyzer
         NativeBase(type) is { } native && Engine?.Classes.GetValueOrDefault(native) is { Instantiable: false } ? native : null;
 
     /// <summary>The engine class a class is built on at the end of its bases; null where one between is not read.</summary>
-    private string? NativeBase(GDScriptType type)
+    internal string? NativeBase(GDScriptType type)
     {
         GDScriptType? at = type.Instance;
         for (int depth = 0; at is not null && depth < 64; depth++, at = BaseOf(at))

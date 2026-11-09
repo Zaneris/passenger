@@ -8,6 +8,7 @@ using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.Dap;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 

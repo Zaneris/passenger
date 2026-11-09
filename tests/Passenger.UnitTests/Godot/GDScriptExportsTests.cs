@@ -35,6 +35,41 @@ public class GDScriptExportsTests
         ], exports);
     }
 
+    /// <summary>A packed array's export is its own Variant type, and a node's or a resource's an object, hinted by the
+    /// nearest engine class or global script class it is, as Godot's inspector takes them.</summary>
+    [Fact]
+    public void A_packed_array_a_node_and_a_resource_export_carry_their_types()
+    {
+        GodotEngineApi engine = GodotEngineApi.Read("""
+            { "classes": [{ "name": "Object" }, { "name": "Node", "inherits": "Object" }, { "name": "CanvasItem", "inherits": "Node" },
+                { "name": "Node2D", "inherits": "CanvasItem" }, { "name": "RefCounted", "inherits": "Object" },
+                { "name": "Resource", "inherits": "RefCounted" }, { "name": "Texture2D", "inherits": "Resource" }] }
+            """u8);
+        Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal)
+        {
+            ["res://enemy.gd"] = GDScriptTree.Parse("class_name Enemy\nextends Node2D\n"),
+            ["res://main.gd"] = GDScriptTree.Parse("""
+                extends Node2D
+
+                @export var tags: PackedStringArray
+                @export var points := PackedVector2Array()
+                @export var target: Node2D
+                @export var icon: Texture2D
+                @export var enemy: Enemy
+
+                """),
+        };
+        GDScriptProject project = new(engine, path => trees.GetValueOrDefault(path), new Dictionary<string, string> { ["Enemy"] = "res://enemy.gd" }, new Dictionary<string, string>());
+        Assert.Equal(
+        [
+            new GodotScriptExport("tags", 34, 0, string.Empty, null),
+            new GodotScriptExport("points", 35, 0, string.Empty, "PackedVector2Array()"),
+            new GodotScriptExport("target", 24, 34, "Node2D", null),
+            new GodotScriptExport("icon", 24, 17, "Texture2D", null),
+            new GodotScriptExport("enemy", 24, 34, "Enemy", null),
+        ], GDScriptExports.Of(trees["res://main.gd"], "res://main.gd", project));
+    }
+
     /// <summary>Each value as Godot 4.7.2 folded it for its inspector: operators by Variant's rules, a value after one by one
     /// more, an earlier value, a constant of constants, another enum's value and an unnamed one's.</summary>
     [Fact]

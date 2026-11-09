@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using Passenger.Profiler;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 

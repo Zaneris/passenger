@@ -1,4 +1,5 @@
 using Passenger.App.Godot;
+using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Godot;
 
@@ -108,6 +109,20 @@ public class GodotScriptStopsTests
             GodotScriptValues.Inside(new GodotDictionary([new KeyValuePair<object?, object?>("a", true)]), "seen"));
         Assert.Empty(GodotScriptValues.Inside(5L, "n"));
         Assert.True(GodotScriptValues.HasInside(new GodotObjectId(7)), "An object read as holding nothing");
+    }
+
+    /// <summary>Godot sends a vector's numbers as singles, which Variables writes as the numbers they read back as, as the
+    /// scene's inspector does, never the double each widens to.</summary>
+    [Fact]
+    public void A_vectors_singles_show_in_Variables_as_written_not_as_the_doubles_they_widen_to()
+    {
+        object? sent = GodotVariant.Read(GodotVariant.Write(new GodotMath(GodotType.Vector2, [(double)0.3f, (double)0.1f])));
+        GodotScriptVariable position = GodotScriptVariable.Read(["position", (long)GodotScope.Member, (long)GodotType.Vector2, sent, string.Empty])!;
+        Assert.Equal(("Vector2", "(0.3, 0.1)"), (position.TypeName, position.Shown));
+        Assert.Equal("Vector2(0.3, 0.1)", GodotText.Scene(sent));
+        Assert.Equal([("x", "position.x", (object?)(double)0.3f), ("y", "position.y", (double)0.1f)], GodotScriptValues.Inside(sent, "position"));
+        Assert.Equal("[0.3, nan, inf_neg]", GodotScriptValues.Shown(new[] { 0.3f, float.NaN, float.NegativeInfinity }));
+        Assert.Equal("[\"a\\nb\", \"tab\\there\"]", GodotScriptValues.Shown(new[] { "a\nb", "tab\there" }));
     }
 
     [Fact]

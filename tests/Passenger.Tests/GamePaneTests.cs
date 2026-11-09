@@ -12,6 +12,7 @@ using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 

@@ -24,6 +24,8 @@
     <Compile Include="../Passenger.Core/DeepText.cs" Link="DeepText.cs" />
     <Compile Include="../Passenger.Core/Brackets.Code.cs" Link="Brackets.Code.cs" />
     <Compile Include="../Passenger.Languages/CSharp/CodeBrackets.cs" Link="CodeBrackets.cs" />
+    <!-- Godot's Variant types by name and number, as the rest of Passenger reads them. -->
+    <Compile Include="../Passenger.Workspace/GodotTypes.cs" Link="GodotTypes.cs" />
     <!-- The names the MVVM Toolkit's generators give, as Passenger's XAML reads them. -->
     <Compile Include="../Passenger.Xaml/Metadata/ToolkitNames.cs" Link="ToolkitNames.cs" />
   </ItemGroup>

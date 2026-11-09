@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Godot;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Godot;
 

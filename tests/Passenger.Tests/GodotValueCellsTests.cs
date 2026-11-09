@@ -5,6 +5,7 @@ using Avalonia.VisualTree;
 using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.Inspector;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 
@@ -236,17 +237,7 @@ public static class GodotHints
         {
             return System.Enum.IsDefined((GodotType)number) ? (GodotType)number : GodotType.Nil;
         }
-        return named switch
-        {
-            "" or "Variant" => GodotType.Nil,
-            "bool" => GodotType.Bool,
-            "int" => GodotType.Int,
-            "float" => GodotType.Float,
-            "AABB" => GodotType.Aabb,
-            "RID" => GodotType.Rid,
-            _ when System.Enum.TryParse(named, ignoreCase: true, out GodotType type) => type,
-            _ => GodotType.Object,
-        };
+        return named is "" or "Variant" ? GodotType.Nil : GodotTypes.Named(named) ?? GodotType.Object;
     }
 
     private static IReadOnlyList<string> Split(string hint) => [.. hint.Split(',').Select(p => p.Trim()).Where(p => p.Length > 0)];
