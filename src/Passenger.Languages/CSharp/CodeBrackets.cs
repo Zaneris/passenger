@@ -42,12 +42,14 @@ internal static class CodeBrackets
 
     /// <summary>The options defining these symbols, each once, any that is not an identifier left out as the compiler leaves
     /// it out, at a C# version as a project's LangVersion writes it ("12", "latest"); one the parser does not know (a newer
-    /// C#'s), or none, is its preview, the newest it reads. One options object a set of symbols and a version, so the files
-    /// of one framework share theirs and a parse knows by reference whether they changed.</summary>
+    /// C#'s), one naming the newest C# of the project's compiler (latest, latestMajor, default), which may be past the
+    /// parser's, or none, is its preview, the newest it reads. One options object a set of symbols and a version, so the
+    /// files of one framework share theirs and a parse knows by reference whether they changed.</summary>
     public static CSharpParseOptions Defining(IEnumerable<string> symbols, string? languageVersion)
     {
         string[] valid = [.. symbols.Where(SyntaxFacts.IsValidIdentifier).Distinct(StringComparer.Ordinal)];
-        LanguageVersion version = languageVersion is not null && LanguageVersionFacts.TryParse(languageVersion, out LanguageVersion written) ? written : LanguageVersion.Preview;
+        LanguageVersion version = languageVersion is not null && LanguageVersionFacts.TryParse(languageVersion, out LanguageVersion written)
+            && written is not (LanguageVersion.Latest or LanguageVersion.LatestMajor or LanguageVersion.Default) ? written : LanguageVersion.Preview;
         return Made.GetOrAdd((version, string.Join(';', valid)),
             static (key, defined) => new CSharpParseOptions(key.Version, DocumentationMode.Parse, preprocessorSymbols: defined), valid);
     }

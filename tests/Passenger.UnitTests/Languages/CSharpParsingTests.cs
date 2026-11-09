@@ -413,4 +413,20 @@ public class CSharpParsingTests
         string past = new string('(', 20_000) + "1" + new string(')', 20_000);
         SmallStack.Run(() => Assert.True(CodeBrackets.Expression(past) is null && !CodeBrackets.ReadsAsType(past), "Brackets 20,000 deep were read"));
     }
+
+    /// <summary>A project's LangVersion naming its compiler's newest C# (latest, latestMajor, default) reads as the parser's
+    /// newest, preview, so C# 15's union declares a type, never broken statements; a version written as a number stays it
+    /// (#1352).</summary>
+    [Theory]
+    [InlineData("latest")]
+    [InlineData("latestMajor")]
+    [InlineData("default")]
+    public void A_union_at_a_lang_version_of_the_newest_csharp_parses_as_a_union_with_no_syntax_error(string languageVersion)
+    {
+        SyntaxTree tree = CSharpParsing.Parse("public record Cat;\npublic record Dog;\npublic union Pet(Cat, Dog);\n", CSharpParsing.Defining([], languageVersion));
+        Diagnostic[] errors = [.. tree.GetDiagnostics(TestContext.Current.CancellationToken)];
+        Assert.True(errors.Length == 0, $"A union at LangVersion {languageVersion} parsed with errors: {string.Join("; ", errors.Select(e => e.ToString()))}");
+        Assert.Contains("Pet", tree.GetRoot(TestContext.Current.CancellationToken).DescendantNodes().OfType<BaseTypeDeclarationSyntax>().Select(type => type.Identifier.Text));
+        Assert.Equal(Microsoft.CodeAnalysis.CSharp.LanguageVersion.CSharp12, CSharpParsing.Defining([], "12").LanguageVersion);
+    }
 }
