@@ -426,7 +426,7 @@ public static class DockerFiles
             else if (Variable(AspNetCoreVariables.Urls) is { } urls)
             {
                 ports.AddRange(urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .Select(u => Uri.TryCreate(u.Replace("*", "localhost", StringComparison.Ordinal).Replace("+", "localhost", StringComparison.Ordinal), UriKind.Absolute, out Uri? url)
+                    .Select(u => Uri.TryCreate(WebAddress.Callable(u), UriKind.Absolute, out Uri? url)
                         && url.Scheme == Uri.UriSchemeHttp ? url.Port : 0).Where(n => n > 0));
             }
             if (ports.Count == 0)

@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -14,7 +13,7 @@ namespace Passenger.App.Run;
 /// Visual Studio's container properties: its ports, whether it serves HTTPS, its <c>docker run</c> words and env files),
 /// and a Docker Compose project's (<see cref="DockerComposeCommand"/>, with its services' actions); every other kind is
 /// read too, and says why it does not run here.</summary>
-public sealed partial record LaunchProfile(
+public sealed record LaunchProfile(
     string Name,
     string? Command,
     string? ExecutablePath,
@@ -220,7 +219,7 @@ public sealed partial record LaunchProfile(
         List<int> ports = [];
         foreach (string url in profiles.SelectMany(p => (p.ApplicationUrl ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)))
         {
-            if (Uri.TryCreate(url.Replace("*", "localhost", StringComparison.Ordinal).Replace("+", "localhost", StringComparison.Ordinal), UriKind.Absolute, out Uri? address)
+            if (Uri.TryCreate(WebAddress.Callable(url), UriKind.Absolute, out Uri? address)
                 && address.Scheme == Uri.UriSchemeHttp && !ports.Contains(address.Port))
             {
                 ports.Add(address.Port);
@@ -250,7 +249,7 @@ public sealed partial record LaunchProfile(
         {
             return root ?? string.Empty;
         }
-        if (Uri.TryCreate(Local(LaunchUrl), UriKind.Absolute, out Uri? absolute) && absolute.Scheme is "http" or "https")
+        if (Uri.TryCreate(WebAddress.Callable(LaunchUrl), UriKind.Absolute, out Uri? absolute) && absolute.Scheme is "http" or "https")
         {
             return absolute.ToString();
         }
@@ -262,14 +261,7 @@ public sealed partial record LaunchProfile(
     /// <summary>The first application URL as a browser opens it (a wildcard host as this machine's), which a relative launch
     /// URL is from; null with none.</summary>
     public string? BrowserRoot =>
-        ApplicationUrl?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() is { } first ? Local(first) : null;
-
-    /// <summary>A URL with the host a server listens on everywhere (<c>*</c>, <c>+</c>, <c>0.0.0.0</c>, <c>[::]</c>), which no
-    /// browser opens, as <c>localhost</c>, its scheme, port and path kept.</summary>
-    private static string Local(string url) => WildcardHost().Replace(url, "${scheme}://localhost", 1);
-
-    [GeneratedRegex(@"^(?<scheme>https?)://(?:\*|\+|0\.0\.0\.0|\[::\])(?=[:/?#]|$)", RegexOptions.IgnoreCase)]
-    private static partial Regex WildcardHost();
+        ApplicationUrl?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() is { } first ? WebAddress.Callable(first) : null;
 }
 
 /// <summary>A command line as one string, split the way .NET splits one into a program's arguments on

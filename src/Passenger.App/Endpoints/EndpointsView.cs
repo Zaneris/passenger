@@ -371,7 +371,7 @@ public sealed class EndpointsView : DockPanel
             shown.Sending($"Sending {call.Method} {call.Url}…");
             EndpointResponse response = await BackgroundWork.Run(() => EndpointClient.SendAsync(call, options, mine.Token), mine.Token);
             // Held to the schema its app's document gives it, where the folder runs that app on this machine and it describes itself.
-            OpenApiDocument? document = parts.DocumentOf is { } of && Uri.TryCreate(call.Url, UriKind.Absolute, out Uri? sent) && sent.IsLoopback
+            OpenApiDocument? document = parts.DocumentOf is { } of && Uri.TryCreate(call.Url, UriKind.Absolute, out Uri? sent) && WebAddress.OnThisMachine(sent)
                 ? await of(sent, mine.Token) : null;
             IReadOnlyList<SchemaBreak> breaks = document is null ? [] : OpenApiSources.Check(document, call.Method, call.Url, response);
             shown.Show(response, [.. criteria.Select(c => c.Check(response))], breaks);

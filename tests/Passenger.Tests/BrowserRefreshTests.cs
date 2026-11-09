@@ -14,7 +14,8 @@ namespace Passenger.Tests;
 /// reloads the page, and an applied update refreshes it: on the SDK the machine builds with, and on .NET 10's SDK, which
 /// speaks the earlier way, where one is installed; and a Blazor Web App with WebAssembly components, whose client's build
 /// makes its pages' browser tools, is kept up too, as are a referenced Razor class library's stylesheet and scoped CSS; where a
-/// build makes none, Debug says why. Debugged through the window, so run alone.</summary>
+/// build makes none, Debug says why; a page at a name under localhost is kept up too. Debugged through the window, so run
+/// alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BrowserRefreshTests : IDisposable
 {
@@ -88,6 +89,37 @@ public sealed class BrowserRefreshTests : IDisposable
             Told(window, client, "UpdateStaticFile", "app.css", console);
             Assert.Contains("kept-up-in-place", Served(port, "/app.css"), StringComparison.Ordinal);
             Ui.WaitFor(() => console().Contains("Hot Reload: app.css applied in 1 page", StringComparison.Ordinal), () => $"the console to say where app.css went:\n{console()}");
+        }
+        finally
+        {
+            End(window, client);
+        }
+    }
+
+    /// <summary>A page the app serves at a name under localhost (as an app made with <c>--localhost-tld</c> is opened) is this
+    /// machine's: under debug its refresh client connects, and a stylesheet saved in the editor is applied in it.</summary>
+    [AvaloniaFact]
+    public void Under_debug_a_page_at_a_name_under_localhost_is_kept_up()
+    {
+        BellApp.Make(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        RefreshClient? client = null;
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Bell: http"), "Bell's http configuration", TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration("Bell: http"));
+            Ui.Launched(window, window.DebugAsync(), "Bell to start under the debugger", TimeSpan.FromMinutes(3));
+            Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
+            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, console), StringComparison.Ordinal);
+            int port = HeardPorts.Of(console, "the app");
+            client = Ui.AwaitPumped(Waiting.Apart(() => RefreshClient.ConnectAsync(port, "bell.dev.localhost")),
+                "the refresh client of a page at bell.dev.localhost to connect to Passenger through the app");
+
+            window.OpenFile(Path.Combine(folder, "wwwroot", "app.css"));
+            Ui.Settle();
+            BellApp.Edit(window, "html, body {", ".kept-up-in-place { color: rebeccapurple; }\n\nhtml, body {");
+            Assert.True(window.Perform(AppActions.Save), $"Save could not run: {window.Status}");
+            Told(window, client, "UpdateStaticFile", "app.css", console);
         }
         finally
         {

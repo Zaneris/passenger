@@ -26,10 +26,10 @@ public static partial class OpenApiSources
     private static readonly ConcurrentDictionary<string, (Task<OpenApiDocument?> Read, long At)> Read = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The document an app at <paramref name="address"/> serves (its own path <paramref name="mapped"/> first, then the
-    /// defaults); null where none answers with one, or the address is no loopback one, which is never asked.</summary>
+    /// defaults); null where none answers with one, or the address is not on this machine, which is never asked.</summary>
     public static Task<OpenApiDocument?> FromAppAsync(Uri address, IReadOnlyList<string> mapped, CancellationToken cancel)
     {
-        if (!address.IsAbsoluteUri || !address.IsLoopback || address.Scheme is not ("http" or "https"))
+        if (!WebAddress.OnThisMachine(address) || address.Scheme is not ("http" or "https"))
         {
             return Task.FromResult<OpenApiDocument?>(null);
         }

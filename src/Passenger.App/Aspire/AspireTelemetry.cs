@@ -245,8 +245,7 @@ public static class AspireTelemetry
         bool follow = true, string? query = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
-        if (!baseUri.IsAbsoluteUri || !baseUri.IsLoopback || baseUri.Scheme is not ("http" or "https")
-            || baseUri.UserInfo.Length > 0 || baseUri.Query.Length > 0 || baseUri.Fragment.Length > 0)
+        if (!WebAddress.Local(baseUri))
         {
             throw new ArgumentException("Telemetry requires a known loopback HTTP or HTTPS address without credentials, query, or fragment.", nameof(baseUri));
         }

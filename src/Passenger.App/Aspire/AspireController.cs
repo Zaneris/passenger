@@ -5,8 +5,6 @@ using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Profiler;
 using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Passenger.Workspace;
@@ -261,8 +259,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 ? ReadFileProfile(candidate) : candidate).Environment
                 .Where(variable => AppHostAddresses.Contains(variable.Key))
                 .SelectMany(variable => variable.Value.Split(';'))
-                .Any(url => Uri.TryCreate(url.Trim(), UriKind.Absolute, out Uri? uri) && uri.Scheme == "https"
-                    && (uri.IsLoopback || uri.Host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase))))
+                .Any(url => Uri.TryCreate(url.Trim(), UriKind.Absolute, out Uri? uri) && uri.Scheme == "https" && WebAddress.OnThisMachine(uri)))
             .Select(candidate => Path.GetFileNameWithoutExtension(candidate.Project))]);
     }
 
@@ -604,16 +601,14 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         if (endpoint is null || endpoint.Port == 0)
         {
-            using TcpListener port = new(IPAddress.Loopback, 0);
-            port.Start();
-            int number = ((IPEndPoint)port.LocalEndpoint).Port;
+            int number = WebAddress.FreeLoopbackPort();
             bool allowHttp = environment.TryGetValue(AspireVariables.AllowUnsecuredTransport, out string? allowed)
                 && bool.TryParse(allowed, out bool unsecured) && unsecured;
             endpoint = new Uri($"{(allowHttp ? "http" : "https")}://localhost:{number}");
             environment[AspireVariables.ResourceServiceEndpoint] = endpoint.AbsoluteUri;
             chosen = number;
         }
-        if (!endpoint.IsLoopback || endpoint.Scheme is not ("http" or "https"))
+        if (!WebAddress.OnThisMachine(endpoint) || endpoint.Scheme is not ("http" or "https"))
         {
             throw new LaunchException("Aspire's resource service must use a loopback HTTP or HTTPS endpoint");
         }
@@ -653,9 +648,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         else if (app.DashboardEndpoint is null)
         {
-            using TcpListener port = new(IPAddress.Loopback, 0);
-            port.Start();
-            app.DashboardEndpoint = new Uri($"http://127.0.0.1:{((IPEndPoint)port.LocalEndpoint).Port}");
+            app.DashboardEndpoint = new Uri($"http://127.0.0.1:{WebAddress.FreeLoopbackPort()}");
             added = app.DashboardEndpoint.AbsoluteUri;
         }
         app.DashboardApiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));

@@ -366,7 +366,7 @@ public sealed partial record LaunchPlan
             NamedProject = other,
             Console = configuration.Console,
             BrowserUrl = configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? Expand(configuration.BrowserUrl) : null,
-            Page = configuration.BrowserUrl.Length > 0 ? BrowserLaunch.Address(Expand(configuration.BrowserUrl)) is { } page ? BrowserLaunch.Shown(page) : null : null,
+            Page = configuration.BrowserUrl.Length > 0 ? BrowserLaunch.Address(Expand(configuration.BrowserUrl)) : null,
             Web = WebOf(project, framework, properties, workspace, projects),
             Unseen = headless,
         };

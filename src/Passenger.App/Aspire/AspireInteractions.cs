@@ -53,8 +53,7 @@ public sealed partial class AspireInteractions : IDisposable, IAsyncDisposable
     public static async Task<AspireInteractions> StartAsync(Uri endpoint, string apiKey, Window owner, string appName, CancellationToken cancel)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
-        if (!endpoint.IsAbsoluteUri || !endpoint.IsLoopback || endpoint.Scheme is not ("http" or "https")
-            || endpoint.UserInfo.Length > 0 || endpoint.Query.Length > 0 || endpoint.Fragment.Length > 0)
+        if (!WebAddress.Local(endpoint))
         {
             throw new ArgumentException("The AppHost resource service endpoint must be an HTTP or HTTPS URL.", nameof(endpoint));
         }

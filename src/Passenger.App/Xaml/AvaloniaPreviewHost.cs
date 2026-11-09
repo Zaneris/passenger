@@ -89,7 +89,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     /// frame it draws.</summary>
     private async Task RunAsync(string designer)
     {
-        int port = FreePort();
+        int port = WebAddress.FreeLoopbackPort();
         listening = new BsonTcpTransport().Listen(IPAddress.Loopback, port, UiThread.Marshal<IAvaloniaRemoteTransportConnection>(Connected));
         string folder = Path.GetDirectoryName(output)!;
         string name = Path.GetFileNameWithoutExtension(output);
@@ -377,15 +377,6 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     private static Version? ToolsFramework(string folder) =>
         XamlPreview.Framework(folder)
         ?? (folder.StartsWith("netstandard", StringComparison.Ordinal) || folder.StartsWith("netcoreapp", StringComparison.Ordinal) ? new Version(1, 0) : null);
-
-    private static int FreePort()
-    {
-        TcpListener free = new(IPAddress.Loopback, 0);
-        free.Start();
-        int port = ((IPEndPoint)free.LocalEndpoint).Port;
-        free.Stop();
-        return port;
-    }
 
     /// <summary>The longest <see cref="EndAsync"/> waits for the previewer's process to exit once it is killed.</summary>
     private static readonly TimeSpan Exiting = TimeSpan.FromSeconds(5);

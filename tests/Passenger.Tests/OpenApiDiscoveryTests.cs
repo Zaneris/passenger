@@ -3,8 +3,9 @@ using Passenger.App.Endpoints;
 namespace Passenger.Tests;
 
 /// <summary>An app's OpenAPI document is asked of that app alone: a path written to name another host and a redirect to
-/// another origin reach nothing there, and a redirect within the app is followed. Two stand-ins on this machine's loopback
-/// are the app and what lies beyond it, each its own origin by its port.</summary>
+/// another origin reach nothing there, and a redirect within the app is followed; an app at a name under localhost is this
+/// machine's. Two stand-ins on this machine's loopback are the app and what lies beyond it, each its own origin by its
+/// port.</summary>
 [Collection(Beside.Name)]
 public sealed class OpenApiDiscoveryTests
 {
@@ -33,6 +34,15 @@ public sealed class OpenApiDiscoveryTests
         OpenApiDocument? read = await Asked(app);
         Assert.Null(read);
         Assert.True(beyond.Connections == 0, "An app's redirect took Passenger's request to another server, where it promises to ask only the local app");
+    }
+
+    [Fact]
+    public async Task An_app_at_a_name_under_localhost_has_its_document_read()
+    {
+        await using StandInHttp app = new(exchange => exchange.ReplyAsync(200, "application/json", Document));
+        OpenApiDocument? read = await OpenApiSources.FromAppAsync(new Uri($"http://shop.dev.localhost:{app.Port}"), [], TestContext.Current.CancellationToken);
+        Assert.True(read?.Title == "Shop",
+            "An app at shop.dev.localhost, as dotnet new webapi --localhost-tld makes one, was taken for another machine's and never asked for its document");
     }
 
     [Fact]

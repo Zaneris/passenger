@@ -26,16 +26,13 @@ public static class DotnetInstall
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "dotnet")
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet"));
 
-    /// <summary>HTTPS, or http to this machine alone.</summary>
-    public static bool Secure(Uri url) => url.Scheme == Uri.UriSchemeHttps || (url.Scheme == Uri.UriSchemeHttp && url.IsLoopback);
-
     /// <summary>Downloads, checks, unpacks and moves <paramref name="sdk"/> into <paramref name="into"/> and runs it once,
     /// saying each step as it begins and logging how long it took (<see cref="Steps"/>); what it installed read back. A
     /// <see cref="DotnetInstallFailed"/> saying why when it does not, nothing of it left behind, its folder neither where it
     /// made it, and what could not be taken out named.</summary>
     public static async Task<DotnetInstallation> InstallAsync(SdkDownload sdk, string into, Action<string> stage, CancellationToken cancel)
     {
-        if (!Secure(sdk.Url))
+        if (!WebAddress.Secure(sdk.Url))
         {
             throw new DotnetInstallFailed($"The .NET SDK {sdk.Version} would come over {sdk.Url.Scheme}, not HTTPS ({sdk.Url})");
         }
@@ -122,7 +119,7 @@ public static class DotnetInstall
         {
             using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, sdk.Url);
             using HttpResponseMessage response = await Stalling(cancel, token => Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)).ConfigureAwait(false);
-            if (response.RequestMessage?.RequestUri is { } landed && !Secure(landed))
+            if (response.RequestMessage?.RequestUri is { } landed && !WebAddress.Secure(landed))
             {
                 throw new DotnetInstallFailed($"The .NET SDK {sdk.Version} was sent on to {landed}, not over HTTPS");
             }

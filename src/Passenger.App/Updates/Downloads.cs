@@ -34,7 +34,7 @@ public static partial class Releases
 
     private static async Task<string> DownloadAsync(ReleaseFile file, Stream into, long limit, Action<int>? progress, CancellationToken cancel)
     {
-        if (!Secure(file.Url))
+        if (!WebAddress.Secure(file.Url))
         {
             throw new UpdateRefusedException($"{file.Name} would come over {file.Url.Scheme}, not HTTPS ({file.Url})");
         }
@@ -45,7 +45,7 @@ public static partial class Releases
             using HttpResponseMessage response = await Stalling(cancel,
                 token => Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)).ConfigureAwait(false);
             // A redirect GitHub gives is followed, but never from HTTPS to http, which the handler refuses.
-            if (!Secure(response.RequestMessage?.RequestUri ?? file.Url))
+            if (!WebAddress.Secure(response.RequestMessage?.RequestUri ?? file.Url))
             {
                 throw new UpdateRefusedException($"{file.Name} was sent on to {response.RequestMessage?.RequestUri}, not over HTTPS");
             }
@@ -95,9 +95,6 @@ public static partial class Releases
         progress?.Invoke(100);
         return Convert.ToHexStringLower(sha256.GetHashAndReset());
     }
-
-    /// <summary>HTTPS, or http to this machine alone.</summary>
-    private static bool Secure(Uri url) => url.Scheme == Uri.UriSchemeHttps || (url.Scheme == Uri.UriSchemeHttp && url.IsLoopback);
 
     /// <summary>A step of a download, given up when no byte comes for <see cref="Stall"/>.</summary>
     private static async Task<T> Stalling<T>(CancellationToken cancel, Func<CancellationToken, Task<T>> step)

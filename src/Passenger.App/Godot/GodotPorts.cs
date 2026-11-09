@@ -1,6 +1,6 @@
 using System.Net;
 using System.Net.NetworkInformation;
-using System.Net.Sockets;
+using Passenger.Core;
 
 namespace Passenger.App.Godot;
 
@@ -25,11 +25,7 @@ public static class GodotPorts
         {
             return given;
         }
-        TcpListener probe = new(IPAddress.Loopback, 0);
-        probe.Start();
-        int port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-        return port;
+        return WebAddress.FreeLoopbackPort();
     }
 
     /// <summary>What holds the port so Godot cannot listen on it, said, else null. On Windows Godot listens without

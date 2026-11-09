@@ -207,6 +207,8 @@ public sealed class OpenApiTests
         Assert.Equal("http://127.0.0.1:5000/spec.json", OpenApiAddresses.Named("http://127.0.0.1:5000/spec.json").Document);
         Assert.Null(OpenApiAddresses.Named("//10.0.0.8:5000/spec.json").Document);
         Assert.Null(OpenApiAddresses.Named("http://10.0.0.8:5000/spec.json").Document);
+        Assert.Equal("https://shop.dev.localhost:7001/spec.json", OpenApiAddresses.Named("https://shop.dev.localhost:7001/spec.json").Document);
+        Assert.Null(OpenApiAddresses.Named("http://localhost.example.com:5000/spec.json").Document);
     }
 
     [Fact]

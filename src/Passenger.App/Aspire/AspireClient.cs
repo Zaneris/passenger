@@ -134,8 +134,7 @@ public sealed class AspireClient(string? program = null)
             {
                 throw new IOException($"The Aspire {SupportedVersion} resource service must advertise API-key authentication; unsecured or other authentication modes are unsupported");
             }
-            if (!Uri.TryCreate(address, UriKind.Absolute, out Uri? endpoint) || endpoint.Scheme is not ("http" or "https")
-                || !endpoint.IsLoopback || endpoint.UserInfo.Length > 0 || endpoint.Query.Length > 0 || endpoint.Fragment.Length > 0)
+            if (!Uri.TryCreate(address, UriKind.Absolute, out Uri? endpoint) || !WebAddress.Local(endpoint))
             {
                 throw new IOException($"The Aspire {SupportedVersion} resource service must advertise an absolute loopback HTTP or HTTPS endpoint without credentials, query, or fragment");
             }

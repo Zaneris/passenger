@@ -207,7 +207,7 @@ public partial class MainWindow
                 }
                 if (listening == true)
                 {
-                    Browse(BrowserLaunch.Shown(address));
+                    Browse(address);
                 }
                 else
                 {

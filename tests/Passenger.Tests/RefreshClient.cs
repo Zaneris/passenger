@@ -42,9 +42,10 @@ internal sealed class RefreshClient : IAsyncDisposable
         }
     }
 
-    public static async Task<RefreshClient> ConnectAsync(int port)
+    /// <summary>The client of a page the app on <paramref name="port"/> serves at <paramref name="host"/>, connected.</summary>
+    public static async Task<RefreshClient> ConnectAsync(int port, string host = "127.0.0.1")
     {
-        string origin = $"http://127.0.0.1:{port}";
+        string origin = $"http://{host}:{port}";
         using HttpClient http = new();
         using HttpResponseMessage settings = await http.GetAsync(new Uri($"{origin}/_framework/dotnet-browser-tools/hot-reload-settings.json"));
         string key;
@@ -57,7 +58,7 @@ internal sealed class RefreshClient : IAsyncDisposable
             using JsonDocument told = JsonDocument.Parse(await settings.Content.ReadAsStringAsync());
             Assert.True(told.RootElement.GetProperty("hotReload").GetBoolean(), $"The app's forwarded settings say no Hot Reload: {told.RootElement}");
             key = Regex.Match(await ConfigurationAsync(http, origin), "publicKey: '([^']+)'").Groups[1].Value;
-            address = new Uri($"ws://127.0.0.1:{port}/_framework/dotnet-browser-tools/connect");
+            address = new Uri($"ws://{host}:{port}/_framework/dotnet-browser-tools/connect");
         }
         else
         {

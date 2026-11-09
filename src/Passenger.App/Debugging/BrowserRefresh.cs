@@ -472,7 +472,7 @@ public sealed class BrowserRefresh : IDisposable
             connection.StatusCode = 400;
             return;
         }
-        if (!Uri.TryCreate(connection.Header("Origin").FirstOrDefault(), UriKind.Absolute, out Uri? origin) || origin.Host is not ("localhost" or "127.0.0.1" or "[::1]"))
+        if (!Uri.TryCreate(connection.Header("Origin").FirstOrDefault(), UriKind.Absolute, out Uri? origin) || !WebAddress.OnThisMachine(origin))
         {
             connection.StatusCode = 403;
             return;

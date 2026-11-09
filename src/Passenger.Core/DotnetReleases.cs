@@ -232,7 +232,7 @@ public static class DotnetReleases
     /// size); null where it does not say or cannot be asked in time.</summary>
     public static async Task<long?> SizeAsync(SdkDownload sdk, CancellationToken cancel)
     {
-        if (!DotnetInstall.Secure(sdk.Url))
+        if (!WebAddress.Secure(sdk.Url))
         {
             return null;
         }
@@ -242,7 +242,7 @@ public static class DotnetReleases
         {
             using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Head, sdk.Url);
             using HttpResponseMessage response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, limit.Token).ConfigureAwait(false);
-            return response.IsSuccessStatusCode && response.RequestMessage?.RequestUri is { } landed && DotnetInstall.Secure(landed)
+            return response.IsSuccessStatusCode && response.RequestMessage?.RequestUri is { } landed && WebAddress.Secure(landed)
                 ? response.Content.Headers.ContentLength
                 : null;
         }
@@ -262,7 +262,7 @@ public static class DotnetReleases
 
     private static async Task<JsonDocument> ReadAsync(Uri uri, CancellationToken cancel)
     {
-        if (!DotnetInstall.Secure(uri))
+        if (!WebAddress.Secure(uri))
         {
             throw new DotnetInstallFailed($"{uri} would be read over {uri.Scheme}, not HTTPS");
         }
