@@ -689,11 +689,37 @@ public sealed class LspDocument : IDisposable
     public Task<IReadOnlyList<LspLocation>> ReferencesAsync(int offset, CancellationToken cancel = default) =>
         ReferencesAsync(Server, Identifier, PositionOf(offset), cancel);
 
-    /// <summary>Every place the symbol at a place of a document is used (<see cref="ReferencesAsync(int, CancellationToken)"/>).</summary>
-    internal static async Task<IReadOnlyList<LspLocation>> ReferencesAsync(LanguageServer server, TextDocumentIdentifier document, LspPosition at, CancellationToken cancel) =>
-        [.. Shapes.Locations(await Read(server.RequestAsync<JsonElement>(LspMethods.References,
-                new ReferenceParams(document, at, new ReferenceContext(true)), cancel)))
-            .DistinctBy(place => (place.Uri, place.Range.Start))];
+    /// <summary>Every place the symbol at a place of a document is used (<see cref="ReferencesAsync(int, CancellationToken)"/>),
+    /// a partial member's two halves among them, of which the server names only one as its declaration.</summary>
+    internal static async Task<IReadOnlyList<LspLocation>> ReferencesAsync(LanguageServer server, TextDocumentIdentifier document, LspPosition at, CancellationToken cancel)
+    {
+        IReadOnlyList<LspLocation> served = Shapes.Locations(await Read(server.RequestAsync<JsonElement>(LspMethods.References,
+            new ReferenceParams(document, at, new ReferenceContext(true)), cancel)));
+        return [.. served.Concat(await HalvesAsync(server, document, at, cancel)).DistinctBy(place => (place.Uri, place.Range.Start))];
+    }
+
+    /// <summary>Where both halves of the partial member at a place are declared, the half that declares it and the half with
+    /// its body (Passenger's extension's <see cref="Roslyn.Extension.HalfAsked"/>, which names the other half of the one
+    /// asked at); none for any other symbol, and where the server has no extension to ask.</summary>
+    private static async Task<IReadOnlyList<LspLocation>> HalvesAsync(LanguageServer server, TextDocumentIdentifier document, LspPosition at, CancellationToken cancel)
+    {
+        if (server.ExtensionProblem is not null)
+        {
+            return [];
+        }
+        Roslyn.Extension.Place place = new(at.Line, at.Character);
+        Roslyn.Extension.UriSpan asked = new(document.Uri, place, place);
+        Roslyn.Extension.UriSpan? declaring = await HalfAsync(server, asked, body: false, cancel).ConfigureAwait(false);
+        Roslyn.Extension.UriSpan? body = await HalfAsync(server, asked, body: true, cancel).ConfigureAwait(false);
+        declaring ??= body is null ? null : await HalfAsync(server, body, body: false, cancel).ConfigureAwait(false);
+        body ??= declaring is null ? null : await HalfAsync(server, declaring, body: true, cancel).ConfigureAwait(false);
+        return [.. new[] { declaring, body }.OfType<Roslyn.Extension.UriSpan>()
+            .Select(half => new LspLocation(half.Uri, new LspRange(new LspPosition(half.Start.Line, half.Start.Character), new LspPosition(half.End.Line, half.End.Character))))];
+    }
+
+    private static async Task<Roslyn.Extension.UriSpan?> HalfAsync(LanguageServer server, Roslyn.Extension.UriSpan at, bool body, CancellationToken cancel) =>
+        (await RoslynExtension.AskWorkspaceAsync<Roslyn.Extension.HalfFound>(server, Roslyn.Extension.Handlers.PartialHalf,
+            new Roslyn.Extension.HalfAsked(at, body), cancel).ConfigureAwait(false)).Half;
 
     /// <summary>A request's answer awaited so that what follows the await, reading it into records, runs on the thread pool
     /// however it came (in already, or where it arrived), never on the caller's thread: the UI thread gets the records made,
