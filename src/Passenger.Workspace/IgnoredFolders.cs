@@ -43,12 +43,13 @@ public static class IgnoredFolders
     public static IReadOnlySet<string> Names { get; } = new HashSet<string>([.. ProjectFolders.Passed.Names, .. Written], StringComparer.Ordinal);
 
     /// <summary>Whether a file lies in a folder a test framework writes into the person's project as its own output
-    /// (<see cref="GdUnit4Runner"/>), which no one means to commit.</summary>
+    /// (<see cref="GdUnit4Runner"/>), which no one means to commit. Its folders are read in place: every file of a status
+    /// is asked.</summary>
     public static bool InToolOutput(string path)
     {
-        for (string? folder = Path.GetDirectoryName(path); folder is { Length: > 0 }; folder = Path.GetDirectoryName(folder))
+        for (ReadOnlySpan<char> folder = Path.GetDirectoryName(path.AsSpan()); !folder.IsEmpty; folder = Path.GetDirectoryName(folder))
         {
-            if (Path.GetFileName(folder) == GdUnit4Runner)
+            if (Path.GetFileName(folder).SequenceEqual(GdUnit4Runner))
             {
                 return true;
             }
