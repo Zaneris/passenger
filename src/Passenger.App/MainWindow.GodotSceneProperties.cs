@@ -31,7 +31,7 @@ public partial class MainWindow
         {
             return;
         }
-        if (view.Outlined is not { } scene || !GodotProject.IsScene(scene) || GodotFolder() is not { } folder || !PathNames.IsUnder(scene, folder))
+        if (view.Outlined is not { } scene || !GodotProject.IsScene(scene) || GodotOfFile(scene) is not { } folder)
         {
             view.Details = null;
             sceneProperties?.Show(null);

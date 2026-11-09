@@ -14,24 +14,20 @@ public partial class MainWindow
     /// <summary>The first version of Passenger's addon that takes an agent's acts on the scenes its editor edits.</summary>
     internal const int AddonActs = 6;
 
-    /// <summary>The editor an agent's act goes to; throws saying why there is none.</summary>
-    internal async Task<GodotEditorPeer> GodotEditorForAgentAsync()
+    /// <summary>The editor on a Godot project (<see cref="GodotSceneOf"/>'s) an agent's act goes to; throws saying why there is none.</summary>
+    internal async Task<GodotEditorPeer> GodotEditorForAgentAsync(string folder)
     {
         UiThread.Check();
         if (AgentsOwn)
         {
             throw new InvalidOperationException(Refusals.GodotEditorOfPerson);
         }
-        if (GodotFolder() is not { } folder)
-        {
-            throw new InvalidOperationException(Refusals.NoGodotProject);
-        }
-        if (session.GodotEditors.Editors.FirstOrDefault(e => e.Addon >= AddonActs) is { } editor)
+        if (session.GodotEditors.Editors.FirstOrDefault(e => PathNames.Same(e.Project, folder) && e.Addon >= AddonActs) is { } editor)
         {
             return editor;
         }
         string name = Path.GetFileName(folder);
-        if (session.GodotEditors.Editors.FirstOrDefault() is { } older)
+        if (session.GodotEditors.Editors.FirstOrDefault(e => PathNames.Same(e.Project, folder)) is { } older)
         {
             throw new InvalidOperationException(Refusals.GodotAddonOlder(name, older.Addon));
         }
@@ -41,35 +37,31 @@ public partial class MainWindow
         throw new InvalidOperationException(Refusals.NoGodotEditor(name, addon, opens));
     }
 
-    /// <summary>The folder's Godot project's scene (res://) by the path an agent gave: res:// or uid:// as given, else a path
-    /// of the open folder's; null for none given. Throws where it is outside the project.</summary>
-    internal string? GodotSceneOf(string? given)
+    /// <summary>The Godot project an agent's act is on and its scene (res://) by the path the agent gave: a path of the open
+    /// folder's in its own project, else res:// or uid:// as given in the project at hand; no scene for none given. Throws
+    /// where there is no Godot project, or the path is in none.</summary>
+    internal (string Folder, string? Scene) GodotSceneOf(string? given)
     {
-        if (given is null or "")
+        string atHand = GodotAtHand() ?? throw new InvalidOperationException(Refusals.NoGodotProject);
+        if (given is null or "" || given.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) || given.StartsWith(GodotUids.Scheme, StringComparison.Ordinal))
         {
-            return null;
+            return (atHand, given is "" ? null : given);
         }
-        if (given.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) || given.StartsWith(GodotUids.Scheme, StringComparison.Ordinal))
-        {
-            return given;
-        }
-        string folder = GodotFolder() ?? throw new InvalidOperationException(Refusals.NoGodotProject);
-        string full = PathNames.Canonical(Path.GetFullPath(given, Folder ?? folder));
-        return GodotResPaths.Of(folder, full)
-            ?? throw new ArgumentException($"{given} is outside the Godot project at {PathNames.Shown(folder, Folder)}");
+        string full = PathNames.Canonical(Path.GetFullPath(given, Folder ?? atHand));
+        return GodotOfFile(full) is { } folder && GodotResPaths.Of(folder, full) is { } scene ? (folder, scene)
+            : throw new ArgumentException($"{given} is in no Godot project of {PathNames.Shown(Folder ?? atHand, null)}");
     }
 
     /// <summary>Plays a scene of the folder's Godot game (res://; null for its main scene) in the person's Godot editor,
     /// debugged here, as Run in Godot Editor plays it: null once the editor took it, else why not.</summary>
-    internal Task<string?> PlayInGodotEditorForAgentAsync(string? scene, CancellationToken cancel)
+    internal Task<string?> PlayInGodotEditorForAgentAsync(string folder, string? scene, CancellationToken cancel)
     {
         UiThread.Check();
         if (AgentsOwn)
         {
             return Task.FromResult<string?>(Refusals.GodotEditorOfPerson);
         }
-        string? folder = GodotFolder();
-        ProjectModel? project = folder is null ? null : session.RunProjects.FirstOrDefault(p => p.GodotFolder is { } at && PathNames.Same(at, folder));
+        ProjectModel? project = session.RunProjects.FirstOrDefault(p => p.GodotFolder is { } at && PathNames.Same(at, folder));
         if (project is null)
         {
             return Task.FromResult<string?>(Refusals.NoGodotProject);

@@ -11,14 +11,14 @@ namespace Passenger.App;
 /// it again, so no "newer on disk" question comes.</summary>
 public partial class MainWindow
 {
-    /// <summary>What Godot's editor holds of a file that a write of it would go over, in words, or null.</summary>
+    /// <summary>What a Godot editor on the file's own project holds of it that a write of it would go over, in words, or null.</summary>
     private string? HeldInGodot(string path)
     {
-        if (session.GodotEditors.Editors is not [_, ..] editors || GodotFolder() is not { } folder || GodotResPaths.Of(folder, path) is not { } res)
+        if (session.GodotEditors.Editors is not [_, ..] editors || GodotOfFile(path) is not { } folder || GodotResPaths.Of(folder, path) is not { } res)
         {
             return null;
         }
-        foreach (GodotEditorPeer peer in editors)
+        foreach (GodotEditorPeer peer in editors.Where(e => PathNames.Same(e.Project, folder)))
         {
             if (Passenger.Workspace.GodotHolds.Of(res, peer.OpenScenes, peer.UnsavedScenes, peer.SaysUnsaved, peer.Inspected) is { } hold)
             {
@@ -31,9 +31,9 @@ public partial class MainWindow
     /// <summary>What Godot's editor holds of a file, as the gate sees it: why a write would ask, or null.</summary>
     public string? HeldByGodot(string path) => HeldInGodot(PathNames.Canonical(path));
 
-    /// <summary>Whether Godot's editor has a scene open, as its addon last said.</summary>
-    public bool GodotHasOpen(string path) => GodotFolder() is { } folder && GodotResPaths.Of(folder, PathNames.Canonical(path)) is { } res
-        && session.GodotEditors.Editors.Any(e => e.OpenScenes.Contains(res, StringComparer.Ordinal));
+    /// <summary>Whether a Godot editor on the scene's own project has it open, as its addon last said.</summary>
+    public bool GodotHasOpen(string path) => PathNames.Canonical(path) is var file && GodotOfFile(file) is { } folder && GodotResPaths.Of(folder, file) is { } res
+        && session.GodotEditors.Editors.Any(e => PathNames.Same(e.Project, folder) && e.OpenScenes.Contains(res, StringComparer.Ordinal));
 
     /// <summary>The gate's answer to a write of files Godot's editor holds: null where the person lets it go over them, else
     /// why not, an agent's refused unasked.</summary>
@@ -60,24 +60,25 @@ public partial class MainWindow
         }
         UiThread.Post(() =>
         {
-            if (GodotFolder() is not { } folder || GodotResPaths.Of(folder, path) is not { } res)
+            if (GodotOfFile(path) is not { } folder || GodotResPaths.Of(folder, path) is not { } res)
             {
                 return;
             }
-            foreach (GodotEditorPeer peer in session.GodotEditors.Editors.Where(p => Passenger.Workspace.GodotHolds.Reloads(res, p.OpenScenes, p.UnsavedScenes, p.SaysUnsaved)))
+            foreach (GodotEditorPeer peer in session.GodotEditors.Editors.Where(p => PathNames.Same(p.Project, folder)
+                && Passenger.Workspace.GodotHolds.Reloads(res, p.OpenScenes, p.UnsavedScenes, p.SaysUnsaved)))
             {
                 IdeErrors.Observe(peer.AskAsync("reload", new System.Text.Json.Nodes.JsonObject { ["path"] = res }, TimeSpan.FromSeconds(10)));
             }
         });
     }
 
-    /// <summary>A node Godot's editor selected in its scene dock, while Settings has it shown here: its scene shown at the
-    /// node's section, which the outline follows, and the node's script open behind at its class, the keys left where they
-    /// are.</summary>
-    private void ShowGodotSelection(string? scene, string? node)
+    /// <summary>A node a Godot editor selected in its scene dock, while Settings has it shown here: its scene of the editor's
+    /// project shown at the node's section, which the outline follows, and the node's script open behind at its class, the
+    /// keys left where they are.</summary>
+    private void ShowGodotSelection(string folder, string? scene, string? node)
     {
         UiThread.Check();
-        if (!settings.GodotSelectionFollows || scene is null || node is null || GodotFolder() is not { } folder || GodotResPaths.FileOf(folder, scene) is not { } named)
+        if (!settings.GodotSelectionFollows || scene is null || node is null || GodotResPaths.FileOf(folder, scene) is not { } named)
         {
             return;
         }

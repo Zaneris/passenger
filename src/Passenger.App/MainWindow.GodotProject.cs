@@ -42,7 +42,7 @@ public partial class MainWindow
         {
             return GodotProjectOfRow(row);
         }
-        return context.File?.Path is { } shown && session.GodotOf(shown) is { } game ? game : GodotFolder();
+        return context.File?.Path is { } shown && GodotOfFile(shown) is { } game ? game : GodotAtHand();
     }
 
     /// <summary>The Godot project of an Explorer row: a project's that builds a game, a project.godot's, the folder holding

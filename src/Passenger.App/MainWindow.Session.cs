@@ -434,6 +434,8 @@ public partial class MainWindow
                 FindTests();
                 // A Godot project of GDScript alone the walk found outlines its open scene from now on.
                 structure?.FollowServer();
+                // Each Godot project the walk found has its editors taken from now on.
+                ListenForGodotEditors();
                 // Each file's project, which Problems lists the solution's under, as the projects now are.
                 ShowSolutionProblems();
             }

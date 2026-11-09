@@ -29,14 +29,14 @@ public partial class MainWindow
         Closed += (_, _) => Text.FileText.Wrote -= wrote;
         actions!.Add(new IdeAction(AppActions.GodotAddon, "Install Passenger's Godot Addon…", "Godot", _ => IdeErrors.Observe(InstallGodotAddonAsync()))
         {
-            WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotFolder() is null ? Refusals.NoGodotProject : null,
+            WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotAtHand() is null ? Refusals.NoGodotProject : null,
             Menus = [new MenuPlace("Tools", 0, 7)],
             Words = ["Godot", "Addon", "Plugin", "Play", "Debug", "Editor"],
             Works = AppActions.GodotAddon,
         });
     }
 
-    /// <summary>How many Godot editors on the open project its addon has connected to this window.</summary>
+    /// <summary>How many Godot editors on the open folder's projects their addon has connected to this window.</summary>
     public int GodotEditorsConnected => session.GodotEditors.Editors.Count;
 
     /// <summary>Installs the addon once the person agrees, saying what it writes; says what it came to.</summary>
@@ -57,7 +57,7 @@ public partial class MainWindow
     /// editor's settings), then written as one command of Undo. Null once installed, else why not.</summary>
     private async Task<string?> InstallGodotAddonAsync(Working working, bool ask)
     {
-        if (GodotFolder() is not { } folder)
+        if (GodotAtHand() is not { } folder)
         {
             return Said(working, false, Refusals.NoGodotProject);
         }
@@ -152,16 +152,16 @@ public partial class MainWindow
         + "shows in the Live Visual Tree, its errors pinned to their lines, and this Passenger's debugger attaches to it, so a breakpoint set here stops it; "
         + "Stop here lets the game go on. With Passenger closed, Godot plays as it always did.";
 
-    /// <summary>Listens for Godot's editors on the open folder's Godot project where a person's window keeps it.</summary>
+    /// <summary>Listens for Godot's editors on each of the open folder's Godot projects where a person's window keeps it.</summary>
     private void ListenForGodotEditors()
     {
         UiThread.Check();
-        if (!keepsWorkspace || GodotFolder() is not { } godot)
+        if (!keepsWorkspace || GodotProjectFolders() is not [_, ..] godot)
         {
             return;
         }
         ProjectSession listening = session;
-        IdeErrors.Observe(listening.GodotEditors.ListenAsync(PathNames.Canonical(godot), [godot]));
+        IdeErrors.Observe(listening.GodotEditors.ListenAsync([.. godot.Select(PathNames.Canonical)], godot));
     }
 
     /// <summary>The handlers of a session's link to Godot's editors, wired once as the session is bound: Play's build, and each
@@ -178,7 +178,7 @@ public partial class MainWindow
                     SelectOnConnect(editor);
                 }
                 status.Text = link.Editors.Count > 0
-                    ? $"Godot's editor on {Path.GetFileName(link.Project)} is connected: its Play builds here, and this Passenger shows what it plays"
+                    ? $"Godot's editor on {Plural.Listed([.. link.Editors.Select(e => Path.GetFileName(e.Project)).Distinct(PathNames.Comparer)])} is connected: its Play builds here, and this Passenger shows what it plays"
                     : "Godot's editor let go of this window";
             }
         };
@@ -226,7 +226,7 @@ public partial class MainWindow
             }
             if (session == next)
             {
-                ShowGodotSelection(scene, node);
+                ShowGodotSelection(peer.Project, scene, node);
             }
         });
         link.Hear("scene", (peer, told) =>
@@ -249,11 +249,10 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>The name of the open Godot project's game: its C# project's, else its folder's.</summary>
-    private string GodotGameName() => GodotGameProject()?.Name ?? Path.GetFileName(GodotFolder() ?? Folder ?? "Godot");
+    /// <summary>The name of a Godot project's game: its C# project's, else its folder's.</summary>
+    private string GodotGameName(string folder) => GodotGameProject(folder)?.Name ?? Path.GetFileName(folder);
 
-    private ProjectModel? GodotGameProject() =>
-        GodotFolder() is { } folder ? Projects.FirstOrDefault(p => p.GodotFolder is { } game && PathNames.Same(game, folder)) : null;
+    private ProjectModel? GodotGameProject(string folder) => Projects.FirstOrDefault(p => p.GodotFolder is { } game && PathNames.Same(game, folder));
 
     /// <summary>Godot's Play built here: the game's project built for its chosen framework as a launch builds it (saved first,
     /// skipped while its last build stands), answered with whether it built and, while Settings debugs what Godot plays, the
@@ -261,8 +260,8 @@ public partial class MainWindow
     private async Task<JsonObject> GodotPlayBuildAsync(GodotEditorPeer peer)
     {
         UiThread.Check();
-        string name = GodotGameName();
-        if (GodotGameProject() is not { } project)
+        string name = GodotGameName(peer.Project);
+        if (GodotGameProject(peer.Project) is not { } project)
         {
             // A game of GDScript alone runs no .NET to hold.
             return new JsonObject { ["built"] = true, ["said"] = $"{name} has no C# project to build", ["variables"] = new JsonObject() };
@@ -325,9 +324,9 @@ public partial class MainWindow
         {
             before.RelayEnded();
         }
-        string named = $"{GodotGameName()} in Godot";
+        string named = $"{GodotGameName(peer.Project)} in Godot";
         string name = peer.Games.Count == 0 ? named : $"{named} #{peer.Games.Count + 1}";
-        GodotGame game = GodotGame.Relay(name, GodotFolder() ?? into.Folder ?? string.Empty, peer.Godot,
+        GodotGame game = GodotGame.Relay(name, peer.Project, peer.Godot,
             (body, _) => peer.TellAsync("send", new JsonObject { ["session"] = id, ["message"] = Convert.ToBase64String(body) }));
         game.EditorScene = peer.EditedScene;
         peer.Games[id] = game;

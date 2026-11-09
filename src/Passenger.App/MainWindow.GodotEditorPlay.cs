@@ -33,7 +33,7 @@ public partial class MainWindow
     {
         UiThread.Check();
         ProjectModel? project = Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project));
-        if ((project?.GodotFolder ?? GodotFolder()) is not { } folder)
+        if ((project?.GodotFolder ?? GodotAtHand()) is not { } folder)
         {
             return $"{chosen.Name} plays no Godot game";
         }
@@ -56,7 +56,7 @@ public partial class MainWindow
             scene = chosen.GodotScene;
         }
         string name = project?.Name ?? Path.GetFileName(folder);
-        if (session.GodotEditors.Editors.FirstOrDefault(e => e.Addon >= AddonPlays) is { } peer)
+        if (session.GodotEditors.Editors.FirstOrDefault(e => PathNames.Same(e.Project, folder) && e.Addon >= AddonPlays) is { } peer)
         {
             peer.Debugs = debug;
             peer.Builds = chosen.BuildBeforeLaunch;
@@ -71,7 +71,7 @@ public partial class MainWindow
             status.Text = debug ? $"{name} plays in Godot's editor, built here and debugged by this Passenger" : $"{name} plays in Godot's editor, built here";
             return null;
         }
-        string? older = session.GodotEditors.Editors.Count > 0
+        string? older = session.GodotEditors.Editors.Any(e => PathNames.Same(e.Project, folder))
             ? $"; Passenger's addon there is too old to play as asked, so Install Passenger's Godot Addon… updates it" : null;
         if (!await session.GodotIde.IsOpenAsync(folder))
         {

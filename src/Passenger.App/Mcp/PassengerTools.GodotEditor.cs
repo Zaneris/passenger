@@ -35,10 +35,10 @@ public sealed partial class PassengerTools
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         string act = action.Trim().ToLowerInvariant();
-        string? res = window.GodotSceneOf(scene);
+        (string game, string? res) = window.GodotSceneOf(scene);
         if (act == "play")
         {
-            return new GodotEditorAnswer(await PlayInGodotEditorAsync(res, cancel));
+            return new GodotEditorAnswer(await PlayInGodotEditorAsync(game, res, cancel));
         }
         string request = act switch
         {
@@ -48,7 +48,7 @@ public sealed partial class PassengerTools
             "set" or "add" or "move" or "remove" or "connect" => "scene_change",
             _ => throw new ArgumentException($"{action} is no action: open, read, select, play, set, add, move, remove or connect"),
         };
-        GodotEditorPeer editor = await window.GodotEditorForAgentAsync();
+        GodotEditorPeer editor = await window.GodotEditorForAgentAsync(game);
         JsonObject asked = new() { ["action"] = act, ["scene"] = res ?? string.Empty, ["node"] = node ?? "." };
         if (properties is { ValueKind: JsonValueKind.Object } given)
         {
@@ -82,10 +82,10 @@ public sealed partial class PassengerTools
     });
 
     /// <summary>A scene played in the person's editor, debugged here once it came in: what it came to.</summary>
-    private async Task<string> PlayInGodotEditorAsync(string? scene, CancellationToken cancel)
+    private async Task<string> PlayInGodotEditorAsync(string game, string? scene, CancellationToken cancel)
     {
         GodotGame? before = Session.Game;
-        if (await window.PlayInGodotEditorForAgentAsync(scene, cancel) is { } refused)
+        if (await window.PlayInGodotEditorForAgentAsync(game, scene, cancel) is { } refused)
         {
             throw new InvalidOperationException(refused);
         }

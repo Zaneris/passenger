@@ -22,16 +22,16 @@ public partial class MainWindow
     private static readonly Regex NodePathCall = new(@"GetNode(?:OrNull)?\s*(?:<[^()]*>)?\s*\(\s*(?:new\s+NodePath\s*\(\s*)?""(?<path>[^""]*)""",
         RegexOptions.CultureInvariant);
 
-    /// <summary>The scene and node a launch from here asked an editor to open, which the first editor to connect through the
-    /// addon then selects; null for none.</summary>
-    private (string Scene, string Node)? selectOnConnect;
+    /// <summary>The project, scene and node a launch from here asked an editor to open, which the first editor on that project
+    /// to connect through the addon then selects; null for none.</summary>
+    private (string Folder, string Scene, string Node)? selectOnConnect;
 
     private void AddGodotOpenInEditor()
     {
         actions!.Add(new IdeAction(AppActions.GodotOpenInEditor, "Open in Godot Editor", "Godot", _ => IdeErrors.Observe(OpenInGodotEditorAsync()))
         {
-            WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotFolder() is not { } folder ? Refusals.NoGodotProject
-                : Editors.Active?.Path is { } path && PathNames.IsUnder(path, folder) && (GodotProject.IsScene(path) || IsGodotScript(path)) ? null : Refusals.NoGodotScene,
+            WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotAtHand() is null ? Refusals.NoGodotProject
+                : Editors.Active?.Path is { } path && GodotOfFile(path) is not null && (GodotProject.IsScene(path) || IsGodotScript(path)) ? null : Refusals.NoGodotScene,
             Menus = [new MenuPlace("Tools", 0, 8)],
             Words = ["Godot", "scene", "node", "editor", "select"],
             Works = AppActions.GodotOpenInEditor,
@@ -57,9 +57,9 @@ public partial class MainWindow
 
     private async Task<(bool Done, string Said)> OpenInGodotEditorAsync(Working working)
     {
-        if (GodotFolder() is not { } folder || Editors.Active is not { } shown || !PathNames.IsUnder(shown.Path, folder))
+        if (Editors.Active is not { } shown || GodotOfFile(shown.Path) is not { } folder)
         {
-            return (false, GodotFolder() is null ? Refusals.NoGodotProject : Refusals.NoGodotScene);
+            return (false, GodotAtHand() is null ? Refusals.NoGodotProject : Refusals.NoGodotScene);
         }
         int caret = Editors.CodeEditor.Document == shown.Text ? Editors.CodeEditor.Selections.Primary.Caret : shown.Selections.Primary.Caret;
         (string? scene, string node, string? why) = await GodotPlaceAtAsync(folder, shown, caret);
@@ -69,7 +69,7 @@ public partial class MainWindow
         }
         string name = Path.GetFileName(folder);
         string place = node == "." ? Path.GetFileName(scene) : $"{node} in {Path.GetFileName(scene)}";
-        if (session.GodotEditors.Editors.FirstOrDefault(e => e.Addon >= AddonActs) is { } editor)
+        if (session.GodotEditors.Editors.FirstOrDefault(e => PathNames.Same(e.Project, folder) && e.Addon >= AddonActs) is { } editor)
         {
             working.Say($"Asking Godot's editor to show {place}");
             editor.SelectionAsked = (scene, node);
@@ -84,7 +84,7 @@ public partial class MainWindow
             }
             return (true, $"Godot's editor on {name} shows {place}{(why is null ? string.Empty : $" ({why})")}");
         }
-        if (session.GodotEditors.Editors.FirstOrDefault() is { } older)
+        if (session.GodotEditors.Editors.FirstOrDefault(e => PathNames.Same(e.Project, folder)) is { } older)
         {
             return (false, $"Passenger's addon in {name} is version {older.Addon}, which opens no scene as asked: Install Passenger's Godot Addon… updates it, and Godot's editor takes it as it next opens the project");
         }
@@ -102,7 +102,7 @@ public partial class MainWindow
         bool addon = await BackgroundWork.Run(() => FileText.Load(Path.Combine(folder, GodotProject.FileName)) is { } text
             && GodotPlugins.Read(folder, GodotAddon.Enabled(text.Text)).Any(p => GodotAddon.Is(p) && p.Enabled));
         working.Say($"Starting Godot's editor on {Path.GetFileName(scene)}");
-        selectOnConnect = addon && node != "." ? (scene, node) : null;
+        selectOnConnect = addon && node != "." ? (folder, scene, node) : null;
         string kept = session.Configurations.Chosen?.Name ?? configuration.Name;
         session.Configurations.Select(configuration.Name);
         // Godot's command line opens a scene in its editor, which it names after --editor, and no node in it.
@@ -163,7 +163,7 @@ public partial class MainWindow
     /// <summary>An editor connected through the addon: the node a launch from here asked for selected there, once.</summary>
     private void SelectOnConnect(GodotEditorPeer editor)
     {
-        if (selectOnConnect is not (string scene, string node) || editor.Addon < AddonActs)
+        if (selectOnConnect is not (string folder, string scene, string node) || !PathNames.Same(editor.Project, folder) || editor.Addon < AddonActs)
         {
             return;
         }

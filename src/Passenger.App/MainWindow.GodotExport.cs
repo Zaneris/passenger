@@ -51,8 +51,8 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>The Godot project an agent's export is of: the folder's, as Publish finds it with nothing chosen.</summary>
-    internal string? GodotExportFolder() => GodotFolder();
+    /// <summary>The Godot project an agent's export is of: the one at hand, as Publish finds it with nothing chosen.</summary>
+    internal string? GodotExportFolder() => GodotAtHand();
 
     /// <summary>The Export dialog over a Godot project, a preset chosen (its first for none); Export runs the export it
     /// closes with.</summary>

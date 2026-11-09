@@ -23,7 +23,7 @@ public partial class MainWindow
     {
         actions!.Add(new IdeAction(AppActions.GodotScriptEditor, "Make Passenger Godot's Script Editor…", "Godot", _ => IdeErrors.Observe(MakeGodotScriptEditorAsync()))
         {
-            WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotFolder() is null ? Refusals.NoGodotProject : null,
+            WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotAtHand() is null ? Refusals.NoGodotProject : null,
             Menus = [new MenuPlace("Tools", 0, 6)],
             Words = ["Godot", "External Editor", "Exec Path"],
             Works = AppActions.GodotScriptEditor,
@@ -61,7 +61,7 @@ public partial class MainWindow
     private void OfferGodotEditor()
     {
         UiThread.Check();
-        if (!keepsWorkspace || godotEditorOffered || Folder is not { } folder || godotOfferLooked == folder || GodotFolder() is null)
+        if (!keepsWorkspace || godotEditorOffered || Folder is not { } folder || godotOfferLooked == folder || GodotAtHand() is null)
         {
             return;
         }
@@ -87,11 +87,26 @@ public partial class MainWindow
     /// <summary>The program Godot's editor is told to open its scripts in: this Passenger.</summary>
     private static string ScriptEditor => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
 
-    /// <summary>The open folder's Godot project: a project of it on Godot.NET.Sdk beside a project.godot, else the folder
-    /// itself holding one.</summary>
-    private string? GodotFolder() =>
-        Projects.Select(p => p.GodotFolder).OfType<string>().FirstOrDefault()
-        ?? (Folder is { } folder && File.Exists(Path.Combine(folder, GodotProject.FileName)) ? folder : null);
+    /// <summary>The open folder's Godot projects: those its projects build on Godot.NET.Sdk, those of GDScript alone, else the
+    /// folder itself holding a project.godot.</summary>
+    private IReadOnlyList<string> GodotProjectFolders()
+    {
+        List<string> found = [.. Projects.Select(p => p.GodotFolder).OfType<string>(), .. session.Workspace?.GodotGames ?? []];
+        if (found.Count == 0 && Folder is { } folder && File.Exists(Path.Combine(folder, GodotProject.FileName)))
+        {
+            found.Add(folder);
+        }
+        return [.. found.Distinct(PathNames.Comparer)];
+    }
+
+    /// <summary>The Godot project a file is of (<see cref="ProjectSession.GodotOf"/>), else the innermost of the folder's that
+    /// holds it, as one whose C# project is not yet evaluated, or lies outside it, does.</summary>
+    private string? GodotOfFile(string path) =>
+        session.GodotOf(path) ?? GodotProjectFolders().Where(g => PathNames.IsUnder(path, g)).MaxBy(g => g.Length);
+
+    /// <summary>The Godot project a window-wide Godot action acts on: the active file's, else the open folder's first.</summary>
+    private string? GodotAtHand() =>
+        Editors.Active?.Path is { } shown && GodotOfFile(shown) is { } game ? game : GodotProjectFolders().FirstOrDefault();
 
     /// <summary>Finds the Godot, reads its settings, asks, and writes Passenger's values; says what it came to.</summary>
     private async Task MakeGodotScriptEditorAsync()

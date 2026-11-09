@@ -37,8 +37,8 @@ internal sealed class GodotEditorLink : IAsyncDisposable
     private string reply = string.Empty;
     private Task? accepting;
 
-    /// <summary>The Godot project listened for, while it is; null before and after.</summary>
-    public string? Project { get; private set; }
+    /// <summary>The Godot projects listened for, while they are; none before and after.</summary>
+    public IReadOnlyList<string> Projects { get; private set; } = [];
 
     /// <summary>The file naming this listener in Passenger's state, while it listens.</summary>
     public string? Listing { get; private set; }
@@ -70,13 +70,13 @@ internal sealed class GodotEditorLink : IAsyncDisposable
     /// <summary>A told message's handler by its method.</summary>
     public void Hear(string method, Action<GodotEditorPeer, JsonElement> handler) => told[method] = handler;
 
-    /// <summary>Listens for the editors of a Godot project (its folder, and other spellings of it the addon may know it by),
-    /// listing the listener in Passenger's state; one listening for another project stops first. Off the window's thread
-    /// for the file.</summary>
-    public async Task ListenAsync(string project, IReadOnlyList<string> spellings)
+    /// <summary>Listens for the editors of the folder's Godot projects (their canonical folders, and other spellings of them the
+    /// addon may know them by), listing the listener in Passenger's state; one listening for other projects stops first. Off
+    /// the window's thread for the file.</summary>
+    public async Task ListenAsync(IReadOnlyList<string> projects, IReadOnlyList<string> spellings)
     {
         UiThread.Check();
-        if (Project is { } listened && PathNames.Same(listened, project) || ending.IsCancellationRequested)
+        if (projects.Count > 0 && Projects.SequenceEqual(projects, PathNames.Comparer) || ending.IsCancellationRequested)
         {
             return;
         }
@@ -87,11 +87,11 @@ internal sealed class GodotEditorLink : IAsyncDisposable
         TcpListener started = new(IPAddress.Loopback, 0);
         started.Start();
         listener = started;
-        Project = project;
+        Projects = projects;
         int port = ((IPEndPoint)started.LocalEndpoint).Port;
         string listing = Path.Combine(Listings, $"{Environment.ProcessId}-{Convert.ToHexString(RandomNumberGenerator.GetBytes(4))}.json");
         Listing = listing;
-        string text = GodotEditorWire.ListingText([project, .. spellings], port, token, reply, Environment.ProcessId);
+        string text = GodotEditorWire.ListingText([.. projects, .. spellings], port, token, reply, Environment.ProcessId);
         await BackgroundWork.Run(() =>
         {
             OwnFiles.Folder(Listings);
@@ -233,15 +233,16 @@ internal sealed class GodotEditorLink : IAsyncDisposable
         await peer.SendAsync(answer);
     }
 
-    /// <summary>The editor's hello: taken where it names this project, its process and versions kept.</summary>
+    /// <summary>The editor's hello: taken where it names one of these projects, its project, process and versions kept.</summary>
     private JsonObject Hello(GodotEditorPeer peer, JsonElement hello)
     {
         UiThread.Check();
         string? folder = JsonMembers.Text(hello, "folder");
-        if (Project is not { } project || folder is null || !PathNames.Same(PathNames.Canonical(folder), project))
+        if (folder is null || Projects.FirstOrDefault(p => PathNames.Same(PathNames.Canonical(folder), p)) is not { } project)
         {
-            throw new GodotEditorRefused($"this Passenger window is open on {(Project is null ? "no Godot project" : PathNames.Shown(Project, null))}");
+            throw new GodotEditorRefused($"this Passenger window is open on {(Projects.Count == 0 ? "no Godot project" : Plural.Listed([.. Projects.Select(p => PathNames.Shown(p, null))]))}");
         }
+        peer.Project = project;
         peer.Editor = JsonMembers.Number(hello, "editor") ?? 0;
         peer.Godot = JsonMembers.Text(hello, "godot");
         peer.Addon = JsonMembers.Number(hello, "addon") ?? 0;
@@ -259,7 +260,7 @@ internal sealed class GodotEditorLink : IAsyncDisposable
     {
         listener?.Stop();
         listener = null;
-        Project = null;
+        Projects = [];
         if (Listing is { } listing)
         {
             Listing = null;
@@ -310,6 +311,9 @@ internal sealed class GodotEditorPeer : IDisposable
         this.stream = stream;
     }
 
+    /// <summary>The folder of the Godot project it edits, as its hello named it, by which its res:// paths are read.</summary>
+    public string Project { get; set; } = string.Empty;
+
     /// <summary>The editor's process, which its games name as theirs.</summary>
     public int Editor { get; set; }
 
@@ -319,7 +323,7 @@ internal sealed class GodotEditorPeer : IDisposable
     /// <summary>The addon's version.</summary>
     public int Addon { get; set; }
 
-    /// <summary>Whether its hello named the window's project.</summary>
+    /// <summary>Whether its hello named one of the window's projects.</summary>
     public bool Welcomed { get; set; }
 
     /// <summary>The games its sessions play, relayed into the window by session id, on the window's thread.</summary>
