@@ -21,6 +21,20 @@ namespace Passenger.Tests;
 /// run; and a folder's tabs (whatever was open before it), layout, breakpoints and bookmarks come back with it.</summary>
 public sealed class StateTests : IDisposable
 {
+    [Fact]
+    public void The_databases_original_bottom_layout_moves_to_the_right_once()
+    {
+        JsonObject database = new() { ["anchor"] = nameof(ToolAnchor.BottomLeft), ["shown"] = true };
+        JsonObject layout = new() { ["windows"] = new JsonObject { [ToolWindowIds.Database] = database } };
+        DockLayout.Upgrades[1](layout);
+        Assert.Equal(nameof(ToolAnchor.RightBottom), database["anchor"]!.GetValue<string>());
+        Assert.True(database["shown"]!.GetValue<bool>());
+        database["anchor"] = nameof(ToolAnchor.LeftTop);
+        DockLayout.Upgrades[1](layout);
+        Assert.Equal(nameof(ToolAnchor.LeftTop), database["anchor"]!.GetValue<string>());
+        DockLayout.Upgrades[1](new JsonObject());
+    }
+
     private readonly string folder = TestFolders.Create("folder-");
     private readonly string settings = TestFolders.Create("settings-");
 

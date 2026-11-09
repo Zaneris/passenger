@@ -16,7 +16,17 @@ public sealed record DockLayout : IStateDocument<DockLayout>
     public double RightWidth { get; init; }
     public double BottomHeight { get; init; }
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DatabaseOnTheRight];
+
+    private static void DatabaseOnTheRight(JsonObject document)
+    {
+        if (document["windows"] is JsonObject windows && windows[ToolWindowIds.Database] is JsonObject database
+            && database["anchor"] is JsonValue anchor && anchor.TryGetValue(out string? placed)
+            && string.Equals(placed, nameof(ToolAnchor.BottomLeft), StringComparison.OrdinalIgnoreCase))
+        {
+            database["anchor"] = nameof(ToolAnchor.RightBottom);
+        }
+    }
 
     /// <summary>A window placed where this build has no place (a later build's) stays where it was added, one in a mode it
     /// does not have is docked, and a size or a window's bounds out of reach are the defaults'.</summary>

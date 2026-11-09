@@ -20,17 +20,26 @@ public partial class MainWindow
             }
             return await ChooseAsync(title, question, ["Run"], null) is not null;
         }, text => status.Text = text);
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Database, "Database", IconKeys.Database, () =>
+        Docking.ToolWindow shown = new(ToolWindowIds.Database, "Database", IconKeys.Database, () =>
         {
             DatabaseView view = databaseView = new DatabaseView(controller);
             view.ActionRequested += (_, action) => Request(action);
+            view.BindActions(actions!);
             ActionButtons.ShowMarked(view, actions!);
             return view;
-        }, Docking.ToolAnchor.BottomLeft)
+        }, Docking.ToolAnchor.RightBottom)
         {
             Action = AppActions.ShowDatabase,
             Menus = [new MenuPlace("Tools", 0, 6)],
-        });
+        };
+        Dock.Add(shown);
+        shown.PropertyChanged += (_, change) =>
+        {
+            if (change.PropertyName == nameof(Docking.ToolWindow.IsShown) && shown.IsShown)
+            {
+                UiThread.Post(DiscoverDatabasesIfShown);
+            }
+        };
         Closed += (_, _) => controller.Stop();
         Add(AppActions.DatabaseRefresh, "Refresh Database Connections", controller.RefreshAsync, () => Folder is null ? Refusals.NoFolder : null);
         Add(AppActions.DatabaseConnect, "Connect to Database", controller.ConnectAsync, () => controller.Source is null ? "Choose a database connection first" : null);
@@ -57,6 +66,28 @@ public partial class MainWindow
                 WhyNot = _ => controller.Busy ? "A database operation is under way" : why(),
                 Menus = [new MenuPlace("Tools/Database", 0, 0)],
             });
+        }
+    }
+
+    private void BindDatabase(ProjectSession next)
+    {
+        database?.Bind(next);
+        next.ProjectsEvaluated += (_, _) =>
+        {
+            if (session == next)
+            {
+                DiscoverDatabasesIfShown();
+            }
+        };
+        UiThread.Post(DiscoverDatabasesIfShown);
+    }
+
+    private void DiscoverDatabasesIfShown()
+    {
+        if (Folder is not null && database is { Busy: false, Connected: false } controller
+            && (!controller.Discovered || controller.Sources.Count == 0) && Dock.IsShown(ToolWindowIds.Database))
+        {
+            Request(AppActions.DatabaseRefresh);
         }
     }
 }
