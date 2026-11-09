@@ -2,6 +2,7 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input.Platform;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -152,6 +153,45 @@ public sealed class RetainedRowsTests
         large.Press("BACK_SPACE");
         See(seen, large, "Backspace at the start of line 116 at the file's end");
 
+        foreach (Seen one in seen)
+        {
+            AssertDrawnAsAfresh(one);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Rows_where_lines_were_pasted_and_worked_on_show_what_an_editor_opened_on_the_text_shows()
+    {
+        EditorRig rig = new(string.Join('\n', SmallFile));
+        int LineStart(int line) => rig.Document.Snapshot.GetLineStart(line);
+        List<Seen> seen = [];
+        rig.PlaceCaret(LineStart(1));
+        rig.Press("shift DOWN");
+        rig.Press("shift DOWN");
+        rig.Press("shift DOWN");
+        rig.Press("meta C");
+        rig.PlaceCaret(LineStart(7));
+        rig.Press("meta V");
+        See(seen, rig, "Lines 2 to 4 copied and pasted at line 8");
+        rig.PlaceCaret(LineStart(7) + 3);
+        rig.Type("x");
+        See(seen, rig, "A letter typed into the first pasted line");
+        rig.PlaceCaret(LineStart(9));
+        rig.Press("BACK_SPACE");
+        See(seen, rig, "Backspace at the start of the third pasted line");
+        rig.PlaceCaret(rig.Document.Snapshot.GetLine(7).End);
+        rig.Press("DELETE");
+        See(seen, rig, "Delete at the end of the first pasted line");
+        Ui.Await(rig.Window.Clipboard!.SetTextAsync("\tint a = 1;\r\n\tint b = 2;"), "two lines with Windows line breaks and tab indents on the clipboard");
+        rig.PlaceCaret(LineStart(1));
+        rig.Press("shift DOWN");
+        rig.Press("shift DOWN");
+        rig.Press("shift DOWN");
+        rig.Press("shift DOWN");
+        rig.Press("meta V");
+        See(seen, rig, "Two lines with Windows line breaks and tab indents pasted over lines 2 to 5");
+        rig.Press("meta Z");
+        See(seen, rig, "That paste undone");
         foreach (Seen one in seen)
         {
             AssertDrawnAsAfresh(one);
