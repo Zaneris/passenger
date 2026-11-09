@@ -73,7 +73,10 @@ public sealed class GodotGamesTests : IDisposable
             Evaluated = new Passenger.Host.EvaluatedProject
             {
                 Path = csharp,
-                Properties = new Dictionary<string, Passenger.Host.EvaluatedProperty> { [Passenger.Host.CarriedProperties.GodotProjectDir] = new("../game", true) },
+                Properties = new Dictionary<string, Passenger.Host.EvaluatedProperty>
+                {
+                    [Passenger.Host.CarriedProperties.GodotProjectDir] = new("../game", true), [Passenger.Host.CarriedProperties.UsingGodotNETSdk] = new("true", false),
+                },
             },
         };
 
@@ -87,10 +90,14 @@ public sealed class GodotGamesTests : IDisposable
 
     /// <summary>A project evaluated with these: GodotProjectDir as it stands after its body, the generators' folder as the
     /// SDK's props wrote it from what stood before the body, and where its build lands.</summary>
-    private ProjectModel Evaluated(string written, string? generators, string? target)
+    private ProjectModel Evaluated(string written, string? generators, string? target, bool godotSdk = true)
     {
         string csharp = Write("Game.csproj", "<Project />\n");
         Dictionary<string, Passenger.Host.EvaluatedProperty> properties = new() { [Passenger.Host.CarriedProperties.GodotProjectDir] = new(written, true) };
+        if (godotSdk)
+        {
+            properties[Passenger.Host.CarriedProperties.UsingGodotNETSdk] = new("true", false);
+        }
         if (generators is not null)
         {
             properties[Passenger.Host.CarriedProperties.GodotProjectDirBase64] = new(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(generators)), false);
@@ -154,5 +161,16 @@ public sealed class GodotGamesTests : IDisposable
     public void A_project_of_another_sdk_says_nothing_of_a_godot_folder()
     {
         Assert.Null(ProjectModel.Unevaluated(Write("App.csproj", "<Project />\n")).GodotLayoutProblem);
+    }
+
+    /// <summary>A Microsoft.NET.Sdk program naming a game's folder in GodotProjectDir and hosting the game itself
+    /// (#1414): Run runs it as any .NET program, never on Godot.</summary>
+    [Fact]
+    public void A_project_of_another_sdk_setting_godot_project_dir_builds_for_no_godot_folder()
+    {
+        Directory.CreateDirectory(Path.Combine(root, "game"));
+        ProjectModel host = Evaluated($"{root}/game/", null, null, godotSdk: false);
+
+        Assert.True(host is { GodotFolder: null, GodotLayoutProblem: null }, $"A .NET program hosting a game would run on Godot, as a Godot project in {host.GodotFolder}");
     }
 }

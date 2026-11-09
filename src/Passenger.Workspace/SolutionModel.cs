@@ -373,9 +373,10 @@ public sealed record ProjectModel(
     public bool IsAspireHost => Evaluated?.IsAspireHost == true;
 
     /// <summary>The folder of the Godot project Godot.NET.Sdk builds it for, where its project.godot is, as evaluated; null
-    /// for a project of any other SDK.</summary>
+    /// for a project of any other SDK, even one setting GodotProjectDir (a .NET program hosting the game).</summary>
     public string? GodotFolder => IsScriptGame ? Folder
-        : Property(CarriedProperties.GodotProjectDir) is { Length: > 0 } folder
+        : string.Equals(Property(CarriedProperties.UsingGodotNETSdk), "true", StringComparison.OrdinalIgnoreCase)
+            && Property(CarriedProperties.GodotProjectDir) is { Length: > 0 } folder
             ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(Folder, folder.Replace('\\', System.IO.Path.DirectorySeparatorChar))))
             : null;
 
