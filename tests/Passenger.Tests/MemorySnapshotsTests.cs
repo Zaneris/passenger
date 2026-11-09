@@ -649,7 +649,8 @@ public sealed class MemorySnapshotsTests : IDisposable
         (MemorySnapshot? heap, string? note) = Ui.Await(taking, "the memory snapshot of the program that ended in its collection", TimeSpan.FromMinutes(2));
         Assert.True(heap is not null, $"The snapshot failed as the program ended in its full collection, though its dump had been read: {note}");
         Assert.Equal(100, heap.Types.Single(t => t.Name == "Kept").Count);
-        Ui.PumpUntil(() => window.Profiling!.HasExited, "the program to end in the snapshot's collection");
+        // The window lets go of its profiled program once it ended.
+        Ui.PumpUntil(() => window.Profiling is not { HasExited: false }, "the program to end in the snapshot's collection");
         window.Close();
     }
 
