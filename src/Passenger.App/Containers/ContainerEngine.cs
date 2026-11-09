@@ -136,19 +136,27 @@ public sealed class ContainerEngine
         return folders.Select(folder => Path.Combine(folder, name)).FirstOrDefault(File.Exists);
     }
 
+    /// <summary>What every <c>docker</c> command Passenger starts is told, since what the CLI says the IDE reads: no colours,
+    /// nor a prompt to sign in, and no word from Podman's own docker, before each compose command, of the provider it runs.</summary>
+    public static readonly IReadOnlyDictionary<string, string> Variables = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["NO_COLOR"] = "1",
+        ["DOCKER_CLI_HINTS"] = "false",
+        ["COMPOSE_ANSI"] = "never",
+        ["COMPOSE_STATUS_STDOUT"] = "1",
+        ["PODMAN_COMPOSE_WARNING_LOGS"] = "false",
+    };
+
     /// <summary>A <c>docker</c> command to start (a stream into a console, a shell in the terminal), in a folder when one is
-    /// given; a <see cref="FileNotFoundException"/> with no CLI.</summary>
+    /// given, told <see cref="Variables"/>; a <see cref="FileNotFoundException"/> with no CLI.</summary>
     public ProcessStartInfo Command(IEnumerable<string> arguments, string? folder = null)
     {
         string cli = Cli ?? throw new FileNotFoundException(NoCliProblem);
         ProcessStartInfo start = ChildProcesses.Command(cli, arguments, folder);
-        // What the CLI says the IDE reads; no colours, nor a prompt to sign in.
-        start.Environment["NO_COLOR"] = "1";
-        start.Environment["DOCKER_CLI_HINTS"] = "false";
-        start.Environment["COMPOSE_ANSI"] = "never";
-        start.Environment["COMPOSE_STATUS_STDOUT"] = "1";
-        // Podman's own docker says before each compose command which provider it runs, into what the IDE reads.
-        start.Environment["PODMAN_COMPOSE_WARNING_LOGS"] = "false";
+        foreach ((string name, string value) in Variables)
+        {
+            start.Environment[name] = value;
+        }
         return start;
     }
 

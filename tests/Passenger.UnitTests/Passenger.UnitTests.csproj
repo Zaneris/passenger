@@ -42,6 +42,7 @@
     <Compile Include="../../src/Passenger.App/Containers/RegistryLogins.cs" Link="App/RegistryLogins.cs" />
     <Compile Include="../../src/Passenger.App/Containers/DockerfileImages.cs" Link="App/DockerfileImages.cs" />
     <Compile Include="../../src/Passenger.App/Containers/DockerfileStages.cs" Link="App/DockerfileStages.cs" />
+    <Compile Include="../../src/Passenger.App/Containers/ImageReference.cs" Link="App/ImageReference.cs" />
   </ItemGroup>
 
   <!-- The order a program's update handlers run in, compiled in since its project is a hook carried beside the app. -->

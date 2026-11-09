@@ -354,41 +354,14 @@ public static partial class ComposeDeclarations
         return null;
     }
 
-    /// <summary>An image's page on its registry: Docker Hub's for a name with no registry, else the registry's
-    /// own.</summary>
+    /// <summary>An image's page on its registry (<see cref="ImageReference.Page"/>).</summary>
     private static ComposeAnswer Image(string image)
     {
-        if (RegistryPage(image) is not { } page)
+        if (ImageReference.Parse(image).Page is not { } page)
         {
             return ComposeAnswer.None($"{image} names its registry through a variable, so it has no page to go to");
         }
         return new ComposeAnswer([], page, $"The image {image}");
-    }
-
-    public static Uri? RegistryPage(string image)
-    {
-        if (image.Contains('$', StringComparison.Ordinal) || image.Length == 0)
-        {
-            return null;
-        }
-        string name = image.Split('@')[0];
-        int slash = name.IndexOf('/', StringComparison.Ordinal);
-        string? registry = slash > 0 && (name[..slash].Contains('.') || name[..slash].Contains(':') || name[..slash] == "localhost") ? name[..slash] : null;
-        string path = registry is null ? name : name[(slash + 1)..];
-        int colon = path.LastIndexOf(':');
-        if (colon > path.LastIndexOf('/'))
-        {
-            path = path[..colon];
-        }
-        return registry switch
-        {
-            null or "docker.io" or "index.docker.io" or "registry-1.docker.io" => new Uri(path.StartsWith("library/", StringComparison.Ordinal)
-                ? $"https://hub.docker.com/_/{path["library/".Length..]}" : path.Contains('/') ? $"https://hub.docker.com/r/{path}" : $"https://hub.docker.com/_/{path}"),
-            "mcr.microsoft.com" => new Uri($"https://mcr.microsoft.com/artifact/mar/{path}"),
-            "ghcr.io" when path.Contains('/') => new Uri($"https://github.com/{path}/pkgs/container/{path[(path.LastIndexOf('/') + 1)..]}"),
-            "quay.io" => new Uri($"https://quay.io/repository/{path}"),
-            _ => Uri.TryCreate($"https://{registry}/", UriKind.Absolute, out Uri? host) ? host : null,
-        };
     }
 
     [GeneratedRegex(@"\$\{(?<braced>[A-Za-z_][A-Za-z0-9_]*)[^}]*\}|\$(?<bare>[A-Za-z_][A-Za-z0-9_]*)")]

@@ -15,12 +15,6 @@ public static class RegistryLogins
     /// <summary>Docker Hub's key in docker's configuration, which docker.io and its other names log in to.</summary>
     private const string DockerHub = "https://index.docker.io/v1/";
 
-    /// <summary>Docker Hub as <see cref="HostOf"/> gives it, whichever of its names was written.</summary>
-    private const string DockerHubName = "docker.io";
-
-    /// <summary>Where Docker Hub's API answers, under none of the names a person gives it.</summary>
-    private const string DockerHubApi = "registry-1.docker.io";
-
     /// <summary>Takes any certificate: it sends nothing secret, and the SDK judges a registry's certificate for itself.</summary>
     private static readonly HttpClient Asking = OutboundHttp.Client(TimeSpan.FromSeconds(10), most: 64 * 1024, anyCertificate: true);
 
@@ -41,7 +35,7 @@ public static class RegistryLogins
     public static async Task<bool> AsksForLoginAsync(string registry, HttpClient client, CancellationToken cancel)
     {
         string host = HostOf(registry);
-        string api = host == DockerHubName ? DockerHubApi : host;
+        string api = host == ImageReference.DockerHub ? ImageReference.DockerHubApi : host;
         if (!Uri.TryCreate($"https://{api}/v2/", UriKind.Absolute, out Uri? secure) || !Uri.TryCreate($"http://{api}/v2/", UriKind.Absolute, out Uri? plain))
         {
             return false;
@@ -141,15 +135,16 @@ public static class RegistryLogins
         }
     }
 
-    /// <summary>A registry's host as docker keys its logins: Docker Hub's names as one, a scheme and path left out.</summary>
+    /// <summary>A registry's host as docker keys its logins: Docker Hub's names as one (<see cref="ImageReference.DockerHub"/>),
+    /// a scheme and path left out.</summary>
     public static string HostOf(string registry)
     {
         string host = registry.Trim();
         int scheme = host.IndexOf("://", StringComparison.Ordinal);
         host = scheme >= 0 ? host[(scheme + 3)..] : host;
         host = host.Split('/')[0].ToLowerInvariant();
-        return host is DockerHubName or "index.docker.io" or DockerHubApi or "registry.hub.docker.com" ? DockerHubName : host;
+        return ImageReference.IsDockerHub(host) ? ImageReference.DockerHub : host;
     }
 
-    private static bool Same(string key, string host) => key == DockerHub ? host == DockerHubName : HostOf(key) == host;
+    private static bool Same(string key, string host) => key == DockerHub ? host == ImageReference.DockerHub : HostOf(key) == host;
 }

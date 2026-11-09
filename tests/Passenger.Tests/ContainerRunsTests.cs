@@ -551,15 +551,28 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
 
     /// <summary>A run's log that ends while its services run (Compose's <c>logs --follow</c> crashes on Podman's own docker as a
     /// service is made anew; here its process is killed) is followed again from its end: Stop stays, what the service says
-    /// next reaches the Run window, and Stop still takes it down.</summary>
+    /// next reaches the Run window, and Stop still takes it down. Each follow is told what every docker command is
+    /// (<see cref="ContainerEngine.Variables"/>), so Podman's own docker writes no word of its provider into the Run window.</summary>
     [AvaloniaFact]
-    public void A_runs_log_that_ends_while_its_services_run_is_followed_again_and_Stop_still_takes_them_down()
+    public void A_runs_log_that_ends_while_its_services_run_is_followed_again_quietly_and_Stop_still_takes_them_down()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = TestFolders.Create("ctr-relog-");
         string project = ProjectNamed("relog");
         TestFolders.Write(folder, "compose.yaml", $"name: {project}\nservices:\n  ticker:\n    image: {Docker.Image}\n    init: true\n"
             + "    command: [\"sh\", \"-c\", \"i=0; while true; do i=$$((i+1)); echo tick $$i; sleep 1; done\"]\n");
+        List<System.Diagnostics.ProcessStartInfo> follows = [];
+        EventHandler<ChildStart> heard = (_, start) =>
+        {
+            if (start.Start is { } info && info.ArgumentList.Contains("logs") && info.ArgumentList.Contains("--follow"))
+            {
+                lock (follows)
+                {
+                    follows.Add(info);
+                }
+            }
+        };
+        ChildProcesses.Started += heard;
         MainWindow window = Open(folder);
         Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
         try
@@ -578,9 +591,18 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Ui.WaitFor(() => Run(window)[followed..].Contains("tick ", StringComparison.Ordinal), "the ticker's next lines after the log was followed again",
                 TimeSpan.FromMinutes(1));
             Assert.Equal("running", States(project)["ticker"]);
+            string[] loud;
+            lock (follows)
+            {
+                Assert.True(follows.Count >= 2, $"The run's first follow and the one after its log ended were not both heard: {follows.Count}");
+                loud = [.. follows.Select(f => string.Join(", ", ContainerEngine.Variables.Where(v => !(f.Environment.TryGetValue(v.Key, out string? told) && told == v.Value)).Select(v => v.Key)))
+                    .Where(missing => missing.Length > 0)];
+            }
+            Assert.True(loud.Length == 0, $"A follow of the run's log was not told {string.Join("; ", loud)}, so Podman's own docker writes its provider's word into the Run window");
         }
         finally
         {
+            ChildProcesses.Started -= heard;
             Docker.Stopped(window, project, "Stop to take the ticker down");
             window.Close();
         }

@@ -41,9 +41,7 @@ internal static class DockerfileImages
                 continue;
             }
             int start = text.GetLine(line).Start + said.IndexOf(image, at, StringComparison.Ordinal);
-            string bare = image.Split('@')[0];
-            int colon = bare.LastIndexOf(':');
-            found.Add(new BaseImage(line, new TextRange(start, image.Length), image, colon > bare.LastIndexOf('/') ? bare[..colon] : bare));
+            found.Add(new BaseImage(line, new TextRange(start, image.Length), image, ImageReference.Parse(image).Repository));
         }
         return found;
     }

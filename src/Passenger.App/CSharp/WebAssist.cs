@@ -396,7 +396,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         int column = Math.Clamp(offset, 0, text.Length) - text.GetLineStart(line);
         return FromLine().Match(text.GetLineText(line)) is { Success: true } from
             && column >= from.Groups["image"].Index && column <= from.Groups["image"].Index + from.Groups["image"].Length
-            && ComposeDeclarations.RegistryPage(from.Groups["image"].Value) is { } page
+            && Containers.ImageReference.Parse(from.Groups["image"].Value).Page is { } page
             ? (from.Groups["image"].Value, page)
             : null;
     }

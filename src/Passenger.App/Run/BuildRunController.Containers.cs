@@ -373,7 +373,7 @@ public sealed partial class BuildRunController
             }
             return Said(failed);
         }
-        string? following = Started(await session.Runner.StartAsync(engine.Cli!, run.Logs, plan.Folder, Quiet));
+        string? following = Started(await session.Runner.StartAsync(engine.Cli!, run.Logs, plan.Folder, ContainerEngine.Variables));
         if (following is not null)
         {
             await session.StopContainersAsync(run);
@@ -446,15 +446,6 @@ public sealed partial class BuildRunController
         return replace ? null : $"{starting} was not run: {named} of {plan.ProjectName}, which Passenger did not make, were left as they are";
     }
 
-    /// <summary>What the CLI is told in the Run console: no colours, no hints.</summary>
-    private static readonly Dictionary<string, string> Quiet = new()
-    {
-        ["NO_COLOR"] = "1",
-        ["DOCKER_CLI_HINTS"] = "false",
-        ["COMPOSE_ANSI"] = "never",
-        ["COMPOSE_STATUS_STDOUT"] = "1",
-    };
-
     /// <summary>The container run whose log ended by itself while it is asked whether its containers still run, which keeps
     /// Stop meanwhile.</summary>
     private ContainerRun? followingAgain;
@@ -492,7 +483,7 @@ public sealed partial class BuildRunController
         }
         parts.Views.Run.Append($"{run.Plan.Name}'s services still run: following their log again\n");
         followedAgainAt = DateTime.UtcNow;
-        if (Started(session.Runner.Start(cli, run.LogsSince(since), run.Plan.Folder, Quiet)) is not null)
+        if (Started(session.Runner.Start(cli, run.LogsSince(since), run.Plan.Folder, ContainerEngine.Variables)) is not null)
         {
             RunLogEnded(code);
         }
