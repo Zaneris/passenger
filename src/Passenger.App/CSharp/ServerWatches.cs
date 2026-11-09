@@ -8,13 +8,13 @@ namespace Passenger.App.CSharp;
 
 /// <summary>The files a language server registered to hear of (<see cref="WatchedFiles"/>), watched for it: those of the
 /// open folder by the folder's own watcher (<see cref="Heard"/>), the rest by watchers of this one's own, each folder once:
-/// outside the folder, inside a folder the folder's watcher passes over, and the build output however deep under a folder
-/// registered with what is under it; with no folder watcher, every folder registered. Each is watched as the folder's
-/// watcher watches its folder (<see cref="WatchedTree"/>), recorded only as deep as the registrations over it reach and
-/// only the files they match, so what a burst lost is found. A watcher starts as its registration comes, and what was
-/// written in its folder since the server, or a design-time build it was given, may have read it is told then
-/// (<see cref="WatchedFiles.Since"/>). What changed reaches the server from the thread pool, one notification for each
-/// batch, in the order each watcher saw it. The folders watched, and any that cannot be, are said in the IDE's log.</summary>
+/// outside the folder, inside a folder the folder's watcher passes over, and the build output in a folder registered with
+/// what is under it; with no folder watcher, every folder registered. Each is watched as the folder's watcher watches its
+/// folder (<see cref="WatchedTree"/>), recorded only as deep as the registrations over it reach and only the files they
+/// match, so what a burst lost is found. A watcher starts as its registration comes, and what was written in its folder
+/// since the server, or a design-time build it was given, may have read it is told then (<see cref="WatchedFiles.Since"/>).
+/// What changed reaches the server from the thread pool, one notification for each batch, in the order each watcher saw
+/// it. The folders watched, and any that cannot be, are said in the IDE's log.</summary>
 public sealed class ServerWatches : IDisposable
 {
     /// <summary>How far a file system's clock may round a file's time down: one written as the server, or a build, began
@@ -32,13 +32,6 @@ public sealed class ServerWatches : IDisposable
     /// <summary>Passed-over folders come or gone since the last refresh, whose watchers are made anew: one deleted and made
     /// again in a moment is another folder to Linux's and Windows' watchers.</summary>
     private readonly HashSet<string> renewed = new(PathNames.Comparer);
-
-    /// <summary>The build output found under each folder registered with what is under it (<see cref="BuildOutput"/>), kept
-    /// until what the folder's watcher hears may have moved it (<see cref="Heard"/>).</summary>
-    private readonly Dictionary<string, IReadOnlyList<string>> outputs = new(PathNames.Comparer);
-
-    /// <summary>How many times <see cref="outputs"/> was let go of, so a walk that ran meanwhile is not kept.</summary>
-    private int outputsDropped;
 
     /// <summary>The folders a watcher could not be started for, said once each.</summary>
     private readonly HashSet<string> unwatchable = new(PathNames.Comparer);
@@ -105,14 +98,12 @@ public sealed class ServerWatches : IDisposable
         lock (gate)
         {
             this.folder = folder;
-            DropOutputs();
         }
         RefreshNow();
     }
 
     /// <summary>What the folder's watcher saw: each file told as made, changed or gone, every file of the folder too when
-    /// what changed was lost; and the build output looked for again where a project, a restore or a passed-over folder came,
-    /// went or changed, a passed-over folder come or gone watched anew or let go of.</summary>
+    /// what changed was lost; and a passed-over folder come or gone watched or let go of.</summary>
     public void Heard(FolderChanges changes)
     {
         string? open;
@@ -129,24 +120,15 @@ public sealed class ServerWatches : IDisposable
             watched.Hearing(changes.Paths);
             InTurn(() => Tell(changes, open, recursive: true, IgnoredFolders.Is), heard: true);
         }
-        List<string> passedOver = [.. changes.ComeOrGone.Where(IgnoredFolders.Is)];
-        // A project's folder moved in, out or within brings its project file; Godot.NET.Sdk's output comes with its first restore.
-        if (passedOver.Count > 0 || changes.Projects || changes.Restored.Count > 0 || changes.Lost)
+        List<string> outputs = [.. changes.ComeOrGone.Where(IgnoredFolders.Is)];
+        if (outputs.Count > 0)
         {
             lock (gate)
             {
-                renewed.UnionWith(passedOver);
-                DropOutputs();
+                renewed.UnionWith(outputs);
             }
             Refresh();
         }
-    }
-
-    /// <summary>Lets go of the build output found, to be looked for again; under the gate.</summary>
-    private void DropOutputs()
-    {
-        outputs.Clear();
-        outputsDropped++;
     }
 
     public void Dispose()
@@ -211,7 +193,6 @@ public sealed class ServerWatches : IDisposable
                 {
                     watches.going.Remove(folder);
                 }
-                watches.DropOutputs();
             }
             watches.Refresh();
         }
@@ -456,7 +437,7 @@ public sealed class ServerWatches : IDisposable
             }
             else if (watch.Recursive)
             {
-                wanted.AddRange(OutputUnder(at).Select(output => (output, true)));
+                wanted.AddRange(BuildOutput(at).Select(output => (output, true)));
             }
         }
         HashSet<(string Folder, bool Recursive)> needed = [];
@@ -479,66 +460,14 @@ public sealed class ServerWatches : IDisposable
         return needed;
     }
 
-    /// <summary>The build output under a folder (<see cref="BuildOutput"/>), as found before unless it may have moved since.</summary>
-    private IReadOnlyList<string> OutputUnder(string at)
-    {
-        int asOf;
-        lock (gate)
-        {
-            if (outputs.TryGetValue(at, out IReadOnlyList<string>? found))
-            {
-                return found;
-            }
-            asOf = outputsDropped;
-        }
-        IReadOnlyList<string> walked = BuildOutput(at);
-        lock (gate)
-        {
-            if (outputsDropped == asOf)
-            {
-                outputs[at] = walked;
-            }
-        }
-        return walked;
-    }
-
-    /// <summary>The passed-over folders a build writes in a folder the folder's watcher hears, and in each project's folder
-    /// it hears under it through no link, however deep: a project's obj, with the sources it generates, its bin, artifacts,
-    /// Godot.NET.Sdk's .godot/mono/temp. Neither version control's and other IDEs' (hidden) nor dependencies' (node_modules),
-    /// which hold no project's files and would take a watch for each of their many folders on Linux.</summary>
-    private static List<string> BuildOutput(string at) =>
-        [.. PathNames.FoldersUnder(at, sub => !IgnoredFolders.Is(sub) && (File.GetAttributes(sub) & FileAttributes.ReparsePoint) == 0)
-            .SelectMany(folder => BuildOutputIn(folder, registered: PathNames.Same(folder, at)))];
-
-    /// <summary>The build output in one folder the folder's watcher hears (<see cref="BuildOutput"/>): in the folder
-    /// <paramref name="registered"/>, else only if it holds a project, so no other program's bin under it is watched.</summary>
-    private static List<string> BuildOutputIn(string folder, bool registered)
+    /// <summary>The passed-over folders in a folder the folder's watcher hears that a build writes (a project's obj, with the
+    /// sources it generates, its bin, artifacts): neither version control's and other IDEs' (hidden) nor dependencies'
+    /// (node_modules), which hold no project's files and would take a watch for each of their many folders on Linux.</summary>
+    private static IEnumerable<string> BuildOutput(string at)
     {
         try
         {
-            List<string> passedOver = [.. Directory.EnumerateDirectories(folder).Where(IgnoredFolders.Is)];
-            if (passedOver.Count == 0 || !registered && !ProjectFolders.HoldsProject(folder))
-            {
-                return [];
-            }
-            List<string> found = [];
-            foreach (string sub in passedOver)
-            {
-                string name = Path.GetFileName(sub);
-                if (name == IgnoredFolders.GodotCache)
-                {
-                    string godot = Path.Join(sub, "mono", "temp");
-                    if (Directory.Exists(godot))
-                    {
-                        found.Add(godot);
-                    }
-                }
-                else if (name is not ['.', ..] and not "node_modules")
-                {
-                    found.Add(sub);
-                }
-            }
-            return found;
+            return [.. Directory.EnumerateDirectories(at).Where(sub => IgnoredFolders.Is(sub) && Path.GetFileName(sub) is not ['.', ..] and not "node_modules")];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
