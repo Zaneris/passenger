@@ -4,7 +4,7 @@ namespace Passenger.UnitTests.Core;
 
 /// <summary>A child's words as a person is told them: the first line that says anything, trimmed, whatever its lines end in;
 /// what a failed child said, its errors before its output, cut to its cap, and its exit code as <see cref="ExitCodes"/> says
-/// it where it said nothing, a crash's signal named.</summary>
+/// it where it said nothing, a crash's signal named; a child that gave no answer quoted by its first line.</summary>
 public class ChildResultTests
 {
     [Theory]
@@ -44,6 +44,17 @@ public class ChildResultTests
         Assert.Equal($"{ExitCodes.Said(134)}: handle_crash: Program crashed with signal 6",
             new ChildResult(134, "Godot Engine v4.5\n", "\nhandle_crash: Program crashed with signal 6\nDumping the backtrace\n").Ended);
         Assert.Equal($"{ExitCodes.Said(1)}: Godot Engine v4.5", new ChildResult(1, "Godot Engine v4.5\nmore\n", string.Empty).Ended);
+    }
+
+    [Fact]
+    public void A_child_that_gave_no_answer_is_quoted_by_its_exit_code_and_first_line_its_words_said_whole()
+    {
+        ChildAnswer unanswered = new(null, new ChildResult(1, string.Empty, "You must install .NET to run this application.\nApp: dotnet\nArchitecture: arm64\n"));
+        Assert.Equal($"{ExitCodes.Said(1)}: You must install .NET to run this application.", unanswered.Ended);
+        Assert.Equal("You must install .NET to run this application. App: dotnet Architecture: arm64", unanswered.Said);
+        ChildAnswer answered = new("10.0.100", null);
+        Assert.Equal(string.Empty, answered.Ended);
+        Assert.Equal(string.Empty, answered.Said);
     }
 
     [Fact]

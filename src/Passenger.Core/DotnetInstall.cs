@@ -193,6 +193,7 @@ public static class DotnetInstall
         long began = Stopwatch.GetTimestamp();
         string? answer = null;
         string said;
+        string why;
         try
         {
             string cli = Path.Combine(root, "sdk", sdk.Version, "dotnet.dll");
@@ -200,6 +201,7 @@ public static class DotnetInstall
                 line => string.Equals(line.Trim(), sdk.Version, StringComparison.OrdinalIgnoreCase), limit: FirstRunLimit, cancel: cancel).ConfigureAwait(false);
             answer = run.Answer?.Trim();
             said = run.Said;
+            why = run.Ended;
         }
         catch (TimeoutException slow)
         {
@@ -209,12 +211,13 @@ public static class DotnetInstall
         catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             said = error.Message;
+            why = ChildResult.FirstLineOf(error.Message);
         }
         PassengerLog.Write(string.Create(CultureInfo.InvariantCulture,
             $"Install .NET SDK {sdk.Version}: first run {Stopwatch.GetElapsedTime(began).TotalSeconds:0.0} s, answering {answer ?? said}"));
         if (answer is null)
         {
-            throw new DotnetInstallFailed($"The .NET SDK {sdk.Version} did not start, so it was not installed: {ChildResult.FirstLineOf(said)}");
+            throw new DotnetInstallFailed($"The .NET SDK {sdk.Version} did not start, so it was not installed: {why}");
         }
     }
 

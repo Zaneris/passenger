@@ -491,7 +491,7 @@ public static class ChildProcesses
             if (output.Answer.IsCompleted && await output.Answer is { } answer)
             {
                 UnawaitedWork.Observe(AnsweredAsync(process, exited, ends, read, ending, cancel));
-                return new ChildAnswer(answer, string.Empty);
+                return new ChildAnswer(answer, null);
             }
             await ends!;
         }
@@ -508,7 +508,7 @@ public static class ChildProcesses
         using (process)
         using (ending)
         {
-            return new ChildAnswer(null, new ChildResult(process.ExitCode, output.Text, errors.Text).Said);
+            return new ChildAnswer(null, new ChildResult(process.ExitCode, output.Text, errors.Text));
         }
     }
 
@@ -939,8 +939,16 @@ public sealed record ChildResult(int ExitCode, string Output, string Error)
 public sealed record ChildRead<T>(int ExitCode, T Output, string Error);
 
 /// <summary>What a child run for an answer gave (<see cref="ChildProcesses.AnswerAsync"/>): the line it answered with, else
-/// null and what it said instead, as <see cref="ChildResult.Said"/> says it.</summary>
-public sealed record ChildAnswer(string? Answer, string Said);
+/// null and how it went instead.</summary>
+public sealed record ChildAnswer(string? Answer, ChildResult? Unanswered)
+{
+    /// <summary>What it said in place of an answer, as <see cref="ChildResult.Said"/> says it; empty for an answer.</summary>
+    public string Said => Unanswered?.Said ?? string.Empty;
+
+    /// <summary>How it ended in place of an answer, for a sentence that names it, as <see cref="ChildResult.Ended"/> says it:
+    /// its exit code, then the first line it said; empty for an answer.</summary>
+    public string Ended => Unanswered?.Ended ?? string.Empty;
+}
 
 /// <summary>A child's start: its process, the command as it ran, and the folder it runs in (the IDE's own when empty); its
 /// line for the log says the command as <see cref="ChildProcesses.Shown"/> does, its secrets masked.</summary>
