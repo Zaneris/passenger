@@ -282,7 +282,7 @@ public partial class MainWindow
         Dictionary<string, string> open = Editors.Documents.Where(d => HttpFile.Is(d.Path) && PathNames.IsUnder(d.Path, folder))
             .ToDictionary(d => d.Path, d => d.Text.Snapshot.ToString(), PathNames.Comparer);
         IEnumerable<string> files = Projects.FirstOrDefault(p => PathNames.Same(p.Path, route.Project)) is { } project
-            ? FolderWalk.ProjectFiles(project, Projects).Where(HttpFile.Is)
+            ? FolderWalk.ProjectFiles(project).Where(HttpFile.Is)
             : HttpFilesUnder(folder);
         (EndpointRequest Request, HttpFile File)? found = await BackgroundWork.Run(() => CallerIn(files, open, route));
         if (session != current || current.IsEnded)

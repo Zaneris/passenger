@@ -907,6 +907,25 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A .proj is a project file as a .csproj is, so one another program changes, here one the solution's project
+    /// imports, has the solution read again and its project evaluated anew.</summary>
+    [AvaloniaFact]
+    public void A_proj_file_changed_elsewhere_has_the_solution_read_again()
+    {
+        Write("Shared.proj", Shared("one"));
+        Write("App/App.csproj", Project.With("  <Import Project=\"../Shared.proj\" />\n"));
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
+        MainWindow window = Open(languageServer: false);
+        Ui.WaitFor(() => Secrets(window) == "one", () => $"App's evaluation to read the UserSecretsId Shared.proj sets; it reads {Secrets(window) ?? "none"}");
+
+        Write("Shared.proj", Shared("two"));
+        Ui.WaitFor(() => Secrets(window) == "two", () => $"Shared.proj, changed on disk, to have App evaluated again; its UserSecretsId is still {Secrets(window) ?? "none"}");
+        window.Close();
+
+        static string Shared(string id) => $"<Project>\n  <PropertyGroup>\n    <UserSecretsId>{id}</UserSecretsId>\n  </PropertyGroup>\n</Project>\n";
+        static string? Secrets(MainWindow window) => window.Projects.FirstOrDefault()?.Property(Passenger.Host.CarriedProperties.UserSecretsId);
+    }
+
     /// <summary>A project and a program each written with its folder at once (as <c>dotnet new -o</c> and an agent write
     /// them) are the folder's, each with its run configuration, watched the system's way and as on Linux, each folder on
     /// its own, whose watch on a new folder begins only once the files are written in it.</summary>

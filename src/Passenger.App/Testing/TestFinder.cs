@@ -374,7 +374,6 @@ public sealed class TestFinder
         {
             mine[project.Path] = asked[project.Path] = ++asks;
         }
-        IReadOnlyList<ProjectModel> others = every;
         Dictionary<string, IReadOnlySet<string>> owns = projects.ToDictionary(p => p.Path, p => own.GetValueOrDefault(p.Path) ?? NoAttributes, StringComparer.Ordinal);
         TestsCache? kept = cache;
         bool whole = Projects.Where(p => !p.IsScriptGame).All(projects.Contains);
@@ -389,7 +388,7 @@ public sealed class TestFinder
             {
                 await (BeforeReading?.Invoke() ?? Task.CompletedTask);
                 (Dictionary<string, IReadOnlyList<string>> files, Dictionary<string, IReadOnlySet<string>> readWith) =
-                    await BackgroundWork.Run(() => List(projects, others, owns, kept, whole));
+                    await BackgroundWork.Run(() => List(projects, owns, kept, whole));
                 List<ProjectModel> latest = [.. projects.Where(p => asked.GetValueOrDefault(p.Path) == mine[p.Path] && Projects.Contains(p))];
                 foreach (ProjectModel project in latest)
                 {
@@ -423,7 +422,7 @@ public sealed class TestFinder
     /// loads the solution; the cache written after, a listing of <paramref name="whole"/> the test projects dropping what
     /// it no longer names. A worker's.</summary>
     private (Dictionary<string, IReadOnlyList<string>> Files, Dictionary<string, IReadOnlySet<string>> ReadWith) List(IReadOnlyList<ProjectModel> projects,
-        IReadOnlyList<ProjectModel> solution, IReadOnlyDictionary<string, IReadOnlySet<string>> owns, TestsCache? kept, bool whole)
+        IReadOnlyDictionary<string, IReadOnlySet<string>> owns, TestsCache? kept, bool whole)
     {
         Dictionary<string, IReadOnlyList<string>> found = new(StringComparer.Ordinal);
         Dictionary<string, IReadOnlySet<string>> readWith = new(StringComparer.Ordinal);
@@ -431,7 +430,7 @@ public sealed class TestFinder
         foreach (ProjectModel project in projects)
         {
             bool gut = project.IsScriptGame;
-            List<string> files = [.. gut ? GutScripts.Files(project.Folder) : FolderWalk.ProjectFiles(project, solution, ".cs")];
+            List<string> files = [.. gut ? GutScripts.Files(project.Folder) : FolderWalk.ProjectFiles(project, ".cs")];
             found[project.Path] = files;
             IReadOnlySet<string> attributes = ReferenceEquals(owns[project.Path], NoAttributes) && !gut ? kept?.AttributesOf(project.Path) ?? NoAttributes : owns[project.Path];
             readWith[project.Path] = attributes;

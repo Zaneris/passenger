@@ -145,11 +145,8 @@ public partial class MainWindow
     public OpenApiDocumentDialog? NamingDocument { get; private set; }
 
     /// <summary>The text of a project's C# files, read off the window's thread, for how its app describes itself.</summary>
-    private Task<IReadOnlyList<string>> CodeOfAsync(ProjectModel? model)
-    {
-        string[] code = model is null ? [] : [.. FolderWalk.ProjectFiles(model, Projects).Where(f => PathNames.HasExtension(f, [".cs"]))];
-        return BackgroundWork.Run(() => (IReadOnlyList<string>)[.. code.Select(ReadCode)]);
-    }
+    private static Task<IReadOnlyList<string>> CodeOfAsync(ProjectModel? model) => model is null ? Task.FromResult<IReadOnlyList<string>>([])
+        : BackgroundWork.Run(() => (IReadOnlyList<string>)[.. FolderWalk.ProjectFiles(model).Where(f => PathNames.HasExtension(f, [".cs"])).Select(ReadCode)]);
 
     /// <summary>A C# file's text for the paths its code gives MapOpenApi: none for one unread or too large to be a program's.</summary>
     private static string ReadCode(string path)

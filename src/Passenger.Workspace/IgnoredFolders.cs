@@ -4,10 +4,11 @@ using Passenger.Core;
 namespace Passenger.Workspace;
 
 /// <summary>The folders passed over wherever the open folder is walked (<see cref="FolderWalk"/>) or watched, and dimmed
-/// in the Explorer: version control's own stores, build output, dependencies and other IDEs' state. Go to File and Find in
-/// Files never search them, a folder with no solution never takes its projects from them, and the folder watcher never
-/// hears of them (on Linux never watches them) but for a restore's assets in obj, kept apart, so what the index lists is
-/// what the watcher keeps current.</summary>
+/// in the Explorer: version control's own stores, build output, dependencies and other IDEs' state, each name read as its
+/// folder reads names (<see cref="FolderNames"/>), as a project's own folders are. Go to File and Find in Files never search
+/// them, a folder with no solution never takes its projects from them, and the folder watcher never hears of them (on
+/// Linux never watches them) but for a restore's assets in obj, kept apart, so what the index lists is what the watcher
+/// keeps current.</summary>
 public static class IgnoredFolders
 {
     /// <summary>NuGet's restore folder for packages.config, and as often a JavaScript monorepo's source (packages/*/package.json),
@@ -32,9 +33,9 @@ public static class IgnoredFolders
 
     /// <summary>The names passed over wherever they are, whatever they hold: a project's build output and dependencies
     /// (<see cref="ProjectFolders.Passed"/>) among them.</summary>
-    public static IReadOnlySet<string> Names => Named;
+    public static IReadOnlySet<string> Names => Named.Names;
 
-    private static readonly HashSet<string> Named = [.. ProjectFolders.Passed, ".git", ".hg", ".svn", "artifacts", ".vs", ".idea", "TestResults", GodotCache, GdUnit4Runner];
+    private static readonly FolderNames Named = new([.. ProjectFolders.Passed.Names, ".git", ".hg", ".svn", "artifacts", ".vs", ".idea", "TestResults", GodotCache, GdUnit4Runner]);
 
     /// <summary>Whether a file lies in a folder a test framework writes into the person's project as its own output
     /// (<see cref="GdUnit4Runner"/>), which no one means to commit.</summary>
@@ -50,9 +51,6 @@ public static class IgnoredFolders
         return false;
     }
 
-    /// <summary><see cref="Names"/> asked of a name inside a path, which takes no string of it.</summary>
-    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> NamedIn = Named.GetAlternateLookup<ReadOnlySpan<char>>();
-
     /// <summary>What each packages folder was found to be, as of its last change: a check costs a look at its time, not a
     /// read, as each of the watcher's changes in a monorepo's packages is checked.</summary>
     private static readonly ConcurrentDictionary<string, (DateTime Written, bool Restored)> Found = new(PathNames.Comparer);
@@ -61,8 +59,10 @@ public static class IgnoredFolders
     /// restored into.</summary>
     public static bool Is(string folder)
     {
-        string name = Path.GetFileName(folder);
-        return Names.Contains(name) || name == Packages && IsRestoreFolder(folder);
+        string trimmed = Path.TrimEndingDirectorySeparator(folder);
+        string parent = Path.GetDirectoryName(trimmed) ?? trimmed;
+        ReadOnlySpan<char> name = Path.GetFileName(trimmed.AsSpan());
+        return Named.Holds(name, parent, []) || FolderNames.Same(name, Packages, parent, []) && IsRestoreFolder(trimmed);
     }
 
     /// <summary>Whether any of the names along a path from <paramref name="root"/> ("src/obj/Debug") is passed over, each
@@ -73,7 +73,8 @@ public static class IgnoredFolders
         {
             int end = relative[start..].IndexOfAny(PathNames.Separators) is >= 0 and int at ? start + at : relative.Length;
             ReadOnlySpan<char> name = relative[start..end];
-            if (NamedIn.Contains(name) || name.SequenceEqual(Packages) && IsRestoreFolder(Path.Join(root, relative[..end])))
+            ReadOnlySpan<char> above = start == 0 ? [] : relative[..(start - 1)];
+            if (Named.Holds(name, root, above) || FolderNames.Same(name, Packages, root, above) && IsRestoreFolder(Path.Join(root, relative[..end])))
             {
                 return true;
             }

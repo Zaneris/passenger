@@ -12,9 +12,6 @@ public static class MSBuildFiles
     /// <summary>Whether a path is an MSBuild file the code help reads: a project, or a .props or .targets.</summary>
     public static bool Is(string path) => Languages.Language.ForPath(path) == Languages.Language.MSBuild;
 
-    /// <summary>Whether a path is a project file, evaluated as itself.</summary>
-    public static bool IsProject(string path) => Path.GetExtension(path).ToLowerInvariant() is ".csproj" or ".fsproj" or ".vbproj" or ".proj";
-
     /// <summary>The folders an evaluation named as installed, each made canonical.</summary>
     public static void Learn(IEnumerable<string> folders)
     {

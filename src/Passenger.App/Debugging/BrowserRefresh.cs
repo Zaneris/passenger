@@ -304,15 +304,14 @@ public sealed class BrowserRefresh : IDisposable
         return PathNames.IsUnder(path, root) ? Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/') : null;
     }
 
-    /// <summary>The project a file is in, of the app's own and those it references, the innermost; none for a file of none,
-    /// or of a project's build output.</summary>
+    /// <summary>The project a file is one of its own of (<see cref="ProjectFolders.Holds"/>), of the app's own and those it
+    /// references, the innermost; none for a file of none, or of a project's build output.</summary>
     private (string Project, string? Framework)? ProjectOf(string path)
     {
         (string Project, string? Framework)? found = null;
         foreach ((string Project, string? Framework) each in (IEnumerable<(string, string?)>)[(project, null), .. build.Referenced])
         {
-            string folder = Path.GetDirectoryName(each.Project)!;
-            if (PathNames.IsUnder(path, folder) && !PathNames.IsUnder(path, Path.Combine(folder, "bin")) && !PathNames.IsUnder(path, Path.Combine(folder, "obj"))
+            if (ProjectFolders.Holds(Path.GetDirectoryName(each.Project)!, path)
                 && (found is not { } inner || each.Project.Length > inner.Project.Length))
             {
                 found = each;

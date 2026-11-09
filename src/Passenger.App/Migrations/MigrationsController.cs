@@ -211,8 +211,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// <summary>The project's contexts' declarations read off the UI thread, kept while it is still the one chosen.</summary>
     private async Task FindDeclaredAsync(ProjectModel project)
     {
-        IReadOnlyList<ProjectModel> all = bound?.Projects ?? [];
-        IReadOnlyList<EfPending> found = await BackgroundWork.Run(() => DeclaredIn(project, all));
+        IReadOnlyList<EfPending> found = await BackgroundWork.Run(() => DeclaredIn(project));
         if (Project == project)
         {
             Declared = found;
@@ -220,10 +219,10 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     }
 
     /// <summary>The classes a project's own C# files declare deriving from a DbContext, each at its name.</summary>
-    private static IReadOnlyList<EfPending> DeclaredIn(ProjectModel project, IReadOnlyList<ProjectModel> all)
+    private static IReadOnlyList<EfPending> DeclaredIn(ProjectModel project)
     {
         List<EfPending> found = [];
-        foreach (string file in FolderWalk.ProjectFiles(project, all, ".cs"))
+        foreach (string file in FolderWalk.ProjectFiles(project, ".cs"))
         {
             string[] lines;
             try
@@ -1190,10 +1189,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             return $"{Path.GetFileName(file)} is already there";
         }
-        IReadOnlyList<ProjectModel> projects = parts.Session().Projects;
         CSharpParseOptions options = CompilationSymbols.Of(project);
         (string Name, string Told)? told = await BackgroundWork.Run(() => EfConnections.NameOf(context.Name,
-            new[] { startup, project }.Distinct().SelectMany(p => FolderWalk.ProjectFiles(p, projects, ".cs")).Distinct(PathNames.Comparer).Select(f => (f, Code(f))),
+            new[] { startup, project }.Distinct().SelectMany(p => FolderWalk.ProjectFiles(p, ".cs")).Distinct(PathNames.Comparer).Select(f => (f, Code(f))),
             options, EfConnections.Configured(startup.Folder)));
         if (File.Exists(file))
         {
@@ -1448,8 +1446,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         List<EfPending> pending = [.. Pending.Where(p => p.Context != context)];
         if (changed)
         {
-            IReadOnlyList<ProjectModel> all = bound?.Projects ?? [];
-            (string? file, Passenger.Text.TextPosition at) = await BackgroundWork.Run(() => Declaration(setting.Project, all, context));
+            (string? file, Passenger.Text.TextPosition at) = await BackgroundWork.Run(() => Declaration(setting.Project, context));
             pending.Add(new EfPending(context, file, at));
         }
         Pending = pending;
@@ -1459,11 +1456,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
 
     /// <summary>Where a context's class is declared in its project, looked for in the project's own C# files; none when no
     /// file declares it.</summary>
-    private static (string? File, Passenger.Text.TextPosition At) Declaration(ProjectModel project, IReadOnlyList<ProjectModel> all, string context)
+    private static (string? File, Passenger.Text.TextPosition At) Declaration(ProjectModel project, string context)
     {
         string name = context.Split('.').Last();
         System.Text.RegularExpressions.Regex declared = new($@"\bclass\s+{System.Text.RegularExpressions.Regex.Escape(name)}\b");
-        foreach (string file in FolderWalk.ProjectFiles(project, all, ".cs"))
+        foreach (string file in FolderWalk.ProjectFiles(project, ".cs"))
         {
             string[] lines;
             try

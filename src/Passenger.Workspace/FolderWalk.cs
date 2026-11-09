@@ -17,10 +17,10 @@ public static class FolderWalk
         Folders(top, built, enters).SelectMany(f => f.Files);
 
     /// <summary>A project's own files (those of <paramref name="extension"/> when one is given, as ".cs"): under its folder,
-    /// passing over what a project builds or holds passes over, and a project nested in its folder, whose files are its
-    /// own; a file-based program's, its C# file and those its evaluation found it includes. Paths are canonical, as the
-    /// projects' are.</summary>
-    public static IEnumerable<string> ProjectFiles(ProjectModel project, IEnumerable<ProjectModel> projects, string? extension = null)
+    /// passing over what a project builds or holds passes over, and a folder holding a project of its own, loaded or not
+    /// (<see cref="ProjectFolders.HoldsProject"/>), whose files are that project's; a file-based program's, its C# file and
+    /// those its evaluation found it includes. Paths are canonical, as the projects' are.</summary>
+    public static IEnumerable<string> ProjectFiles(ProjectModel project, string? extension = null)
     {
         if (project.IsProgram)
         {
@@ -28,8 +28,7 @@ public static class FolderWalk
                 .Distinct(PathNames.Comparer)
                 .Where(file => (extension is null || file.EndsWith(extension, PathNames.Comparison)) && File.Exists(file));
         }
-        HashSet<string> nested = new(projects.Where(p => PathNames.IsUnder(p.Folder, project.Folder)).Select(p => p.Folder), PathNames.Comparer);
-        return Files(project.Folder, built: true, enters: folder => !nested.Contains(folder))
+        return Files(project.Folder, built: true, enters: folder => !ProjectFolders.HoldsProject(folder))
             .Where(file => extension is null || file.EndsWith(extension, PathNames.Comparison));
     }
 

@@ -10,6 +10,7 @@ using Avalonia.Threading;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Welcome;
 
@@ -323,11 +324,6 @@ public sealed class WelcomeView : UserControl
     }
 
     /// <summary>What a recent path opens as: a solution file, a solution filter, a project opened alone, or a folder.</summary>
-    private static string Kind(string path) => Path.GetExtension(path).ToLowerInvariant() switch
-    {
-        ".sln" or ".slnx" => "Solution",
-        ".slnf" => "Solution Filter",
-        ".csproj" => "Project",
-        _ => "Folder",
-    };
+    private static string Kind(string path) =>
+        SolutionFilter.Is(path) ? "Solution Filter" : WorkspaceModel.IsSolution(path) ? "Solution" : WorkspaceModel.IsProject(path) ? "Project" : "Folder";
 }

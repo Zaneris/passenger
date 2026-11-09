@@ -38,14 +38,26 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     public string Name => Filter is { } filter ? Path.GetFileNameWithoutExtension(filter.Path)
         : Solution?.Name ?? (ProjectFile is { } project ? Path.GetFileNameWithoutExtension(project) : Path.GetFileName(Folder));
 
+    /// <summary>A solution's extensions, and a solution filter's.</summary>
+    private static readonly string[] SolutionExtensions = [".sln", ".slnx", SolutionFilter.Extension];
+
+    /// <summary>The extensions of a project file MSBuild evaluates as itself: a C#, F# or Visual Basic project's, and one of
+    /// MSBuild's alone (.proj).</summary>
+    private static readonly string[] ProjectExtensions = [".csproj", ".fsproj", ".vbproj", ".proj"];
+
     /// <summary>Whether a file opens as the workspace rather than in an editor: a solution (.sln, .slnx), a solution
     /// filter (.slnf) or a C# project (.csproj).</summary>
     public static bool Opens(string path) => IsSolution(path) || IsProject(path);
 
     /// <summary>Whether a file is a solution or a solution filter, either of which opens a solution.</summary>
-    public static bool IsSolution(string path) => Path.GetExtension(path).ToLowerInvariant() is ".sln" or ".slnx" or ".slnf";
+    public static bool IsSolution(string path) => PathNames.HasExtension(path, SolutionExtensions);
 
+    /// <summary>Whether a file is a C# project, the one kind of project that opens as the workspace.</summary>
     public static bool IsProject(string path) => Path.GetExtension(path).Equals(".csproj", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether a file is a project file of any kind MSBuild evaluates as itself (<see cref="ProjectExtensions"/>),
+    /// a C# project's among them.</summary>
+    public static bool IsProjectFile(string path) => PathNames.HasExtension(path, ProjectExtensions);
 
     /// <summary>Whether a solution's project is a Docker Compose project (.dcproj).</summary>
     public static bool IsComposeProject(string path) => Path.GetExtension(path).Equals(".dcproj", StringComparison.OrdinalIgnoreCase);

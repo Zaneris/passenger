@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Templates;
 
@@ -20,17 +21,13 @@ public static partial class DeveloperTools
     [GeneratedRegex(@"^[ \t]*(?:\.WithDeveloperTools\(\)|this\.AttachDeveloperTools\(\)(?:[ \t]*\|>[ \t]*ignore)?;?)[ \t]*(?:\r?\n)?", RegexOptions.Multiline)]
     private static partial Regex Call();
 
-    /// <summary>Takes them out of the projects, package versions and code under a folder (build output aside); the files
-    /// it changed.</summary>
+    /// <summary>Takes them out of the projects, package versions and code under a folder, walked as the open folder is
+    /// (<see cref="FolderWalk"/>, build output aside); the files it changed.</summary>
     public static IReadOnlyList<string> TakeOut(string folder)
     {
         List<string> changed = [];
-        foreach (string file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+        foreach (string file in FolderWalk.Files(folder))
         {
-            if (Path.GetRelativePath(folder, file).Split(Path.DirectorySeparatorChar).Any(part => part is "bin" or "obj"))
-            {
-                continue;
-            }
             Regex[]? edits = Path.GetExtension(file).ToLowerInvariant() switch
             {
                 ".csproj" or ".fsproj" or ".vbproj" or ".props" or ".targets" => [Package()],

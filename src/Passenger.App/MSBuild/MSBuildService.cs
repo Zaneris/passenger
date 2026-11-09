@@ -104,7 +104,7 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
     /// to Declaration came from into it; null for none.</summary>
     public string? ProjectFor(string path)
     {
-        if (MSBuildFiles.IsProject(path))
+        if (WorkspaceModel.IsProjectFile(path))
         {
             return path;
         }

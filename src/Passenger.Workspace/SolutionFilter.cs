@@ -11,8 +11,11 @@ public sealed record SolutionFilter(string Path, string Solution, IReadOnlySet<s
     /// solution, which is none of the solution's projects.</summary>
     public bool LeavesOut(ProjectModel project) => !project.IsProgram && !Projects.Contains(project.Path);
 
+    /// <summary>A solution filter's extension.</summary>
+    public const string Extension = ".slnf";
+
     /// <summary>Whether a file is a solution filter.</summary>
-    public static bool Is(string path) => System.IO.Path.GetExtension(path).Equals(".slnf", StringComparison.OrdinalIgnoreCase);
+    public static bool Is(string path) => System.IO.Path.GetExtension(path).Equals(Extension, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The filter a file holds; null for one that does not read or names no solution.</summary>
     public static SolutionFilter? Read(string path)

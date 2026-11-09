@@ -42,8 +42,6 @@ public sealed class FolderWatcher : WatchedTree
     /// <summary>How long after a save its file's events are taken for the save's own.</summary>
     private static readonly TimeSpan OwnWriteHeard = TimeSpan.FromSeconds(5);
 
-    private static readonly string[] ProjectExtensions = [".sln", ".slnx", ".slnf", ".csproj", ".fsproj", ".vbproj", ".props", ".targets"];
-
     /// <summary>The file a restore writes in a project's obj (or, with UseArtifactsOutput, in artifacts/obj/Project).</summary>
     private const string Assets = "project.assets.json";
 
@@ -133,9 +131,9 @@ public sealed class FolderWatcher : WatchedTree
         bool two = Last(parts, out ReadOnlySpan<char> above, out ReadOnlySpan<char> last);
         bool three = Last(above, out ReadOnlySpan<char> aboveSecond, out ReadOnlySpan<char> second);
         Last(aboveSecond, out ReadOnlySpan<char> aboveThird, out ReadOnlySpan<char> third);
-        int output = three && second.SequenceEqual("obj") && third.SequenceEqual("artifacts") ? 3
-            : two && last.SequenceEqual("obj") && second.SequenceEqual("artifacts") ? 2
-            : last.SequenceEqual("artifacts") || last.SequenceEqual("obj") ? 1
+        int output = three && Is(second, "obj", aboveSecond) && Is(third, "artifacts", aboveThird) ? 3
+            : two && Is(last, "obj", above) && Is(second, "artifacts", aboveSecond) ? 2
+            : Is(last, "artifacts", above) || Is(last, "obj", above) ? 1
             : 0;
         return output > 0 && !IgnoredFolders.AnyIn(folder, output switch { 3 => aboveThird, 2 => aboveSecond, _ => above });
     }
@@ -149,7 +147,7 @@ public sealed class FolderWatcher : WatchedTree
         while (true)
         {
             ReadOnlySpan<char> name = First(below, out ReadOnlySpan<char> rest);
-            if (name.SequenceEqual(IgnoredFolders.GodotCache))
+            if (Is(name, IgnoredFolders.GodotCache, before))
             {
                 break;
             }
@@ -160,10 +158,11 @@ public sealed class FolderWatcher : WatchedTree
             before = parts[..(parts.Length - rest.Length - 1)];
             below = rest;
         }
+        ReadOnlySpan<char> above = before;
         foreach (string expected in (string[])[IgnoredFolders.GodotCache, "mono", "temp", "obj"])
         {
             ReadOnlySpan<char> name = First(below, out ReadOnlySpan<char> rest);
-            if (!name.SequenceEqual(expected))
+            if (!Is(name, expected, above))
             {
                 return false;
             }
@@ -171,6 +170,7 @@ public sealed class FolderWatcher : WatchedTree
             {
                 return before.IsEmpty || !IgnoredFolders.AnyIn(folder, before);
             }
+            above = parts[..(parts.Length - rest.Length - 1)];
             below = rest;
         }
         return false;
@@ -178,16 +178,20 @@ public sealed class FolderWatcher : WatchedTree
 
     /// <summary>Whether a path, by its names from the open folder, is a restore's assets, which the rest of build output's
     /// files are not.</summary>
-    private static bool IsRestore(ReadOnlySpan<char> parts)
+    private bool IsRestore(ReadOnlySpan<char> parts)
     {
         if (!Last(parts, out ReadOnlySpan<char> above, out ReadOnlySpan<char> last) || !last.SequenceEqual(Assets))
         {
             return false;
         }
         bool three = Last(above, out ReadOnlySpan<char> aboveSecond, out ReadOnlySpan<char> second);
-        Last(aboveSecond, out _, out ReadOnlySpan<char> third);
-        return second.SequenceEqual("obj") || three && third.SequenceEqual("obj");
+        Last(aboveSecond, out ReadOnlySpan<char> aboveThird, out ReadOnlySpan<char> third);
+        return Is(second, "obj", aboveSecond) || three && Is(third, "obj", aboveThird);
     }
+
+    /// <summary>Whether a name below the names <paramref name="above"/> from the open folder is <paramref name="named"/>,
+    /// read as <see cref="IgnoredFolders"/> reads the folders it passes over.</summary>
+    private bool Is(ReadOnlySpan<char> name, string named, ReadOnlySpan<char> above) => FolderNames.Same(name, named, folder, above);
 
     /// <summary>A path's first name and the names after it.</summary>
     private static ReadOnlySpan<char> First(ReadOnlySpan<char> parts, out ReadOnlySpan<char> rest)
@@ -276,18 +280,8 @@ public sealed class FolderWatcher : WatchedTree
     }
 
     /// <summary>Whether a file is a solution, project, props or targets file, which the solution is read again for.</summary>
-    private static bool IsProjectFile(string path)
-    {
-        ReadOnlySpan<char> extension = Path.GetExtension(path.AsSpan());
-        foreach (string project in ProjectExtensions)
-        {
-            if (extension.Equals(project, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
+    private static bool IsProjectFile(string path) =>
+        WorkspaceModel.IsSolution(path) || WorkspaceModel.IsProjectFile(path) || PathNames.HasExtension(path, [".props", ".targets"]);
 
     protected override FolderChanges? Gathered(bool lost, bool overflowed)
     {

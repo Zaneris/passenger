@@ -2,6 +2,7 @@ using Passenger.Host;
 using Passenger.Text;
 using Passenger.Xaml.Syntax;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.MSBuild;
 
@@ -337,7 +338,7 @@ public static class MSBuildCompletion
         }
         if (role == MSBuildRole.Item && name is "Include" or "Exclude" or "Remove" or "Update")
         {
-            return Paths(context, attribute.ValueStart, offset, element.LocalName == "ProjectReference" ? MSBuildFiles.IsProject : _ => true);
+            return Paths(context, attribute.ValueStart, offset, element.LocalName == "ProjectReference" ? WorkspaceModel.IsProjectFile : _ => true);
         }
         if (MSBuildSyntax.NamesTargets(element, attribute) && name != "Name")
         {

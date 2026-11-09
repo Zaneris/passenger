@@ -2,35 +2,17 @@ namespace Passenger.Core;
 
 /// <summary>Which folders under a project's are its own: those its SDK's wildcards enter, passing over its build output
 /// (bin, obj), its dependencies (node_modules) and hidden folders, and of those, for what the project itself holds, none
-/// holding a project of its own. A name differing from bin, obj or node_modules only in letter case is one of them where
-/// its folder ignores case, as the build then writes into it. Framework-free, since the project host compiles it in.</summary>
+/// holding a project of its own, loaded or not. Each name is read as its folder reads names (<see cref="FolderNames"/>), as
+/// the build writes into an Obj where case is ignored. Framework-free, since the project host compiles it in.</summary>
 public static class ProjectFolders
 {
     /// <summary>The names of a project's build output and dependencies, passed over wherever they are under it.</summary>
-    public static IReadOnlyList<string> Passed { get; } = ["bin", "obj", "node_modules"];
+    public static FolderNames Passed { get; } = new(["bin", "obj", "node_modules"]);
 
     /// <summary>Whether a project's wildcards enter a folder under its own: not its build output, its dependencies or a
     /// hidden folder.</summary>
-    public static bool Enters(string folder)
-    {
-        string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(folder));
-        if (name.StartsWith('.'))
-        {
-            return false;
-        }
-        foreach (string passed in Passed)
-        {
-            if (name == passed)
-            {
-                return false;
-            }
-            if (name.Equals(passed, StringComparison.OrdinalIgnoreCase))
-            {
-                return !PathNames.CaseIgnoredIn(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(folder)) ?? folder);
-            }
-        }
-        return true;
-    }
+    public static bool Enters(string folder) =>
+        Path.GetFileName(Path.TrimEndingDirectorySeparator(folder.AsSpan())) is not ['.', ..] && !Passed.Is(folder);
 
     /// <summary>Whether a folder under a project's is the project's own: one its wildcards enter (<see cref="Enters"/>)
     /// that holds no project of its own.</summary>
@@ -59,8 +41,9 @@ public static class ProjectFolders
         return true;
     }
 
-    /// <summary>Whether a folder holds a project file (<c>*.csproj</c>, <c>*.fsproj</c> and every other <c>*.*proj</c>);
-    /// false for one not there or that cannot be read.</summary>
+    /// <summary>Whether a folder holds a project file (<c>*.csproj</c>, <c>*.fsproj</c> and every other <c>*.*proj</c>),
+    /// which makes it and the folders under it that project's own, whether a solution names it or not; false for one not
+    /// there or that cannot be read.</summary>
     public static bool HoldsProject(string folder)
     {
         try

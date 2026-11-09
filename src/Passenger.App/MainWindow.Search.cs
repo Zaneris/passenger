@@ -158,8 +158,7 @@ public partial class MainWindow
                 {
                     return Named([]);
                 }
-                IReadOnlyList<ProjectModel> projects = Projects;
-                return new SearchPlace(false, [], true, [], FolderWalk.ProjectFiles(project, projects), mask);
+                return new SearchPlace(false, [], true, [], FolderWalk.ProjectFiles(project), mask);
             case SearchScopeKind.Directory when !string.IsNullOrWhiteSpace(scope.Directory):
                 string directory = PathNames.Canonical(Path.IsPathRooted(scope.Directory) ? scope.Directory : Path.Combine(Folder!, scope.Directory));
                 return new SearchPlace(false, [directory], scope.Recursive, [], [], mask);

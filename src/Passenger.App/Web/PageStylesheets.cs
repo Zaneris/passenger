@@ -411,8 +411,7 @@ public sealed class PageStylesheets
         foreach (string relative in files)
         {
             string file = Path.Combine(root, relative);
-            if (PathNames.IsUnder(file, folder) && !Path.GetRelativePath(folder, file).Split(Path.DirectorySeparatorChar)
-                    .Any(n => n.Equals("bin", StringComparison.OrdinalIgnoreCase) || n.Equals("obj", StringComparison.OrdinalIgnoreCase) || n == "node_modules"))
+            if (PathNames.IsUnder(file, folder) && !IgnoredFolders.AnyIn(folder, PathNames.Below(file, folder)))
             {
                 own.Add(file);
             }

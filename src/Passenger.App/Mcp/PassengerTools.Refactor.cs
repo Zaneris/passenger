@@ -580,7 +580,7 @@ public sealed partial class PassengerTools
             foreach (ProjectModel project in wanted)
             {
                 cancel.ThrowIfCancellationRequested();
-                files.UnionWith(FolderWalk.ProjectFiles(project, projects, ".cs"));
+                files.UnionWith(FolderWalk.ProjectFiles(project, ".cs"));
             }
             return (IReadOnlyList<string>)[.. files];
         }, cancel);

@@ -942,14 +942,12 @@ public sealed class NewProjectDialog : IdeWindow
         return run;
     }
 
-    /// <summary>The project files a template made, the one of its name first, outside build output.</summary>
+    /// <summary>The project files a template made, the one of its name first, outside build output (<see cref="FolderWalk"/>).</summary>
     private List<string> ProjectsIn(string folder) =>
-        [.. Directory.EnumerateFiles(folder, "*.*proj", SearchOption.AllDirectories)
+        [.. FolderWalk.Files(folder)
             .Where(p => Path.GetExtension(p).ToLowerInvariant() is ".csproj" or ".fsproj" or ".vbproj")
-            .Where(p => !Path.GetRelativePath(folder, p).Split(Path.DirectorySeparatorChar).Any(part => part is "bin" or "obj"))
             .OrderBy(p => Path.GetFileNameWithoutExtension(p).Equals(NameGiven, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-            .ThenBy(p => p, StringComparer.Ordinal)
-            .Select(PathNames.Canonical)];
+            .ThenBy(p => p, StringComparer.Ordinal)];
 
     private async Task FailedAsync(string why, Writes writes)
     {

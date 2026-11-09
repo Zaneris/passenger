@@ -1251,6 +1251,43 @@ public sealed class FindInFilesTests : IDisposable
         }
     }
 
+    /// <summary>A build folder in another letter case (Bin, Obj, Node_Modules) is the build's own where its folder ignores
+    /// case, as on macOS and Windows, so Find in Files and Go to File pass over its files as they do bin's and obj's; where
+    /// case is told apart it is a folder of the person's, searched and offered.</summary>
+    [AvaloniaFact]
+    public void Find_in_files_and_go_to_file_pass_over_a_build_folder_in_another_letter_case_where_case_is_ignored()
+    {
+        string root = PathNames.Canonical(folder);
+        string[] output = [Path.Combine("Bin", "Debug", "needle.cs"), Path.Combine("Obj", "needle.cs"), Path.Combine("Node_Modules", "pad", "needle.js")];
+        foreach (string file in output)
+        {
+            TestFolders.Write(folder, file.Replace(Path.DirectorySeparatorChar, '/'), "// needle\n");
+        }
+        TestFolders.Write(folder, "src/needle.cs", "// needle\n");
+        bool caseIgnored = PathNames.CaseIgnoredIn(root);
+        string[] expected = [.. (caseIgnored ? [] : output).Append(Path.Combine("src", "needle.cs")).Order(StringComparer.Ordinal)];
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
+            Search(popup, "needle");
+            string[] found = Found(popup, root);
+            Assert.True(found.SequenceEqual(expected), $"Find in Files found needle in [{string.Join(", ", found)}], where {(caseIgnored ? "Bin, Obj and Node_Modules are the build's own" : "Bin, Obj and Node_Modules are the person's folders")}");
+            Ui.Press(window, "ESCAPE");
+
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToFile));
+            window.KeyTextInput("needle");
+            Ui.Settle();
+            string[] offered = [.. Assert.IsType<GoToFilePopup>(window.Popup).Rows.Select(hit => hit.RelativePath).Order(StringComparer.Ordinal)];
+            Assert.True(offered.SequenceEqual(expected), $"Go to File offers [{string.Join(", ", offered)}] for needle, where {(caseIgnored ? "Bin, Obj and Node_Modules are the build's own" : "Bin, Obj and Node_Modules are the person's folders")}");
+            Ui.Press(window, "ESCAPE");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A directory chosen inside a folder the folder's search passes over (node_modules, bin) is searched all the
     /// same, from the Explorer's menu on its dimmed row or named in the popup, and Replace in Files changes its files
     /// alone.</summary>
