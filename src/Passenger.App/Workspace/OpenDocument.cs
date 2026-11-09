@@ -125,7 +125,7 @@ public sealed class OpenDocument : Observable
         long length = stamp.Length;
         if (length > LargestText)
         {
-            throw new IOException($"{name} is {length / (1024.0 * 1024):0.#} MB: the editor opens a file of up to {LargestText / (1024 * 1024)} MB as text");
+            throw new IOException($"{name} is {Sizes.Said(length)}: the editor opens a file of up to {Sizes.Said(LargestText)} as text");
         }
         FileText file = FileText.Load(path) ?? (asBytes ? FileText.Bytes(path) : throw new IOException($"{name} looks like a binary file."));
         OpenDocument document = new(path, file, options);

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 
 namespace Passenger.App;
 
@@ -42,6 +43,31 @@ public static class ListKeys
 
         static int? Chosen(ListBox list, int? index) => index is int at && at >= 0 && at < list.ItemCount && list.Selection.IsSelected(at) ? at : null;
     }
+
+    /// <summary>Gives a search field the keys of the list under it, ahead of the field's own: Up, Down, Page Up and Page Down
+    /// move the list's choice (<see cref="Move"/>), Escape clears a search before it cancels, and Enter runs
+    /// <paramref name="enter"/> where one is given.</summary>
+    public static void Search(TextBox search, ListBox list, Action? enter = null) => search.AddHandler(InputElement.KeyDownEvent, (_, e) =>
+    {
+        if (e.KeyModifiers != KeyModifiers.None)
+        {
+            return;
+        }
+        switch (e.Key)
+        {
+            case Key.Up or Key.Down or Key.PageUp or Key.PageDown when Move(list, e):
+                e.Handled = true;
+                break;
+            case Key.Enter when enter is not null:
+                enter();
+                e.Handled = true;
+                break;
+            case Key.Escape when search.Text is { Length: > 0 }:
+                search.Text = string.Empty;
+                e.Handled = true;
+                break;
+        }
+    }, RoutingStrategies.Tunnel);
 
     /// <summary>Moves the list's choice for a key pressed in its field, with no modifier held; true when the key was the
     /// list's, which the caller marks handled.</summary>

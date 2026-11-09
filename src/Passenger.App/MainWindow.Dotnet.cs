@@ -251,7 +251,7 @@ public partial class MainWindow
             CheckBox? addToPath = onPath is null ? null : new CheckBox { Name = "AddDotnetToPath", IsChecked = true, Content = $"Also add it to your shell's PATH: Passenger {onPath.Shown}" };
             installing.Say($"Asking to install the .NET SDK {sdk.Version}");
             string runtime = sdk.Runtime.Length > 0 ? $" (with the .NET runtime {sdk.Runtime})" : string.Empty;
-            string sized = size is > 0 ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $", {Math.Max(1, size.Value / (1024 * 1024))} MB,") : string.Empty;
+            string sized = size is > 0 ? $", {Sizes.Said(size.Value)}," : string.Empty;
             string replacing = machine?.Found is { } found && !PathNames.Same(found.Root, into) ? $" in place of the one in {PathNames.Shown(found.Root, null)}" : string.Empty;
             string title = $"Install the .NET SDK {sdk.Version}?";
             string text = $"Passenger downloads the .NET SDK {sdk.Version}{runtime}{sized} from Microsoft ({sdk.Url.Host}), checks it against the SHA-512 Microsoft publishes, "

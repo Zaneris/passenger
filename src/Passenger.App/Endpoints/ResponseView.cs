@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Endpoints;
@@ -99,7 +100,7 @@ public sealed class ResponseView : DockPanel
         bool passed = Passed;
         summary.Text = response.Error is { } error
             ? $"Failed: {error} ({Milliseconds(response.Elapsed)})"
-            : $"{response.Status} {response.Reason}   {Milliseconds(response.Elapsed)}   {Size(response.Size)}{(response.Cut ? ", the rest unread" : string.Empty)}";
+            : $"{response.Status} {response.Reason}   {Milliseconds(response.Elapsed)}   {Sizes.Said(response.Size)}{(response.Cut ? ", the rest unread" : string.Empty)}";
         Paint(summary, passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed);
         criteria.Children.Clear();
         foreach (string note in response.Notes)
@@ -174,6 +175,4 @@ public sealed class ResponseView : DockPanel
     }
 
     private static string Milliseconds(TimeSpan elapsed) => $"{elapsed.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)} ms";
-
-    private static string Size(long bytes) => bytes < 1024 ? $"{bytes} B" : bytes < 1024 * 1024 ? $"{bytes / 1024.0:0.#} KB" : $"{bytes / 1024.0 / 1024.0:0.#} MB";
 }

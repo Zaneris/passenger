@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -65,7 +64,6 @@ public sealed class WelcomeView : UserControl
         TextBlock recent = new() { Classes = { StyleClasses.WelcomeSection }, Text = "Recent solutions", VerticalAlignment = VerticalAlignment.Center };
         search = new TextBox { Classes = { StyleClasses.Search, StyleClasses.WelcomeSearch }, PlaceholderText = "Search recent solutions", [Grid.ColumnProperty] = 1 };
         search.TextChanged += (_, _) => Filter();
-        search.AddHandler(KeyDownEvent, OnSearchKeyDown, RoutingStrategies.Tunnel);
         Grid bar = new() { Classes = { StyleClasses.WelcomeRecentBar }, ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { recent, search } };
 
         notice = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(4, 0, 4, 10) };
@@ -77,6 +75,7 @@ public sealed class WelcomeView : UserControl
         ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => OpenChosen();
         list.KeyDown += OnListKeyDown;
+        ListKeys.Search(search, list, OpenChosen);
         ListMenus.Attach(list, () => list.SelectedItem is not RecentRow chosen ? [] :
         [
             ListMenus.Item("Open", "Enter", () => Chosen?.Invoke(this, chosen)),
@@ -242,28 +241,6 @@ public sealed class WelcomeView : UserControl
     private static bool Matches(RecentRow row, string word) =>
         row.Name.Contains(word, StringComparison.OrdinalIgnoreCase) || row.Shown.Contains(word, StringComparison.OrdinalIgnoreCase)
         || FuzzyMatch.Score(word, row.Name) is not null;
-
-    private void OnSearchKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyModifiers != KeyModifiers.None)
-        {
-            return;
-        }
-        switch (e.Key)
-        {
-            case Key.Up or Key.Down or Key.PageUp or Key.PageDown when ListKeys.Move(list, e):
-                e.Handled = true;
-                break;
-            case Key.Enter:
-                OpenChosen();
-                e.Handled = true;
-                break;
-            case Key.Escape when Query.Length > 0:
-                Query = string.Empty;
-                e.Handled = true;
-                break;
-        }
-    }
 
     private void OnListKeyDown(object? sender, KeyEventArgs e)
     {

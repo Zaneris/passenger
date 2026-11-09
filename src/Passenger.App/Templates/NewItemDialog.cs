@@ -1,7 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -73,7 +71,7 @@ public sealed class NewItemDialog : IdeWindow
         ReusedRows.Use(list, Item);
         list.SelectionChanged += (_, _) => Choose(list.SelectedItem as ProjectTemplate);
         search.TextChanged += (_, _) => Filter();
-        search.AddHandler(KeyDownEvent, OnSearchKeyDown, RoutingStrategies.Tunnel);
+        ListKeys.Search(search, list);
         DockPanel leftPanel = new();
         DockPanel.SetDock(search, Dock.Top);
         leftPanel.Children.Add(search);
@@ -318,7 +316,7 @@ public sealed class NewItemDialog : IdeWindow
             {
                 Show(null);
             }
-            Fail($"The templates could not be read: {error.Message}");
+            Fail(TemplateList.Unread(error));
         }
     }
 
@@ -421,16 +419,11 @@ public sealed class NewItemDialog : IdeWindow
             : template.Own is { } own ? $"Passenger makes {(template.TakesName ? ItemName : template.Name)}{own.Extension}"
             : $"dotnet new {string.Join(' ', Arguments(output: false).Select(ChildProcesses.Quote))}";
 
-    private void Fail(string? why)
-    {
-        problem.Text = why;
-        problem.IsVisible = why is not null;
-    }
+    private void Fail(string? why) => TemplateList.Fail(problem, why);
 
     private void Busy(bool busy)
     {
-        working.IsVisible = busy;
-        problem.IsVisible = !busy && problem.Text is not null;
+        TemplateList.Busy(problem, working, busy);
         create.IsEnabled = !busy && template is not null;
         foreach (Control field in (Control[])[search, list, itemName, space, options.Panel, options.Folded])
         {
@@ -438,36 +431,12 @@ public sealed class NewItemDialog : IdeWindow
         }
     }
 
-    /// <summary>Up and Down in the search choose among the templates found; Escape clears a search before it cancels.</summary>
-    private void OnSearchKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyModifiers != KeyModifiers.None)
-        {
-            return;
-        }
-        switch (e.Key)
-        {
-            case Key.Up or Key.Down or Key.PageUp or Key.PageDown when ListKeys.Move(list, e):
-                e.Handled = true;
-                break;
-            case Key.Escape when Query.Length > 0:
-                Query = string.Empty;
-                e.Handled = true;
-                break;
-        }
-    }
-
     /// <summary>A row for whichever template the list hands its container: its name, and where it comes from at its right
     /// (dotnet new's short name, or Passenger for its own).</summary>
     private static Control Item()
     {
-        TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock from = new() { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        DockPanel both = new();
-        DockPanel.SetDock(from, Dock.Right);
-        both.Children.Add(from);
-        both.Children.Add(name);
-        Border item = new() { Padding = new Thickness(5, 6), Child = both };
+        (DockPanel both, TextBlock name, TextBlock from) = TemplateList.Named();
+        Border item = TemplateList.Row(both);
         return item.Showing<ProjectTemplate>(row =>
         {
             name.Text = row.Name;

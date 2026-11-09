@@ -134,7 +134,7 @@ public sealed class MemoryView : DockPanel
             return typeTable.Row([name, .. numbers]).Showing<HeapType>(type =>
             {
                 Named(name, type.Name);
-                Put(numbers, $"{type.Count:N0}", Size(type.Bytes), Size(type.RetainedBytes));
+                Put(numbers, $"{type.Count:N0}", Sizes.Said(type.Bytes), Sizes.Said(type.RetainedBytes));
             });
         });
         OnEnter(types, OpenType);
@@ -148,8 +148,8 @@ public sealed class MemoryView : DockPanel
             return deltaTable.Row([name, .. numbers]).Showing<TypeDelta>(type =>
             {
                 Named(name, type.Name);
-                Put(numbers, Signed(type.ObjectsDelta, n => $"{n:N0}"), Signed(type.BytesDelta, Size), $"{type.NewObjects:N0}", Size(type.NewBytes),
-                    $"{type.DeadObjects:N0}", Size(type.DeadBytes), $"{type.SurvivedObjects:N0}");
+                Put(numbers, Signed(type.ObjectsDelta, n => $"{n:N0}"), Signed(type.BytesDelta, Sizes.Said), $"{type.NewObjects:N0}", Sizes.Said(type.NewBytes),
+                    $"{type.DeadObjects:N0}", Sizes.Said(type.DeadBytes), $"{type.SurvivedObjects:N0}");
             });
         });
         OnEnter(deltas, () => OpenDelta(Kind.New));
@@ -170,7 +170,7 @@ public sealed class MemoryView : DockPanel
                 type.Text = item.Type;
                 address.Text = $"  0x{item.Address:x}";
                 ToolTip.SetTip(name, item.Type);
-                Put(numbers, Size(item.Bytes), Size(item.RetainedBytes));
+                Put(numbers, Sizes.Said(item.Bytes), Sizes.Said(item.RetainedBytes));
             });
         });
         OnEnter(objects, OpenObject);
@@ -180,7 +180,7 @@ public sealed class MemoryView : DockPanel
         paths = List(() =>
         {
             TextBlock[] numbers = Numbers(2);
-            return pathTable.Row([PathStep(), .. numbers]).Showing<RetentionRow>(row => Put(numbers, $"{row.Node.Objects:N0}", Size(row.Node.RetainedBytes)));
+            return pathTable.Row([PathStep(), .. numbers]).Showing<RetentionRow>(row => Put(numbers, $"{row.Node.Objects:N0}", Sizes.Said(row.Node.RetainedBytes)));
         });
         paths.ItemsSource = pathRows;
         TreeKeys.Attach<RetentionRow>(paths, Toggle);
@@ -193,7 +193,7 @@ public sealed class MemoryView : DockPanel
             return keyTable.Row([name, .. numbers]).Showing<RetentionPath>(path =>
             {
                 Named(name, path.Text);
-                Put(numbers, $"{path.Objects:N0}", Size(path.RetainedBytes));
+                Put(numbers, $"{path.Objects:N0}", Sizes.Said(path.RetainedBytes));
             });
         });
         keyPathsPage = Framed(keyTable, keyPaths);
@@ -399,7 +399,7 @@ public sealed class MemoryView : DockPanel
         switch (page)
         {
             case SnapshotPage { Snapshot: var snapshot }:
-                summary.Text = $"{snapshot.Objects:N0} objects, {Size(snapshot.Bytes)} live, in {snapshot.Types.Count:N0} types; taken at "
+                summary.Text = $"{snapshot.Objects:N0} objects, {Sizes.Said(snapshot.Bytes)} live, in {snapshot.Types.Count:N0} types; taken at "
                     + $"{snapshot.Taken:HH:mm:ss} in {snapshot.Took.TotalSeconds:0.0} s ({snapshot.Phases})"
                     + (snapshot.Lacks is { } lacks ? $". {lacks}" : string.Empty)
                     + (snapshot.Gone is { } gone ? $". {gone}: its types are listed, its objects no longer open" : string.Empty);
@@ -420,7 +420,7 @@ public sealed class MemoryView : DockPanel
                 Action("Open Survived Objects", () => OpenDelta(Kind.Survived));
                 break;
             case SetPage set:
-                summary.Text = $"{set.Set.Count:N0} {Core.Plural.Noun(set.Set.Count, "object")}, {Size(set.Set.Bytes)}, retained {Size(set.Set.RetainedBytes)}, in {set.Set.Snapshot.Name}";
+                summary.Text = $"{set.Set.Count:N0} {Core.Plural.Noun(set.Set.Count, "object")}, {Sizes.Said(set.Set.Bytes)}, retained {Sizes.Said(set.Set.RetainedBytes)}, in {set.Set.Snapshot.Name}";
                 objects.ItemsSource = set.Set.Objects;
                 objects.SelectedIndex = set.Set.Count > 0 ? 0 : -1;
                 ShowPaths(set.Paths);
@@ -703,7 +703,7 @@ public sealed class MemoryView : DockPanel
             MemorySnapshot snapshot = listed.Snapshot;
             name.Text = snapshot.Name;
             letGo.IsVisible = listed.Gone is not null;
-            said.Text = $"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Size(snapshot.Bytes)}";
+            said.Text = $"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Sizes.Said(snapshot.Bytes)}";
             ToolTip.SetTip(row, listed.Gone);
         });
     }
@@ -747,14 +747,6 @@ public sealed class MemoryView : DockPanel
         block.FontSize = 12;
         return block;
     }
-
-    /// <summary>Bytes, plain under a kilobyte, then in KB and MB.</summary>
-    public static string Size(long bytes) => bytes switch
-    {
-        < 1024 => $"{bytes:N0} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:N1} KB",
-        _ => $"{bytes / 1048576.0:N2} MB",
-    };
 
     private static string Signed(long value, Func<long, string> format) => value switch
     {

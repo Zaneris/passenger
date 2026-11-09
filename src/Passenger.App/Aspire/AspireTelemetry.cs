@@ -287,7 +287,7 @@ public static class AspireTelemetry
                 {
                     if (body.Length + length > AspireClient.ResponseByteLimit)
                     {
-                        throw new InvalidDataException("Aspire telemetry snapshot exceeded 8 MiB.");
+                        throw new InvalidDataException("Aspire telemetry snapshot exceeded 8 MB.");
                     }
                     body.Write(chunk, 0, length);
                 }
@@ -335,7 +335,7 @@ public static class AspireTelemetry
                     {
                         if (line.Length >= AspireClient.LineByteLimit)
                         {
-                            throw new InvalidDataException("Aspire telemetry line exceeded 1 MiB.");
+                            throw new InvalidDataException("Aspire telemetry line exceeded 1 MB.");
                         }
                         line.WriteByte(buffer[i]);
                     }
@@ -405,7 +405,7 @@ public static class AspireTelemetry
                 {
                     if (System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(row).Length > AspireClient.LineByteLimit)
                     {
-                        throw new InvalidDataException("Aspire telemetry record exceeded 1 MiB.");
+                        throw new InvalidDataException("Aspire telemetry record exceeded 1 MB.");
                     }
                     yield return (AspireJson.Object(row), identity, name);
                 }

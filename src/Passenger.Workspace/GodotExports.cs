@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.IO.Compression;
 using Passenger.Core;
 
@@ -186,16 +185,13 @@ public static class GodotExports
         foreach ((string name, long size) in chosen.OrderBy(c => c.Name == VersionFile ? 1 : 0))
         {
             cancel.ThrowIfCancellationRequested();
-            stage($"Installing {name} ({Megabytes(size)}), {++done} of {chosen.Count}");
+            stage($"Installing {name} ({Sizes.Said(size)}), {++done} of {chosen.Count}");
             ZipArchiveEntry entry = zip.GetEntry(Inside + name)!;
             AtomicFile.Write(Path.Combine(folder, name), stream => Copy(entry, stream, cancel), null, AtomicFile.Temporary,
                 static (temporary, target) => File.Move(temporary, target, overwrite: true));
         }
         return null;
     }
-
-    /// <summary>A size as a person reads it, in megabytes.</summary>
-    public static string Megabytes(long bytes) => $"{(bytes / (1024.0 * 1024.0)).ToString(bytes < 10 * 1024 * 1024 ? "0.0" : "0", CultureInfo.InvariantCulture)} MB";
 
     private static void Copy(ZipArchiveEntry entry, Stream into, CancellationToken cancel)
     {

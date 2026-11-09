@@ -307,7 +307,7 @@ public sealed class MemorySnapshotsTests : IDisposable
         Ui.WaitFor(() => memory.Set is not null, "the sharers");
         Assert.Equal(sharers.RetainedBytes, memory.Set!.RetainedBytes);
         Assert.All(memory.ObjectRows, o => Assert.True(o.RetainedBytes < 10_000_000, $"A sharer alone retains {o.RetainedBytes:N0} bytes, the payload the other holds too"));
-        Assert.Contains($"retained {Passenger.App.Profiling.MemoryView.Size(sharers.RetainedBytes)}", memory.Summary, StringComparison.Ordinal);
+        Assert.Contains($"retained {Sizes.Said(sharers.RetainedBytes)}", memory.Summary, StringComparison.Ordinal);
         window.Profiling!.Kill();
         window.Close();
     }

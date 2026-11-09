@@ -295,7 +295,7 @@ public sealed class AspireClient(string? program = null)
         return ran.Output;
     }
 
-    private const string Exceeded = "Aspire response exceeded 8 MiB. Reduce the requested limit.";
+    private const string Exceeded = "Aspire response exceeded 8 MB. Reduce the requested limit.";
 
     /// <summary>A response held to the CLI's bounds in UTF-8's bytes: <see cref="ResponseByteLimit"/> in all, and
     /// <see cref="LineByteLimit"/> a line.</summary>
@@ -310,7 +310,7 @@ public sealed class AspireClient(string? program = null)
             int end = text.IndexOf('\n', from) is >= 0 and int found ? found : text.Length;
             if (Encoding.UTF8.GetByteCount(text.AsSpan(from, end - from)) > LineByteLimit)
             {
-                throw new InvalidDataException("Aspire response line exceeded 1 MiB.");
+                throw new InvalidDataException("Aspire response line exceeded 1 MB.");
             }
             from = end + 1;
         }

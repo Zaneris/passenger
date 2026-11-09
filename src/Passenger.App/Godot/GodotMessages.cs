@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Passenger.Core;
 using Passenger.Profiler;
 using Passenger.Workspace;
 
@@ -410,7 +411,7 @@ public sealed record GodotMonitors(double Fps, double Process, double Physics, d
 
     /// <summary>The monitors in a line of words: "60 FPS · 1.2 ms process · 41.7 MB · 1,500 objects · 2 nodes".</summary>
     public string Said => string.Create(System.Globalization.CultureInfo.InvariantCulture,
-        $"{Fps:0} FPS · {Process * 1000:0.0} ms process · {Memory / (1024 * 1024):0.0} MB · {Objects:N0} objects · {Nodes:N0} nodes");
+        $"{Fps:0} FPS · {Process * 1000:0.0} ms process · {Sizes.Said((long)Memory)} · {Objects:N0} objects · {Nodes:N0} nodes");
 }
 
 /// <summary>What Godot's own profilers send while turned on (<see cref="GodotWords.ProfileServers"/>, <see cref="GodotWords.ProfileVisual"/>):

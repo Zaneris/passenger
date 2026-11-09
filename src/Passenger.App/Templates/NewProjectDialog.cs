@@ -1,7 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -188,7 +186,7 @@ public sealed class NewProjectDialog : IdeWindow
             }
         };
         search.TextChanged += (_, _) => Filter(searched: true);
-        search.AddHandler(KeyDownEvent, OnSearchKeyDown, RoutingStrategies.Tunnel);
+        ListKeys.Search(search, list);
         loading = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Loading templates…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
         DockPanel leftPanel = new();
         DockPanel.SetDock(search, Dock.Top);
@@ -1123,11 +1121,11 @@ public sealed class NewProjectDialog : IdeWindow
             }
             if (catalog is null)
             {
-                loading.Text = $"The templates could not be read: {error.Message}";
+                loading.Text = TemplateList.Unread(error);
                 loading.IsVisible = true;
             }
             readFailed = true;
-            Fail($"The templates could not be read: {error.Message}");
+            Fail(TemplateList.Unread(error));
         }
     }
 
@@ -1510,16 +1508,11 @@ public sealed class NewProjectDialog : IdeWindow
         }
     }
 
-    private void Fail(string? why)
-    {
-        problem.Text = why;
-        problem.IsVisible = why is not null;
-    }
+    private void Fail(string? why) => TemplateList.Fail(problem, why);
 
     private void Busy(bool busy)
     {
-        working.IsVisible = busy;
-        problem.IsVisible = !busy && problem.Text is not null;
+        TemplateList.Busy(problem, working, busy);
         create.IsEnabled = !busy && template is { Pack: null };
         install.IsEnabled = !busy;
         installSetup.IsEnabled = !busy;
@@ -1535,32 +1528,12 @@ public sealed class NewProjectDialog : IdeWindow
         }
     }
 
-    /// <summary>Up and Down in the search choose among the families found; Escape clears a search before it
-    /// cancels.</summary>
-    private void OnSearchKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyModifiers != KeyModifiers.None)
-        {
-            return;
-        }
-        switch (e.Key)
-        {
-            case Key.Up or Key.Down or Key.PageUp or Key.PageDown when ListKeys.Move(list, e):
-                e.Handled = true;
-                break;
-            case Key.Escape when Query.Length > 0:
-                Query = string.Empty;
-                e.Handled = true;
-                break;
-        }
-    }
-
     /// <summary>A row for whichever family the list hands its container: its name, its Types on hover, and "Not installed"
     /// for one none of whose Types is, or "Windows only" for one whose every Type's app runs only on Windows.</summary>
     private static Control Item()
     {
-        (DockPanel named, TextBlock name, TextBlock mark) = Named();
-        Border item = new() { Padding = new Thickness(5, 6), Child = named };
+        (DockPanel named, TextBlock name, TextBlock mark) = TemplateList.Named();
+        Border item = TemplateList.Row(named);
         return item.Showing<TemplateFamily>(row =>
         {
             string types = row.Types.Count > 1 ? $": {string.Join(", ", row.Types.Select(t => t.TypeName))}" : row.Name == row.Types[0].Name ? string.Empty : $": {row.Types[0].Name}";
@@ -1576,7 +1549,7 @@ public sealed class NewProjectDialog : IdeWindow
     /// or "Windows only" for one whose app runs only on Windows.</summary>
     private static Control TypeItem()
     {
-        (DockPanel named, TextBlock name, TextBlock mark) = Named();
+        (DockPanel named, TextBlock name, TextBlock mark) = TemplateList.Named();
         return named.Showing<ProjectTemplate>(type =>
         {
             name.Text = type.TypeName;
@@ -1597,17 +1570,6 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>A name cut short where it must be, with a mark after it ("Not installed" for what dotnet new has not got),
     /// shown only where it says something.</summary>
-    private static (DockPanel Named, TextBlock Name, TextBlock Mark) Named()
-    {
-        TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock mark = new() { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        DockPanel both = new();
-        DockPanel.SetDock(mark, Dock.Right);
-        both.Children.Add(mark);
-        both.Children.Add(name);
-        return (both, name, mark);
-    }
-
     private Control Rule()
     {
         Border rule = new() { Height = 1, Margin = new Thickness(0, 6) };

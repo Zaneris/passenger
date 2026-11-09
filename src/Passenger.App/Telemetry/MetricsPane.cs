@@ -428,7 +428,7 @@ public sealed class MetricsPane : DockPanel
     private static string Amount(double value, string unit) => unit switch
     {
         "s" when Math.Abs(value) < 1 => $"{Number(value * 1000)} ms",
-        "By" => MemoryView.Size((long)Math.Round(value)),
+        "By" => Sizes.Said((long)Math.Round(value)),
         "" or ['{', .., '}'] => Number(value),
         _ => $"{Number(value)} {unit}",
     };

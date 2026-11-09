@@ -486,24 +486,7 @@ public static partial class OpenApiRequests
     public static string Entries(OpenApiDocument document, IEnumerable<OpenApiOperation> operations, string existing, string host, string? address)
     {
         StringBuilder written = new();
-        HashSet<string> set = [.. HttpFile.Parse(string.Empty, existing).Variables.Keys];
-        if (existing.Trim().Length == 0)
-        {
-            written.Append('@').Append(host).Append(" = ").Append(address ?? "http://localhost:5000").Append("\n\n");
-            set.Add(host);
-        }
-        else if (!existing.EndsWith('\n'))
-        {
-            written.Append('\n');
-        }
-        if (existing.Trim().Length > 0 && !existing.TrimEnd().EndsWith("###", StringComparison.Ordinal))
-        {
-            written.Append("###\n");
-        }
-        if (set.Add(host))
-        {
-            written.Append('@').Append(host).Append(" = ").Append(address ?? "http://localhost:5000").Append("\n\n");
-        }
+        HashSet<string> set = HttpFile.Preamble(written, existing, host, address);
         // What this writing set each variable to: a later operation's parameter of the name but another value has its own.
         Dictionary<string, string> made = new(StringComparer.Ordinal);
         foreach (OpenApiOperation operation in operations)

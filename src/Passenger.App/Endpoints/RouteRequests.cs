@@ -179,26 +179,8 @@ public static partial class RouteRequests
     {
         StringBuilder written = new();
         string host = HostVariable(route.Project);
-        HashSet<string> set = [.. HttpFile.Parse(string.Empty, existing).Variables.Keys];
-        if (existing.Trim().Length == 0)
-        {
-            written.Append('@').Append(host).Append(" = ").Append(address ?? "http://localhost:5000").Append("\n\n");
-            set.Add(host);
-        }
-        else if (!existing.EndsWith('\n'))
-        {
-            written.Append('\n');
-        }
-        if (existing.Trim().Length > 0 && !existing.TrimEnd().EndsWith("###", StringComparison.Ordinal))
-        {
-            written.Append("###\n");
-        }
+        HashSet<string> set = HttpFile.Preamble(written, existing, host, address);
         written.Append("# ").Append(route.Kind).Append(": ").Append(route.Handler).Append('\n');
-        // A file of the person's own that names the project's address otherwise gains the variable the request uses.
-        if (set.Add(host))
-        {
-            written.Append('@').Append(host).Append(" = ").Append(address ?? "http://localhost:5000").Append('\n');
-        }
         foreach (RouteParameter parameter in route.Parameters.Where(p => p.Source is "route" or "query"))
         {
             if (set.Add(parameter.Name))

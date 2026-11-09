@@ -44,6 +44,23 @@ public sealed record HttpFile(string Path, IReadOnlyDictionary<string, string> V
 
     public static HttpFile Read(string path) => Parse(path, File.ReadAllText(path));
 
+    /// <summary>What goes before requests added to a file whose text is <paramref name="existing"/>: a separator after its own,
+    /// and the address variable <paramref name="host"/> where it sets none, at <paramref name="address"/>, then a blank line.
+    /// The variables the file sets, the address's among them, for the requests to add to.</summary>
+    public static HashSet<string> Preamble(System.Text.StringBuilder written, string existing, string host, string? address)
+    {
+        HashSet<string> set = [.. Parse(string.Empty, existing).Variables.Keys];
+        if (existing.Trim().Length > 0)
+        {
+            written.Append(existing.EndsWith('\n') ? string.Empty : "\n").Append(existing.TrimEnd().EndsWith("###", StringComparison.Ordinal) ? string.Empty : "###\n");
+        }
+        if (set.Add(host))
+        {
+            written.Append('@').Append(host).Append(" = ").Append(address ?? "http://localhost:5000").Append("\n\n");
+        }
+        return set;
+    }
+
     public static HttpFile Parse(string path, string text)
     {
         string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
