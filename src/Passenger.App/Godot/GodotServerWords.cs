@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 
@@ -14,6 +15,27 @@ public static partial class GodotServerWords
     public static int PortIn(string settings) =>
         RemotePort().Match(settings) is { Success: true } set && int.TryParse(set.Groups["port"].ValueSpan, System.Globalization.CultureInfo.InvariantCulture, out int port)
             ? port : DefaultPort;
+
+    /// <summary>The port the person's Godot editor serves GDScript on (<see cref="PortIn"/>), by the Editor Settings the Godot
+    /// at <paramref name="executable"/> of a version reads (<see cref="GodotEditorSettings"/>: beside a self-contained Godot,
+    /// else in the user folders the variables place, its version's file or the newest older one's); null where its version
+    /// is unknown or no such file is there, so its editor has never run there.</summary>
+    public static int? EditorPort(string executable, string? version, Func<string, string?> variable, Func<string, bool> exists, Func<string, string> read)
+    {
+        if (GodotEditorSettings.Folder(executable, OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(), variable, exists) is not { } folder
+            || GodotEditorSettings.Files(folder, version, exists) is not { Read: { } settings })
+        {
+            return null;
+        }
+        try
+        {
+            return PortIn(read(settings));
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     [GeneratedRegex(@"^network/language_server/remote_port\s*=\s*(?<port>\d+)\s*$", RegexOptions.Multiline)]
     private static partial Regex RemotePort();

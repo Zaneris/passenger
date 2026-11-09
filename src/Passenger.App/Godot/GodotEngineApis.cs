@@ -97,16 +97,9 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
     /// <summary>Godot's dump with its documentation written into <paramref name="working"/>, kept as its descriptions alone.</summary>
     private async Task<bool> DumpReferenceAsync(GodotFound found, string kept, string working)
     {
-        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--dump-extension-api-with-docs"], working);
-        foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
-        {
-            start.Environment[name] = value;
-        }
-        ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
         string dumped = Path.Combine(working, "extension_api.json");
-        if (!File.Exists(dumped))
+        if (!await RunHeadlessAsync(found, working, ["--dump-extension-api-with-docs"], dumped, "extension_api.json with its documentation"))
         {
-            IdeErrors.Write($"Godot ({found.Executable}) wrote no extension_api.json with its documentation: {ExitCodes.Said(result.ExitCode)}");
             return false;
         }
         try
@@ -144,6 +137,45 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
         }
     }
 
+    /// <summary>A reading of a Godot's: it run headless in <paramref name="working"/> with these arguments, in the window's user
+    /// folders for Godot (else its own in the cache, never the person's), within <see cref="Dumping"/>; whether it wrote
+    /// <paramref name="written"/>, a reading that wrote none said in the IDE's log as <paramref name="what"/>.</summary>
+    private async Task<bool> RunHeadlessAsync(GodotFound found, string working, IReadOnlyList<string> arguments, string written, string what)
+    {
+        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, .. arguments], working);
+        foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
+        {
+            start.Environment[name] = value;
+        }
+        ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
+        if (File.Exists(written))
+        {
+            return true;
+        }
+        IdeErrors.Write($"Godot ({found.Executable}) wrote no {what}: {ExitCodes.Said(result.ExitCode)}");
+        return false;
+    }
+
+    /// <summary>A reading by a script Passenger carries (<paramref name="script"/>, its resource's name), run as
+    /// <see cref="RunHeadlessAsync"/> runs one on an empty project in <paramref name="working"/>, given <paramref name="passed"/>.</summary>
+    private Task<bool> RunScriptAsync(GodotFound found, string working, string script, IReadOnlyList<string> passed, string written, string what)
+    {
+        string name = Path.GetFileName(script);
+        AtomicFile.Write(Path.Combine(working, GodotProject.FileName), "config_version=5\n"u8.ToArray());
+        AtomicFile.Write(Path.Combine(working, name), Carried(script));
+        return RunHeadlessAsync(found, working, ["--path", working, "--script", $"res://{name}", "--", .. passed], written, what);
+    }
+
+    /// <summary>A file Passenger carries as a resource.</summary>
+    private static byte[] Carried(string resource)
+    {
+        using Stream stream = typeof(GodotEngineApis).Assembly.GetManifestResourceStream(resource)
+            ?? throw new InvalidOperationException($"Passenger carries no {resource}");
+        using MemoryStream bytes = new();
+        stream.CopyTo(bytes);
+        return bytes.ToArray();
+    }
+
     private async Task<GodotEngineApi?> FindAsync(string? chosen) =>
         await KeyAsync(chosen) is ({ } found, { } key) ? await Read.GetOrAdd(key, k => new Lazy<Task<GodotEngineApi?>>(() => BackgroundWork.Run(() => LoadAsync(found, k)))).Value : null;
 
@@ -162,15 +194,6 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
     private static string ClassesFolder => Path.Combine(State.StateStore.DefaultRoot, "cache", "godot", "classes");
 
     private static readonly ConcurrentDictionary<string, Lazy<Task<GodotClassDefaults?>>> ClassesRead = new(StringComparer.Ordinal);
-
-    private static readonly Lazy<byte[]> ClassesScript = new(() =>
-    {
-        using Stream stream = typeof(GodotEngineApis).Assembly.GetManifestResourceStream("Godot/PassengerClasses.gd")
-            ?? throw new InvalidOperationException("Passenger carries no Godot/PassengerClasses.gd");
-        using MemoryStream bytes = new();
-        stream.CopyTo(bytes);
-        return bytes.ToArray();
-    });
 
     /// <summary>The engine's classes, their properties' hints and defaults, as the Godot Settings name or found lists them
     /// (<see cref="GodotClassDefaults"/>): read headless once per Godot version into the state's cache; null where no Godot
@@ -201,18 +224,9 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
     /// <summary>Godot's reading of its classes, its script run on an empty project in <paramref name="working"/>, kept.</summary>
     private async Task<bool> ReadClassesAsync(GodotFound found, string kept, string working)
     {
-        AtomicFile.Write(Path.Combine(working, GodotProject.FileName), "config_version=5\n"u8.ToArray());
-        AtomicFile.Write(Path.Combine(working, "PassengerClasses.gd"), ClassesScript.Value);
         string written = Path.Combine(working, "classes.json");
-        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--path", working, "--script", "res://PassengerClasses.gd", "--", written], working);
-        foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
+        if (!await RunScriptAsync(found, working, "Godot/PassengerClasses.gd", [written], written, "reading of its classes"))
         {
-            start.Environment[name] = value;
-        }
-        ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
-        if (!File.Exists(written))
-        {
-            IdeErrors.Write($"Godot ({found.Executable}) wrote no reading of its classes: {ExitCodes.Said(result.ExitCode)}");
             return false;
         }
         AtomicFile.Write(kept, await File.ReadAllBytesAsync(written));
@@ -225,15 +239,6 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
 
     /// <summary>The first Godot whose scripts can hear its logger, which the probe of its shading language reads.</summary>
     private static readonly Version Logged = new(4, 5);
-
-    private static readonly Lazy<byte[]> ProbesScript = new(() =>
-    {
-        using Stream stream = typeof(GodotEngineApis).Assembly.GetManifestResourceStream("Godot/PassengerShaderProbes.gd")
-            ?? throw new InvalidOperationException("Passenger carries no Godot/PassengerShaderProbes.gd");
-        using MemoryStream bytes = new();
-        stream.CopyTo(bytes);
-        return bytes.ToArray();
-    });
 
     /// <summary>The carried table of the shading language as the Godot Settings name or found takes it, with that Godot's
     /// version: each candidate's tiny shader (<see cref="GodotShaderTable.Probes"/>) compiled by it headless once per
@@ -293,20 +298,11 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
     private async Task<bool> ProbeShadersAsync(GodotFound found, GodotShaderTable carried, string kept, string working)
     {
         IReadOnlyList<GodotShaderProbe> probes = carried.Probes();
-        AtomicFile.Write(Path.Combine(working, GodotProject.FileName), "config_version=5\n"u8.ToArray());
-        AtomicFile.Write(Path.Combine(working, "PassengerShaderProbes.gd"), ProbesScript.Value);
         string asked = Path.Combine(working, "probes.json");
         string refusedAt = Path.Combine(working, "refused.json");
         AtomicFile.Write(asked, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(probes.Select(p => p.Code).ToArray()));
-        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--path", working, "--script", "res://PassengerShaderProbes.gd", "--", asked, refusedAt], working);
-        foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
+        if (!await RunScriptAsync(found, working, "Godot/PassengerShaderProbes.gd", [asked, refusedAt], refusedAt, "probe of its shading language"))
         {
-            start.Environment[name] = value;
-        }
-        ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
-        if (!File.Exists(refusedAt))
-        {
-            IdeErrors.Write($"Godot ({found.Executable}) wrote no probe of its shading language: {ExitCodes.Said(result.ExitCode)}");
             return false;
         }
         try
@@ -345,16 +341,9 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
     /// <summary>Godot's dump written into <paramref name="working"/>, then moved into the cache.</summary>
     private async Task<bool> DumpAsync(GodotFound found, string kept, string working)
     {
-        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--dump-extension-api"], working);
-        foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
-        {
-            start.Environment[name] = value;
-        }
-        ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
         string dumped = Path.Combine(working, "extension_api.json");
-        if (!File.Exists(dumped))
+        if (!await RunHeadlessAsync(found, working, ["--dump-extension-api"], dumped, "extension_api.json"))
         {
-            IdeErrors.Write($"Godot ({found.Executable}) wrote no extension_api.json: {ExitCodes.Said(result.ExitCode)}");
             return false;
         }
         AtomicFile.Write(kept, await File.ReadAllBytesAsync(dumped));

@@ -1,3 +1,4 @@
+using Passenger.App.Godot;
 using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Workspace;
@@ -5,7 +6,7 @@ namespace Passenger.UnitTests.Workspace;
 /// <summary>Godot's editor settings file as Passenger reads and writes its script editors: the values set where the file
 /// gives them and added where it does not, every other line as Godot wrote it (sub-resources, values over several
 /// lines, its line endings), a new file begun as Godot begins one, and the file found where the Godot of a version
-/// reads and writes it on each system.</summary>
+/// reads and writes it on each system, the person's editor's GDScript port read from the one it reads.</summary>
 public class GodotEditorSettingsTests
 {
     private const string Written = """
@@ -144,6 +145,9 @@ public class GodotEditorSettingsTests
     [InlineData(new[] { "editor_settings-4.7.tres", "editor_settings-4.6.tres" }, 7, "editor_settings-4.7.tres")]
     [InlineData(new[] { "editor_settings-4.5.tres", "editor_settings-4.tres" }, 7, "editor_settings-4.5.tres")]
     [InlineData(new[] { "editor_settings-4.tres" }, 7, "editor_settings-4.tres")]
+    [InlineData(new[] { "editor_settings-4.tres", "editor_settings-4.3.tres" }, 3, "editor_settings-4.3.tres")]
+    [InlineData(new[] { "editor_settings-4.tres", "editor_settings-4.3.tres" }, 7, "editor_settings-4.3.tres")]
+    [InlineData(new[] { "editor_settings-4.tres", "editor_settings-4.3.tres" }, 2, "editor_settings-4.tres")]
     [InlineData(new[] { "editor_settings-4.8.tres" }, 7, null)]
     [InlineData(new string[0], 7, null)]
     public void The_file_read_is_the_version_s_own_or_the_newest_older_one_and_the_file_written_the_version_s_own(string[] present, int minor, string? read)
@@ -183,5 +187,33 @@ public class GodotEditorSettingsTests
             && xdg == Path.Combine("/home/ted/.xdg", "godot") && linux == Path.Combine("/home/ted", ".config", "godot")
             && contained == Path.Combine(godot, "editor_data") && containedBundle == Path.Combine(applications, "editor_data"),
             $"Passenger would write settings no Godot reads: {windows}, {macOS}, {xdg}, {linux}, {contained}, {containedBundle}");
+    }
+
+    [Fact]
+    public void The_persons_editor_is_found_on_the_port_the_settings_its_Godot_version_reads_give_and_beside_a_self_contained_Godot()
+    {
+        Dictionary<string, string> ports = new()
+        {
+            ["editor_settings-4.tres"] = "[resource]\nnetwork/language_server/remote_port = 6008\n",
+            ["editor_settings-4.3.tres"] = "[resource]\nnetwork/language_server/remote_port = 6010\n",
+        };
+        Dictionary<string, string> variables = new()
+        {
+            ["APPDATA"] = Path.Combine(Path.GetTempPath(), "Roaming"),
+            ["HOME"] = Path.Combine(Path.GetTempPath(), "home"),
+        };
+        string godot = Path.Combine(Path.GetTempPath(), "godot", "Godot");
+        string own = Path.Combine(Path.GetDirectoryName(godot)!, "editor_data");
+        bool InUsers(string path) => ports.ContainsKey(Path.GetFileName(path)) && Path.GetDirectoryName(path) != own;
+        bool Beside(string path) => path == Path.Combine(Path.GetDirectoryName(godot)!, "_sc_") || (ports.ContainsKey(Path.GetFileName(path)) && Path.GetDirectoryName(path) == own);
+        int? Port(string? version, Func<string, bool> exists) =>
+            GodotServerWords.EditorPort(godot, version, name => variables.GetValueOrDefault(name), exists, path => exists(path) ? ports[Path.GetFileName(path)] : throw new FileNotFoundException(path));
+
+        Assert.True(Port("4.7.2", InUsers) == 6010 && Port("4.3", InUsers) == 6010 && Port("4.8.0-beta.2", InUsers) == 6010,
+            $"A Godot of 4.3 or newer took the port of the settings a Godot 4.2 wrote (editor_settings-4.tres), so the person's editor is not found: {Port("4.7.2", InUsers)}");
+        Assert.True(Port("4.2.2", InUsers) == 6008, $"Godot 4.2 took another port than its own settings give: {Port("4.2.2", InUsers)}");
+        Assert.True(Port("4.7.2", Beside) == 6010, $"A self-contained Godot's settings, in editor_data beside it, were not read: {Port("4.7.2", Beside)}");
+        Assert.True(Port(null, InUsers) is null && Port("4.7.2", _ => false) is null,
+            "A Godot of no version said, or whose editor never kept settings, was given a port of settings it never reads");
     }
 }

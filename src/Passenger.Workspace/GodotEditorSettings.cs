@@ -119,6 +119,14 @@ public static class GodotEditorSettings
         return (null, written);
     }
 
+    /// <summary>The files <see cref="Files(string, int, int, Func{string, bool})"/> gives a Godot of a version as it says it
+    /// ("4.7.2", "4.8.0-beta.2"), its numbers read as numbers; null where it says no major and minor version.</summary>
+    public static (string? Read, string Written)? Files(string folder, string? version, Func<string, bool> exists) =>
+        version?.Split('-')[0].Split('.') is [{ } major, { } minor, ..]
+            && int.TryParse(major, NumberStyles.None, CultureInfo.InvariantCulture, out int high) && int.TryParse(minor, NumberStyles.None, CultureInfo.InvariantCulture, out int low)
+            ? Files(folder, high, low, exists)
+            : null;
+
     /// <summary>The values the text's <c>[resource]</c> section gives the keys named: a string, a whole number, true or
     /// false, or the text of any other value; a key set twice keeps its last, as Godot reads it.</summary>
     public static IReadOnlyDictionary<string, object> Read(string text, IEnumerable<string> keys)

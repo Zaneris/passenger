@@ -70,7 +70,9 @@ public static class GodotScripts
             : throw new Unavailable("no Godot was found to answer for it: install Godot, then choose its executable in "
                 + $"{SettingsDialog.PlaceOfPage(SettingsDialog.GodotPage)}, set {GodotExecutables.Variable} to it, or put it on the PATH", "no Godot");
         Directory.CreateDirectory(logFolder);
-        if (EditorPort(environment) is { } port && await OwnEditorAsync(project, port, logFolder, cancel) is { } own)
+        if (GodotServerWords.EditorPort(found.Executable, found.Version ?? await GodotExecutables.VersionAsync(found, cancel), name => GodotUserFolders.Variable(environment, name),
+                File.Exists, File.ReadAllText) is { } port
+            && await OwnEditorAsync(project, port, logFolder, cancel) is { } own)
         {
             IdeErrors.Write($"GDScript: the Godot editor open on {project} answers on port {port}");
             return own;
@@ -149,35 +151,6 @@ public static class GodotScripts
             // It parses a document as each text comes and pushes what it found, none too.
             Pushes = new PushPace(EachText: true, TimeSpan.Zero),
         };
-
-    /// <summary>The port the person's Godot editor serves GDScript on, by its newest Editor Settings
-    /// (<see cref="GodotServerWords.PortIn"/>); null where Godot's editor has kept no settings in the user's folders, so
-    /// has never run there.</summary>
-    private static int? EditorPort(IReadOnlyDictionary<string, string> environment)
-    {
-        string folder = SettingsFolder(environment);
-        string? newest;
-        try
-        {
-            newest = Directory.Exists(folder) ? Directory.EnumerateFiles(folder, "editor_settings-4*.tres").OrderBy(f => f, StringComparer.Ordinal).LastOrDefault() : null;
-            return newest is null ? null : GodotServerWords.PortIn(File.ReadAllText(newest));
-        }
-        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>Where Godot keeps its editor settings, as it finds its user folders: APPDATA's Godot on Windows,
-    /// Application Support's on macOS, XDG's config (or ~/.config) godot on Linux, the variables given first.</summary>
-    private static string SettingsFolder(IReadOnlyDictionary<string, string> environment)
-    {
-        string Variable(string name) => GodotUserFolders.Variable(environment, name) ?? string.Empty;
-        string home = Variable("HOME") is { Length: > 0 } set ? set : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return OperatingSystem.IsWindows() ? Path.Combine(Variable("APPDATA"), "Godot")
-            : OperatingSystem.IsMacOS() ? Path.Combine(home, "Library", "Application Support", "Godot")
-            : Path.Combine(Variable("XDG_CONFIG_HOME") is { Length: > 0 } config ? config : Path.Combine(home, ".config"), "godot");
-    }
 
     /// <summary>What a headless editor makes beside the project's files where they have none, which a watch of it takes away.</summary>
     [Flags]
