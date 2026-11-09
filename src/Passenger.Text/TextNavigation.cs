@@ -228,6 +228,28 @@ public static class TextNavigation
         return i;
     }
 
+    /// <summary>The spaces and tabs the line holding an offset begins with.</summary>
+    public static string IndentOf(TextSnapshot text, int offset)
+    {
+        LineSpan line = text.GetLine(text.GetLineFromOffset(offset));
+        return text.GetText(line.Start, IndentEnd(text, line) - line.Start);
+    }
+
+    /// <summary>Where the leading spaces and tabs of a line of a string end, the line starting at
+    /// <paramref name="lineStart"/>.</summary>
+    public static int IndentEnd(string text, int lineStart)
+    {
+        int i = lineStart;
+        while (i < text.Length && text[i] is ' ' or '\t')
+        {
+            i++;
+        }
+        return i;
+    }
+
+    /// <summary>Where the line of a string holding an offset starts, lines broken at each '\n'.</summary>
+    public static int LineStart(string text, int offset) => offset <= 0 ? 0 : text.LastIndexOf('\n', offset - 1) + 1;
+
     /// <summary>Where the run of whitespace ending at <paramref name="offset"/> on a line begins, read no further back
     /// than it goes.</summary>
     public static int WhitespaceBefore(TextSnapshot text, LineSpan line, int offset)

@@ -2,6 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Passenger.Core;
+using Passenger.Text;
 using System.Runtime.CompilerServices;
 
 namespace Passenger.Workspace;
@@ -405,12 +406,7 @@ public static class JsonText
         public static string IndentOf(string text, int at)
         {
             int start = LineStart(text, at);
-            int end = start;
-            while (end < text.Length && text[end] is ' ' or '\t')
-            {
-                end++;
-            }
-            return text[start..end];
+            return text[start..TextNavigation.IndentEnd(text, start)];
         }
 
         private static string Quoted(string name) => JsonSerializer.Serialize(name, Written);

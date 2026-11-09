@@ -603,17 +603,8 @@ public static partial class XamlRefactorings
     /// <summary>The whitespace a line starts with, up to the offset (the indentation of what starts there).</summary>
     internal static string LineIndent(string text, int offset)
     {
-        int start = text.LastIndexOf('\n', Math.Max(0, offset - 1)) + 1;
-        if (offset == 0)
-        {
-            start = 0;
-        }
-        int at = start;
-        while (at < offset && text[at] is ' ' or '\t')
-        {
-            at++;
-        }
-        return text[start..at];
+        int start = TextNavigation.LineStart(text, offset);
+        return text[start..Math.Min(offset, TextNavigation.IndentEnd(text, start))];
     }
 
     /// <summary>A block's lines after its first indented by <paramref name="indent"/>, its breaks the file's.</summary>

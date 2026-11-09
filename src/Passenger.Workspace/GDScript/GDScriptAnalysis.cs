@@ -1,3 +1,5 @@
+using Passenger.Text;
+
 namespace Passenger.Workspace.GDScript;
 
 /// <summary>A type inferred where nothing is written: after a <c>:=</c> variable's or an untyped parameter's name, the
@@ -343,7 +345,7 @@ public sealed class GDScriptAnalysis
             return found;
         }
         bool silenced = settings.Silences(Path);
-        int[] lines = LineStarts(Tree.Text);
+        LineStarts lines = new(Tree.Text);
         Dictionary<string, HashSet<int>>? ignored = null;
         foreach (GDScriptFinding finding in Found.Distinct())
         {
@@ -358,32 +360,19 @@ public sealed class GDScriptAnalysis
                 continue;
             }
             ignored ??= Ignored(lines);
-            if (ignored.TryGetValue(code, out HashSet<int>? covered) && covered.Contains(LineOf(lines, finding.Start)))
+            if (ignored.TryGetValue(code, out HashSet<int>? covered) && covered.Contains(lines.LineOf(finding.Start)))
             {
                 continue;
             }
             found.Add(level == GDScriptWarnLevel.Error ? finding with { Message = finding.Message + GDScriptWarnings.TreatedAsError } : finding);
         }
-        return [.. found.OrderBy(f => LineOf(lines, f.Start)).ThenBy(f => f.Code is null ? 0 : f.IsError ? 1 : 2)];
+        return [.. found.OrderBy(f => lines.LineOf(f.Start)).ThenBy(f => f.Code is null ? 0 : f.IsError ? 1 : 2)];
     }
-
-    private static int[] LineStarts(string text)
-    {
-        List<int> starts = [0];
-        for (int i = text.IndexOf('\n'); i >= 0; i = text.IndexOf('\n', i + 1))
-        {
-            starts.Add(i + 1);
-        }
-        return [.. starts];
-    }
-
-    /// <summary>The line (from 1) of an offset.</summary>
-    private static int LineOf(int[] lines, int offset) => Core.Sorted.FirstAfter<int>(lines, offset);
 
     /// <summary>The lines each warning is ignored on, by its name: from a <c>@warning_ignore</c> to the end of what it is
     /// written before (a variable's value, a block's header, a function's parameters), and between a
     /// <c>@warning_ignore_start</c> and its <c>@warning_ignore_restore</c>, or the file's end.</summary>
-    private Dictionary<string, HashSet<int>> Ignored(int[] lines)
+    private Dictionary<string, HashSet<int>> Ignored(LineStarts lines)
     {
         Dictionary<string, HashSet<int>> ignored = new(StringComparer.Ordinal);
         void Cover(GDScriptAnnotation annotation, int from, int to)
@@ -403,7 +392,7 @@ public sealed class GDScriptAnalysis
             {
                 if (annotation.Name == "@warning_ignore")
                 {
-                    int start = LineOf(lines, offset + annotation.Start);
+                    int start = lines.LineOf(offset + annotation.Start);
                     Cover(annotation, start, IgnoredTo(node, offset, lines, start));
                 }
             }
@@ -414,9 +403,9 @@ public sealed class GDScriptAnalysis
         }
         foreach (GDScriptAnnotation annotation in Tree!.Class.Annotations.Where(a => a.Name == "@warning_ignore"))
         {
-            int classLine = LineOf(lines, Math.Max(0, Tree.Class.Start));
-            int first = Tree.Class.Annotations.Min(a => LineOf(lines, a.Start));
-            int last = Tree.Class.Annotations.Max(a => LineOf(lines, Math.Max(a.Start, a.End - 1)));
+            int classLine = lines.LineOf(Math.Max(0, Tree.Class.Start));
+            int first = Tree.Class.Annotations.Min(a => lines.LineOf(a.Start));
+            int last = Tree.Class.Annotations.Max(a => lines.LineOf(Math.Max(a.Start, a.End - 1)));
             Cover(annotation, Math.Min(first, classLine), Math.Max(classLine, last));
         }
         foreach (GDScriptMember member in Tree.Members)
@@ -426,7 +415,7 @@ public sealed class GDScriptAnalysis
         Dictionary<string, int> begun = new(StringComparer.Ordinal);
         foreach ((GDScriptAnnotation annotation, int offset) in Tree.Regions)
         {
-            int line = LineOf(lines, offset + annotation.Start);
+            int line = lines.LineOf(offset + annotation.Start);
             foreach (string code in Codes(annotation))
             {
                 if (annotation.Name == "@warning_ignore_start")
@@ -446,7 +435,7 @@ public sealed class GDScriptAnalysis
         foreach ((string code, int from) in begun)
         {
             HashSet<int> covered = ignored.TryGetValue(code, out HashSet<int>? kept) ? kept : ignored[code] = [];
-            for (int at = from; at <= lines.Length; at++)
+            for (int at = from; at < lines.Count; at++)
             {
                 covered.Add(at);
             }
@@ -459,9 +448,9 @@ public sealed class GDScriptAnalysis
         annotation.Arguments.OfType<GDScriptLiteral>().Select(a => a.Value as string).OfType<string>().Select(n => n.ToUpperInvariant()).Where(GDScriptWarnings.Exists);
 
     /// <summary>The last line a <c>@warning_ignore</c> before a node covers, as Godot's warning_ignore_annotation gives it.</summary>
-    private static int IgnoredTo(GDScriptNode node, int offset, int[] lines, int start)
+    private static int IgnoredTo(GDScriptNode node, int offset, LineStarts lines, int start)
     {
-        int End(GDScriptNode? part, GDScriptNode whole) => part is { End: >= 0 } ? LineOf(lines, offset + Math.Max(part.Start, part.End - 1)) : LineOf(lines, offset + whole.Start);
+        int End(GDScriptNode? part, GDScriptNode whole) => part is { End: >= 0 } ? lines.LineOf(offset + Math.Max(part.Start, part.End - 1)) : lines.LineOf(offset + whole.Start);
         return node switch
         {
             GDScriptVariable variable => End(variable.Initializer, variable),
@@ -469,10 +458,10 @@ public sealed class GDScriptAnalysis
             GDScriptIf branch => End(branch.Condition, branch),
             GDScriptMatch match => End(match.Test, match),
             GDScriptWhile loop => End(loop.Condition, loop),
-            GDScriptFunction function => function.Parameters.Select(p => End(p.Initializer ?? (GDScriptNode)p, p)).Append(LineOf(lines, offset + function.Start)).Max(),
-            GDScriptMatchBranch branch => branch.Patterns.Select(p => End(p, p)).Append(LineOf(lines, offset + branch.Start)).Max(),
-            GDScriptClass @class => @class.Annotations.Select(a => End(a, a)).Append(LineOf(lines, offset + @class.Start)).Max(),
-            _ => node.End >= 0 ? LineOf(lines, offset + Math.Max(node.Start, node.End - 1)) : start,
+            GDScriptFunction function => function.Parameters.Select(p => End(p.Initializer ?? (GDScriptNode)p, p)).Append(lines.LineOf(offset + function.Start)).Max(),
+            GDScriptMatchBranch branch => branch.Patterns.Select(p => End(p, p)).Append(lines.LineOf(offset + branch.Start)).Max(),
+            GDScriptClass @class => @class.Annotations.Select(a => End(a, a)).Append(lines.LineOf(offset + @class.Start)).Max(),
+            _ => node.End >= 0 ? lines.LineOf(offset + Math.Max(node.Start, node.End - 1)) : start,
         };
     }
 

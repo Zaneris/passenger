@@ -1,5 +1,6 @@
 using System.Text;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.Workspace;
 
@@ -110,9 +111,9 @@ public sealed record GodotExternal(GodotSection Section)
 /// place; a tag or value Passenger does not know is kept by its place alone.</summary>
 public sealed class GodotFile
 {
-    private readonly int[] lineStarts;
+    private readonly LineStarts lineStarts;
 
-    private GodotFile(string text, IReadOnlyList<GodotEntry> untagged, IReadOnlyList<GodotSection> sections, int[] lineStarts)
+    private GodotFile(string text, IReadOnlyList<GodotEntry> untagged, IReadOnlyList<GodotSection> sections, LineStarts lineStarts)
     {
         Text = text;
         Untagged = untagged;
@@ -202,7 +203,7 @@ public sealed class GodotFile
     }
 
     /// <summary>The line (from zero) an offset is on.</summary>
-    public int LineOf(int offset) => Math.Max(0, Sorted.FirstAfter<int>(lineStarts, offset) - 1);
+    public int LineOf(int offset) => lineStarts.LineOf(offset);
 
     /// <summary>Whether a file is one Godot writes as text: a scene or a resource.</summary>
     public static bool IsText(string path) =>
@@ -214,12 +215,7 @@ public sealed class GodotFile
 
     public static GodotFile Parse(string text)
     {
-        List<int> starts = [0];
-        for (int i = text.IndexOf('\n'); i >= 0; i = text.IndexOf('\n', i + 1))
-        {
-            starts.Add(i + 1);
-        }
-        int[] lineStarts = [.. starts];
+        LineStarts lineStarts = new(text);
         List<GodotSection> sections = [];
         List<GodotEntry> untagged = [];
         int at = 0;
@@ -256,7 +252,7 @@ public sealed class GodotFile
                     properties.Add(property);
                 }
             }
-            int line = Math.Max(0, Sorted.FirstAfter<int>(lineStarts, start) - 1);
+            int line = lineStarts.LineOf(start);
             sections.Add(new GodotSection(tag, start, end, line, attributes, properties));
         }
         return new GodotFile(text, untagged, sections, lineStarts);

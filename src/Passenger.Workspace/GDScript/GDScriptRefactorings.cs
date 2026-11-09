@@ -148,8 +148,6 @@ public static partial class GDScriptRefactorings
         return (start, end);
     }
 
-    private static int LineStart(string text, int offset) => offset <= 0 ? 0 : text.LastIndexOf('\n', offset - 1) + 1;
-
     /// <summary>Where the line after an offset's starts (the text's end for the last line).</summary>
     private static int NextLine(string text, int offset)
     {
@@ -157,15 +155,7 @@ public static partial class GDScriptRefactorings
         return newline < 0 ? text.Length : newline + 1;
     }
 
-    private static string IndentOf(string text, int lineStart)
-    {
-        int at = lineStart;
-        while (at < text.Length && text[at] is ' ' or '\t')
-        {
-            at++;
-        }
-        return text[lineStart..at];
-    }
+    private static string IndentOf(string text, int lineStart) => text[lineStart..TextNavigation.IndentEnd(text, lineStart)];
 
     /// <summary>The script's indentation unit, as its first indented line of code shows it: a tab unless spaces.</summary>
     private static string Unit(GDScriptTree tree)
@@ -331,7 +321,7 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No("what is assigned to can't become a variable");
         }
-        int lineStart = LineStart(text, located.Offset + statement.Start);
+        int lineStart = TextNavigation.LineStart(text, located.Offset + statement.Start);
         if (!text.AsSpan(lineStart, located.Offset + statement.Start - lineStart).IsWhiteSpace())
         {
             return GDScriptRefactored.No("the expression can't move before its statement: it shares its line with what comes before it, and a declaration goes on a line above");
@@ -479,7 +469,7 @@ public static partial class GDScriptRefactorings
         }
         string inlined = text[(located.Offset + value.Start)..(located.Offset + value.End)];
         List<TextEdit> edits = [.. uses.Select(u => new TextEdit(located.Offset + u.Start, u.End - u.Start, Placed(inlined, u, Compound(value), parents)))];
-        int start = LineStart(text, located.Offset + variable.Start);
+        int start = TextNavigation.LineStart(text, located.Offset + variable.Start);
         edits.Add(new TextEdit(start, NextLine(text, located.Offset + variable.End) - start, string.Empty));
         return GDScriptRefactored.Of(analysis.Path, edits);
     }
@@ -696,10 +686,10 @@ public static partial class GDScriptRefactorings
         }
         bool awaits = chosen.SelectMany(GDScriptNodes.Below).Any(n => n is GDScriptAwait);
         string unit = Unit(tree);
-        int lineFrom = LineStart(text, firstStart);
+        int lineFrom = TextNavigation.LineStart(text, firstStart);
         int lineTo = NextLine(text, lastEnd);
         string indent = IndentOf(text, lineFrom);
-        string functionIndent = IndentOf(text, LineStart(text, offset + function.Start));
+        string functionIndent = IndentOf(text, TextNavigation.LineStart(text, offset + function.Start));
         StringBuilder made = new();
         HashSet<int> inStrings = [.. chosen.SelectMany(c => StringLines(c, offset, text))];
         foreach (string line in Reindented(text[lineFrom..lineTo].TrimEnd('\n'), lineFrom, inStrings,

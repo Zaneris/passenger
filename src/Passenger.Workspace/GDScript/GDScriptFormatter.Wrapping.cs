@@ -87,7 +87,7 @@ public static partial class GDScriptFormatter
     private static List<(int Start, int End)> Breaks(string text, List<GDScriptToken> scanned, GDScriptFormatOptions options)
     {
         List<GDScriptToken> t = [.. scanned.Where(x => !IsVirtual(x.Kind))];
-        int[] lines = LineStarts(text);
+        LineStarts lines = new(text);
         int n = t.Count;
         int[] line = new int[n];
         int[] depth = new int[n];
@@ -95,20 +95,20 @@ public static partial class GDScriptFormatter
         int[] enclosing = new int[n];
         bool[] lambda = new bool[n];
         // Each line's first and last token, and whether a token runs onto it or past it (a multi-line string).
-        int[] firstOn = new int[lines.Length];
-        int[] lastOn = new int[lines.Length];
-        bool[] runOn = new bool[lines.Length];
+        int[] firstOn = new int[lines.Count];
+        int[] lastOn = new int[lines.Count];
+        bool[] runOn = new bool[lines.Count];
         Array.Fill(firstOn, -1);
         List<int> open = [];
         int at = 0;
         for (int i = 0; i < n; i++)
         {
-            while (at + 1 < lines.Length && lines[at + 1] <= t[i].Start)
+            while (at + 1 < lines.Count && lines[at + 1] <= t[i].Start)
             {
                 at++;
             }
             int ends = at;
-            while (ends + 1 < lines.Length && lines[ends + 1] < t[i].End)
+            while (ends + 1 < lines.Count && lines[ends + 1] < t[i].End)
             {
                 ends++;
             }
@@ -153,9 +153,9 @@ public static partial class GDScriptFormatter
         int unit = options.UseTabs ? options.TabWidth : options.IndentSize;
         List<int> before = [];
         HashSet<int> ignored = Ignored(text, lines);
-        for (int l = 0; l < lines.Length; l++)
+        for (int l = 0; l < lines.Count; l++)
         {
-            int length = (l + 1 < lines.Length ? lines[l + 1] - 1 : text.Length) - lines[l];
+            int length = (l + 1 < lines.Count ? lines[l + 1] - 1 : text.Length) - lines[l];
             if (firstOn[l] >= 0 && !runOn[l] && !ignored.Contains(l) && length > options.LineLength / options.TabWidth)
             {
                 Wrap(new Run(firstOn[l], lastOn[l], Columns(text, lines[l], t[firstOn[l]].Start, options.TabWidth)));
@@ -313,13 +313,13 @@ public static partial class GDScriptFormatter
 
     /// <summary>The lines gdlint is told to leave long: the one after a <c># gdlint: ignore=max-line-length</c> line, one that
     /// ends with it, and those between <c># gdlint: disable=max-line-length</c> and <c>enable=</c>, as gdtoolkit reads them.</summary>
-    private static HashSet<int> Ignored(string text, int[] lines)
+    private static HashSet<int> Ignored(string text, LineStarts lines)
     {
         HashSet<int> ignored = [];
         bool disabled = false;
-        for (int l = 0; l < lines.Length; l++)
+        for (int l = 0; l < lines.Count; l++)
         {
-            int end = l + 1 < lines.Length ? lines[l + 1] - 1 : text.Length;
+            int end = l + 1 < lines.Count ? lines[l + 1] - 1 : text.Length;
             string line = text[lines[l]..end];
             int hash = line.IndexOf('#', StringComparison.Ordinal);
             string said = hash < 0 ? string.Empty : line[(hash + 1)..].Replace(" ", string.Empty, StringComparison.Ordinal);

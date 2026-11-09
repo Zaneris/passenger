@@ -308,11 +308,11 @@ public static partial class GDScriptRefactorings
     private static TextRange MemberLines(string text, GDScriptTarget target)
     {
         int first = target.Offset + (target.Node.Annotations.Count > 0 ? Math.Min(target.Node.Start, target.Node.Annotations.Min(a => a.Start)) : target.Node.Start);
-        int start = LineStart(text, first);
+        int start = TextNavigation.LineStart(text, first);
         // Its doc comments, the ## lines just above it.
         while (start > 0)
         {
-            int above = LineStart(text, start - 1);
+            int above = TextNavigation.LineStart(text, start - 1);
             if (!text[above..start].TrimStart().StartsWith("##", StringComparison.Ordinal))
             {
                 break;
@@ -329,9 +329,9 @@ public static partial class GDScriptRefactorings
         {
             return TextRange.FromBounds(start, next);
         }
-        while (start > 0 && text[LineStart(text, start - 1)..start].Trim().Length == 0)
+        while (start > 0 && text[TextNavigation.LineStart(text, start - 1)..start].Trim().Length == 0)
         {
-            start = LineStart(text, start - 1);
+            start = TextNavigation.LineStart(text, start - 1);
         }
         return TextRange.FromBounds(start, text.Length);
     }

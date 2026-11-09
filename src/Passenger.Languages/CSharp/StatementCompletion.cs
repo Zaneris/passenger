@@ -56,7 +56,7 @@ public static class StatementCompletion
     /// <summary>A line opened after the caret's, indented as it is: what a statement already whole gets.</summary>
     private static CompletedStatement NewLine(TextSnapshot text, LineSpan line, string eol)
     {
-        string inserted = eol + Completer.IndentOf(text, line.Start);
+        string inserted = eol + TextNavigation.IndentOf(text, line.Start);
         return new CompletedStatement([new TextEdit(line.End, 0, inserted)], line.End + inserted.Length);
     }
 
@@ -106,7 +106,7 @@ public static class StatementCompletion
             {
                 return new CompletedStatement([new TextEdit(end, 0, missing)], end + missing.Length);
             }
-            string next = eol + IndentOf(text, node.SpanStart);
+            string next = eol + TextNavigation.IndentOf(text, node.SpanStart);
             if (rest.Length == 0)
             {
                 return new CompletedStatement([new TextEdit(end, line.End - end, missing + next)], end + missing.Length + next.Length);
@@ -178,7 +178,7 @@ public static class StatementCompletion
         /// on the empty line between them.</summary>
         private CompletedStatement Braced(SyntaxNode statement, int at, string closing, string after)
         {
-            string indent = IndentOf(text, statement.SpanStart);
+            string indent = TextNavigation.IndentOf(text, statement.SpanStart);
             string head = closing + eol + indent + "{" + eol + indent + unit;
             string inserted = head + eol + indent + "}" + after;
             return new CompletedStatement([new TextEdit(at, Spaces(at), inserted)], at + head.Length);
@@ -194,7 +194,7 @@ public static class StatementCompletion
                 return new CompletedStatement(edits, first.SpanStart + closing.Length);
             }
             // The brace's line: its own when it stands alone, the header's when it ends the header's line.
-            string indent = IndentOf(text, open.SpanStart);
+            string indent = TextNavigation.IndentOf(text, open.SpanStart);
             string head = eol + indent + unit;
             int from = open.Span.End;
             int to = close.IsMissing ? from + Spaces(from) : close.SpanStart;
@@ -248,16 +248,5 @@ public static class StatementCompletion
 
         /// <summary>Whether the caret's token is before a body (in the header), or the body is not there yet.</summary>
         private static bool Before(SyntaxToken token, SyntaxNode body) => body.IsMissing || token.Span.End <= body.SpanStart;
-
-        public static string IndentOf(TextSnapshot text, int offset)
-        {
-            int start = text.GetLineStart(text.GetLineFromOffset(offset));
-            int end = start;
-            while (end < text.Length && text[end] is ' ' or '\t')
-            {
-                end++;
-            }
-            return text.GetText(start, end - start);
-        }
     }
 }

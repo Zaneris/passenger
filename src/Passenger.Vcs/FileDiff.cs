@@ -27,9 +27,9 @@ public sealed class FileDiff
     private const int MostTooBig = 3;
 
     private readonly string[] headLines;
-    private readonly int[] headStarts;
+    private readonly LineStarts headStarts;
 
-    private FileDiff(string head, string[] headLines, int[] headStarts, TextSnapshot text, IReadOnlyList<DiffHunk> hunks)
+    private FileDiff(string head, string[] headLines, LineStarts headStarts, TextSnapshot text, IReadOnlyList<DiffHunk> hunks)
     {
         Head = head;
         this.headLines = headLines;
@@ -52,12 +52,12 @@ public sealed class FileDiff
     /// <summary>The change bars for the file's side: lines added, lines modified, and a mark where lines went.</summary>
     public IReadOnlyList<ChangeMark> Marks { get; }
 
-    public static FileDiff Compare(string head, TextSnapshot text) => Compare(head, LineDiff.Lines(head), Starts(head), text);
+    public static FileDiff Compare(string head, TextSnapshot text) => Compare(head, LineDiff.Lines(head), new LineStarts(head), text);
 
     /// <summary>Another text of the file compared with the same last commit, whose lines are split already.</summary>
     public FileDiff Compare(TextSnapshot text) => Compare(Head, headLines, headStarts, text);
 
-    private static FileDiff Compare(string head, string[] headLines, int[] headStarts, TextSnapshot text) =>
+    private static FileDiff Compare(string head, string[] headLines, LineStarts headStarts, TextSnapshot text) =>
         new(head, headLines, headStarts, text, LineDiff.Hunks(headLines, LineDiff.Lines(text.ToString())));
 
     /// <summary>How the lines alike on both sides changed their separators, in words, which the hunks never show (a file
@@ -77,23 +77,12 @@ public sealed class FileDiff
     /// <summary>A line of the last commit's text's separator: "LF", "CRLF", or empty for a last line that ends with none.</summary>
     private string HeadSeparator(int line)
     {
-        if (line + 1 >= headStarts.Length)
+        if (line + 1 >= headStarts.Count)
         {
             return string.Empty;
         }
         int feed = headStarts[line + 1] - 1;
         return feed > headStarts[line] && Head[feed - 1] == '\r' ? "CRLF" : "LF";
-    }
-
-    /// <summary>Where each line of a text starts, as a document of it numbers them.</summary>
-    private static int[] Starts(string text)
-    {
-        List<int> starts = [0];
-        for (int at = text.IndexOf('\n'); at >= 0; at = text.IndexOf('\n', at + 1))
-        {
-            starts.Add(at + 1);
-        }
-        return [.. starts];
     }
 
     /// <summary>The words (or characters) that differ inside every change with lines on both sides: on the last commit's

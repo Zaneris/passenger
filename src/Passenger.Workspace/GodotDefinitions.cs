@@ -1,5 +1,6 @@
 using System.Text;
 using Passenger.Core;
+using Passenger.Text;
 using Passenger.Workspace.GDScript;
 
 namespace Passenger.Workspace;
@@ -88,7 +89,7 @@ public sealed class GodotDefinitions
     private readonly Lazy<(IReadOnlyList<GodotThemeItem> Defined, IReadOnlyList<GodotThemeItem> Overridden, IReadOnlyDictionary<string, string> Variations)> themes;
     private readonly Lazy<GodotThemeTable> theme;
     private readonly Dictionary<string, (IReadOnlyList<GodotDefined> Names, bool Whole)> uniforms = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, int[]> lines = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LineStarts> lines = new(StringComparer.Ordinal);
     private readonly Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal);
     private readonly Lock reading = new();
 
@@ -1221,26 +1222,16 @@ public sealed class GodotDefinitions
         }
     }
 
-    private static int[] LineStarts(string text)
-    {
-        List<int> starts = [0];
-        for (int i = text.IndexOf('\n'); i >= 0; i = text.IndexOf('\n', i + 1))
-        {
-            starts.Add(i + 1);
-        }
-        return [.. starts];
-    }
-
     private int LineIn(string res, string text, int offset)
     {
-        int[]? starts;
+        LineStarts? starts;
         lock (reading)
         {
             if (!lines.TryGetValue(res, out starts))
             {
-                lines[res] = starts = LineStarts(text);
+                lines[res] = starts = new LineStarts(text);
             }
         }
-        return Math.Max(0, Sorted.FirstAfter<int>(starts, offset) - 1);
+        return starts.LineOf(offset);
     }
 }

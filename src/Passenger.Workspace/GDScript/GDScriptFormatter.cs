@@ -111,7 +111,7 @@ public static partial class GDScriptFormatter
     /// <summary>The edits laying a script out; <paramref name="blocks"/> null keeps its blank lines as they are.</summary>
     private static List<TextEdit> Layout(string text, List<GDScriptToken> scanned, Dictionary<int, int>? blocks, GDScriptFormatOptions options)
     {
-        int[] lines = LineStarts(text);
+        LineStarts lines = new(text);
         List<Laid> laid = [];
         int level = 0;
         int depth = 0;
@@ -129,9 +129,9 @@ public static partial class GDScriptFormatter
                 case K.Newline:
                     continue;
             }
-            int line = LineOf(lines, token.Start);
+            int line = lines.LineOf(token.Start);
             laid.Add(new Laid(token, level, depth, line != lastLine));
-            lastLine = LineOf(lines, Math.Max(token.Start, token.End - 1));
+            lastLine = lines.LineOf(Math.Max(token.Start, token.End - 1));
             depth += token.Kind switch
             {
                 K.ParenthesisOpen or K.BracketOpen or K.BraceOpen => 1,
@@ -167,7 +167,7 @@ public static partial class GDScriptFormatter
                 if (laid.Count > 0)
                 {
                     string indent = Indent(laid[0], open, lambdaBrackets, indents, laid, units, gap);
-                    indents[LineOf(lines, laid[0].Token.Start)] = indent;
+                    indents[lines.LineOf(laid[0].Token.Start)] = indent;
                     made += indent;
                 }
             }
@@ -197,7 +197,7 @@ public static partial class GDScriptFormatter
                 {
                     nodePath = false;
                     string indent = Indent(b, open, lambdaBrackets, indents, laid, units, gap);
-                    indents[LineOf(lines, b.Token.Start)] = indent;
+                    indents[lines.LineOf(b.Token.Start)] = indent;
                     made = Lines(gap, options, unit, BlankRule(b, blocks, open.Count > 0), indent);
                     if (options.TrailingCommas && b.Token.Kind is K.BracketClose or K.BraceClose && open.Count > 0 && open[^1].Index != i - 1
                         && a.Token.Kind != K.Comma && !lambdaBrackets.Contains(open[^1].Index) && Continued(gap) is false
@@ -217,7 +217,7 @@ public static partial class GDScriptFormatter
                 GDScriptToken token = laid[i].Token;
                 if (token.Kind is K.ParenthesisOpen or K.BracketOpen or K.BraceOpen)
                 {
-                    open.Add((token.Kind, LineOf(lines, token.Start), i));
+                    open.Add((token.Kind, lines.LineOf(token.Start), i));
                 }
                 else if (token.Kind is K.ParenthesisClose or K.BracketClose or K.BraceClose && open.Count > 0)
                 {
@@ -596,18 +596,6 @@ public static partial class GDScriptFormatter
             or K.LessLessEqual or K.GreaterGreaterEqual or K.AmpersandEqual or K.PipeEqual or K.CaretEqual or K.ForwardArrow => true,
         _ => false,
     };
-
-    private static int[] LineStarts(string text)
-    {
-        List<int> starts = [0];
-        for (int i = text.IndexOf('\n'); i >= 0; i = text.IndexOf('\n', i + 1))
-        {
-            starts.Add(i + 1);
-        }
-        return [.. starts];
-    }
-
-    private static int LineOf(int[] lines, int offset) => Core.Sorted.FirstAfter<int>(lines, offset) - 1;
 
     /// <summary>Why a laid out script would say something else than it did: its tokens (the indents and line breaks Godot
     /// reads among them, a trailing comma before a closing bracket aside), its comments in order, or the tree Godot's parser

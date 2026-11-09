@@ -72,11 +72,11 @@ public static class ThemeVariants
                 return [];
             }
             string copy = text[source.Start..source.End];
-            string indent = IndentOf(text, source.Start);
+            string indent = XamlRefactorings.LineIndent(text, source.Start);
             if (target.Children.Count > 0)
             {
                 XmlElement last = target.Children[^1];
-                return [new TextEdit(last.End, 0, $"\n{IndentOf(text, last.Start)}{copy}")];
+                return [new TextEdit(last.End, 0, $"\n{XamlRefactorings.LineIndent(text, last.Start)}{copy}")];
             }
             int lineStart = text.LastIndexOf('\n', Math.Max(0, end - 1)) + 1;
             return [new TextEdit(lineStart, 0, $"{indent}{copy}\n")];
@@ -97,16 +97,5 @@ public static class ThemeVariants
             return dot < 0 ? trimmed : trimmed[(dot + 1)..^1].Trim();
         }
         return trimmed;
-    }
-
-    private static string IndentOf(string text, int offset)
-    {
-        int lineStart = text.LastIndexOf('\n', Math.Max(0, offset - 1)) + 1;
-        int at = lineStart;
-        while (at < offset && text[at] is ' ' or '\t')
-        {
-            at++;
-        }
-        return text[lineStart..at];
     }
 }

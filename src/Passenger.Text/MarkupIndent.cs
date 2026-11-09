@@ -59,14 +59,14 @@ internal static class MarkupIndent
         {
             case PlaceKind.Content:
             {
-                string parent = place.Parent < 0 ? string.Empty : LineIndent(text, place.Parent);
+                string parent = place.Parent < 0 ? string.Empty : TextNavigation.IndentOf(text, place.Parent);
                 string child = place.Parent < 0 ? string.Empty : parent + indent.Unit;
                 if (!endTagFollows)
                 {
                     return (child, null);
                 }
                 // The end tag goes to its own element's indentation, which an HTML element's left-out end tag makes an outer one's.
-                string closing = place.Closer < 0 ? parent : LineIndent(text, place.Closer);
+                string closing = place.Closer < 0 ? parent : TextNavigation.IndentOf(text, place.Closer);
                 return place.Opened ? (child, closing) : (closing, null);
             }
             case PlaceKind.Tag:
@@ -74,7 +74,7 @@ internal static class MarkupIndent
                 LineSpan line = text.GetLine(text.GetLineFromOffset(place.Tag));
                 return place.Attribute >= 0
                     ? (indent.Whitespace(indent.Columns(text.GetText(line.Start, place.Attribute - line.Start))), null)
-                    : (LineIndent(text, place.Tag) + indent.Unit, null);
+                    : (TextNavigation.IndentOf(text, place.Tag) + indent.Unit, null);
             }
             default:
                 return null;
@@ -760,11 +760,5 @@ internal static class MarkupIndent
         }
         int end = IndexIn(s, closer, at + opener.Length, s.Length);
         return end < 0 ? -1 : end + closer.Length;
-    }
-
-    private static string LineIndent(TextSnapshot text, int offset)
-    {
-        LineSpan line = text.GetLine(text.GetLineFromOffset(offset));
-        return text.GetText(line.Start, TextNavigation.IndentEnd(text, line) - line.Start);
     }
 }

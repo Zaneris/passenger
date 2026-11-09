@@ -517,11 +517,11 @@ public static class ResourceFiles
         return text[..at] + newline + inner + child + text[at..];
     }
 
-    /// <summary>The white space an element's line starts with up to it, else the indentation given.</summary>
+    /// <summary>The spaces and tabs an element's line starts with up to it, else the indentation given.</summary>
     private static string IndentOf(string text, int start, string otherwise)
     {
-        int lineStart = text.LastIndexOf('\n', Math.Max(0, start - 1)) + 1;
-        return start > lineStart && text.AsSpan(lineStart, start - lineStart).IsWhiteSpace() ? text[lineStart..start] : start == lineStart ? string.Empty : otherwise;
+        int lineStart = TextNavigation.LineStart(text, start);
+        return start == lineStart ? string.Empty : TextNavigation.IndentEnd(text, lineStart) >= start ? text[lineStart..start] : otherwise;
     }
 
     private static IEnumerable<string> FilesIn(string folder, string pattern)

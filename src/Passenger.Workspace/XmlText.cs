@@ -11,7 +11,7 @@ namespace Passenger.Workspace;
 internal sealed class XmlText
 {
     private XElement root = null!;
-    private int[] lines = [];
+    private LineStarts lines = null!;
 
     public XmlText(string text)
     {
@@ -314,15 +314,7 @@ internal sealed class XmlText
     {
         root = XDocument.Parse(Text, LoadOptions.SetLineInfo | LoadOptions.PreserveWhitespace).Root
             ?? throw new XmlException("The file has no root element");
-        List<int> starts = [0];
-        for (int i = 0; i < Text.Length; i++)
-        {
-            if (Text[i] == '\n')
-            {
-                starts.Add(i + 1);
-            }
-        }
-        lines = [.. starts];
+        lines = new LineStarts(Text);
     }
 
     private bool StartsLine(int at)
@@ -349,13 +341,8 @@ internal sealed class XmlText
     /// <summary>The whitespace the line holding a place begins with, never what stands on it before the place.</summary>
     private string LineIndent(int at)
     {
-        int from = Text.LastIndexOf('\n', Math.Max(0, at - 1)) + 1;
-        int end = from;
-        while (end < at && Text[end] is ' ' or '\t')
-        {
-            end++;
-        }
-        return Text[from..end];
+        int from = TextNavigation.LineStart(Text, at);
+        return Text[from..Math.Min(at, TextNavigation.IndentEnd(Text, from))];
     }
 
     /// <summary>The whitespace before an element on its line; empty when other text comes before it there.</summary>
