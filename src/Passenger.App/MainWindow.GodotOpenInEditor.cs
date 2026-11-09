@@ -94,7 +94,7 @@ public partial class MainWindow
             return (false, $"Godot's editor is open on {name} without Passenger's addon, which alone opens a scene in an editor already running (Godot's command line would start a second editor): "
                 + "Install Passenger's Godot Addon…, which Godot's editor takes as it next opens the project");
         }
-        if (Projects.FirstOrDefault(p => p.GodotFolder is { } at && PathNames.Same(at, folder)) is not { } project
+        if (session.RunProjects.FirstOrDefault(p => p.GodotFolder is { } at && PathNames.Same(at, folder)) is not { } project
             || session.Configurations.All.FirstOrDefault(c => c.GodotEditor && PathNames.Same(c.Project, project.Path)) is not { } configuration)
         {
             return (false, $"Godot's editor is not open on {name}, and the folder has no configuration that opens it");

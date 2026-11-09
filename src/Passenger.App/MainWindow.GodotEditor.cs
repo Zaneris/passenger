@@ -99,10 +99,10 @@ public partial class MainWindow
         return [.. found.Distinct(PathNames.Comparer)];
     }
 
-    /// <summary>The Godot project a file is of (<see cref="ProjectSession.GodotOf"/>), else the innermost of the folder's that
-    /// holds it, as one whose C# project is not yet evaluated, or lies outside it, does.</summary>
+    /// <summary>The Godot project a file is of: the innermost of the folder's that holds it, as a project nested in another's
+    /// folder is its own, else its C# project's (<see cref="ProjectSession.GodotOf"/>) where that lies outside its folder.</summary>
     private string? GodotOfFile(string path) =>
-        session.GodotOf(path) ?? GodotProjectFolders().Where(g => PathNames.IsUnder(path, g)).MaxBy(g => g.Length);
+        GodotProjectFolders().Where(g => PathNames.IsUnder(path, g)).MaxBy(g => g.Length) ?? session.GodotOf(path);
 
     /// <summary>The Godot project a window-wide Godot action acts on: the active file's, else the open folder's first.</summary>
     private string? GodotAtHand() =>

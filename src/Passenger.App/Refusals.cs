@@ -283,6 +283,11 @@ public static class Refusals
         : opens is not null ? $"No Godot editor on {project} is connected: run {opens} to open one, whose Passenger's addon connects to this window"
         : $"No Godot editor on {project} is connected: open the project in Godot's editor, whose Passenger's addon connects to this window";
 
+    /// <summary>An agent's act in Godot's editor naming no scene by its path in the folder, which holds several Godot projects
+    /// whose editors each take such an act: the project is told by the scene's path alone.</summary>
+    public static string GodotProjectUnnamed(IReadOnlyList<string> projects) =>
+        $"The folder holds {projects.Count} Godot projects ({Plural.Listed(projects)}): name the scene by its path in the folder, such as {projects[0]}/main.tscn, so the act goes to that project's Godot editor";
+
     /// <summary>An agent's act in Godot's editor whose addon is older than one that takes it.</summary>
     public static string GodotAddonOlder(string project, int version) =>
         $"Passenger's addon in {project} is version {version}, which takes no agent's acts: Install Passenger's Godot Addon… updates it, and Godot's editor takes it as it next opens the project";

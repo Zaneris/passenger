@@ -38,14 +38,17 @@ public partial class MainWindow
     }
 
     /// <summary>The Godot project an agent's act is on and its scene (res://) by the path the agent gave: a path of the open
-    /// folder's in its own project, else res:// or uid:// as given in the project at hand; no scene for none given. Throws
-    /// where there is no Godot project, or the path is in none.</summary>
+    /// folder's in its own project, else, in a folder of one Godot project, res:// or uid:// as given or none. Throws where
+    /// there is no Godot project, the path is in none, or the folder's several projects leave which one unsaid.</summary>
     internal (string Folder, string? Scene) GodotSceneOf(string? given)
     {
         string atHand = GodotAtHand() ?? throw new InvalidOperationException(Refusals.NoGodotProject);
         if (given is null or "" || given.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) || given.StartsWith(GodotUids.Scheme, StringComparison.Ordinal))
         {
-            return (atHand, given is "" ? null : given);
+            // The person's active tab, which says the project at hand, is not the agent's to see.
+            return GodotProjectFolders() is { Count: > 1 } several
+                ? throw new InvalidOperationException(Refusals.GodotProjectUnnamed([.. several.Select(p => PathNames.Shown(p, Folder))]))
+                : (atHand, given is "" ? null : given);
         }
         string full = PathNames.Canonical(Path.GetFullPath(given, Folder ?? atHand));
         return GodotOfFile(full) is { } folder && GodotResPaths.Of(folder, full) is { } scene ? (folder, scene)

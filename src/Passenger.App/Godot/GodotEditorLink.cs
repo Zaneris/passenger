@@ -76,7 +76,7 @@ internal sealed class GodotEditorLink : IAsyncDisposable
     public async Task ListenAsync(IReadOnlyList<string> projects, IReadOnlyList<string> spellings)
     {
         UiThread.Check();
-        if (projects.Count > 0 && Projects.SequenceEqual(projects, PathNames.Comparer) || ending.IsCancellationRequested)
+        if (projects.Count > 0 && new HashSet<string>(Projects, PathNames.Comparer).SetEquals(projects) || ending.IsCancellationRequested)
         {
             return;
         }

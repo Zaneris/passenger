@@ -32,8 +32,8 @@ public partial class MainWindow
     private async Task<string?> PlayInGodotEditorAsync(RunConfiguration chosen, bool debug, CancellationToken cancel)
     {
         UiThread.Check();
-        ProjectModel? project = Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project));
-        if ((project?.GodotFolder ?? GodotAtHand()) is not { } folder)
+        ProjectModel? project = session.RunProjects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project));
+        if ((project?.GodotFolder ?? (chosen.RunsScriptGame ? Path.GetDirectoryName(chosen.Project) : null) ?? GodotAtHand()) is not { } folder)
         {
             return $"{chosen.Name} plays no Godot game";
         }
@@ -81,7 +81,7 @@ public partial class MainWindow
         {
             return $"Godot's editor on {name} plays only its main scene when asked without Passenger's addon: Install Passenger's Godot Addon… to play the scene chosen{older}";
         }
-        if (project is not null && chosen.BuildBeforeLaunch)
+        if (project is { IsScriptGame: false } && chosen.BuildBeforeLaunch)
         {
             BuildOutcome built = await buildRun.BuildForAsync(new BuildStep(project.Path, session.Frameworks.Of(project)), cancel);
             if (!built.Succeeded)
