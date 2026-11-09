@@ -441,6 +441,38 @@ public sealed class MarkdownPreviewTests
         }
     }
 
+    /// <summary>A pause in typing in a 600 KB changelog reads again only the lines around what was typed, which the preview
+    /// shows, and leaves every other block as it was read: a long file costs a pause what the short block typed in does.</summary>
+    [AvaloniaFact]
+    public void A_typing_pause_in_a_long_file_reads_again_only_the_lines_around_what_was_typed()
+    {
+        string folder = TestFolders.Create("markdown-typed-");
+        File.WriteAllText(Path.Combine(folder, "LONG.md"), Changelog(600_000));
+        MainWindow window = Ui.OpenFolder(folder, width: 1200, height: 800, languageServer: false);
+        // The preview shows beside a Markdown file unless turned off.
+        Assert.Null(window.OpenFile("LONG.md"));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        MarkdownPreview preview = Shown(group);
+        CodeEditor editor = group.Editor;
+        string[] lines = editor.Document.Snapshot.ToString().Split('\n');
+        Assert.True(preview.LinesRead == lines.Length, $"The preview's first read made {preview.LinesRead} of the file's {lines.Length} lines strings");
+
+        int line = Array.FindIndex(lines, l => l.StartsWith("## [5.0.0]", StringComparison.Ordinal));
+        Scroll(editor, line);
+        editor.Focus();
+        Ui.PlaceAfter(editor, "## [5.0.0] - 2026-01-");
+        window.KeyTextInput("typed ");
+        Ui.Settle();
+
+        Control heading = preview.BlockAt(line) ?? throw new Xunit.Sdk.XunitException($"No block draws line {line}");
+        Assert.True(heading.GetLogicalDescendants().Prepend(heading).OfType<MarkdownText>().Any(t => t.Shown.StartsWith("[5.0.0] - 2026-01-typed ", StringComparison.Ordinal)),
+            $"The heading typed in does not show what was typed:\n{preview.Text}");
+        Assert.True(preview.LinesRead < 50,
+            $"A pause in typing in one heading of a {lines.Length}-line file read {preview.LinesRead} lines again, so a long file costs every pause its whole text");
+        window.Close();
+    }
+
     /// <summary>A changelog of about a size, as a long project's grows: each version a heading, its fixes in a list, and now
     /// and then a fence of code and a table.</summary>
     private static string Changelog(int size)

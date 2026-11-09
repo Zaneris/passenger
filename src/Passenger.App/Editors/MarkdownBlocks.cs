@@ -77,6 +77,9 @@ public sealed class MarkdownBlocks : Panel
     /// <summary>The text the blocks were read from and its version, null until they are.</summary>
     internal (TextDocument Text, int Version)? From { get; private set; }
 
+    /// <summary>The blocks as read last, which the next read takes those the edit left alone from.</summary>
+    internal Markdown.Parsed? Parsed { get; set; }
+
     internal IReadOnlyList<Entry> Entries => entries;
 
     /// <summary>The blocks' controls drawn now, in order.</summary>

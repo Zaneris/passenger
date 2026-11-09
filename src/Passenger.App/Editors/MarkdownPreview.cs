@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -50,6 +51,9 @@ public sealed class MarkdownPreview : ScrollViewer
 
     /// <summary>The file it previews, null for none.</summary>
     public OpenDocument? Document => document;
+
+    /// <summary>How many of the file's lines its last read of the text read again, for a test of what a typing pause costs.</summary>
+    public int LinesRead { get; private set; }
 
     /// <summary>The controls of the top-level blocks drawn now, in order.</summary>
     public IReadOnlyList<Control> Blocks => page is null ? [] : [.. page.Shown.Select(e => e.Control!)];
@@ -219,20 +223,24 @@ public sealed class MarkdownPreview : ScrollViewer
         TextSnapshot text = shown.Text.Snapshot;
         int version = shown.Text.Version;
         IReadOnlyList<MarkdownBlocks.Entry> drawn = into.Entries;
-        MarkdownBlocks.Entry[] read = await BackgroundWork.Run(() => Read(text.ToString(), drawn));
+        Markdown.Parsed? before = into.Parsed;
+        (MarkdownBlocks.Entry[] read, Markdown.Parsed parsed) = await BackgroundWork.Run(() => Read(text.ToString(), drawn, before));
         if (asked != generation || document != shown || page != into)
         {
             return;
         }
+        into.Parsed = parsed;
+        LinesRead = parsed.Read;
         into.Take(read, shown.Text, version);
         FollowLaidOut();
     }
 
-    /// <summary>A text's blocks, each taking the block drawn it is (by its lines as written, in order), and each heading's
-    /// anchor.</summary>
-    private static MarkdownBlocks.Entry[] Read(string text, IReadOnlyList<MarkdownBlocks.Entry> drawn)
+    /// <summary>A text's blocks, read again only where it changed since <paramref name="before"/>, each taking the block drawn
+    /// it is (by its lines as written, in order), and each heading's anchor.</summary>
+    private static (MarkdownBlocks.Entry[] Read, Markdown.Parsed Parsed) Read(string text, IReadOnlyList<MarkdownBlocks.Entry> drawn, Markdown.Parsed? before)
     {
-        IReadOnlyList<Markdown.Placed> placed = Markdown.ParsePlaced(text);
+        Markdown.Parsed parsed = Markdown.ParsePlaced(text, before);
+        IReadOnlyList<Markdown.Placed> placed = parsed.Placed;
         Dictionary<string, Queue<MarkdownBlocks.Entry>> byLines = new(StringComparer.Ordinal);
         foreach (MarkdownBlocks.Entry entry in drawn)
         {
@@ -251,14 +259,17 @@ public sealed class MarkdownPreview : ScrollViewer
             if (placed[i].Block is Markdown.Heading heading)
             {
                 // A second heading of the same words is GitHub's "-1", a third "-2".
-                string slug = Markdown.Slug(Markdown.Plain(Markdown.Inlines(heading.Text)));
+                string slug = Slugs.GetValue(heading, static read => Markdown.Slug(Markdown.Plain(Markdown.Inlines(read.Text))));
                 anchor = taken.TryGetValue(slug, out int count) ? $"{slug}-{count}" : slug;
                 taken[slug] = count + 1;
             }
             read[i] = new MarkdownBlocks.Entry(i, placed[i], anchor, kept);
         }
-        return read;
+        return (read, parsed);
     }
+
+    /// <summary>Each heading's anchor before a count, by the heading read, which a read of its text again keeps.</summary>
+    private static readonly ConditionalWeakTable<Markdown.Heading, string> Slugs = new();
 
     private bool following;
 

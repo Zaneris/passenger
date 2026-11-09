@@ -64,8 +64,26 @@ internal static partial class Markdown
     internal sealed record Image(string Alt, string Target) : Inline;
 
     /// <summary>A block of a text's top level with the lines it was read from (from zero, <see cref="End"/> past its last)
-    /// and those lines as written, by which a page tells a block that changed from one that did not.</summary>
-    internal sealed record Placed(Block Block, int Line, int End, string Source);
+    /// and those lines as written, by which a page tells a block that changed from one that did not; <see cref="Reach"/>
+    /// is past the last line reading it looked at, which a line after its own may be.</summary>
+    internal sealed record Placed(Block Block, int Line, int End, string Source)
+    {
+        public int Reach { get; init; } = End;
+    }
+
+    /// <summary>A text's top-level blocks as read, with the text and where each of its lines starts, which reading it again
+    /// once edited takes the blocks the edit left alone from.</summary>
+    internal sealed class Parsed(string text, int[] starts, IReadOnlyList<Placed> placed, int read)
+    {
+        public string Text { get; } = text;
+
+        public int[] Starts { get; } = starts;
+
+        public IReadOnlyList<Placed> Placed { get; } = placed;
+
+        /// <summary>How many of the text's lines the read made strings of: all it read again.</summary>
+        public int Read { get; } = read;
+    }
 
     /// <summary>The blocks of a Markdown text.</summary>
     public static IReadOnlyList<Block> Parse(string text) =>
@@ -73,18 +91,160 @@ internal static partial class Markdown
 
     /// <summary>The blocks of a text's top level, each with its lines, which are the editor's: a "\r\n", a '\r' or a '\n'
     /// ends one.</summary>
-    public static IReadOnlyList<Placed> ParsePlaced(string text)
+    public static IReadOnlyList<Placed> ParsePlaced(string text) => ParsePlaced(text, null).Placed;
+
+    /// <summary>The blocks of a text's top level, as <see cref="ParsePlaced(string)"/> reads them, those of the read of the
+    /// text before an edit (<paramref name="before"/>) taken where the edit cannot have changed them: each block whose
+    /// reading looked only at lines before the first the edit changed, and the blocks from one beginning where a block began
+    /// before, in the lines after the edit that it left as they were. Only the lines read between are made strings.</summary>
+    public static Parsed ParsePlaced(string text, Parsed? before)
     {
-        string[] written = EditorLines().Split(text);
-        List<(int Start, int End)> spans = [];
-        List<Block> blocks = Blocks([.. written.Select(Untabbed)], spans);
-        List<Placed> placed = new(blocks.Count);
-        for (int b = 0; b < blocks.Count; b++)
+        if (before is not null && string.Equals(before.Text, text, StringComparison.Ordinal))
         {
-            (int start, int end) = spans[b];
-            placed.Add(new Placed(blocks[b], start, end, string.Join('\n', written, start, end - start)));
+            return before;
         }
-        return placed;
+        int[] starts = LineStarts(text);
+        TextLines lines = new(text, starts);
+        List<Placed> placed = [];
+        int i = 0;
+        int resync = int.MaxValue;
+        int shift = 0;
+        int next = 0;
+        if (before is not null)
+        {
+            int prefix = text.AsSpan().CommonPrefixLength(before.Text);
+            int changed = Passenger.Core.Sorted.FirstAfter(starts.AsSpan(), prefix) - 1;
+            while (next < before.Placed.Count && before.Placed[next].Reach <= changed)
+            {
+                placed.Add(before.Placed[next]);
+                i = before.Placed[next++].End;
+            }
+            int unchanged = text.Length - CommonSuffixLength(text.AsSpan(prefix), before.Text.AsSpan(prefix));
+            // A line of the unchanged end begins after a line break inside it, so it began a line before the edit too.
+            resync = Passenger.Core.Sorted.FirstAfter(starts.AsSpan(), unchanged);
+            shift = starts.Length - before.Starts.Length;
+        }
+        while (i < starts.Length)
+        {
+            if (i >= resync && before is not null)
+            {
+                while (next < before.Placed.Count && before.Placed[next].Line < i - shift)
+                {
+                    next++;
+                }
+                if (next < before.Placed.Count && before.Placed[next].Line == i - shift)
+                {
+                    for (; next < before.Placed.Count; next++)
+                    {
+                        Placed kept = before.Placed[next];
+                        placed.Add(shift == 0 ? kept : kept with { Line = kept.Line + shift, End = kept.End + shift, Reach = kept.Reach + shift });
+                    }
+                    break;
+                }
+            }
+            int start = i;
+            lines.Reach = 0;
+            if (BlockAt(lines, ref i, 0) is { } block)
+            {
+                placed.Add(new Placed(block, start, i, Source(text, starts, start, i)) { Reach = Math.Max(lines.Reach, i) });
+            }
+        }
+        return new Parsed(text, starts, placed, lines.Made);
+    }
+
+    /// <summary>Where each of a text's lines starts, the editor's lines: a "\r\n", a '\r' or a '\n' ends one.</summary>
+    private static int[] LineStarts(string text)
+    {
+        List<int> starts = [0];
+        ReadOnlySpan<char> rest = text;
+        int at = 0;
+        while (rest.IndexOfAny('\r', '\n') is int end and >= 0)
+        {
+            int after = end + (rest[end] == '\r' && end + 1 < rest.Length && rest[end + 1] == '\n' ? 2 : 1);
+            at += after;
+            starts.Add(at);
+            rest = rest[after..];
+        }
+        return [.. starts];
+    }
+
+    /// <summary>How many characters two texts end with alike, compared from their ends a stretch at a time.</summary>
+    private static int CommonSuffixLength(ReadOnlySpan<char> text, ReadOnlySpan<char> other)
+    {
+        const int Stretch = 256;
+        int most = Math.Min(text.Length, other.Length);
+        int same = 0;
+        while (same + Stretch <= most && text[^(same + Stretch)..^same].SequenceEqual(other[^(same + Stretch)..^same]))
+        {
+            same += Stretch;
+        }
+        while (same < most && text[^(same + 1)] == other[^(same + 1)])
+        {
+            same++;
+        }
+        return same;
+    }
+
+    /// <summary>The end of a line, before its break.</summary>
+    private static int LineEnd(string text, int[] starts, int line)
+    {
+        if (line + 1 >= starts.Length)
+        {
+            return text.Length;
+        }
+        int next = starts[line + 1];
+        return next >= 2 && text[next - 1] == '\n' && text[next - 2] == '\r' && next - 2 >= starts[line] ? next - 2 : next - 1;
+    }
+
+    /// <summary>A block's lines as written, joined by '\n'.</summary>
+    private static string Source(string text, int[] starts, int start, int end)
+    {
+        int from = starts[start];
+        int to = LineEnd(text, starts, end - 1);
+        if (!text.AsSpan(from, to - from).Contains('\r'))
+        {
+            return text[from..to];
+        }
+        return string.Join('\n', Enumerable.Range(start, end - start).Select(line => text[starts[line]..LineEnd(text, starts, line)]));
+    }
+
+    /// <summary>A text's lines, made strings (their tabs as spaces) only as reading asks for them, and how far it asked.</summary>
+    private sealed class TextLines(string text, int[] starts) : IReadOnlyList<string>
+    {
+        private readonly Dictionary<int, string> made = [];
+
+        /// <summary>Past the last line asked for since it was set.</summary>
+        public int Reach { get; set; }
+
+        /// <summary>How many lines were made strings.</summary>
+        public int Made => made.Count;
+
+        public int Count => starts.Length;
+
+        public string this[int index]
+        {
+            get
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(index);
+                ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, starts.Length);
+                Reach = Math.Max(Reach, index + 1);
+                if (!made.TryGetValue(index, out string? line))
+                {
+                    made[index] = line = Untabbed(text[starts[index]..LineEnd(text, starts, index)]);
+                }
+                return line;
+            }
+        }
+
+        public IEnumerator<string> GetEnumerator()
+        {
+            for (int index = 0; index < Count; index++)
+            {
+                yield return this[index];
+            }
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     /// <summary>Draws blocks into a panel, a control each; a link's click is handed to <paramref name="browse"/>, which
@@ -512,7 +672,7 @@ internal static partial class Markdown
                     }
                     if (next < lines.Count && Indent(lines[next]) >= content)
                     {
-                        item.AddRange(lines.Skip(i).Take(next - i).Select(_ => string.Empty));
+                        item.AddRange(Enumerable.Repeat(string.Empty, next - i));
                         i = next;
                         continue;
                     }
@@ -783,9 +943,6 @@ internal static partial class Markdown
 
     [GeneratedRegex(@"^ {0,3}\|?[ ]*:?-+:?[ ]*(?:\|[ ]*:?-+:?[ ]*)*\|?[ ]*$")]
     private static partial Regex DelimiterRow();
-
-    [GeneratedRegex(@"\r\n|\r|\n")]
-    private static partial Regex EditorLines();
 
     [GeneratedRegex(@"^ {0,3}> ?(.*)$")]
     private static partial Regex QuoteLine();
