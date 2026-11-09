@@ -128,6 +128,11 @@
     <Compile Include="../../src/Passenger.App/LiveTree/AppQuery.cs" Link="App/AppQuery.cs" />
   </ItemGroup>
 
+  <!-- What the WPF previewer and Passenger say to each other, compiled in since its project is the previewer. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.WpfPreview/Protocol.cs" Link="WpfPreview/Protocol.cs" />
+  </ItemGroup>
+
   <!-- Where an AppHost's dashboard is called from where it listens, its deploy steps and their logins, compiled in since
        their project is the app's. -->
   <ItemGroup>

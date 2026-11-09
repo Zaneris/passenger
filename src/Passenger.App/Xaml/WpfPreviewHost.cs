@@ -207,14 +207,14 @@ internal sealed class WpfPreviewHost : IPreviewHost
         }
     }
 
-    /// <summary>Reads the previewer's answers off the UI thread, each frame decoded and its boxes placed on the XAML it
-    /// answers before it is shown.</summary>
+    /// <summary>Reads the previewer's answers off the UI thread from the UTF-8 bytes they come in, each frame decoded and its
+    /// boxes placed on the XAML it answers before it is shown.</summary>
     private async Task ReadAsync(Process from)
     {
         try
         {
             // A line that is not the protocol's is the previewer's own output.
-            await foreach (WpfPreviewReply reply in JsonLines.ReadAsync(ChildProcesses.Output(from), WpfPreviewJson.Reply, (line, _) => log.Heard(line)))
+            await foreach (WpfPreviewReply reply in JsonLines.ReadAsync(ChildProcesses.OutputStream(from), WpfPreviewJson.Reply, (line, _) => log.Heard(line)))
             {
                 TextSnapshot? sent = unanswered.GetValueOrDefault(reply.Sequence);
                 Bitmap? frame = null;
