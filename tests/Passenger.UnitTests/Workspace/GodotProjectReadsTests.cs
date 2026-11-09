@@ -58,11 +58,13 @@ public class GodotProjectReadsTests
     public void A_preset_lacks_the_templates_not_in_its_godots_folder_or_its_own_template_where_it_names_one()
     {
         GodotPreset[] presets = [.. GodotExports.Read(Presets)];
-        HashSet<string> there = [Path.Combine("t", "windows_release_arm64.exe"), Path.Combine("game", "own", "macos.zip")];
-        Assert.Empty(GodotExports.Missing(presets[0], debug: false, "t", there.Contains, "game"));
-        Assert.Equal(["windows_debug_arm64.exe"], GodotExports.Missing(presets[0], debug: true, "t", there.Contains, "game"));
-        Assert.Empty(GodotExports.Missing(presets[1], debug: false, "t", there.Contains, "game"));
-        Assert.Equal(["macos.zip"], GodotExports.Missing(presets[1], debug: true, "t", there.Contains, "game"));
+        // A project's folder is a full path, as every window's is.
+        string game = Path.GetFullPath("game");
+        HashSet<string> there = [Path.Combine("t", "windows_release_arm64.exe"), Path.Combine(game, "own", "macos.zip")];
+        Assert.Empty(GodotExports.Missing(presets[0], debug: false, "t", there.Contains, game));
+        Assert.Equal(["windows_debug_arm64.exe"], GodotExports.Missing(presets[0], debug: true, "t", there.Contains, game));
+        Assert.Empty(GodotExports.Missing(presets[1], debug: false, "t", there.Contains, game));
+        Assert.Equal(["macos.zip"], GodotExports.Missing(presets[1], debug: true, "t", there.Contains, game));
     }
 
     [Fact]
