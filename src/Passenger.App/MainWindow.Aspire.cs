@@ -295,7 +295,7 @@ public partial class MainWindow
     public Task<IReadOnlyList<AspireResource>> ReadAspireResourcesAsync(string appHost, CancellationToken cancel = default) =>
         session.Aspire.FindApp(appHost) is { IsTest: false } app
             ? app.Interactions?.GetResourcesAsync(cancel)
-                ?? Task.FromException<IReadOnlyList<AspireResource>>(new InvalidOperationException("The AppHost resource connection is still starting"))
+                ?? Task.FromException<IReadOnlyList<AspireResource>>(new InvalidOperationException(Refusals.AppHostStarting))
             : AspireCli().GetResourcesAsync(appHost, cancel);
 
     private async Task<AspireSelection> ReadAspireSelectionAsync(string appHost, string resource, CancellationToken cancel)
@@ -411,7 +411,7 @@ public partial class MainWindow
         AspireAppRun app = current.Aspire.FindApp(selection.AppHostPath) is { IsTest: false } owned ? owned
             : throw new InvalidOperationException(NotRunHere(selection.AppHostPath));
         AspireResourceRun service = current.Aspire.FindService(selection)
-            ?? throw new InvalidOperationException($"{selection.Resource.DisplayName} of {app.Name} is not running");
+            ?? throw new InvalidOperationException(Refusals.NotRunning(selection.Resource.DisplayName, app.Name));
         return (app, service);
     }
 

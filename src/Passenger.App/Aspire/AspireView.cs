@@ -564,7 +564,7 @@ public sealed class AspireView : DockPanel, IDisposable
             return;
         }
         AspireResource resource = selected.Resource;
-        string? none = resource.State is "Running" ? null : $"{resource.DisplayName} is not running";
+        string? none = resource.State is "Running" ? null : Refusals.NotRunning(resource.DisplayName);
         Metrics.Show(resource.DisplayName, none is null ? model.ProgramOf?.Invoke(selected) : null, none);
     }
 

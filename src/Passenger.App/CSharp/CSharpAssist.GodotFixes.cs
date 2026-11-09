@@ -118,7 +118,7 @@ internal sealed partial class CSharpAssist
     {
         if (context.CSharp is not { } csharp)
         {
-            return RefactorOutcome.Refused($"{title} was not applied: the C# language server is not running");
+            return RefactorOutcome.Refused($"{title} was not applied: {Refusals.CSharpNotRunning}");
         }
         RefactorOutcome made = context.Editors.Documents.FirstOrDefault(d => PathNames.Same(d.Path, PathNames.Canonical(make.Path))) is { } open && csharp.For(open) is { Lsp: not null }
             ? await actions.MakeAsync(title, open, 0, _ => csharp.GodotFixAsync(make, CancellationToken.None), _ => done, patience)

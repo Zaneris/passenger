@@ -95,7 +95,7 @@ public partial class MainWindow
     {
         if (context.Service is { } named)
         {
-            return named.Run.IsStopped ? ServiceAim.Refused($"{named.Run.Name} is not running")
+            return named.Run.IsStopped ? ServiceAim.Refused(Refusals.NotRunning(named.Run.Name))
                 : new(named.Run, named.Name, named.Run.ServiceNamed(named.Name) is not null, null, null);
         }
         bool aspireShown = Dock.IsShown(ToolWindowIds.Aspire);
@@ -140,7 +140,7 @@ public partial class MainWindow
     private string? WhyNotOn(string id, ServiceAim aim) =>
         aim.WhyNot ?? (aim.Runs ? buildRun.WhyNotOnService(id, aim.Name, aim.Run)
             : id is not (AppActions.ServiceDebug or AppActions.ServiceRun)
-                ? aim.Name is { } named && aim.Run!.LeftUnstarted(named) ? aim.Run.WhyNotStarted(named) : $"{aim.Name} of {aim.Run!.Name} is not running: Debug Service starts it"
+                ? aim.Name is { } named && aim.Run!.LeftUnstarted(named) ? aim.Run.WhyNotStarted(named) : $"{Refusals.NotRunning(aim.Name!, aim.Run!.Name)}: Debug Service starts it"
             : aim.Resource is { } chosen && StartOf(chosen.Resource) is null ? $"{aim.Name} of {aim.Run!.Name} advertises no start command"
             : null);
 
@@ -177,7 +177,7 @@ public partial class MainWindow
         }
         if (id is not (AppActions.ServiceDebug or AppActions.ServiceRun))
         {
-            return Told($"{aim.Name} of {app.Name} is not running: Debug Service starts it");
+            return Told($"{Refusals.NotRunning(aim.Name!, app.Name)}: Debug Service starts it");
         }
         try
         {

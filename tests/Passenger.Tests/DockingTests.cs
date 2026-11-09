@@ -564,7 +564,7 @@ public sealed class DockingTests
         dock.Show(ToolWindowIds.Migrations);
         Ui.Settle();
         Assert.Contains(window.MigrationsView, dock.GetVisualDescendants());
-        Assert.Contains(window.MigrationsView.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "No project here uses EF Core");
+        Assert.Contains(window.MigrationsView.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == Refusals.NoEfCore);
         dock.Hide(ToolWindowIds.Migrations);
         Ui.Settle();
 

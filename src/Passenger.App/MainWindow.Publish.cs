@@ -84,7 +84,7 @@ public partial class MainWindow
             return publishable.Count == 1 ? (publishable[0].Path, null)
                 : (null, publishable.Count == 0 ? "No project here publishes" : "No project is chosen in the Explorer or open in the editor");
         }
-        return Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen[0])) is not { } project ? (null, $"{Path.GetFileNameWithoutExtension(chosen[0])} is not one of the folder's projects")
+        return Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen[0])) is not { } project ? (null, Refusals.NotOfFolder(Path.GetFileNameWithoutExtension(chosen[0])))
             : PublishProfiles.WhyNot(project) is { } why ? (null, why) : (project.Path, null);
     }
 
@@ -122,7 +122,7 @@ public partial class MainWindow
     {
         if (Folder is not { } open || Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is not { } model)
         {
-            status.Text = $"{Path.GetFileNameWithoutExtension(project)} is not one of the folder's projects";
+            status.Text = Refusals.NotOfFolder(Path.GetFileNameWithoutExtension(project));
             return null;
         }
         if (PublishProfiles.WhyNot(model) is { } why)

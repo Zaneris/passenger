@@ -39,7 +39,7 @@ public sealed partial class BuildRunController
         }
         if (session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, request.Project)) is not { } project)
         {
-            return Refused($"{request.Name} is not one of the folder's projects");
+            return Refused(Refusals.NotOfFolder(request.Name));
         }
         if (project is { IsEvaluated: false, Problem: null })
         {

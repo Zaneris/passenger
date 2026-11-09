@@ -124,7 +124,7 @@ public sealed class ContainerFilesPane : DockPanel
                 if (!result.Succeeded)
                 {
                     string error = ContainerEngine.Said(result);
-                    return (null, error.Contains("is not running", StringComparison.Ordinal) ? $"Start {listing.Name} to browse its files"
+                    return (null, ContainerEngine.SaysNotRunning(error) ? $"Start {listing.Name} to browse its files"
                         : error.Contains("executable file not found", StringComparison.Ordinal) ? $"{listing.Image} has no ls to list its files" : error);
                 }
                 int depth = folder == "/" ? 0 : folder.Count(c => c == '/');

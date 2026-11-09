@@ -25,7 +25,7 @@ public partial class MainWindow
         foreach (AspireAppRun app in apps)
         {
             IReadOnlyList<AspireResource> resources = await (app.Interactions
-                ?? throw new InvalidOperationException("The AppHost resource connection is still starting")).GetResourcesAsync(cancel);
+                ?? throw new InvalidOperationException(Refusals.AppHostStarting)).GetResourcesAsync(cancel);
             CheckAspireToolTarget(current, app);
             matches.AddRange(resources.Where(resource => resource.Name == name || !qualified && resource.DisplayName == name)
                 .Select(resource => new AspireSelection(app.Configuration.Project, resource)));

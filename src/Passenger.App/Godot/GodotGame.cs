@@ -1479,7 +1479,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>Why a property of a node cannot be set now, or null when it can: a resource's only where the node is in a
     /// scene, which live editing reaches it through.</summary>
     public string? WhyNotSet(long element, string name) =>
-        State != LiveAppState.Connected ? $"{Name} is not running"
+        State != LiveAppState.Connected ? Refusals.NotRunning(Name)
         : !inspected.TryGetValue((ulong)element, out GodotObjectState? state) || state.Properties.FirstOrDefault(p => p.Name == name) is not { } property
             ? $"{name} is not one of the node's properties as last read"
         : property.Settable ? null

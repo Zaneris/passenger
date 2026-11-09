@@ -114,7 +114,7 @@ public sealed class AppHostPublishDialog : IdeWindow
     public string? Publish()
     {
         DeployStep? step = (stepBox.SelectedItem as ComboBoxItem)?.Tag as DeployStep;
-        string? why = Busy?.Invoke() ?? (Destination is null ? "An output folder is needed" : step?.WhyNot);
+        string? why = Busy?.Invoke() ?? (Destination is null ? Refusals.NoOutputFolder : step?.WhyNot);
         if (why is not null)
         {
             problem.Text = why;
@@ -185,7 +185,7 @@ public sealed class AppHostPublishDialog : IdeWindow
             : offer?.Problem is { } none ? $"{chosenSaid}. No deploy steps: {none}"
             : string.Join('\n', [$"{chosenSaid}.", .. refused]);
         publish.Content = step is null ? "Publish" : "Deploy";
-        problem.Text = Destination is null ? "An output folder is needed" : string.Empty;
+        problem.Text = Destination is null ? Refusals.NoOutputFolder : string.Empty;
         publish.IsEnabled = Destination is not null;
     }
 

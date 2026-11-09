@@ -142,7 +142,7 @@ public sealed class MigrationsView : DockPanel
         {
             gaps.Children.Add(GapRow(gap));
         }
-        placeholder.Text = controller.Projects.Count == 0 ? "No project here uses EF Core"
+        placeholder.Text = controller.Projects.Count == 0 ? Refusals.NoEfCore
             : !controller.Listed ? "Refresh to list the migrations, as dotnet ef reads them and the database has them"
             : controller.Migrations.Count == 0 ? $"{controller.Context ?? controller.Project?.Name} has no migrations: Add Migration… makes its first"
             : string.Empty;

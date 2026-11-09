@@ -95,7 +95,7 @@ public sealed class ContainerStatsPane : DockPanel
         }
         Stop();
         key = next;
-        waiting.Text = row is null ? string.Empty : running.Length == 0 ? $"{row.Name} is not running" : "Waiting for the engine's first reading…";
+        waiting.Text = row is null ? string.Empty : running.Length == 0 ? Refusals.NotRunning(row.Name) : "Waiting for the engine's first reading…";
         waiting.IsVisible = true;
         if (next is null)
         {

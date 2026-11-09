@@ -296,7 +296,7 @@ public sealed partial class BuildRunController
     {
         if (run.IsStopped)
         {
-            return (null, $"{run.Name} is not running");
+            return (null, Refusals.NotRunning(run.Name));
         }
         if (name is null || run.ServiceNamed(name) is not { } service)
         {
@@ -459,7 +459,7 @@ public sealed partial class BuildRunController
         }
         if (program is null || run.IsStopped || session.IsEnded)
         {
-            return Said($"{service.Name} of {run.Name} is not running");
+            return Said(Refusals.NotRunning(service.Name, run.Name));
         }
         parts.Dock.Show(ToolWindowIds.Debug);
         if (await session.Debug.DebugQuietAsync(quiet, run.Group, program.App) is { } refused)

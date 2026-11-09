@@ -709,7 +709,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         }
         if (Project is not { } project || Startup is not { } startup)
         {
-            return (null, "No project here uses EF Core");
+            return (null, Refusals.NoEfCore);
         }
         (string? framework, string folder, IReadOnlyDictionary<string, string> environment) = await RunOfAsync(startup, work);
         if (EfRestore.Of(startup.Path, framework) is not { Runtime: not null })
@@ -1175,7 +1175,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     {
         if (Project is not { } project || Startup is not { } startup)
         {
-            return "No project here uses EF Core";
+            return Refusals.NoEfCore;
         }
         string? named = (Failure?.Fixes.FirstOrDefault(f => f.Kind == EfFixKind.AddFactory)?.Title)?.Split(' ').Last() ?? Context;
         EfContext? context = Contexts.FirstOrDefault(c => c.Name == named || c.FullName == named) ?? (named is null ? null : new EfContext(named, named));

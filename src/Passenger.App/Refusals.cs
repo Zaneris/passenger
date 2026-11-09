@@ -33,6 +33,10 @@ public static class Refusals
     /// <summary>The C# language server ended too often and was left stopped, until a person starts it again.</summary>
     public const string CSharpStopped = "The C# language server ended too often and was left stopped until it is started again";
 
+    /// <summary>The folder's C# language server asked of has not started yet, or has ended: a clause, after what it stopped
+    /// or as <see cref="Passenger.Lsp.LanguageServerFailed"/>'s reason, or a sentence through <see cref="Sentence"/>.</summary>
+    public const string CSharpNotRunning = "the C# language server is not running";
+
     /// <summary>A C# file nested past what Passenger reads, which the C# language server is never given.</summary>
     public static string TooDeep(string file) => $"{file} is nested too deeply for Passenger to read, so the C# language server is not given it";
 
@@ -237,6 +241,42 @@ public static class Refusals
 
     /// <summary>What a start or an action under way was working in has ended: its folder was left or closed.</summary>
     public const string SolutionClosed = "The solution was closed";
+
+    /// <summary>A debug session or Hot Reload asked of a folder the window is leaving, whose debugging is ending.</summary>
+    public const string WorkspaceEnding = "The workspace is ending";
+
+    /// <summary>A project named (as it is shown) that the folder's projects do not hold.</summary>
+    public static string NotOfFolder(string project) => $"{project} is not one of the folder's projects";
+
+    /// <summary>A row of the Explorer (named as it is shown) that is no project, which an action on a project was asked of.</summary>
+    public static string NotAProject(string name) => $"{name} is not a project";
+
+    /// <summary>A program, container, resource, game or run (named as it is shown) that has not started, or has ended.</summary>
+    public static string NotRunning(string name) => $"{name} is not running";
+
+    /// <summary>A service of a run of services (each named as it is shown) that the run has not started, or that has ended.</summary>
+    public static string NotRunning(string service, string run) => $"{service} of {run} is not running";
+
+    /// <summary>Hot Reload asked of a program the debugger no longer runs, or never ran.</summary>
+    public const string ProgramNotRunning = "The program is not running";
+
+    /// <summary>The container engine's CLI answers, but its engine does not, and it gave no words of its own.</summary>
+    public const string EngineNotRunning = "The container engine is not running";
+
+    /// <summary>A profile asked for while another run of the window is profiled or starting to be: one records at a time.</summary>
+    public const string Profiling = "A run is already being profiled";
+
+    /// <summary>An AppHost run whose resource connection (<see cref="Aspire.AspireAppRun.Interactions"/>) is not made yet.</summary>
+    public const string AppHostStarting = "The AppHost resource connection is still starting";
+
+    /// <summary>The Migrations window, or an EF Core action, in a folder none of whose projects references EF Core.</summary>
+    public const string NoEfCore = "No project here uses EF Core";
+
+    /// <summary>A publish asked for with no folder chosen to publish into.</summary>
+    public const string NoOutputFolder = "An output folder is needed";
+
+    /// <summary>A refusal's clause (<see cref="CSharpNotRunning"/>) said alone, as a sentence of its own.</summary>
+    public static string Sentence(string clause) => clause.Length == 0 ? clause : char.ToUpperInvariant(clause[0]) + clause[1..];
 
     /// <summary>Why a program cannot be profiled, or its heap read (<paramref name="doing"/> it), now: the debugger holds it
     /// paused, and its runtime answers the profiler only as it runs.</summary>

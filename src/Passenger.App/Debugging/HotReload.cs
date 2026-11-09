@@ -128,7 +128,7 @@ public sealed class HotReload
 
     /// <summary>Why Apply Changes cannot run now, or null when it can.</summary>
     public string? WhyNot => stopped is not null ? stopped
-        : debug?.State is not (DebugState.Running or DebugState.Paused) ? "The program is not running"
+        : debug?.State is not (DebugState.Running or DebugState.Paused) ? Refusals.ProgramNotRunning
         : null;
 
     /// <summary>The files' texts from before their edits that Roslyn has not been given yet, marked given.</summary>
@@ -179,7 +179,7 @@ public sealed class HotReload
         string? why = WhyNot;
         if (why is not null || debug is not { } program)
         {
-            return new HotReloadOutcome(HotReloadResult.Failed, why ?? "The program is not running");
+            return new HotReloadOutcome(HotReloadResult.Failed, why ?? Refusals.ProgramNotRunning);
         }
         starting ??= StartAsync();
         if (await starting is not null)

@@ -33,7 +33,7 @@ public partial class MainWindow
         actions!.Add(new IdeAction(A.ManageUserSecrets, "Manage User Secrets", ExplorerGroup, c => IdeErrors.Observe(ManageUserSecretsAsync(SecretsProjectOf(c)!.Path)))
         {
             WhyNot = c => SecretsProjectOf(c) is not null ? null
-                : RowOf(c) is { } row ? $"{row.Name} is not a project"
+                : RowOf(c) is { } row ? Refusals.NotAProject(row.Name)
                 : c.File is null ? Refusals.NoFile : $"{c.File.Name} is in no project",
         });
         Editors.Opened += (_, document) =>
@@ -64,7 +64,7 @@ public partial class MainWindow
     {
         if (SolutionProject(project) is not { } model)
         {
-            return SecretsSaid($"{Path.GetFileName(project)} is not one of the solution's projects");
+            return SecretsSaid(Refusals.NotOfFolder(Path.GetFileName(project)));
         }
         string name = Path.GetFileNameWithoutExtension(model.Path);
         (UserSecretsFile? secrets, string? problem) = UserSecrets.Ensure(model.Path, model.Property(Passenger.Host.CarriedProperties.UserSecretsId),

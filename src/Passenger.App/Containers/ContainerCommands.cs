@@ -43,7 +43,7 @@ public static class ContainerCommands
                 "start" => (["start", container.Id], null),
                 "stop" => (["stop", container.Id], null),
                 "restart" => (["restart", container.Id], null),
-                "pause" => (container.IsPaused ? ["unpause", container.Id] : ["pause", container.Id], container.IsRunning || container.IsPaused ? null : $"{container.Name} is not running"),
+                "pause" => (container.IsPaused ? ["unpause", container.Id] : ["pause", container.Id], container.IsRunning || container.IsPaused ? null : Refusals.NotRunning(container.Name)),
                 "remove" => (["rm", "-f", container.Id], null),
                 "pull" => (["pull", container.Image], null),
                 _ => (null, null),

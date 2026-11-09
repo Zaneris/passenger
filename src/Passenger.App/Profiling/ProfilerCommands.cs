@@ -243,7 +243,7 @@ public sealed class ProfilerCommands
     private ProjectSession? launching;
 
     /// <summary>Why another run cannot be profiled in a folder now: one is, or one is still starting.</summary>
-    private string? Busy(ProjectSession folder) => folder.Profiling is not null || launching is not null ? "A run is already being profiled" : null;
+    private string? Busy(ProjectSession folder) => folder.Profiling is not null || launching is not null ? Refusals.Profiling : null;
 
     /// <summary>Why Profile cannot start another program: the one it started last goes on after its snapshot, and Kill, Stop
     /// and the folder's end reach one such program at a time.</summary>
@@ -574,7 +574,7 @@ public sealed class ProfilerCommands
         // Profile's own start (a container configuration's) is under way as its held service is recorded: that is no other.
         if (profiled.Profiling is not null || asItRuns && launching is not null)
         {
-            return "A run is already being profiled";
+            return Refusals.Profiling;
         }
         string name = run.NameOf(service);
         bool ours = launching is null;
@@ -619,7 +619,7 @@ public sealed class ProfilerCommands
             // Its run, or its folder, ended as the recording began, or another took the window meanwhile: read by no one.
             await recording.DisposeAsync();
             return profiled != Session || profiled.IsEnded ? Refusals.SolutionClosed
-                : run.IsStopped ? $"{run.Name} was stopped as {service.Name}'s recording began" : "A run is already being profiled";
+                : run.IsStopped ? $"{run.Name} was stopped as {service.Name}'s recording began" : Refusals.Profiling;
         }
         Follow(profiled, recording, name, killable: false);
         run.Profiled = service;
@@ -726,7 +726,7 @@ public sealed class ProfilerCommands
             if (profiled.IsEnded || profiled != Session || profiled.Profiling is not null)
             {
                 await running.DisposeAsync();
-                return profiled.IsEnded || profiled != Session ? Refusals.SolutionClosed : "A run is already being profiled";
+                return profiled.IsEnded || profiled != Session ? Refusals.SolutionClosed : Refusals.Profiling;
             }
             if (game is not null)
             {

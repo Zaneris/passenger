@@ -19,6 +19,9 @@ public sealed class RefusalsTests
         new(@"(?:^|: )(?:The file|\S+) is read-only$"),
         new(@"(?:^|: )Nothing to .+: no (?:folder is open|executable project)$"),
         new(@"(?:^|: )The AppHost is no longer owned by .+$"),
+        new(@"(?:^|: )\{\} is not one of the (?:folder|solution)'s projects(?:$|\W)"),
+        new(@"(?:^|: )\{\} is not a project(?:$|[^\w ])"),
+        new(@"(?:^|: )\{\}(?: of \{\})? is not running(?:$|\W)"),
     ];
 
     [Fact]
@@ -26,8 +29,8 @@ public sealed class RefusalsTests
     {
         HashSet<string> words = [.. typeof(Refusals).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(field => field.IsLiteral && field.FieldType == typeof(string)).Select(field => (string)field.GetRawConstantValue()!)];
-        // A constant's words with more after them ("The solution was closed while …"), alone or after what the refusal stopped.
-        Regex[] added = [.. words.Select(word => new Regex($@"(?:^|: ){Regex.Escape(word)}\W"))];
+        // A constant's words, more after them or not, alone or after what it stopped, its first letter in either case.
+        Regex[] said = [.. words.Select(word => new Regex($@"(?:^|: )(?i:{Regex.Escape(word[..1])}){Regex.Escape(word[1..])}(?:$|\W)"))];
         string root = Debugging.Helpers.Debuggees.Root;
         List<string> found = [];
         foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src", "Passenger.App"), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
@@ -46,7 +49,7 @@ public sealed class RefusalsTests
                     InterpolatedStringExpressionSyntax interpolated => string.Concat(interpolated.Contents.Select(part => part is InterpolatedStringTextSyntax text ? text.TextToken.ValueText : "{}")),
                     _ => null,
                 };
-                if (written is not null && (words.Contains(written) || Made.Concat(added).Any(made => made.IsMatch(written))))
+                if (written is not null && Made.Concat(said).Any(made => made.IsMatch(written)))
                 {
                     found.Add($"{relative}:{node.GetLocation().GetLineSpan().StartLinePosition.Line + 1}: \"{written}\"");
                 }

@@ -102,7 +102,7 @@ public partial class MainWindow
     /// <summary>The server running now, asked for as each level of a hierarchy opens: the window may have been shown by
     /// one since started again.</summary>
     private RoslynSession Running() =>
-        session.CSharp?.Session ?? throw new LanguageServerFailed("the C# language server is not running");
+        session.CSharp?.Session ?? throw new LanguageServerFailed(Refusals.CSharpNotRunning);
 
     private string Said(string why)
     {

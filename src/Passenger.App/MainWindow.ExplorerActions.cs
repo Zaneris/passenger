@@ -48,11 +48,11 @@ public partial class MainWindow
         });
         Row(A.ManageNuGet, "Manage NuGet Packages", _ => ShowToolWindow(ToolWindowIds.NuGet),
             row => row is { Kind: NodeKind.Project } or { Kind: NodeKind.Dependencies, Owner: not null } ? null : $"{row.Name} has no packages");
-        Row(A.EditProjectFile, "Edit Project File", row => OpenFile(row.Path!), row => row is { Kind: NodeKind.Project, Path: not null } ? null : $"{row.Name} is not a project");
+        Row(A.EditProjectFile, "Edit Project File", row => OpenFile(row.Path!), row => row is { Kind: NodeKind.Project, Path: not null } ? null : Refusals.NotAProject(row.Name));
         Row(A.UnloadProject, "Unload Project", row => SetUnloaded(row.Path!, true),
-            row => row is not { Kind: NodeKind.Project, Path: { } project } ? $"{row.Name} is not a project" : Explorer.Tree.Unloaded.Contains(project) ? $"{row.Name} is unloaded" : null);
+            row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : Explorer.Tree.Unloaded.Contains(project) ? $"{row.Name} is unloaded" : null);
         Row(A.ReloadProject, "Reload Project", row => SetUnloaded(row.Path!, false),
-            row => row is not { Kind: NodeKind.Project, Path: { } project } ? $"{row.Name} is not a project" : Explorer.Tree.Unloaded.Contains(project) ? null : $"{row.Name} is loaded");
+            row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : Explorer.Tree.Unloaded.Contains(project) ? null : $"{row.Name} is loaded");
         // Compare With... for one file, Compare Files for two chosen together.
         actions!.Add(new IdeAction(A.CompareFiles, "Compare Files", ExplorerGroup, c => IdeErrors.Observe(CompareAsync(RowOf(c)!)))
         {

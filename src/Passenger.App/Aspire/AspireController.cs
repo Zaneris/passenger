@@ -1389,7 +1389,7 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>How a resource the run left unstarted is said, where DCP says the start it refused failed, and why.</summary>
     public const string NotStarted = "Not started";
 
-    public const string NotStartedWhy = $"Its run configuration says Don't start; {StartsService}";
+    public static readonly string NotStartedWhy = $"{Refusals.Sentence(Refusals.DontStart)}; {StartsService}";
 
     /// <summary>A service an AppHost's run left unstarted is started by its resource's Start, Debug Service or Run Service
     /// without Debugger, each of which has its AppHost start it.</summary>
@@ -1663,7 +1663,7 @@ public sealed class AspireAppRun : ServiceRun
             // The start given, whose program its ended session may have ended with it, else the newest of its name.
             if ((service as AspireResourceRun ?? ServiceNamed(service.Name)) is not AspireResourceRun running)
             {
-                return $"{service.Name} of {Name} is not running";
+                return Refusals.NotRunning(service.Name, Name);
             }
             starts.Add(running);
         }

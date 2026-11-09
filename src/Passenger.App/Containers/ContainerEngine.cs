@@ -274,6 +274,10 @@ public sealed class ContainerEngine
     public static bool ProviderFailed(string line) =>
         line.StartsWith("Error: executing ", StringComparison.Ordinal) && line.Contains(": exit status ", StringComparison.Ordinal);
 
+    /// <summary>Whether what a failed <c>exec</c> said (<see cref="Said"/>) is the engine refusing it for a container that is not
+    /// running ("container … is not running"), which Docker and Podman both say.</summary>
+    public static bool SaysNotRunning(string said) => said.Contains("is not running", StringComparison.Ordinal);
+
     /// <summary>What a failed command said (<see cref="ChildResult.Said"/>), its secrets masked
     /// (<see cref="ContainerSecrets.InSaid"/>: Compose's errors echo what it interpolated, from the .env in the
     /// <paramref name="folder"/> it ran in among the rest) before its lines are joined, a secret of several lines among them.</summary>

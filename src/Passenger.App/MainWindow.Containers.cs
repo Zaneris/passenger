@@ -50,7 +50,7 @@ public partial class MainWindow
         actions.Add(new IdeAction(AppActions.ContainerPrune, "Prune…", "Containers", context => IdeErrors.Observe(PruneAsync(Chosen())))
         {
             // An engine not asked yet is asked as Prune runs: only one known not to serve refuses, saying why.
-            WhyNot = _ => Engine.Known is { IsReady: false } known ? known.Problem ?? "The container engine is not running" : null,
+            WhyNot = _ => Engine.Known is { IsReady: false } known ? known.Problem ?? Refusals.EngineNotRunning : null,
             Works = AppActions.ContainerPrune,
         });
         // A Dockerfile's base images are asked of Docker Scout only as the person asks, which then follows its saves.
@@ -273,7 +273,7 @@ public partial class MainWindow
     {
         if (await Engine.StateAsync() is { IsReady: false } state)
         {
-            status.Say(state.Problem ?? "The container engine is not running", ProblemSeverity.Warning, EnginePlace(state));
+            status.Say(state.Problem ?? Refusals.EngineNotRunning, ProblemSeverity.Warning, EnginePlace(state));
             return;
         }
         string kind = chosen?.Object?.Kind ?? (chosen?.Kind == ContainerRowKind.Group ? chosen.Label : "container");
@@ -409,7 +409,7 @@ public partial class MainWindow
                 return tried.Succeeded ? null
                     : said.Contains("executable file not found", StringComparison.Ordinal) || said.Contains("no such file", StringComparison.OrdinalIgnoreCase)
                     ? $"{container.Image} has no shell (sh) to open in {container.Name}"
-                    : said.Contains("is not running", StringComparison.Ordinal) ? $"Start {container.Name} to open a shell in it" : said;
+                    : ContainerEngine.SaysNotRunning(said) ? $"Start {container.Name} to open a shell in it" : said;
             }
             catch (Exception failed) when (ChildFailures.Of(failed))
             {

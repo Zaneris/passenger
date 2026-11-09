@@ -873,7 +873,7 @@ public sealed class DebugController : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         if (ending)
         {
-            throw new InvalidOperationException("The workspace is ending");
+            throw new InvalidOperationException(Refusals.WorkspaceEnding);
         }
         cancellation.ThrowIfCancellationRequested();
         DebugTab tab = Place(name, replace: false);
@@ -963,7 +963,7 @@ public sealed class DebugController : IDisposable
         }
         if (ending)
         {
-            return Unopened("The workspace is ending");
+            return Unopened(Refusals.WorkspaceEnding);
         }
         // A program debugged again takes its last session's place, which is let go first.
         if (tab is null && view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive) is { } again)
@@ -1329,7 +1329,7 @@ public sealed class DebugController : IDisposable
         }
         if (disposed || ending)
         {
-            return "The workspace is ending";
+            return Refusals.WorkspaceEnding;
         }
         running.Remove(reload);
         DebugTab tab = Place(reload.Name);

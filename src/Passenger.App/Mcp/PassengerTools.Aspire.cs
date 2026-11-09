@@ -133,7 +133,7 @@ public sealed partial class PassengerTools
         }
         catch (TimeoutException)
         {
-            resources = await (app.Interactions ?? throw new InvalidOperationException("The AppHost resource connection is still starting")).GetResourcesAsync(cancel);
+            resources = await (app.Interactions ?? throw new InvalidOperationException(Refusals.AppHostStarting)).GetResourcesAsync(cancel);
         }
         if (Session != current || current.IsEnded || current.Aspire.FindApp(target.AppHostPath) != app)
         {

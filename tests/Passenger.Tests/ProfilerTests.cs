@@ -568,7 +568,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Task<string?> second = window.ProfileAsync();
             again = second;
             Assert.True(Ui.Pumped(() => second.IsCompleted, TimeSpan.FromSeconds(10)), $"A second Profile while the first program started went on to start it again ({Programs().Count} programs)");
-            Assert.Equal("A run is already being profiled", Ui.AwaitPumped(second, "the second Profile's refusal"));
+            Assert.Equal(Refusals.Profiling, Ui.AwaitPumped(second, "the second Profile's refusal"));
             Assert.Single(Programs());
             Assert.False(started.IsCompleted, $"The first profile's start ended: {(started.IsCompleted ? Ui.AwaitPumped(started, "the first profile's start") : null)}");
 

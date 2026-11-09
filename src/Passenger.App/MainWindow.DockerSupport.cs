@@ -21,7 +21,7 @@ public partial class MainWindow
     {
         if (SolutionProject(project) is not { } model)
         {
-            status.Text = $"{Path.GetFileName(project)} is not one of the solution's projects";
+            status.Text = Refusals.NotOfFolder(Path.GetFileName(project));
             return null;
         }
         if (DockerSupportWhyNot(project) is { } refused)
@@ -51,7 +51,7 @@ public partial class MainWindow
     {
         if (SolutionProject(project) is not { } model || DockerContext is not { } context)
         {
-            return DockerSaid($"{Path.GetFileName(project)} is not one of the solution's projects");
+            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)));
         }
         if (Unread([model]) is { } unread)
         {
@@ -217,7 +217,7 @@ public partial class MainWindow
         }
         if (SolutionProject(project) is not { } model)
         {
-            return DockerSaid($"{Path.GetFileName(project)} is not one of the solution's projects");
+            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)));
         }
         if (Unread([model]) is { } unread)
         {
