@@ -236,9 +236,8 @@ public sealed class FolderWatcher : WatchedTree
         {
             return default;
         }
-        // As a walk names it: its own name in its folder, which a link's canonical path is not.
-        string? named = !created || Path.GetDirectoryName(path) is not { } parent ? null : Path.Join(PathNames.Canonical(parent), Path.GetFileName(path.AsSpan()));
-        return new Notice(Takes: true, Counts: true, PathNames.Canonical(path), named);
+        string canonical = PathNames.Canonical(path);
+        return new Notice(Takes: true, Counts: true, canonical, created ? PathNames.Walked(path, canonical) : null);
     }
 
     /// <summary>Takes in a change under the gate: Git's state moved, a restore written, or a kept path changed, with what it

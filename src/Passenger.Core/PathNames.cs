@@ -50,7 +50,7 @@ public static partial class PathNames
     public static bool CaseIgnoredIn(string folder) => Volumes is { } volumes && volumes.IgnoresCaseIn(folder);
 
     /// <summary>The path as the file system names it. Of a path that is not there (yet, or any more), the part that is
-    /// there is resolved and the names below it are kept as given.</summary>
+    /// there is resolved and the names below it are kept as given. A path the system names as given is itself, no copy.</summary>
     public static string Canonical(string path)
     {
         string full = Path.GetFullPath(path);
@@ -63,11 +63,19 @@ public static partial class PathNames
         {
             if (Resolved(at) is { } resolved)
             {
-                return at.Length == full.Length ? resolved : Path.Join(resolved, full.AsSpan(at.Length).TrimStart(Separators));
+                // A folder spelled as the system spells it holds the names below it as given.
+                return ReferenceEquals(resolved, at) ? full
+                    : at.Length == full.Length ? resolved
+                    : Path.Join(resolved, full.AsSpan(at.Length).TrimStart(Separators));
             }
         }
         return full;
     }
+
+    /// <summary>A path as a walk of its folder names it (<see cref="FilesUnder"/>): its own name in its folder's canonical
+    /// path, which a link's <paramref name="canonical"/> path is not; where nothing along it is a link, its canonical path.</summary>
+    public static string Walked(string path, string canonical) =>
+        canonical == path || Path.GetDirectoryName(path) is not { } folder ? canonical : Path.Join(Canonical(folder), Path.GetFileName(path.AsSpan()));
 
     /// <summary>Whether two paths name the same place, compared as the file system compares names.</summary>
     public static bool Same(string path, string other) => Comparer.Equals(path, other);
@@ -279,12 +287,25 @@ public static partial class PathNames
         }
         try
         {
-            return Marshal.PtrToStringUTF8(resolved);
+            return Spelled(resolved, path);
         }
         finally
         {
             Free(resolved);
         }
+    }
+
+    /// <summary>The name the system gave, as <paramref name="asked"/> itself where it is spelled the same, as most are: a
+    /// path already canonical costs no string to make it so again.</summary>
+    private static unsafe string Spelled(IntPtr given, string asked)
+    {
+        ReadOnlySpan<byte> name = MemoryMarshal.CreateReadOnlySpanFromNullTerminated((byte*)given);
+        if (name.Length == asked.Length && System.Text.Ascii.Equals(name, asked))
+        {
+            return asked;
+        }
+        string decoded = System.Text.Encoding.UTF8.GetString(name);
+        return decoded == asked ? asked : decoded;
     }
 
     /// <summary>Windows' own name for a file or folder, asked of a handle opened for nothing but that (any other program

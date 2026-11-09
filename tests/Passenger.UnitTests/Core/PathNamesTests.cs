@@ -3,7 +3,8 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>How the IDE compares, shows and walks paths: a folder's files and nothing beside it whose name begins the same, a
-/// path shown from the open folder, letter case as the system's file systems take it, a "~/" as the person's home.</summary>
+/// path shown from the open folder, letter case as the system's file systems take it, a "~/" as the person's home, and a
+/// path as the system names it, through links.</summary>
 public class PathNamesTests
 {
     private static readonly string Root = OperatingSystem.IsWindows() ? @"C:\x" : "/x";
@@ -90,6 +91,62 @@ public class PathNamesTests
         Assert.Equal(Path.Join(canonical, "b"), PathNames.Canonical(Path.Join(folder.Path, "a", "..", "b")));
     }
 
+    /// <summary>What the folder's watcher asks of each file it hears of: its canonical path, and as a walk names it, its own
+    /// name in its folder's canonical path. Through a linked folder, of a file that is a link, and of one gone with the
+    /// folder it was in, renamed, each is what resolving its folder then joining its name gives.</summary>
+    [Fact]
+    public void A_files_canonical_path_and_its_name_in_a_walk_follow_links_and_a_renamed_folder()
+    {
+        using Folder folder = new();
+        folder.Write(Path.Join("src", "Shop", "Cart.cs"), Path.Join("src", "Shop", "Order.cs"));
+        string root = PathNames.Canonical(folder.Path);
+        string shop = Path.Join(root, "src", "Shop");
+        Link(() => Directory.CreateSymbolicLink(Path.Join(root, "linked"), Path.Join(root, "src")));
+        Link(() => File.CreateSymbolicLink(Path.Join(shop, "Basket.cs"), "Cart.cs"));
+
+        string ordinary = Path.Join(shop, "Cart.cs");
+        string throughLink = Path.Join(root, "linked", "Shop", "Order.cs");
+        string aLink = Path.Join(shop, "Basket.cs");
+        Assert.Equal((ordinary, ordinary), Placed(ordinary));
+        Assert.Equal((Path.Join(shop, "Order.cs"), Path.Join(shop, "Order.cs")), Placed(throughLink));
+        Assert.Equal((ordinary, aLink), Placed(aLink));
+
+        Directory.Move(Path.Join(root, "src"), Path.Join(root, "code"));
+        string gone = Path.Join(root, "src", "Shop", "Cart.cs");
+        Assert.Equal((gone, gone), Placed(gone));
+        string goneThroughLink = Path.Join(root, "linked", "Shop", "Order.cs");
+        Assert.Equal((goneThroughLink, goneThroughLink), Placed(goneThroughLink));
+
+        // What the watcher made of each before: the path resolved, and its folder resolved with its name joined.
+        static (string Canonical, string Walked) Placed(string path)
+        {
+            string canonical = PathNames.Canonical(path);
+            string walked = PathNames.Walked(path, canonical);
+            Assert.Equal(Path.Join(PathNames.Canonical(Path.GetDirectoryName(path)!), Path.GetFileName(path)), walked);
+            return (canonical, walked);
+        }
+    }
+
+    /// <summary>A path already as the system spells it, as nearly every path the watcher hears is, costs no string to make
+    /// canonical or to name as a walk does: each of a burst's thousands of events would pay one.</summary>
+    [Fact]
+    public void A_path_already_canonical_is_made_canonical_and_walked_with_no_copy()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' own name for a file is asked of a handle, into a buffer of its own");
+        using Folder folder = new();
+        folder.Write(Path.Join("src", "Shop", "Cart.cs"));
+        string file = Path.Join(PathNames.Canonical(folder.Path), "src", "Shop", "Cart.cs");
+        Assert.Same(file, PathNames.Walked(file, PathNames.Canonical(file)));
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_000; i++)
+        {
+            PathNames.Walked(file, PathNames.Canonical(file));
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(allocated == 0, $"Making a canonical path canonical and naming it as a walk does 1,000 times allocated {allocated:N0} bytes, which every file the watcher hears pays");
+    }
+
     [Fact]
     public void A_walk_gives_each_folders_files_by_name_nearest_folder_first_leaving_out_the_systems_files_and_folders_not_entered()
     {
@@ -105,6 +162,18 @@ public class PathNamesTests
     }
 
     private static string At(params string[] names) => Path.Join([Root, .. names]);
+
+    private static void Link(Func<FileSystemInfo> make)
+    {
+        try
+        {
+            make();
+        }
+        catch (Exception refused) when (OperatingSystem.IsWindows() && refused is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"Windows lets this user make no symlink: {refused.Message}");
+        }
+    }
 
     /// <summary>A folder of the test's own under the system's temporary folder, gone when the test is.</summary>
     private sealed class Folder : IDisposable
