@@ -192,6 +192,7 @@ internal static class GodotGenerated
         List<GodotKindUse> uses = [];
         HashSet<(string, int)> seen = [];
         HashSet<string> names = [asked.Name];
+        GodotKinds.LetGoOfGone(solution);
         foreach (Project project in GodotKinds.ProjectsOf(solution, asked.Folder, asked.Projects))
         {
             foreach (Document document in project.Documents)

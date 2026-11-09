@@ -102,6 +102,9 @@
     <!-- Also what Passenger's analyzers are compiled against (src/Passenger.Analyzers), so never past the compiler of
          global.json's SDK, nor of Roslyn's server at RoslynServerVersion, which load them. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <!-- The unit tests' workspaces, at the compiler's version above: what the extension inside Roslyn's server keeps by a
+         solution's documents, held to each workspace apart. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
     <PackageVersion Include="ModelContextProtocol.Core" Version="2.3.1" />
     <!-- The NuGet window's package sources, read by NuGet's own code, so they match the CLI's. -->
     <PackageVersion Include="NuGet.Configuration" Version="7.9.0" />

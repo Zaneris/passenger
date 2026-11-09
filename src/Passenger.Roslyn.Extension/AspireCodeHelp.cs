@@ -572,7 +572,8 @@ internal static class AspireSource
 
     /// <summary>What each project's code read, by its version: a project's documents are read again only once one of them,
     /// or a project it references, has changed. The connection strings and the configuration keys come of one walk.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<ProjectId, (VersionStamp Version, IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys)> ConnectionsRead = new();
+    private static readonly SolutionKept<ProjectId, (VersionStamp Version, IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys)> ConnectionsRead =
+        SolutionKept.ByProject<(VersionStamp, IReadOnlyList<ConnectionRead>, IReadOnlyList<ConfigurationKey>)>();
 
     /// <summary>The connection strings the projects' code reads (<see cref="ConnectionUses"/>), each where its name is
     /// written, and with <see cref="ConnectionReadsRequest.Keys"/> the configuration keys it reads or binds
@@ -581,6 +582,9 @@ internal static class AspireSource
     {
         List<ConnectionRead> reads = [];
         List<ConfigurationKey> configured = [];
+        ConnectionsRead.LetGoOfGone(solution);
+        System.Collections.Concurrent.ConcurrentDictionary<ProjectId, (VersionStamp Version, IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys)> read =
+            ConnectionsRead.Of(solution);
         foreach (string path in projects)
         {
             HashSet<(string Name, string File, int Line, int Character)> seen = [];
@@ -588,7 +592,7 @@ internal static class AspireSource
             foreach (Project project in solution.Projects.Where(p => SamePath(p.FilePath, path)))
             {
                 VersionStamp version = await project.GetDependentVersionAsync(cancel).ConfigureAwait(false);
-                if (!ConnectionsRead.TryGetValue(project.Id, out (VersionStamp Version, IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys) known) || known.Version != version)
+                if (!read.TryGetValue(project.Id, out (VersionStamp Version, IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys) known) || known.Version != version)
                 {
                     List<ConnectionRead> found = [];
                     List<ConfigurationKey> named = [];
@@ -616,7 +620,7 @@ internal static class AspireSource
                         }
                     }
                     known = (version, found, named);
-                    ConnectionsRead[project.Id] = known;
+                    read[project.Id] = known;
                 }
                 reads.AddRange(known.Reads.Where(r => seen.Add((r.Name, r.Path, r.At.Line, r.At.Character))).Select(r => r with { Project = path }));
                 if (keys)

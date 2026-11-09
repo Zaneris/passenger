@@ -31,7 +31,7 @@ internal static class GodotKinds
 
     /// <summary>The string literals each document was last read to give, by its text's version, so a scan of the projects
     /// for a name reads again only what changed.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<DocumentId, (VersionStamp Version, HashSet<string> Strings)> Written = new();
+    private static readonly SolutionKept<DocumentId, (VersionStamp Version, HashSet<string> Strings)> Written = SolutionKept.ByDocument<(VersionStamp, HashSet<string>)>();
 
     /// <summary>How far a field's or local's values are followed to the node or material they hold.</summary>
     private const int Deepest = 3;
@@ -111,17 +111,21 @@ internal static class GodotKinds
             : null;
     }
 
+    /// <summary>Lets go of the string literals kept for documents the solution no longer has.</summary>
+    internal static void LetGoOfGone(Solution solution) => Written.LetGoOfGone(solution);
+
     /// <summary>The string literals a document's text gives, read again only once its text changes.</summary>
     private static async Task<HashSet<string>> StringsOfAsync(Document document, CancellationToken cancel)
     {
         VersionStamp version = await document.GetTextVersionAsync(cancel).ConfigureAwait(false);
-        if (Written.TryGetValue(document.Id, out (VersionStamp Version, HashSet<string> Strings) kept) && kept.Version == version)
+        System.Collections.Concurrent.ConcurrentDictionary<DocumentId, (VersionStamp Version, HashSet<string> Strings)> written = Written.Of(document.Project.Solution);
+        if (written.TryGetValue(document.Id, out (VersionStamp Version, HashSet<string> Strings) kept) && kept.Version == version)
         {
             return kept.Strings;
         }
         HashSet<string> strings = await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is { } root
             ? [.. root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken)).Select(t => t.ValueText)] : [];
-        Written[document.Id] = (version, strings);
+        written[document.Id] = (version, strings);
         return strings;
     }
 
@@ -143,6 +147,7 @@ internal static class GodotKinds
         {
             return [];
         }
+        LetGoOfGone(solution);
         ProjectDependencyGraph graph = solution.GetProjectDependencyGraph();
         IEnumerable<ProjectId> near = [project.Id, .. graph.GetProjectsThatTransitivelyDependOnThisProject(project.Id), .. graph.GetProjectsThatThisProjectTransitivelyDependsOn(project.Id)];
         foreach (Project each in near.Distinct().Select(solution.GetProject).OfType<Project>())
@@ -184,6 +189,7 @@ internal static class GodotKinds
         List<GodotKindUse> uses = [];
         HashSet<(string, int)> seen = [];
         HashSet<string> names = [asked.Kind == GodotStringKind.Autoload ? Root + asked.Name : asked.Name];
+        LetGoOfGone(solution);
         foreach (Project project in ProjectsOf(solution, asked.Folder, asked.Projects))
         {
             foreach (Document document in project.Documents)

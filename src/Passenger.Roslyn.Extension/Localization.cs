@@ -33,7 +33,7 @@ internal static class LocalizationSource
 
     /// <summary>The ResourcesPath each project's code sets on LocalizationOptions, by each document's text version: a document
     /// is read again only once its text changed.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<DocumentId, (VersionStamp Version, string? Path)> ResourcesPaths = new();
+    private static readonly SolutionKept<DocumentId, (VersionStamp Version, string? Path)> ResourcesPaths = SolutionKept.ByDocument<(VersionStamp, string?)>();
 
     public static async Task<LocalizedReadsFound> ReadsAsync(Solution solution, string path, CancellationToken cancel)
     {
@@ -272,16 +272,18 @@ internal static class LocalizationSource
     /// with a separator at its end as the factory makes it; null where none sets it.</summary>
     private static async Task<string?> ResourcesPathAsync(Solution solution, Project project, CancellationToken cancel)
     {
+        ResourcesPaths.LetGoOfGone(solution);
+        System.Collections.Concurrent.ConcurrentDictionary<DocumentId, (VersionStamp Version, string? Path)> paths = ResourcesPaths.Of(solution);
         IEnumerable<ProjectId> reading = solution.GetProjectDependencyGraph().GetProjectsThatTransitivelyDependOnThisProject(project.Id).Prepend(project.Id);
         foreach (Project each in reading.Select(solution.GetProject).OfType<Project>())
         {
             foreach (Document document in each.Documents)
             {
                 VersionStamp version = await document.GetTextVersionAsync(cancel).ConfigureAwait(false);
-                if (!ResourcesPaths.TryGetValue(document.Id, out (VersionStamp Version, string? Path) known) || known.Version != version)
+                if (!paths.TryGetValue(document.Id, out (VersionStamp Version, string? Path) known) || known.Version != version)
                 {
                     known = (version, await DocumentResourcesPathAsync(document, cancel).ConfigureAwait(false));
-                    ResourcesPaths[document.Id] = known;
+                    paths[document.Id] = known;
                 }
                 if (known.Path is { Length: > 0 } path)
                 {
