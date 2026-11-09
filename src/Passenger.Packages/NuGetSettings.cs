@@ -41,6 +41,17 @@ public static class NuGetSettings
         }
     }
 
+    /// <summary>The package cache to look in for a folder's packages: the one its restores use (<see cref="GlobalPackagesFolder"/>),
+    /// else, where its configs do not read, the one NuGet takes where none names one: NUGET_PACKAGES, else the user's
+    /// .nuget/packages.</summary>
+    public static string PackageCache(string folder) =>
+        PackageCache(folder, Environment.GetEnvironmentVariable, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    /// <summary><see cref="PackageCache(string)"/>, the environment read through <paramref name="variable"/> and the user's
+    /// own folder <paramref name="home"/>.</summary>
+    public static string PackageCache(string folder, Func<string, string?> variable, string home) =>
+        GlobalPackagesFolder(folder) ?? (variable("NUGET_PACKAGES") is { Length: > 0 } set ? set : Path.Combine(home, ".nuget", "packages"));
+
     /// <summary>The configs NuGet reads for a folder, by the places it looks in.</summary>
     private static IEnumerable<string> Files(string root)
     {

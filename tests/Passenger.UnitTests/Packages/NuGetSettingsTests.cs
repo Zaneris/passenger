@@ -6,8 +6,9 @@ using Passenger.Packages;
 namespace Passenger.UnitTests.Packages;
 
 /// <summary>A nuget.config as Passenger reads and edits it, matching its names as NuGet does: one too deep for NuGet's reader
-/// said not to read, before it ends the process, in the folder asked and those above it; and a feed's credentials found and
-/// changed whatever letter case their element and keys are written in.</summary>
+/// said not to read, before it ends the process, in the folder asked and those above it, its packages then looked for where
+/// NuGet looks with no config; and a feed's credentials found and changed whatever letter case their element and keys are
+/// written in.</summary>
 public sealed class NuGetSettingsTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -27,6 +28,28 @@ public sealed class NuGetSettingsTests : IDisposable
         {
             Assert.Throws<NuGetConfigurationException>(() => NuGetSettings.Load(folder));
             Assert.Contains("nested too deeply", PackageSourceSet.Load(folder).Problem, StringComparison.Ordinal);
+        });
+    }
+
+    /// <summary>A folder whose nuget.config does not read, malformed or nested too deeply, names no package cache, so a
+    /// project there that was never restored is looked for where NuGet looks with none named: NUGET_PACKAGES, else the
+    /// user's .nuget/packages.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_folder_whose_config_does_not_read_looks_for_packages_where_NuGet_does_with_none_named(bool deep)
+    {
+        File.WriteAllText(Path.Combine(root, "nuget.config"), deep
+            ? $"<configuration>{string.Concat(Enumerable.Repeat("<a>", 100_000))}{string.Concat(Enumerable.Repeat("</a>", 100_000))}</configuration>"
+            : "<configuration><config><add key=\"globalPackagesFolder\"");
+        string home = Path.Combine(root, "home");
+        SmallStack.Run(() =>
+        {
+            Assert.Null(NuGetSettings.GlobalPackagesFolder(root));
+            Assert.Equal("/caches/nuget", NuGetSettings.PackageCache(root, name => name == "NUGET_PACKAGES" ? "/caches/nuget" : null, home));
+            string cache = NuGetSettings.PackageCache(root, _ => null, home);
+            Assert.True(cache == Path.Combine(home, ".nuget", "packages"),
+                $"A project not restored, under a nuget.config that does not read, would have none of its packages found for its XAML: looked in {cache}");
         });
     }
 

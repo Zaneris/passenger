@@ -177,7 +177,7 @@ public sealed record ProjectInputs(
             if (!cached)
             {
                 cached = true;
-                if (NuGetSettings.GlobalPackagesFolder(folder) is { Length: > 0 } cache && !places.Contains(cache, PathNames.Comparer))
+                if (NuGetSettings.PackageCache(folder) is { Length: > 0 } cache && !places.Contains(cache, PathNames.Comparer))
                 {
                     places.Add(cache);
                 }
