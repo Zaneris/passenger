@@ -80,17 +80,17 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     public IReadOnlyList<string> GodotGames { get; init; } = [];
 
     /// <summary>The Godot projects of GDScript alone among those found (<see cref="GodotGames"/>): those no project of these
-    /// builds C# for.</summary>
+    /// builds C# for or runs as a host (<see cref="ProjectModel.NamedGodotFolder"/>).</summary>
     public IEnumerable<string> ScriptGames(IEnumerable<ProjectModel> projects)
     {
-        List<string> built = [.. projects.Select(p => p.GodotFolder).OfType<string>()];
+        List<string> built = [.. projects.Select(p => p.NamedGodotFolder).OfType<string>()];
         return GodotGames.Where(g => !built.Any(b => PathNames.Same(b, g)));
     }
 
-    /// <summary>The project files of those of some projects that build a Godot project's game, as each's evaluation says it
-    /// (<see cref="ProjectModel.GodotFolder"/>), wherever they lie beside its folder.</summary>
+    /// <summary>The project files of those of some projects that build a Godot project's game or run it as a host, as each's
+    /// evaluation says it (<see cref="ProjectModel.NamedGodotFolder"/>), wherever they lie beside its folder.</summary>
     public static IReadOnlyList<string> BuildingGodot(IEnumerable<ProjectModel> projects, string folder) =>
-        [.. projects.Where(p => p.GodotFolder is { } game && PathNames.Same(game, folder)).Select(p => p.Path)];
+        [.. projects.Where(p => p.NamedGodotFolder is { } game && PathNames.Same(game, folder)).Select(p => p.Path)];
 
     /// <summary>A folder read through the solution or project it was opened by, else its own solution: a listing of the
     /// folder's top and the files the solution names, quick enough for the window's thread. Null for a folder without one

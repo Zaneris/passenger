@@ -226,8 +226,12 @@ public static class CarriedProperties
     public const string DirectoryPackagesPropsPath = "DirectoryPackagesPropsPath";
 
     /// <summary>The folder of the Godot project Godot.NET.Sdk builds the project for, which holds its project.godot (the
-    /// project's own folder unless it names another); set by no other SDK.</summary>
+    /// project's own folder unless it names another); a project of another SDK may name one too, as a program running that
+    /// game with Godot as a library of its own does.</summary>
     public const string GodotProjectDir = "GodotProjectDir";
+
+    /// <summary>"true" where Godot.NET.Sdk builds the project, as its props alone say: Godot runs what that project builds.</summary>
+    public const string UsingGodotNETSdk = "UsingGodotNETSdk";
 
     /// <summary>The folder Godot's source generators name a project's scripts from, in base 64, which Godot.NET.Sdk's props
     /// write from <see cref="GodotProjectDir"/> as it stands before the project's own body.</summary>
@@ -250,7 +254,7 @@ public static class CarriedProperties
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
-        DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
+        DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, UsingGodotNETSdk, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
     ];
 }
 

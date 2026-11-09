@@ -19,7 +19,22 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeted, ForgetAll, ForgetUncarried, ForgetUnpublishable, ForgetAll,
         ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved, ForgetUncentral, ForgetGodotless,
-        ForgetUnfoldered, ForgetUnbundled];
+        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered];
+
+    /// <summary>The evaluations of projects naming a Godot folder, kept before they carried whether Godot.NET.Sdk builds a
+    /// project, by which Godot runs only its game and a plain .NET project naming one runs as itself, are evaluated again.</summary>
+    private static void ForgetGodotFoldered(JsonObject document)
+    {
+        if (document["projects"] is not JsonObject projects)
+        {
+            return;
+        }
+        foreach (string path in projects.Where(p => p.Value?["properties"] is JsonObject properties && properties.ContainsKey(CarriedProperties.GodotProjectDir))
+            .Select(p => p.Key).ToList())
+        {
+            projects.Remove(path);
+        }
+    }
 
     /// <summary>Every evaluation, kept before they carried a project's package id, by which its CSS isolation bundle is known
     /// from a stylesheet that happens to be named like one.</summary>

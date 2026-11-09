@@ -1794,8 +1794,8 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
     }
 
-    /// <summary>The folder of the Godot project a C# file's project builds a game for (the session's project's
-    /// <see cref="Passenger.Workspace.ProjectModel.GodotFolder"/>); null for any other file, and without a session.</summary>
+    /// <summary>The folder of the Godot project a C# file's project builds a game for or runs as a host (the session's
+    /// project's <see cref="Passenger.Workspace.ProjectModel.NamedGodotFolder"/>); null for any other file, and without a session.</summary>
     public Func<string, string?>? GodotOf { get; init; }
 
     /// <summary>The project files of the session's projects that build a Godot project's game, by its folder; none without a session.</summary>

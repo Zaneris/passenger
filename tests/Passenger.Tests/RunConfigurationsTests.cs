@@ -1128,6 +1128,58 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         again.Close();
     }
 
+    /// <summary>A plain .NET project in a Godot game's solution naming the game's folder, as a host running the game on Godot
+    /// as a library of its own does (Microsoft.NET.Sdk, GodotProjectDir "..", a reference to the game's Godot.NET.Sdk project):
+    /// its configuration, and one added in the dialog as a .NET Project, are .NET ones with no Godot Editor beside them, and
+    /// Run runs the program it builds where Settings names a Godot that isn't there, the game's own staying Godot's.</summary>
+    [AvaloniaFact]
+    public void A_plain_dotnet_project_naming_its_godot_games_folder_runs_as_itself_and_its_configurations_are_dotnet_ones()
+    {
+        TestFolders.Delete(folder);
+        folder = TestFolders.Create("godot-host-");
+        string host = GodotHost(folder);
+        Restore.Run(host);
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        window.Show();
+        window.KeepLayout();
+        window.ApplySettings(window.Settings with { GodotExecutable = Path.Combine(folder, "no-godot", "Godot") });
+        window.OpenFolder(folder);
+        Ui.Settle();
+        string Ran() => window.BottomPanel.Run.Document.Snapshot.ToString();
+        try
+        {
+            Ui.WaitFor(() => Names(window).Contains("Game.2dog") && Names(window).Contains("Game: Godot Editor"),
+                () => $"the host's configuration and the game's Godot ones: {string.Join(", ", Names(window))}");
+            Assert.False(Names(window).Contains("Game.2dog: Godot Editor"),
+                $"The host was given a Godot Editor configuration, as if Godot ran it: {string.Join(", ", Names(window))}");
+            Assert.True(window.SelectConfiguration("Game.2dog"));
+            Ui.Launched(window, window.RunAsync(), "the host's program to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted && Ran().Contains("Process finished", StringComparison.Ordinal), () => $"the host's program to end:\n{Ran()}");
+            Assert.True(Ran().Contains("Game.2dog runs [] with the game's code", StringComparison.Ordinal),
+                $"Run did not run the program the host builds, as dotnet run does:\n{Ran()}");
+
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Assert.Equal("Game.2dog", dialog.Chosen?.Name);
+            Assert.True(dialog.KindText.Text == ".NET Project", $"The host's configuration shows as a {dialog.KindText.Text}, so its fields are Godot's");
+            Add(dialog);
+            dialog.ProjectBox.SelectedItem = dialog.ProjectBox.Items.OfType<Passenger.Workspace.ProjectModel>().Single(p => p.Name == "Game.2dog");
+            Ui.Settle();
+            Assert.True(dialog.KindText.Text == ".NET Project", $"A .NET Project added for the host shows as a {dialog.KindText.Text}, so it would run Godot");
+            Type(dialog.NameBox, "Host");
+            Type(dialog.ArgumentsBox, "again");
+            Ui.Click(dialog.OkButton);
+            Ui.Settle();
+            Assert.Equal("Host", window.Configuration?.Name);
+            Ui.Launched(window, window.RunAsync(), "the added configuration's program to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted && Ran().Contains("Game.2dog runs [again]", StringComparison.Ordinal),
+                () => $"the .NET Project added for the host to run its program with the arguments typed:\n{Ran()}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_name_taken_or_missing_is_refused_with_why_and_nothing_changes()
@@ -1214,6 +1266,59 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     }
 
     private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
+
+    /// <summary>A Godot game's folder as a host beside its game has it: the game, Game, on Godot.NET.Sdk with its project.godot,
+    /// and Game.2dog below it, a console app on Microsoft.NET.Sdk naming the game's folder its GodotProjectDir and
+    /// referencing its project, which says its arguments and the game's words; the host's project, to restore. Godot.NET.Sdk
+    /// is a stand-in setting what the real one's props do, served from a folder feed of the test's own and versioned by its
+    /// text, so a changed stand-in never meets an older one in the package cache.</summary>
+    private static string GodotHost(string root)
+    {
+        Dictionary<string, string> sdk = new()
+        {
+            ["Sdk/Sdk.props"] = """
+                <Project>
+                  <PropertyGroup>
+                    <UsingGodotNETSdk>true</UsingGodotNETSdk>
+                    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+                    <GodotProjectDir Condition=" '$(GodotProjectDir)' == '' ">$(MSBuildProjectDirectory)</GodotProjectDir>
+                    <GodotProjectDir>$([MSBuild]::EnsureTrailingSlash('$(GodotProjectDir)'))</GodotProjectDir>
+                    <GodotProjectDirBase64>$([MSBuild]::ConvertToBase64('$(GodotProjectDir)'))</GodotProjectDirBase64>
+                    <BaseOutputPath>$(GodotProjectDir).godot/mono/temp/bin/</BaseOutputPath>
+                    <OutputPath>$(GodotProjectDir).godot/mono/temp/bin/$(Configuration)/</OutputPath>
+                    <BaseIntermediateOutputPath>$(GodotProjectDir).godot/mono/temp/obj/</BaseIntermediateOutputPath>
+                    <IntermediateOutputPath>$(GodotProjectDir).godot/mono/temp/obj/$(Configuration)/</IntermediateOutputPath>
+                    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+                  </PropertyGroup>
+                  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.props" />
+                </Project>
+
+                """,
+            ["Sdk/Sdk.targets"] = "<Project>\n  <Import Sdk=\"Microsoft.NET.Sdk\" Project=\"Sdk.targets\" />\n</Project>\n",
+        };
+        string version = "0.0.0-standin-" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(string.Concat(sdk.Values))))[..12];
+        Directory.CreateDirectory(Path.Combine(root, "sdks"));
+        File.WriteAllBytes(Path.Combine(root, "sdks", $"Godot.NET.Sdk.{version}.nupkg"), StandInFeed.Package("Godot.NET.Sdk", version, sdk));
+        TestFolders.Write(root, "nuget.config", """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="sdks" value="sdks" />
+              </packageSources>
+            </configuration>
+            """);
+        TestFolders.Write(root, Passenger.Workspace.GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Game\"\n\n[dotnet]\n\nproject/assembly_name=\"Game\"\n");
+        TestFolders.Write(root, "Game.csproj", $"<Project Sdk=\"Godot.NET.Sdk/{version}\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
+            + "    <DefaultItemExcludes>$(DefaultItemExcludes);Game.2dog/**</DefaultItemExcludes>\n  </PropertyGroup>\n</Project>\n");
+        TestFolders.Write(root, "Greeting.cs", "namespace Game;\n\npublic static class Greeting\n{\n    public static string Words => \"the game's code\";\n}\n");
+        TestFolders.Write(root, "Game.slnx", "<Solution>\n  <Project Path=\"Game.csproj\" />\n  <Project Path=\"Game.2dog/Game.2dog.csproj\" />\n</Solution>\n");
+        TestFolders.Write(root, "Game.2dog/.gdignore", string.Empty);
+        TestFolders.Write(root, "Game.2dog/Program.cs", "System.Console.WriteLine($\"Game.2dog runs [{string.Join(\"|\", args)}] with {Game.Greeting.Words}\");\n");
+        return TestFolders.Write(root, "Game.2dog/Game.2dog.csproj", TestProjects.Console("<GodotProjectDir>..</GodotProjectDir>")
+            .With("  <ItemGroup>\n    <ProjectReference Include=\"../Game.csproj\" />\n  </ItemGroup>\n"));
+    }
 
     /// <summary>Does something that writes a file, and waits for the folder watcher to hear of it and for what it heard to
     /// land, which a settle alone does not wait for.</summary>

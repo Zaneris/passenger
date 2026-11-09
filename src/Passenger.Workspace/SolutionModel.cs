@@ -372,12 +372,20 @@ public sealed record ProjectModel(
     /// <summary>Whether Aspire's evaluated SDK identifies this project as an AppHost.</summary>
     public bool IsAspireHost => Evaluated?.IsAspireHost == true;
 
-    /// <summary>The folder of the Godot project Godot.NET.Sdk builds it for, where its project.godot is, as evaluated; null
-    /// for a project of any other SDK.</summary>
-    public string? GodotFolder => IsScriptGame ? Folder
+    /// <summary>The folder of the Godot project Godot.NET.Sdk builds it for, where its project.godot is, as evaluated: Godot
+    /// runs what it builds. Null for a project of any other SDK, one naming a Godot folder too (<see cref="NamedGodotFolder"/>).</summary>
+    public string? GodotFolder => IsScriptGame || BuiltByGodotSdk ? NamedGodotFolder : null;
+
+    /// <summary>The folder of the Godot project its evaluation names (GodotProjectDir), whatever SDK builds it: a Godot.NET.Sdk
+    /// game's, or the game a plain .NET project runs as a program of its own (a host loading Godot as a library), whose
+    /// scenes and Godot code it shares though Godot never runs it; null where it names none.</summary>
+    public string? NamedGodotFolder => IsScriptGame ? Folder
         : Property(CarriedProperties.GodotProjectDir) is { Length: > 0 } folder
             ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(Folder, folder.Replace('\\', System.IO.Path.DirectorySeparatorChar))))
             : null;
+
+    /// <summary>Whether Godot.NET.Sdk builds it, as its evaluation says (<see cref="CarriedProperties.UsingGodotNETSdk"/>).</summary>
+    private bool BuiltByGodotSdk => string.Equals(Property(CarriedProperties.UsingGodotNETSdk), "true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>What keeps its build from reaching its Godot folder, as its evaluation says (<see cref="GodotProject.WhyNotBuiltFor"/>);
     /// null for a build that reaches it, and for a project of any other SDK.</summary>

@@ -114,7 +114,7 @@ public sealed class ProjectSession : IAsyncDisposable
             // The Godot Run starts the game on, found off the window's thread, with the window's user folders for Godot.
             GodotVariables = cancel => BackgroundWork.Run(() => GodotTestRuns.Variables(setup.Settings().GodotExecutable,
                 setup.GodotEnvironment ?? new Dictionary<string, string>(), setup.Settings().GodotTestsWindowed && !setup.Unseen), cancel),
-            GodotFolders = () => [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.GodotFolder).OfType<string>()],
+            GodotFolders = () => [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.NamedGodotFolder).OfType<string>()],
         };
         Tests.Finder.StateFolder = setup.StateFolder;
         Containers = new Containers.FolderContainers(folder, setup.Engine());
@@ -928,13 +928,14 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>Holds the next reading of an open GDScript (<see cref="Godot.GodotScriptTypes.HoldNextTyping"/>).</summary>
     public Task HoldNextScriptReading(Task until) => GodotScriptTypes.HoldNextTyping(until);
 
-    /// <summary>The folder of the Godot project a file is of: the one its project builds a game for, else the Godot project of
-    /// GDScript alone it lies in (<see cref="WorkspaceModel.ScriptGames"/>), the innermost; null for a file of none.</summary>
-    public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder
+    /// <summary>The folder of the Godot project a file is of: the one its project builds a game for or runs as a host
+    /// (<see cref="ProjectModel.NamedGodotFolder"/>), else the Godot project of GDScript alone it lies in
+    /// (<see cref="WorkspaceModel.ScriptGames"/>), the innermost; null for a file of none.</summary>
+    public string? GodotOf(string path) => ProjectOf(path)?.NamedGodotFolder
         ?? Workspace?.ScriptGames(Projects).Where(g => PathNames.IsUnder(path, g)).MaxBy(g => g.Length);
 
-    /// <summary>The folder of the Godot project a C# file's project builds a game for; null for a file of none.</summary>
-    private string? BuiltGodotOf(string path) => ProjectOf(path)?.GodotFolder;
+    /// <summary>The folder of the Godot project a C# file's project builds a game for or runs as a host; null for a file of none.</summary>
+    private string? BuiltGodotOf(string path) => ProjectOf(path)?.NamedGodotFolder;
 
     /// <summary>What Run, Debug and Profile run among: the folder's projects, then what stands for each Godot project of
     /// GDScript alone it holds (<see cref="ProjectModel.OfScriptGame"/>), which no other part of the IDE takes for a project.</summary>
@@ -1091,7 +1092,7 @@ public sealed class ProjectSession : IAsyncDisposable
             || before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && TestFinder.HoldsTests(p.Second)
                 && !ReferenceEquals(CompilationSymbols.Of(p.First), CompilationSymbols.Of(p.Second)))
             // A Godot project's folder, whose GDScript GUT's tests may be in, is known once its C# project is evaluated.
-            || !before.Projects.Select(p => p.GodotFolder).SequenceEqual(Workspace.Projects.Select(p => p.GodotFolder));
+            || !before.Projects.Select(p => p.NamedGodotFolder).SequenceEqual(Workspace.Projects.Select(p => p.NamedGodotFolder));
         // A multi-targeted project's outer evaluation lacks its frameworks' own references: told once they are in.
         bool packages = before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && p.Second.Evaluated is not { Complete: false }
             && (p.First.Evaluated is { Complete: false } || !FrameworkPackages(p.First).SequenceEqual(FrameworkPackages(p.Second))));
