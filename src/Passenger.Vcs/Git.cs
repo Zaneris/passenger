@@ -326,85 +326,142 @@ public sealed partial class Git
     /// left out, renames with where they came from), in one git so the three agree.</summary>
     public async Task<GitStatus> StatusAsync()
     {
-        GitResult status = await RunAsync(Root, ["status", "--porcelain=v2", "-z", "--branch", "--no-ahead-behind", "--untracked-files=all"]);
-        if (!status.Succeeded)
+        (GitResult ran, PooledBytes? output) = await RunAsync(Root, ["status", "--porcelain=v2", "-z", "--branch", "--no-ahead-behind", "--untracked-files=all"], PooledAsync);
+        StatusRead read;
+        using (output)
         {
-            throw new InvalidOperationException(status.Message);
+            if (!ran.Succeeded || output is null)
+            {
+                throw new InvalidOperationException((ran with { Output = output is null ? string.Empty : Encoding.UTF8.GetString(output.Written) }).Message);
+            }
+            read = StatusOf(output.Written, new DiskNames(Root));
         }
+        List<GitConflict> conflicts = read.Conflicts;
+        if (conflicts.Count > 0)
+        {
+            await BinaryBlobsAsync(read.Stages.SelectMany(s => s));
+            for (int i = 0; i < conflicts.Count; i++)
+            {
+                conflicts[i] = conflicts[i] with { IsBinary = read.Stages[i].Any(blob => binaryBlobs.GetValueOrDefault(blob)) };
+            }
+        }
+        return new GitStatus(read.Branch, read.Head, read.Changes, conflicts);
+    }
+
+    /// <summary>A status as read from git's bytes: the branch, HEAD's commit, the files, the conflicts and, for each
+    /// conflict, the blobs of the stages git has a version at.</summary>
+    internal sealed record StatusRead(string? Branch, string? Head, List<FileChange> Changes, List<GitConflict> Conflicts, List<string[]> Stages);
+
+    /// <summary>A status from what <c>git status --porcelain=v2 -z --branch</c> wrote, read where it lies: each entry's
+    /// fields found in place and only its paths, a branch, HEAD and a conflict's blobs made strings, so a status of
+    /// thousands of files costs those files' paths.</summary>
+    internal static StatusRead StatusOf(ReadOnlySpan<byte> output, DiskNames names)
+    {
         string? branch = null;
         string? head = null;
         List<FileChange> changes = [];
         List<GitConflict> conflicts = [];
         List<string[]> stages = [];
-        DiskNames names = new(Root);
-        string[] entries = status.Output.Split('\0');
-        for (int i = 0; i < entries.Length; i++)
+        Span<Range> fields = stackalloc Range[11];
+        while (!output.IsEmpty)
         {
-            string entry = entries[i];
+            ReadOnlySpan<byte> entry = Entry(ref output);
             if (entry.Length < 2)
             {
                 continue;
             }
             switch (entry[0])
             {
-                case '#' when entry.StartsWith("# branch.oid ", StringComparison.Ordinal):
-                    head = entry[13..] is "(initial)" ? null : entry[13..];
+                case (byte)'#' when entry.StartsWith("# branch.oid "u8):
+                    head = entry[13..].SequenceEqual("(initial)"u8) ? null : Text(entry[13..]);
                     break;
-                case '#' when entry.StartsWith("# branch.head ", StringComparison.Ordinal):
-                    branch = entry[14..] is "(detached)" ? null : entry[14..];
+                case (byte)'#' when entry.StartsWith("# branch.head "u8):
+                    branch = entry[14..].SequenceEqual("(detached)"u8) ? null : Text(entry[14..]);
                     break;
-                case '1':
-                    // "1 XY sub mH mI mW hH hI path"
-                    string[] ordinary = entry.Split(' ', 9);
-                    changes.Add(new FileChange(names.Full(ordinary[8]), Kind(ordinary[1]), Submodule: Submodule(ordinary[1], ordinary[2]), Mode: Mode(ordinary[3], ordinary[5])));
+                // "1 XY sub mH mI mW hH hI path"
+                case (byte)'1' when Spaced(entry, fields[..9]):
+                    ReadOnlySpan<byte> xy = entry[fields[1]];
+                    changes.Add(new FileChange(names.Full(entry[fields[8]]), Kind(xy), Submodule: Submodule(xy, entry[fields[2]]),
+                        Mode: Mode(entry[fields[3]], entry[fields[5]])));
                     break;
-                case '2':
-                    // "2 XY sub mH mI mW hH hI Xscore path", then the path it came from as its own entry.
-                    string[] renamed = entry.Split(' ', 10);
-                    changes.Add(new FileChange(names.Full(renamed[9]), ChangeKind.Renamed, names.Full(entries[++i]), Mode: Mode(renamed[3], renamed[5])));
+                // "2 XY sub mH mI mW hH hI Xscore path", then the path it came from as its own entry.
+                case (byte)'2' when Spaced(entry, fields[..10]):
+                    changes.Add(new FileChange(names.Full(entry[fields[9]]), ChangeKind.Renamed, names.Full(Entry(ref output)),
+                        Mode: Mode(entry[fields[3]], entry[fields[5]])));
                     break;
-                case 'u':
-                    // "u XY sub m1 m2 m3 mW h1 h2 h3 path": a stage git has no version at has the mode 000000.
-                    string[] unmerged = entry.Split(' ', 11);
-                    string path = names.Full(unmerged[10]);
+                // "u XY sub m1 m2 m3 mW h1 h2 h3 path": a stage git has no version at has the mode 000000.
+                case (byte)'u' when Spaced(entry, fields):
+                    string path = names.Full(entry[fields[10]]);
                     changes.Add(new FileChange(path, ChangeKind.Conflicted));
-                    conflicts.Add(new GitConflict(path, Staged(unmerged[3]), Staged(unmerged[4]), Staged(unmerged[5])));
-                    stages.Add([.. Enumerable.Range(3, 3).Where(i => Staged(unmerged[i])).Select(i => unmerged[i + 4])]);
+                    conflicts.Add(new GitConflict(path, Staged(entry[fields[3]]), Staged(entry[fields[4]]), Staged(entry[fields[5]])));
+                    List<string> blobs = [];
+                    for (int stage = 3; stage <= 5; stage++)
+                    {
+                        if (Staged(entry[fields[stage]]))
+                        {
+                            blobs.Add(Text(entry[fields[stage + 4]]));
+                        }
+                    }
+                    stages.Add([.. blobs]);
                     break;
                 // A save under way as git read the folder: the saved file's change, which the read after the save lists.
-                case '?' when FileText.IsSaving(entry):
+                case (byte)'?' when entry.EndsWith(SavingSuffix):
                     break;
-                case '?':
+                case (byte)'?':
                     changes.Add(new FileChange(names.Full(entry[2..]), ChangeKind.Unversioned));
                     break;
             }
         }
-        if (conflicts.Count > 0)
-        {
-            await BinaryBlobsAsync(stages.SelectMany(s => s));
-            for (int i = 0; i < conflicts.Count; i++)
-            {
-                conflicts[i] = conflicts[i] with { IsBinary = stages[i].Any(blob => binaryBlobs.GetValueOrDefault(blob)) };
-            }
-        }
-        return new GitStatus(branch, head, changes, conflicts);
+        return new StatusRead(branch, head, changes, conflicts, stages);
 
-        static ChangeKind Kind(string xy) =>
-            xy.Contains('D') ? ChangeKind.Deleted : xy[0] == 'A' ? ChangeKind.Added : ChangeKind.Modified;
+        static ChangeKind Kind(ReadOnlySpan<byte> xy) =>
+            xy.Contains((byte)'D') ? ChangeKind.Deleted : xy[0] == (byte)'A' ? ChangeKind.Added : ChangeKind.Modified;
 
         // "N..." for a file; "S" then C, M and U (or '.') for a submodule's commit, tracked and untracked changes. A
         // commit the index holds that the last commit does not is a change of its commit too.
-        static SubmoduleChange Submodule(string xy, string sub) => sub is ['S', var commit, var modified, var untracked]
+        static SubmoduleChange Submodule(ReadOnlySpan<byte> xy, ReadOnlySpan<byte> sub) => sub is [(byte)'S', var commit, var modified, var untracked]
             ? SubmoduleChange.Submodule
-                | (commit == 'C' || xy[0] != '.' ? SubmoduleChange.Commit : SubmoduleChange.None)
-                | (modified == 'M' ? SubmoduleChange.Modified : SubmoduleChange.None)
-                | (untracked == 'U' ? SubmoduleChange.Untracked : SubmoduleChange.None)
+                | (commit == (byte)'C' || xy[0] != (byte)'.' ? SubmoduleChange.Commit : SubmoduleChange.None)
+                | (modified == (byte)'M' ? SubmoduleChange.Modified : SubmoduleChange.None)
+                | (untracked == (byte)'U' ? SubmoduleChange.Untracked : SubmoduleChange.None)
             : SubmoduleChange.None;
 
-        static bool Staged(string mode) => mode.Any(c => c != '0');
+        static bool Staged(ReadOnlySpan<byte> mode) => mode.ContainsAnyExcept((byte)'0');
 
         // A side's 000000 is a file added or deleted, not a mode changed.
-        static ModeChange? Mode(string head, string worktree) => head != worktree && Staged(head) && Staged(worktree) ? new ModeChange(head, worktree) : null;
+        static ModeChange? Mode(ReadOnlySpan<byte> head, ReadOnlySpan<byte> worktree) =>
+            !head.SequenceEqual(worktree) && Staged(head) && Staged(worktree) ? new ModeChange(Text(head), Text(worktree)) : null;
+    }
+
+    /// <summary>A save's temporary file's name ends, as git writes it.</summary>
+    private static readonly byte[] SavingSuffix = Encoding.UTF8.GetBytes(FileText.SaveSuffix);
+
+    /// <summary>The bytes up to the next NUL, which ends each of a -z output's entries; <paramref name="output"/> is moved past.</summary>
+    private static ReadOnlySpan<byte> Entry(ref ReadOnlySpan<byte> output)
+    {
+        int end = output.IndexOf((byte)0);
+        ReadOnlySpan<byte> entry = end < 0 ? output : output[..end];
+        output = end < 0 ? [] : output[(end + 1)..];
+        return entry;
+    }
+
+    /// <summary>An entry's fields between spaces, as many as <paramref name="fields"/> holds, the last running to the entry's
+    /// end (a path may hold spaces); false where the entry has fewer.</summary>
+    private static bool Spaced(ReadOnlySpan<byte> entry, Span<Range> fields)
+    {
+        int start = 0;
+        for (int i = 0; i < fields.Length - 1; i++)
+        {
+            int at = entry[start..].IndexOf((byte)' ');
+            if (at < 0)
+            {
+                return false;
+            }
+            fields[i] = new Range(start, start + at);
+            start += at + 1;
+        }
+        fields[^1] = new Range(start, entry.Length);
+        return true;
     }
 
     /// <summary>The folders git's status shows whole by default (absolute, as the disk names them): each holds untracked
@@ -1705,7 +1762,7 @@ public sealed partial class Git
     /// <summary>Paths git names, as the disk names them. On macOS git gives each name composed (core.precomposeunicode),
     /// where the disk may hold it decomposed, as the Finder writes it, and the volume takes either: so a name with a
     /// letter beyond ASCII is looked for in its folder, each folder listed once.</summary>
-    private sealed class DiskNames(string root)
+    internal sealed class DiskNames(string root)
     {
         private readonly Dictionary<string, Dictionary<string, string>> folders = new(StringComparer.Ordinal);
 
@@ -1721,6 +1778,21 @@ public sealed partial class Git
                 at = System.IO.Path.Combine(at, !Ascii.IsValid(name) && Listed(at).TryGetValue(name.Normalize(NormalizationForm.FormC), out string? stored) ? stored : name);
             }
             return at;
+        }
+
+        /// <summary><see cref="Full(string)"/> of a path as git wrote it: one of ASCII alone, as most are, joined to the root
+        /// from where it lies, with no string of it made first.</summary>
+        public string Full(ReadOnlySpan<byte> relative)
+        {
+            const int Longest = 1024;
+            if (relative.Length > Longest || !Ascii.IsValid(relative))
+            {
+                return Full(Encoding.UTF8.GetString(relative));
+            }
+            Span<char> chars = stackalloc char[Longest];
+            Ascii.ToUtf16(relative, chars, out int written);
+            ReadOnlySpan<char> name = chars[..written];
+            return System.IO.Path.GetFullPath(System.IO.Path.IsPathRooted(name) ? name.ToString() : System.IO.Path.Join(root, name));
         }
 
         /// <summary>A folder's names by their composed form; none where it cannot be listed (a file deleted with it).</summary>
@@ -1896,13 +1968,14 @@ public sealed partial class Git
     {
         (GitResult ran, PooledBytes? bytes) = await RunAsync(folder, arguments, PooledAsync);
         return new GitOutput(ran.Succeeded, bytes);
+    }
 
-        static async Task<PooledBytes> PooledAsync(Stream output)
-        {
-            PooledBytes bytes = new();
-            await bytes.ReadToEndAsync(output);
-            return bytes;
-        }
+    /// <summary>What git writes, read into a buffer of the pool's as it comes, which its taker disposes.</summary>
+    private static async Task<PooledBytes> PooledAsync(Stream output)
+    {
+        PooledBytes bytes = new();
+        await bytes.ReadToEndAsync(output);
+        return bytes;
     }
 
     /// <summary>Whether a git command succeeded and what it wrote, its bytes in a buffer of the pool's until disposed.</summary>
