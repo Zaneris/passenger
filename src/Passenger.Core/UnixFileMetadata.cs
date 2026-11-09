@@ -155,7 +155,7 @@ internal static unsafe partial class UnixFileMetadata
     {
         fixed (byte* named = name)
         {
-            nint size = GetAttribute(path, named, null, 0);
+            nint size = Libc.ExtendedAttribute(path, named, null, 0);
             if (size < 0)
             {
                 return null;
@@ -163,7 +163,7 @@ internal static unsafe partial class UnixFileMetadata
             byte[] value = new byte[size];
             fixed (byte* into = value)
             {
-                nint read = size == 0 ? 0 : GetAttribute(path, named, into, (nuint)value.Length);
+                nint read = size == 0 ? 0 : Libc.ExtendedAttribute(path, named, into, (nuint)value.Length);
                 return read == size ? value : null;
             }
         }
@@ -200,9 +200,6 @@ internal static unsafe partial class UnixFileMetadata
 
     [LibraryImport("libc", EntryPoint = "listxattr", StringMarshalling = StringMarshalling.Utf8)]
     private static partial nint ListAttributes(string path, byte* list, nuint size);
-
-    [LibraryImport("libc", EntryPoint = "getxattr", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial nint GetAttribute(string path, byte* name, byte* value, nuint size);
 
     [LibraryImport("libc", EntryPoint = "fsetxattr")]
     private static partial int SetAttribute(int descriptor, byte* name, byte* value, nuint size, int flags);

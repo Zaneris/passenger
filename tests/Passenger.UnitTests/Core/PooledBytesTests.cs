@@ -53,6 +53,22 @@ public class PooledBytesTests
     }
 
     [Fact]
+    public void A_document_read_in_place_from_it_reads_the_message_and_the_buffer_cleared_after_a_large_one_is_of_the_usual_size()
+    {
+        using PooledBytes bytes = new();
+        byte[] large = JsonSerializer.SerializeToUtf8Bytes(new string('x', 1_000_000));
+        large.CopyTo(bytes.GetSpan(large.Length));
+        bytes.Advance(large.Length);
+        using (JsonDocument read = JsonDocument.Parse(bytes.WrittenMemory))
+        {
+            Assert.Equal(1_000_000, read.RootElement.GetString()!.Length);
+        }
+        bytes.Clear();
+        Assert.True(bytes.GetSpan().Length < large.Length,
+            $"Cleared after a message of {large.Length} bytes, the buffer still holds {bytes.GetSpan().Length}: a reader keeps its largest message's array to its end");
+    }
+
+    [Fact]
     public async Task A_stream_read_to_its_end_into_it_reads_back_whole_after_what_was_written_as_the_buffer_grows()
     {
         using PooledBytes bytes = new();

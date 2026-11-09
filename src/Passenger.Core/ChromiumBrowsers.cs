@@ -36,7 +36,7 @@ public static class ChromiumBrowsers
             ? [.. new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86, Environment.SpecialFolder.LocalApplicationData }
                 .Select(Environment.GetFolderPath).Where(f => f.Length > 0).Distinct(PathNames.Comparer)]
             : OperatingSystem.IsMacOS() ? MacFolders(Libc.AccountHome, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)) : [];
-        return Find(chosen, (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries),
+        return Find(chosen, Programs.PathFolders(),
             roots, OperatingSystem.IsWindows(), File.Exists);
     }
 

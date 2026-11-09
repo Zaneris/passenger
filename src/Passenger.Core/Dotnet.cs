@@ -147,7 +147,7 @@ public static partial class Dotnet
     /// names it and the PATH has it first, and it comes before even the dotnet running this app.</summary>
     public static void Use(string root)
     {
-        string[] path = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        string[] path = Programs.PathFolders();
         bool taken = path.Length > 0 && PathNames.Same(path[0], root) && PathNames.Same(Environment.GetEnvironmentVariable(RuntimeVariables.Root) ?? string.Empty, root);
         Chosen = PathNames.Canonical(root);
         if (taken)

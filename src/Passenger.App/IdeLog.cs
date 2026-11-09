@@ -107,11 +107,11 @@ public static partial class IdeLog
         }
         if (Core.Libc.DuplicateTo(ends[1], StandardError) < 0)
         {
-            CloseEnd(ends[0]);
-            CloseEnd(ends[1]);
+            Core.Libc.Close(ends[0]);
+            Core.Libc.Close(ends[1]);
             return;
         }
-        CloseEnd(ends[1]);
+        Core.Libc.Close(ends[1]);
         FileStream read = new(new Microsoft.Win32.SafeHandles.SafeFileHandle(ends[0], ownsHandle: true), FileAccess.Read, 1);
         Thread reader = new(() =>
         {
@@ -152,9 +152,6 @@ public static partial class IdeLog
 
     [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "pipe", SetLastError = true)]
     private static unsafe partial int Pipe(int* ends);
-
-    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
-    private static partial int CloseEnd(int end);
 
     /// <summary>A line in one of the logs, from any thread.</summary>
     public static void Write(string log, string line)

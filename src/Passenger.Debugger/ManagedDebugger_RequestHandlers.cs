@@ -219,6 +219,31 @@ public partial class ManagedDebugger
         }
     }
 
+    /// <summary>Breakpoints no longer asked for, their bindings let go and themselves forgotten.</summary>
+    private void Remove(List<BreakpointManager.BreakpointInfo> gone)
+    {
+        foreach (BreakpointManager.BreakpointInfo each in gone)
+        {
+            LetGo(each);
+            _breakpointManager.RemoveBreakpoint(each.Id);
+        }
+    }
+
+    /// <summary>What a breakpoint asked for before the program is there says: it binds once the program loads its code.</summary>
+    private const string NotProcessed = "Breakpoint has not been processed by the debugger.";
+
+    /// <summary>Whether a new breakpoint is refused for a condition or hit count that does not read, its message saying why.</summary>
+    private static bool RefusedUnread(BreakpointManager.BreakpointInfo bp)
+    {
+        if (Unreadable(bp.Condition, bp.HitCondition) is not { } unreadable)
+        {
+            return false;
+        }
+        bp.Message = unreadable;
+        bp.Refused = true;
+        return true;
+    }
+
     /// <summary>The process to attach to, taken hold of by configurationDone once the client's breakpoints are set;
     /// with <paramref name="hotReload"/> (a program started held, DOTNET_MODIFIABLE_ASSEMBLIES=debug set) the user's
     /// modules that load after the attach get Edit and Continue.</summary>
@@ -502,11 +527,7 @@ public partial class ManagedDebugger
 
         (BreakpointManager.BreakpointInfo? Kept, int Hits)[] matched = Reconcile(breakpoints, _breakpointManager.GetBreakpointsForFile(filePath), b => b.Request,
             static (was, now) => was.Line == now.Line && was.Column == now.Column, out List<BreakpointManager.BreakpointInfo> gone);
-        foreach (BreakpointManager.BreakpointInfo each in gone)
-        {
-            LetGo(each);
-            _breakpointManager.RemoveBreakpoint(each.Id);
-        }
+        Remove(gone);
 
         List<BreakpointManager.BreakpointInfo> result = new List<BreakpointManager.BreakpointInfo>();
         for (int i = 0; i < breakpoints.Length; i++)
@@ -521,10 +542,8 @@ public partial class ManagedDebugger
             BreakpointManager.BreakpointInfo bp = _breakpointManager.CreateBreakpoint(filePath, request.Line, request.Column, request.Condition, request.HitCondition, request.LogMessage, request.Suspend);
             bp.Request = request;
             bp.HitCount = matched[i].Hits;
-            if (Unreadable(bp.Condition, bp.HitCondition) is { } unreadable)
+            if (RefusedUnread(bp))
             {
-                bp.Message = unreadable;
-                bp.Refused = true;
                 result.Add(bp);
                 continue;
             }
@@ -535,7 +554,7 @@ public partial class ManagedDebugger
             }
             else
             {
-                bp.Message = "Breakpoint has not been processed by the debugger.";
+                bp.Message = NotProcessed;
             }
 
             result.Add(bp);
@@ -551,11 +570,7 @@ public partial class ManagedDebugger
     {
         (BreakpointManager.BreakpointInfo? Kept, int Hits)[] matched = Reconcile(breakpoints, _breakpointManager.GetFunctionBreakpoints(), b => b.FunctionRequest,
             static (was, now) => was.Name == now.Name, out List<BreakpointManager.BreakpointInfo> gone);
-        foreach (BreakpointManager.BreakpointInfo each in gone)
-        {
-            LetGo(each);
-            _breakpointManager.RemoveBreakpoint(each.Id);
-        }
+        Remove(gone);
 
         List<BreakpointManager.BreakpointInfo> result = new List<BreakpointManager.BreakpointInfo>();
         for (int i = 0; i < breakpoints.Length; i++)
@@ -570,10 +585,8 @@ public partial class ManagedDebugger
             BreakpointManager.BreakpointInfo bp = _breakpointManager.CreateFunctionBreakpoint(request.Name, request.Condition, request.HitCondition, request.LogMessage, request.Suspend);
             bp.FunctionRequest = request;
             bp.HitCount = matched[i].Hits;
-            if (Unreadable(bp.Condition, bp.HitCondition) is { } unreadable)
+            if (RefusedUnread(bp))
             {
-                bp.Message = unreadable;
-                bp.Refused = true;
                 result.Add(bp);
                 continue;
             }
@@ -587,7 +600,7 @@ public partial class ManagedDebugger
                 if (!bp.Verified)
                 {
                     bp.Message = _process is null
-                    ? "Breakpoint has not been processed by the debugger."
+                    ? NotProcessed
                     : $"No functions matching '{request.Name}' were found.";
                 }
             }

@@ -38,20 +38,24 @@ internal static partial class MacFileMetadata
     }
 
     /// <summary>An extended attribute's value as text, or null when the file has none of that name.</summary>
-    private static string? Named(string path, string name)
+    private static unsafe string? Named(string path, string name)
     {
-        nint size = GetXattr(path, name, null, 0, 0, 0);
-        if (size <= 0)
+        byte[] named = Encoding.UTF8.GetBytes(name + '\0');
+        fixed (byte* asked = named)
         {
-            return null;
+            nint size = Core.Libc.ExtendedAttribute(path, asked, null, 0);
+            if (size <= 0)
+            {
+                return null;
+            }
+            byte[] value = new byte[size];
+            fixed (byte* into = value)
+            {
+                nint read = Core.Libc.ExtendedAttribute(path, asked, into, (nuint)value.Length);
+                return read <= 0 ? null : Encoding.UTF8.GetString(value, 0, (int)read);
+            }
         }
-        byte[] value = new byte[size];
-        nint read = GetXattr(path, name, value, (nuint)value.Length, 0, 0);
-        return read <= 0 ? null : Encoding.UTF8.GetString(value, 0, (int)read);
     }
-
-    [LibraryImport("libc", EntryPoint = "getxattr", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial nint GetXattr(string path, string name, byte[]? value, nuint size, uint position, int options);
 
     [LibraryImport("libc", EntryPoint = "removexattr", StringMarshalling = StringMarshalling.Utf8)]
     private static partial int RemoveXattr(string path, string name, int options);

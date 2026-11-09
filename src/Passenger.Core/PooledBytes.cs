@@ -13,6 +13,10 @@ public sealed class PooledBytes : IBufferWriter<byte>, IDisposable
 
     public ReadOnlySpan<byte> Written => array.AsSpan(0, count);
 
+    /// <summary>What is written, for a reader that keeps it (a JSON document read in place) until the next write or
+    /// <see cref="Clear"/>.</summary>
+    public ReadOnlyMemory<byte> WrittenMemory => array.AsMemory(0, count);
+
     public void Advance(int written) => count += written;
 
     public Memory<byte> GetMemory(int sizeHint = 0)

@@ -44,7 +44,8 @@ public static class Programs
         return found;
     }
 
-    private static string[] PathFolders() =>
+    /// <summary>The PATH's folders as this process has it, in its order, empty ones left out.</summary>
+    public static string[] PathFolders() =>
         (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>Node.js on the PATH; null when there is none.</summary>

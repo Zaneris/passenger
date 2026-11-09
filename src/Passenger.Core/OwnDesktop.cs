@@ -15,7 +15,6 @@ namespace Passenger.Core;
 public static partial class OwnDesktop
 {
     private const uint GenericAll = 0x10000000;
-    private const int InheritFlag = 0x1;
     private const int UseStandardHandles = 0x100;
     private const uint Suspended = 0x4;
     private const uint UnicodeEnvironment = 0x400;
@@ -180,7 +179,7 @@ public static partial class OwnDesktop
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "No pipe could be made for a program's stream");
         }
         (nint child, nint own) = childReads ? (read, write) : (write, read);
-        _ = SetHandleInformation(own, InheritFlag, 0);
+        _ = StandardHandles.NotInherited(own);
         theirs.Add(child);
         ours.Add(own);
         return childReads ? (child, own) : (own, child);
@@ -269,10 +268,6 @@ public static partial class OwnDesktop
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CreatePipe(out nint read, out nint write, ref SecurityAttributes security, int size);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetHandleInformation(nint handle, int mask, int flags);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

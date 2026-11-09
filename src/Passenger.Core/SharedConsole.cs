@@ -12,7 +12,7 @@ namespace Passenger.Core;
 /// Ctrl+Break sent to all it holds the process passes over; its code pages are set again before each start, so a code
 /// page one child set is never the next one's.</summary>
 [SupportedOSPlatform("windows")]
-internal static unsafe partial class SharedConsole
+public static unsafe partial class SharedConsole
 {
     private const uint Utf8CodePage = 65001;
 
@@ -33,15 +33,19 @@ internal static unsafe partial class SharedConsole
 
     /// <summary>Whether a child started now shares the process's console, its code pages set to UTF-8 first; false where
     /// there is none and none could be made, the child then given one of its own in the system's code page.</summary>
-    public static bool Ready()
+    internal static bool Ready()
     {
         lock (Gate)
         {
             uint process;
             attached ??= GetConsoleProcessList(&process, 1) > 0 || Make();
-            return attached.Value && SetConsoleOutputCP(Utf8CodePage) && SetConsoleCP(Utf8CodePage);
+            return attached.Value && InUtf8();
         }
     }
+
+    /// <summary>The console this process is attached to set to write and read UTF-8, which a child sharing it takes; false
+    /// where the process has none.</summary>
+    public static bool InUtf8() => SetConsoleOutputCP(Utf8CodePage) && SetConsoleCP(Utf8CodePage);
 
     /// <summary>Attaches the process to a console with no window: a holder's (<c>cmd /c pause</c>, started with none), taken
     /// once it has written, then ended. The process's standard handles stay as they were. False where none could be made.</summary>

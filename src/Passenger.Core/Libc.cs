@@ -32,6 +32,22 @@ public static partial class Libc
     [LibraryImport("libc", EntryPoint = "dup2", SetLastError = true)]
     public static partial int DuplicateTo(int from, int to);
 
+    /// <summary>close: a descriptor let go; 0, or -1.</summary>
+    [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
+    public static partial int Close(int descriptor);
+
+    /// <summary>getxattr: a file's extended attribute named by <paramref name="name"/>'s NUL-ended bytes, its link followed,
+    /// read into <paramref name="value"/>; its length (with no value, the length it needs), or -1. macOS's takes a place in
+    /// a resource fork and options beside Linux's, given neither.</summary>
+    public static unsafe nint ExtendedAttribute(string path, byte* name, byte* value, nuint size) =>
+        OperatingSystem.IsMacOS() ? MacExtendedAttribute(path, name, value, size, 0, 0) : LinuxExtendedAttribute(path, name, value, size);
+
+    [LibraryImport("libc", EntryPoint = "getxattr", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+    private static unsafe partial nint LinuxExtendedAttribute(string path, byte* name, byte* value, nuint size);
+
+    [LibraryImport("libc", EntryPoint = "getxattr", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+    private static unsafe partial nint MacExtendedAttribute(string path, byte* name, byte* value, nuint size, uint position, int options);
+
     /// <summary>A process's executable, through proc_pidpath on macOS and /proc's link on Linux; null when it cannot be
     /// read (gone, or not the caller's to ask of).</summary>
     public static unsafe string? ExecutableOf(int process)

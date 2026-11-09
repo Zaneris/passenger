@@ -151,35 +151,28 @@ public sealed class CdpConnection : IAsyncDisposable
 
     private async Task ReadAsync()
     {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-        int filled = 0;
+        using PooledBytes message = new();
         try
         {
             while (!stopping.IsCancellationRequested)
             {
-                if (filled == buffer.Length)
+                if (message.Written.Length >= MostMessage)
                 {
-                    if (buffer.Length >= MostMessage)
-                    {
-                        throw new IOException($"A DevTools message ran past the {MostMessage} bytes the connection reads of one");
-                    }
-                    byte[] grown = ArrayPool<byte>.Shared.Rent(Math.Min(MostMessage, buffer.Length * 2));
-                    buffer.AsSpan(0, filled).CopyTo(grown);
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    buffer = grown;
+                    throw new IOException($"A DevTools message ran past the {MostMessage} bytes the connection reads of one");
                 }
-                ValueWebSocketReceiveResult read = await socket.ReceiveAsync(buffer.AsMemory(filled), stopping.Token).ConfigureAwait(false);
+                ValueWebSocketReceiveResult read = await socket.ReceiveAsync(message.GetMemory(), stopping.Token).ConfigureAwait(false);
                 if (read.MessageType == WebSocketMessageType.Close)
                 {
                     return;
                 }
-                filled += read.Count;
+                message.Advance(read.Count);
                 if (!read.EndOfMessage)
                 {
                     continue;
                 }
-                Receive(buffer.AsMemory(0, filled));
-                filled = 0;
+                Receive(message.WrittenMemory);
+                // A large message's array goes back to the pool, the next read into one of the usual size.
+                message.Clear();
             }
         }
         catch (Exception error) when (error is WebSocketException or IOException or OperationCanceledException or ObjectDisposedException or JsonException)
@@ -191,7 +184,6 @@ public sealed class CdpConnection : IAsyncDisposable
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
             pending.End(asked => new CdpException(asked, "the connection is closed"));
             inbox.Writer.TryComplete();
         }

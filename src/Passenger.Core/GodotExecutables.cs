@@ -203,7 +203,7 @@ public static partial class GodotExecutables
         ShellEnvironment.Ready();
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return Find(chosen, Environment.GetEnvironmentVariable(Variable),
-            (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries),
+            Programs.PathFolders(),
             OperatingSystem.IsMacOS() ? ["/Applications", Path.Combine(home, "Applications")] : [], OperatingSystem.IsWindows());
     }
 

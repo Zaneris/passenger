@@ -70,10 +70,7 @@ public sealed partial class SuspendedLaunch : IDisposable
     {
         if (OperatingSystem.IsWindows())
         {
-            foreach (int standard in (int[])[StandardInput, StandardOutput, StandardError])
-            {
-                _ = SetHandleInformation(GetStdHandle(standard), HandleFlagInherit, 0);
-            }
+            StandardHandles.NotInherited();
             return (Console.OpenStandardInput(), Console.OpenStandardOutput());
         }
         SafeFileHandle input = new(Check(Dup(0), "dup"), ownsHandle: true);
@@ -141,9 +138,9 @@ public sealed partial class SuspendedLaunch : IDisposable
                     Libc.DuplicateTo(savedIn, 0);
                     Libc.DuplicateTo(savedOut, 1);
                     Libc.DuplicateTo(savedErr, 2);
-                    Close(savedIn);
-                    Close(savedOut);
-                    Close(savedErr);
+                    Libc.Close(savedIn);
+                    Libc.Close(savedOut);
+                    Libc.Close(savedErr);
                 }
             }
             return new SuspendedLaunch(processId, resume, null, Stream(parentIn, FileAccess.Write), Stream(parentOut, FileAccess.Read), Stream(parentErr, FileAccess.Read))
@@ -155,17 +152,17 @@ public sealed partial class SuspendedLaunch : IDisposable
         }
         catch
         {
-            Close(parentIn);
-            Close(parentOut);
-            Close(parentErr);
+            Libc.Close(parentIn);
+            Libc.Close(parentOut);
+            Libc.Close(parentErr);
             throw;
         }
         finally
         {
             Marshal.FreeHGlobal(environmentBlock);
-            Close(childIn);
-            Close(childOut);
-            Close(childErr);
+            Libc.Close(childIn);
+            Libc.Close(childOut);
+            Libc.Close(childErr);
         }
     }
 
@@ -175,7 +172,7 @@ public sealed partial class SuspendedLaunch : IDisposable
     [SupportedOSPlatform("windows")]
     private static SuspendedLaunch StartOnWindows(string program, IReadOnlyList<string> arguments, string? folder, IReadOnlyDictionary<string, string> variables, bool unseen)
     {
-        bool shared = SetConsoleOutputCP(Utf8CodePage) && SetConsoleCP(Utf8CodePage);
+        bool shared = SharedConsole.InUtf8();
         ProcessStartInfo start = new(program, arguments)
         {
             WorkingDirectory = folder ?? Environment.CurrentDirectory,
@@ -313,7 +310,7 @@ public sealed partial class SuspendedLaunch : IDisposable
         KernelEvent watch = new() { Ident = (nuint)processId, Filter = ProcessFilter, Flags = EventAdd | EventOneShot, FilterFlags = NoteExit | NoteExitStatus };
         if (KEvent(queue, ref watch, 1, out _, 0, 0) < 0)
         {
-            Close(queue);
+            Libc.Close(queue);
             return -1;
         }
         return queue;
@@ -338,7 +335,7 @@ public sealed partial class SuspendedLaunch : IDisposable
         }
         finally
         {
-            Close(exitQueue);
+            Libc.Close(exitQueue);
             exitQueue = -1;
         }
     }
@@ -391,7 +388,7 @@ public sealed partial class SuspendedLaunch : IDisposable
     {
         if (exitHandle >= 0)
         {
-            Close(exitHandle);
+            Libc.Close(exitHandle);
             exitHandle = -1;
         }
     }
@@ -451,9 +448,6 @@ public sealed partial class SuspendedLaunch : IDisposable
     [LibraryImport("libSystem.Native", EntryPoint = "SystemNative_Pipe", SetLastError = true)]
     private static partial int SystemNativePipe(ref int ends, int flags);
 
-    [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
-    private static partial int Close(int descriptor);
-
     private const int Interrupted = 4; // EINTR
     private const int NoHang = 1; // WNOHANG
 
@@ -504,28 +498,4 @@ public sealed partial class SuspendedLaunch : IDisposable
 
     [LibraryImport("libc", EntryPoint = "ioctl", SetLastError = true)]
     private static partial int ProcessInfoOf(int descriptor, ulong request, ref ProcessInfo info);
-
-    private const int StandardInput = -10;
-    private const int StandardOutput = -11;
-    private const int StandardError = -12;
-    private const uint HandleFlagInherit = 1;
-
-    [LibraryImport("kernel32", EntryPoint = "GetStdHandle", SetLastError = true)]
-    private static partial nint GetStdHandle(int which);
-
-    [LibraryImport("kernel32", EntryPoint = "SetHandleInformation", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetHandleInformation(nint handle, uint mask, uint flags);
-
-    private const uint Utf8CodePage = 65001; // CP_UTF8
-
-    /// <summary>Sets the code page the console this process is attached to writes in; false where it has no console.</summary>
-    [LibraryImport("kernel32", EntryPoint = "SetConsoleOutputCP", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetConsoleOutputCP(uint codePage);
-
-    /// <summary>Sets the code page the console this process is attached to reads in; false where it has no console.</summary>
-    [LibraryImport("kernel32", EntryPoint = "SetConsoleCP", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetConsoleCP(uint codePage);
 }

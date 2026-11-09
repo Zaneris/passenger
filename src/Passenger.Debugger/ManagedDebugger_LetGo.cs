@@ -41,14 +41,7 @@ public partial class ManagedDebugger
         }
         // Never disposed: a callback under way as the handler is taken off may still add to it.
         BlockingCollection<CorDebugManagedCallbackEventArgs> events = [];
-        void Take(object? sender, CorDebugManagedCallbackEventArgs callbackEvent)
-        {
-            if (callbackEvent is ExitProcessCorDebugManagedCallbackEventArgs)
-            {
-                _exited.Set();
-            }
-            events.Add(callbackEvent);
-        }
+        EventHandler<CorDebugManagedCallbackEventArgs> take = TakeInto(events);
         void Note(CorDebugManagedCallbackEventArgs callbackEvent)
         {
             if (DispatchThread(callbackEvent) is int thread && !_exited.IsSet)
@@ -57,7 +50,7 @@ public partial class ManagedDebugger
             }
         }
 
-        _callbacks.OnAnyEvent += Take;
+        _callbacks.OnAnyEvent += take;
         try
         {
             TimeSpan running = TimeSpan.FromMilliseconds(20);
@@ -73,14 +66,7 @@ public partial class ManagedDebugger
                     }
                     running = running < left ? running : left;
                 }
-                // Every hold continued (the stop shown, a pause's, events put off): the runtime resumes the threads it held.
-                for (int holds = 0; holds < 16 && !_exited.IsSet && process.TryIsRunning(out bool isRunning) is Cor.S_OK && !isRunning; holds++)
-                {
-                    if (process.TryContinue(false) is not Cor.S_OK)
-                    {
-                        break;
-                    }
-                }
+                ContinueEveryHold(process);
                 Stopwatch since = Stopwatch.StartNew();
                 for (TimeSpan left = running; !_exited.IsSet && left > TimeSpan.Zero; left = running - since.Elapsed)
                 {
@@ -113,7 +99,7 @@ public partial class ManagedDebugger
         }
         finally
         {
-            _callbacks.OnAnyEvent -= Take;
+            _callbacks.OnAnyEvent -= take;
         }
     }
 
@@ -131,24 +117,11 @@ public partial class ManagedDebugger
         }
         // Never disposed: a callback under way as the handler is taken off may still add to it.
         BlockingCollection<CorDebugManagedCallbackEventArgs> events = [];
-        void Take(object? sender, CorDebugManagedCallbackEventArgs callbackEvent)
-        {
-            if (callbackEvent is ExitProcessCorDebugManagedCallbackEventArgs)
-            {
-                _exited.Set();
-            }
-            events.Add(callbackEvent);
-        }
-        _callbacks.OnAnyEvent += Take;
+        EventHandler<CorDebugManagedCallbackEventArgs> take = TakeInto(events);
+        _callbacks.OnAnyEvent += take;
         try
         {
-            for (int holds = 0; holds < 16 && !_exited.IsSet && process.TryIsRunning(out bool isRunning) is Cor.S_OK && !isRunning; holds++)
-            {
-                if (process.TryContinue(false) is not Cor.S_OK)
-                {
-                    break;
-                }
-            }
+            ContinueEveryHold(process);
             Stopwatch since = Stopwatch.StartNew();
             while (left.Count > 0 && !_exited.IsSet && Waited(left) is { } wait && wait > TimeSpan.Zero)
             {
@@ -177,7 +150,7 @@ public partial class ManagedDebugger
         }
         finally
         {
-            _callbacks.OnAnyEvent -= Take;
+            _callbacks.OnAnyEvent -= take;
         }
 
         // To the end of the latest time still to come of those left, or the client's, whichever is first.
@@ -189,6 +162,30 @@ public partial class ManagedDebugger
                 by = client;
             }
             return Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), by);
+        }
+    }
+
+    /// <summary>A handler of every event that takes it into <paramref name="events"/>, noting the program's exit as it comes.</summary>
+    private EventHandler<CorDebugManagedCallbackEventArgs> TakeInto(BlockingCollection<CorDebugManagedCallbackEventArgs> events) =>
+        (_, callbackEvent) =>
+        {
+            if (callbackEvent is ExitProcessCorDebugManagedCallbackEventArgs)
+            {
+                _exited.Set();
+            }
+            events.Add(callbackEvent);
+        };
+
+    /// <summary>Continues every hold of the program (the stop shown, a pause's, events put off), so the runtime resumes the
+    /// threads it held, stopping at the first continue it refuses.</summary>
+    private void ContinueEveryHold(ICorDebugProcess process)
+    {
+        for (int holds = 0; holds < 16 && !_exited.IsSet && process.TryIsRunning(out bool isRunning) is Cor.S_OK && !isRunning; holds++)
+        {
+            if (process.TryContinue(false) is not Cor.S_OK)
+            {
+                break;
+            }
         }
     }
 

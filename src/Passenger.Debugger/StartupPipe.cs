@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Passenger.Debugger;
@@ -48,17 +47,12 @@ internal sealed partial class StartupPipe : IDisposable
         {
             return null;
         }
-        long started;
-        try
-        {
-            using Process process = Process.GetProcessById(pid);
-            // The PAL's disambiguation key: the process's start, in whole seconds since the epoch (sysctl's p_starttime).
-            started = new DateTimeOffset(process.StartTime.ToUniversalTime()).ToUnixTimeSeconds();
-        }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        if (Core.DotnetProcesses.StartedAt(pid) is not { } startedAt)
         {
             return null;
         }
+        // The PAL's disambiguation key: the process's start, in whole seconds since the epoch (sysctl's p_starttime).
+        long started = new DateTimeOffset(startedAt).ToUnixTimeSeconds();
         // PAL_GetTransportPipeName's: the temporary folder, then clr-debug-pipe-PID-KEY-co for the continue FIFO.
         return new StartupPipe(Path.Combine(Path.GetTempPath(), $"clr-debug-pipe-{pid}-{started}-co"));
     }
@@ -88,13 +82,10 @@ internal sealed partial class StartupPipe : IDisposable
         int held = Interlocked.Exchange(ref descriptor, -1);
         if (held >= 0)
         {
-            _ = Close(held);
+            _ = Core.Libc.Close(held);
         }
     }
 
     [LibraryImport("libc", EntryPoint = "open", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int Open(string path, int flags);
-
-    [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
-    private static partial int Close(int descriptor);
 }
