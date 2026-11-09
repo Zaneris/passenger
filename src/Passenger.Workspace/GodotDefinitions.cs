@@ -206,16 +206,9 @@ public sealed class GodotDefinitions
             int comma = text.IndexOf(',', open);
             string type = (comma >= 0 && comma < close ? text[open..comma] : text[open..close]).Trim();
             Dictionary<string, string> fields = new(StringComparer.Ordinal);
-            int item = comma >= 0 && comma < close ? comma + 1 : close;
-            while (item < close)
+            foreach (Entry field in PairsIn(text, comma >= 0 && comma < close ? comma + 1 : close, close))
             {
-                int next = ItemEnd(text, item, close);
-                string pair = text[item..next].Trim();
-                if (pair.StartsWith('"') && GodotFile.Quoted(pair, 0) is (string key, int keyEnd, _) && pair.IndexOf(':', keyEnd) is var colon and > 0)
-                {
-                    fields[key] = pair[(colon + 1)..].Trim();
-                }
-                item = next + 1;
+                fields[field.Key] = text[field.Value.Start..field.Value.End];
             }
             yield return (type, fields);
         }
@@ -260,8 +253,11 @@ public sealed class GodotDefinitions
 
     /// <summary>The renderer project.godot names (<c>rendering/renderer/rendering_method</c>), whose shading language Godot's
     /// compiler takes: <c>forward_plus</c>, <c>mobile</c> or <c>gl_compatibility</c>, Forward+ for none or another.</summary>
-    public string RenderingMethod => SettingOf("rendering", "renderer/rendering_method")?.Text is { } method && method is "mobile" or "gl_compatibility"
-        ? method : ForwardPlus;
+    public string RenderingMethod => RendererOf(SettingOf("rendering", "renderer/rendering_method")?.Text);
+
+    /// <summary>The renderer a rendering method's setting names: <c>mobile</c> or <c>gl_compatibility</c> as written, Forward+
+    /// for none or any other.</summary>
+    public static string RendererOf(string? method) => method is "mobile" or "gl_compatibility" ? method : ForwardPlus;
 
     /// <summary>Godot's default renderer, as project.godot names it.</summary>
     public const string ForwardPlus = "forward_plus";
@@ -702,12 +698,9 @@ public sealed class GodotDefinitions
             {
                 continue;
             }
-            List<(string Name, int Start, int End)> declared = [];
-            List<(string Name, int Start, int End)> used = [];
-            List<(string Name, int Start, int End)> global = [];
-            ShaderTokens(text, declared, used, global);
-            HashSet<string> own = [.. global.Select(g => g.Name).Where(named.Contains)];
-            foreach ((string name, int start, int end) in global.Where(g => own.Contains(g.Name)).Concat(used.Where(u => own.Contains(u.Name))).OrderBy(p => p.Start))
+            GodotShaderCode code = GodotShaderCode.Read(text);
+            HashSet<string> own = [.. code.Declarations.Where(d => d is { Kind: GodotShaderDeclared.Uniform, Scope: "global" } && named.Contains(d.Name)).Select(d => d.Name)];
+            foreach ((string name, int start, int end) in own.SelectMany(n => code.Uses(n).Select(u => (n, u.Start, u.End))).OrderBy(p => p.Start))
             {
                 Add(more, name, new GodotPlace(res, offset + start, offset + end, false, $"{Shown(shader)}:{LineOf(res, offset + start) + 1}") { Plain = plain });
             }
@@ -1009,20 +1002,23 @@ public sealed class GodotDefinitions
             return false;
         }
         bool whole = true;
-        List<(string Name, int Start, int End)> declared = [];
-        List<(string Name, int Start, int End)> used = [];
-        foreach ((string include, bool read) in ShaderTokens(text, declared, used))
+        GodotShaderCode code = GodotShaderCode.Read(text);
+        foreach (GodotShaderInclude include in code.Includes)
         {
-            whole &= read && ReadShader(include, found, through, depth + 1);
+            whole &= ReadShader(GodotShaderUnit.Resolved(shader, include.Path), found, through, depth + 1);
         }
-        HashSet<string> own = [.. declared.Select(d => d.Name)];
-        foreach ((string name, int start, int end) in declared)
+        List<GodotShaderDeclaration> declared = [.. code.Declarations.Where(d => d is { Kind: GodotShaderDeclared.Uniform, Scope: null })];
+        foreach (GodotShaderDeclaration uniform in declared)
         {
-            Add(found, name, new GodotPlace(res, offset + start, offset + end, true, $"{Shown(shader)}:{LineOf(res, offset + start) + 1}") { Plain = plain });
+            Add(found, uniform.Name, new GodotPlace(res, offset + uniform.Start, offset + uniform.End, true, $"{Shown(shader)}:{LineOf(res, offset + uniform.Start) + 1}") { Plain = plain });
         }
-        foreach ((string name, int start, int end) in used.Where(u => own.Contains(u.Name) || found.ContainsKey(u.Name)))
+        HashSet<int> declaring = [.. declared.Select(d => d.Start)];
+        foreach (string name in found.Keys.ToList())
         {
-            Add(found, name, new GodotPlace(res, offset + start, offset + end, false, $"{Shown(shader)}:{LineOf(res, offset + start) + 1}") { Plain = plain });
+            foreach ((int start, int end) in code.Uses(name).Where(u => !declaring.Contains(u.Start)))
+            {
+                Add(found, name, new GodotPlace(res, offset + start, offset + end, false, $"{Shown(shader)}:{LineOf(res, offset + start) + 1}") { Plain = plain });
+            }
         }
         return whole;
     }
@@ -1041,100 +1037,6 @@ public sealed class GodotDefinitions
             return resource.Resource?.Property("code")?.Value is { Text: { } code } written ? (shader, code, written.TextStart, written.Plain) : null;
         }
         return scenes.Texts.TryGetValue(shader, out string? text) ? (shader, text, 0, true) : null;
-    }
-
-    /// <summary>A shader's uniforms a material sets (into <paramref name="declared"/>), its <c>global uniform</c>s (into
-    /// <paramref name="global"/>, where given) and every other identifier of its code not after a '.' (into
-    /// <paramref name="used"/>), its comments passed over; and each file it includes, by res:// path.</summary>
-    internal static IReadOnlyList<(string Include, bool Read)> ShaderTokens(string text, List<(string Name, int Start, int End)> declared, List<(string Name, int Start, int End)> used,
-        List<(string Name, int Start, int End)>? global = null)
-    {
-        List<(string, bool)> includes = [];
-        List<(string Word, int Start, int End)> words = [];
-        List<(int At, char Mark)> marks = [];
-        int at = 0;
-        while (at < text.Length)
-        {
-            char c = text[at];
-            if (c == '/' && at + 1 < text.Length && text[at + 1] == '/')
-            {
-                at = text.IndexOf('\n', at) is var n and >= 0 ? n : text.Length;
-            }
-            else if (c == '/' && at + 1 < text.Length && text[at + 1] == '*')
-            {
-                at = text.IndexOf("*/", at + 2, StringComparison.Ordinal) is var close and >= 0 ? close + 2 : text.Length;
-            }
-            else if (c == '#')
-            {
-                int end = text.IndexOf('\n', at) is var n and >= 0 ? n : text.Length;
-                string line = text[at..end];
-                if (line.StartsWith("#include", StringComparison.Ordinal) && line.IndexOf('"') is var open and >= 0 && line.IndexOf('"', open + 1) is var shut and > 0)
-                {
-                    string include = line[(open + 1)..shut];
-                    includes.Add((include, include.StartsWith("res://", StringComparison.Ordinal)));
-                }
-                at = end;
-            }
-            else if (char.IsLetter(c) || c == '_')
-            {
-                int start = at;
-                while (at < text.Length && (char.IsLetterOrDigit(text[at]) || text[at] == '_'))
-                {
-                    at++;
-                }
-                words.Add((text[start..at], start, at));
-            }
-            else
-            {
-                if (!char.IsWhiteSpace(c))
-                {
-                    marks.Add((at, c));
-                }
-                at++;
-            }
-        }
-        for (int i = 0; i < words.Count; i++)
-        {
-            (string word, int start, int end) = words[i];
-            if (word != "uniform")
-            {
-                char before = Before(marks, start);
-                if (before != '.' && !(i > 0 && words[i - 1].Word == "uniform"))
-                {
-                    used.Add((word, start, end));
-                }
-                continue;
-            }
-            bool shared = i > 0 && words[i - 1].Word is "global" or "instance" && Between(marks, words[i - 1].End, start);
-            if (shared && words[i - 1].Word == "instance")
-            {
-                continue;
-            }
-            // The uniform's name is the last word before its ':', '=', ';' or '['.
-            int last = -1;
-            for (int j = i + 1; j < words.Count; j++)
-            {
-                if (marks.Any(m => m.At >= words[j - 1].End && m.At < words[j].Start && m.Mark is ':' or '=' or ';' or '['))
-                {
-                    break;
-                }
-                last = j;
-            }
-            if (last > i)
-            {
-                (shared ? global ?? [] : declared).Add(words[last]);
-            }
-        }
-        used.RemoveAll(u => declared.Any(d => d.Start == u.Start) || global?.Any(g => g.Start == u.Start) == true);
-        return includes;
-
-        static char Before(List<(int At, char Mark)> marks, int start)
-        {
-            int index = Sorted.FirstAtOrAfter(marks, static m => m.At, start) - 1;
-            return index >= 0 ? marks[index].Mark : '\0';
-        }
-
-        static bool Between(List<(int At, char Mark)> marks, int from, int to) => !marks.Any(m => m.At > from && m.At < to);
     }
 
     /// <summary>The shader a ShaderMaterial section gives (its <c>shader</c>): its file's res:// path, or a file's path and a
@@ -1219,45 +1121,45 @@ public sealed class GodotDefinitions
     internal sealed record Entry(string Key, int KeyStart, int KeyEnd, bool KeyPlain, GodotValue Value);
 
     /// <summary>The entries of a dictionary value whose keys are strings or StringNames.</summary>
-    internal static IReadOnlyList<Entry> DictionaryOf(string text, GodotValue value)
+    internal static IReadOnlyList<Entry> DictionaryOf(string text, GodotValue value) =>
+        value.Start >= value.End || text[value.Start] != '{' ? [] : PairsIn(text, value.Start + 1, value.End);
+
+    /// <summary>The <c>"key": value</c> pairs written from an offset, each after a ',', up to a limit or the bracket that
+    /// closes them (a dictionary's, an Object's fields); they stop at a key that is no string or StringName.</summary>
+    private static List<Entry> PairsIn(string text, int at, int limit)
     {
         List<Entry> entries = [];
-        if (value.Start >= value.End || text[value.Start] != '{')
+        while (at < limit)
         {
-            return entries;
-        }
-        int at = value.Start + 1;
-        while (at < value.End)
-        {
-            while (at < value.End && (char.IsWhiteSpace(text[at]) || text[at] == ','))
+            while (at < limit && (char.IsWhiteSpace(text[at]) || text[at] == ','))
             {
                 at++;
             }
-            if (at >= value.End || text[at] == '}')
+            if (at >= limit || text[at] is '}' or ')')
             {
                 break;
             }
             int quote = text[at] == '&' ? at + 1 : at;
-            if (quote >= value.End || text[quote] != '"')
+            if (quote >= limit || text[quote] != '"')
             {
                 break;
             }
             (string key, int close, int next) = GodotFile.Quoted(text, quote);
             at = next;
-            while (at < value.End && text[at] is ' ' or '\t' or '\n' or '\r')
+            while (at < limit && text[at] is ' ' or '\t' or '\n' or '\r')
             {
                 at++;
             }
-            if (at >= value.End || text[at] != ':')
+            if (at >= limit || text[at] != ':')
             {
                 break;
             }
             int start = at + 1;
-            while (start < value.End && char.IsWhiteSpace(text[start]))
+            while (start < limit && char.IsWhiteSpace(text[start]))
             {
                 start++;
             }
-            int end = ItemEnd(text, start, value.End);
+            int end = ItemEnd(text, start, limit);
             entries.Add(new Entry(key, quote + 1, close, close - quote - 1 == key.Length, ValueOf(text, start, end)));
             at = end;
         }

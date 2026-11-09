@@ -27,8 +27,6 @@ public static class GodotEditorSettings
     /// <summary>Passenger's arguments for another script, Godot filling in its line and column counted from 1.</summary>
     public const string TextArguments = "{project} --file {file} --caret {line}:{col}";
 
-    private const string Section = "[resource]";
-
     /// <summary>The values that make Passenger, at its executable's path, the editor Godot's opens every script in.</summary>
     public static IReadOnlyList<KeyValuePair<string, object>> ForPassenger(string executable) =>
     [
@@ -127,11 +125,12 @@ public static class GodotEditorSettings
     {
         HashSet<string> wanted = [.. keys];
         Dictionary<string, object> found = new(StringComparer.Ordinal);
-        foreach (Entry entry in Entries(text))
+        GodotFile file = GodotFile.Parse(text);
+        foreach (GodotEntry entry in file.Resource?.Properties ?? [])
         {
             if (wanted.Contains(entry.Key))
             {
-                found[entry.Key] = ValueOf(text, entry);
+                found[entry.Key] = ValueOf(file, entry.Value);
             }
         }
         return found;
@@ -143,23 +142,25 @@ public static class GodotEditorSettings
     public static string With(string text, IReadOnlyList<KeyValuePair<string, object>> values)
     {
         string ending = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        if (Start(text) < 0)
+        GodotFile file = GodotFile.Parse(text);
+        if (file.Resource is null)
         {
-            text = (text.Trim().Length == 0 ? $"[gd_resource type=\"EditorSettings\" format=3]{ending}" : text.TrimEnd() + ending) + $"{ending}{Section}{ending}";
+            text = (text.Trim().Length == 0 ? $"[gd_resource type=\"EditorSettings\" format=3]{ending}" : text.TrimEnd() + ending) + $"{ending}[resource]{ending}";
+            file = GodotFile.Parse(text);
         }
         Dictionary<string, object> left = values.ToDictionary(v => v.Key, v => v.Value, StringComparer.Ordinal);
-        Dictionary<string, Entry> lasts = new(StringComparer.Ordinal);
-        foreach (Entry entry in Entries(text).Where(e => left.ContainsKey(e.Key)))
+        Dictionary<string, GodotEntry> lasts = new(StringComparer.Ordinal);
+        foreach (GodotEntry entry in file.Resource?.Properties.Where(e => left.ContainsKey(e.Key)) ?? [])
         {
             lasts[entry.Key] = entry;
         }
         StringBuilder written = new();
         int at = 0;
-        foreach (Entry entry in lasts.Values.OrderBy(e => e.Start))
+        foreach (GodotEntry entry in lasts.Values.OrderBy(e => e.KeyStart))
         {
-            written.Append(text, at, entry.Start - at).Append(entry.Key).Append(" = ").Append(Written(left[entry.Key]));
+            written.Append(text, at, entry.KeyStart - at).Append(entry.Key).Append(" = ").Append(Written(left[entry.Key]));
             left.Remove(entry.Key);
-            at = TrimmedEnd(text, entry);
+            at = entry.Value.End;
         }
         written.Append(text, at, text.Length - at);
         if (left.Count > 0)
@@ -180,78 +181,19 @@ public static class GodotEditorSettings
     /// number as it is.</summary>
     public static string Written(object value) => value switch
     {
-        string text => $"\"{text.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)}\"",
+        string text => GodotWrites.Quoted(text),
         bool flag => flag ? "true" : "false",
         IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
         _ => throw new ArgumentException($"Godot's settings take no {value.GetType().Name} from Passenger", nameof(value)),
     };
 
-    /// <summary>A key's line in the <c>[resource]</c> section: where the key starts, and where its value starts and ends
-    /// (past the line's end).</summary>
-    private readonly record struct Entry(string Key, int Start, int Value, int End);
-
-    /// <summary>Where the <c>[resource]</c> section's first line starts, or -1.</summary>
-    private static int Start(string text)
+    private static object ValueOf(GodotFile file, GodotValue value)
     {
-        int at = 0;
-        while (at < text.Length)
+        if (value is { Call: null, Text: { } said })
         {
-            at = GodotProject.SkipBlank(text, at);
-            if (string.CompareOrdinal(text, at, Section, 0, Section.Length) == 0)
-            {
-                return GodotProject.LineEnd(text, at);
-            }
-            int equals = at < text.Length && text[at] != '[' ? text.IndexOf('=', at) : -1;
-            at = equals >= 0 && equals < GodotProject.LineEnd(text, at)
-                ? GodotProject.ValueEnd(text, GodotProject.SkipSpaces(text, equals + 1))
-                : GodotProject.LineEnd(text, at);
+            return said;
         }
-        return -1;
-    }
-
-    /// <summary>The entries of the <c>[resource]</c> section in order, up to the next section.</summary>
-    private static IEnumerable<Entry> Entries(string text)
-    {
-        int at = Start(text);
-        while (at >= 0 && at < text.Length)
-        {
-            at = GodotProject.SkipBlank(text, at);
-            if (at >= text.Length || text[at] == '[')
-            {
-                yield break;
-            }
-            int lineEnd = GodotProject.LineEnd(text, at);
-            int equals = text.IndexOf('=', at);
-            if (text[at] is ';' or '#' || equals < 0 || equals >= lineEnd)
-            {
-                at = lineEnd;
-                continue;
-            }
-            int value = GodotProject.SkipSpaces(text, equals + 1);
-            int end = value < text.Length && text[value] == '"' ? GodotProject.LineEnd(text, GodotProject.Quoted(text, value).Next) : GodotProject.ValueEnd(text, value);
-            yield return new Entry(text[at..equals].Trim(), at, value, end);
-            at = end;
-        }
-    }
-
-    /// <summary>Where an entry's value ends, before the line ending that follows it.</summary>
-    private static int TrimmedEnd(string text, Entry entry)
-    {
-        int end = entry.End;
-        while (end > entry.Value && text[end - 1] is '\n' or '\r')
-        {
-            end--;
-        }
-        return end;
-    }
-
-    private static object ValueOf(string text, Entry entry)
-    {
-        if (entry.Value < text.Length && text[entry.Value] == '"')
-        {
-            return GodotProject.Quoted(text, entry.Value).Value;
-        }
-        string raw = text[entry.Value..TrimmedEnd(text, entry)].Trim();
+        string raw = file.Written(value).Trim();
         return raw switch
         {
             "true" => true,

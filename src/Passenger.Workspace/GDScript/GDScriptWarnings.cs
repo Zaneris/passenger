@@ -111,7 +111,7 @@ public sealed record GDScriptWarningSettings(bool Enabled, IReadOnlyDictionary<s
             return Default;
         }
         Dictionary<string, string> values = GodotProject.Values(project);
-        bool enabled = !values.TryGetValue(Prefix + "enable", out string? enable) || Truthy(enable) != false;
+        bool enabled = !values.TryGetValue(Prefix + "enable", out string? enable) || GodotProject.Truth(enable) != false;
         Dictionary<string, GDScriptWarnLevel> levels = new(StringComparer.Ordinal);
         foreach (string name in GDScriptWarnings.Names)
         {
@@ -125,7 +125,7 @@ public sealed record GDScriptWarningSettings(bool Enabled, IReadOnlyDictionary<s
         {
             rules = RulesOf(written);
         }
-        if (values.TryGetValue(Prefix + "exclude_addons", out string? addons) && Truthy(addons) is { } exclude)
+        if (values.TryGetValue(Prefix + "exclude_addons", out string? addons) && GodotProject.Truth(addons) is { } exclude)
         {
             rules["res://addons/"] = exclude;
         }
@@ -153,13 +153,6 @@ public sealed record GDScriptWarningSettings(bool Enabled, IReadOnlyDictionary<s
         return false;
     }
 
-    private static bool? Truthy(string value) => value.Trim() switch
-    {
-        "true" or "1" => true,
-        "false" or "0" => false,
-        _ => null,
-    };
-
     private static GDScriptWarnLevel? Level(string value) => value.Trim() switch
     {
         "0" or "false" => GDScriptWarnLevel.Ignore,
@@ -173,26 +166,12 @@ public sealed record GDScriptWarningSettings(bool Enabled, IReadOnlyDictionary<s
     private static Dictionary<string, bool> RulesOf(string written)
     {
         Dictionary<string, bool> rules = new(StringComparer.Ordinal);
-        int at = 0;
-        while ((at = written.IndexOf('"', at)) >= 0)
+        foreach (GodotDefinitions.Entry rule in GodotDefinitions.DictionaryOf(written, GodotFile.ValueAt(written, 0, written.Length)))
         {
-            (string folder, int next) = GodotProject.Quoted(written, at);
-            int colon = written.IndexOf(':', next);
-            if (colon < 0)
+            if (rule.Key.StartsWith("res://", StringComparison.Ordinal) && rule.Value.Word is "0" or "1")
             {
-                break;
+                rules[rule.Key.EndsWith('/') ? rule.Key : rule.Key + "/"] = rule.Value.Word == "1";
             }
-            int end = colon + 1;
-            while (end < written.Length && written[end] is not (',' or '}' or '\n'))
-            {
-                end++;
-            }
-            string decision = written[(colon + 1)..end].Trim();
-            if (folder.StartsWith("res://", StringComparison.Ordinal) && decision is "0" or "1")
-            {
-                rules[folder.EndsWith('/') ? folder : folder + "/"] = decision == "1";
-            }
-            at = end;
         }
         return rules;
     }

@@ -37,7 +37,7 @@ public sealed partial record GodotShaderCheckOptions
         GodotShaderWarningFlags flags = GodotShaderWarningFlags.None;
         for (GodotShaderWarningCode code = 0; code < GodotShaderWarningCode.Max; code++)
         {
-            if (!values.TryGetValue(WarningsKey + GodotShaderWarning.NameOf(code).ToLowerInvariant(), out string? set) || Truthy(set) != false)
+            if (!values.TryGetValue(WarningsKey + GodotShaderWarning.NameOf(code).ToLowerInvariant(), out string? set) || GodotProject.Truth(set) != false)
             {
                 flags |= GodotShaderWarning.FlagOf(code);
             }
@@ -57,25 +57,16 @@ public sealed partial record GodotShaderCheckOptions
                 };
             }
         }
-        string method = values.GetValueOrDefault("rendering/renderer/rendering_method")?.Trim().Trim('"') ?? string.Empty;
-        method = method is "mobile" or "gl_compatibility" ? method : GodotDefinitions.ForwardPlus;
         return new GodotShaderCheckOptions
         {
-            RenderingMethod = method,
+            RenderingMethod = GodotDefinitions.RendererOf(values.GetValueOrDefault("rendering/renderer/rendering_method")),
             Godot = godot,
-            Warnings = values.TryGetValue(WarningsKey + "enable", out string? enable) && Truthy(enable) == false ? null : flags,
-            WarningsAsErrors = values.TryGetValue(WarningsKey + "treat_warnings_as_errors", out string? asErrors) && Truthy(asErrors) == true,
-            XrEnabled = values.TryGetValue("xr/shaders/enabled", out string? xr) && Truthy(xr) == true,
+            Warnings = values.TryGetValue(WarningsKey + "enable", out string? enable) && GodotProject.Truth(enable) == false ? null : flags,
+            WarningsAsErrors = values.TryGetValue(WarningsKey + "treat_warnings_as_errors", out string? asErrors) && GodotProject.Truth(asErrors) == true,
+            XrEnabled = values.TryGetValue("xr/shaders/enabled", out string? xr) && GodotProject.Truth(xr) == true,
             GlobalUniforms = globals,
         };
     }
-
-    private static bool? Truthy(string value) => value.Trim() switch
-    {
-        "true" or "1" => true,
-        "false" or "0" => false,
-        _ => null,
-    };
 
     [GeneratedRegex("\"type\"\\s*:\\s*\"(\\w+)\"")]
     private static partial Regex GlobalType();

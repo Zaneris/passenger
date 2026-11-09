@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.Workspace;
 
@@ -211,26 +212,7 @@ public sealed class GodotShaderCode
     private List<(int Start, int End, bool EndInside)> skipped = [];
 
     /// <summary>The index of the last token starting before an offset; -1 for none.</summary>
-    private int TokenBefore(int offset)
-    {
-        int low = 0;
-        int high = tokens.Count - 1;
-        int found = -1;
-        while (low <= high)
-        {
-            int middle = (low + high) / 2;
-            if (tokens[middle].Start < offset)
-            {
-                found = middle;
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle - 1;
-            }
-        }
-        return found;
-    }
+    private int TokenBefore(int offset) => Sorted.FirstAtOrAfter(tokens, static t => t.Start, offset) - 1;
 
     private void ReadTop(List<GodotShaderDeclaration> defines)
     {

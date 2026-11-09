@@ -149,137 +149,39 @@ public sealed partial record GodotProject(string Folder, string? Name, string? M
 
     /// <summary>Every value of the text by its section and key ("debug/gdscript/warnings/enable"): a string's read, any
     /// other's as written (<c>2</c>, <c>{ "res://addons": 1 }</c>); a key set twice keeps its last.</summary>
-    internal static Dictionary<string, string> Values(string text) => Strings(text, written: true);
+    internal static Dictionary<string, string> Values(string text) => Read(text, written: true);
 
     /// <summary>Every value of the text that is a string, by its section and key ("application/config/name"); a key set
     /// twice keeps its last, as Godot reads it.</summary>
-    internal static Dictionary<string, string> Strings(string text) => Strings(text, written: false);
+    internal static Dictionary<string, string> Strings(string text) => Read(text, written: false);
 
-    private static Dictionary<string, string> Strings(string text, bool written)
+    private static Dictionary<string, string> Read(string text, bool written)
     {
+        GodotFile file = GodotFile.Parse(text);
         Dictionary<string, string> found = new(StringComparer.Ordinal);
-        string section = string.Empty;
-        int at = 0;
-        while (at < text.Length)
+        foreach (GodotSection section in file.Sections)
         {
-            at = SkipBlank(text, at);
-            if (at >= text.Length)
+            foreach (GodotEntry entry in section.Properties)
             {
-                break;
-            }
-            if (text[at] == ';' || text[at] == '#')
-            {
-                at = LineEnd(text, at);
-                continue;
-            }
-            if (text[at] == '[')
-            {
-                int close = text.IndexOf(']', at);
-                int end = LineEnd(text, at);
-                section = close > at && close < end ? text[(at + 1)..close].Trim() : section;
-                at = end;
-                continue;
-            }
-            int equals = text.IndexOf('=', at);
-            int lineEnd = LineEnd(text, at);
-            if (equals < 0 || equals > lineEnd)
-            {
-                at = lineEnd;
-                continue;
-            }
-            string key = text[at..equals].Trim();
-            int value = SkipSpaces(text, equals + 1);
-            if (value < text.Length && text[value] == '"')
-            {
-                (string read, int next) = Quoted(text, value);
-                found[section.Length > 0 ? $"{section}/{key}" : key] = read;
-                at = next;
-            }
-            else
-            {
-                int end = ValueEnd(text, value);
-                if (written)
+                if (entry.Value is { Call: null, Text: { } said })
                 {
-                    found[section.Length > 0 ? $"{section}/{key}" : key] = text[value..end].Trim();
+                    found[$"{section.Tag}/{entry.Key}"] = said;
                 }
-                at = end;
+                else if (written)
+                {
+                    found[$"{section.Tag}/{entry.Key}"] = file.Written(entry.Value);
+                }
             }
         }
         return found;
     }
 
-    /// <summary>A quoted string from its opening quote, its escapes read, and where the text goes on after it; one never
-    /// closed runs to the text's end.</summary>
-    internal static (string Value, int Next) Quoted(string text, int quote)
+    /// <summary>Whether a setting's value says true or false as Godot reads a bool from it (<c>true</c> or <c>1</c>,
+    /// <c>false</c> or <c>0</c>); null for any other.</summary>
+    internal static bool? Truth(string value) => value.Trim() switch
     {
-        StringBuilder value = new();
-        int at = quote + 1;
-        while (at < text.Length && text[at] != '"')
-        {
-            if (text[at] == '\\' && at + 1 < text.Length)
-            {
-                at++;
-                value.Append(text[at] switch { 'n' => '\n', 't' => '\t', 'r' => '\r', _ => text[at] });
-            }
-            else
-            {
-                value.Append(text[at]);
-            }
-            at++;
-        }
-        return (value.ToString(), Math.Min(at + 1, text.Length));
-    }
-
-    /// <summary>Where a value other than a string ends: its line's end, or past the brackets it opens and the strings in them.</summary>
-    internal static int ValueEnd(string text, int at)
-    {
-        int depth = 0;
-        while (at < text.Length)
-        {
-            char c = text[at];
-            if (c == '"')
-            {
-                at = Quoted(text, at).Next;
-                continue;
-            }
-            if (c is '(' or '[' or '{')
-            {
-                depth++;
-            }
-            else if (c is ')' or ']' or '}')
-            {
-                depth = Math.Max(0, depth - 1);
-            }
-            else if (c == '\n' && depth == 0)
-            {
-                return at + 1;
-            }
-            at++;
-        }
-        return at;
-    }
-
-    internal static int LineEnd(string text, int at)
-    {
-        int end = text.IndexOf('\n', at);
-        return end < 0 ? text.Length : end + 1;
-    }
-
-    internal static int SkipBlank(string text, int at)
-    {
-        while (at < text.Length && char.IsWhiteSpace(text[at]))
-        {
-            at++;
-        }
-        return at;
-    }
-
-    internal static int SkipSpaces(string text, int at)
-    {
-        while (at < text.Length && text[at] is ' ' or '\t')
-        {
-            at++;
-        }
-        return at;
-    }
+        "true" or "1" => true,
+        "false" or "0" => false,
+        _ => null,
+    };
 }

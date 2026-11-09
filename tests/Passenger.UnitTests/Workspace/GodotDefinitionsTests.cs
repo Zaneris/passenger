@@ -231,6 +231,46 @@ public class GodotDefinitionsTests
         Assert.Contains("res://tint.gdshader", defined.Shaders);
     }
 
+    /// <summary>Godot resolves an include written without <c>res://</c> from the including file's folder, so the uniforms of
+    /// <c>#include "common.gdshaderinc"</c> are the shader's as much as those of a res:// one.</summary>
+    [Fact]
+    public void A_uniform_from_a_relative_include_is_declared_there_and_renamed_with_the_materials_parameter()
+    {
+        const string Water = """
+            shader_type spatial;
+            #include "common.gdshaderinc"
+            #define DEEP \
+                2.0
+            void fragment() { ALBEDO = vec3(depth * DEEP); }
+
+            """;
+        const string Common = "uniform float depth : hint_range(0.0, 8.0) = 1.0;\n";
+        const string Pool = """
+            [gd_scene format=3]
+
+            [ext_resource type="Shader" path="res://shaders/water.gdshader" id="1_w"]
+
+            [sub_resource type="ShaderMaterial" id="ShaderMaterial_p"]
+            shader = ExtResource("1_w")
+            shader_parameter/depth = 3.0
+
+            [node name="Pool" type="MeshInstance3D"]
+            material_override = SubResource("ShaderMaterial_p")
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://pool.tscn"] = GodotFile.Parse(Pool) },
+            texts: new Dictionary<string, string> { ["res://shaders/water.gdshader"] = Water, ["res://shaders/common.gdshaderinc"] = Common });
+
+        (IReadOnlyList<GodotDefined> uniforms, bool whole) = scenes.Defined.Uniforms("res://shaders/water.gdshader");
+
+        Assert.True(whole, "A shader whose include was read was said not to be read whole, so a rename of its uniforms would be refused");
+        GodotDefined depth = Assert.Single(uniforms);
+        Assert.Equal(["res://shaders/common.gdshaderinc", "res://shaders/water.gdshader", "res://pool.tscn"], depth.Places.Select(p => p.Res));
+        Assert.Equal(["depth", "depth", "depth"], depth.Places.Select(p => At(p.Res switch { "res://pool.tscn" => Pool, "res://shaders/water.gdshader" => Water, _ => Common }, p)));
+        Assert.True(depth.Places[0].Defines && !depth.Places[1].Defines && depth.Places.All(p => p.Plain),
+            "The material's parameter had no declaration to go to in the include, or a rename would leave a place of it");
+    }
+
     [Fact]
     public void The_translations_project_godot_lists_give_a_csvs_keys_and_a_po_files_msgids()
     {

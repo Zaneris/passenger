@@ -62,6 +62,28 @@ public class GodotProjectTests
             $"project.godot read as {project}: a main scene commented out or set in another section would have the game refused for the wrong reason or run with none");
     }
 
+    /// <summary>Godot's variant parser reads <c>\u</c>, <c>\U</c>, <c>\b</c> and <c>\f</c> in a string as it reads <c>\n</c>,
+    /// and a quoted key as its characters.</summary>
+    [Fact]
+    public void A_name_with_unicode_escapes_reads_as_Godot_reads_it()
+    {
+        const string Text = """
+            [application]
+
+            config/name="Caf\u00e9 \U01F680"
+
+            [dotnet]
+
+            "project/assembly_name"="Cafe"
+
+            """;
+
+        GodotProject project = GodotProject.Parse("/games/cafe", Text);
+
+        Assert.True(project is { Name: "Café 🚀", AssemblyName: "Cafe" },
+            $"project.godot read as {project}: the window's title and Run would name another game than Godot's editor does");
+    }
+
     [Fact]
     public void A_scene_uses_a_script_its_external_resources_name_by_its_res_path()
     {
