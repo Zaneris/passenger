@@ -14,8 +14,8 @@ public sealed class JsonRpcPeer : IDisposable
 
     public JsonRpcPeer(Stream stream)
     {
-        // Each message in one piece, parsed where it lies rather than copied whole into an array rented for it.
-        rpc = new JsonRpc(new HeaderDelimitedMessageHandler(stream.UsePipeWriter(), new ContiguousReader(stream), new SystemTextJsonFormatter()))
+        // Each message in one piece, its envelope read where it lies and the rest as the type asked for.
+        rpc = new JsonRpc(new HeaderDelimitedMessageHandler(stream.UsePipeWriter(), new ContiguousReader(stream), new EnvelopeFormatter()))
         {
             SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false),
         };

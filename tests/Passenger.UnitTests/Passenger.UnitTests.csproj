@@ -20,6 +20,8 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <!-- The JSON-RPC conversations Passenger.Lsp's formatter is held to, played in memory. -->
+    <PackageReference Include="StreamJsonRpc" />
     <ProjectReference Include="../../src/Passenger.Core/Passenger.Core.csproj" />
     <ProjectReference Include="../../src/Passenger.Dap/Passenger.Dap.csproj" />
     <ProjectReference Include="../../src/Passenger.Debugger/Passenger.Debugger.csproj" />
@@ -247,6 +249,7 @@
        compiled in since their project carries the servers. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Lsp/TracedStream.cs" Link="Lsp/TracedStream.cs" />
+    <Compile Include="../../src/Passenger.Lsp/EnvelopeFormatter.cs" Link="Lsp/EnvelopeFormatter.cs" />
     <Compile Include="../../src/Passenger.Lsp/DocumentUris.cs" Link="Lsp/DocumentUris.cs" />
     <Compile Include="../../src/Passenger.Lsp/LspLocation.cs" Link="Lsp/LspLocation.cs" />
     <Compile Include="../../src/Passenger.Lsp/RazorHtmlCopies.cs" Link="Lsp/RazorHtmlCopies.cs" />

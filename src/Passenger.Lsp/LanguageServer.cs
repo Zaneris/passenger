@@ -643,7 +643,7 @@ public sealed class LanguageServer : IAsyncDisposable
         Task errorsHeard, string folder, string logFolder, JsonElement capabilities, object? initializationOptions, IReadOnlyDictionary<string, object>? options,
         Func<string?, object?>? configure, Func<string, CancellationToken, Task<string>>? content, bool rootPath, CancellationToken cancel)
     {
-        SystemTextJsonFormatter formatter = new() { JsonSerializerOptions = Json.Options };
+        EnvelopeFormatter formatter = new(Json.Options);
         CountedMessages handler = new(input, output, formatter);
         ClientTarget client = new();
         // One at a time, in order: a progress report handled after its end would leave the load showing.
