@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Writes Roslyn's server's Microsoft.CodeAnalysis.LanguageServer.dll again without Visual Studio Telemetry's session:
+       a tool of the build (src/Passenger.Lsp/Passenger.Lsp.csproj runs it), never part of the app. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Passenger.RoslynPatch</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Mono.Cecil" />
+  </ItemGroup>
+</Project>

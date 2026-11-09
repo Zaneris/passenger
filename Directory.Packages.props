@@ -130,6 +130,11 @@
     <PackageVersion Include="Microsoft.Build.Framework" Version="17.11.48" />
     <PackageVersion Include="Microsoft.Build.Locator" Version="1.10.2" />
   </ItemGroup>
+  <!-- Roslyn's server written again without Visual Studio Telemetry's session (tools/Passenger.RoslynPatch), a tool of
+       the build, never carried: at the version GdUnit4 names for the tests' package cache, one version for both. -->
+  <ItemGroup>
+    <PackageVersion Include="Mono.Cecil" Version="$(MonoCecilVersion)" />
+  </ItemGroup>
   <!-- The debugger's engine. The expression compiler is Roslyn's, packed from its own source (Roslyn does not
        publish it) at the Microsoft.CodeAnalysis version above, which it must match. -->
   <ItemGroup>
