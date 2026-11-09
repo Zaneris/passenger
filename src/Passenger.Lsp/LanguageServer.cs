@@ -1717,7 +1717,7 @@ public sealed class LanguageServer : IAsyncDisposable
             owner.Changing(Roslyn.Extension.ProjectMethods.Info);
             FedProject fed = await feed.InfoAsync(asked.Path, CancellationToken.None).ConfigureAwait(false);
             owner.WatchedFiles.Tell(fed.Changed);
-            owner.ProjectGiven?.Invoke(owner, new ProjectGiven(asked.Path, at));
+            owner.ProjectGiven?.Invoke(owner, new ProjectGiven(asked.Path, at, fed.Changed.Count > 0));
             return fed.Info;
         }
 

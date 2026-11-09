@@ -34,6 +34,14 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             }
             Loaded?.Invoke(this, EventArgs.Empty);
         };
+        // Builds given as what they read changed (a restore landing) load again: the server never reloads for that itself.
+        server.ProjectGiven += (_, built) =>
+        {
+            if (built.Stale)
+            {
+                Reload([built.Project]);
+            }
+        };
     }
 
     /// <summary>How many opens the server was sent that its load waits for (a reload sent while it loads among them, as the

@@ -26,5 +26,6 @@ public sealed record FedProjects(IReadOnlyList<ProjectToOpen> First, IReadOnlyLi
 public sealed record FedProject(ProjectInfoResult Info, IReadOnlyList<FileEvent> Changed);
 
 /// <summary>A project's design-time builds given to the server's loader (<see cref="LanguageServer.ProjectGiven"/>): the
-/// project, and when the server asked for them (UTC).</summary>
-public readonly record struct ProjectGiven(string Project, DateTime Asked);
+/// project, when the server asked for them (UTC), and whether what they read has changed since (<see cref="FedProject.Changed"/>),
+/// so the project is to be loaded again from builds made after it.</summary>
+public readonly record struct ProjectGiven(string Project, DateTime Asked, bool Stale);

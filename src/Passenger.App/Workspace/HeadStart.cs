@@ -286,22 +286,23 @@ public sealed class HeadStart
             {
                 return null;
             }
-            List<ProjectToOpen> projects = [.. Loaded(read).Select(path => builds.Projects.TryGetValue(path, out KeptBuild? kept)
+            // A build whose inputs changed since it read them (a restore that landed as it ran) is asked for, and made again.
+            List<ProjectToOpen> projects = [.. Loaded(read).Select(path => builds.Projects.TryGetValue(path, out KeptBuild? kept) && kept.Inputs.All(Stamps.Holds)
                 ? new ProjectToOpen(path, kept.Read(), ProjectBuilds.Said(kept.Diagnostics)) : new ProjectToOpen(path, null))];
             return new FedProjects([], projects, projects.Any(p => p.Infos is not null) ? head.buildsBegan : null);
         }
 
         public async Task<FedProject> InfoAsync(string path, CancellationToken cancel)
         {
-            if ((await head.Builds).Projects.TryGetValue(path, out KeptBuild? kept))
+            if ((await head.Builds).Projects.TryGetValue(path, out KeptBuild? kept) && kept.Inputs.All(Stamps.Holds))
             {
-                return new FedProject(new ProjectInfoResult(kept.Read(), null, ProjectBuilds.Said(kept.Diagnostics)), ProjectBuilds.Changed(kept.Inputs));
+                return new FedProject(new ProjectInfoResult(kept.Read(), null, ProjectBuilds.Said(kept.Diagnostics)), []);
             }
             if (await head.hosting is not { } host)
             {
                 return new FedProject(new ProjectInfoResult(null, "the project host did not start"), []);
             }
-            // One whose build failed ahead, built again for its problem.
+            // One whose build failed ahead, built again for its problem, or whose inputs changed since it was built.
             BuiltProject? built = null;
             try
             {
