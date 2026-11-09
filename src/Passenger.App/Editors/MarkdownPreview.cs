@@ -224,7 +224,7 @@ public sealed class MarkdownPreview : ScrollViewer
         int version = shown.Text.Version;
         IReadOnlyList<MarkdownBlocks.Entry> drawn = into.Entries;
         Markdown.Parsed? before = into.Parsed;
-        (MarkdownBlocks.Entry[] read, Markdown.Parsed parsed) = await BackgroundWork.Run(() => Read(text.ToString(), drawn, before));
+        (MarkdownBlocks.Entry[] read, Markdown.Parsed parsed) = await BackgroundWork.Run(() => Read(text, drawn, before));
         if (asked != generation || document != shown || page != into)
         {
             return;
@@ -237,7 +237,7 @@ public sealed class MarkdownPreview : ScrollViewer
 
     /// <summary>A text's blocks, read again only where it changed since <paramref name="before"/>, each taking the block drawn
     /// it is (by its lines as written, in order), and each heading's anchor.</summary>
-    private static (MarkdownBlocks.Entry[] Read, Markdown.Parsed Parsed) Read(string text, IReadOnlyList<MarkdownBlocks.Entry> drawn, Markdown.Parsed? before)
+    private static (MarkdownBlocks.Entry[] Read, Markdown.Parsed Parsed) Read(TextSnapshot text, IReadOnlyList<MarkdownBlocks.Entry> drawn, Markdown.Parsed? before)
     {
         Markdown.Parsed parsed = Markdown.ParsePlaced(text, before);
         IReadOnlyList<Markdown.Placed> placed = parsed.Placed;

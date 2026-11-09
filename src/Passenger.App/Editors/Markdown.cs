@@ -9,6 +9,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using Passenger.Editor;
+using Passenger.Text;
 using System.Runtime.CompilerServices;
 
 namespace Passenger.App.Editors;
@@ -71,13 +72,11 @@ internal static partial class Markdown
         public int Reach { get; init; } = End;
     }
 
-    /// <summary>A text's top-level blocks as read, with the text and where each of its lines starts, which reading it again
-    /// once edited takes the blocks the edit left alone from.</summary>
-    internal sealed class Parsed(string text, int[] starts, IReadOnlyList<Placed> placed, int read)
+    /// <summary>A text's top-level blocks as read, with the text, which reading it again once edited takes the blocks the
+    /// edit left alone from.</summary>
+    internal sealed class Parsed(Written text, IReadOnlyList<Placed> placed, int read)
     {
-        public string Text { get; } = text;
-
-        public int[] Starts { get; } = starts;
+        public Written Text { get; } = text;
 
         public IReadOnlyList<Placed> Placed { get; } = placed;
 
@@ -93,38 +92,50 @@ internal static partial class Markdown
     /// ends one.</summary>
     public static IReadOnlyList<Placed> ParsePlaced(string text) => ParsePlaced(text, null).Placed;
 
+    /// <summary><see cref="ParsePlaced(Written, Parsed?)"/> of a text as a string.</summary>
+    public static Parsed ParsePlaced(string text, Parsed? before) =>
+        before?.Text is WrittenString { Text: var was } && string.Equals(was, text, StringComparison.Ordinal) ? before : ParsePlaced(new WrittenString(text), before);
+
+    /// <summary><see cref="ParsePlaced(Written, Parsed?)"/> of a document's text read where it lies, no string of the whole
+    /// made: but for a text with a '\r' of its own, which ends a line here and not in the document, read as a string.</summary>
+    public static Parsed ParsePlaced(TextSnapshot text, Parsed? before)
+    {
+        if (before?.Text is WrittenSnapshot { Snapshot: var was } && ReferenceEquals(was, text))
+        {
+            return before;
+        }
+        return WrittenSnapshot.HasLoneReturn(text) ? ParsePlaced(text.ToString(), before) : ParsePlaced(new WrittenSnapshot(text), before);
+    }
+
     /// <summary>The blocks of a text's top level, as <see cref="ParsePlaced(string)"/> reads them, those of the read of the
     /// text before an edit (<paramref name="before"/>) taken where the edit cannot have changed them: each block whose
     /// reading looked only at lines before the first the edit changed, and the blocks from one beginning where a block began
     /// before, in the lines after the edit that it left as they were. Only the lines read between are made strings.</summary>
-    public static Parsed ParsePlaced(string text, Parsed? before)
+    private static Parsed ParsePlaced(Written text, Parsed? before)
     {
-        if (before is not null && string.Equals(before.Text, text, StringComparison.Ordinal))
-        {
-            return before;
-        }
-        int[] starts = LineStarts(text);
-        TextLines lines = new(text, starts);
+        TextLines lines = new(text);
         List<Placed> placed = [];
         int i = 0;
         int resync = int.MaxValue;
         int shift = 0;
         int next = 0;
-        if (before is not null)
+        if (before is not null && text.Against(before.Text) is (int prefix, int unchanged))
         {
-            int prefix = text.AsSpan().CommonPrefixLength(before.Text);
-            int changed = Passenger.Core.Sorted.FirstAfter(starts.AsSpan(), prefix) - 1;
+            int changed = text.LineAfter(prefix) - 1;
             while (next < before.Placed.Count && before.Placed[next].Reach <= changed)
             {
                 placed.Add(before.Placed[next]);
                 i = before.Placed[next++].End;
             }
-            int unchanged = text.Length - CommonSuffixLength(text.AsSpan(prefix), before.Text.AsSpan(prefix));
             // A line of the unchanged end begins after a line break inside it, so it began a line before the edit too.
-            resync = Passenger.Core.Sorted.FirstAfter(starts.AsSpan(), unchanged);
-            shift = starts.Length - before.Starts.Length;
+            resync = text.LineAfter(unchanged);
+            shift = text.Lines - before.Text.Lines;
         }
-        while (i < starts.Length)
+        else
+        {
+            before = null;
+        }
+        while (i < text.Lines)
         {
             if (i >= resync && before is not null)
             {
@@ -146,70 +157,225 @@ internal static partial class Markdown
             lines.Reach = 0;
             if (BlockAt(lines, ref i, 0) is { } block)
             {
-                placed.Add(new Placed(block, start, i, Source(text, starts, start, i)) { Reach = Math.Max(lines.Reach, i) });
+                placed.Add(new Placed(block, start, i, Source(text, start, i)) { Reach = Math.Max(lines.Reach, i) });
             }
         }
-        return new Parsed(text, starts, placed, lines.Made);
-    }
-
-    /// <summary>Where each of a text's lines starts, the editor's lines: a "\r\n", a '\r' or a '\n' ends one.</summary>
-    private static int[] LineStarts(string text)
-    {
-        List<int> starts = [0];
-        ReadOnlySpan<char> rest = text;
-        int at = 0;
-        while (rest.IndexOfAny('\r', '\n') is int end and >= 0)
-        {
-            int after = end + (rest[end] == '\r' && end + 1 < rest.Length && rest[end + 1] == '\n' ? 2 : 1);
-            at += after;
-            starts.Add(at);
-            rest = rest[after..];
-        }
-        return [.. starts];
-    }
-
-    /// <summary>How many characters two texts end with alike, compared from their ends a stretch at a time.</summary>
-    private static int CommonSuffixLength(ReadOnlySpan<char> text, ReadOnlySpan<char> other)
-    {
-        const int Stretch = 256;
-        int most = Math.Min(text.Length, other.Length);
-        int same = 0;
-        while (same + Stretch <= most && text[^(same + Stretch)..^same].SequenceEqual(other[^(same + Stretch)..^same]))
-        {
-            same += Stretch;
-        }
-        while (same < most && text[^(same + 1)] == other[^(same + 1)])
-        {
-            same++;
-        }
-        return same;
-    }
-
-    /// <summary>The end of a line, before its break.</summary>
-    private static int LineEnd(string text, int[] starts, int line)
-    {
-        if (line + 1 >= starts.Length)
-        {
-            return text.Length;
-        }
-        int next = starts[line + 1];
-        return next >= 2 && text[next - 1] == '\n' && text[next - 2] == '\r' && next - 2 >= starts[line] ? next - 2 : next - 1;
+        return new Parsed(text, placed, lines.Made);
     }
 
     /// <summary>A block's lines as written, joined by '\n'.</summary>
-    private static string Source(string text, int[] starts, int start, int end)
+    private static string Source(Written text, int start, int end)
     {
-        int from = starts[start];
-        int to = LineEnd(text, starts, end - 1);
-        if (!text.AsSpan(from, to - from).Contains('\r'))
+        int from = text.Start(start);
+        int to = text.End(end - 1);
+        if (!text.Returns(from, to))
         {
-            return text[from..to];
+            return text.Slice(from, to);
         }
-        return string.Join('\n', Enumerable.Range(start, end - start).Select(line => text[starts[line]..LineEnd(text, starts, line)]));
+        return string.Join('\n', Enumerable.Range(start, end - start).Select(line => text.Slice(text.Start(line), text.End(line))));
+    }
+
+    /// <summary>A text as the block reader reads it: its lines, the editor's ("\r\n", '\r' or '\n' ends one), where each
+    /// starts and ends, stretches of it, and how much of it another text of its kind begins and ends with alike.</summary>
+    internal abstract class Written
+    {
+        public abstract int Length { get; }
+
+        public abstract int Lines { get; }
+
+        public abstract int Start(int line);
+
+        /// <summary>Where a line ends, before its break.</summary>
+        public abstract int End(int line);
+
+        public abstract string Slice(int from, int to);
+
+        /// <summary>Whether a stretch holds a '\r'.</summary>
+        public abstract bool Returns(int from, int to);
+
+        /// <summary>The first line that starts past an offset; <see cref="Lines"/> where none does.</summary>
+        public abstract int LineAfter(int offset);
+
+        /// <summary>How many characters this and an earlier text begin with alike, and where in this one the end they share
+        /// alike after that begins; null for a text of another kind.</summary>
+        public abstract (int Prefix, int Unchanged)? Against(Written before);
+    }
+
+    private sealed class WrittenString : Written
+    {
+        private readonly int[] starts;
+
+        public WrittenString(string text)
+        {
+            Text = text;
+            List<int> found = [0];
+            ReadOnlySpan<char> rest = text;
+            int at = 0;
+            while (rest.IndexOfAny('\r', '\n') is int end and >= 0)
+            {
+                int after = end + (rest[end] == '\r' && end + 1 < rest.Length && rest[end + 1] == '\n' ? 2 : 1);
+                at += after;
+                found.Add(at);
+                rest = rest[after..];
+            }
+            starts = [.. found];
+        }
+
+        public string Text { get; }
+
+        public override int Length => Text.Length;
+
+        public override int Lines => starts.Length;
+
+        public override int Start(int line) => starts[line];
+
+        public override int End(int line)
+        {
+            if (line + 1 >= starts.Length)
+            {
+                return Text.Length;
+            }
+            int next = starts[line + 1];
+            return next >= 2 && Text[next - 1] == '\n' && Text[next - 2] == '\r' && next - 2 >= starts[line] ? next - 2 : next - 1;
+        }
+
+        public override string Slice(int from, int to) => Text[from..to];
+
+        public override bool Returns(int from, int to) => Text.AsSpan(from, to - from).Contains('\r');
+
+        public override int LineAfter(int offset) => Passenger.Core.Sorted.FirstAfter(starts.AsSpan(), offset);
+
+        public override (int Prefix, int Unchanged)? Against(Written before)
+        {
+            if (before is not WrittenString { Text: var was })
+            {
+                return null;
+            }
+            int prefix = Text.AsSpan().CommonPrefixLength(was);
+            ReadOnlySpan<char> text = Text.AsSpan(prefix);
+            ReadOnlySpan<char> other = was.AsSpan(prefix);
+            const int Stretch = 256;
+            int most = Math.Min(text.Length, other.Length);
+            int same = 0;
+            while (same + Stretch <= most && text[^(same + Stretch)..^same].SequenceEqual(other[^(same + Stretch)..^same]))
+            {
+                same += Stretch;
+            }
+            while (same < most && text[^(same + 1)] == other[^(same + 1)])
+            {
+                same++;
+            }
+            return (prefix, Text.Length - same);
+        }
+    }
+
+    /// <summary>A document's text read where the rope holds it, its lines the document's own: which are the editor's while
+    /// no '\r' stands alone (<see cref="HasLoneReturn"/>).</summary>
+    private sealed class WrittenSnapshot(TextSnapshot snapshot) : Written
+    {
+        /// <summary>How much of a text is compared or looked through at a time.</summary>
+        private const int Stretch = 1024;
+
+        public TextSnapshot Snapshot { get; } = snapshot;
+
+        public override int Length => Snapshot.Length;
+
+        public override int Lines => Snapshot.LineCount;
+
+        public override int Start(int line) => Snapshot.GetLineStart(line);
+
+        public override int End(int line) => Snapshot.GetLine(line).End;
+
+        public override string Slice(int from, int to) => Snapshot.GetText(from, to - from);
+
+        public override bool Returns(int from, int to) => IndexOfReturn(Snapshot, from, to) >= 0;
+
+        public override int LineAfter(int offset) => offset >= Snapshot.Length ? Snapshot.LineCount : Snapshot.GetLineFromOffset(offset) + 1;
+
+        public override (int Prefix, int Unchanged)? Against(Written before)
+        {
+            if (before is not WrittenSnapshot { Snapshot: var was })
+            {
+                return null;
+            }
+            Span<char> mine = stackalloc char[Stretch];
+            Span<char> theirs = stackalloc char[Stretch];
+            int most = Math.Min(Snapshot.Length, was.Length);
+            int prefix = 0;
+            while (prefix < most)
+            {
+                int take = Math.Min(Stretch, most - prefix);
+                Snapshot.CopyTo(prefix, mine[..take]);
+                was.CopyTo(prefix, theirs[..take]);
+                int alike = mine[..take].CommonPrefixLength(theirs[..take]);
+                prefix += alike;
+                if (alike < take)
+                {
+                    break;
+                }
+            }
+            int suffixMost = most - prefix;
+            int same = 0;
+            while (same < suffixMost)
+            {
+                int take = Math.Min(Stretch, suffixMost - same);
+                Snapshot.CopyTo(Snapshot.Length - same - take, mine[..take]);
+                was.CopyTo(was.Length - same - take, theirs[..take]);
+                int alike = 0;
+                while (alike < take && mine[take - 1 - alike] == theirs[take - 1 - alike])
+                {
+                    alike++;
+                }
+                same += alike;
+                if (alike < take)
+                {
+                    break;
+                }
+            }
+            return (prefix, Snapshot.Length - same);
+        }
+
+        /// <summary>Whether a '\r' stands in a text with no '\n' after it, which the editor's lines end at and the
+        /// document's do not.</summary>
+        public static bool HasLoneReturn(TextSnapshot text)
+        {
+            // A stretch read with the character after it, so a '\r' at its end is told by what follows.
+            Span<char> read = stackalloc char[Stretch + 1];
+            for (int at = 0; at < text.Length; at += Stretch)
+            {
+                int take = Math.Min(Stretch + 1, text.Length - at);
+                text.CopyTo(at, read[..take]);
+                ReadOnlySpan<char> looked = read[..Math.Min(Stretch, take)];
+                for (int r = looked.IndexOf('\r'); r >= 0; r = looked[(r + 1)..].IndexOf('\r') is int more and >= 0 ? r + 1 + more : -1)
+                {
+                    if (r + 1 >= take || read[r + 1] != '\n')
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Where the first '\r' of a stretch is, or -1.</summary>
+        private static int IndexOfReturn(TextSnapshot text, int from, int to)
+        {
+            Span<char> read = stackalloc char[Stretch];
+            for (int at = from; at < to; at += Stretch)
+            {
+                int take = Math.Min(Stretch, to - at);
+                text.CopyTo(at, read[..take]);
+                if (read[..take].IndexOf('\r') is int found and >= 0)
+                {
+                    return at + found;
+                }
+            }
+            return -1;
+        }
     }
 
     /// <summary>A text's lines, made strings (their tabs as spaces) only as reading asks for them, and how far it asked.</summary>
-    private sealed class TextLines(string text, int[] starts) : IReadOnlyList<string>
+    private sealed class TextLines(Written text) : IReadOnlyList<string>
     {
         private readonly Dictionary<int, string> made = [];
 
@@ -219,18 +385,18 @@ internal static partial class Markdown
         /// <summary>How many lines were made strings.</summary>
         public int Made => made.Count;
 
-        public int Count => starts.Length;
+        public int Count => text.Lines;
 
         public string this[int index]
         {
             get
             {
                 ArgumentOutOfRangeException.ThrowIfNegative(index);
-                ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, starts.Length);
+                ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, text.Lines);
                 Reach = Math.Max(Reach, index + 1);
                 if (!made.TryGetValue(index, out string? line))
                 {
-                    made[index] = line = Untabbed(text[starts[index]..LineEnd(text, starts, index)]);
+                    made[index] = line = Untabbed(text.Slice(text.Start(index), text.End(index)));
                 }
                 return line;
             }
