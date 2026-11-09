@@ -29,6 +29,19 @@ public static class EngineVariables
         [DockerHost, DockerContext, DockerConfig, DockerTlsVerify, DockerCertPath, DockerTls, PodmanHost, PodmanConnection, PodmanConfig];
 }
 
+/// <summary>An engine's endpoint as a .NET program's Docker client takes it from <see cref="EngineVariables.DockerHost"/>.</summary>
+public static class DockerEndpoints
+{
+    private const string CliPipe = "npipe:////";
+
+    private const string ClientPipe = "npipe://";
+
+    /// <summary>The endpoint a Docker context names, as Testcontainers' client (Docker.DotNet) reads one: a Windows named
+    /// pipe the CLI writes npipe:////./pipe/NAME, which that client refuses, as npipe://./pipe/NAME; any other as it is.</summary>
+    public static string ForDotnetClient(string endpoint) =>
+        endpoint.StartsWith(CliPipe, StringComparison.OrdinalIgnoreCase) ? string.Concat(ClientPipe, endpoint.AsSpan(CliPipe.Length)) : endpoint;
+}
+
 /// <summary>The environment variables the SDK's container push reads a registry's login from, each named once: a pair of
 /// name and password, the first set taken, and what names the files it reads.</summary>
 [IdentifierHome]

@@ -812,15 +812,16 @@ public sealed class TestController : IAsyncDisposable
         return its.Any(a => TestFrames.Draws(a.Path)) ? TestFrames.With(environment) : environment;
     }
 
-    /// <summary>A Testcontainers project's environment with the engine's context's endpoint as <see cref="EngineVariables.DockerHost"/>, unless its
-    /// profile or the IDE's environment sets one: Testcontainers reads no Docker context of its own.</summary>
+    /// <summary>A Testcontainers project's environment with the engine's context's endpoint as <see cref="EngineVariables.DockerHost"/>, in
+    /// the form its Docker client reads, unless its profile or the IDE's environment sets one: Testcontainers reads no Docker
+    /// context of its own.</summary>
     private static IReadOnlyDictionary<string, string> WithDockerHost(IReadOnlyDictionary<string, string> environment, string? host)
     {
         if (host is null || environment.ContainsKey(EngineVariables.DockerHost) || Environment.GetEnvironmentVariable(EngineVariables.DockerHost) is { Length: > 0 })
         {
             return environment;
         }
-        return new Dictionary<string, string>(environment) { [EngineVariables.DockerHost] = host };
+        return new Dictionary<string, string>(environment) { [EngineVariables.DockerHost] = DockerEndpoints.ForDotnetClient(host) };
     }
 
     private static string Tally(RunSummary summary)
