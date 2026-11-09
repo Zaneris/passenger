@@ -157,28 +157,21 @@ internal sealed class ParameterInfo
     /// <summary>A card's parts as a language gives them, kept until the answer is known to be the one to show.</summary>
     private sealed class Gathered : IHoverCard
     {
-        private readonly List<(bool Code, string Text)> parts = [];
+        private readonly List<Action<InfoCard>> parts = [];
 
         public int Count => parts.Count;
 
-        public void AddCode(string code) => parts.Add((true, code));
+        public void AddCode(string code) => parts.Add(card => card.AddCode(code));
 
-        public void AddText(string text) => parts.Add((false, text));
+        public void AddText(string text) => parts.Add(card => card.AddText(text));
 
-        public void AddHover(Hover hover) => parts.Add((false, Shapes.Text(hover.Contents)));
+        public void AddHover(Hover hover) => parts.Add(card => card.AddHover(hover));
 
         public void Into(InfoCard card)
         {
-            foreach ((bool code, string text) in parts)
+            foreach (Action<InfoCard> part in parts)
             {
-                if (code)
-                {
-                    card.AddCode(text);
-                }
-                else
-                {
-                    card.AddText(text);
-                }
+                part(card);
             }
         }
     }

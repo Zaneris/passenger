@@ -1,5 +1,7 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.App.CSharp;
@@ -7,7 +9,8 @@ namespace Passenger.App.CSharp;
 /// <summary>A hover's Markdown as language servers write it, read once for the window's card (its words) and an agent (its
 /// text): fenced code apart from the prose between it, and in a line of prose, outside a code span, a backslash before
 /// punctuation and a character reference (<see cref="XmlEntities"/>, and <c>&amp;nbsp;</c>) read as the character each
-/// stands for, a code span's characters as written, and neither an image nor a data URI's bytes, which are no words.</summary>
+/// stands for, a code span's characters as written, and neither an image nor a data URI's bytes, which are no words. A
+/// hover of plain text is read as written (<see cref="ByKind"/>).</summary>
 internal static partial class HoverMarkdown
 {
     /// <summary>The first of the Private Use Area's characters, which no Markdown mark is, that a line's parts are held as
@@ -15,6 +18,26 @@ internal static partial class HoverMarkdown
     private const char FirstHeld = '';
 
     private const char LastHeld = '';
+
+    /// <summary>Whether a hover's contents are plain text (of the kind <c>plaintext</c>), any other being Markdown.</summary>
+    public static bool IsPlain(JsonElement contents) => JsonMembers.Text(contents, "kind") == "plaintext";
+
+    /// <summary>A hover's text as its blocks, by its kind (<see cref="IsPlain"/>): plain text one block of its lines as
+    /// written, Markdown its fenced code and the prose between (<see cref="Blocks"/>), each line of prose as the card shows
+    /// it (<paramref name="words"/>, <see cref="Words"/>) or as an agent reads it (<see cref="Text"/>); no data URI's bytes.</summary>
+    public static IEnumerable<(IReadOnlyList<string> Lines, bool Code)> ByKind(string text, bool plain, bool words)
+    {
+        if (plain)
+        {
+            yield return (Dataless(text).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'), false);
+            yield break;
+        }
+        Func<string, string> read = words ? Words : Text;
+        foreach ((IReadOnlyList<string> lines, bool code) in Blocks(text))
+        {
+            yield return (code ? lines : [.. lines.Select(read)], code);
+        }
+    }
 
     /// <summary>The Markdown's fenced blocks of code and the prose between them, in order, each as its lines, the fences'
     /// own lines left out.</summary>

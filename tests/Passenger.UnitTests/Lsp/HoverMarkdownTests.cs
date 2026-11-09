@@ -1,11 +1,13 @@
+using System.Text.Json;
 using Passenger.App.CSharp;
+using Passenger.Core;
 
 namespace Passenger.UnitTests.Lsp;
 
 /// <summary>A hover's Markdown read once, for the window's card (its words) and an agent (its text): a code span's
 /// characters as written, a backslash before punctuation and a character reference read outside one, its fenced code
 /// apart from its prose, and no image or data URI; the card shows a link as its words and takes out emphasis and a code
-/// span's backticks, which an agent reads as written.</summary>
+/// span's backticks, which an agent reads as written. A hover of plain text is read as written, by the card and an agent.</summary>
 public sealed class HoverMarkdownTests
 {
     [Fact]
@@ -81,6 +83,29 @@ public sealed class HoverMarkdownTests
         string line = string.Concat(Enumerable.Repeat(@"\_", 7_000));
         Assert.True(HoverMarkdown.Words(line) == new string('_', 7_000),
             "A line with more escapes than the Private Use Area holds lost or misread some");
+    }
+
+    [Fact]
+    public void A_hover_is_read_by_its_kind_plain_text_as_written_and_markdown_without_its_marks()
+    {
+        using JsonDocument plain = JsonDocument.Parse("""{"kind":"plaintext","value":"C:\\temp *x*\n&lt;T&gt; data:text/plain;base64,QUJD"}""");
+        using JsonDocument markdown = JsonDocument.Parse("""{"kind":"markdown","value":"**Sum**(`a`, *b*)\n```csharp\nint *p;\n```"}""");
+        using JsonDocument marked = JsonDocument.Parse("\"*x*\"");
+        Assert.True(HoverMarkdown.IsPlain(plain.RootElement));
+        Assert.False(HoverMarkdown.IsPlain(markdown.RootElement));
+        Assert.False(HoverMarkdown.IsPlain(marked.RootElement));
+        foreach (bool words in (bool[])[true, false])
+        {
+            (IReadOnlyList<string> lines, bool code) = Assert.Single(HoverMarkdown.ByKind(Value(plain), HoverMarkdown.IsPlain(plain.RootElement), words));
+            Assert.False(code);
+            Assert.True(lines.SequenceEqual([@"C:\temp *x*", "&lt;T&gt; "]),
+                $"A plain text hover read as Markdown {(words ? "in the card" : "by an agent")}: {string.Join(" | ", lines)}");
+        }
+        string shown = string.Join(" | ", HoverMarkdown.ByKind(Value(markdown), HoverMarkdown.IsPlain(markdown.RootElement), words: true)
+            .Select(b => $"{(b.Code ? "code" : "prose")}: {string.Join(" ", b.Lines)}"));
+        Assert.True(shown == "prose: Sum(a, b) | code: int *p; | prose: ", $"A Markdown hover's card, a signature's too, showed its marks: {shown}");
+
+        static string Value(JsonDocument hover) => JsonMembers.Text(hover.RootElement, "value")!;
     }
 
     [Fact]

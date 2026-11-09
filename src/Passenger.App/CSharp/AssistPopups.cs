@@ -180,21 +180,18 @@ internal sealed class InfoCard : Border, IHoverCard
         picture.Source = made;
     }
 
-    /// <summary>A language server's hover, its Markdown shown (<see cref="AddMarkdown"/>).</summary>
-    public void AddHover(Lsp.Hover hover)
-    {
-        if (Lsp.Shapes.Text(hover.Contents) is { Length: > 0 } markdown)
-        {
-            AddMarkdown(markdown);
-        }
-    }
+    /// <summary>A language server's hover, read by its kind: plain text as written, Markdown as <see cref="AddMarkdown"/>
+    /// shows it.</summary>
+    public void AddHover(Lsp.Hover hover) => AddBlocks(HoverMarkdown.ByKind(Lsp.Shapes.Text(hover.Contents), HoverMarkdown.IsPlain(hover.Contents), words: true));
 
     /// <summary>A hover's Markdown: its fenced code as code, the prose between as its words (<see cref="HoverMarkdown"/>).</summary>
-    public void AddMarkdown(string markdown)
+    public void AddMarkdown(string markdown) => AddBlocks(HoverMarkdown.ByKind(markdown, plain: false, words: true));
+
+    private void AddBlocks(IEnumerable<(IReadOnlyList<string> Lines, bool Code)> blocks)
     {
-        foreach ((IReadOnlyList<string> lines, bool code) in HoverMarkdown.Blocks(markdown))
+        foreach ((IReadOnlyList<string> lines, bool code) in blocks)
         {
-            string text = string.Join('\n', code ? lines : lines.Select(HoverMarkdown.Words)).Trim('\n', ' ');
+            string text = string.Join('\n', lines).Trim('\n', ' ');
             if (text.Length == 0)
             {
                 continue;

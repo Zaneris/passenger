@@ -1043,30 +1043,23 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
     }
 
-    /// <summary>A hover card's words as an agent reads them: Markdown made plain text, its code fences, backslash escapes,
-    /// entities and line-break spaces taken out, the code in it kept as written, and no image's data
-    /// (<see cref="HoverMarkdown.Text"/>), a run of blank lines kept as one.</summary>
+    /// <summary>A hover card's words as an agent reads them, by its kind: plain text as written, Markdown made plain text,
+    /// its code fences, backslash escapes, entities and line-break spaces taken out, the code in it kept as written; no
+    /// image's data (<see cref="HoverMarkdown.ByKind"/>), a run of blank lines kept as one.</summary>
     private static string HoverText(Hover hover)
     {
-        if (JsonMembers.Text(hover.Contents, "kind") == "plaintext")
-        {
-            return HoverMarkdown.Dataless(Shapes.Text(hover.Contents)).Trim();
-        }
         System.Text.StringBuilder text = new();
         bool gap = false;
-        foreach ((IReadOnlyList<string> lines, bool code) in HoverMarkdown.Blocks(Shapes.Text(hover.Contents)))
+        foreach (string line in HoverMarkdown.ByKind(Shapes.Text(hover.Contents), HoverMarkdown.IsPlain(hover.Contents), words: false).SelectMany(b => b.Lines))
         {
-            foreach (string line in lines)
+            string plain = line.TrimEnd();
+            if (plain.Trim().Length == 0)
             {
-                string plain = code ? line.TrimEnd() : HoverMarkdown.Text(line);
-                if (plain.Trim().Length == 0)
-                {
-                    gap = text.Length > 0;
-                    continue;
-                }
-                text.Append(gap ? "\n" : string.Empty).Append(plain).Append('\n');
-                gap = false;
+                gap = text.Length > 0;
+                continue;
             }
+            text.Append(gap ? "\n" : string.Empty).Append(plain).Append('\n');
+            gap = false;
         }
         return text.ToString().TrimEnd();
     }
