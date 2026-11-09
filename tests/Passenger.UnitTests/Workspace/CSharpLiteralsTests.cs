@@ -39,11 +39,18 @@ public class CSharpLiteralsTests
     [InlineData("Hud/Sc\\ore", "@\"old\"", "@\"Hud/Sc\\ore\"")]
     [InlineData("say \"hi\"", "@\"old\"", "@\"say \"\"hi\"\"\"")]
     [InlineData("Line\nTwo\r\tend", "\"old\"", "\"Line\\nTwo\\r\\tend\"")]
-    [InlineData("a\u2028b\u0085c", "\"old\"", "\"a\\u2028b\\u0085c\"")]
     [InlineData("Line\nTwo", "@\"old\"", "@\"Line\nTwo\"")]
     public void A_value_is_written_the_way_the_literal_it_replaces_writes_one(string value, string like, string written)
     {
         Assert.Equal(written, CSharpLiterals.Written(value, like));
         Assert.Equal(value.Length, CSharpLiterals.ValueOffset(written, written.Length - 1));
+    }
+
+    /// <summary>A line and a next-line separator are written escaped, as a newline is. A fact of its own: a case's name holding
+    /// either reads differently in the test list than in its result, so no run could match the two.</summary>
+    [Fact]
+    public void A_value_holding_line_separators_is_written_with_them_escaped()
+    {
+        A_value_is_written_the_way_the_literal_it_replaces_writes_one("a\u2028b\u0085c", "\"old\"", "\"a\\u2028b\\u0085c\"");
     }
 }
