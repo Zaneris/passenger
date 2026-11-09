@@ -65,6 +65,36 @@ public sealed class ProjectFoldersTests : IDisposable
             $"Shop's own C# files are [{string.Join(", ", own)}], where Tools holds a project of its own though no solution names it");
     }
 
+    /// <summary>Only a project's build output and dependencies are read in another letter case: an Artifacts folder of an
+    /// RPG's items, a Packages folder or a testresults folder is the person's code, though artifacts, packages NuGet
+    /// restored into and TestResults written as such are passed over.</summary>
+    [Fact]
+    public void Build_output_in_another_letter_case_is_passed_over_where_case_is_ignored_and_the_folders_other_names_only_as_written()
+    {
+        string game = Path.Join(root, "Game");
+        string[] written = ["Bin/Debug/Built.cs", "Artifacts/Sword.tscn", "testresults/Summary.md",
+            "Packages/Newtonsoft.Json.13.0.1/Newtonsoft.Json.13.0.1.nupkg", "Lib/packages/Newtonsoft.Json.13.0.1/Newtonsoft.Json.13.0.1.nupkg"];
+        foreach (string file in written)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Join(game, file))!);
+            File.WriteAllText(Path.Join(game, file), string.Empty);
+        }
+        bool caseIgnored = PathNames.CaseIgnoredIn(game);
+
+        Assert.True(IgnoredFolders.Is(Path.Join(game, "Bin")) == caseIgnored,
+            caseIgnored ? "Bin, the build's bin where case is ignored, is walked as the person's code" : "Bin, a folder of the person's where case is told apart, is passed over");
+        Assert.True(IgnoredFolders.Is(Path.Join(game, "Lib", "packages")), "A packages folder NuGet restored into is walked as the person's code");
+        foreach (string folder in (string[])["Artifacts", "testresults", "Packages"])
+        {
+            Assert.False(IgnoredFolders.Is(Path.Join(game, folder)), $"{folder}, a folder of the person's, is passed over as build output");
+            Assert.False(IgnoredFolders.AnyIn(root, Path.Join("Game", folder, "x")), $"A file in {folder}, a folder of the person's, is passed over as build output");
+        }
+        string[] listed = [.. FolderWalk.Below(root).Select(f => f.Replace(Path.DirectorySeparatorChar, '/')).Order(StringComparer.Ordinal)];
+        string[] expected = [.. written.Where(f => !f.StartsWith("Lib/", StringComparison.Ordinal) && !(caseIgnored && f.StartsWith("Bin/", StringComparison.Ordinal)))
+            .Select(f => "Game/" + f).Order(StringComparer.Ordinal)];
+        Assert.Equal(expected, listed);
+    }
+
     [Fact]
     public void A_resource_is_found_by_its_embedded_name_only_in_the_projects_own_folders()
     {

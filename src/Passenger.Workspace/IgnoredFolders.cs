@@ -4,11 +4,12 @@ using Passenger.Core;
 namespace Passenger.Workspace;
 
 /// <summary>The folders passed over wherever the open folder is walked (<see cref="FolderWalk"/>) or watched, and dimmed
-/// in the Explorer: version control's own stores, build output, dependencies and other IDEs' state, each name read as its
-/// folder reads names (<see cref="FolderNames"/>), as a project's own folders are. Go to File and Find in Files never search
-/// them, a folder with no solution never takes its projects from them, and the folder watcher never hears of them (on
-/// Linux never watches them) but for a restore's assets in obj, kept apart, so what the index lists is what the watcher
-/// keeps current.</summary>
+/// in the Explorer: version control's own stores, build output, dependencies and other IDEs' state. A project's build
+/// output and dependencies are read as their folder reads names, as its own folders are (<see cref="ProjectFolders.Passed"/>);
+/// every other name only as written, so a folder of the person's named Artifacts or Packages is their code. Go to File and
+/// Find in Files never search them, a folder with no solution never takes its projects from them, and the folder watcher
+/// never hears of them (on Linux never watches them) but for a restore's assets in obj, kept apart, so what the index lists
+/// is what the watcher keeps current.</summary>
 public static class IgnoredFolders
 {
     /// <summary>NuGet's restore folder for packages.config, and as often a JavaScript monorepo's source (packages/*/package.json),
@@ -31,11 +32,15 @@ public static class IgnoredFolders
     /// whose files Git's view leaves out too while git leaves them unversioned (<see cref="InToolOutput"/>).</summary>
     public const string GdUnit4Runner = "gdunit4_testadapter_v5";
 
+    /// <summary>The names passed over as written, beside a project's build output and dependencies.</summary>
+    private static readonly HashSet<string> Written = [".git", ".hg", ".svn", "artifacts", ".vs", ".idea", "TestResults", GodotCache, GdUnit4Runner];
+
+    /// <summary><see cref="Written"/> asked of a name inside a path, which takes no string of it.</summary>
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> WrittenIn = Written.GetAlternateLookup<ReadOnlySpan<char>>();
+
     /// <summary>The names passed over wherever they are, whatever they hold: a project's build output and dependencies
     /// (<see cref="ProjectFolders.Passed"/>) among them.</summary>
-    public static IReadOnlySet<string> Names => Named.Names;
-
-    private static readonly FolderNames Named = new([.. ProjectFolders.Passed.Names, ".git", ".hg", ".svn", "artifacts", ".vs", ".idea", "TestResults", GodotCache, GdUnit4Runner]);
+    public static IReadOnlySet<string> Names { get; } = new HashSet<string>([.. ProjectFolders.Passed.Names, .. Written], StringComparer.Ordinal);
 
     /// <summary>Whether a file lies in a folder a test framework writes into the person's project as its own output
     /// (<see cref="GdUnit4Runner"/>), which no one means to commit.</summary>
@@ -62,7 +67,7 @@ public static class IgnoredFolders
         string trimmed = Path.TrimEndingDirectorySeparator(folder);
         string parent = Path.GetDirectoryName(trimmed) ?? trimmed;
         ReadOnlySpan<char> name = Path.GetFileName(trimmed.AsSpan());
-        return Named.Holds(name, parent, []) || FolderNames.Same(name, Packages, parent, []) && IsRestoreFolder(trimmed);
+        return ProjectFolders.Passed.Holds(name, parent, []) || WrittenIn.Contains(name) || name.SequenceEqual(Packages) && IsRestoreFolder(trimmed);
     }
 
     /// <summary>Whether any of the names along a path from <paramref name="root"/> ("src/obj/Debug") is passed over, each
@@ -74,7 +79,7 @@ public static class IgnoredFolders
             int end = relative[start..].IndexOfAny(PathNames.Separators) is >= 0 and int at ? start + at : relative.Length;
             ReadOnlySpan<char> name = relative[start..end];
             ReadOnlySpan<char> above = start == 0 ? [] : relative[..(start - 1)];
-            if (Named.Holds(name, root, above) || FolderNames.Same(name, Packages, root, above) && IsRestoreFolder(Path.Join(root, relative[..end])))
+            if (ProjectFolders.Passed.Holds(name, root, above) || WrittenIn.Contains(name) || name.SequenceEqual(Packages) && IsRestoreFolder(Path.Join(root, relative[..end])))
             {
                 return true;
             }
