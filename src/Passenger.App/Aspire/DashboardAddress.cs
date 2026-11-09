@@ -4,8 +4,8 @@ using Passenger.Core;
 namespace Passenger.App.Aspire;
 
 /// <summary>Where an AppHost's dashboard is called, from the addresses it listens at (ASPNETCORE_URLS): an address on every
-/// interface (<c>0.0.0.0</c>, <c>[::]</c>, <c>+</c> or <c>*</c>) is one to listen at, never to call, so it is called as
-/// <see cref="WebAddress.Callable"/> makes it. Where those name no HTTP address, the one Passenger adds is placed by the
+/// interface (<c>0.0.0.0</c>, <c>[::]</c>, <c>+</c> or <c>*</c>) is one to listen at, never to call, so it is called at
+/// its family's loopback (<see cref="WebAddress.Callable"/> by family): Passenger's own call, no certificate naming it. Where those name no HTTP address, the one Passenger adds is placed by the
 /// AppHost's orchestrator and read from the dashboard's resource (<see cref="FromResources"/>).</summary>
 public static class DashboardAddress
 {
@@ -21,7 +21,7 @@ public static class DashboardAddress
 
     /// <summary>The first HTTP address of a list of them (';' between), as one to call; null where none is HTTP.</summary>
     public static Uri? FromUrls(string urls) => urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .Select(url => Uri.TryCreate(WebAddress.Callable(url), UriKind.Absolute, out Uri? endpoint) ? endpoint : null)
+        .Select(url => Uri.TryCreate(WebAddress.Callable(url, byFamily: true), UriKind.Absolute, out Uri? endpoint) ? endpoint : null)
         .FirstOrDefault(endpoint => endpoint?.Scheme == Uri.UriSchemeHttp);
 
     /// <summary>Whether an AppHost of an Aspire version has its orchestrator place an address of port 0: from 9.4, an unknown

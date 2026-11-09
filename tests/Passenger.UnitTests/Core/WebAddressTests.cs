@@ -79,4 +79,16 @@ public sealed class WebAddressTests
     {
         Assert.True(WebAddress.Callable(listened) == called, $"{listened} was called at {WebAddress.Callable(listened)}, not {called}");
     }
+
+    [Theory]
+    [InlineData("http://*:5000", "http://127.0.0.1:5000")]
+    [InlineData("http://+:5000/", "http://127.0.0.1:5000/")]
+    [InlineData("http://0.0.0.0:5000", "http://127.0.0.1:5000")]
+    [InlineData("http://[::]:5000", "http://[::1]:5000")]
+    [InlineData("http://localhost:5000", "http://localhost:5000")]
+    public void By_family_a_host_on_every_interface_is_called_at_its_familys_loopback(string listened, string called)
+    {
+        Assert.True(WebAddress.Callable(listened, byFamily: true) == called,
+            $"{listened} was called at {WebAddress.Callable(listened, byFamily: true)}, not {called}, so a call to it may try the other family first");
+    }
 }

@@ -28,9 +28,10 @@ public static class WebAddress
     public static bool Secure(Uri url) => url.Scheme == Uri.UriSchemeHttps || (url.Scheme == Uri.UriSchemeHttp && OnThisMachine(url));
 
     /// <summary>An address listened at (<c>ASPNETCORE_URLS</c>, an <c>applicationUrl</c>) as one to call: a host on every
-    /// interface (<c>*</c>, <c>+</c>, <c>0.0.0.0</c>, <c>[::]</c>), which no client can name, as <c>localhost</c>, which
-    /// reaches it in either family and is the name a development certificate is made for; the rest as written.</summary>
-    public static string Callable(string listened)
+    /// interface (<c>*</c>, <c>+</c>, <c>0.0.0.0</c>, <c>[::]</c>), which no client can name, as <c>localhost</c>, the name a
+    /// development certificate is made for; by family, for a call no certificate names, as that family's loopback
+    /// (<c>127.0.0.1</c>, <c>[::1]</c>), never tried in the other family first; the rest as written.</summary>
+    public static string Callable(string listened, bool byFamily = false)
     {
         int begins = listened.IndexOf("://", StringComparison.Ordinal) + 3;
         if (begins < 3 || begins >= listened.Length || !Uri.CheckSchemeName(listened[..(begins - 3)]))
@@ -39,7 +40,14 @@ public static class WebAddress
         }
         int ends = listened[begins] == '[' ? listened.IndexOf(']', begins) + 1 : listened.IndexOfAny([':', '/', '?', '#'], begins);
         ends = ends <= 0 ? listened.Length : ends;
-        return Everywhere(listened[begins..ends]) ? string.Concat(listened.AsSpan(0, begins), "localhost", listened.AsSpan(ends)) : listened;
+        string host = listened[begins..ends];
+        string? called = host switch
+        {
+            "*" or "+" or "0.0.0.0" => byFamily ? "127.0.0.1" : "localhost",
+            _ when IsIPv6Any(host) => byFamily ? "[::1]" : "localhost",
+            _ => null,
+        };
+        return called is null ? listened : string.Concat(listened.AsSpan(0, begins), called, listened.AsSpan(ends));
     }
 
     /// <summary>A loopback port no listener holds now, the system's choice. Another program may take it before whoever it
@@ -51,6 +59,6 @@ public static class WebAddress
         return ((IPEndPoint)probe.LocalEndpoint).Port;
     }
 
-    private static bool Everywhere(string host) => host is "*" or "+" or "0.0.0.0"
-        || (host.Length > 2 && host[0] == '[' && host[^1] == ']' && IPAddress.TryParse(host[1..^1], out IPAddress? address) && address.Equals(IPAddress.IPv6Any));
+    private static bool IsIPv6Any(string host) =>
+        host.Length > 2 && host[0] == '[' && host[^1] == ']' && IPAddress.TryParse(host[1..^1], out IPAddress? address) && address.Equals(IPAddress.IPv6Any);
 }
