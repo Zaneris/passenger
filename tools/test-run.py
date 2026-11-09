@@ -338,8 +338,8 @@ def windows_processes():
     entry = ProcessEntry(size=ctypes.sizeof(ProcessEntry))
     more = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
     while more:
-        if entry.name.lower() in ("dotnet.exe", "msbuild.exe", "vbcscompiler.exe") and (read := parameters_of(entry.pid)):
-            found.append((entry.pid, read[0], read[1]))
+        if entry.name.lower() in ("dotnet.exe", "msbuild.exe", "vbcscompiler.exe") and (given := parameters_of(entry.pid)):
+            found.append((entry.pid, given[0], given[1]))
         more = kernel.Process32NextW(snapshot, ctypes.byref(entry))
     kernel.CloseHandle(snapshot)
     return found
