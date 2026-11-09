@@ -390,4 +390,27 @@ public class CSharpParsingTests
         Assert.Equal(1000, DeepText.Read(1000, () => 1000));
         Assert.Throws<FormatException>(() => DeepText.Read<int>(1000, () => throw new FormatException()));
     }
+
+    /// <summary>An expression or a type's name long but shallow, as the debugger reads one per row, is read on the thread that
+    /// asks, with no thread of its own; one nested deeper than any stack is sure to hold goes to a stack sized for it, and
+    /// one nested past what the parser reads is still refused.</summary>
+    [Fact]
+    public void A_long_shallow_expression_is_read_on_the_asking_thread_and_a_deep_one_on_a_stack_of_its_own()
+    {
+        const string Type = "System.Collections.Generic.Dictionary<System.String, System.Collections.Generic.List<System.Int32>>";
+        string expression = $"(({Type})values)[\"key\"].Count > 3 && items?.Count is not null";
+        int asking = Environment.CurrentManagedThreadId;
+        long spawned = DeepText.ReadBytes;
+        Assert.True(CodeBrackets.ReadsAsType(Type), "A long generic type's name did not read as a type");
+        Assert.True(CodeBrackets.Expression(expression) is { ContainsDiagnostics: false }, "A long shallow expression did not read");
+        Assert.Equal(asking, CodeBrackets.OnStack(expression, () => Environment.CurrentManagedThreadId));
+        Assert.True(DeepText.ReadBytes == spawned, "A long shallow expression or type's name was read on a thread of its own");
+
+        string nested = new string('(', 100) + "1" + new string(')', 100);
+        Assert.NotEqual(asking, CodeBrackets.OnStack(nested, () => Environment.CurrentManagedThreadId));
+        Assert.True(CodeBrackets.Expression(nested) is { ContainsDiagnostics: false }, "Brackets 100 deep did not read on a stack sized for them");
+        Assert.True(DeepText.ReadBytes > spawned, "Brackets 100 deep were read on the asking thread");
+        string past = new string('(', 20_000) + "1" + new string(')', 20_000);
+        SmallStack.Run(() => Assert.True(CodeBrackets.Expression(past) is null && !CodeBrackets.ReadsAsType(past), "Brackets 20,000 deep were read"));
+    }
 }

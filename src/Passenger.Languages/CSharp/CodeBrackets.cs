@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -13,10 +14,14 @@ namespace Passenger.Languages.CSharp;
 /// (<see cref="DeepText"/>), and a text whose brackets go past what a parser is given is read as nothing, its strings,
 /// comments and the branches its conditions leave out apart, as a parser recurses only through what it reads as code. The
 /// text as it stands is read first (<see cref="Brackets"/>), which real code passes at the cost of a search; only what that
-/// finds deep is read by the lexer, the parser's own, so nothing a parser reads as code passes for a string. Compiled into
-/// each assembly that parses.</summary>
+/// finds deep is read by the lexer, the parser's own, so nothing a parser reads as code passes for a string. An expression
+/// or a type's name that search finds shallow is read on the asking thread. Compiled into each assembly that parses.</summary>
 internal static class CodeBrackets
 {
+    /// <summary>The most brackets a text holds open at once and is read on whatever thread asks, a level's two kilobytes
+    /// within what that thread is sure to have left (<see cref="RuntimeHelpers.TryEnsureSufficientExecutionStack"/>).</summary>
+    private const int MostOnAnyStack = 32;
+
     private static readonly ConcurrentDictionary<(LanguageVersion Version, string Symbols), CSharpParseOptions> Made = new();
 
     /// <summary>A text's tree: a text nested too deeply for the parser is a tree of nothing, its spans still the text's.</summary>
@@ -27,12 +32,10 @@ internal static class CodeBrackets
     public static int? DeepAt(SyntaxTree tree) => tree.TryGetText(out SourceText? text) && text is Unread unread ? unread.At : null;
 
     /// <summary>A text read as an expression on its own; null for one nested too deeply for the parser.</summary>
-    public static ExpressionSyntax? Expression(string text) =>
-        DeepText.Read(text.Length, () => DeepAt(SourceText.From(text), null) is null ? SyntaxFactory.ParseExpression(text) : null);
+    public static ExpressionSyntax? Expression(string text) => Read(text, () => SyntaxFactory.ParseExpression(text));
 
     /// <summary>A text read as a type's name on its own; null for one nested too deeply for the parser.</summary>
-    public static TypeSyntax? TypeName(string text) =>
-        DeepText.Read(text.Length, () => DeepAt(SourceText.From(text), null) is null ? SyntaxFactory.ParseTypeName(text) : null);
+    public static TypeSyntax? TypeName(string text) => Read(text, () => SyntaxFactory.ParseTypeName(text));
 
     /// <summary>Whether a text reads as a type's name.</summary>
     public static bool ReadsAsType(string text) => TypeName(text) is { ContainsDiagnostics: false };
@@ -49,10 +52,23 @@ internal static class CodeBrackets
             static (key, defined) => new CSharpParseOptions(key.Version, DocumentationMode.Parse, preprocessorSymbols: defined), valid);
     }
 
+    /// <summary>What a reader that recurses as deep as a C# text nests makes of it: on the asking thread where the text's
+    /// brackets nest shallowly, as nearly every expression and type's name does, else on a stack sized for it.</summary>
+    public static T OnStack<T>(string text, Func<T> read) => Shallow(Measured(SourceText.From(text))) ? read() : DeepText.Read(text.Length, read);
+
     /// <summary>Where a text first goes too deep, null for one that doesn't, asked on a stack of its characters' (<see
     /// cref="DeepText.Read"/>): the lexer recurses through an interpolation's brackets, so a text past what a stack <see
     /// cref="DeepText.Holds"/> stays as deep as it reads.</summary>
-    public static int? DeepAt(SourceText text, CSharpParseOptions? options)
+    public static int? DeepAt(SourceText text, CSharpParseOptions? options) => DeepAt(text, options, Measured(text));
+
+    /// <summary>Where a text first goes too deep, from its brackets as it stands (<see cref="Measured"/>).</summary>
+    private static int? DeepAt(SourceText text, CSharpParseOptions? options, Brackets measured) =>
+        !measured.TooDeep ? null
+        : measured.TooDeepToLex || !DeepText.Holds(text.Length) ? measured.DeepAt
+        : TokensDeepAt(text.ToString(), options);
+
+    /// <summary>A text's brackets as it stands, read a stretch at a time on any stack: real code passes at the cost of a search.</summary>
+    private static Brackets Measured(SourceText text)
     {
         char[] stretch = ArrayPool<char>.Shared.Rent(4096);
         Brackets brackets = new() { CSharp = true };
@@ -63,11 +79,20 @@ internal static class CodeBrackets
             brackets.Read(stretch.AsSpan(0, count));
         }
         ArrayPool<char>.Shared.Return(stretch);
-        if (!brackets.TooDeep)
-        {
-            return null;
-        }
-        return brackets.TooDeepToLex || !DeepText.Holds(text.Length) ? brackets.DeepAt : TokensDeepAt(text.ToString(), options);
+        return brackets;
+    }
+
+    /// <summary>Whether a text's brackets as it stands nest shallowly enough to read it on the asking thread.</summary>
+    private static bool Shallow(Brackets measured) =>
+        !measured.TooDeep && measured.Reached <= MostOnAnyStack && RuntimeHelpers.TryEnsureSufficientExecutionStack();
+
+    /// <summary>A text read on its own (<paramref name="parse"/>), on the asking thread where it nests shallowly, else on a
+    /// stack sized for it; null for one nested too deeply for the parser.</summary>
+    private static T? Read<T>(string text, Func<T> parse) where T : class
+    {
+        SourceText source = SourceText.From(text);
+        Brackets measured = Measured(source);
+        return Shallow(measured) ? parse() : DeepText.Read(text.Length, () => DeepAt(source, null, measured) is null ? parse() : null);
     }
 
     /// <summary>A text's brackets as its tokens have them. An interpolated string is a token to the lexer and code to the

@@ -14,7 +14,6 @@ using Microsoft.CodeAnalysis.ExpressionEvaluator;
 using Microsoft.CodeAnalysis.PooledObjects;
 using Microsoft.VisualStudio.Debugger.Clr;
 using Microsoft.VisualStudio.Debugger.Evaluation;
-using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
@@ -138,7 +137,7 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         }
         if (context.RootValue is not null)
         {
-            expression = DeepText.Read(expression.Length, () => new RemoveFormatSpecifierAlignmentRewriter().Visit(syntax)!.ToFullString());
+            expression = CodeBrackets.OnStack(expression, () => new RemoveFormatSpecifierAlignmentRewriter().Visit(syntax)!.ToFullString());
         }
         ICorDebugILFrame frame = debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth);
         ICorDebugModule preferredModule = context.RootValue is not null ? context.RootValue.ExactType.Class.Module : frame.Function.Module;
@@ -168,7 +167,7 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         try
         {
             ImmutableArray<Alias> aliases = GetAliases(exception, returnValues);
-            (CompileResult? result, bool atExactType) = DeepText.Read(expression.Length, () => Compile(evaluationContext, expression, aliases, diagnostics, exactType, definition));
+            (CompileResult? result, bool atExactType) = CodeBrackets.OnStack(expression, () => Compile(evaluationContext, expression, aliases, diagnostics, exactType, definition));
             if (result is null || diagnostics.HasAnyErrors())
             {
                 errorMessage = string.Join("; ", diagnostics.AsEnumerable()
@@ -194,9 +193,9 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         }
     }
 
-    /// <summary>An expression compiled in a context, on a stack sized for it (the compiler parses and binds it as deep as it
-    /// nests): with the variables it declares scoped, else as written, else at the exact type of the value whose definition
-    /// the context is, as AtExactType says.</summary>
+    /// <summary>An expression compiled in a context, which parses and binds it as deep as it nests (<see
+    /// cref="CodeBrackets.OnStack{T}"/>): with the variables it declares scoped, else as written, else at the exact type of
+    /// the value whose definition the context is, as AtExactType says.</summary>
     private static (CompileResult? Result, bool AtExactType) Compile(EvaluationContext context, string expression, ImmutableArray<Alias> aliases, DiagnosticBag diagnostics,
         string? exactType, NamedTypeSymbol? definition)
     {

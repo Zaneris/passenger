@@ -137,6 +137,9 @@ public partial struct Brackets
     /// <summary>Where in all that was read the text first went too deep.</summary>
     public int DeepAt { get; private set; }
 
+    /// <summary>The most brackets and conditions open at once in all that was read, as <see cref="TooDeep"/> counts them.</summary>
+    public int Reached { get; private set; }
+
     /// <summary>Whether what goes too deep is conditions or an interpolation's holes, each reached by a <c>$</c> of its own:
     /// a lexer's cost goes as their square, so these are too deep to ask a lexer about, and reading stops.</summary>
     public bool TooDeepToLex { get; private set; }
@@ -231,6 +234,7 @@ public partial struct Brackets
     /// <summary>Notes where the text first goes too deep, and whether it goes too deep to lex.</summary>
     private void Check(int at)
     {
+        Reached = Math.Max(Reached, counts.Statement + counts.Braces + counts.Conditions);
         if (!TooDeep && (counts.Statement + counts.Braces + counts.Conditions > Deepest || counts.Linked > MostLinks))
         {
             TooDeep = true;
