@@ -197,7 +197,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
   (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump.
 - `Passenger.Editor`: `CodeEditor`, `Keymap`, `EditorActions`; the code font is `CodeFonts.Key`, never a `FontFamily`
-  written elsewhere; the editor names no debugger, test or VCS concept (`IGutterColumn`, EditorRulesTests); a file's
+  written elsewhere; a family code or the window's words are drawn in is named through `FallbackFonts` (`Carry`, `Of`),
+  so what it lacks takes the platform's own fallback; the editor names no debugger, test or VCS concept (`IGutterColumn`, EditorRulesTests); a file's
   editors draw its one `DocumentDecorations`, never fed per split.
 - **A key costs what it changed, not the file's size**: keep it so. Wraps, rows, folds, hints and built lines move only
   where an edit reaches; a highlighter keeps colours an edit didn't reach (`KeptColours`, `ChangedWithin`); a row is a
@@ -560,6 +561,9 @@ a new name, and `just site-shots` retakes its images.
 - **`FormattedText` lays its lines out again at every draw**: text drawn frame after frame is kept as a `TextLayout` or
   `TextLine` until what it says or its width changes. Avalonia's text formatter returns the pooled arrays of runs it
   shapes together only when finalized, so runs of one line are taken from two copies of its text in turn.
+- **Avalonia's font fallback sweeps every loaded font in name order before asking the platform** (AvaloniaUI#22464), and
+  never calls a `FontCollectionBase`'s own `TryMatchCharacter`: `FallbackFonts` is an `IFontCollection`. Apple's fonts
+  shape by `morx`, which `CanShapeScript` doesn't count.
 - **Svg.Skia stays at 5.1** while Avalonia's Skia is SkiaSharp 3 (5.2 needs SkiaSharp 4); its `SKSvg` disposes its
   picture, so a picture is never let go while a frame may still draw it.
 - **Avalonia renders a visual again when its Bounds, ZIndex or RenderTransform change**, and on `InvalidateArrange`:
