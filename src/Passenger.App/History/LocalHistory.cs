@@ -48,7 +48,7 @@ public sealed class LocalHistory
     /// <summary>The name of changes made by another program.</summary>
     public const string ExternalChange = "External change";
 
-    /// <summary>The most files a folder made or deleted elsewhere is read for at once.</summary>
+    /// <summary>The most files of a folder made or deleted the history looks at at once.</summary>
     private const int WalkLimit = 5000;
 
     /// <summary>The pause between activities past which the time between counts for nothing.</summary>
@@ -92,6 +92,10 @@ public sealed class LocalHistory
 
     /// <summary>The saves of each path queued and not yet recorded, whose new content the disk may already hold.</summary>
     private readonly Dictionary<string, int> writing = new(PathNames.Comparer);
+
+    /// <summary>Which of the files made or changed elsewhere that it does not know are read, on the queue.</summary>
+    private readonly BulkArrivals arrivals = new();
+
     private readonly Queue<Action> jobs = new();
     private readonly string log;
     /// <summary>What the history's lock file is named after (<see cref="Hold"/>), so it is changes.lock beside the log.</summary>
@@ -140,6 +144,10 @@ public sealed class LocalHistory
 
     /// <summary>What it kept changed: a change recorded, or old ones pruned. On the UI thread.</summary>
     public event EventHandler? Changed;
+
+    /// <summary>A file it is about to read for what the folder watcher saw, on the queue's thread: for a test of what it
+    /// reads.</summary>
+    public event Action<string>? Reading;
 
     /// <summary>A folder's history, shared by every window of this process that has the folder open with the same state
     /// folder; let go with <see cref="Release"/>.</summary>
@@ -245,10 +253,10 @@ public sealed class LocalHistory
         }
     }
 
-    /// <summary>Paths the folder watcher saw change: each file's content is read and compared with what the history
-    /// knows; a change is kept under the activity under way, else as an external change. A folder made is read for its
-    /// files, one deleted takes what the history knew under it, and a file gone whose content another just made has is
-    /// a move.</summary>
+    /// <summary>Paths the folder watcher saw change: a file the history knows is read and compared with what it knew, a
+    /// change kept under the activity under way, else as an external change; one it does not know is read and kept only
+    /// as <see cref="BulkArrivals"/> says. A folder made is looked in for its files, one deleted takes what the history knew
+    /// under it, and a file gone whose content another just made has is a move.</summary>
     public void Noticed(IReadOnlyCollection<string> paths)
     {
         List<string> kept = [.. paths.Where(Keeps)];
@@ -258,7 +266,8 @@ public sealed class LocalHistory
         }
         (long set, string name) = Seen();
         DateTimeOffset time = Keeping.Clock();
-        Enqueue(() => RecordNotice(kept, set, name, time));
+        DateTime heard = DateTime.UtcNow;
+        Enqueue(() => RecordNotice(kept, set, name, time, heard));
     }
 
     /// <summary>Reads what a delete is about to take, off the UI thread: the file, or every text file under the folder.</summary>
@@ -781,7 +790,7 @@ public sealed class LocalHistory
     private HistoryEvent External(string path, string? was, string? now, DateTimeOffset time) =>
         new(NewSet(), time, was is null ? HistoryKind.Created : now is null ? HistoryKind.Deleted : HistoryKind.Changed, path, null, was, now, ExternalChange);
 
-    private void RecordNotice(IReadOnlyList<string> paths, long set, string name, DateTimeOffset time)
+    private void RecordNotice(IReadOnlyList<string> paths, long set, string name, DateTimeOffset time, DateTime heard)
     {
         // What another Passenger on the same state made and kept is known, not a change made elsewhere.
         CatchUp();
@@ -791,6 +800,8 @@ public sealed class LocalHistory
         List<(string Path, string Hash, byte[] Bytes, bool Made)> found = [];
         List<(string Path, string Hash)> gone = [];
         List<string> later = [];
+        List<string> unknown = [];
+        List<string> folders = [];
         HashSet<string> looked = new(PathNames.Comparer);
         foreach (string path in paths)
         {
@@ -811,14 +822,14 @@ public sealed class LocalHistory
                 {
                     knownUnder = known.Keys.Any(k => PathNames.IsUnder(k, path));
                 }
-                foreach (string file in knownUnder || new DirectoryInfo(path).LinkTarget is not null ? [] : Walk(path))
+                if (!knownUnder && new DirectoryInfo(path).LinkTarget is null)
                 {
-                    Look(file);
+                    folders.Add(path);
                 }
             }
             else if (File.Exists(path))
             {
-                Look(path);
+                Sort(path);
             }
             else
             {
@@ -827,6 +838,22 @@ public sealed class LocalHistory
                     gone.AddRange(known.Where(k => k.Value is not null && PathNames.Within(k.Key, path) && !File.Exists(k.Key)).Select(k => (k.Key, k.Value!)));
                 }
             }
+        }
+        // A file of a bulk arrival named as one gone is read all the same: it may be that file moved.
+        HashSet<string> goneNames = new(gone.Select(g => Path.GetFileName(g.Path)), PathNames.Comparer);
+        int room = arrivals.Room(heard);
+        foreach (string file in Full() ? [] : folders.SelectMany(Walk))
+        {
+            Sort(file);
+            if (Full())
+            {
+                break;
+            }
+        }
+        bool bulk = arrivals.Came(unknown.Count, heard);
+        foreach (string file in bulk ? unknown.Where(f => goneNames.Contains(Path.GetFileName(f))) : unknown)
+        {
+            Look(file);
         }
         List<HistoryEvent> made = [];
         HashSet<string> paired = new(PathNames.Comparer);
@@ -859,12 +886,38 @@ public sealed class LocalHistory
         Append(made);
         if (later.Count > 0)
         {
-            Enqueue(() => RecordNotice(later, set, name, time));
+            Enqueue(() => RecordNotice(later, set, name, time, heard));
+        }
+
+        // Whether the files it does not know are already a bulk arrival's, so the folders come need no more looking in.
+        bool Full() => unknown.Count > room && goneNames.Count == 0;
+
+        // A file it knows is read at once; one it does not, once the notice is known to be no bulk arrival.
+        void Sort(string file)
+        {
+            if (!Keeps(file) || !looked.Add(file))
+            {
+                return;
+            }
+            bool isKnown;
+            lock (gate)
+            {
+                isKnown = known.ContainsKey(file);
+            }
+            if (isKnown)
+            {
+                Look(file);
+            }
+            else
+            {
+                unknown.Add(file);
+            }
         }
 
         void Look(string file)
         {
-            if (!Keeps(file) || !looked.Add(file) || ReadKept(file) is not { } bytes)
+            Reading?.Invoke(file);
+            if (ReadKept(file) is not { } bytes)
             {
                 return;
             }
@@ -903,12 +956,14 @@ public sealed class LocalHistory
         }
     }
 
-    /// <summary>Whether a file the history has not seen was made since the folder opened, rather than there unseen.</summary>
+    /// <summary>Whether a file the history has not seen was made since the folder opened, rather than there unseen or
+    /// brought by a bulk arrival it passed over.</summary>
     private bool IsNew(string file)
     {
         try
         {
-            return File.GetCreationTimeUtc(file) >= openedUtc - TimeSpan.FromSeconds(2);
+            DateTime made = File.GetCreationTimeUtc(file);
+            return made >= openedUtc - TimeSpan.FromSeconds(2) && !arrivals.Brought(made);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -1211,12 +1266,27 @@ public sealed class LocalHistory
         }
     }
 
-    /// <summary>A file's bytes when the history keeps its content: text, and not too large; else null.</summary>
+    /// <summary>A file's bytes when the history keeps its content: text, and not too large; else null. A binary file is
+    /// read only as far as it takes to tell (<see cref="FileText.BinaryProbe"/>).</summary>
     private static byte[]? ReadKept(string file)
     {
         try
         {
-            return new FileInfo(file).Length <= FileText.KeptLimit && FileText.Read(file) is { } bytes && IsText(bytes) ? bytes : null;
+            if (new FileInfo(file).Length > FileText.KeptLimit)
+            {
+                return null;
+            }
+            using Stream stream = FileText.OpenRead(file);
+            byte[] start = new byte[FileText.BinaryProbe];
+            int probed = stream.ReadAtLeast(start, start.Length, throwOnEndOfStream: false);
+            if (FileText.LooksBinary(start.AsSpan(0, probed)))
+            {
+                return null;
+            }
+            using MemoryStream bytes = new();
+            bytes.Write(start, 0, probed);
+            stream.CopyTo(bytes);
+            return bytes.Length <= FileText.KeptLimit ? bytes.ToArray() : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

@@ -65,6 +65,11 @@
     <Compile Include="../../src/Passenger.App/TreeRows.cs" Link="App/TreeRows.cs" />
   </ItemGroup>
 
+  <!-- Which files made elsewhere Local History reads, by how many come together, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/History/BulkArrivals.cs" Link="App/BulkArrivals.cs" />
+  </ItemGroup>
+
   <!-- Which files are a package's, by a package folder's layout, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Packages/PackageFolders.cs" Link="App/PackageFolders.cs" />

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -20,7 +21,8 @@ namespace Passenger.Tests;
 /// in the Local History window with its time and name ("External change"), the person's labels among them; a version
 /// shows beside the file as it is now, Revert puts it back as one undoable step and a diff's arrow one change of it; a
 /// folder's history lists its files' versions and brings back one deleted; a file's history follows it through a rename
-/// in the Solution view; and the store keeps 5 days of activity and no more content than its limit.</summary>
+/// in the Solution view; a tree another program brings in at once is passed over unread; and the store keeps 5 days of
+/// activity and no more content than its limit.</summary>
 public sealed class LocalHistoryTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n\n    void Add()\n    {\n        count++;\n    }\n\n    int Total => count;\n}\n";
@@ -316,6 +318,49 @@ public sealed class LocalHistoryTests : IDisposable
             $"A change written after the checkout's moment was kept as {string.Join(", ", rows.Select(r => r.Title))}, not an external change above the checkout");
         Assert.Equal(Saved1, Encoding.UTF8.GetString(history.Content(rows[0].Version!)!));
         Assert.Equal(Original, Encoding.UTF8.GetString(history.Content(rows[1].Version!)!));
+        window.Close();
+    }
+
+    /// <summary>A tree another program brings into the open folder at once (a library copied in, an SDK unpacked) is a bulk
+    /// arrival: none of its files is read, nor listed in the folder's history, while a file the history knew that another
+    /// program changed meanwhile is kept as an external change; a file of the tree is read once it is opened, so a change
+    /// made to it elsewhere after is kept with what it held before.</summary>
+    [AvaloniaFact]
+    public void A_tree_brought_in_at_once_is_never_read_while_a_known_files_change_meanwhile_and_its_own_once_opened_are_kept()
+    {
+        string shop = Write("Shop.cs", Original);
+        MainWindow window = Open("Shop.cs");
+        LocalHistory history = window.LocalHistory!;
+        ConcurrentQueue<string> read = new();
+        history.Reading += read.Enqueue;
+        string outside = TestFolders.Create("library-");
+        TestFolders.WriteAll(outside, Enumerable.Range(0, BulkArrivals.AtOnce + 1).Select(piece => ($"Library/Part{piece % 10}/Piece{piece}.cs", $"class Piece{piece}\n{{\n}}\n")));
+
+        Directory.Move(Path.Combine(outside, "Library"), Path.Combine(folder, "Library"));
+        File.WriteAllText(shop, Saved1);
+        Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Library", "Part0", "Piece0.cs")) && Text(window) == Saved1,
+            "the library in Go to File and the open file following its change made elsewhere");
+        Ui.Settle();
+        string library = PathNames.Canonical(Path.Combine(folder, "Library"));
+        string[] readThere = [.. read.Where(p => PathNames.IsUnder(p, library))];
+        Assert.True(readThere.Length == 0, $"Local History read {readThere.Length} files of a tree brought in at once, which it keeps none of: {string.Join(", ", readThere.Take(5))}");
+        HistoryTab all = window.ShowLocalHistory(folder)!;
+        Ui.Landed(() => all.Rows.Count > 0, "the folder's history");
+        Assert.True(all.Rows.All(r => r.Files.All(f => !PathNames.IsUnder(f, library))),
+            $"The folder's history lists the tree brought in at once: {string.Join("; ", all.Rows.Select(r => $"{r.Title} [{string.Join(", ", r.Files)}]"))}");
+        Assert.True(all.Rows.Any(r => r.Title == LocalHistory.ExternalChange && r.Files.SequenceEqual([shop])),
+            $"A known file another program changed as the tree came is not kept as an external change: {string.Join("; ", all.Rows.Select(r => r.Title))}");
+
+        string opened = Path.Combine(library, "Part0", "Piece0.cs");
+        window.OpenFile(opened);
+        Ui.Settle();
+        const string Changed = "sealed class Piece0\n{\n}\n";
+        File.WriteAllText(opened, Changed);
+        Ui.WaitFor(() => Text(window) == Changed, "the tree's file opened following its change made elsewhere");
+        HistoryTab its = ShowFromFileMenu(window, "Show History…");
+        Ui.Landed(() => its.Rows.Count == 1, "the change made elsewhere to the tree's file once opened");
+        Assert.Equal(LocalHistory.ExternalChange, its.Rows[0].Title);
+        Ui.Landed(() => its.Diff?.Left.Document.Snapshot.ToString() == "class Piece0\n{\n}\n", "the tree's file as it came");
         window.Close();
     }
 
