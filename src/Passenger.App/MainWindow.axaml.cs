@@ -123,6 +123,7 @@ public partial class MainWindow : IdeWindow
         AddRequestMarks();
         AddRequests();
         AddMigrations();
+        AddDatabase();
         AddContainers();
         AddRunMarks();
         AddRunHere();
@@ -1102,6 +1103,7 @@ public partial class MainWindow : IdeWindow
             branches.Favorites = branchFavorites;
         }
         session.Keep(opening);
+        database?.Keep(opening.Database);
         WorkspaceState kept = opening.Workspace.Value;
         if (kept.UnloadedProjects.Count > 0)
         {

@@ -31,6 +31,7 @@ public static class ToolWindowIds
     public const string StepLibrary = "stepLibrary";
     public const string Coverage = "coverage";
     public const string Modules = "modules";
+    public const string Database = "database";
 
     /// <summary>Every id above, which a theme's layout names windows by.</summary>
     public static IReadOnlySet<string> All { get; } = typeof(ToolWindowIds).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
