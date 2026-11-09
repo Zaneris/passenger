@@ -29,11 +29,11 @@ public sealed class ToolkitRenames : IExtensionDocumentMessageHandler<ToolkitAsk
         {
             case IFieldSymbol { ContainingType: { } type } field when Marked(field, ObservableProperty) && ToolkitNames.PropertyOf(field.Name) is { } property:
                 string? renamed = ToolkitNames.PropertyOf(bare);
-                made.AddRange(type.GetMembers(property).OfType<IPropertySymbol>().Where(p => IsGenerated(p, solution)).Select(p => ((ISymbol)p, renamed)));
+                made.AddRange(type.GetMembers(property).OfType<IPropertySymbol>().Where(p => SymbolNames.IsGenerated(p, solution)).Select(p => ((ISymbol)p, renamed)));
                 foreach (string change in (string[])["Changing", "Changed"])
                 {
                     // The code's own part of a change method the generator declares, which its new name's no longer is.
-                    made.AddRange(type.GetMembers($"On{property}{change}").OfType<IMethodSymbol>().Where(m => IsGenerated(m, solution))
+                    made.AddRange(type.GetMembers($"On{property}{change}").OfType<IMethodSymbol>().Where(m => SymbolNames.IsGenerated(m, solution))
                         .SelectMany(m => m.PartialImplementationPart is { } own ? (ISymbol[])[m, own] : [m])
                         .Select(m => (m, renamed is null ? null : $"On{renamed}{change}")));
                 }
@@ -42,7 +42,7 @@ public sealed class ToolkitRenames : IExtensionDocumentMessageHandler<ToolkitAsk
                 bool task = ReturnsTask(method);
                 foreach (Func<string, string> command in (Func<string, string>[])[name => ToolkitNames.CommandOf(name, task), ToolkitNames.CancelCommandOf])
                 {
-                    made.AddRange(type.GetMembers(command(method.Name)).OfType<IPropertySymbol>().Where(p => IsGenerated(p, solution))
+                    made.AddRange(type.GetMembers(command(method.Name)).OfType<IPropertySymbol>().Where(p => SymbolNames.IsGenerated(p, solution))
                         .Select(p => ((ISymbol)p, (string?)command(bare))));
                 }
                 break;
@@ -110,7 +110,4 @@ public sealed class ToolkitRenames : IExtensionDocumentMessageHandler<ToolkitAsk
     }
 
     private static bool Marked(ISymbol symbol, string attribute) => symbol.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == attribute);
-
-    private static bool IsGenerated(ISymbol symbol, Solution solution) =>
-        symbol.DeclaringSyntaxReferences.Length > 0 && symbol.DeclaringSyntaxReferences.All(r => solution.GetDocument(r.SyntaxTree) is SourceGeneratedDocument);
 }

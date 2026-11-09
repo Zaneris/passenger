@@ -23,7 +23,7 @@ internal static partial class GodotSource
     {
         IReadOnlyList<(Document Document, Project Project)> documents = await LocalizationSource.DocumentsOfAsync(solution, asked.Path, false, cancel).ConfigureAwait(false);
         if (documents.Count == 0 || await documents[0].Project.GetCompilationAsync(cancel).ConfigureAwait(false) is not { } compilation
-            || compilation.GetTypeByMetadataName("Godot.GodotObject") is not { } godotObject)
+            || GodotSharp.ObjectIn(compilation) is not { } godotObject)
         {
             return Changes.Refused($"{System.IO.Path.GetFileName(asked.Path)} is in no Godot project the C# language server has loaded");
         }
@@ -99,11 +99,11 @@ internal static partial class GodotSource
             return Changes.Refused($"{type.Name} has a property {asked.Name} already");
         }
         int position = declaration.OpenBraceToken.Span.End;
-        string attribute = compilation.GetTypeByMetadataName("Godot.ExportAttribute") is { } export ? export.ToMinimalDisplayString(model, position) : "Godot.ExportAttribute";
+        string attribute = GodotSharp.Type(compilation, GodotSharp.Export) is { } export ? export.ToMinimalDisplayString(model, position) : $"{GodotSharp.Namespace}.{GodotSharp.Export}";
         attribute = attribute.EndsWith("Attribute", StringComparison.Ordinal) ? attribute[..^"Attribute".Length] : attribute;
         MemberDeclarationSyntax made = Member($"[{attribute}]\npublic {Shown(TypeOf(compilation, engine, asked.Type, cancel), compilation, model, position)} {asked.Name} {{ get; set; }}\n");
         MemberDeclarationSyntax? after = declaration.Members.LastOrDefault(m => m is PropertyDeclarationSyntax or FieldDeclarationSyntax
-            && m.AttributeLists.SelectMany(l => l.Attributes).Any(a => model.GetTypeInfo(a, cancel).Type is { Name: "ExportAttribute" }));
+            && m.AttributeLists.SelectMany(l => l.Attributes).Any(a => model.GetTypeInfo(a, cancel).Type is { Name: GodotSharp.Export, ContainingNamespace.Name: GodotSharp.Namespace }));
         return await AddedAsync(solution, holder, declaration, made, after, after is null ? declaration.Members.FirstOrDefault() : null, cancel).ConfigureAwait(false);
     }
 
@@ -172,7 +172,7 @@ internal static partial class GodotSource
 
     /// <summary>A type as the code at a place names it; Godot's Variant for one not known.</summary>
     private static string Shown(ITypeSymbol? type, Compilation compilation, SemanticModel model, int position) =>
-        (type ?? compilation.GetTypeByMetadataName("Godot.Variant"))?.ToMinimalDisplayString(model, position) ?? "Godot.Variant";
+        (type ?? GodotSharp.Type(compilation, "Variant"))?.ToMinimalDisplayString(model, position) ?? $"{GodotSharp.Namespace}.Variant";
 
     /// <summary>The C# type of a Godot type as a scene's value names it: a variant's (bool, int, float, String, Vector2, a
     /// packed array's element's array), an engine class by Godot's name, a script's class by its res://; null for none.</summary>
@@ -209,15 +209,15 @@ internal static partial class GodotSource
                 "Float32" => compilation.GetSpecialType(SpecialType.System_Single),
                 "Float64" => compilation.GetSpecialType(SpecialType.System_Double),
                 "String" => compilation.GetSpecialType(SpecialType.System_String),
-                _ => compilation.GetTypeByMetadataName("Godot." + element),
+                _ => GodotSharp.Type(compilation, element),
             };
             return of is null ? null : compilation.CreateArrayTypeSymbol(of);
         }
         if (godot is "Array" or "Dictionary")
         {
-            return compilation.GetTypeByMetadataName("Godot.Collections." + godot);
+            return GodotSharp.Type(compilation, "Collections." + godot);
         }
-        return engine.Type(godot) ?? compilation.GetTypeByMetadataName("Godot." + godot switch
+        return engine.Type(godot) ?? GodotSharp.Type(compilation, godot switch
         {
             "AABB" => "Aabb",
             "RID" => "Rid",

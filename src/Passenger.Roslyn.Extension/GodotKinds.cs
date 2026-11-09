@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Extensions;
-using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 using static Passenger.Roslyn.Extension.SyntaxReads;
@@ -58,7 +57,7 @@ internal static class GodotKinds
             }
             int index = ClassOf(declared, token, model, cancel);
             (string? node, string? export, string? member) = Told(solution, kind, token, model, cancel);
-            bool exact = GodotGenerated.Exact(token);
+            bool exact = Exact(token);
             reads.Add(new GodotKindRead(kind, token.ValueText, PlaceAt(text, exact ? token.SpanStart + 1 : token.SpanStart), PlaceAt(text, exact ? token.Span.End - 1 : token.Span.End),
                 exact, adds, index, node, export, member));
         }
@@ -78,7 +77,7 @@ internal static class GodotKinds
     internal static (string Layers, int Number)? LayerOf(ArgumentSyntax argument, SemanticModel model, CancellationToken cancel)
     {
         if (argument.Parent?.Parent is not InvocationExpressionSyntax call || model.GetOperation(call, cancel) is not IInvocationOperation { TargetMethod: var method } invocation
-            || !OfGodot(method) || invocation.Arguments.FirstOrDefault(a => a.Syntax == argument)?.Parameter is not { Name: "layerNumber" }
+            || !GodotSharp.Declares(method) || invocation.Arguments.FirstOrDefault(a => a.Syntax == argument)?.Parameter is not { Name: "layerNumber" }
             || LayersOf(method) is not { } layers || model.GetConstantValue(argument.Expression, cancel) is not { HasValue: true, Value: int number })
         {
             return null;
@@ -203,7 +202,7 @@ internal static class GodotKinds
                 {
                     continue;
                 }
-                List<SyntaxToken> strings = [.. root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken) && GodotGenerated.Exact(t)
+                List<SyntaxToken> strings = [.. root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken) && Exact(t)
                     && (asked.Kind == GodotStringKind.Autoload ? AutoloadOf(t.ValueText) == asked.Name : t.ValueText == asked.Name))];
                 if (strings.Count == 0 || await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model)
                 {
@@ -220,7 +219,7 @@ internal static class GodotKinds
                     }
                     (string? node, string? export, string? member) = Told(solution, asked.Kind, token, model, cancel);
                     IReadOnlyList<string> scripts = model.GetEnclosingSymbol(token.SpanStart, cancel)?.ContainingType is { } inside
-                        ? await ScriptsOfAsync(inside, solution, cancel).ConfigureAwait(false) : [];
+                        ? await GodotSharp.ScriptsOfAsync(inside, solution, cancel).ConfigureAwait(false) : [];
                     uses.Add(new GodotKindUse(path, PlaceAt(text, start), PlaceAt(text, start + asked.Name.Length), scripts, node, export, member));
                 }
             }
@@ -265,8 +264,8 @@ internal static class GodotKinds
         } : (null, null, null);
 
     /// <summary>The theme type a theme item's call looks its name up in, as its member: the type it names (<c>themeType</c>),
-    /// else the engine class of the control or window it is made on; and as its node "." where that is the class's own, else
-    /// the node the code tells it is (<see cref="NodeOf"/>), whose scenes may give it a type variation.</summary>
+    /// else the engine class of the control or window it is made on, by Godot's name; and as its node "." where that is the
+    /// class's own, else the node the code tells it is (<see cref="NodeOf"/>), whose scenes may give it a type variation.</summary>
     private static (string? Node, string? Export, string? Member) ThemeTold(Solution solution, SyntaxToken token, IOperation? instance, SemanticModel model, CancellationToken cancel)
     {
         if (token.Parent?.Parent?.Parent?.Parent is not InvocationExpressionSyntax call || model.GetOperation(call, cancel) is not IInvocationOperation invocation)
@@ -283,10 +282,10 @@ internal static class GodotKinds
         ITypeSymbol? receiver = own ? model.GetEnclosingSymbol(token.SpanStart, cancel)?.ContainingType : instance!.Type;
         for (ITypeSymbol? type = receiver; type is not null; type = type.BaseType)
         {
-            if (OfGodot(type))
+            if (GodotSharp.Declares(type))
             {
                 (string? node, string? export) = own ? (".", null) : NodeOf(solution, instance, model, Deepest, cancel) ?? (null, null);
-                return (node, export, type.Name == "GodotObject" ? "Object" : type.Name);
+                return (node, export, GodotSharp.ClassName(type));
             }
         }
         return (null, null, null);
@@ -305,24 +304,6 @@ internal static class GodotKinds
             "Stylebox" => GodotStringKind.ThemeStyle,
             _ => null,
         };
-
-    /// <summary>The scripts a class's code runs as: its own <c>[ScriptPath]</c>'s, and those of the classes deriving from it.</summary>
-    internal static async Task<IReadOnlyList<string>> ScriptsOfAsync(INamedTypeSymbol type, Solution solution, CancellationToken cancel)
-    {
-        List<string> scripts = [.. ScriptPath(type) is { } own ? [own] : Array.Empty<string>()];
-        foreach (INamedTypeSymbol derived in await SymbolFinder.FindDerivedClassesAsync(type, solution, transitive: true, cancellationToken: cancel).ConfigureAwait(false))
-        {
-            if (ScriptPath(derived) is { } script && !scripts.Contains(script))
-            {
-                scripts.Add(script);
-            }
-        }
-        return scripts;
-    }
-
-    private static string? ScriptPath(INamedTypeSymbol type) =>
-        type.GetAttributes().FirstOrDefault(a => a.AttributeClass is { Name: "ScriptPathAttribute", ContainingNamespace.Name: "Godot" })?.ConstructorArguments
-            is [{ Value: string path }] ? path : null;
 
     /// <summary>The autoload a node path names by <c>/root/Name</c>; null for any other path.</summary>
     internal static string? AutoloadOf(string path)
@@ -345,12 +326,12 @@ internal static class GodotKinds
         }
         IReadOnlyList<IArgumentOperation> arguments = model.GetOperation(call, cancel) switch
         {
-            IInvocationOperation invocation when OfGodot(invocation.TargetMethod) => invocation.Arguments,
-            IObjectCreationOperation { Constructor: { } made } creation when OfGodot(made) => creation.Arguments,
+            IInvocationOperation invocation when GodotSharp.Declares(invocation.TargetMethod) => invocation.Arguments,
+            IObjectCreationOperation { Constructor: { } made } creation when GodotSharp.Declares(made) => creation.Arguments,
             _ => [],
         };
         IParameterSymbol? parameter = arguments.FirstOrDefault(a => a.Syntax == argument)?.Parameter;
-        return parameter?.Type is INamedTypeSymbol { Name: "NodePath", ContainingNamespace.Name: "Godot" }
+        return parameter?.Type is INamedTypeSymbol { Name: "NodePath", ContainingNamespace.Name: GodotSharp.Namespace }
             || parameter?.ContainingSymbol is IMethodSymbol { MethodKind: MethodKind.Constructor, ContainingType.Name: "NodePath" };
     }
 
@@ -365,18 +346,18 @@ internal static class GodotKinds
         }
         if (literal.Parent is AssignmentExpressionSyntax assignment && assignment.Right == literal)
         {
-            return model.GetOperation(assignment, cancel) is ISimpleAssignmentOperation { Target: IPropertyReferenceOperation { Property: var property } target } && OfGodot(property)
+            return model.GetOperation(assignment, cancel) is ISimpleAssignmentOperation { Target: IPropertyReferenceOperation { Property: var property } target } && GodotSharp.Declares(property)
                 && (property.ContainingType.Name, property.Name) is ("AnimationPlayer", "CurrentAnimation" or "AssignedAnimation" or "Autoplay")
                     or ("AnimatedSprite2D" or "AnimatedSprite3D", "Animation" or "Autoplay")
                 ? (GodotStringKind.Animation, false, target.Instance) : null;
         }
         if (literal.Parent is not ArgumentSyntax argument || argument.Parent?.Parent is not { } call
-            || model.GetOperation(call, cancel) is not IInvocationOperation { TargetMethod: var method } invocation || !OfGodot(method)
+            || model.GetOperation(call, cancel) is not IInvocationOperation { TargetMethod: var method } invocation || !GodotSharp.Declares(method)
             || invocation.Arguments.FirstOrDefault(a => a.Syntax == argument)?.Parameter is not { } parameter)
         {
             return null;
         }
-        if (parameter.Name == "property" && method.ContainingType.Name == "GodotObject" && token.ValueText.StartsWith(Parameters, StringComparison.Ordinal))
+        if (parameter.Name == "property" && GodotSharp.IsObject(method.ContainingType) && token.ValueText.StartsWith(Parameters, StringComparison.Ordinal))
         {
             return (GodotStringKind.TreeParameter, false, invocation.Instance);
         }
@@ -398,7 +379,7 @@ internal static class GodotKinds
         ("AnimatedSprite2D" or "AnimatedSprite3D", "name") => (GodotStringKind.Animation, false),
         ("AnimationLibrary", "name") when method.Name == "AddAnimation" => (GodotStringKind.Animation, true),
         ("ShaderMaterial", "param") => (GodotStringKind.ShaderParameter, false),
-        ("GodotObject" or "TranslationServer", "message") => (GodotStringKind.Translation, false),
+        (GodotSharp.GodotObject or "TranslationServer", "message") => (GodotStringKind.Translation, false),
         ("Translation", "srcMessage") when method.Name is "AddMessage" or "AddPluralMessage" => (GodotStringKind.Translation, true),
         ("RenderingServer", "name") when method.Name.StartsWith("GlobalShaderParameter", StringComparison.Ordinal) => (GodotStringKind.ShaderGlobal, method.Name == "GlobalShaderParameterAdd"),
         ("Control" or "Window" or "Theme", "name") when ThemeKindOf(method) is { } theme => (theme, method.Name.StartsWith("Add", StringComparison.Ordinal) || method.Name.StartsWith("Set", StringComparison.Ordinal)),
@@ -437,14 +418,14 @@ internal static class GodotKinds
             case IInstanceReferenceOperation:
                 return (".", null);
             case IInvocationOperation { TargetMethod: { Name: "GetNode" or "GetNodeOrNull" } method, Instance: null or IInstanceReferenceOperation } call
-                when method.OriginalDefinition.ContainingType is { Name: "Node", ContainingNamespace.Name: "Godot" } && call.Arguments.Length > 0:
+                when method.OriginalDefinition.ContainingType is { Name: "Node", ContainingNamespace.Name: GodotSharp.Namespace } && call.Arguments.Length > 0:
                 return Constant(call.Arguments[0].Value) is { } path ? (path, null) : null;
         }
         if (depth == 0 || Held(value) is not { } held)
         {
             return null;
         }
-        if (held is IFieldSymbol or IPropertySymbol && held.GetAttributes().Any(a => a.AttributeClass is { Name: "ExportAttribute", ContainingNamespace.Name: "Godot" }))
+        if (held is IFieldSymbol or IPropertySymbol && GodotSharp.Has(held, GodotSharp.Export))
         {
             return (null, held.Name);
         }
@@ -465,7 +446,7 @@ internal static class GodotKinds
     private static (string? Node, string? Export, string? Member)? MaterialOf(Solution solution, IOperation? value, SemanticModel model, int depth, CancellationToken cancel)
     {
         value = Unwrapped(value);
-        if (value is IPropertyReferenceOperation { Property: { Name: "Material" or "MaterialOverride" or "MaterialOverlay" } property } read && OfGodot(property))
+        if (value is IPropertyReferenceOperation { Property: { Name: "Material" or "MaterialOverride" or "MaterialOverlay" } property } read && GodotSharp.Declares(property))
         {
             string member = property.Name switch { "Material" => "material", "MaterialOverride" => "material_override", _ => "material_overlay" };
             return NodeOf(solution, read.Instance, model, depth, cancel) is var (node, export) ? (node, export, member) : null;
@@ -545,6 +526,4 @@ internal static class GodotKinds
         }
         return value.ConstantValue is { HasValue: true, Value: string path } ? path : null;
     }
-
-    private static bool OfGodot(ISymbol symbol) => symbol.ContainingAssembly?.Name == "GodotSharp";
 }

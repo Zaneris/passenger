@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Workspace;
 using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
@@ -33,7 +34,6 @@ public sealed class GodotPaths : IExtensionWorkspaceMessageHandler<GodotPathsAsk
 /// by them, which no rename of the code's own name reaches.</summary>
 internal static class GodotGenerated
 {
-    private const string Handler = "EventHandler";
     private const string Emit = "EmitSignal";
 
     public static async Task<GodotNamesFound> AtAsync(Solution solution, Document document, GodotNamesAsked asked, CancellationToken cancel)
@@ -41,7 +41,7 @@ internal static class GodotGenerated
         SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
         int position = text.Lines.GetPosition(new LinePosition(asked.At.Line, asked.At.Character));
         if (await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root
-            || model.Compilation.GetTypeByMetadataName("Godot.GodotObject") is not { } godotObject)
+            || GodotSharp.ObjectIn(model.Compilation) is not { } godotObject)
         {
             return GodotNamesFound.None;
         }
@@ -62,7 +62,7 @@ internal static class GodotGenerated
         {
             return GodotNamesFound.None with { Engine = engine };
         }
-        string written = foundKind == GodotNameKind.Signal ? source.Name[..^Handler.Length] : source.Name;
+        string written = foundKind == GodotNameKind.Signal ? source.Name[..^GodotSharp.EventHandler.Length] : source.Name;
         IReadOnlyList<GodotNameUse> uses = asked.Uses ? await UsesAsync(solution, source, foundKind, written, cancel).ConfigureAwait(false) : [];
         return new GodotNamesFound(SymbolNames.Named(solution, source), foundKind, written, via, uses) { Engine = engine };
     }
@@ -75,27 +75,27 @@ internal static class GodotGenerated
         {
             return null;
         }
-        bool generated = IsGenerated(symbol, solution);
+        bool generated = SymbolNames.IsGenerated(symbol, solution);
         switch (symbol)
         {
-            case INamedTypeSymbol { TypeKind: TypeKind.Delegate } signal when IsSignal(signal) && Derives(type, godotObject):
+            case INamedTypeSymbol { TypeKind: TypeKind.Delegate } signal when IsNamedSignal(signal) && GodotSharp.Derives(type, godotObject):
                 return (signal, GodotNameKind.Signal, GodotNameVia.Own);
-            case IEventSymbol { Type: INamedTypeSymbol signal } when generated && IsSignal(signal):
+            case IEventSymbol { Type: INamedTypeSymbol signal } when generated && IsNamedSignal(signal):
                 return (signal, GodotNameKind.Signal, GodotNameVia.Event);
             case IMethodSymbol emit when generated && emit.Name.StartsWith(Emit, StringComparison.Ordinal) && Member(type, GodotNameKind.Signal, emit.Name[Emit.Length..]) is { } signal:
                 return (signal, GodotNameKind.Signal, GodotNameVia.Emit);
-            case IFieldSymbol name when generated && type.ContainingType is { } owner && Derives(owner, godotObject):
+            case IFieldSymbol name when generated && type.ContainingType is { } owner && GodotSharp.Derives(owner, godotObject):
                 GodotNameKind? kind = type.Name switch
                 {
-                    "SignalName" => GodotNameKind.Signal,
-                    "MethodName" => GodotNameKind.Method,
-                    "PropertyName" => GodotNameKind.Property,
+                    GodotSharpIl.SignalName => GodotNameKind.Signal,
+                    GodotSharpIl.MethodName => GodotNameKind.Method,
+                    GodotSharpIl.PropertyName => GodotNameKind.Property,
                     _ => null,
                 };
                 return kind is { } of && Member(owner, of, name.Name) is { } member ? (member, of, GodotNameVia.Name) : null;
-            case IMethodSymbol { MethodKind: MethodKind.Ordinary } method when !generated && Derives(type, godotObject):
+            case IMethodSymbol { MethodKind: MethodKind.Ordinary } method when !generated && GodotSharp.Derives(type, godotObject):
                 return (method, GodotNameKind.Method, GodotNameVia.Own);
-            case IPropertySymbol or IFieldSymbol when !generated && !symbol.IsImplicitlyDeclared && Derives(type, godotObject):
+            case IPropertySymbol or IFieldSymbol when !generated && !symbol.IsImplicitlyDeclared && GodotSharp.Derives(type, godotObject):
                 return (symbol, GodotNameKind.Property, GodotNameVia.Own);
         }
         return null;
@@ -109,7 +109,7 @@ internal static class GodotGenerated
         {
             ISymbol? found = kind switch
             {
-                GodotNameKind.Signal => at.GetTypeMembers(name + Handler).FirstOrDefault(d => d.TypeKind == TypeKind.Delegate && IsSignal(d)),
+                GodotNameKind.Signal => at.GetTypeMembers(name + GodotSharp.EventHandler).FirstOrDefault(IsNamedSignal),
                 GodotNameKind.Method => at.GetMembers(name).OfType<IMethodSymbol>().FirstOrDefault(m => m.MethodKind == MethodKind.Ordinary && m.Locations.Any(l => l.IsInSource)),
                 _ => at.GetMembers(name).FirstOrDefault(m => m is IPropertySymbol or IFieldSymbol && !m.IsImplicitlyDeclared && m.Locations.Any(l => l.IsInSource)),
             };
@@ -130,11 +130,11 @@ internal static class GodotGenerated
         List<(ISymbol Mirror, string Before)> mirrors = [];
         if (kind == GodotNameKind.Signal)
         {
-            mirrors.AddRange(owner.GetMembers(written).OfType<IEventSymbol>().Where(e => IsGenerated(e, solution)).Select(e => ((ISymbol)e, string.Empty)));
-            mirrors.AddRange(owner.GetMembers(Emit + written).OfType<IMethodSymbol>().Where(m => IsGenerated(m, solution)).Select(m => ((ISymbol)m, Emit)));
+            mirrors.AddRange(owner.GetMembers(written).OfType<IEventSymbol>().Where(e => SymbolNames.IsGenerated(e, solution)).Select(e => ((ISymbol)e, string.Empty)));
+            mirrors.AddRange(owner.GetMembers(Emit + written).OfType<IMethodSymbol>().Where(m => SymbolNames.IsGenerated(m, solution)).Select(m => ((ISymbol)m, Emit)));
         }
-        string nested = kind switch { GodotNameKind.Signal => "SignalName", GodotNameKind.Method => "MethodName", _ => "PropertyName" };
-        mirrors.AddRange(owner.GetTypeMembers(nested).SelectMany(n => n.GetMembers(written)).OfType<IFieldSymbol>().Where(f => IsGenerated(f, solution))
+        string nested = kind switch { GodotNameKind.Signal => GodotSharpIl.SignalName, GodotNameKind.Method => GodotSharpIl.MethodName, _ => GodotSharpIl.PropertyName };
+        mirrors.AddRange(owner.GetTypeMembers(nested).SelectMany(n => n.GetMembers(written)).OfType<IFieldSymbol>().Where(f => SymbolNames.IsGenerated(f, solution))
             .Select(f => ((ISymbol)f, string.Empty)));
         List<GodotNameUse> uses = [];
         HashSet<(string, int)> seen = [];
@@ -209,14 +209,14 @@ internal static class GodotGenerated
                 SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
                 foreach (SyntaxToken token in strings)
                 {
-                    if (NameCall(token, model, cancel) is not { On: INamedTypeSymbol { ContainingAssembly.Name: "GodotSharp" } } call || call.Kind != asked.Kind
+                    if (NameCall(token, model, cancel) is not { On: INamedTypeSymbol { ContainingAssembly.Name: GodotSharp.Assembly } } call || call.Kind != asked.Kind
                         || !seen.Add((path, token.SpanStart)))
                     {
                         continue;
                     }
                     (string? node, string? export) = GodotKinds.NodeOf(solution, call.Object, model, cancel) ?? (null, null);
                     IReadOnlyList<string> scripts = model.GetEnclosingSymbol(token.SpanStart, cancel)?.ContainingType is { } inside
-                        ? await GodotKinds.ScriptsOfAsync(inside, solution, cancel).ConfigureAwait(false) : [];
+                        ? await GodotSharp.ScriptsOfAsync(inside, solution, cancel).ConfigureAwait(false) : [];
                     uses.Add(new GodotKindUse(path, PlaceAt(text, token.SpanStart + 1), PlaceAt(text, token.Span.End - 1), scripts, node, export, null)
                     {
                         Rest = RestOf(token, call, text),
@@ -281,7 +281,7 @@ internal static class GodotGenerated
             IObjectCreationOperation { Constructor: { } made } creation => (made, null, creation.Arguments),
             _ => (null, null, default),
         };
-        if (method?.ContainingAssembly.Name != "GodotSharp" || arguments.IsDefault
+        if (method?.ContainingAssembly.Name != GodotSharp.Assembly || arguments.IsDefault
             || arguments.FirstOrDefault(a => a.Syntax == argument) is not { Parameter: { Type.Name: "StringName" } parameter } given)
         {
             return null;
@@ -293,7 +293,7 @@ internal static class GodotGenerated
             "property" => GodotNameKind.Property,
             _ => null,
         };
-        IOperation? named = arguments.FirstOrDefault(a => a != given && a.Parameter?.Type is { Name: "GodotObject", ContainingNamespace.Name: "Godot" }) is { } beside
+        IOperation? named = arguments.FirstOrDefault(a => a != given && GodotSharp.IsObject(a.Parameter?.Type)) is { } beside
             ? Unconverted(beside.Value) : instance;
         return kind is { } of && named?.Type is { } on ? new GodotNameCall(of, on, method, arguments) { Object = named } : null;
     }
@@ -339,27 +339,9 @@ internal static class GodotGenerated
         return false;
     }
 
-    /// <summary>Whether a symbol is declared only in a source generator's documents.</summary>
-    private static bool IsGenerated(ISymbol symbol, Solution solution) =>
-        symbol.DeclaringSyntaxReferences.Length > 0 && symbol.DeclaringSyntaxReferences.All(r => solution.GetDocument(r.SyntaxTree) is SourceGeneratedDocument);
-
-    private static bool IsSignal(INamedTypeSymbol type) => type.Name.EndsWith(Handler, StringComparison.Ordinal) && type.Name.Length > Handler.Length
-        && type.GetAttributes().Any(a => a.AttributeClass is { Name: "SignalAttribute", ContainingNamespace.Name: "Godot" });
-
-    /// <summary>Whether a string literal is written as its characters: a plain one, no escape in it.</summary>
-    internal static bool Exact(SyntaxToken token) => token.Text.Length == token.ValueText.Length + 2 && token.Text[0] == '"';
-
-    private static bool Derives(INamedTypeSymbol type, INamedTypeSymbol godotObject)
-    {
-        for (INamedTypeSymbol? at = type.BaseType; at is not null; at = at.BaseType)
-        {
-            if (SymbolEqualityComparer.Default.Equals(at, godotObject))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
+    /// <summary>Whether a type is a script's signal named as Godot's source generator takes one, XEventHandler.</summary>
+    private static bool IsNamedSignal(INamedTypeSymbol type) =>
+        type.Name.EndsWith(GodotSharp.EventHandler, StringComparison.Ordinal) && type.Name.Length > GodotSharp.EventHandler.Length && GodotSharp.IsSignal(type);
 }
 
 /// <summary>A call of Godot's API given a string naming a signal, a method or a property (<see cref="GodotGenerated.NameCall"/>),

@@ -3,7 +3,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Extensions;
-using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Workspace;
@@ -26,13 +25,11 @@ public sealed class GodotCode : IExtensionWorkspaceMessageHandler<GodotCodeReque
 /// and a node's signal or method by the name a scene writes (an engine one's snake_case, a script's own as declared).</summary>
 internal static partial class GodotSource
 {
-    private const string Namespace = "Godot";
-
     public static async Task<GodotCodeFound> ReadAsync(Solution solution, GodotCodeRequest asked, CancellationToken cancel)
     {
         IReadOnlyList<(Document Document, Project Project)> documents = await LocalizationSource.DocumentsOfAsync(solution, asked.Path, false, cancel).ConfigureAwait(false);
         if (documents.Count == 0 || await documents[0].Project.GetCompilationAsync(cancel).ConfigureAwait(false) is not { } compilation
-            || compilation.GetTypeByMetadataName("Godot.GodotObject") is not { } godotObject
+            || GodotSharp.ObjectIn(compilation) is not { } godotObject
             || await documents[0].Document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root
             || await documents[0].Document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model)
         {
@@ -42,7 +39,7 @@ internal static partial class GodotSource
         SourceText text = await documents[0].Document.GetTextAsync(cancel).ConfigureAwait(false);
         List<INamedTypeSymbol> declared = [.. root.DescendantNodes().OfType<ClassDeclarationSyntax>()
             .Select(c => model.GetDeclaredSymbol(c, cancel)).OfType<INamedTypeSymbol>()
-            .Where(t => Derives(t, godotObject)).Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)];
+            .Where(t => GodotSharp.Derives(t, godotObject)).Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)];
         List<GodotClassFound> classes = [];
         foreach (INamedTypeSymbol type in declared)
         {
@@ -94,7 +91,7 @@ internal static partial class GodotSource
             {
                 continue;
             }
-            bool script = !engine.Owns(on) && on.Locations.Any(l => l.IsInSource) && Derives(on, godotObject);
+            bool script = !engine.Owns(on) && on.Locations.Any(l => l.IsInSource) && GodotSharp.Derives(on, godotObject);
             INamedTypeSymbol? own = script ? on : null;
             string? engineClass = script ? null : engine.First(on) is { } first ? engine.NameOf(first) : null;
             string name = token.ValueText;
@@ -108,10 +105,10 @@ internal static partial class GodotSource
             int? given = (call.Kind == GodotNameKind.Signal && call.Method.Name == "EmitSignal" || call.Kind == GodotNameKind.Method && call.Method.Name is "Call" or "CallDeferred")
                 && token.Parent?.Parent?.Parent is ArgumentListSyntax list
                 && call.Arguments.FirstOrDefault(a => a.Parameter?.IsParams == true) is { ArgumentKind: not ArgumentKind.Explicit } ? list.Arguments.Count - 1 : null;
-            bool exact = GodotGenerated.Exact(token);
+            bool exact = Exact(token);
             byStart[token.SpanStart] = reads.Count;
             GodotSignature? handler = null;
-            if (call.Kind == GodotNameKind.Signal && call.Arguments.FirstOrDefault(a => a.Parameter?.Type is { Name: "Callable", ContainingNamespace.Name: Namespace })?.Value is { } callable)
+            if (call.Kind == GodotNameKind.Signal && call.Arguments.FirstOrDefault(a => a.Parameter?.Type is { Name: "Callable", ContainingNamespace.Name: GodotSharp.Namespace })?.Value is { } callable)
             {
                 if (GodotGenerated.Unconverted(callable) is IObjectCreationOperation { Arguments: [_, { Value: var method }] } && GodotGenerated.Unconverted(method) is ILiteralOperation { Syntax: LiteralExpressionSyntax literal })
                 {
@@ -160,7 +157,7 @@ internal static partial class GodotSource
     {
         if (callable is IObjectCreationOperation { Arguments: [{ Value: var target }, { Value: var method }] }
             && GodotGenerated.Unconverted(target).Type is INamedTypeSymbol type && !engine.Owns(type) && type.Locations.Any(l => l.IsInSource)
-            && NamedBy(GodotGenerated.Unconverted(method), "MethodName") is { } name)
+            && NamedBy(GodotGenerated.Unconverted(method), GodotSharpIl.MethodName) is { } name)
         {
             return Method(engine, type, null, name);
         }
@@ -184,7 +181,7 @@ internal static partial class GodotSource
         }
         if (up is not IArgumentOperation { Parent: IInvocationOperation { TargetMethod.Name: "Connect" } connect }
             || connect.Arguments.FirstOrDefault(a => a.Parameter?.Name == "signal")?.Value is not { } signal
-            || GodotGenerated.Unconverted(signal) is ILiteralOperation || NamedBy(GodotGenerated.Unconverted(signal), "SignalName") is not { } name)
+            || GodotGenerated.Unconverted(signal) is ILiteralOperation || NamedBy(GodotGenerated.Unconverted(signal), GodotSharpIl.SignalName) is not { } name)
         {
             return null;
         }
@@ -205,19 +202,12 @@ internal static partial class GodotSource
     /// <summary>A class of the file: its place, engine class, scripts, exports and signals.</summary>
     private static async Task<GodotClassFound> ClassAsync(INamedTypeSymbol type, Solution solution, Engine engine, string path, SourceText text, CancellationToken cancel)
     {
-        List<string> scripts = [.. ScriptPath(type) is { } own ? [own] : Array.Empty<string>()];
-        foreach (INamedTypeSymbol derived in await SymbolFinder.FindDerivedClassesAsync(type, solution, transitive: true, cancellationToken: cancel).ConfigureAwait(false))
-        {
-            if (ScriptPath(derived) is { } script && !scripts.Contains(script))
-            {
-                scripts.Add(script);
-            }
-        }
+        IReadOnlyList<string> scripts = await GodotSharp.ScriptsOfAsync(type, solution, cancel).ConfigureAwait(false);
         Location? named = type.Locations.FirstOrDefault(l => l.IsInSource && SamePath(l.SourceTree?.FilePath, path)) ?? type.Locations.FirstOrDefault(l => l.IsInSource);
         TextSpan span = named?.SourceSpan ?? default;
         bool here = named is not null && SamePath(named.SourceTree?.FilePath, path);
         List<GodotMember> exports = [];
-        foreach (ISymbol member in type.GetMembers().Where(m => m is IPropertySymbol or IFieldSymbol && !m.IsImplicitlyDeclared && Has(m, "ExportAttribute")))
+        foreach (ISymbol member in type.GetMembers().Where(m => m is IPropertySymbol or IFieldSymbol && !m.IsImplicitlyDeclared && GodotSharp.Has(m, GodotSharp.Export)))
         {
             if (Declared(member) is { } at)
             {
@@ -230,7 +220,7 @@ internal static partial class GodotSource
             }
         }
         List<GodotMember> signals = [];
-        foreach (INamedTypeSymbol signal in type.GetTypeMembers().Where(d => d.TypeKind == TypeKind.Delegate && Has(d, "SignalAttribute")))
+        foreach (INamedTypeSymbol signal in type.GetTypeMembers().Where(GodotSharp.IsSignal))
         {
             if (Declared(signal) is { } at)
             {
@@ -250,7 +240,7 @@ internal static partial class GodotSource
             bool onThis = call.Expression is SimpleNameSyntax
                 || call.Expression is MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or BaseExpressionSyntax };
             if (!onThis || NameOf(call.Expression) is not ("GetNode" or "GetNodeOrNull") || model.GetSymbolInfo(call, cancel).Symbol is not IMethodSymbol method
-                || method.OriginalDefinition.ContainingType is not { Name: "Node", ContainingNamespace.Name: Namespace } || call.ArgumentList.Arguments.FirstOrDefault()?.Expression is not { } given
+                || method.OriginalDefinition.ContainingType is not { Name: "Node", ContainingNamespace.Name: GodotSharp.Namespace } || call.ArgumentList.Arguments.FirstOrDefault()?.Expression is not { } given
                 || model.GetEnclosingSymbol(call.SpanStart, cancel)?.ContainingType is not { } inside)
             {
                 continue;
@@ -271,20 +261,12 @@ internal static partial class GodotSource
         }
     }
 
-    /// <summary>Whether a string literal is written as its characters: a plain one, no escape in it.</summary>
-    private static bool Exact(SyntaxToken token) => token.Text.Length == token.ValueText.Length + 2 && token.Text[0] == '"';
-
     /// <summary>The class whose <c>[ScriptPath]</c> is a script's res:// path, among the classes of its file's name.</summary>
     private static INamedTypeSymbol? ScriptClass(Compilation compilation, string script, CancellationToken cancel)
     {
         string stem = System.IO.Path.GetFileNameWithoutExtension(script.Split('/')[^1]);
-        return compilation.GetSymbolsWithName(stem, SymbolFilter.Type, cancel).OfType<INamedTypeSymbol>().FirstOrDefault(t => ScriptPath(t) == script);
+        return compilation.GetSymbolsWithName(stem, SymbolFilter.Type, cancel).OfType<INamedTypeSymbol>().FirstOrDefault(t => GodotSharp.ScriptPath(t) == script);
     }
-
-    /// <summary>The res:// path Godot's source generator gives a class (<c>[ScriptPath("res://Main.cs")]</c>); null for none.</summary>
-    private static string? ScriptPath(INamedTypeSymbol type) =>
-        type.GetAttributes().FirstOrDefault(a => a.AttributeClass is { Name: "ScriptPathAttribute", ContainingNamespace.Name: Namespace })?.ConstructorArguments
-            is [{ Value: string path }] ? path : null;
 
     /// <summary>A signal on a node: its script's <c>[Signal]</c> delegate of the name (in its class or a base of the code's),
     /// else its engine class's event of the name, by the script's first engine class or the node's own.</summary>
@@ -296,7 +278,7 @@ internal static partial class GodotSource
     {
         for (INamedTypeSymbol? type = script; type is not null && !engine.Owns(type); type = type.BaseType)
         {
-            if (type.GetTypeMembers(name + "EventHandler").FirstOrDefault(d => d.TypeKind == TypeKind.Delegate && Has(d, "SignalAttribute")) is { DelegateInvokeMethod: { } invoke } signal)
+            if (type.GetTypeMembers(name + GodotSharp.EventHandler).FirstOrDefault(GodotSharp.IsSignal) is { DelegateInvokeMethod: { } invoke } signal)
             {
                 return (invoke, signal);
             }
@@ -393,7 +375,7 @@ internal static partial class GodotSource
     /// <summary>The Variant type of a Godot value type C# names (<c>Vector2I</c>, Godot's <c>Vector2i</c>), of those an
     /// export takes, Vector2 to RID; null for any other.</summary>
     private static GodotType? VariantOf(INamedTypeSymbol type) =>
-        type.ContainingNamespace.Name == Namespace && GodotTypes.Named(TextNames.GetValueOrDefault(type.Name, type.Name)) is { } variant
+        type.ContainingNamespace.Name == GodotSharp.Namespace && GodotTypes.Named(TextNames.GetValueOrDefault(type.Name, type.Name)) is { } variant
             && variant is >= GodotType.Vector2 and <= GodotType.Rid ? variant : null;
 
     /// <summary>What Godot's inspector takes an exported member as, as Godot's source generator writes its property: its
@@ -413,11 +395,11 @@ internal static partial class GodotSource
             INamedTypeSymbol godot when VariantOf(godot) is { } variant => ((int)variant, 0L, string.Empty),
             INamedTypeSymbol { ContainingNamespace.Name: "Collections" } collection when collection.Name is "Array" or "Dictionary" =>
                 ((int)(collection.Name == "Array" ? GodotType.Array : GodotType.Dictionary), 0L, string.Empty),
-            INamedTypeSymbol given when engine.Type("Resource") is { } resource && Derives(given, resource) => ((int)GodotType.Object, 17L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
-            INamedTypeSymbol given when engine.Type("Node") is { } node && (SymbolEqualityComparer.Default.Equals(given, node) || Derives(given, node)) => ((int)GodotType.Object, 34L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
+            INamedTypeSymbol given when engine.Type("Resource") is { } resource && GodotSharp.Derives(given, resource) => ((int)GodotType.Object, 17L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
+            INamedTypeSymbol given when engine.Type("Node") is { } node && (SymbolEqualityComparer.Default.Equals(given, node) || GodotSharp.Derives(given, node)) => ((int)GodotType.Object, 34L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
             _ => (0, 0L, string.Empty),
         };
-        if (member.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "ExportAttribute")?.ConstructorArguments is [{ Value: int asked }, { Value: string words }, ..] && asked != 0)
+        if (GodotSharp.Attribute(member, GodotSharp.Export)?.ConstructorArguments is [{ Value: int asked }, { Value: string words }, ..] && asked != 0)
         {
             (hint, hintString) = (asked, words);
         }
@@ -495,8 +477,8 @@ internal static partial class GodotSource
     /// <summary>The node a member of a type names by its path where a scene sets it: a NodePath's any node, a node type's a
     /// node of that type; null for any other type.</summary>
     private static GodotTypeRef? NodeOf(Engine engine, ITypeSymbol of) =>
-        of is INamedTypeSymbol { Name: "NodePath", ContainingNamespace.Name: Namespace } && engine.Type("Node") is { } any ? engine.Ref(any)
-        : of is INamedTypeSymbol given && engine.Type("Node") is { } nodes && (SymbolEqualityComparer.Default.Equals(given, nodes) || Derives(given, nodes)) ? engine.Ref(given)
+        of is INamedTypeSymbol { Name: "NodePath", ContainingNamespace.Name: GodotSharp.Namespace } && engine.Type("Node") is { } any ? engine.Ref(any)
+        : of is INamedTypeSymbol given && engine.Type("Node") is { } nodes && (SymbolEqualityComparer.Default.Equals(given, nodes) || GodotSharp.Derives(given, nodes)) ? engine.Ref(given)
         : null;
 
     /// <summary>A signal's or method's parameters, and how many a call must give: every one of a script's method (Godot calls
@@ -540,26 +522,11 @@ internal static partial class GodotSource
 
     /// <summary>A <c>[Signal]</c> delegate's signal: its name less EventHandler, as Godot's source generator names it.</summary>
     private static string SignalName(INamedTypeSymbol signal) =>
-        signal.Name.EndsWith("EventHandler", StringComparison.Ordinal) ? signal.Name[..^"EventHandler".Length] : signal.Name;
+        signal.Name.EndsWith(GodotSharp.EventHandler, StringComparison.Ordinal) ? signal.Name[..^GodotSharp.EventHandler.Length] : signal.Name;
 
     /// <summary>A name with its underscores and letter case left aside, as an engine member's C# name and a scene's
     /// snake_case meet (body_entered, BodyEntered).</summary>
     private static string Plain(string name) => name.Replace("_", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
-
-    private static bool Has(ISymbol symbol, string attribute) =>
-        symbol.GetAttributes().Any(a => a.AttributeClass is { } type && type.Name == attribute && type.ContainingNamespace.Name == Namespace);
-
-    private static bool Derives(INamedTypeSymbol type, INamedTypeSymbol godotObject)
-    {
-        for (INamedTypeSymbol? at = type.BaseType; at is not null; at = at.BaseType)
-        {
-            if (SymbolEqualityComparer.Default.Equals(at, godotObject))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 
     /// <summary>A class and every type it is: its bases and its interfaces, by full name.</summary>
     private static IEnumerable<string> Lineage(INamedTypeSymbol type)
@@ -588,16 +555,15 @@ internal static partial class GodotSource
         private Engine(IAssemblySymbol assembly)
         {
             this.assembly = assembly;
-            INamespaceSymbol? godot = assembly.GlobalNamespace.GetNamespaceMembers().FirstOrDefault(n => n.Name == Namespace);
-            INamedTypeSymbol? godotObject = godot?.GetTypeMembers("GodotObject").FirstOrDefault();
+            INamespaceSymbol? godot = assembly.GlobalNamespace.GetNamespaceMembers().FirstOrDefault(n => n.Name == GodotSharp.Namespace);
+            INamedTypeSymbol? godotObject = godot?.GetTypeMembers(GodotSharp.GodotObject).FirstOrDefault();
             foreach (INamedTypeSymbol type in godot?.GetTypeMembers() ?? [])
             {
-                if (godotObject is null || type.TypeKind != TypeKind.Class || !(SymbolEqualityComparer.Default.Equals(type, godotObject) || Derives(type, godotObject)))
+                if (godotObject is null || type.TypeKind != TypeKind.Class || !(SymbolEqualityComparer.Default.Equals(type, godotObject) || GodotSharp.Derives(type, godotObject)))
                 {
                     continue;
                 }
-                string name = type.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "GodotClassNameAttribute")?.ConstructorArguments is [{ Value: string given }]
-                    ? given : SymbolEqualityComparer.Default.Equals(type, godotObject) ? "Object" : type.Name;
+                string name = GodotSharp.ClassName(type);
                 types.TryAdd(name, type);
                 names[type] = name;
             }

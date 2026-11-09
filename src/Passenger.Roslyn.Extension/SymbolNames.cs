@@ -212,6 +212,10 @@ internal static class SymbolNames
     /// none for a project with no file of its own.</summary>
     public static IReadOnlyList<string> HintsOf(Project project, string razor) => MadeOf(project, razor) is { } made ? [.. Generated.Select(kind => made + kind)] : [];
 
+    /// <summary>Whether a symbol is declared only in a source generator's documents.</summary>
+    public static bool IsGenerated(ISymbol symbol, Solution solution) =>
+        symbol.DeclaringSyntaxReferences.Length > 0 && symbol.DeclaringSyntaxReferences.All(r => solution.GetDocument(r.SyntaxTree) is SourceGeneratedDocument);
+
     private static string Identifier(string path) => string.Concat(path.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
 
     private static bool IsRazorGenerated(string hint) => RazorGenerated.Any(made => hint.EndsWith(made, StringComparison.OrdinalIgnoreCase));

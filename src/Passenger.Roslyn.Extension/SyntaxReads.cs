@@ -5,9 +5,9 @@ using Passenger.Core;
 
 namespace Passenger.Roslyn.Extension;
 
-/// <summary>What the extension's readers of code (routes, configuration, localization, Aspire's code help) read of a call
-/// and its text the same way: a place in a document, whether two paths name one file, a string constant, the name a call
-/// is called by, its receiver and the argument it gives a parameter.</summary>
+/// <summary>What the extension's readers of code (routes, configuration, localization, Aspire's code help, Godot's) read of a
+/// call and its text the same way: a place in a document, whether two paths name one file, a string constant, a string
+/// written as its characters, the name a call is called by, its receiver and the argument it gives a parameter.</summary>
 internal static class SyntaxReads
 {
     /// <summary>An offset in a document as the protocol's line and character.</summary>
@@ -25,6 +25,9 @@ internal static class SyntaxReads
     /// <summary>The string an expression is, when the compiler knows it as a constant.</summary>
     public static string? Constant(ExpressionSyntax? expression, SemanticModel model, CancellationToken cancel) =>
         expression is not null && model.GetConstantValue(expression, cancel) is { HasValue: true, Value: string value } ? value : null;
+
+    /// <summary>Whether a string literal is written as its characters: a plain one, no escape in it.</summary>
+    public static bool Exact(SyntaxToken token) => token.Text.Length == token.ValueText.Length + 2 && token.Text[0] == '"';
 
     /// <summary>The name a call's expression calls by ("MapGet" of <c>app.MapGet</c>), or null for one named by neither a
     /// member access nor a name.</summary>
