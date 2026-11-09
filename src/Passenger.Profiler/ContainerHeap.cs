@@ -62,7 +62,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             catch (Exception stopped) when (stopped is TimeoutException or OperationCanceledException)
             {
                 // Its answer is never read now: the tools go, which ends the read, and the next snapshot starts them again.
-                End(running);
+                await EndAsync(running).ConfigureAwait(false);
                 UnawaitedWork.Dismiss(reading);
                 throw new ProfilingException(stopped is TimeoutException
                     ? $"Passenger's tools in {place.Where} took no memory snapshot in {Limit.TotalMinutes:0} minutes, and were ended"
@@ -71,7 +71,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             catch (InvalidDataException unreadable)
             {
                 // What comes after cannot be told apart from it: the tools go, and the next snapshot starts them again.
-                End(running);
+                await EndAsync(running).ConfigureAwait(false);
                 throw new InvalidOperationException(unreadable.Message, unreadable);
             }
             if (frame is not { } answer)
@@ -98,7 +98,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
                 or IndexOutOfRangeException or OutOfMemoryException)
             {
                 // A container's answer that does not hold together: nothing after it is trusted either.
-                End(running);
+                await EndAsync(running).ConfigureAwait(false);
                 throw new InvalidOperationException($"The snapshot Passenger's tools in {place.Where} sent could not be read: {unreadable.Message}", unreadable);
             }
             last = taken.Number;
@@ -152,17 +152,11 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
         return Volatile.Read(ref lastError) ?? $"Passenger's tools in {place.Where} ended before the snapshot was taken";
     }
 
-    /// <summary>Ends the tools whose answer could not be trusted, so the next snapshot starts them again, never asks them.</summary>
-    private void End(Process running)
+    /// <summary>Ends the tools whose answer could not be trusted, at once, so the next snapshot starts them again, never asks
+    /// them: their input closed, which ends them there, and the CLI ended.</summary>
+    private async Task EndAsync(Process running)
     {
-        try
-        {
-            running.StandardInput.Close();
-        }
-        catch (IOException)
-        {
-        }
-        ChildProcesses.Kill(running);
+        await ChildProcesses.EndThroughInputAsync(running, TimeSpan.Zero).ConfigureAwait(false);
         if (tools == running)
         {
             tools = null;
@@ -178,22 +172,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
         {
             return;
         }
-        ChildProcesses.Ending(running);
-        try
-        {
-            running.StandardInput.Close();
-        }
-        catch (IOException)
-        {
-        }
-        try
-        {
-            await running.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-        }
-        catch (TimeoutException)
-        {
-            ChildProcesses.Kill(running);
-        }
+        await ChildProcesses.EndThroughInputAsync(running, TimeSpan.FromSeconds(5)).ConfigureAwait(false);
         running.Dispose();
     }
 }

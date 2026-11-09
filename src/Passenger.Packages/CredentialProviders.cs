@@ -145,21 +145,12 @@ public sealed class CredentialProviders
             try
             {
                 await SendAsync(new { RequestId = Guid.NewGuid().ToString("D"), Type = "Request", Method = "Close" });
-                process.StandardInput.Close();
             }
             catch (Exception gone) when (gone is IOException or ObjectDisposedException or InvalidOperationException)
             {
                 // The provider ended already.
             }
-            using CancellationTokenSource ending = new(TimeSpan.FromSeconds(5));
-            try
-            {
-                await process.WaitForExitAsync(ending.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                ChildProcesses.Kill(process);
-            }
+            await ChildProcesses.EndThroughInputAsync(process, TimeSpan.FromSeconds(5));
             await Task.WhenAll(reading, draining).WaitAsync(TimeSpan.FromSeconds(5)).Ended();
             writing.Dispose();
         }

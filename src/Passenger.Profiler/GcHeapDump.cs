@@ -37,18 +37,8 @@ internal static class GcHeapDump
         Heard heard = new();
         using EventPipeEventSource source = new(session.EventStream);
         heard.Follow(source);
-        // Not held: read until its session stops, which the wait below bounds.
-        Task reading = BackgroundWork.Unheld(() =>
-        {
-            try
-            {
-                source.Process();
-            }
-            catch (Exception error) when (error is IOException or ObjectDisposedException or EndOfStreamException or FormatException)
-            {
-                // The stream ended with the program or the session: what was heard is judged below.
-            }
-        }, CancellationToken.None);
+        // Read until its session stops, which the wait below bounds; what was heard is judged below.
+        Task reading = EventPipeReads.ToEndAsync(source);
         bool walked;
         bool ended = false;
         try

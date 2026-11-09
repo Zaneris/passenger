@@ -309,6 +309,48 @@ public static class ChildProcesses
         }
     }
 
+    /// <summary>Asks a child to end by closing its input, which it takes for its end (a tool's session, a host's requests):
+    /// however it then exits, it did not fail (<see cref="Ending"/>). An input closed already, or a child gone, is no fault.</summary>
+    public static void CloseInput(Process process)
+    {
+        Ending(process);
+        try
+        {
+            Input(process).Close();
+        }
+        catch (Exception gone) when (gone is IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            // It ended, or its input was closed, already.
+        }
+    }
+
+    /// <summary>Ends a child through its input (<see cref="CloseInput"/>), giving it <paramref name="limit"/> to end, then
+    /// ending it with all it started (<see cref="Kill"/>) should it still run: true where it ended by itself. The caller
+    /// disposes of it.</summary>
+    public static async Task<bool> EndThroughInputAsync(Process process, TimeSpan limit)
+    {
+        CloseInput(process);
+        if (limit > TimeSpan.Zero)
+        {
+            using CancellationTokenSource waited = new(limit);
+            try
+            {
+                await process.WaitForExitAsync(waited.Token).ConfigureAwait(false);
+                return true;
+            }
+            catch (Exception error) when (error is OperationCanceledException or InvalidOperationException)
+            {
+                // Still running at its limit, or no process of ours to wait for.
+            }
+        }
+        if (!DotnetProcesses.Runs(process))
+        {
+            return true;
+        }
+        Kill(process);
+        return false;
+    }
+
     /// <summary>A one-line shell command run on macOS and Linux once the IDE's process has ended, however it ended, after
     /// its children are: for what lives outside any child (the containers an engine runs), which only a command ends. It
     /// takes the place of the one given before; on Windows nothing runs it, and the next start ends what is left.</summary>

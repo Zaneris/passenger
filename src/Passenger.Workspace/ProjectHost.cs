@@ -589,16 +589,8 @@ public sealed class ProjectHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Fail("the project host has ended", ended: false);
-        ChildProcesses.Ending(process);
-        try
-        {
-            process.StandardInput.Close();
-            using CancellationTokenSource limit = new(TimeSpan.FromSeconds(2));
-            await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
-        }
-        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException)
-        {
-        }
+        await ChildProcesses.EndThroughInputAsync(process, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        // Whatever it started goes with it, whether or not it ended by itself.
         ChildProcesses.Kill(process);
         process.Dispose();
     }

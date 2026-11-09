@@ -541,7 +541,7 @@ public sealed class ProfilingSession : IAsyncDisposable
             if (session is null)
             {
                 // The tools there stop their session as their input ends, its rundown flushed, and end.
-                CloseToolsInput();
+                ChildProcesses.CloseInput(process);
             }
             else
             {
@@ -574,19 +574,6 @@ public sealed class ProfilingSession : IAsyncDisposable
         Snapshot snapshot = Snapshot.Read(TracePath);
         snapshot.Place = Place;
         return snapshot;
-    }
-
-    /// <summary>Ends what the tools elsewhere read, which they take for the end of the run.</summary>
-    private void CloseToolsInput()
-    {
-        ChildProcesses.Ending(process);
-        try
-        {
-            process.StandardInput.Close();
-        }
-        catch (Exception gone) when (gone is IOException or InvalidOperationException)
-        {
-        }
     }
 
     /// <summary>Waits for the program to end by itself, then reads the run.</summary>
@@ -665,15 +652,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         if (session is null && Samples && DotnetProcesses.Runs(process))
         {
             // The tools elsewhere stop as their input ends; a CLI that does not go is ended, which closes it there too.
-            CloseToolsInput();
-            try
-            {
-                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            catch (TimeoutException)
-            {
-                ChildProcesses.Kill(process);
-            }
+            await ChildProcesses.EndThroughInputAsync(process, TimeSpan.FromSeconds(10));
         }
         if (connector is not null)
         {

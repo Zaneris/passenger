@@ -1,9 +1,7 @@
-using System.Diagnostics;
 using System.Diagnostics.Tracing;
 using System.Globalization;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
-using Passenger.Core;
 
 namespace Passenger.Profiler;
 
@@ -84,18 +82,12 @@ public sealed class LiveRequests : IAsyncDisposable
     /// is made reads a ":Information" as part of the category's name, which no logger's matches.</summary>
     internal const string LogsSpec = "Microsoft.EntityFrameworkCore.Database.Command";
 
-    private readonly EventPipeEventSource source;
-    private readonly Func<Task> stop;
+    private readonly LiveSession session;
 
-    private LiveRequests(EventPipeEventSource source, Task ended, Func<Task> stop)
-    {
-        this.source = source;
-        this.stop = stop;
-        Ended = ended;
-    }
+    private LiveRequests(LiveSession session) => this.session = session;
 
-    /// <summary>Done once the stream ends: the program gone, or the session stopped.</summary>
-    public Task Ended { get; }
+    /// <inheritdoc cref="LiveSession.Ended"/>
+    public Task Ended => session.Ended;
 
     /// <summary>The providers a session asks: the bridge's events and messages, with <see cref="Specs"/>.</summary>
     internal static EventPipeProvider[] Providers =>
@@ -111,48 +103,19 @@ public sealed class LiveRequests : IAsyncDisposable
     /// hang (<paramref name="waiting"/> told how long that is), each event told to <paramref name="heard"/> on the thread
     /// that reads the stream. A program gone, with no port to reach, or whose runtime takes no session in time, is a
     /// <see cref="ProfilingException"/> saying why (<see cref="SessionStarts"/>).</summary>
-    public static async Task<LiveRequests> AttachAsync(int processId, Action<WebEvent> heard, Action<TimeSpan>? waiting = null, CancellationToken cancel = default)
-    {
-        EventPipeSession session = await SessionStarts.StartAsync(processId, Providers, circularBufferMB: 64, "Its requests could not be followed", waiting, cancel);
-        return Hear(session.EventStream, heard, async () =>
-        {
-            await EventPipeStops.StopAsync(session, TimeSpan.FromSeconds(5));
-            session.Dispose();
-        });
-    }
+    public static async Task<LiveRequests> AttachAsync(int processId, Action<WebEvent> heard, Action<TimeSpan>? waiting = null, CancellationToken cancel = default) =>
+        new(await LiveSession.AtPortAsync(processId, Providers, circularBufferMB: 64, "Its requests could not be followed", source => Hear(source, heard), waiting, cancel));
 
     /// <summary>Starts hearing a program in a container (<paramref name="place"/>) through Passenger's tools there (their
     /// <see cref="ContainerToolsWords.Trace"/> with <see cref="ContainerToolsWords.Requests"/>: the same session at the
     /// program's own diagnostic port, its stream on their output). Tools that cannot start or reach it are a
     /// <see cref="ProfilingException"/> with their last word.</summary>
-    public static async Task<LiveRequests> AttachAsync(int processId, ProfilePlace place, Action<WebEvent> heard, CancellationToken cancel = default)
-    {
-        ContainerTrace recording = await ContainerTrace.StartAsync(place, processId, resume: false, ContainerToolsWords.Requests, "follow its requests", "following its requests", cancel);
-        Process tools = recording.Tools;
-        return Hear(tools.StandardOutput.BaseStream, heard, async () =>
-        {
-            // Their input's end stops the session there; tools that do not end are ended.
-            try
-            {
-                tools.StandardInput.Close();
-            }
-            catch (IOException)
-            {
-            }
-            await Task.WhenAny(tools.WaitForExitAsync(CancellationToken.None), Task.Delay(TimeSpan.FromSeconds(5)));
-            if (DotnetProcesses.Runs(tools))
-            {
-                ChildProcesses.Kill(tools);
-            }
-            await Task.WhenAny(recording.Heard, Task.Delay(TimeSpan.FromSeconds(2)));
-            tools.Dispose();
-        });
-    }
+    public static async Task<LiveRequests> AttachAsync(int processId, ProfilePlace place, Action<WebEvent> heard, CancellationToken cancel = default) =>
+        new(await LiveSession.InContainerAsync(processId, place, ContainerToolsWords.Requests, "follow its requests", "following its requests",
+            source => Hear(source, heard), cancel));
 
-    /// <summary>A stream's events read on a thread of their own, the bridge's told as they come, until it ends.</summary>
-    private static LiveRequests Hear(Stream stream, Action<WebEvent> heard, Func<Task> stop)
-    {
-        EventPipeEventSource source = new(stream);
+    /// <summary>A stream's events heard, the bridge's told as they come.</summary>
+    private static void Hear(EventPipeEventSource source, Action<WebEvent> heard) =>
         source.Dynamic.All += data =>
         {
             if (data.ProviderName is Bridge or Logging && Read(data) is { } told)
@@ -160,19 +123,6 @@ public sealed class LiveRequests : IAsyncDisposable
                 heard(told);
             }
         };
-        // Not held, on a thread of its own: the trace is read until the program ends or the requests are put away.
-        Task ended = BackgroundWork.UnheldThread(() =>
-        {
-            try
-            {
-                source.Process();
-            }
-            catch (Exception error) when (error is IOException or ObjectDisposedException or EndOfStreamException or FormatException)
-            {
-            }
-        });
-        return new LiveRequests(source, ended, stop);
-    }
 
     /// <summary>One of the bridge's events, or EF Core's command log, as what it tells; null for another.</summary>
     internal static WebEvent? Read(TraceEvent data)
@@ -222,12 +172,6 @@ public sealed class LiveRequests : IAsyncDisposable
         static int? Number(string? text) => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number) ? number : null;
     }
 
-    /// <summary>Stops the session and lets go of the program, which runs on as it was.</summary>
-    public async ValueTask DisposeAsync()
-    {
-        await stop();
-        source.StopProcessing();
-        await Ended.WaitAsync(TimeSpan.FromSeconds(5)).Ended();
-        source.Dispose();
-    }
+    /// <inheritdoc cref="LiveSession.DisposeAsync"/>
+    public ValueTask DisposeAsync() => session.DisposeAsync();
 }

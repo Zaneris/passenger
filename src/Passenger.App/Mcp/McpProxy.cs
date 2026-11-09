@@ -953,20 +953,14 @@ public sealed partial class McpProxy
         EndHeadless();
     }
 
-    /// <summary>The headless window ends with its input, cleanly, before the watchdog would kill it with its socket left.</summary>
+    /// <summary>The headless window ends with its input, cleanly, before the watchdog would kill it with its socket left;
+    /// one still running past <see cref="McpHost.EndLimit"/> is ended.</summary>
     private void EndHeadless()
     {
         if (headless is { } child && DotnetProcesses.Runs(child))
         {
-            try
-            {
-                child.StandardInput.Close();
-                child.WaitForExit(McpHost.EndLimit);
-            }
-            catch (Exception error) when (error is IOException or InvalidOperationException)
-            {
-                // Gone already.
-            }
+            // On Main's thread as the process ends, which has nothing to go on to meanwhile.
+            Synchronously.Run(() => ChildProcesses.EndThroughInputAsync(child, McpHost.EndLimit));
         }
     }
 

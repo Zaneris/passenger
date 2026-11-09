@@ -118,8 +118,9 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
     }
 
     /// <summary>A container run's .NET services followed by the Requests window through Passenger's tools in their
-    /// containers (trace --requests), each request listed with the service that served it; and a route's request sent
-    /// from the folder's code goes to the port the engine published for its service.</summary>
+    /// containers (trace --requests), each request listed with the service that served it; a route's request sent from the
+    /// folder's code goes to the port the engine published for its service; and the window hidden ends the tools through
+    /// their input, an end the IDE asked for, never logged as their failing.</summary>
     [AvaloniaFact]
     public void The_requests_window_follows_each_service_in_its_container_and_a_routes_request_goes_to_its_published_port()
     {
@@ -154,6 +155,38 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             Assert.Null(Ui.Await(sent, "the route's request to be sent"));
             Assert.True(window.Endpoints.Response.Passed, $"web's route did not answer from its container: {window.Endpoints.Response.Summary}");
             Assert.Contains("web 1", window.Endpoints.Response.Shown, StringComparison.Ordinal);
+
+            List<ChildEnd> traced = [];
+            EventHandler<ChildEnd> heard = (_, end) =>
+            {
+                if (end.Command.Contains($" {Passenger.Profiler.ContainerToolsWords.Trace} ", StringComparison.Ordinal)
+                    && end.Command.Contains(Passenger.Profiler.ContainerToolsWords.Requests, StringComparison.Ordinal))
+                {
+                    lock (traced)
+                    {
+                        traced.Add(end);
+                    }
+                }
+            };
+            ChildProcesses.Ended += heard;
+            try
+            {
+                window.DockHost.Hide(ToolWindowIds.Requests);
+                Ui.WaitFor(() => Ended().Length == 2, "both services' tools to end once the hidden Requests window let go of them", TimeSpan.FromSeconds(30));
+            }
+            finally
+            {
+                ChildProcesses.Ended -= heard;
+            }
+            Assert.True(Ended().All(e => e.EndedByIde), $"The tools the Requests window ended were logged as failing: {string.Join("; ", Ended().Select(e => $"{e.Command} ({e.ExitCode})"))}");
+
+            ChildEnd[] Ended()
+            {
+                lock (traced)
+                {
+                    return [.. traced];
+                }
+            }
         }
         finally
         {

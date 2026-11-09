@@ -165,19 +165,13 @@ internal sealed class HeapHistory : IAsyncDisposable
         List<DateTime> samples = [];
         EventPipeSession sampling = await client.StartEventPipeSessionAsync(
             [new EventPipeProvider(Snapshot.SampleProvider, EventLevel.Informational)], requestRundown: false, circularBufferMB: 64, cancel);
-        // Not held: read until its session stops.
-        Task reading = BackgroundWork.Unheld(() =>
+        Task reading = EventPipeReads.ToEndAsync(sampling.EventStream, events => events.AllEvents += e =>
         {
-            using EventPipeEventSource events = new(sampling.EventStream);
-            events.AllEvents += e =>
+            lock (samples)
             {
-                lock (samples)
-                {
-                    samples.Add(e.TimeStamp.ToUniversalTime());
-                }
-            };
-            events.Process();
-        }, CancellationToken.None);
+                samples.Add(e.TimeStamp.ToUniversalTime());
+            }
+        });
         DateTime sent = DateTime.UtcNow;
         try
         {
@@ -194,7 +188,7 @@ internal sealed class HeapHistory : IAsyncDisposable
                 {
                     await reading.WaitAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
                 }
-                catch (Exception error) when (error is IOException or TimeoutException)
+                catch (TimeoutException)
                 {
                     // Its samples never came: the dump is placed by the collections alone.
                 }
@@ -342,27 +336,23 @@ internal sealed class HeapHistory : IAsyncDisposable
             }
         };
         source.Clr.GCStop += OnEnd;
-        EventPipeEventSource events = source;
-        // A thread of its own: the stream is read until the program ends or the run is put away.
-        listening = BackgroundWork.UnheldThread(() =>
+        // The stream is read until the program ends or the run is put away.
+        listening = HeardToEndAsync(EventPipeReads.ToEndAsync(source, lasting: true));
+    }
+
+    /// <summary>Once the collections' stream has ended, no wait for a collection hears one.</summary>
+    private async Task HeardToEndAsync(Task reading)
+    {
+        await reading.ConfigureAwait(false);
+        lock (gate)
         {
-            try
+            streamEnded = true;
+            foreach ((int _, TaskCompletionSource<bool> heard) in waiting)
             {
-                events.Process();
+                heard.TrySetResult(false);
             }
-            catch (Exception error) when (error is IOException or ObjectDisposedException or EndOfStreamException or FormatException)
-            {
-            }
-            lock (gate)
-            {
-                streamEnded = true;
-                foreach ((int _, TaskCompletionSource<bool> heard) in waiting)
-                {
-                    heard.TrySetResult(false);
-                }
-                waiting.Clear();
-            }
-        });
+            waiting.Clear();
+        }
     }
 
     /// <summary>The collection under way that the events in between belong to: the innermost begun, as a background
@@ -447,35 +437,38 @@ internal sealed class HeapHistory : IAsyncDisposable
     }
 
     /// <summary>Has the runtime collect in full (a session with the GCHeapCollect keyword), and gives that collection's
-    /// number, or -1. The collection is over when the session's start returns.</summary>
+    /// number, or -1, as for a program that ended as it collected, whose runtime answered neither the session's start nor
+    /// its stop. The collection is over when the session's start returns.</summary>
     private async Task<int> InduceAsync(CancellationToken cancel)
     {
         int found = -1;
-        using EventPipeSession inducing = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(
-            [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | CollectKeyword)], requestRundown: false, circularBufferMB: 16, cancel);
-        // Not held: read until its session stops.
-        Task reading = BackgroundWork.Unheld(() =>
-        {
-            using EventPipeEventSource events = new(inducing.EventStream);
-            events.Clr.GCStart += e =>
-            {
-                if (found < 0 && e.Reason == GCReason.Induced)
-                {
-                    found = e.Count;
-                }
-            };
-            events.Process();
-        }, CancellationToken.None);
-        await inducing.StopAsync(cancel);
+        EventPipeSession started;
         try
         {
-            await reading.WaitAsync(TimeSpan.FromSeconds(30), cancel);
+            started = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(
+                [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | CollectKeyword)], requestRundown: false, circularBufferMB: 16, cancel);
         }
-        catch (TimeoutException)
+        catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
             return -1;
         }
-        return found;
+        using EventPipeSession inducing = started;
+        Task reading = EventPipeReads.ToEndAsync(inducing.EventStream, events => events.Clr.GCStart += e =>
+        {
+            if (found < 0 && e.Reason == GCReason.Induced)
+            {
+                found = e.Count;
+            }
+        });
+        bool stopped = await EventPipeStops.StopAsync(inducing, TimeSpan.FromSeconds(30));
+        bool read = await Task.WhenAny(reading, Task.Delay(TimeSpan.FromSeconds(30), cancel)) == reading;
+        if (!read)
+        {
+            // It ends as the session is let go below.
+            UnawaitedWork.Observe(reading);
+        }
+        cancel.ThrowIfCancellationRequested();
+        return stopped && read ? found : -1;
     }
 
     public async ValueTask DisposeAsync()

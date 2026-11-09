@@ -13,8 +13,9 @@ namespace Passenger.Tests;
 /// <summary>Memory snapshots, from the profiler window: two snapshots of a run compared object by object (new, dead and
 /// survived, however the GC moved what lived on), a type's objects opened to the shortest paths that keep them from the
 /// GC roots with each root's kind and what they retain, and a heap of a million objects read, compared and opened; only
-/// the newest three keep their objects, a program that ends as it is snapshot is said to have ended, a snapshot given up
-/// leaves no dump behind, and a hardened program on macOS is snapshot from its runtime's own heap dump.</summary>
+/// the newest three keep their objects, a program that ends as it is snapshot is said to have ended, one that ends in the
+/// snapshot's own full collection leaves the snapshot taken, a snapshot given up leaves no dump behind, and a hardened
+/// program on macOS is snapshot from its runtime's own heap dump.</summary>
 public sealed class MemorySnapshotsTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("memory-");
@@ -612,6 +613,43 @@ public sealed class MemorySnapshotsTests : IDisposable
         (MemorySnapshot? heap, string? note) = Ui.Await(taking, "the memory snapshot of the program that ended", TimeSpan.FromMinutes(1));
         Assert.Null(heap);
         Assert.Equal("Ender ended before its memory snapshot", note);
+        window.Close();
+    }
+
+    /// <summary>A program that ends in its snapshot's full collection, which finalizes what ends it, after its dump was
+    /// read, leaves the snapshot of what it held, placed among no collections: the snapshot failed, as the runtime gone
+    /// answered neither that collection's session's start nor its stop.</summary>
+    [AvaloniaFact]
+    public void A_program_that_ends_in_its_snapshots_full_collection_leaves_the_snapshot_taken()
+    {
+        MainWindow window = Profiled("Finalized", """
+            Ender.Arm();
+            Console.WriteLine("ready");
+            Console.ReadLine();
+            static class Ender
+            {
+                public static readonly List<Kept> Held = [.. Enumerable.Range(0, 100).Select(i => new Kept(i))];
+                private static Exiter? armed = new();
+
+                // Its object in the oldest generation, so only a full collection, the snapshot's own, finalizes it.
+                public static void Arm()
+                {
+                    GC.Collect();
+                    GC.Collect();
+                    armed = null;
+                }
+            }
+            sealed class Kept(int number) { public int Number { get; } = number; }
+            sealed class Exiter
+            {
+                ~Exiter() => System.Diagnostics.Process.GetCurrentProcess().Kill();
+            }
+            """);
+        Task<(MemorySnapshot? Heap, string? Note)> taking = window.MemorySnapshotUnaskedAsync(CancellationToken.None);
+        (MemorySnapshot? heap, string? note) = Ui.Await(taking, "the memory snapshot of the program that ended in its collection", TimeSpan.FromMinutes(2));
+        Assert.True(heap is not null, $"The snapshot failed as the program ended in its full collection, though its dump had been read: {note}");
+        Assert.Equal(100, heap.Types.Single(t => t.Name == "Kept").Count);
+        Ui.PumpUntil(() => window.Profiling!.HasExited, "the program to end in the snapshot's collection");
         window.Close();
     }
 

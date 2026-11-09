@@ -1,9 +1,7 @@
-using System.Diagnostics;
 using System.Diagnostics.Tracing;
 using System.Globalization;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
-using Passenger.Core;
 
 namespace Passenger.Profiler;
 
@@ -41,18 +39,12 @@ public sealed class LiveMetrics : IAsyncDisposable
     public static readonly IReadOnlyList<string> Shipped =
         ["Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Server.Kestrel", "Microsoft.AspNetCore.Routing", "System.Net.Http", "System.Runtime"];
 
-    private readonly EventPipeEventSource source;
-    private readonly Func<Task> stop;
+    private readonly LiveSession session;
 
-    private LiveMetrics(EventPipeEventSource source, Task ended, Func<Task> stop)
-    {
-        this.source = source;
-        this.stop = stop;
-        Ended = ended;
-    }
+    private LiveMetrics(LiveSession session) => this.session = session;
 
-    /// <summary>Done once the stream ends: the program gone, or the session stopped.</summary>
-    public Task Ended { get; }
+    /// <inheritdoc cref="LiveSession.Ended"/>
+    public Task Ended => session.Ended;
 
     /// <summary>The session id a program in a container is read under, the same for every Passenger there.</summary>
     public const string ContainerSession = "passenger-container-metrics";
@@ -79,47 +71,22 @@ public sealed class LiveMetrics : IAsyncDisposable
         CancellationToken cancel = default)
     {
         string session = Guid.NewGuid().ToString();
-        EventPipeSession started = await SessionStarts.StartAsync(processId, Providers(session, meters), circularBufferMB: 16, "Its metrics could not be read", waiting, cancel);
-        return Hear(started.EventStream, session, meters, heard, async () =>
-        {
-            await EventPipeStops.StopAsync(started, TimeSpan.FromSeconds(5));
-            started.Dispose();
-        });
+        return new LiveMetrics(await LiveSession.AtPortAsync(processId, Providers(session, meters), circularBufferMB: 16, "Its metrics could not be read",
+            source => Hear(source, session, meters, heard), waiting, cancel));
     }
 
     /// <summary>Starts hearing a program in a container (<paramref name="place"/>) through Passenger's tools there (their
     /// <see cref="ContainerToolsWords.Trace"/> with <see cref="ContainerToolsWords.Metrics"/>: the meters .NET ships, at the
     /// program's own diagnostic port, its stream on their output). Tools that cannot start or reach it are a
     /// <see cref="ProfilingException"/> with their last word.</summary>
-    public static async Task<LiveMetrics> AttachAsync(int processId, ProfilePlace place, MetricsHeard heard, CancellationToken cancel = default)
-    {
-        ContainerTrace recording = await ContainerTrace.StartAsync(place, processId, resume: false, ContainerToolsWords.Metrics, "read its metrics", "reading its metrics", cancel);
-        Process tools = recording.Tools;
-        return Hear(tools.StandardOutput.BaseStream, ContainerSession, Shipped, heard, async () =>
-        {
-            // Their input's end stops the session there; tools that do not end are ended.
-            try
-            {
-                tools.StandardInput.Close();
-            }
-            catch (IOException)
-            {
-            }
-            await Task.WhenAny(tools.WaitForExitAsync(CancellationToken.None), Task.Delay(TimeSpan.FromSeconds(5)));
-            if (DotnetProcesses.Runs(tools))
-            {
-                ChildProcesses.Kill(tools);
-            }
-            await Task.WhenAny(recording.Heard, Task.Delay(TimeSpan.FromSeconds(2)));
-            tools.Dispose();
-        });
-    }
+    public static async Task<LiveMetrics> AttachAsync(int processId, ProfilePlace place, MetricsHeard heard, CancellationToken cancel = default) =>
+        new(await LiveSession.InContainerAsync(processId, place, ContainerToolsWords.Metrics, "read its metrics", "reading its metrics",
+            source => Hear(source, ContainerSession, Shipped, heard), cancel));
 
-    /// <summary>A stream's events read on a thread of their own, each interval's readings told together, until it ends.</summary>
-    private static LiveMetrics Hear(Stream stream, string session, IReadOnlyCollection<string> meters, MetricsHeard heard, Func<Task> stop)
+    /// <summary>A stream's events heard, each interval's readings told together.</summary>
+    private static void Hear(EventPipeEventSource source, string session, IReadOnlyCollection<string> meters, MetricsHeard heard)
     {
         HashSet<string> asked = new(meters, StringComparer.Ordinal);
-        EventPipeEventSource source = new(stream);
         List<MetricReading> interval = [];
         HashSet<string> told = new(StringComparer.Ordinal);
         source.Dynamic.All += data =>
@@ -148,18 +115,6 @@ public sealed class LiveMetrics : IAsyncDisposable
                 heard.Refused(why);
             }
         };
-        // Not held, on a thread of its own: the trace is read until the program ends or no one looks.
-        Task ended = BackgroundWork.UnheldThread(() =>
-        {
-            try
-            {
-                source.Process();
-            }
-            catch (Exception error) when (error is IOException or ObjectDisposedException or EndOfStreamException or FormatException)
-            {
-            }
-        });
-        return new LiveMetrics(source, ended, stop);
     }
 
     private static bool Ours(TraceEvent data, string session) => data.PayloadByName("sessionId") as string == session;
@@ -220,11 +175,6 @@ public sealed class LiveMetrics : IAsyncDisposable
         _ => null,
     };
 
-    public async ValueTask DisposeAsync()
-    {
-        await stop();
-        source.StopProcessing();
-        await Ended.WaitAsync(TimeSpan.FromSeconds(5)).Ended();
-        source.Dispose();
-    }
+    /// <inheritdoc cref="LiveSession.DisposeAsync"/>
+    public ValueTask DisposeAsync() => session.DisposeAsync();
 }
