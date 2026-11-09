@@ -471,8 +471,9 @@ public static class OpenWindows
 {
     private static readonly List<Window> Open = [];
 
-    /// <summary>The IDE's windows closed since the test began, what each started perhaps still ending.</summary>
-    private static readonly List<Passenger.App.MainWindow> Closed = [];
+    /// <summary>What the IDE's windows closed since the test began started, perhaps still ending: their ends, never the
+    /// windows, so a test may see a window it closed let go.</summary>
+    private static readonly List<Task> Ending = [];
     private static bool watching;
 
     /// <summary>The longest the work of windows closed after a test may take to land, past the end their own limit gives
@@ -490,12 +491,29 @@ public static class OpenWindows
                 Open.Remove(window);
                 if (window is Passenger.App.MainWindow closed)
                 {
-                    Closed.Add(closed);
+                    KeepEnd(closed);
                 }
             });
         }
         Open.Clear();
-        Closed.Clear();
+        Ending.Clear();
+    }
+
+    /// <summary>Keeps what a closed window started ending, which its own Closed sets, if it has not yet.</summary>
+    private static void KeepEnd(Passenger.App.MainWindow closed)
+    {
+        if (closed.Ended is { } ended)
+        {
+            Ending.Add(ended);
+            return;
+        }
+        closed.Closed += (_, _) =>
+        {
+            if (closed.Ended is { } now)
+            {
+                Ending.Add(now);
+            }
+        };
     }
 
     /// <summary>Closes every window still open, the last opened first, waits for what each started to end, and what each
@@ -509,7 +527,7 @@ public static class OpenWindows
         {
             throw new InvalidOperationException("Windows left open can only be closed on their own thread");
         }
-        List<Task> ending = [.. Closed.Select(window => window.Ended).OfType<Task>().Where(ended => !ended.IsCompleted)];
+        List<Task> ending = [.. Ending.Where(ended => !ended.IsCompleted)];
         while (Open.Count > 0)
         {
             Window last = Open[^1];
@@ -523,7 +541,7 @@ public static class OpenWindows
                 }
             }
         }
-        Closed.Clear();
+        Ending.Clear();
         if (ending.Count == 0 && BackgroundWork.Pending == 0)
         {
             return true;
