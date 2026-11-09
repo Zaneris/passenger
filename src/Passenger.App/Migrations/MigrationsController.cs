@@ -922,9 +922,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// leave a provider of the project behind (its range, the feed's metadata, holding not the new version) says so and
     /// offers the set's update together (EF Core's packages to it, the provider to the newest version that supports it),
     /// or the update as asked. Whether the window's own change goes on.</summary>
-    public async Task<bool> WeighUpdateAsync(ProjectModel project, string id, string version)
+    public async Task<bool> WeighUpdateAsync(ProjectModel project, string id, string version, CommandHistory.Recording? within = null, CancellationToken cancel = default)
     {
         UiThread.Check();
+        ProjectSession owning = parts.Session();
+        cancel.ThrowIfCancellationRequested();
         if (!EfProviders.InSet(id) || EfRestore.Of(project.Path) is not { Runtime: not null } restore
             || restore.Providers.FirstOrDefault(p => !EfProviders.InSet(p.Id) && !EfRestore.InRange(p.Range, version)) is not { } left)
         {
@@ -934,9 +936,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         try
         {
             IPackageFeed feed = await parts.Feed();
-            foreach (string candidate in await feed.VersionsAsync(left.Id, VersionOrder.IsPrerelease(version), CancellationToken.None))
+            foreach (string candidate in await feed.VersionsAsync(left.Id, VersionOrder.IsPrerelease(version), cancel))
             {
-                if (await EfProviders.RangeAsync(feed, left.Id, candidate, restore.Framework, CancellationToken.None) is { } range && EfRestore.InRange(range, version))
+                if (await EfProviders.RangeAsync(feed, left.Id, candidate, restore.Framework, cancel) is { } range && EfRestore.InRange(range, version))
                 {
                     up = candidate;
                     break;
@@ -947,16 +949,27 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             // The feeds unread: the update is asked about as one no provider supports yet.
         }
+        cancel.ThrowIfCancellationRequested();
+        if (parts.Session() != owning)
+        {
+            return false;
+        }
         string together = $"Update the Set to {version}";
         string said = $"{left.Id} {left.Version} supports {EfRestore.Supports(left.Range)}; {id} {version} leaves it behind. "
             + (up is null ? $"No version of {left.Id} in the feeds supports EF Core {version} yet."
                 : $"{left.Id} {up} supports it: {together} moves EF Core's packages to {version} and {left.Id} to {up} together.");
         string? answer = await parts.Choose($"Update {id}", said, up is null ? ["Update Anyway"] : [together, "Update Anyway"], up is null ? null : together);
+        cancel.ThrowIfCancellationRequested();
+        if (parts.Session() != owning)
+        {
+            return false;
+        }
         if (answer != together)
         {
             return answer is not null;
         }
-        using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites(together);
+        using CommandHistory.Recording? recorded = within is null ? parts.Editors.Commands.RecordWrites(together) : null;
+        CommandHistory.Recording recording = within ?? recorded!;
         List<(string, string)> moved = [.. project.Packages.Where(p => EfProviders.InSet(p.Name)).Select(p => (p.Name, version))];
         if (!moved.Any(m => m.Item1.Equals(id, StringComparison.OrdinalIgnoreCase)))
         {

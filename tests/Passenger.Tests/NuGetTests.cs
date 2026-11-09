@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
 using Passenger.App;
@@ -54,6 +55,256 @@ public sealed class NuGetTests : IDisposable
     {
         feed.Dispose();
         TestFolders.Delete(folder);
+    }
+
+    [AvaloniaFact]
+    public void Updates_checks_on_entry_filters_locally_and_selects_the_latest_version()
+    {
+        const string Other = "Passenger.Current";
+        feed.Add(Other, "2.0.0");
+        feed.Add(Id, "2.0.0-preview.1");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /><PackageReference Include=\"{Other}\" Version=\"2.0.0\" /></ItemGroup>");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Assert.DoesNotContain(feed.Requests, r => r.Path == "/flat/passenger.vulnerable/index.json");
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().SingleOrDefault(b => Equals(b.Content, "Updates"))
+            ?? throw new Xunit.Sdk.XunitException("NuGet has no Updates tab"));
+        Assert.True(nuget.Rows is [{ Id: Id }] && nuget.ChosenVersion == "1.1.0",
+            $"Updates lists [{string.Join(", ", nuget.Rows.Select(r => r.Id))}] and selects {nuget.ChosenVersion}, rather than the latest stable update");
+        int asked = feed.Requests.Count;
+        nuget.Query = "no-match";
+        Ui.Settle();
+        Assert.Empty(nuget.Rows);
+        Assert.Equal(asked, feed.Requests.Count);
+        nuget.Query = string.Empty;
+        Ui.Settle();
+        Assert.Single(nuget.Rows);
+        CheckBox preview = nuget.GetLogicalDescendants().OfType<CheckBox>().Single(b => Equals(b.Content, "Prerelease"));
+        Ui.Click(preview);
+        Assert.Equal("2.0.0-preview.1", nuget.ChosenVersion);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Update_all_updates_every_project_even_when_search_hides_results_and_one_undo_restores_them()
+    {
+        const string Other = "Passenger.Other";
+        feed.Add(Other, "1.0.0");
+        feed.Add(Other, "1.2.0");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"[1.0.0]\" /></ItemGroup>");
+        string app = Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /></ItemGroup>");
+        string beforeLib = File.ReadAllText(lib);
+        string beforeApp = File.ReadAllText(app);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().SingleOrDefault(b => Equals(b.Content, "Updates"))
+            ?? throw new Xunit.Sdk.XunitException("NuGet has no Updates tab"));
+        Assert.Equal(2, nuget.Rows.Count);
+        nuget.Query = "vulnerable";
+        Ui.Settle();
+        Assert.Single(nuget.Rows);
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().SingleOrDefault(b => Equals(b.Content, "Update All"))
+            ?? throw new Xunit.Sdk.XunitException("Updates has no Update All button"));
+        Ui.Landed(() => !nuget.IsBusy && nuget.Rows.Count == 0, $"all packages updated: {nuget.Status}\n{nuget.Log}");
+        Assert.True(File.ReadAllText(lib).Contains("[1.1.0]", StringComparison.Ordinal), $"Lib was not updated: {nuget.Status}\n{nuget.Log}");
+        Assert.Contains("1.2.0", File.ReadAllText(app), StringComparison.Ordinal);
+        MigrationsTests.UndoFromExplorer(window, lib);
+        Assert.Equal(beforeLib, File.ReadAllText(lib));
+        Assert.Equal(beforeApp, File.ReadAllText(app));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Updates_reports_partial_feed_failure_instead_of_claiming_every_package_is_current()
+    {
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.1.0\" /></ItemGroup>");
+        string config = Path.Combine(folder, "nuget.config");
+        File.WriteAllText(config, File.ReadAllText(config).Replace("</packageSources>",
+            "<add key=\"unavailable\" value=\"http://127.0.0.1:1/v3/index.json\" allowInsecureConnections=\"true\" /></packageSources>", StringComparison.Ordinal));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().SingleOrDefault(b => Equals(b.Content, "Updates"))
+            ?? throw new Xunit.Sdk.XunitException("NuGet has no Updates tab"));
+        Assert.Empty(nuget.Rows);
+        Assert.Contains("unavailable", nuget.Status, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No updates found", nuget.Status, StringComparison.OrdinalIgnoreCase);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Update_all_rechecks_shared_central_versions_and_preserves_one_undo()
+    {
+        File.WriteAllText(Path.Combine(folder, "Directory.Packages.props"), $"<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"{Id}\" Version=\"[1.0.0]\" /></ItemGroup></Project>");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" /></ItemGroup>");
+        Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" /></ItemGroup>");
+        string props = Path.Combine(folder, "Directory.Packages.props");
+        string original = File.ReadAllText(props);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Assert.True(File.ReadAllText(props).Contains("[1.1.0]", StringComparison.Ordinal), $"Central version was not updated: {nuget.Status}\n{nuget.Log}\n{File.ReadAllText(props)}");
+        Assert.Empty(nuget.Rows);
+        MigrationsTests.UndoFromExplorer(window, lib);
+        Assert.Equal(original, File.ReadAllText(props));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Update_all_stops_on_a_refused_project_and_undo_restores_the_earlier_success()
+    {
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
+        string app = Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
+        string originalLib = File.ReadAllText(lib);
+        string originalApp = File.ReadAllText(app);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        int saves = 0;
+        nuget.Packages.SaveFirst = (_, _) => Task.FromResult<string?>(++saves == 3 ? "Lib could not be saved" : null);
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Assert.True(File.ReadAllText(app).Contains("1.1.0", StringComparison.Ordinal), $"App was not updated: {nuget.Status}\n{nuget.Log}");
+        Assert.Equal(originalLib, File.ReadAllText(lib));
+        Assert.Contains("Lib could not be saved", nuget.Status, StringComparison.Ordinal);
+        MigrationsTests.UndoFromExplorer(window, app);
+        Assert.Equal(originalApp, File.ReadAllText(app));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Stopping_update_all_prevents_the_held_package_commands_from_starting()
+    {
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
+        string original = File.ReadAllText(lib);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task reached = nuget.Packages.HoldNextChange(release.Task);
+        Button all = nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All"));
+        Ui.Click(all, settle: false);
+        try
+        {
+            Ui.PumpUntil(() => reached.IsCompleted, "Update All waiting before its first command");
+            Assert.False(all.IsEnabled);
+            window.Perform(AppActions.Stop);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+        Ui.Settle();
+        Assert.Equal(original, File.ReadAllText(lib));
+        Assert.Contains("Stopped", nuget.Status, StringComparison.OrdinalIgnoreCase);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Update_all_stops_when_a_provider_check_handles_an_update_that_fails()
+    {
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
+        Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
+        string original = File.ReadAllText(lib);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        nuget.BeforeInstall = async (project, id, version, recording, _) =>
+        {
+            await nuget.Packages.InstallSetAsync(project, [(id, version), ("Passenger.Missing", "1.0.0")], recording);
+            return false;
+        };
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Assert.Equal(original, File.ReadAllText(lib));
+        Assert.Contains("failed", nuget.Status, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Lib…", nuget.Log, StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("9.0.0")]
+    [InlineData("[9.0.0,10.0.0)")]
+    public void Update_all_does_not_downgrade_a_reference_changed_by_the_final_save(string changedVersion)
+    {
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
+        Restore.Run(lib);
+        Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        int saves = 0;
+        nuget.Packages.SaveFirst = (_, _) =>
+        {
+            if (++saves == 3)
+            {
+                File.WriteAllText(lib, File.ReadAllText(lib).Replace("1.0.0", changedVersion, StringComparison.Ordinal));
+            }
+            return Task.FromResult<string?>(null);
+        };
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Assert.True(File.ReadAllText(lib).Contains(changedVersion, StringComparison.Ordinal), $"The final save's newer version was overwritten: {nuget.Status}\n{nuget.Log}");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Update_all_stops_before_absorbing_a_user_edit_to_an_open_central_file()
+    {
+        const string Other = "Passenger.Other";
+        feed.Add(Other, "1.0.0");
+        feed.Add(Other, "1.2.0");
+        string props = Path.Combine(folder, "Directory.Packages.props");
+        File.WriteAllText(props, $"<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally><Description>Before</Description></PropertyGroup><ItemGroup><PackageVersion Include=\"{Id}\" Version=\"1.0.0\" /><PackageVersion Include=\"{Other}\" Version=\"1.0.0\" /></ItemGroup></Project>");
+        Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" /></ItemGroup>");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Other}\" /></ItemGroup>");
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile(props));
+        Ui.Settle();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        int saves = 0;
+        nuget.Packages.SaveFirst = async (working, cancel) =>
+        {
+            if (++saves == 3)
+            {
+                Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+                editor.Focus();
+                editor.Select(new Passenger.Text.TextRange(editor.Document.Snapshot.ToString().IndexOf("Before", StringComparison.Ordinal), "Before".Length));
+                Avalonia.Headless.HeadlessWindowExtensions.KeyTextInput(window, "Kept");
+            }
+            return await window.EditorArea.SaveAllLandedAsync(working, cancel);
+        };
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Assert.Contains("<Description>Kept</Description>", File.ReadAllText(props), StringComparison.Ordinal);
+        Assert.Contains("changed during Update All", nuget.Status, StringComparison.Ordinal);
+        Assert.Contains($"Include=\"{Other}\" Version=\"1.0.0\"", File.ReadAllText(props), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Update_all_undo_does_not_absorb_a_later_user_save_to_a_shared_central_file()
+    {
+        string props = Path.Combine(folder, "Directory.Packages.props");
+        File.WriteAllText(props, $"<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup></Project>");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" /></ItemGroup>");
+        Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" /></ItemGroup>");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        int saves = 0;
+        nuget.Packages.SaveFirst = (_, _) =>
+        {
+            if (++saves == 3)
+            {
+                File.WriteAllText(props, File.ReadAllText(props).Replace("1.1.0", "9.0.0", StringComparison.Ordinal));
+            }
+            return Task.FromResult<string?>(null);
+        };
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Assert.Contains("9.0.0", File.ReadAllText(props), StringComparison.Ordinal);
+        Passenger.App.Editors.CommandHistory.Command command = window.EditorArea.Commands.ToUndo(null)
+            ?? throw new Xunit.Sdk.XunitException("Update All recorded no Undo command");
+        string? blocked = Ui.Landed(window.EditorArea.Commands.BlockedAsync(command, redo: false), "whether Undo preserves the later user save");
+        Assert.NotNull(blocked);
+        window.Close();
     }
 
     /// <summary>A project pinning the vulnerable 1.0.0 ("[1.0.0]") has it shown as 1.0.0 and marked, is offered the fix as
@@ -338,7 +589,7 @@ public sealed class NuGetTests : IDisposable
     private static ProjectModel Named(MainWindow window, string name) => window.Projects.Single(p => p.Name == name);
 
     /// <summary>A project's line among the chosen package's projects.</summary>
-    private static StackPanel? Line(NuGetView nuget, string project) => nuget.GetLogicalDescendants().OfType<StackPanel>()
+    private static Panel? Line(NuGetView nuget, string project) => nuget.GetLogicalDescendants().OfType<Panel>()
         .FirstOrDefault(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == project);
 
     /// <summary>The button of a label on a project's line.</summary>

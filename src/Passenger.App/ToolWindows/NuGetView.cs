@@ -28,6 +28,10 @@ public sealed record PackageRow(string Id, string Version, string Description, s
     public IReadOnlyList<Advisory> Advisories { get; init; } = [];
 
     public bool IsVulnerable => Advisories.Count > 0;
+
+    public string? UpdateVersion { get; init; }
+
+    public IReadOnlyList<string> AvailableVersions { get; init; } = [];
 }
 
 /// <summary>The NuGet window, its Packages and Sources tabs in its header. Packages: the projects' packages with nothing
@@ -36,7 +40,7 @@ public sealed record PackageRow(string Id, string Version, string Description, s
 /// a known vulnerability (the audit's VulnerabilityInfo, as restore reads it) is marked with its advisories, and Update
 /// offers the least version that fixes it. Sources: the files and their feeds (<see cref="NuGetSourcesView"/>). A view over
 /// the folder's <see cref="FolderPackages"/>, its session's.</summary>
-public sealed class NuGetView : DockPanel
+public sealed partial class NuGetView : DockPanel
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(300);
 
@@ -86,7 +90,9 @@ public sealed class NuGetView : DockPanel
         status.Classes.Add(StyleClasses.Muted);
         Button refresh = ToolButtons.Of(AppActions.NuGetRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         refresh.Margin = new Thickness(6, 0, 0, 0);
-        typing = new Debounce(Pause, RefreshAsync);
+        updateAll = new Button { Content = "Update All", Focusable = false, IsVisible = false, IsEnabled = false, Margin = new Thickness(8, 0, 0, 0) };
+        updateAll.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.NuGetUpdateAll);
+        typing = new Debounce(Pause, SearchAsync);
         search.TextChanged += (_, _) =>
         {
             Hold(null);
@@ -99,7 +105,7 @@ public sealed class NuGetView : DockPanel
         };
         ToolFlow.SetFills(search, new ToolLayout.Fills(140, 260));
         ToolFlow.SetFills(status, new ToolLayout.Fills(120));
-        Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(8, 2), Children = { search, chooser, prerelease, refresh, status } });
+        Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(8, 2), Children = { search, chooser, prerelease, refresh, updateAll, status } });
 
         list = new ListBox
         {
@@ -155,6 +161,7 @@ public sealed class NuGetView : DockPanel
         model.ChangeBegun -= OnChangeBegun;
         model.Changed -= OnChanged;
         model = next;
+        updateRows = [];
         asking?.Cancel();
         List([], null);
         Tell(string.Empty);
@@ -205,6 +212,10 @@ public sealed class NuGetView : DockPanel
     private void OnChanged(object? sender, PackageOutcome ended)
     {
         EnableActions();
+        if (updatingAll)
+        {
+            return;
+        }
         if (ended.Refused is { } why)
         {
             Hold(why);
@@ -239,7 +250,9 @@ public sealed class NuGetView : DockPanel
     /// <summary>The projects' Install, Update, Downgrade and Remove, enabled only while no package change is under way.</summary>
     private void EnableActions()
     {
-        foreach (Button button in ProjectsPanel?.Children.OfType<StackPanel>().SelectMany(line => line.Children.OfType<Button>()) ?? [])
+        updateAll.IsEnabled = CanUpdateAll;
+        ToolTip.SetTip(updateAll, $"Update all {updateRows.Count} packages across their projects, including results hidden by search");
+        foreach (Button button in ProjectsPanel?.Children.OfType<Panel>().SelectMany(line => line.Children.OfType<Button>()) ?? [])
         {
             button.IsEnabled = !model.IsBusy;
         }
@@ -308,11 +321,26 @@ public sealed class NuGetView : DockPanel
 
     public bool IsBusy => model.IsBusy;
 
-    public void ShowPackages() => Show(packages);
+    public void ShowPackages()
+    {
+        bool wasUpdates = showsUpdates || body.Content == Sources;
+        showsUpdates = false;
+        updateAll.IsVisible = false;
+        Show(packages);
+        if (wasUpdates)
+        {
+            asking?.Cancel();
+            Hold(null);
+            IdeErrors.Observe(RefreshAsync());
+        }
+    }
 
     /// <summary>The Sources tab, its files read again; the package list stays as it was until a feed changes.</summary>
     public void ShowSources()
     {
+        showsUpdates = false;
+        asking?.Cancel();
+        updateAll.IsVisible = false;
         Show(Sources);
         IdeErrors.Observe(ReloadSourcesAsync(list: false));
     }
@@ -349,6 +377,15 @@ public sealed class NuGetView : DockPanel
         if (!model.IsCurrent && model.Given is null)
         {
             await ReloadSourcesAsync();
+            return;
+        }
+        if (updatingAll)
+        {
+            return;
+        }
+        if (showsUpdates)
+        {
+            await CheckUpdatesAsync(cancel, chosen);
             return;
         }
         Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> installed = await model.InstalledAsync();
@@ -494,13 +531,13 @@ public sealed class NuGetView : DockPanel
     /// <summary>Adds the chosen package to a project at the chosen version, or moves it there.</summary>
     public async Task<bool> InstallAsync(ProjectModel project) =>
         Selected is { } row && (ChosenVersion ?? row.Version) is { Length: > 0 } version
-        && (BeforeInstall is null || await BeforeInstall(project, row.Id, version))
+        && (BeforeInstall is null || await BeforeInstall(project, row.Id, version, null, CancellationToken.None))
         && Said(await model.InstallAsync(project, row.Id, version));
 
     /// <summary>Asked before the window's own Install or Update of a package in a project, with its id and version: whether
     /// it goes on as asked (false when the person cancelled, or had it made another way, as EF Core's packages moved with
     /// their provider).</summary>
-    public Func<ProjectModel, string, string, Task<bool>>? BeforeInstall { get; set; }
+    public Func<ProjectModel, string, string, Passenger.App.Editors.CommandHistory.Recording?, CancellationToken, Task<bool>>? BeforeInstall { get; set; }
 
     /// <summary>Takes the chosen package out of a project (Remove).</summary>
     public async Task<bool> RemoveAsync(ProjectModel project) => Selected is { } row && Said(await model.RemoveAsync(project, row.Id));
@@ -541,7 +578,12 @@ public sealed class NuGetView : DockPanel
     {
         body.Content = content;
         tabs.Children.Clear();
-        tabs.Children.Add(Tab("Packages", packages));
+        ToggleButton packagesTab = Tab("Packages", packages);
+        packagesTab.IsChecked = body.Content == packages && !showsUpdates;
+        tabs.Children.Add(packagesTab);
+        ToggleButton updatesTab = new() { Classes = { StyleClasses.PanelTab }, IsChecked = showsUpdates, Content = "Updates" };
+        updatesTab.Click += (_, _) => ShowUpdates();
+        tabs.Children.Add(updatesTab);
         tabs.Children.Add(Tab("Sources", Sources));
     }
 
@@ -589,7 +631,7 @@ public sealed class NuGetView : DockPanel
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            found = await Feed.VersionsAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
+            found = showsUpdates ? row.AvailableVersions : await Feed.VersionsAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -607,7 +649,7 @@ public sealed class NuGetView : DockPanel
         VulnerabilityData known = Known;
         string? vulnerable = row.InstalledVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
-        ChosenVersion = fix ?? versions.FirstOrDefault() ?? row.Version;
+        ChosenVersion = row.UpdateVersion ?? fix ?? versions.FirstOrDefault() ?? row.Version;
         ComboBox picker = new() { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140 };
         picker.SelectionChanged += (_, _) =>
         {
@@ -714,11 +756,12 @@ public sealed class NuGetView : DockPanel
                 string where = at.Count > 1 ? $" for {vulnerable.Framework}" : string.Empty;
                 mark.Children.Add(Warning($"Known security vulnerability in {affected}{where}: {gravest.Severity} severity ({gravest.Address})"));
             }
-            StackPanel line = new()
+            TextBlock name = new() { Text = project.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            ToolFlow.SetFills(name, new ToolLayout.Fills(100, 220));
+            ToolFlow line = new()
             {
-                Orientation = Orientation.Horizontal,
                 Spacing = 8,
-                Children = { new TextBlock { Text = project.Name, Width = 220, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }, version, mark },
+                Children = { name, version, mark },
             };
             if (!has)
             {
@@ -793,7 +836,7 @@ public sealed class NuGetView : DockPanel
         {
             id.Text = row.Id;
             id.FontWeight = row.IsInstalled ? FontWeight.SemiBold : FontWeight.Normal;
-            version.Text = row.Version;
+            version.Text = row.UpdateVersion is { } latest ? $"{row.Version} → {latest}" : row.Version;
             ToolTip.SetTip(line, row.Description.Length > 0 ? row.Description : null);
             warning.IsVisible = row.IsVulnerable;
             ToolTip.SetTip(warning, row.IsVulnerable ? $"Known security vulnerability: {row.Advisories[0].Severity} severity ({row.Advisories[0].Address})" : null);

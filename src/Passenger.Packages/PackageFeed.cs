@@ -68,6 +68,9 @@ public sealed record DependencyGroup(string? Framework, IReadOnlyList<(string Id
 /// did not answer, and why; and how many packages the package source mapping left out.</summary>
 public sealed record FeedSearch(IReadOnlyList<PackageSummary> Packages, IReadOnlyList<(string Feed, string Problem)> Failed, int Unmapped);
 
+/// <summary>A package's versions and the feeds that could not answer, so a partial answer stays distinguishable.</summary>
+public sealed record FeedVersions(IReadOnlyList<string> Versions, IReadOnlyList<(string Feed, string Problem)> Failed);
+
 /// <summary>The feeds the NuGet window searches at once: All Feeds, or the one chosen. Each is asked in parallel; a
 /// package found in several is listed once, at its newest version; one the package source mapping keeps from a feed is
 /// not offered from it, since restore would never take it from there.</summary>
@@ -138,23 +141,31 @@ public sealed class FeedSet(string name, IReadOnlyList<IPackageFeed> feeds, Func
 
     public async Task<IReadOnlyList<string>> VersionsAsync(string id, bool prerelease, CancellationToken cancel)
     {
-        IPackageFeed[] asked = [.. feeds.Where(f => allows(f.Name, id))];
-        (IReadOnlyList<string>? Found, Exception? Failed)[] answers = await Task.WhenAll(asked.Select(async feed =>
+        FeedVersions answer = await VersionsEachAsync(id, prerelease, cancel);
+        if (answer.Failed.Count > 0 && answer.Failed.Count == feeds.Count(f => allows(f.Name, id)))
+        {
+            throw new HttpRequestException(string.Join("; ", answer.Failed.Select(f => $"{f.Feed}: {f.Problem}")));
+        }
+        return answer.Versions;
+    }
+
+    /// <summary>A package's versions from the allowed feeds, preserving failures beside successful answers.</summary>
+    public async Task<FeedVersions> VersionsEachAsync(string id, bool prerelease, CancellationToken cancel)
+    {
+        (IReadOnlyList<string> Found, string? Problem)[] answers = await Task.WhenAll(feeds.Where(f => allows(f.Name, id)).Select(async feed =>
         {
             try
             {
-                return (await feed.VersionsAsync(id, prerelease, cancel), (Exception?)null);
+                return (await feed.VersionsAsync(id, prerelease, cancel), (string?)null);
             }
-            catch (Exception failed) when (!cancel.IsCancellationRequested && asked.Length > 1 && IsFeedFailure(failed))
+            catch (Exception failed) when (!cancel.IsCancellationRequested && IsFeedFailure(failed))
             {
-                return ((IReadOnlyList<string>?)null, failed);
+                return ((IReadOnlyList<string>)[], failed.Message);
             }
         }));
-        if (answers.Length > 0 && answers.All(a => a.Failed is not null))
-        {
-            throw answers[0].Failed!;
-        }
-        return [.. answers.SelectMany(a => a.Found ?? []).Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(v => v, VersionOrder.Instance)];
+        IPackageFeed[] asked = [.. feeds.Where(f => allows(f.Name, id))];
+        return new FeedVersions([.. answers.SelectMany(a => a.Found).Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(v => v, VersionOrder.Instance)],
+            [.. answers.Select((a, i) => (Feed: asked[i].Name, a.Problem)).Where(a => a.Problem is not null).Select(a => (a.Feed, a.Problem!))]);
     }
 
     /// <summary>A version's dependencies from the first feed the package source mapping allows that has it.</summary>
