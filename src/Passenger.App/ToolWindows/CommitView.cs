@@ -464,8 +464,9 @@ public sealed class CommitView : DockPanel, IOwnKeys
         set => amend.IsChecked = value;
     }
 
-    /// <summary>Puts the keys in the message (the Commit shortcut).</summary>
-    public void FocusMessage() => message.Focus();
+    /// <summary>Puts the keys in the message (the Commit shortcut), once laid out: the form's scroller places the message in
+    /// the tree only at its first layout, and a window just shown has had none.</summary>
+    public void FocusMessage() => Avalonia.Threading.Dispatcher.UIThread.Post(() => message.Focus(), Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>Commits the chosen files with the message (pushing after when asked), then empties the message. Whether the
     /// commit was made, whatever came of the push.</summary>
