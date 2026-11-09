@@ -158,7 +158,7 @@ public sealed class PackageSourceSet
         try
         {
             mapping = PackageSourceMapping.GetPackageSourceMapping(settings);
-            foreach (PackageSourceMappingSourceItem item in settings.GetSection("packageSourceMapping")?.Items.OfType<PackageSourceMappingSourceItem>() ?? [])
+            foreach (PackageSourceMappingSourceItem item in settings.GetSection(NuGetConfigNames.Mapping)?.Items.OfType<PackageSourceMappingSourceItem>() ?? [])
             {
                 patterns.Add((item.Key, [.. item.Patterns.Select(p => p.Pattern)]));
             }
@@ -200,32 +200,30 @@ public sealed class PackageSourceSet
         {
             return new ConfigFile(path, place, [], [], false, null, null, failed.Message);
         }
-        HashSet<string> disabled = new(Adds(root.Element("disabledPackageSources"))
-            .Where(a => string.Equals(a.Value, "true", StringComparison.OrdinalIgnoreCase)).Select(a => a.Key), StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, (string? User, bool Password)> credentials = new(StringComparer.OrdinalIgnoreCase);
-        foreach (XElement held in root.Element("packageSourceCredentials")?.Elements() ?? [])
-        {
-            List<(string Key, string Value)> values = [.. Adds(held)];
-            credentials[XmlConvert.DecodeName(held.Name.LocalName)] = (values.FirstOrDefault(v => v.Key.Equals("Username", StringComparison.OrdinalIgnoreCase)).Value,
-                values.Any(v => v.Key.Equals("Password", StringComparison.OrdinalIgnoreCase) || v.Key.Equals("ClearTextPassword", StringComparison.OrdinalIgnoreCase)));
-        }
-        XElement? sources = root.Element("packageSources");
+        // A feed named here is disabled whatever value it is given, as restore takes it.
+        HashSet<string> disabled = new(NuGetConfigNames.Adds(NuGetConfigNames.Section(root, NuGetConfigNames.DisabledPackageSources))
+            .Select(NuGetConfigNames.KeyOf).OfType<string>(), StringComparer.OrdinalIgnoreCase);
+        XElement? credentials = NuGetConfigNames.Section(root, NuGetConfigNames.Credentials);
+        XElement? sources = NuGetConfigNames.Section(root, NuGetConfigNames.PackageSources);
         List<ConfigFeed> feeds = [];
-        foreach (XElement add in sources?.Elements("add") ?? [])
+        foreach (XElement add in NuGetConfigNames.Adds(sources))
         {
-            if ((string?)add.Attribute("key") is not { } key)
+            if (NuGetConfigNames.KeyOf(add) is not { } key)
             {
                 continue;
             }
-            credentials.TryGetValue(key, out (string? User, bool Password) held);
-            feeds.Add(new ConfigFeed(key, (string?)add.Attribute("value") ?? string.Empty, disabled.Contains(key), held.User, held.Password,
-                string.Equals((string?)add.Attribute("allowInsecureConnections"), "true", StringComparison.OrdinalIgnoreCase)));
+            List<(string Key, string Value)> held = [.. Pairs(NuGetConfigNames.CredentialsOf(credentials, key).FirstOrDefault())];
+            feeds.Add(new ConfigFeed(key, NuGetConfigNames.ValueOf(add) ?? string.Empty, disabled.Contains(key),
+                held.FirstOrDefault(v => NuGetConfigNames.IsUsername(v.Key)).Value, held.Any(v => NuGetConfigNames.IsPassword(v.Key)),
+                NuGetConfigNames.IsOn(NuGetConfigNames.Attribute(add, NuGetConfigNames.AllowInsecureConnections)?.Value)));
         }
-        List<(string Key, string Value)> config = [.. Adds(root.Element("config"))];
-        string? Setting(string name) => config.LastOrDefault(c => c.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Value;
-        return new ConfigFile(path, place, feeds, [.. disabled], sources?.Elements("clear").Any() == true, Setting("globalPackagesFolder"), Setting("repositoryPath"), null);
+        List<(string Key, string Value)> config = [.. Pairs(NuGetConfigNames.Section(root, NuGetConfigNames.Config))];
+        string? Setting(string name) => config.LastOrDefault(c => NuGetConfigNames.SameKey(c.Key, name)).Value;
+        return new ConfigFile(path, place, feeds, [.. disabled], NuGetConfigNames.Clears(sources), Setting(NuGetConfigNames.GlobalPackagesFolder),
+            Setting(NuGetConfigNames.RepositoryPath), null);
     }
 
-    private static IEnumerable<(string Key, string Value)> Adds(XElement? section) =>
-        (section?.Elements("add") ?? []).Select(a => ((string?)a.Attribute("key") ?? string.Empty, (string?)a.Attribute("value") ?? string.Empty));
+    /// <summary>The keys and values of an element's add elements.</summary>
+    private static IEnumerable<(string Key, string Value)> Pairs(XElement? holder) =>
+        NuGetConfigNames.Adds(holder).Select(a => (NuGetConfigNames.KeyOf(a) ?? string.Empty, NuGetConfigNames.ValueOf(a) ?? string.Empty));
 }

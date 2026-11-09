@@ -1,5 +1,4 @@
 using System.Text;
-using System.Xml;
 using System.Xml.Linq;
 using NuGet.Configuration;
 using Passenger.Text;
@@ -22,9 +21,9 @@ public sealed record FeedEdit(string Name, string Url, bool Enabled, bool AllowI
 /// text but on Windows, where NuGet encrypts it for the user.</summary>
 public static class NuGetConfigEditor
 {
-    private const string Sources = "packageSources";
-    private const string Disabled = "disabledPackageSources";
-    private const string Credentials = "packageSourceCredentials";
+    private static readonly string Sources = NuGetConfigNames.PackageSources;
+    private static readonly string Disabled = NuGetConfigNames.DisabledPackageSources;
+    private static readonly string Credentials = NuGetConfigNames.Credentials;
 
     public static void Add(string path, FeedEdit feed) => Change(path, text =>
     {
@@ -44,9 +43,9 @@ public static class NuGetConfigEditor
             {
                 text.Remove(disabled);
             }
-            while (text.Section("packageSourceMapping")?.Elements("packageSource").FirstOrDefault(e => (string?)e.Attribute("key") == name) is { } mapped)
+            while (Mapped(text, name, feed.Name) is { } mapped)
             {
-                text.SetAttribute(mapped, "key", feed.Name);
+                text.SetAttribute(mapped, NuGetConfigNames.Attribute(mapped, NuGetConfigNames.Key)!.Name.LocalName, feed.Name);
             }
         }
         Credential(text, feed, name);
@@ -56,7 +55,7 @@ public static class NuGetConfigEditor
     /// <summary>Takes a feed out of the file, with what the file says of it elsewhere.</summary>
     public static void Remove(string path, string name) => Change(path, text =>
     {
-        while ((Child(text, Sources, name) ?? Child(text, Disabled, name) ?? Held(text, name)) is { } element)
+        while ((Child(text, Sources, name) ?? Child(text, Disabled, name) ?? Held(text, name).FirstOrDefault()) is { } element)
         {
             text.Remove(element);
         }
@@ -74,20 +73,29 @@ public static class NuGetConfigEditor
         }
         else if (!enabled && disabled is null)
         {
-            text.AddChild(Disabled, $"<add key=\"{XmlEntities.Encode(name, '"')}\" value=\"true\" />");
+            text.AddChild(Disabled, Pair(name, "true"));
         }
     }
 
-    /// <summary>The add element a section has for a name, as NuGet matches keys (ignoring case).</summary>
-    private static XElement? Child(XmlText text, string section, string name) =>
-        text.Section(section)?.Elements("add").FirstOrDefault(e => string.Equals((string?)e.Attribute("key"), name, StringComparison.OrdinalIgnoreCase));
+    private static XElement? Child(XmlText text, string section, string name) => NuGetConfigNames.Add(text.Section(section), name);
 
-    private static XElement? Held(XmlText text, string name) => text.Section(Credentials)?.Element(XmlConvert.EncodeLocalName(name));
+    /// <summary>The mapping's element for a feed, not yet under its new name.</summary>
+    private static XElement? Mapped(XmlText text, string name, string renamed) => text.Section(NuGetConfigNames.Mapping)?.Elements()
+        .FirstOrDefault(e => NuGetConfigNames.Is(e, NuGetConfigNames.MappedSource) && NuGetConfigNames.KeyOf(e) is { } key
+            && NuGetConfigNames.SameKey(key, name) && key != renamed);
 
-    /// <summary>Writes a feed's credentials, as the dialog left them, under its name in packageSourceCredentials.</summary>
+    private static IEnumerable<XElement> Held(XmlText text, string name) => NuGetConfigNames.CredentialsOf(text.Section(Credentials), name);
+
+    /// <summary>Writes a feed's credentials, as the dialog left them, into the one element of packageSourceCredentials holding
+    /// them, named as the feed is; any other element holding them is taken out.</summary>
     private static void Credential(XmlText text, FeedEdit feed, string? oldName)
     {
-        XElement? held = Held(text, feed.Name) ?? (oldName is null ? null : Held(text, oldName));
+        IEnumerable<XElement> Holding() => Held(text, feed.Name).Concat(oldName is null ? [] : Held(text, oldName)).Distinct();
+        while (Holding().Skip(1).LastOrDefault() is { } extra)
+        {
+            text.Remove(extra);
+        }
+        XElement? held = Holding().FirstOrDefault();
         if (string.IsNullOrEmpty(feed.Username))
         {
             if (held is not null)
@@ -101,22 +109,22 @@ public static class NuGetConfigEditor
         {
             PackageSourceCredential secret = PackageSourceCredential.FromUserInput(feed.Name, feed.Username, given,
                 storePasswordInClearText: !OperatingSystem.IsWindows(), validAuthenticationTypesText: null);
-            password = (secret.IsPasswordClearText ? "ClearTextPassword" : "Password", secret.PasswordText);
+            password = (secret.IsPasswordClearText ? NuGetConfigNames.ClearTextPassword : NuGetConfigNames.Password, secret.PasswordText);
         }
-        else if (held?.Elements("add").FirstOrDefault(a => (string?)a.Attribute("key") is "Password" or "ClearTextPassword") is { } kept)
+        else if (NuGetConfigNames.Adds(held).FirstOrDefault(a => NuGetConfigNames.IsPassword(NuGetConfigNames.KeyOf(a))) is { } kept)
         {
-            password = ((string)kept.Attribute("key")!, (string?)kept.Attribute("value") ?? string.Empty);
+            password = (NuGetConfigNames.PasswordKey(NuGetConfigNames.KeyOf(kept)!), NuGetConfigNames.ValueOf(kept) ?? string.Empty);
         }
         string indent = text.ChildIndent(Credentials);
-        string name = XmlConvert.EncodeLocalName(feed.Name);
-        List<string> values = [$"<add key=\"Username\" value=\"{XmlEntities.Encode(feed.Username, '"')}\" />"];
+        string name = NuGetConfigNames.CredentialsElement(feed.Name);
+        List<string> values = [Pair(NuGetConfigNames.Username, feed.Username)];
         if (password is { } secretValue)
         {
-            values.Add($"<add key=\"{secretValue.Key}\" value=\"{XmlEntities.Encode(secretValue.Value, '"')}\" />");
+            values.Add(Pair(secretValue.Key, secretValue.Value));
         }
-        foreach (XElement other in held?.Elements("add").Where(a => (string?)a.Attribute("key") is not ("Username" or "Password" or "ClearTextPassword")) ?? [])
+        foreach (XElement other in NuGetConfigNames.Adds(held).Where(a => !NuGetConfigNames.IsUsername(NuGetConfigNames.KeyOf(a)) && !NuGetConfigNames.IsPassword(NuGetConfigNames.KeyOf(a))))
         {
-            values.Add($"<add key=\"{XmlEntities.Encode((string?)other.Attribute("key") ?? string.Empty, '"')}\" value=\"{XmlEntities.Encode((string?)other.Attribute("value") ?? string.Empty, '"')}\" />");
+            values.Add(Pair(NuGetConfigNames.KeyOf(other) ?? string.Empty, NuGetConfigNames.ValueOf(other) ?? string.Empty));
         }
         string element = $"<{name}>{string.Concat(values.Select(v => text.NewLine + indent + text.Unit + v))}{text.NewLine}{indent}</{name}>";
         if (held is not null)
@@ -129,17 +137,20 @@ public static class NuGetConfigEditor
         }
     }
 
+    /// <summary>An add element of a key and its value.</summary>
+    private static string Pair(string key, string value) => $"<add key=\"{XmlEntities.Encode(key, '"')}\" value=\"{XmlEntities.Encode(value, '"')}\" />";
+
     /// <summary>A feed's add element: its key and value, what else the element had, and its insecure switch.</summary>
     private static string FeedElement(FeedEdit feed, XElement? was)
     {
         StringBuilder element = new($"<add key=\"{XmlEntities.Encode(feed.Name, '"')}\" value=\"{XmlEntities.Encode(feed.Url, '"')}\"");
-        foreach (XAttribute other in was?.Attributes().Where(a => a.Name.LocalName is not ("key" or "value" or "allowInsecureConnections")) ?? [])
+        foreach (XAttribute other in was?.Attributes().Where(a => !NuGetConfigNames.Named(a, NuGetConfigNames.Key, NuGetConfigNames.Value, NuGetConfigNames.AllowInsecureConnections)) ?? [])
         {
             element.Append($" {other.Name.LocalName}=\"{XmlEntities.Encode(other.Value, '"')}\"");
         }
         if (feed.AllowInsecure)
         {
-            element.Append(" allowInsecureConnections=\"true\"");
+            element.Append($" {NuGetConfigNames.AllowInsecureConnections}=\"true\"");
         }
         return element.Append(" />").ToString();
     }

@@ -11,6 +11,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- How nuget.config's names are matched, reading and editing it, unit tested on files of it. -->
+    <InternalsVisibleTo Include="Passenger.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
     <ProjectReference Include="../Passenger.Workspace/Passenger.Workspace.csproj" />
