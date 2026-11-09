@@ -28,6 +28,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-09
+
+- `VcsTests`' `An_edit_shows_a_change_bar_and_committing_it_from_the_commit_window_clears_it`, every system at 42e825d99
+  (run 42571668028): "the window still lacked the commit message to have the keys". **A bug in the IDE**, not a flake:
+  #1369's scroller placed the message in the tree only at its first layout, after Commit asked for the keys; they are
+  asked for once laid out (e0de905b5).
+
 ## 2026-11-07
 
 - `DebuggerTests`' `A_watch_waiting_on_a_lock_another_thread_holds_runs_again_…`, CI's Linux runner at 4004896c7 (run
