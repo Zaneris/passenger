@@ -1,7 +1,5 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Markup;
@@ -21,71 +19,11 @@ namespace Passenger.Inspector.Wpf;
 /// before wrote and put back if the text fails; what the app put there itself stays; a root property the edit did not
 /// change keeps what the app holds in it; the x:Name fields point at the new elements; an instance made later takes the
 /// newest text as it loads.</summary>
-internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
+internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops) : XamlReloader
 {
-    /// <summary>The newest text applied of each x:Class, by its type, with the text its build made instances from.</summary>
-    private readonly Dictionary<Type, (XamlChange Change, string? Built)> latest = [];
-
-    /// <summary>The text each object made from an x:Class holds once it took one.</summary>
-    private readonly ConditionalWeakTable<object, string> holds = new();
-
-    public XamlReloaded Reload(XamlChange change) =>
-        XamlReloading.Refusal(change, out XamlRoot now, out _) ?? (now.Class is { } named ? ReloadClass(change, named) : ReloadDictionary(change));
-
-    /// <summary>An element of a reloaded x:Class loaded: made from its build's BAML, it takes the newest text applied.</summary>
-    public void Loaded(object? element)
-    {
-        if (element is null || latest.Count == 0 || !latest.TryGetValue(element.GetType(), out (XamlChange Change, string? Built) newest)
-            || (holds.TryGetValue(element, out string? held) && held == newest.Change.Text))
-        {
-            return;
-        }
-        try
-        {
-            Apply(element, newest.Change, newest.Built, []);
-        }
-        catch (Refusal refused)
-        {
-            InspectorTrace.Step($"{Words.TypeName(element.GetType())} loaded and could not take {newest.Change.File}: {refused.Message}");
-        }
-    }
-
-    private XamlReloaded ReloadClass(XamlChange change, string named)
-    {
-        if (XamlReloading.Loaded(change.Assembly) is not { } assembly)
-        {
-            return new XamlReloaded([], null, []);
-        }
-        if (assembly.GetType(named) is not { } type)
-        {
-            return XamlReloading.Refused($"{Path.GetFileName(change.File)}'s x:Class {named} is not in the app's {change.Assembly}: restart the app to apply it", []);
-        }
-        string? built = latest.TryGetValue(type, out (XamlChange Change, string? Built) known) ? known.Built : change.Before;
-        List<string> objects = [];
-        List<XamlProblem> said = [];
-        foreach (object made in Reachable().Where(o => o.GetType() == type).ToList())
-        {
-            try
-            {
-                Apply(made, change, holds.TryGetValue(made, out string? held) ? held : built, said);
-            }
-            catch (Refusal refused)
-            {
-                return new XamlReloaded(objects, refused.Message, said);
-            }
-            objects.Add(Words.Describe(type, (made as FrameworkElement)?.Name));
-        }
-        if (type.IsSubclassOf(typeof(Application)) && Application.Current?.GetType() == type && objects.Count == 0)
-        {
-            return new XamlReloaded(objects, null, said);
-        }
-        latest[type] = (change, built);
-        return new XamlReloaded(objects, null, said);
-    }
-
     /// <summary>A resource dictionary the build merged where its file is named: each swapped, where it is, for one made from
     /// the text.</summary>
-    private XamlReloaded ReloadDictionary(XamlChange change)
+    protected override XamlReloaded ReloadIncluded(XamlChange change)
     {
         List<(Collection<ResourceDictionary> In, int At)> found = [.. Merged().Where(m => m.In[m.At].Source is { } source && Sources.FileOf(Absolute(source, change)) is { } file
             && PathNames.Same(file, change.File))];
@@ -116,26 +54,13 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
     private static Uri Absolute(Uri source, XamlChange change) =>
         source.IsAbsoluteUri ? source : new Uri(new Uri($"pack://application:,,,/{change.Assembly};component/"), source.OriginalString.TrimStart('/'));
 
-    /// <summary>Loads one object again from the text, its reset taken back if the text fails.</summary>
-    private void Apply(object made, XamlChange change, string? before, List<XamlProblem> said)
-    {
-        XamlRoot now = XamlRoot.Read(change.Text);
-        XamlRoot? was = XamlReloading.Readable(before);
-        Held held = new(made, change.File);
-        try
-        {
-            held.Reset(now, was);
-            Load(change, made, made.GetType().Assembly);
-        }
-        catch (Exception error)
-        {
-            held.PutBack(now);
-            throw new Refusal(Why(change, error, said, made.GetType()));
-        }
-        held.Keep(now, was);
-        Named(made);
-        holds.AddOrUpdate(made, change.Text);
-    }
+    protected override string? Unreloadable(Type type) => null;
+
+    protected override string Called(object made) => Words.Describe(made.GetType(), (made as FrameworkElement)?.Name);
+
+    protected override IHeldRoot Hold(object made, string file) => new Held(made, file);
+
+    protected override void Load(XamlChange change, object made, List<XamlProblem> said) => Load(change, made, made.GetType().Assembly);
 
     /// <summary>The text read by WPF's own schema and loaded by WPF's own loader, into <paramref name="root"/> as its BAML
     /// is, with access to its class's own members; a loose dictionary by WPF's public reader.</summary>
@@ -163,7 +88,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
     }
 
     /// <summary>Why a text could not apply, in the person's words, with the place WPF's reader named.</summary>
-    private static string Why(XamlChange change, Exception error, List<XamlProblem> said, Type? root)
+    protected override string Why(XamlChange change, Exception error, List<XamlProblem> said, Type? root)
     {
         Exception cause = error is XamlLoadFailed failed ? failed.InnerException! : error;
         (int? line, int? column) = cause switch
@@ -188,7 +113,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
 
     /// <summary>Every object the app holds that a XAML file's root can make: its Application, its windows, and each top
     /// level's visual and logical descendants, outer before inner.</summary>
-    private IEnumerable<object> Reachable()
+    protected override IEnumerable<object> Reachable()
     {
         HashSet<object> seen = new(ReferenceEqualityComparer.Instance);
         if (Application.Current is { } app && seen.Add(app))
@@ -248,7 +173,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
 
     /// <summary>Points the markup compiler's x:Name fields of an object (its class's internal fields, which the compiler's
     /// IComponentConnector sets) at the elements its name scope now has by their names.</summary>
-    private static void Named(object made)
+    protected override void Named(object made)
     {
         if (made is not (DependencyObject root and IComponentConnector) || NameScope.GetNameScope(root) is not { } scope)
         {
@@ -266,7 +191,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
     /// <summary>What loading an object again adds to, taken away first and kept to put back: its resources, name scope,
     /// triggers, input and command bindings, its root's handlers, and its own local values. What of these the text before
     /// did not write is the app's own, kept through a load that succeeds.</summary>
-    private sealed class Held
+    private sealed class Held : IHeldRoot
     {
         private readonly object made;
         private readonly string file;
@@ -337,14 +262,14 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
             {
                 return;
             }
-            foreach ((EventInfo handled, Delegate handler) in Handlers(was))
+            foreach ((EventInfo handled, Delegate handler) in XamlReloading.Handlers(made, was))
             {
                 handled.RemoveEventHandler(made, handler);
                 unhooked.Add((handled, handler));
             }
             foreach (string dropped in was.Dropped(now))
             {
-                if (made is DependencyObject root && Property(root, dropped) is { ReadOnly: false } property)
+                if (made is DependencyObject root && Properties.Find(root, dropped) is { ReadOnly: false } property)
                 {
                     root.ClearValue(property);
                 }
@@ -379,7 +304,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
         /// <summary>The text failed: the object as it was.</summary>
         public void PutBack(XamlRoot now)
         {
-            foreach ((EventInfo handled, Delegate handler) in Handlers(now))
+            foreach ((EventInfo handled, Delegate handler) in XamlReloading.Handlers(made, now))
             {
                 handled.RemoveEventHandler(made, handler);
             }
@@ -442,12 +367,12 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
         {
             if (made is FrameworkElement element)
             {
-                Around(element.Triggers, ownTriggers);
+                XamlReloading.Around(element.Triggers, ownTriggers);
             }
             if (made is UIElement input)
             {
-                Around(input.InputBindings, ownInputs);
-                Around(input.CommandBindings, ownCommands);
+                XamlReloading.Around(ownInputs, input.InputBindings.Remove, input.InputBindings.Insert, binding => input.InputBindings.Add(binding));
+                XamlReloading.Around(ownCommands, input.CommandBindings.Remove, input.CommandBindings.Insert, binding => input.CommandBindings.Add(binding));
             }
             KeepResources();
             if (was is null)
@@ -456,7 +381,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
             }
             foreach ((DependencyProperty property, object? value) in locals)
             {
-                if (value is not (Visual or FrameworkContentElement or BindingExpressionBase) && was.Keeps(now, property.Name))
+                if (value is not (Visual or FrameworkContentElement or BindingExpressionBase) && made is DependencyObject root && was.Keeps(now, Properties.NameOn(root, property)))
                 {
                     Restore(property, value);
                 }
@@ -477,40 +402,10 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
             {
                 current.Add(key, lent[key]);
             }
-            Around((System.Collections.IList)current.MergedDictionaries, ownMerged);
-        }
-
-        /// <summary>A list as a text left it, with the app's own back before and after what the text made.</summary>
-        private static void Around<T>(System.Collections.IList list, (List<T> First, List<T> Last) own)
-        {
-            foreach (T item in own.First.Concat(own.Last))
-            {
-                list.Remove(item);
-            }
-            for (int i = 0; i < own.First.Count; i++)
-            {
-                list.Insert(i, own.First[i]);
-            }
-            foreach (T item in own.Last)
-            {
-                list.Add(item);
-            }
+            XamlReloading.Around(current.MergedDictionaries, ownMerged);
         }
 
         private XamlOrigin Origin(object item) => Sources.Origin(item, file);
-
-        /// <summary>The event handlers a text names on the root, as its XAML makes them: equal to them, so they can be taken off.</summary>
-        private IEnumerable<(EventInfo Event, Delegate Handler)> Handlers(XamlRoot text)
-        {
-            foreach ((string name, string value) in text.Attributes)
-            {
-                if (made.GetType().GetEvent(name, BindingFlags.Public | BindingFlags.Instance) is { EventHandlerType: { } kind } handled
-                    && Handler(kind, value) is { } handler)
-                {
-                    yield return (handled, handler);
-                }
-            }
-        }
 
         private void Restore(DependencyProperty property, object? value)
         {
@@ -548,23 +443,6 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
                 }
             }
             return values;
-        }
-
-        /// <summary>A root's dependency property by the name its XAML gives it.</summary>
-        private static DependencyProperty? Property(DependencyObject made, string name) =>
-            name.Contains('.', StringComparison.Ordinal) ? null : DependencyPropertyDescriptor.FromName(name, made.GetType(), made.GetType())?.DependencyProperty;
-
-        /// <summary>The handler an attribute names on the object, as its XAML made it: equal to it, so it can be taken off.</summary>
-        private Delegate? Handler(Type kind, string method)
-        {
-            foreach (MethodInfo candidate in made.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Where(m => m.Name == method))
-            {
-                if (Delegate.CreateDelegate(kind, made, candidate, throwOnBindFailure: false) is { } handler)
-                {
-                    return handler;
-                }
-            }
-            return null;
         }
     }
 

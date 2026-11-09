@@ -308,8 +308,8 @@ internal sealed class Details(Inspector inspector)
     private static string? Framed(object value) => value switch
     {
         SolidColorBrush brush => brush.Opacity < 1 ? $"{brush.Color} ({brush.Opacity.ToString("0.##", CultureInfo.InvariantCulture)})" : brush.Color.ToString(CultureInfo.InvariantCulture),
-        Thickness t => string.Create(CultureInfo.InvariantCulture, $"{t.Left},{t.Top},{t.Right},{t.Bottom}"),
-        _ when value == DependencyProperty.UnsetValue => "(unset)",
+        Thickness t => Words.Thickness(t.Left, t.Top, t.Right, t.Bottom),
+        _ when value == DependencyProperty.UnsetValue => Words.Unset,
         BindingExpressionBase { ParentBindingBase: Binding binding } => Written(binding),
         Binding binding => Written(binding),
         DynamicResourceExtension dynamic => $"{{DynamicResource {dynamic.ResourceKey}}}",

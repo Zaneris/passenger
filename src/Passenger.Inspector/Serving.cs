@@ -421,6 +421,13 @@ internal abstract class Driving<T, TTop> where T : class where TTop : class, T
 /// that click), Escape chooses nothing, and either ends the choosing with the outline left on what was chosen.</summary>
 internal abstract class Picking<T>(Connection connection) where T : class
 {
+    /// <summary>The outline's fill, as alpha, red, green and blue: the inspector's own colours, since Passenger's theme tokens
+    /// are not the app's.</summary>
+    protected static readonly (byte A, byte R, byte G, byte B) OutlineFill = (0x40, 0x3D, 0x8B, 0xFF);
+
+    /// <summary>The outline's edge, as alpha, red, green and blue.</summary>
+    protected static readonly (byte A, byte R, byte G, byte B) OutlineEdge = (0xFF, 0x1E, 0x6F, 0xE8);
+
     /// <summary>Turns Select Element on, in every window the app has open, or off.</summary>
     public abstract void Choose(bool on);
 
@@ -516,6 +523,12 @@ internal static class Words
     /// <summary>Why an element Passenger or an agent named is not acted on: it has gone from the app since.</summary>
     public const string ElementGone = "That element is no longer in the app";
 
+    /// <summary>A property's value where it has none at all, not even its default (the framework's UnsetValue).</summary>
+    public const string Unset = "(unset)";
+
+    /// <summary>What a failed binding's report says of a control or a property it could not tell.</summary>
+    public const string Unknown = "(unknown)";
+
     /// <summary>The longest a value's words run before they are cut.</summary>
     private const int LongestValue = 300;
 
@@ -547,6 +560,15 @@ internal static class Words
     [return: NotNullIfNotNull(nameof(text))]
     public static string? Shows(string? text) => text is null ? null : Cut(text, LongestShown);
 
+    /// <summary>A property as XAML and the window name it: its own name, one attached from another type its owner's first.</summary>
+    public static string PropertyName(Type owner, string name, bool attached) => attached ? $"{TypeName(owner)}.{name}" : name;
+
+    /// <summary>A thickness as XAML writes one, whatever the app's culture: "1.5,0,8,0".</summary>
+    public static string Thickness(double left, double top, double right, double bottom) => string.Create(CultureInfo.InvariantCulture, $"{left},{top},{right},{bottom}");
+
+    /// <summary>A value's words cut where they run past what a value is shown at.</summary>
+    public static string CutValue(string text) => Cut(text, LongestValue);
+
     /// <summary>A value as the window shows it: text quoted, then the framework's own words for it (<paramref name="framed"/>,
     /// null when it has none), then its invariant text, else what it says it is.</summary>
     public static string Value(object? value, Func<object, string?> framed)
@@ -557,7 +579,7 @@ internal static class Words
             string s => $"\"{s}\"",
             _ => framed(value) ?? (value is IFormattable formattable ? formattable.ToString(null, CultureInfo.InvariantCulture) : Described(value)),
         };
-        return Cut(text, LongestValue);
+        return CutValue(text);
     }
 
     /// <summary>The values of the properties named that an element has (<paramref name="valueOf"/>, null for one it has

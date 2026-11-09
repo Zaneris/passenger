@@ -28,15 +28,21 @@ internal static class Properties
             DependencyProperty property = local.Current.Property;
             if (listed.Add(property))
             {
-                all.Add((property, !property.OwnerType.IsAssignableFrom(element.GetType())));
+                all.Add((property, AttachedFrom(property, element)));
             }
         }
         return all;
     }
 
     /// <summary>A property as the window names it: its own name, an attached one's owner first.</summary>
-    public static string NameOf(DependencyProperty property, bool attached) =>
-        attached ? $"{Words.TypeName(property.OwnerType)}.{property.Name}" : property.Name;
+    public static string NameOf(DependencyProperty property, bool attached) => Words.PropertyName(property.OwnerType, property.Name, attached);
+
+    /// <summary>A property an element holds as the window lists it (<see cref="Of"/>), as its XAML writes it on the element.</summary>
+    public static string NameOn(DependencyObject element, DependencyProperty property) =>
+        NameOf(property, !DeclaredBy(element.GetType()).Contains(property) && AttachedFrom(property, element));
+
+    /// <summary>Whether a property an element's type does not declare is another type's, attached to it.</summary>
+    private static bool AttachedFrom(DependencyProperty property, DependencyObject element) => !property.OwnerType.IsAssignableFrom(element.GetType());
 
     /// <summary>An element's property by the name the Live Visual Tree lists it under, or null.</summary>
     public static DependencyProperty? Find(DependencyObject element, string name)

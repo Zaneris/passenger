@@ -76,10 +76,9 @@ internal static partial class Bindings
         object? bound = named.GetValueOrDefault("Property");
         string property = bound switch
         {
-            AvaloniaProperty { IsAttached: true } attached => $"{Words.TypeName(attached.OwnerType)}.{attached.Name}",
-            AvaloniaProperty own => own.Name,
-            { } other => other.ToString() ?? "(unknown)",
-            null => "(unknown)",
+            AvaloniaProperty failed => Words.PropertyName(failed.OwnerType, failed.Name, failed.IsAttached),
+            { } other => other.ToString() ?? Words.Unknown,
+            null => Words.Unknown,
         };
         string path = named.GetValueOrDefault("Expression")?.ToString() ?? string.Empty;
         string? point = named.GetValueOrDefault("ExpressionErrorPoint")?.ToString();
@@ -87,7 +86,7 @@ internal static partial class Bindings
         string control = source switch
         {
             Visual visual => Details.Describe(visual),
-            null => "(unknown)",
+            null => Words.Unknown,
             _ => Words.TypeName(source.GetType()),
         };
         // Avalonia's attached properties are read on the object's own thread, which is the one logging, in every app.

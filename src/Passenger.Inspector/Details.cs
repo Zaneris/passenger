@@ -232,8 +232,8 @@ internal sealed class Details(Inspector inspector)
     private static string? Framed(object value) => value switch
     {
         ISolidColorBrush brush => brush.Opacity < 1 ? $"{brush.Color} ({brush.Opacity.ToString("0.##", CultureInfo.InvariantCulture)})" : brush.Color.ToString(),
-        Thickness t => t.ToString(),
-        _ when value == AvaloniaProperty.UnsetValue => "(unset)",
+        Thickness t => Words.Thickness(t.Left, t.Top, t.Right, t.Bottom),
+        _ when value == AvaloniaProperty.UnsetValue => Words.Unset,
         _ => null,
     };
 }

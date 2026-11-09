@@ -118,10 +118,10 @@ internal static partial class Bindings
         bool onItsThread = target?.CheckAccess() == true;
         string control = target is not null ? Details.Describe(target)
             : TargetElement().Match(text) is { Success: true } named ? (named.Groups["name"].Value is { Length: > 0 } name ? $"{named.Groups["type"].Value}#{name}" : named.Groups["type"].Value)
-            : "(unknown)";
+            : Words.Unknown;
         string property = targetProperty is not null
             ? Wpf.Properties.NameOf(targetProperty, target is not null && !targetProperty.OwnerType.IsAssignableFrom(target.GetType()) && Attached(targetProperty, target))
-            : TargetProperty().Match(text) is { Success: true } said ? said.Groups["property"].Value : "(unknown)";
+            : TargetProperty().Match(text) is { Success: true } said ? said.Groups["property"].Value : Words.Unknown;
         string path = PathOf(binding) ?? (PathWritten().Match(text) is { Success: true } written ? written.Groups["path"].Value : string.Empty);
         string message = Message(text, code);
         SourcePlace? place = onItsThread ? Sources.Place(target!) : null;

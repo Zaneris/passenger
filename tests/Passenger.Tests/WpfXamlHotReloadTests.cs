@@ -321,6 +321,84 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
                 beat.Start();
         """;
 
+    /// <summary>An attached property a user control's root sets in its XAML (Grid.Row) is named there as Owner.Name: the row
+    /// the app moved the control to itself stays through a saved edit that leaves the attribute as it was, and the attribute
+    /// taken out and saved clears it, as an Avalonia root's does.</summary>
+    [AvaloniaFact]
+    public void An_attached_property_of_a_user_controls_root_keeps_the_apps_value_through_an_edit_and_is_cleared_once_taken_out()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string card = Path.Combine(folder, "Card.xaml");
+        File.WriteAllText(card, """
+            <UserControl x:Class="WpfTreeApp.Card"
+                         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         Grid.Row="1" Tag="card">
+                <TextBlock Text="Card" />
+            </UserControl>
+
+            """);
+        File.WriteAllText(Path.Combine(folder, "Card.xaml.cs"), """
+            using System.Windows.Controls;
+
+            namespace WpfTreeApp;
+
+            public partial class Card : UserControl
+            {
+                public Card() => InitializeComponent();
+            }
+
+            """);
+        string code = Path.Combine(folder, "MainWindow.xaml.cs");
+        File.WriteAllText(code, File.ReadAllText(code).Replace("InitializeComponent();", "InitializeComponent();\n        System.Windows.Controls.Grid.SetRow(Placed, 0);", StringComparison.Ordinal));
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"WpfTreeApp.MainWindow\"", "x:Class=\"WpfTreeApp.MainWindow\" xmlns:local=\"clr-namespace:WpfTreeApp\"", StringComparison.Ordinal)
+            .Replace(Counter, $"<Grid><Grid.RowDefinitions><RowDefinition Height=\"Auto\" /><RowDefinition Height=\"Auto\" /></Grid.RowDefinitions><local:Card x:Name=\"Placed\" /></Grid>\n{Counter}",
+                StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            Assert.Equal("0", Row(app));
+
+            window.OpenFile(card);
+            Typing.Replace(window, "Tag=\"card\"", "Tag=\"edited\"");
+            Ui.Run(window, AppActions.SaveAll);
+            Applied(window, 1);
+            Assert.True(Row(app) == "0", $"The row the app moved the card to was {Row(app)} after an edit that left Grid.Row as it was: the text's overwrote the app's");
+
+            Typing.Replace(window, "Grid.Row=\"1\" Tag=\"edited\"", "Tag=\"edited\"");
+            Ui.Run(window, AppActions.SaveAll);
+            Applied(window, 2);
+            Assert.True(Row(app) is null, $"Grid.Row taken out of the card's XAML and saved still holds {Row(app)} on the card");
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+
+        static string? Row(LiveApp app) => Find(Ui.Await(app.AgentTreeAsync(["Grid.Row"]), "the app's tree").Roots, "Placed")?.Values?.GetValueOrDefault("Grid.Row");
+
+        static void Applied(MainWindow window, int times) => Ui.WaitFor(() =>
+        {
+            OutputView run = window.BottomPanel.Run;
+            run.Flush();
+            string said = run.Document.Snapshot.ToString();
+            int count = 0;
+            for (int at = said.IndexOf("XAML changes applied: Card.xaml", StringComparison.Ordinal); at >= 0; at = said.IndexOf("XAML changes applied: Card.xaml", at + 1, StringComparison.Ordinal))
+            {
+                count++;
+            }
+            return count >= times;
+        }, () => $"the Run window to say the card's XAML applied {times} times ({window.Status})");
+    }
+
     /// <summary>Two files of one name in two folders, whose elements stand at the same lines and columns: asked what it made at
     /// a place in one, the app answers that file's element and not the other's.</summary>
     [AvaloniaFact]

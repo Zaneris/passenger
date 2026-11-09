@@ -15,8 +15,8 @@ namespace Passenger.Inspector;
 /// theme tokens are not the app's.</summary>
 internal sealed class Picker(Inspector inspector, Connection connection) : Picking<Visual>(connection)
 {
-    private static readonly IBrush Fill = new ImmutableSolidColorBrush(Color.FromArgb(0x40, 0x3D, 0x8B, 0xFF));
-    private static readonly IBrush Edge = new ImmutableSolidColorBrush(Color.FromArgb(0xFF, 0x1E, 0x6F, 0xE8));
+    private static readonly IBrush Fill = new ImmutableSolidColorBrush(Color.FromArgb(OutlineFill.A, OutlineFill.R, OutlineFill.G, OutlineFill.B));
+    private static readonly IBrush Edge = new ImmutableSolidColorBrush(Color.FromArgb(OutlineEdge.A, OutlineEdge.R, OutlineEdge.G, OutlineEdge.B));
 
     private readonly List<(TopLevel Top, IDisposable Moved, IDisposable Pressed, IDisposable Released, IDisposable Keys)> hooked = [];
     private Border? outline;

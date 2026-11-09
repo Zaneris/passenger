@@ -111,8 +111,8 @@ internal sealed class Picker(Inspector inspector, Connection connection) : Picki
     /// <summary>The outline: a box over the element, drawn by the inspector, which hit testing passes through.</summary>
     private sealed class Marker : Adorner
     {
-        private static readonly Brush Fill = Frozen(new SolidColorBrush(Color.FromArgb(0x40, 0x3D, 0x8B, 0xFF)));
-        private static readonly Pen Edge = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0xFF, 0x1E, 0x6F, 0xE8))), 1));
+        private static readonly Brush Fill = Frozen(new SolidColorBrush(Color.FromArgb(OutlineFill.A, OutlineFill.R, OutlineFill.G, OutlineFill.B)));
+        private static readonly Pen Edge = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(OutlineEdge.A, OutlineEdge.R, OutlineEdge.G, OutlineEdge.B))), 1));
 
         public Marker(UIElement adorned) : base(adorned) => IsHitTestVisible = false;
 

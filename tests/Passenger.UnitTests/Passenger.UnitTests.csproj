@@ -111,8 +111,11 @@
   </ItemGroup>
 
   <!-- An app's tree as the inspector makes it, as the wire carries it, and as an agent's tools and the Live Visual Tree
-       walk it, from the elements alone, compiled in since their projects are the inspector and the app. -->
+       walk it, from the elements alone, and the words the inspector gives values, compiled in since their projects are the
+       inspector and the app. -->
   <ItemGroup>
+    <Compile Include="../../src/Passenger.Inspector/Serving.cs" Link="Inspector/Serving.cs" />
+    <Compile Include="../../src/Passenger.Inspector/Connection.cs" Link="Inspector/Connection.cs" />
     <Compile Include="../../src/Passenger.Inspector/Protocol.cs" Link="Inspector/Protocol.cs" />
     <Compile Include="../../src/Passenger.Inspector/ElementTrees.cs" Link="Inspector/ElementTrees.cs" />
     <Compile Include="../../src/Passenger.App/LiveTree/AppQuery.cs" Link="App/AppQuery.cs" />

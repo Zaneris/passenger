@@ -436,10 +436,10 @@ internal static class BindingReader
             bool b => b ? "true" : "false",
             Enum e => e.ToString(),
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ when value == AvaloniaProperty.UnsetValue => "(unset)",
+            _ when value == AvaloniaProperty.UnsetValue => Words.Unset,
             _ => value.ToString() is { } said && said != value.GetType().ToString() ? said : $"{{{TypeName(value.GetType())}}}",
         };
-        return text.Length > 300 ? text[..297] + "..." : text;
+        return Words.CutValue(text);
     }
 
     private static string Quoted(string text, char quote)

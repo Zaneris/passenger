@@ -1,6 +1,5 @@
 using System.CodeDom.Compiler;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
@@ -24,71 +23,11 @@ namespace Passenger.Inspector;
 /// stays as it was; what the app put there itself stays. A root property the edit did not change keeps what the app holds
 /// in it now; the name generator's x:Name fields point at the new controls; an instance made later takes the newest text as
 /// it loads.</summary>
-internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
+internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops) : XamlReloader
 {
-    /// <summary>The newest text applied of each x:Class, by its type, with the text its build made instances from.</summary>
-    private readonly Dictionary<Type, (XamlChange Change, string? Built)> latest = [];
-
-    /// <summary>The text each object made from an x:Class holds once it took one.</summary>
-    private readonly ConditionalWeakTable<object, string> holds = new();
-
-    public XamlReloaded Reload(XamlChange change) =>
-        XamlReloading.Refusal(change, out XamlRoot now, out _) ?? (now.Class is { } named ? ReloadClass(change, named) : ReloadIncluded(change));
-
-    /// <summary>A control of a reloaded x:Class loaded: made from its build's XAML, it takes the newest text applied.</summary>
-    public void Loaded(object? control)
-    {
-        if (control is not AvaloniaObject made || latest.Count == 0 || !latest.TryGetValue(made.GetType(), out (XamlChange Change, string? Built) newest)
-            || (holds.TryGetValue(made, out string? held) && held == newest.Change.Text))
-        {
-            return;
-        }
-        try
-        {
-            Apply(made, newest.Change, newest.Built, []);
-        }
-        catch (Refusal refused)
-        {
-            InspectorTrace.Step($"{Words.TypeName(made.GetType())} loaded and could not take {newest.Change.File}: {refused.Message}");
-        }
-    }
-
-    private XamlReloaded ReloadClass(XamlChange change, string named)
-    {
-        if (XamlReloading.Loaded(change.Assembly) is not { } assembly)
-        {
-            return new XamlReloaded([], null, []);
-        }
-        if (assembly.GetType(named) is not { } type)
-        {
-            return XamlReloading.Refused($"{Path.GetFileName(change.File)}'s x:Class {named} is not in the app's {change.Assembly}: restart the app to apply it", []);
-        }
-        if (!typeof(AvaloniaObject).IsAssignableFrom(type))
-        {
-            return XamlReloading.Refused($"{Path.GetFileName(change.File)}'s x:Class {named} is no Avalonia object, which XAML Hot Reload makes again: restart the app to apply it", []);
-        }
-        string? built = latest.TryGetValue(type, out (XamlChange Change, string? Built) known) ? known.Built : change.Before;
-        List<string> objects = [];
-        List<XamlProblem> said = [];
-        foreach (AvaloniaObject made in Reachable().OfType<AvaloniaObject>().Where(o => o.GetType() == type).ToList())
-        {
-            try
-            {
-                Apply(made, change, holds.TryGetValue(made, out string? held) ? held : built, said);
-            }
-            catch (Refusal refused)
-            {
-                return new XamlReloaded(objects, refused.Message, said);
-            }
-            objects.Add(Called(made));
-        }
-        latest[type] = (change, built);
-        return new XamlReloaded(objects, null, said);
-    }
-
     /// <summary>A file of styles or resources the build included where it is named: each object its build made from it (its
     /// source info is the file's) swapped, where it is, for one made from the text.</summary>
-    private XamlReloaded ReloadIncluded(XamlChange change)
+    protected override XamlReloaded ReloadIncluded(XamlChange change)
     {
         if (XamlReloading.Loaded(change.Assembly) is not { } assembly)
         {
@@ -118,26 +57,14 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
         return new XamlReloaded(objects, null, said);
     }
 
-    /// <summary>Populates one object again from the text, its reset taken back if the text fails.</summary>
-    private void Apply(AvaloniaObject made, XamlChange change, string? before, List<XamlProblem> said)
-    {
-        XamlRoot now = XamlRoot.Read(change.Text);
-        XamlRoot? was = XamlReloading.Readable(before);
-        Held held = new(made, change.File);
-        try
-        {
-            held.Reset(now, was);
-            Load(change, made, made.GetType().Assembly, said);
-        }
-        catch (Exception error)
-        {
-            held.PutBack(now);
-            throw new Refusal(Why(change, error, said, made.GetType()));
-        }
-        held.Keep(now, was);
-        Named(made);
-        holds.AddOrUpdate(made, change.Text);
-    }
+    protected override string? Unreloadable(Type type) =>
+        typeof(AvaloniaObject).IsAssignableFrom(type) ? null : "is no Avalonia object, which XAML Hot Reload makes again";
+
+    protected override string Called(object made) => Words.Describe(made.GetType(), (made as StyledElement)?.Name);
+
+    protected override IHeldRoot Hold(object made, string file) => new Held((AvaloniaObject)made, file);
+
+    protected override void Load(XamlChange change, object made, List<XamlProblem> said) => Load(change, made, made.GetType().Assembly, said);
 
     private static object Load(XamlChange change, object? root, Assembly local, List<XamlProblem> said)
     {
@@ -166,7 +93,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
 
     /// <summary>Why a text could not apply, in the person's words: the compiler's first error (a handler the class lacks said
     /// as such), else what the load threw, its place left to the problem it adds.</summary>
-    private static string Why(XamlChange change, Exception error, List<XamlProblem> said, Type? root)
+    protected override string Why(XamlChange change, Exception error, List<XamlProblem> said, Type? root)
     {
         string file = Path.GetFileName(change.File);
         if (said.FirstOrDefault(p => p.Error) is not { } first)
@@ -185,15 +112,13 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
         return $"{file} could not apply: {first.Message}";
     }
 
-    private static string Called(AvaloniaObject made) => Words.Describe(made.GetType(), (made as StyledElement)?.Name);
-
     /// <summary>Whether the build made an object from this file, by the source info it gave it.</summary>
     private static bool From(object made, string file) =>
         XamlSourceInfo.GetXamlSourceInfo(made) is { SourceUri: { } uri } && PathNames.Same(uri.IsFile ? uri.LocalPath : uri.ToString(), file);
 
     /// <summary>Every object the app holds that a XAML file's root can make: its Application, each top level's visuals and
     /// logical children, and the styles and resources each of them holds, outer before inner.</summary>
-    private IEnumerable<object> Reachable()
+    protected override IEnumerable<object> Reachable()
     {
         HashSet<object> seen = new(ReferenceEqualityComparer.Instance);
         if (Application.Current is { } app && seen.Add(app))
@@ -296,7 +221,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
     }
 
     /// <summary>Points the name generator's x:Name fields of an object at the controls its name scope now has by their names.</summary>
-    private static void Named(AvaloniaObject made)
+    protected override void Named(object made)
     {
         if (made is not StyledElement element || NameScope.GetNameScope(element) is not { } scope)
         {
@@ -315,7 +240,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
     /// <summary>What populating an object again adds to, taken away first and kept to put back: its styles, resources,
     /// data templates, key bindings and classes, its root's handlers, and its own local values. What of these the text
     /// before did not write is the app's own, kept through a load that succeeds.</summary>
-    private sealed class Held
+    private sealed class Held : IHeldRoot
     {
         private readonly AvaloniaObject made;
         private readonly string file;
@@ -383,7 +308,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
             {
                 return;
             }
-            foreach ((EventInfo handled, Delegate handler) in Handlers(was))
+            foreach ((EventInfo handled, Delegate handler) in XamlReloading.Handlers(made, was))
             {
                 handled.RemoveEventHandler(made, handler);
                 unhooked.Add((handled, handler));
@@ -424,7 +349,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
         /// <summary>The text failed: the object as it was.</summary>
         public void PutBack(XamlRoot now)
         {
-            foreach ((EventInfo handled, Delegate handler) in Handlers(now))
+            foreach ((EventInfo handled, Delegate handler) in XamlReloading.Handlers(made, now))
             {
                 handled.RemoveEventHandler(made, handler);
             }
@@ -482,9 +407,9 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
         /// which the text made again).</summary>
         public void Keep(XamlRoot now, XamlRoot? was)
         {
-            Around(styles, ownStyles);
-            Around(templates, ownTemplates);
-            Around(keys, ownKeys);
+            XamlReloading.Around(styles, ownStyles);
+            XamlReloading.Around(templates, ownTemplates);
+            XamlReloading.Around(keys, ownKeys);
             KeepResources();
             (made as StyledElement)?.Classes.AddRange(ownClasses);
             if (was is null)
@@ -519,49 +444,15 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
             {
                 current.Add(key, lent[key]);
             }
-            Around(current.MergedDictionaries, ownMerged);
+            XamlReloading.Around(current.MergedDictionaries, ownMerged);
             foreach ((ThemeVariant variant, IThemeVariantProvider theme) in ownThemes)
             {
                 current.ThemeDictionaries.TryAdd(variant, theme);
             }
         }
 
-        /// <summary>A list as a text left it, with the app's own back before and after what the text made.</summary>
-        private static void Around<T>(IList<T>? list, (List<T> First, List<T> Last) own)
-        {
-            if (list is null)
-            {
-                return;
-            }
-            foreach (T item in own.First.Concat(own.Last))
-            {
-                list.Remove(item);
-            }
-            for (int i = 0; i < own.First.Count; i++)
-            {
-                list.Insert(i, own.First[i]);
-            }
-            foreach (T item in own.Last)
-            {
-                list.Add(item);
-            }
-        }
-
         private XamlOrigin Origin(object item) =>
             XamlSourceInfo.GetXamlSourceInfo(item) is null ? XamlOrigin.Unrecorded : From(item, file) ? XamlOrigin.ThisFile : XamlOrigin.AnotherFile;
-
-        /// <summary>The event handlers a text names on the root, as its XAML makes them: equal to them, so they can be taken off.</summary>
-        private IEnumerable<(EventInfo Event, Delegate Handler)> Handlers(XamlRoot text)
-        {
-            foreach ((string name, string value) in text.Attributes)
-            {
-                if (made.GetType().GetEvent(name, BindingFlags.Public | BindingFlags.Instance) is { EventHandlerType: { } kind } handled
-                    && Handler(kind, value) is { } handler)
-                {
-                    yield return (handled, handler);
-                }
-            }
-        }
 
         private static Dictionary<AvaloniaProperty, object?> Locals(AvaloniaObject made)
         {
@@ -578,29 +469,12 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
             return values;
         }
 
-        private static string NameOf(AvaloniaProperty property) => property.IsAttached ? $"{property.OwnerType.Name}.{property.Name}" : property.Name;
+        private static string NameOf(AvaloniaProperty property) => Words.PropertyName(property.OwnerType, property.Name, property.IsAttached);
 
-        /// <summary>A root's property by the name its XAML gives it (Owner.Name when attached).</summary>
-        private static AvaloniaProperty? Property(AvaloniaObject made, string name)
-        {
-            int dot = name.IndexOf('.', StringComparison.Ordinal);
-            return dot < 0
-                ? AvaloniaPropertyRegistry.Instance.FindRegistered(made, name)
-                : AvaloniaPropertyRegistry.Instance.GetRegisteredAttached(made.GetType())
-                    .FirstOrDefault(p => p.OwnerType.Name == name[..dot] && p.Name == name[(dot + 1)..]);
-        }
-
-        /// <summary>The handler an attribute names on the object, as its XAML made it: equal to it, so it can be taken off.</summary>
-        private Delegate? Handler(Type kind, string method)
-        {
-            foreach (MethodInfo candidate in made.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Where(m => m.Name == method))
-            {
-                if (Delegate.CreateDelegate(kind, made, candidate, throwOnBindFailure: false) is { } handler)
-                {
-                    return handler;
-                }
-            }
-            return null;
-        }
+        /// <summary>A root's property by the name its XAML gives it (<see cref="NameOf"/>).</summary>
+        private static AvaloniaProperty? Property(AvaloniaObject made, string name) =>
+            name.Contains('.', StringComparison.Ordinal)
+                ? AvaloniaPropertyRegistry.Instance.GetRegisteredAttached(made.GetType()).FirstOrDefault(p => NameOf(p) == name)
+                : AvaloniaPropertyRegistry.Instance.FindRegistered(made, name);
     }
 }
