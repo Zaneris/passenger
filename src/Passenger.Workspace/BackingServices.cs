@@ -139,9 +139,10 @@ public sealed partial record BackingService(string Service, string Image, string
         return npgsql ? Named("postgres") : Named("sqlserver");
     }
 
-    /// <summary>The host a connection string reaches when it is this machine's own (localhost, 127.0.0.1, ::1), which in a
-    /// container is the container itself: read in the shapes <see cref="Reached"/> reads (a URL's host, Redis's host:port,
-    /// Host=, Server=, Data Source= or Address= but a file's); null for any other host or shape.</summary>
+    /// <summary>The host a connection string reaches when it is this machine's own (<see cref="WebAddress.OnThisMachine"/>:
+    /// a loopback address, localhost or a name under it), which in a container is the container itself: read in the shapes
+    /// <see cref="Reached"/> reads (a URL's host, Redis's host:port, Host=, Server=, Data Source= or Address= but a file's);
+    /// null for any other host or shape.</summary>
     public static string? LocalHost(string value)
     {
         string text = value.Trim();
@@ -169,7 +170,9 @@ public sealed partial record BackingService(string Service, string Image, string
         host = host.Trim();
         string bare = host.StartsWith('[') && host.IndexOf(']') is int close and > 0 ? host[1..close]
             : host.Count(c => c == ':') == 1 ? host.Split(':')[0] : host;
-        return bare.ToLowerInvariant() is "localhost" or "127.0.0.1" or "::1" ? bare : null;
+        // An IPv6 address in brackets, as a URL's host is written.
+        string named = bare.Contains(':', StringComparison.Ordinal) ? $"[{bare}]" : bare;
+        return Uri.TryCreate($"tcp://{named}", UriKind.Absolute, out Uri? at) && WebAddress.OnThisMachine(at) ? bare : null;
     }
 
     /// <summary>A connection string's keywords, lowercased, with their values; null for a string of another shape.</summary>

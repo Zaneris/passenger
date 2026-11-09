@@ -95,10 +95,10 @@ public sealed record ContainerTelemetry(string OtlpKey, string ApiKey)
     }
 
     /// <summary>Why a dashboard on this engine cannot be reached from here: an engine on another machine publishes on its own
-    /// loopback, which this machine cannot reach; null on this one.</summary>
+    /// loopback, which this machine cannot reach; null on this one (<see cref="WebAddress.OnThisMachine"/>).</summary>
     public static string? Elsewhere(EngineState engine) =>
         engine is { Endpoint: { } endpoint } && Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? machine)
-        && machine.Scheme is "tcp" or "ssh" or "http" or "https" && machine.Host.Length > 0 && !machine.IsLoopback
+        && machine.Scheme is "tcp" or "ssh" or "http" or "https" && machine.Host.Length > 0 && !WebAddress.OnThisMachine(machine)
             ? $"its dashboard runs on {endpoint}, whose loopback this machine cannot read" : null;
 
     /// <summary>A port published on this machine's loopback, as an address.</summary>

@@ -8,7 +8,8 @@ using Passenger.Workspace;
 namespace Passenger.Tests;
 
 /// <summary>The override a container run lays over its compose files, as written for an engine and a project with no engine
-/// asked: who a .NET service's app runs as to read what is kept for the person alone, and what it is given there.</summary>
+/// asked: who a .NET service's app runs as to read what is kept for the person alone, and what it is given there; and
+/// whether the dashboard it runs beside them is read from this machine.</summary>
 [Collection(Beside.Name)]
 public sealed class ContainerOverrideTests : IDisposable
 {
@@ -126,6 +127,25 @@ public sealed class ContainerOverrideTests : IDisposable
         JsonObject written = await ContainerPlans.OverrideAsync(model, "shop", [web], mode, [], [loaded], Directory.CreateDirectory(Path.Combine(folder, "state")).FullName,
             null, [], [], null, engine, owner, null, new Dictionary<string, IReadOnlyDictionary<string, string>>(), TestContext.Current.CancellationToken);
         return (JsonObject)written["services"]!["web"]!;
+    }
+
+    /// <summary>The run's dashboard is read on this machine's loopback where the engine is this machine's, by a socket, a
+    /// loopback address or a name under localhost, and refused naming the engine where it is another machine's, whose
+    /// loopback this one cannot reach.</summary>
+    [Fact]
+    public void A_runs_dashboard_is_read_where_the_engine_is_this_machines_and_refused_where_it_is_another_machines()
+    {
+        EngineState engine = Engine(podman: false, rootless: false);
+        foreach (string here in (string[])["unix:///run/user/1000/docker.sock", "tcp://127.0.0.1:2375", "tcp://localhost:2375", "tcp://engine.dev.localhost:2376", "ssh://me@[::1]"])
+        {
+            Assert.True(ContainerTelemetry.Elsewhere(engine with { Endpoint = here }) is null,
+                $"An engine at {here} was taken for another machine's, so its run's dashboard would not be read: {ContainerTelemetry.Elsewhere(engine with { Endpoint = here })}");
+        }
+        foreach (string there in (string[])["tcp://10.0.0.5:2375", "ssh://me@build.example.com", "tcp://localhost.example.com:2375"])
+        {
+            Assert.True(ContainerTelemetry.Elsewhere(engine with { Endpoint = there }) is { } said && said.Contains(there, StringComparison.Ordinal),
+                $"An engine at {there} was taken for this machine's, so its run's dashboard would be looked for on this machine's loopback");
+        }
     }
 
     private static EngineState Engine(bool podman, bool rootless) =>

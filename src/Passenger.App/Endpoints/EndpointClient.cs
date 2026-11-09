@@ -203,6 +203,7 @@ public static class EndpointClient
                 UseCookies = false,
                 AutomaticDecompression = DecompressionMethods.All,
                 ConnectTimeout = options.Timeout,
+                Proxy = OutboundHttp.Proxy,
             };
             if (options.AcceptAnyCertificate)
             {

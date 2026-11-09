@@ -48,6 +48,7 @@ public sealed class CdpConnection : IAsyncDisposable
     public static async Task<CdpConnection> ConnectAsync(Uri address, Action<string>? log, CancellationToken cancel)
     {
         ClientWebSocket socket = new();
+        socket.Options.Proxy = OutboundHttp.Proxy;
         try
         {
             await socket.ConnectAsync(address, cancel).ConfigureAwait(false);
