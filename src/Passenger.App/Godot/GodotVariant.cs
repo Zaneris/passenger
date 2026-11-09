@@ -24,7 +24,11 @@ public sealed record GodotNodePath(IReadOnlyList<string> Names, IReadOnlyList<st
 /// them; whole numbers for the integer kinds.</summary>
 public sealed record GodotMath(GodotType Type, IReadOnlyList<double> Values)
 {
-    public override string ToString() => $"({string.Join(", ", Values.Select(GodotText.Number))})";
+    /// <summary>Whether its numbers are doubles, as a game built with double precision sends them; else singles, as Godot holds
+    /// a vector's and every colour's numbers.</summary>
+    public bool Wide { get; init; }
+
+    public override string ToString() => $"({string.Join(", ", GodotText.Numbers(this))})";
 
     public bool Equals(GodotMath? other) => other is not null && Type == other.Type && Values.SequenceEqual(other.Values);
 
@@ -492,7 +496,8 @@ public static class GodotVariant
         _ => GodotType.Nil,
     };
 
-    /// <summary>A list's or packed array's items as values, in order; null for a value that holds no items.</summary>
+    /// <summary>A list's or packed array's items as values, in order, a PackedFloat32Array's as singles; null for a value that
+    /// holds no items.</summary>
     public static IReadOnlyList<object?>? Items(object? value) => value switch
     {
         List<object?> items => items,
@@ -501,7 +506,7 @@ public static class GodotVariant
         byte[] packed => [.. packed.Select(b => (object?)(long)b)],
         int[] packed => [.. packed.Select(i => (object?)(long)i)],
         long[] packed => [.. packed.Select(i => (object?)i)],
-        float[] packed => [.. packed.Select(f => (object?)(double)f)],
+        float[] packed => [.. packed.Select(f => (object?)f)],
         double[] packed => [.. packed.Select(d => (object?)d)],
         _ => null,
     };
@@ -562,7 +567,7 @@ public static class GodotVariant
         {
             values[i] = wide ? Double(bytes, ref at) : Single(bytes, ref at);
         }
-        return new GodotMath(type, values);
+        return new GodotMath(type, values) { Wide = wide };
     }
 
     private static GodotNodePath Path(ReadOnlySpan<byte> bytes, ref int at)
@@ -803,13 +808,14 @@ public static class GodotVariant
         bool flag => flag ? "true" : "false",
         long whole => whole.ToString(CultureInfo.InvariantCulture),
         double real => GodotText.Number(real),
+        float single => GodotText.Number(single, single: true),
         string text => quoted ? CSharpLiterals.Quoted(text) : text,
         GodotName name => quoted ? "&" + CSharpLiterals.Quoted(name.Name) : name.Name,
         GodotNodePath path => quoted ? "^" + CSharpLiterals.Quoted(path.ToString()) : path.ToString(),
         List<object?> items => $"[{string.Join(", ", items.Select(i => Shown(i, quoted: true)))}]",
         string[] strings => $"[{string.Join(", ", strings.Select(CSharpLiterals.Quoted))}]",
         byte[] packed => $"[{packed.Length} bytes]",
-        System.Array packed => $"[{string.Join(", ", packed.Cast<object?>().Select(i => i is float f ? GodotText.Number(f) : Shown(i, quoted: true)))}]",
+        System.Array packed => $"[{string.Join(", ", packed.Cast<object?>().Select(i => Shown(i, quoted: true)))}]",
         GodotMath { Type: GodotType.Transform2D or GodotType.Basis or GodotType.Transform3D or GodotType.Aabb or GodotType.Plane or GodotType.Projection } math => Parts(math),
         _ => value.ToString() ?? string.Empty,
     };
@@ -832,14 +838,15 @@ public static class GodotVariant
     /// projection's columns.</summary>
     private static string Parts(GodotMath math)
     {
-        string Of(int from, int count) => $"({string.Join(", ", math.Values.Skip(from).Take(count).Select(GodotText.Number))})";
+        IReadOnlyList<string> numbers = GodotText.Numbers(math);
+        string Of(int from, int count) => $"({string.Join(", ", numbers.Skip(from).Take(count))})";
         return math.Type switch
         {
             GodotType.Transform2D => $"x: {Of(0, 2)}, y: {Of(2, 2)}, origin: {Of(4, 2)}",
             GodotType.Basis => $"({Of(0, 3)}, {Of(3, 3)}, {Of(6, 3)})",
             GodotType.Transform3D => $"basis: ({Of(0, 3)}, {Of(3, 3)}, {Of(6, 3)}), origin: {Of(9, 3)}",
             GodotType.Aabb => $"position: {Of(0, 3)}, size: {Of(3, 3)}",
-            GodotType.Plane => $"normal: {Of(0, 3)}, d: {GodotText.Number(math.Values[3])}",
+            GodotType.Plane => $"normal: {Of(0, 3)}, d: {numbers[3]}",
             _ => $"({Of(0, 4)}, {Of(4, 4)}, {Of(8, 4)}, {Of(12, 4)})",
         };
     }

@@ -228,30 +228,50 @@ public class GodotProtocolTests
         Assert.True(whyNot is null && GodotVariant.Shown(value) == shown, $"'{text}' as a {type} read as {GodotVariant.Shown(value)} ({whyNot})");
     }
 
-    /// <summary>Each number as Godot's variant text writes it: a single's shortest digits where a single holds it, else a
-    /// double's, fixed from 1e-4 to 1e15 and with an exponent beyond, zero unsigned, and Godot's words for the rest.</summary>
+    /// <summary>Each number as Godot's variant text writes it at the precision its type holds: a single's shortest digits for a
+    /// vector's number, a double's for a float, fixed from 1e-4 to 1e15 and with an exponent beyond, zero unsigned, and
+    /// Godot's words for the rest; each read back as the number it was at that precision.</summary>
     [Theory]
-    [InlineData(0.30000001192092896, "0.3")]
-    [InlineData(0.30000000000000004, "0.30000000000000004")]
-    [InlineData(-2.5, "-2.5")]
-    [InlineData(100.0, "100")]
-    [InlineData(1e10, "10000000000")]
-    [InlineData(123456.789, "123456.789")]
-    [InlineData(1e15, "1e+15")]
-    [InlineData(1.2345678901234568e17, "1.2345678901234568e+17")]
-    [InlineData(0.0001, "0.0001")]
-    [InlineData(1.5e-5, "1.5e-05")]
-    [InlineData(-0.0, "0")]
-    [InlineData(double.NaN, "nan")]
-    [InlineData(double.PositiveInfinity, "inf")]
-    [InlineData(double.NegativeInfinity, "inf_neg")]
-    public void A_number_is_written_as_Godots_variant_text_writes_it(double value, string written)
+    [InlineData(0.30000001192092896, true, "0.3")]
+    [InlineData(0.30000001192092896, false, "0.30000001192092896")]
+    [InlineData(0.3, false, "0.3")]
+    [InlineData(1234567.25, false, "1234567.25")]
+    [InlineData(1234567.25, true, "1234567.2")]
+    [InlineData(0.30000000000000004, false, "0.30000000000000004")]
+    [InlineData(-2.5, false, "-2.5")]
+    [InlineData(100.0, true, "100")]
+    [InlineData(1e10, true, "10000000000")]
+    [InlineData(123456.789, false, "123456.789")]
+    [InlineData(1e15, false, "1e+15")]
+    [InlineData(1.2345678901234568e17, false, "1.2345678901234568e+17")]
+    [InlineData(0.0001, false, "0.0001")]
+    [InlineData(1.5e-5, false, "1.5e-05")]
+    [InlineData(-0.0, false, "0")]
+    [InlineData(double.NaN, false, "nan")]
+    [InlineData(double.PositiveInfinity, true, "inf")]
+    [InlineData(double.NegativeInfinity, false, "inf_neg")]
+    public void A_number_is_written_as_Godots_variant_text_writes_it_at_its_types_precision(double value, bool single, string written)
     {
-        Assert.Equal(written, GodotText.Number(value));
-        Assert.Equal(written, GodotVariant.Shown(value));
+        Assert.Equal(written, GodotText.Number(value, single));
+        Assert.Equal(written, single ? GodotVariant.Shown((float)value) : GodotVariant.Shown(value));
         (object? read, string? whyNot) = GodotVariant.Parse(GodotType.Float, written);
-        Assert.True(whyNot is null && read is double back && (double.IsNaN(value) ? double.IsNaN(back) : back == value || (float)back == (float)value),
+        Assert.True(whyNot is null && read is double back && (double.IsNaN(value) ? double.IsNaN(back) : single ? (float)back == (float)value : back == value),
             $"{written} read back as {read} ({whyNot}), not {value}");
+    }
+
+    /// <summary>A float the game sends is a double, written with a double's digits however it came, and a vector's numbers
+    /// singles, written with a single's, as the scene's inspector writes them.</summary>
+    [Fact]
+    public void A_float_from_the_game_writes_as_a_double_and_a_vectors_numbers_as_singles()
+    {
+        Assert.Equal("1234567.25", GodotVariant.Shown(GodotVariant.Read(GodotVariant.Write(1234567.25))));
+        Assert.Equal("0.3", GodotVariant.Shown(GodotVariant.Read(GodotVariant.Write(0.3))));
+        object? vector = GodotVariant.Read(GodotVariant.Write(new GodotMath(GodotType.Vector2, [(double)0.3f, (double)1234567.25f])));
+        Assert.Equal("(0.3, 1234567.2)", GodotVariant.Shown(vector));
+        Assert.Equal("Vector2(0.3, 1234567.2)", GodotText.Scene(vector));
+        Assert.Equal("[0.3, 1234567.2]", GodotVariant.Shown(GodotVariant.Read(GodotVariant.Write(new[] { 0.3f, 1234567.25f }))));
+        Assert.Equal("PackedFloat32Array(0.3, 1234567.2)", GodotText.Scene(new[] { 0.3f, 1234567.25f }));
+        Assert.Equal("[0.3, 1234567.25]", GodotVariant.Shown(new[] { 0.3, 1234567.25 }));
     }
 
     [Theory]

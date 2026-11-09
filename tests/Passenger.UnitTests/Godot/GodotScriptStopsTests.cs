@@ -112,7 +112,8 @@ public class GodotScriptStopsTests
     }
 
     /// <summary>Godot sends a vector's numbers as singles, which Variables writes as the numbers they read back as, as the
-    /// scene's inspector does, never the double each widens to.</summary>
+    /// scene's inspector does, never the double each widens to, its components as singles too; a float is a double, written
+    /// with a double's digits.</summary>
     [Fact]
     public void A_vectors_singles_show_in_Variables_as_written_not_as_the_doubles_they_widen_to()
     {
@@ -120,7 +121,11 @@ public class GodotScriptStopsTests
         GodotScriptVariable position = GodotScriptVariable.Read(["position", (long)GodotScope.Member, (long)GodotType.Vector2, sent, string.Empty])!;
         Assert.Equal(("Vector2", "(0.3, 0.1)"), (position.TypeName, position.Shown));
         Assert.Equal("Vector2(0.3, 0.1)", GodotText.Scene(sent));
-        Assert.Equal([("x", "position.x", (object?)(double)0.3f), ("y", "position.y", (double)0.1f)], GodotScriptValues.Inside(sent, "position"));
+        IReadOnlyList<(string Name, string? Expression, object? Value)> parts = GodotScriptValues.Inside(sent, "position");
+        Assert.Equal([("x", "position.x", (object?)0.3f), ("y", "position.y", 0.1f)], parts);
+        Assert.Equal(["0.3", "0.1"], parts.Select(p => GodotScriptValues.Shown(p.Value)));
+        Assert.Equal(["0.3", "1234567.25"], new[] { 0.3, 1234567.25 }.Select(real =>
+            GodotScriptVariable.Read(["far", (long)GodotScope.Local, (long)GodotType.Float, GodotVariant.Read(GodotVariant.Write(real)), string.Empty])!.Shown));
         Assert.Equal("[0.3, nan, inf_neg]", GodotScriptValues.Shown(new[] { 0.3f, float.NaN, float.NegativeInfinity }));
         Assert.Equal("[\"a\\nb\", \"tab\\there\"]", GodotScriptValues.Shown(new[] { "a\nb", "tab\there" }));
     }

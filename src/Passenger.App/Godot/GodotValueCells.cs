@@ -167,7 +167,7 @@ internal sealed class GodotValueCell : LiveValueCell
     {
         GodotMath { Type: GodotType.Color } => ArgbOf(value).Hex,
         double real => GodotText.Number(real),
-        GodotMath math => $"({string.Join(", ", math.Values.Select(GodotText.Number))})",
+        GodotMath math => $"({string.Join(", ", GodotText.Numbers(math))})",
         _ => GodotVariant.Shown(value),
     };
 

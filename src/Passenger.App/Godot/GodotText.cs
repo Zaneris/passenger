@@ -5,13 +5,14 @@ namespace Passenger.App.Godot;
 
 /// <summary>A running game's value as a scene writes it (<see cref="Scene"/>: <c>Vector2(100, 50)</c>, <c>2.0</c>,
 /// <c>Color(1, 0, 0, 1)</c>) and as C# writes it for a member's default (<see cref="CSharp"/>: <c>new Vector2(100f, 50f)</c>,
-/// <c>2f</c>), each number as <see cref="Number"/> writes it: a single's as a single, so 0.3 sent as one reads 0.3.</summary>
+/// <c>2f</c>), each number as <see cref="Number"/> writes it at the precision its type holds: a vector's single 0.3 reads 0.3.</summary>
 public static class GodotText
 {
     /// <summary>A number as the Godot Engine's VariantWriter writes it (core/variant/variant_parser.cpp, MIT): the shortest
-    /// digits reading back as the single it is where a single holds it, else as the double, in fixed notation from 1e-4 up to
-    /// 1e15 and as <c>1.5e-05</c> beyond, as its grisu2 lays them out; zero as 0, and nan, inf and inf_neg.</summary>
-    public static string Number(double value)
+    /// digits reading back as the value at the precision its type holds, a <paramref name="single"/>'s (a vector's number, a
+    /// PackedFloat32Array's) or a double's (a float), in fixed notation from 1e-4 up to 1e15 and as <c>1.5e-05</c> beyond,
+    /// as its grisu2 lays them out; zero as 0, and nan, inf and inf_neg.</summary>
+    public static string Number(double value, bool single = false)
     {
         if (double.IsNaN(value))
         {
@@ -25,9 +26,7 @@ public static class GodotText
         {
             return "0";
         }
-        string shortest = (double)(float)value == value
-            ? ((float)value).ToString("R", CultureInfo.InvariantCulture)
-            : value.ToString("R", CultureInfo.InvariantCulture);
+        string shortest = single ? ((float)value).ToString("R", CultureInfo.InvariantCulture) : value.ToString("R", CultureInfo.InvariantCulture);
         bool negative = shortest[0] == '-';
         string unsigned = negative ? shortest[1..] : shortest;
         int e = unsigned.IndexOfAny(['E', 'e']);
@@ -46,6 +45,10 @@ public static class GodotText
             : $"{(count == 1 ? digits : $"{digits[0]}.{digits[1..]}")}e{(point - 1 < 0 ? '-' : '+')}{Math.Abs(point - 1).ToString("00", CultureInfo.InvariantCulture)}";
         return negative ? "-" + written : written;
     }
+
+    /// <summary>A value of numbers' numbers as <see cref="Number"/> writes them, at the precision Godot holds them in: singles,
+    /// but for a game built with doubles that sent them so.</summary>
+    public static IReadOnlyList<string> Numbers(GodotMath math) => [.. math.Values.Select(v => Number(v, single: !math.Wide))];
 
     /// <summary>The step Godot's inspector shows a float with no range of its own at (its interface/inspector/default_float_step).</summary>
     public const double InspectorStep = 0.001;
@@ -79,12 +82,15 @@ public static class GodotText
         string text => GodotWrites.Quoted(text),
         GodotName name => "&" + GodotWrites.Quoted(name.Name),
         GodotNodePath path => $"NodePath({GodotWrites.Quoted(path.ToString())})",
-        GodotMath math => $"{SceneName(math.Type)}({string.Join(", ", math.Values.Select(v => math.Type is GodotType.Vector2I or GodotType.Vector3I or GodotType.Vector4I or GodotType.Rect2I ? ((long)v).ToString(CultureInfo.InvariantCulture) : Number(v)))})",
+        GodotMath { Type: GodotType.Vector2I or GodotType.Vector3I or GodotType.Vector4I or GodotType.Rect2I } math =>
+            $"{SceneName(math.Type)}({string.Join(", ", math.Values.Select(v => ((long)v).ToString(CultureInfo.InvariantCulture)))})",
+        GodotMath math => $"{SceneName(math.Type)}({string.Join(", ", Numbers(math))})",
         GodotDictionary dictionary => Each(dictionary.Entries.SelectMany(e => new[] { e.Key, e.Value })) is { } parts
             ? Typed($"{{{string.Join(", ", parts.Chunk(2).Select(p => $"{p[0]}: {p[1]}"))}}}", dictionary.KeyType, dictionary.ValueType)
             : null,
         List<object?> items => Each(items) is { } parts ? Typed($"[{string.Join(", ", parts)}]", items is GodotArray typed ? typed.Element : default, null) : null,
-        string[] or byte[] or int[] or long[] or float[] or double[] or GodotPackedMath => GodotVariant.Items(value) is { } items && Each(items) is { } parts
+        float[] singles => $"{SceneName(GodotType.PackedFloat32Array)}({string.Join(", ", singles.Select(f => Number(f, single: true)))})",
+        string[] or byte[] or int[] or long[] or double[] or GodotPackedMath => GodotVariant.Items(value) is { } items && Each(items) is { } parts
             ? $"{SceneName(GodotVariant.TypeOf(value))}({string.Join(", ", value is GodotPackedMath ? parts.Select(p => p[(p.IndexOf('(', StringComparison.Ordinal) + 1)..^1]) : parts)})"
             : null,
         _ => null,

@@ -101,17 +101,20 @@ public static class GodotScriptValues
         List<object?> items => [.. items.Select((item, i) => ($"[{i}]", Indexed(expression, $"{i}"), item))],
         GodotDictionary dictionary => [.. dictionary.Entries.Select(e => (GodotVariant.Shown(e.Key, quoted: true), Indexed(expression, GodotVariant.Shown(e.Key, quoted: true)), e.Value))],
         GodotMath math when Components(math.Type) is { } names && names.Length == math.Values.Count =>
-            [.. names.Select((name, i) => (name, expression is null ? null : $"{expression}.{name}", IsWhole(math.Type) ? (object?)(long)math.Values[i] : math.Values[i]))],
+            [.. names.Select((name, i) => (name, expression is null ? null : $"{expression}.{name}", Component(math, i)))],
         string[] strings => [.. strings.Select((s, i) => ($"[{i}]", Indexed(expression, $"{i}"), (object?)s))],
         byte[] => [],
         GodotPackedMath packed => [.. packed.Items.Select((item, i) => ($"[{i}]", Indexed(expression, $"{i}"), (object?)item))],
-        Array packed => [.. packed.Cast<object?>().Select((item, i) => ($"[{i}]", Indexed(expression, $"{i}"), item is float f ? (double)f : item is int n ? (long)n : item))],
+        Array packed => [.. packed.Cast<object?>().Select((item, i) => ($"[{i}]", Indexed(expression, $"{i}"), item is int n ? (long)n : item))],
         _ => [],
     };
 
     private static string? Indexed(string? expression, string index) => expression is null ? null : $"{expression}[{index}]";
 
     private static bool IsWhole(GodotType type) => type is GodotType.Vector2I or GodotType.Vector3I or GodotType.Vector4I or GodotType.Rect2I;
+
+    /// <summary>A number of a value as its own value: a whole one's a whole number, a single a single, a double a double.</summary>
+    private static object Component(GodotMath math, int i) => IsWhole(math.Type) ? (long)math.Values[i] : math.Wide ? math.Values[i] : (float)math.Values[i];
 
     /// <summary>The names of a value's numbers, where GDScript names each.</summary>
     private static string[]? Components(GodotType type) => type switch
