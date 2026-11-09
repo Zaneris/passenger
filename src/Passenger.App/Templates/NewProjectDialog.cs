@@ -1169,8 +1169,7 @@ public sealed class NewProjectDialog : IdeWindow
         List<string> formats = [.. read.SolutionFormats.Select(f => $".{f}")];
         format.ItemsSource = formats;
         format.SelectedIndex = formatWas is not null && formats.Contains(formatWas) ? formats.IndexOf(formatWas) : 0;
-        // An SDK before 9.0.200 has dotnet new sln make no .slnx, which a list of one leaves unsaid.
-        formatNote.Text = formats is [".sln"] ? $"SDK {read.Sdk} makes no .slnx: SDK 9.0.200 and later do" : string.Empty;
+        formatNote.Text = SolutionFormatNote.Of(read.Sdk, formats);
         formatNote.IsVisible = formatNote.Text.Length > 0;
         setting = false;
         Filter(searched: false);
