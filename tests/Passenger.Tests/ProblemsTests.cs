@@ -903,11 +903,12 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.OpenFile("Class1.cs");
         window.Perform(AppActions.ShowProblems);
         ProblemsModel problems = window.BottomPanel.Problems;
-        // The unused local's warning says the server has answered for the file.
-        Ui.WaitFor(() => problems.FileProblems.Any(p => p.Code == "CS0168"), "the unused local's warning from the language server");
-        Problem[] errors = [.. problems.FileProblems.Where(p => p.Severity == ProblemSeverity.Error || p.Code == "CS8652")];
+        // The unused local's warning says the server has answered for the file; the File tab's problems begin with their codes.
+        Ui.WaitFor(() => problems.FileProblems.Any(p => p.Message.StartsWith("CS0168: ", StringComparison.Ordinal)),
+            () => $"the unused local's warning from the language server (Problems lists [{string.Join("; ", problems.FileProblems.Select(p => p.Message))}], C# {window.CSharpService?.State})");
+        Problem[] errors = [.. problems.FileProblems.Where(p => p.Severity == ProblemSeverity.Error || p.Message.StartsWith("CS8652: ", StringComparison.Ordinal))];
         Assert.True(errors.Length == 0,
-            $"Problems lists C# 15 that the .NET 11 SDK builds as an error: {string.Join("; ", errors.Select(p => $"{p.Code} {p.Message}"))}");
+            $"Problems lists C# 15 that the .NET 11 SDK builds as an error: {string.Join("; ", errors.Select(p => p.Message))}");
         window.Close();
     }
 
