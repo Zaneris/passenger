@@ -269,8 +269,8 @@ public sealed partial class Git
         }
         using (process)
         {
-            Task<string> output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-            Task<string> said = LinesAsync(process.StandardError, progress);
+            Task<string> output = ChildProcesses.Output(process).ReadToEndAsync(CancellationToken.None);
+            Task<string> said = LinesAsync(ChildProcesses.Errors(process), progress);
             using (cancel.Register(() => ChildProcesses.Kill(process)))
             {
                 await process.WaitForExitAsync(CancellationToken.None);
@@ -287,7 +287,7 @@ public sealed partial class Git
 
     /// <summary>What git writes to its errors, each line handed on as it ends, and the lines it finished, whole: progress
     /// writes its line again and again after a carriage return, which ends a line handed on but not one kept.</summary>
-    private static async Task<string> LinesAsync(StreamReader errors, Action<string> line)
+    private static async Task<string> LinesAsync(TextReader errors, Action<string> line)
     {
         StringBuilder kept = new();
         StringBuilder current = new();
@@ -1843,10 +1843,7 @@ public sealed partial class Git
         {
             return (NotInstalled, default);
         }
-        foreach ((string name, string value) in environment ?? new Dictionary<string, string>())
-        {
-            start.Environment[name] = value;
-        }
+        ChildProcesses.WithVariables(start, environment);
         await using Prompting? prompting = Asking(start, asker, held, cancel);
         try
         {
@@ -1891,10 +1888,7 @@ public sealed partial class Git
         {
             return null;
         }
-        foreach ((string name, string value) in prompting.Variables)
-        {
-            start.Environment[name] = value;
-        }
+        ChildProcesses.WithVariables(start, prompting.Variables);
         return prompting;
     }
 

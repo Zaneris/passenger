@@ -67,6 +67,20 @@ public static class ChildProcesses
         return start;
     }
 
+    /// <summary><see cref="Command(string, IEnumerable{string}, string?)"/> given these variables (<see cref="WithVariables"/>).</summary>
+    public static ProcessStartInfo Command(string program, IEnumerable<string> arguments, string? folder, IEnumerable<KeyValuePair<string, string>>? variables) =>
+        WithVariables(Command(program, arguments, folder), variables);
+
+    /// <summary>A start given these variables over what it has, each in turn, so a later one of a name stands; none for null.</summary>
+    public static ProcessStartInfo WithVariables(ProcessStartInfo start, IEnumerable<KeyValuePair<string, string>>? variables)
+    {
+        foreach ((string name, string value) in variables ?? [])
+        {
+            start.Environment[name] = value;
+        }
+        return start;
+    }
+
     /// <summary>Gives a child the PWD of its folder as <see cref="PathNames.Canonical"/> names it, never the one the IDE's
     /// own start inherited, which may name that folder through a link or in other letter case (<c>cd ~/documents/app</c>):
     /// a program taking its PWD as its folder's name, as a shell or a build does, would name every path it makes so.</summary>
@@ -417,7 +431,7 @@ public static class ChildProcesses
     /// read that fails ends the child, whose writes to a pipe nobody reads would wait for good, and passes on what it threw.</summary>
     private static async Task<T> ReadThroughAsync<T>(Process process, Func<Stream, Task<T>> read)
     {
-        Stream output = process.StandardOutput.BaseStream;
+        Stream output = OutputStream(process);
         try
         {
             T answer = await read(output);
@@ -777,6 +791,17 @@ public static class ChildProcesses
     public static TextReader Errors(Process process) => OwnStreams.TryGetValue(process, out OwnDesktopStart? own)
         ? own.Error ?? throw new InvalidOperationException("StandardError has not been redirected")
         : Taken(process.StandardError);
+
+    /// <summary>A child's output, redirected, as the bytes it writes (a protocol's frames, a file it copies out), for a caller
+    /// that reads no text of it: its own pipe where it runs on a desktop of its own, else its process's.</summary>
+    public static Stream OutputStream(Process process) => OwnStreams.TryGetValue(process, out OwnDesktopStart? own)
+        ? own.Output?.BaseStream ?? throw new InvalidOperationException("StandardOut has not been redirected")
+        : process.StandardOutput.BaseStream;
+
+    /// <summary>A child's errors, redirected, as bytes, as <see cref="OutputStream"/> gives its output.</summary>
+    public static Stream ErrorStream(Process process) => OwnStreams.TryGetValue(process, out OwnDesktopStart? own)
+        ? own.Error?.BaseStream ?? throw new InvalidOperationException("StandardError has not been redirected")
+        : process.StandardError.BaseStream;
 
     /// <summary>Each of a child's streams' readers, by the process's own reader it was taken from.</summary>
     private static readonly ConditionalWeakTable<StreamReader, TextReader> Readers = new();

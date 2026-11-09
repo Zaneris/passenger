@@ -208,7 +208,7 @@ public static class DotnetInstall
             PassengerLog.Write($"Install .NET SDK {sdk.Version}: its first run gave no answer in time, so nothing says it does not run: {slow.Message}");
             return;
         }
-        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             said = error.Message;
             why = ChildResult.FirstLineOf(error.Message);

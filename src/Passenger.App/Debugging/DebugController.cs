@@ -1166,7 +1166,7 @@ public sealed class DebugController : IDisposable
             // Its fork off the window's thread.
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception failed) when (failed is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             console.Append($"Its output could not be followed: {failed.Message}\n");
             return;

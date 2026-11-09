@@ -481,7 +481,7 @@ public static partial class GodotExecutables
                 line => ReadVersion(line) is not null, limit: TimeSpan.FromSeconds(20)).ConfigureAwait(false);
             return answer.Answer?.Trim();
         }
-        catch (Exception unasked) when (unasked is System.ComponentModel.Win32Exception or IOException or TimeoutException or OperationCanceledException)
+        catch (Exception unasked) when (unasked is OperationCanceledException || ChildFailures.Of(unasked))
         {
             return null;
         }

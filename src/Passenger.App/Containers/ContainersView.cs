@@ -733,7 +733,7 @@ public sealed class ContainersView : DockPanel
                 {
                     return "Stopped";
                 }
-                catch (Exception failed) when (failed is TimeoutException or FileNotFoundException or System.ComponentModel.Win32Exception)
+                catch (Exception failed) when (ChildFailures.Of(failed))
                 {
                     return failed.Message;
                 }

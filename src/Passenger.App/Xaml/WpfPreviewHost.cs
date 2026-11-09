@@ -90,7 +90,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
             await started.RunAsync(inputs);
             return started;
         }
-        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or FileNotFoundException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             started.Dispose();
             preview.Say($"The previewer could not start: {error.Message}");
@@ -214,7 +214,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
         try
         {
             // A line that is not the protocol's is the previewer's own output.
-            await foreach (WpfPreviewReply reply in JsonLines.ReadAsync(from.StandardOutput, WpfPreviewJson.Reply, (line, _) => log.Heard(line)))
+            await foreach (WpfPreviewReply reply in JsonLines.ReadAsync(ChildProcesses.Output(from), WpfPreviewJson.Reply, (line, _) => log.Heard(line)))
             {
                 TextSnapshot? sent = unanswered.GetValueOrDefault(reply.Sequence);
                 Bitmap? frame = null;

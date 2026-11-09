@@ -5,8 +5,8 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>A child's output read as text as it comes (ChildProcesses.Output on macOS and Linux): decoded as the process's own
-/// reader decodes it, a byte order mark naming the encoding, whatever pieces its pipe cuts it into; and a read that waits
-/// answers once its stream's read does, with what that brought or how it failed.</summary>
+/// reader decodes it, a byte order mark naming the encoding, whatever pieces its pipe cuts it into, by the buffer, the line or
+/// whole; and a read that waits answers once its stream's read does, with what that brought or how it failed.</summary>
 public class ChildTextTests
 {
     private static readonly Encoding Utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
@@ -43,6 +43,47 @@ public class ChildTextTests
             Assert.True(read == expected, $"{what} cut after {cut} bytes read as [{read}], not [{expected}]");
         }
         Assert.Equal(expected, await TextAsync(bytes, _ => 1));
+    }
+
+    /// <summary>Lines and the whole text, every place the bytes can be cut into two reads and reads of one byte: each as the
+    /// process's own reader reads them, a line's end ("\n", "\r\n" or "\r") left off, a "\r\n" cut between two reads one end.</summary>
+    [Theory]
+    [MemberData(nameof(Texts))]
+    public async Task Lines_and_the_whole_text_cut_into_reads_anywhere_read_as_the_processs_own_reader_reads_them(string what, byte[] bytes)
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        List<string> expected = await LinesAsync(new StreamReader(new MemoryStream(bytes), Utf8, detectEncodingFromByteOrderMarks: true), cancel);
+        string whole = await new StreamReader(new MemoryStream(bytes), Utf8, detectEncodingFromByteOrderMarks: true).ReadToEndAsync(cancel);
+        for (int cut = 0; cut <= bytes.Length; cut++)
+        {
+            int at = cut;
+            using ChildText lines = new(new ChunkedStream(bytes, reads => reads == 0 ? at : bytes.Length), Utf8);
+            List<string> read = await LinesAsync(lines, cancel);
+            Assert.True(read.SequenceEqual(expected), $"{what} cut after {cut} bytes read as the lines [{string.Join(" | ", read)}], not [{string.Join(" | ", expected)}]");
+            using ChildText text = new(new ChunkedStream(bytes, reads => reads == 0 ? at : bytes.Length), Utf8);
+            string all = await text.ReadToEndAsync(cancel);
+            Assert.True(all == whole, $"{what} cut after {cut} bytes read whole as [{all}], not [{whole}]");
+        }
+        using ChildText single = new(new ChunkedStream(bytes, _ => 1), Utf8);
+        Assert.Equal(expected, await LinesAsync(single, cancel));
+    }
+
+    /// <summary>A line waits for its end, which its stream's read brings, and a wait whose read is cancelled is cancelled.</summary>
+    [Fact]
+    public async Task A_line_waits_for_its_end_and_a_wait_cancelled_is_cancelled()
+    {
+        HeldStream stream = new();
+        using ChildText text = new(stream, Utf8);
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        ValueTask<string?> line = text.ReadLineAsync(cancel);
+        stream.Give("par"u8);
+        Assert.False(line.IsCompleted, "A line was given before its end came");
+        stream.Give("t\nnext"u8);
+        Assert.Equal("part", await line);
+
+        line = text.ReadLineAsync(cancel);
+        stream.Fail(new OperationCanceledException());
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => line.AsTask());
     }
 
     /// <summary>A read its stream makes wait answers once the stream's read ends: a first byte that begins no byte order mark
@@ -118,6 +159,16 @@ public class ChildTextTests
         Assert.Equal((Encoding.UTF32, 4), ChildText.MarkOf([0xFF, 0xFE, 0, 0], ended: false));
         Assert.Equal(((Encoding?)null, 0), ChildText.MarkOf(">"u8, ended: false));
         Assert.Equal(((Encoding?)null, 0), ChildText.MarkOf([0xEF, 0x41], ended: false));
+    }
+
+    private static async Task<List<string>> LinesAsync(TextReader reader, CancellationToken cancel)
+    {
+        List<string> lines = [];
+        while (await reader.ReadLineAsync(cancel) is { } line)
+        {
+            lines.Add(line);
+        }
+        return lines;
     }
 
     private static async Task<string> TextAsync(byte[] bytes, Func<int, int> chunks)

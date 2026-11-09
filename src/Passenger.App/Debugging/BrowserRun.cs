@@ -146,7 +146,7 @@ public sealed partial class BrowserRun : IAsyncDisposable
         {
             browser = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             throw new InvalidOperationException($"Could not start {found.Name} ({found.Program}): {error.Message}");
         }

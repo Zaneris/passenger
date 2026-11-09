@@ -36,7 +36,7 @@ public static class EfRun
         {
             exitCode = (await ConsoleCommand.RunAsync(console, start, stop, Read, WithoutData)).ExitCode;
         }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
+        catch (Exception failed) when (Core.ChildFailures.Of(failed))
         {
             return EfOutcome.Unstarted($"Could not start {Path.GetFileName(start.FileName)}: {failed.Message}");
         }

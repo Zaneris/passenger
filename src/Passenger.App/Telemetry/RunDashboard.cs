@@ -225,7 +225,7 @@ public sealed class RunDashboard : ITelemetryRun, IDisposable
             await dashboard.StopAsync();
             throw;
         }
-        catch (Exception failed) when (failed is TimeoutException or FileNotFoundException or System.ComponentModel.Win32Exception)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return await dashboard.GoneAsync($"its dashboard did not come up: {failed.Message}");
         }

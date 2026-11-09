@@ -149,16 +149,8 @@ public sealed class ContainerEngine
 
     /// <summary>A <c>docker</c> command to start (a stream into a console, a shell in the terminal), in a folder when one is
     /// given, told <see cref="Variables"/>; a <see cref="FileNotFoundException"/> with no CLI.</summary>
-    public ProcessStartInfo Command(IEnumerable<string> arguments, string? folder = null)
-    {
-        string cli = Cli ?? throw new FileNotFoundException(NoCliProblem);
-        ProcessStartInfo start = ChildProcesses.Command(cli, arguments, folder);
-        foreach ((string name, string value) in Variables)
-        {
-            start.Environment[name] = value;
-        }
-        return start;
-    }
+    public ProcessStartInfo Command(IEnumerable<string> arguments, string? folder = null) =>
+        ChildProcesses.Command(Cli ?? throw new FileNotFoundException(NoCliProblem), arguments, folder, Variables);
 
     /// <summary>Runs a command to its end, its output and errors read whole; an exit code among <paramref name="answers"/>
     /// is its answer (a check that found something), not a failure to log.</summary>
@@ -174,8 +166,8 @@ public sealed class ContainerEngine
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         using Process process = await ChildProcesses.StartAsync(start);
-        Task<string> output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-        Task<string> errors = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        Task<string> output = ChildProcesses.Output(process).ReadToEndAsync(CancellationToken.None);
+        Task<string> errors = ChildProcesses.Errors(process).ReadToEndAsync(CancellationToken.None);
         bool ended = true;
         try
         {
@@ -321,7 +313,7 @@ public sealed class ContainerEngine
             ChildResult named = await RunAsync(["inspect", "-f", "{{.Name}}", container], AskLimit, cancel);
             return named.Succeeded && named.Output.Trim().TrimStart('/') is { Length: > 0 } name ? name : container;
         }
-        catch (Exception failed) when (failed is TimeoutException or System.ComponentModel.Win32Exception or IOException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return container;
         }
@@ -371,7 +363,7 @@ public sealed class ContainerEngine
         {
             version = await RunAsync(["version", "--format", "json"], AskLimit);
         }
-        catch (Exception failed) when (failed is TimeoutException or System.ComponentModel.Win32Exception or IOException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return new EngineState(EngineStatus.NotRunning, cli, $"The container engine did not answer: {failed.Message}", null, null, null, null, null, null);
         }
@@ -672,7 +664,7 @@ public sealed class ContainerEngine
             start.RedirectStandardError = true;
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception failed) when (failed is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return false;
         }
@@ -687,22 +679,14 @@ public sealed class ContainerEngine
             }
             events = process;
         }
-        // Its errors are read through, so a CLI that says much never stops on a full pipe; a read the end cut short is no fault.
-        UnawaitedWork.Dismiss(process.StandardError.ReadToEndAsync(CancellationToken.None));
-        try
+        // Its errors are heard through, so a CLI that says much never stops on a full pipe.
+        await ChildProcesses.Hear(process, line =>
         {
-            while (await process.StandardOutput.ReadLineAsync() is { } line)
+            if (Event(line) is { } told)
             {
-                if (Event(line) is { } told)
-                {
-                    Tell(told);
-                }
+                Tell(told);
             }
-        }
-        catch (Exception ended) when (ended is IOException or ObjectDisposedException or InvalidOperationException)
-        {
-            // Ended under its read.
-        }
+        }, errors: _ => { });
         lock (gate)
         {
             if (events == process)

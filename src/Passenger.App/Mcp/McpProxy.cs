@@ -899,8 +899,8 @@ public sealed partial class McpProxy
             start.RedirectStandardOutput = true;
             start.RedirectStandardError = true;
             headless = ChildProcesses.Start(start);
-            IdeErrors.Observe(headless.StandardOutput.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None));
-            IdeErrors.Observe(headless.StandardError.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None));
+            IdeErrors.Observe(ChildProcesses.OutputStream(headless).CopyToAsync(Stream.Null, CancellationToken.None));
+            IdeErrors.Observe(ChildProcesses.ErrorStream(headless).CopyToAsync(Stream.Null, CancellationToken.None));
             return;
         }
         if (OperatingSystem.IsMacOS() && Bundle(self) is { } app)
@@ -920,7 +920,7 @@ public sealed partial class McpProxy
             apart.Environment[StartedForVariable] = "agent";
             ChildProcesses.StartApart(apart);
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             throw new NotJoined($"Passenger did not start: {error.Message}");
         }

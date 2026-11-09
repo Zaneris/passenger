@@ -54,7 +54,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
                 throw new InvalidOperationException(await GoneAsync().ConfigureAwait(false), gone);
             }
             (byte Kind, byte[] Body)? frame;
-            Task<(byte Kind, byte[] Body)?> reading = HeapWire.ReadFrameAsync(running.StandardOutput.BaseStream);
+            Task<(byte Kind, byte[] Body)?> reading = HeapWire.ReadFrameAsync(ChildProcesses.OutputStream(running));
             try
             {
                 frame = await reading.WaitAsync(Limit, cancel).ConfigureAwait(false);
@@ -130,7 +130,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
         {
             tools = ChildProcesses.Start(start);
         }
-        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             throw new InvalidOperationException($"Could not start Passenger's tools in {place.Where} for a memory snapshot: {error.Message}", error);
         }

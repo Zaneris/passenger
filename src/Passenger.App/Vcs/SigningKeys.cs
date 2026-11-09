@@ -106,7 +106,7 @@ public static class SigningKeys
             ChildResult ran = await ChildProcesses.RunAsync(ChildProcesses.Command(found, arguments), limit: Limit);
             return ran.Succeeded ? ran.Output : null;
         }
-        catch (Exception failed) when (failed is TimeoutException or System.ComponentModel.Win32Exception)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             IdeErrors.Write($"Commit Signing: {program} gave no keys: {failed.Message}");
             return null;

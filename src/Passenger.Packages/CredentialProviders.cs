@@ -113,7 +113,7 @@ public sealed class CredentialProviders
             this.name = name;
             // Not background work of its own: the search that asked holds screenshots until it has its answer.
             reading = BackgroundWork.Unheld(ReadAsync);
-            draining = process.StandardError.ReadToEndAsync();
+            draining = ChildProcesses.Hear(process, errors: _ => { });
         }
 
         /// <summary>A request's response payload, once it says Success.</summary>
@@ -174,7 +174,8 @@ public sealed class CredentialProviders
         {
             try
             {
-                while (await process.StandardOutput.ReadLineAsync() is { } line)
+                TextReader output = ChildProcesses.Output(process);
+                while (await output.ReadLineAsync() is { } line)
                 {
                     if (line.Trim().Length == 0)
                     {

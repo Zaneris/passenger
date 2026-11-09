@@ -130,7 +130,7 @@ public sealed class ContainerStatsPane : DockPanel
         {
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             if (stream == streams)
             {
@@ -152,47 +152,33 @@ public sealed class ContainerStatsPane : DockPanel
         {
             try
             {
-                Task<string?> errors = LastSaidAsync(process.StandardError);
-                while (await process.StandardOutput.ReadLineAsync() is { } line)
+                string? last = null;
+                Task errors = ChildProcesses.Hear(process, errors: line =>
+                {
+                    if (line.Trim() is { Length: > 0 } said)
+                    {
+                        last = said;
+                    }
+                });
+                await ChildProcesses.Hear(process, line =>
                 {
                     ContainerStatsSample[] read = [.. ContainerEngine.JsonLines(line).Select(r => ContainerStatsSample.Read(r, names)).OfType<ContainerStatsSample>()];
                     if (read.Length > 0)
                     {
                         UiThread.Post(() => Take(process, read));
                     }
-                }
+                });
                 await process.WaitForExitAsync();
                 // What it said last, unless something it left holds its errors open.
-                string? said = await Task.WhenAny(errors, Task.Delay(TimeSpan.FromSeconds(2))) == errors ? await errors : null;
+                string? said = await Task.WhenAny(errors, Task.Delay(TimeSpan.FromSeconds(2))) == errors ? last : null;
                 string why = said is null ? $"docker stats ended with {ExitCodes.Said(process.ExitCode)}" : $"docker stats ended: {ContainerSecrets.InSaid(said)}";
                 UiThread.Post(() => Ended(process, why));
             }
             catch (Exception ended) when (ended is IOException or ObjectDisposedException or InvalidOperationException)
             {
-                // Stopped under its read.
+                // Stopped meanwhile, its process let go of.
             }
         }));
-    }
-
-    /// <summary>A stream's last line that says something, read to its end.</summary>
-    private static async Task<string?> LastSaidAsync(StreamReader reader)
-    {
-        string? last = null;
-        try
-        {
-            while (await reader.ReadLineAsync() is { } line)
-            {
-                if (line.Trim() is { Length: > 0 } said)
-                {
-                    last = said;
-                }
-            }
-        }
-        catch (Exception ended) when (ended is IOException or ObjectDisposedException)
-        {
-            // Stopped under its read.
-        }
-        return last;
     }
 
     /// <summary>The stream ended while still the pane's: its numbers, which no longer change, give way to why.</summary>

@@ -225,7 +225,7 @@ public partial class MainWindow
             }
             status.Text = "Starting Docker Desktop…";
         }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             status.Text = $"Docker Desktop did not start: {failed.Message}";
         }
@@ -411,7 +411,7 @@ public partial class MainWindow
                     ? $"{container.Image} has no shell (sh) to open in {container.Name}"
                     : said.Contains("is not running", StringComparison.Ordinal) ? $"Start {container.Name} to open a shell in it" : said;
             }
-            catch (Exception failed) when (failed is TimeoutException or FileNotFoundException or System.ComponentModel.Win32Exception)
+            catch (Exception failed) when (ChildFailures.Of(failed))
             {
                 return failed.Message;
             }

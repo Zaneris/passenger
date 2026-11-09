@@ -1500,7 +1500,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             File.Exists(Path.Combine(passenger, "app", "release.txt")) ? File.ReadAllText(Path.Combine(passenger, "app", "release.txt")) : null;
 
         /// <summary>The variables install.sh runs with, the test's home its own.</summary>
-        private Dictionary<string, string?> Variables() =>
+        private Dictionary<string, string> Variables() =>
             new() { ["HOME"] = Home, ["XDG_DATA_HOME"] = Path.Combine(Home, ".local", "share") };
 
         /// <summary>A passenger/ folder of a release as its archive unpacks, in <paramref name="at"/>: tools/linux's launcher,

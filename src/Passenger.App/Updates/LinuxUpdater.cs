@@ -34,7 +34,7 @@ public sealed partial class LinuxUpdater : Updater
     private readonly InstallKind kind;
     private readonly bool mayAsk;
     private readonly string running;
-    private readonly IReadOnlyDictionary<string, string?> environment;
+    private readonly IReadOnlyDictionary<string, string> environment;
     private readonly Func<string, Task> start;
     private Task<UpdatedElsewhere?>? elsewhere;
 
@@ -46,14 +46,14 @@ public sealed partial class LinuxUpdater : Updater
     /// through pkexec, <paramref name="environment"/> what install.sh is given beside this process's own variables (a
     /// test's HOME), <paramref name="start"/> how Restart to Update starts it (its launcher, apart, by default).</summary>
     public LinuxUpdater(string install, string staging, InstallKind kind, bool mayAsk = true, string? running = null,
-        IReadOnlyDictionary<string, string?>? environment = null, Func<string, Task>? start = null)
+        IReadOnlyDictionary<string, string>? environment = null, Func<string, Task>? start = null)
     {
         Folder = install;
         Staging = staging;
         this.kind = kind;
         this.mayAsk = mayAsk;
         this.running = running ?? Product.Version;
-        this.environment = environment ?? new Dictionary<string, string?>();
+        this.environment = environment ?? new Dictionary<string, string>();
         this.start = start ?? Launch;
     }
 
@@ -471,10 +471,7 @@ public sealed partial class LinuxUpdater : Updater
     /// <summary>A script run where nothing awaits it, as the process ends, with the variables given for it.</summary>
     private ChildResult Run(ProcessStartInfo command)
     {
-        foreach ((string name, string? value) in environment)
-        {
-            command.Environment[name] = value;
-        }
+        ChildProcesses.WithVariables(command, environment);
         return Synchronously.Run(() => ToolAsync(command, ScriptLimit, CancellationToken.None));
     }
 

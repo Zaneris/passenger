@@ -89,7 +89,7 @@ public sealed class MethodSources : IDisposable
             answered = await ChildProcesses.RunAsync(place.Tools([ContainerToolsWords.Sources]), input, TimeSpan.FromSeconds(30), cancel,
                 mostOutput: MostSources(asked.Length)).ConfigureAwait(false);
         }
-        catch (Exception failed) when (failed is TimeoutException or System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return found;
         }

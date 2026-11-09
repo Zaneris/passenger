@@ -1296,10 +1296,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             return EfOutcome.Unstarted(missing.Message);
         }
-        foreach ((string name, string value) in setting.Environment)
-        {
-            start.Environment[name] = value;
-        }
+        ChildProcesses.WithVariables(start, setting.Environment);
         work.Say($"{Title(work.Stage).TrimEnd('…')}: dotnet ef {string.Join(' ', verb.TakeWhile(v => !v.StartsWith('-')))}…");
         // The database a run gives is said by where it reaches, its connection string being the environment's.
         parts.Views.Build.Append($"\n{ChildProcesses.Shown(start)}\n"

@@ -102,11 +102,7 @@ public static class GodotScripts
                 ProcessStartInfo editor = ChildProcesses.Command(found.Executable,
                     [.. GodotLaunch.Chosen(setting)?.Arguments ?? [], GodotExecutables.Headless, .. recovering ? (string[])[GodotExecutables.RecoveryMode] : [], "--editor",
                         "--path", project, "--lsp-port", lsp.ToString(System.Globalization.CultureInfo.InvariantCulture)],
-                    project);
-                foreach ((string name, string value) in environment)
-                {
-                    editor.Environment[name] = value;
-                }
+                    project, environment);
                 try
                 {
                     return await LanguageSession.StartAsync(Start(editor, project, logFolder, lsp), cancel);
@@ -201,11 +197,7 @@ public static class GodotScripts
         {
             return null;
         }
-        ProcessStartInfo start = ChildProcesses.Command(godot, [.. leading, GodotExecutables.Headless, "--path", project, "--import"], project);
-        foreach ((string name, string value) in environment)
-        {
-            start.Environment[name] = value;
-        }
+        ProcessStartInfo start = ChildProcesses.Command(godot, [.. leading, GodotExecutables.Headless, "--path", project, "--import"], project, environment);
         ChildResult imported = await PuttingBackAsync(project, () => ChildProcesses.RunAsync(start, cancel: cancel), MadeFiles.Uids);
         return imported.Succeeded ? null
             : $"Godot could not import {PathNames.Shown(project, null)} as its editor does: it ended with {imported.Ended}";

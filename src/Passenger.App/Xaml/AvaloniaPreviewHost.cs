@@ -77,7 +77,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             await started.RunAsync(designer);
             return started;
         }
-        catch (Exception error) when (error is SocketException or IOException or System.ComponentModel.Win32Exception or FileNotFoundException)
+        catch (Exception error) when (error is SocketException || ChildFailures.Of(error))
         {
             started.Dispose();
             preview.Say($"The previewer could not start: {error.Message}");
@@ -101,10 +101,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         if (LiveTree.LiveApp.ForPreview(preview.Document.Document.Path, EnvironmentOf(start)) is var (live, added))
         {
             inspector = live;
-            foreach ((string variable, string value) in added)
-            {
-                start.Environment[variable] = value;
-            }
+            ChildProcesses.WithVariables(start, added);
             // Its loads record where they make each element only from the inspector's start: the text is loaded again.
             live.StateChanged += (_, _) =>
             {

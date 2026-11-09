@@ -39,7 +39,7 @@ internal sealed record ContainerTrace(Process Tools, Task Heard)
             start.RedirectStandardError = true;
             tools = ChildProcesses.Start(start);
         }
-        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             throw new ProfilingException($"Could not start Passenger's tools in {place.Where} to {to}: {error.Message}", error);
         }

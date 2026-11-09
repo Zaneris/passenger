@@ -124,7 +124,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
                 Core.ChildResult listed = await engine.RunAsync(words, ContainerEngine.AskLimit);
                 return listed.Succeeded ? listed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [];
             }
-            catch (Exception failed) when (failed is TimeoutException or FileNotFoundException or System.ComponentModel.Win32Exception)
+            catch (Exception failed) when (ChildFailures.Of(failed))
             {
                 IdeErrors.Write($"Containers: {ContainerEngine.Words(words)} failed {when}: {failed.Message}");
                 return [];
@@ -148,7 +148,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
             }
             return result.Succeeded;
         }
-        catch (Exception failed) when (failed is TimeoutException or FileNotFoundException or System.ComponentModel.Win32Exception)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             IdeErrors.Write($"Containers: {ContainerEngine.Words(words)} failed {when}: {failed.Message}");
             return false;

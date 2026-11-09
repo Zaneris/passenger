@@ -142,11 +142,7 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
     /// <paramref name="written"/>, a reading that wrote none said in the IDE's log as <paramref name="what"/>.</summary>
     private async Task<bool> RunHeadlessAsync(GodotFound found, string working, IReadOnlyList<string> arguments, string written, string what)
     {
-        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, .. arguments], working);
-        foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
-        {
-            start.Environment[name] = value;
-        }
+        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, .. arguments], working, folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")));
         ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
         if (File.Exists(written))
         {

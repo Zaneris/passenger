@@ -129,7 +129,7 @@ public static class AppHostSteps
             start.RedirectStandardError = true;
             host = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             return new AppHostStepsRead([], $"it did not start: {error.Message}");
         }

@@ -133,8 +133,7 @@ public sealed class ContainerFilesPane : DockPanel
                     .Select(name => new ContainerFile($"{folder.TrimEnd('/')}/{name.TrimEnd('/')}", name.TrimEnd('/'), name.EndsWith('/'), depth))
                     .OrderBy(f => !f.IsFolder).ThenBy(f => f.Name, StringComparer.Ordinal)], (string?)null);
             }
-            catch (Exception failed) when (failed is TimeoutException or FileNotFoundException or System.ComponentModel.Win32Exception or IOException
-                or InvalidOperationException)
+            catch (Exception failed) when (ChildFailures.Of(failed))
             {
                 return (null, failed.Message);
             }
@@ -244,21 +243,22 @@ public sealed class ContainerFilesPane : DockPanel
             start.RedirectStandardError = true;
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception failed) when (failed is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return failed.Message;
         }
         using (process)
         {
-            Task<string> errors = process.StandardError.ReadToEndAsync(CancellationToken.None);
+            Task<string> errors = ChildProcesses.Errors(process).ReadToEndAsync(CancellationToken.None);
+            Stream archive = ChildProcesses.OutputStream(process);
             using CancellationTokenSource limit = new(ContainerEngine.AskLimit);
             try
             {
-                string? written = await ReadAsync(process.StandardOutput.BaseStream, path, copy, cache, limit.Token);
+                string? written = await ReadAsync(archive, path, copy, cache, limit.Token);
                 if (written is null or NotAFile)
                 {
                     // The archive's end, which docker cp waits to write before it ends.
-                    await process.StandardOutput.BaseStream.CopyToAsync(Stream.Null, limit.Token);
+                    await archive.CopyToAsync(Stream.Null, limit.Token);
                     await process.WaitForExitAsync(limit.Token);
                     return process.ExitCode != 0 ? Said(await errors) : written is null ? null : $"{path} is not a file";
                 }

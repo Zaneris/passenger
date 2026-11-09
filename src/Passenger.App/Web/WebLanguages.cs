@@ -468,7 +468,7 @@ public sealed class WebLanguages : IAsyncDisposable
         {
             // The folder was closed.
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             Message?.Invoke(this, $"npm install could not run in {Shown(where)}: {error.Message}");
         }

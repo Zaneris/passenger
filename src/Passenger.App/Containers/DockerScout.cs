@@ -46,7 +46,7 @@ public static class DockerScout
         {
             cves = await engine.RunAsync(["scout", "cves", "--format", "sarif", image], Limit, cancel);
         }
-        catch (Exception error) when (error is FileNotFoundException or System.ComponentModel.Win32Exception or TimeoutException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             return new ScoutReport([], null, error.Message);
         }

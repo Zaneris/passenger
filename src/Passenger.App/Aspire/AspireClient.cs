@@ -46,7 +46,7 @@ public sealed class AspireClient(string? program = null)
                 ? $"Aspire CLI {actual} uses an unverified protocol major. This view supports 13.x, starting at 13.6.0."
                 : $"Aspire CLI {actual} is below the minimum supported version 13.6.0 (protocol major 13).");
         }
-        catch (Exception error) when (error is IOException or InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             return new(false, $"Aspire CLI could not report its version: {SanitizeDiagnostic(error.Message)}");
         }
@@ -265,37 +265,54 @@ public sealed class AspireClient(string? program = null)
         }
         ProcessStartInfo start = ChildProcesses.Command(executable, command, appHost is null ? null : Path.GetDirectoryName(appHost));
         start.Environment[AspireVariables.TelemetryOptOut] = "1";
-        start.RedirectStandardOutput = true;
-        start.RedirectStandardError = true;
         start.StandardOutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
         start.StandardErrorEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-        using CancellationTokenSource ending = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-        ending.CancelAfter(timeout ?? CommandTimeout);
-        using Process process = ChildProcesses.Start(start);
-        using CancellationTokenRegistration registration = ending.Token.Register(() => ChildProcesses.Kill(process));
+        ChildResult ran;
         try
         {
-            Task<string> output = ReadBoundedAsync(process.StandardOutput, ending.Token);
-            Task<string> errors = ReadBoundedAsync(process.StandardError, ending.Token);
-            await Task.WhenAll(output, errors, process.WaitForExitAsync(ending.Token));
-            if (process.ExitCode != 0)
-            {
-                string reason = string.IsNullOrWhiteSpace(await errors) ? await output : await errors;
-                throw new InvalidOperationException($"Aspire command failed ({ExitCodes.Said(process.ExitCode)}): {SanitizeDiagnostic(reason)}");
-            }
-            return await output;
+            // A character is a byte at least: the bound in bytes is held below.
+            ran = await ChildProcesses.RunAsync(start, limit: timeout ?? CommandTimeout, cancel: cancel, mostOutput: ResponseByteLimit);
         }
-        catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
+        catch (TimeoutException)
         {
             throw new TimeoutException("Aspire command timed out. Check the AppHost and refresh.");
+        }
+        catch (ChildOutputException)
+        {
+            throw new InvalidDataException(Exceeded);
         }
         catch (DecoderFallbackException)
         {
             throw new InvalidDataException("Aspire returned invalid UTF-8 output.");
         }
-        finally
+        Bounded(ran.Output);
+        Bounded(ran.Error);
+        if (!ran.Succeeded)
         {
-            ChildProcesses.Kill(process);
+            string reason = string.IsNullOrWhiteSpace(ran.Error) ? ran.Output : ran.Error;
+            throw new InvalidOperationException($"Aspire command failed ({ExitCodes.Said(ran.ExitCode)}): {SanitizeDiagnostic(reason)}");
+        }
+        return ran.Output;
+    }
+
+    private const string Exceeded = "Aspire response exceeded 8 MiB. Reduce the requested limit.";
+
+    /// <summary>A response held to the CLI's bounds in UTF-8's bytes: <see cref="ResponseByteLimit"/> in all, and
+    /// <see cref="LineByteLimit"/> a line.</summary>
+    private static void Bounded(string text)
+    {
+        if (Encoding.UTF8.GetByteCount(text) > ResponseByteLimit)
+        {
+            throw new InvalidDataException(Exceeded);
+        }
+        for (int from = 0; from <= text.Length;)
+        {
+            int end = text.IndexOf('\n', from) is >= 0 and int found ? found : text.Length;
+            if (Encoding.UTF8.GetByteCount(text.AsSpan(from, end - from)) > LineByteLimit)
+            {
+                throw new InvalidDataException("Aspire response line exceeded 1 MiB.");
+            }
+            from = end + 1;
         }
     }
 
@@ -308,33 +325,5 @@ public sealed class AspireClient(string? program = null)
         value = ContainerSecrets.InSaid(value[..Math.Min(value.Length, 16384)], known: secrets);
         value = new string(value.Select(character => char.IsControl(character) ? ' ' : character).ToArray()).Trim();
         return value.Length == 0 ? "No diagnostic output was returned." : value[..Math.Min(value.Length, 2048)];
-    }
-
-    private static async Task<string> ReadBoundedAsync(StreamReader reader, CancellationToken cancel)
-    {
-        StringBuilder text = new();
-        char[] buffer = new char[4096];
-        int total = 0;
-        int line = 0;
-        int read;
-        while ((read = await reader.ReadAsync(buffer.AsMemory(), cancel)) > 0)
-        {
-            int bytes = Encoding.UTF8.GetByteCount(buffer.AsSpan(0, read));
-            total += bytes;
-            if (total > ResponseByteLimit)
-            {
-                throw new InvalidDataException("Aspire response exceeded 8 MiB. Reduce the requested limit.");
-            }
-            for (int i = 0; i < read; i++)
-            {
-                line = buffer[i] == '\n' ? 0 : line + Encoding.UTF8.GetByteCount(buffer.AsSpan(i, 1));
-                if (line > LineByteLimit)
-                {
-                    throw new InvalidDataException("Aspire response line exceeded 1 MiB.");
-                }
-            }
-            text.Append(buffer, 0, read);
-        }
-        return text.ToString();
     }
 }

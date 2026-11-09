@@ -163,7 +163,7 @@ public sealed class PackageManager
         {
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             Line?.Invoke(this, $"Could not start dotnet: {failed.Message}");
             return (false, false);
@@ -177,10 +177,9 @@ public sealed class PackageManager
         bool fileInUse = false;
         try
         {
-            Task output = Pump(process.StandardOutput);
-            Task error = Pump(process.StandardError);
+            Task heard = ChildProcesses.Hear(process, Heard, Heard);
             await process.WaitForExitAsync();
-            await Task.WhenAll(output, error);
+            await heard;
             return (process.ExitCode == 0, fileInUse);
         }
         finally
@@ -189,17 +188,13 @@ public sealed class PackageManager
             process.Dispose();
         }
 
-        async Task Pump(StreamReader reader)
+        void Heard(string line)
         {
-            while (await reader.ReadLineAsync() is { } line)
+            if (line.Contains(InUse, StringComparison.Ordinal))
             {
-                if (line.Contains(InUse, StringComparison.Ordinal))
-                {
-                    fileInUse = true;
-                }
-                string text = line;
-                UiThread.Post(() => Line?.Invoke(this, text));
+                fileInUse = true;
             }
+            UiThread.Post(() => Line?.Invoke(this, line));
         }
     }
 }

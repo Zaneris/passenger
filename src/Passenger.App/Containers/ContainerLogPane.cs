@@ -134,11 +134,7 @@ public sealed class ContainerLogPane : DockPanel
                 return;
             }
             Dictionary<string, string> environment = start.Environment.Where(v => v.Value is not null).ToDictionary(v => v.Key, v => v.Value!);
-            ProcessStartInfo followed = ChildProcesses.Command(start.FileName, words, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-            foreach ((string key, string value) in environment)
-            {
-                followed.Environment[key] = value;
-            }
+            ProcessStartInfo followed = ChildProcesses.Command(start.FileName, words, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), environment);
             try
             {
                 merged.Add(MergedStream.Start(followed, $"[{container.Name}] ", Console.Sink));

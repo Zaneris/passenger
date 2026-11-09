@@ -103,7 +103,7 @@ public static class ShellEnvironment
         {
             Unread(shell, $"it had not ended after {Limit.TotalSeconds:0} s", errors);
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or UnauthorizedAccessException)
+        catch (Exception error) when (error is UnauthorizedAccessException || ChildFailures.Of(error))
         {
             Unread(shell, error.Message, null);
         }

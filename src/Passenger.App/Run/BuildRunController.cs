@@ -1323,18 +1323,11 @@ public sealed partial class BuildRunController
         (LaunchPlan each, Godot.GodotGame? game) = session.Listened(GameCopies.Plan(chosen, plan, copy, ConfigurationNames));
         game?.ReloadsScripts = reloaded;
         string program = GodotConsole.Program(each, each.Program);
-        ProcessStartInfo start = ChildProcesses.Command(program, each.Arguments, each.WorkingDirectory);
-        foreach ((string variable, string value) in each.Environment)
-        {
-            start.Environment[variable] = value;
-        }
+        ProcessStartInfo start = ChildProcesses.Command(program, each.Arguments, each.WorkingDirectory, each.Environment);
         if (heldStart)
         {
             // Held at its runtime's start until the debugger attaches, so each of its modules takes Edit and Continue as it loads.
-            foreach ((string name, string value) in HeldStart.Variables(changeable: true))
-            {
-                start.Environment[name] = value;
-            }
+            ChildProcesses.WithVariables(start, HeldStart.Variables(changeable: true));
         }
         TerminalRun run;
         try
@@ -1660,10 +1653,7 @@ public sealed partial class BuildRunController
         {
             return Said("No .NET command line found: install the .NET SDK, or set DOTNET_ROOT to where it is.");
         }
-        foreach ((string variable, string value) in variables)
-        {
-            start.Environment[variable] = value;
-        }
+        ChildProcesses.WithVariables(start, variables);
         TerminalRun run;
         try
         {

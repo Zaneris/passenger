@@ -152,21 +152,17 @@ public sealed class WebAssemblyAdapter
     private async Task<bool> LaunchAsync(LaunchArguments arguments)
     {
         string program = arguments.Program ?? throw new DapException(DapCommands.Launch, "No program to launch");
-        ProcessStartInfo start = ChildProcesses.Command(program, arguments.Args ?? [], arguments.Cwd);
+        ProcessStartInfo start = ChildProcesses.Command(program, arguments.Args ?? [], arguments.Cwd, arguments.Env);
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         start.RedirectStandardInput = true;
-        foreach ((string variable, string value) in arguments.Env ?? new Dictionary<string, string>())
-        {
-            start.Environment[variable] = value;
-        }
         Tell(DapEvents.Output, new OutputEvent($"{ChildProcesses.Shown(start)}\n", DapOutputCategories.Console));
         Process process;
         try
         {
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             throw new DapException(DapCommands.Launch, $"Could not start {Path.GetFileName(start.FileName)}: {error.Message}");
         }

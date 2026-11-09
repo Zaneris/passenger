@@ -142,7 +142,7 @@ public sealed class ProjectHost : IAsyncDisposable
         {
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             throw new ProjectHostFailed($"the project host could not start: {error.Message}", error);
         }
@@ -160,7 +160,7 @@ public sealed class ProjectHost : IAsyncDisposable
             }
         });
         UnawaitedWork.Observe(errorsHeard);
-        Utf8Lines lines = new(process.StandardOutput.BaseStream);
+        Utf8Lines lines = new(ChildProcesses.OutputStream(process));
         try
         {
             ReadOnlyMemory<byte> first = await lines.NextAsync(cancel).AsTask().WaitAsync(TimeSpan.FromMinutes(1), cancel)

@@ -124,7 +124,7 @@ public sealed class PrettierService : IAsyncDisposable
             {
                 running = runner ??= await Runner.StartAsync(runtime.Path!, folder).ConfigureAwait(false);
             }
-            catch (Exception error) when (error is Win32Exception or IOException or InvalidOperationException)
+            catch (Exception error) when (ChildFailures.Of(error))
             {
                 return new PrettierAnswer(Error: $"Prettier's runner could not start on {runtime.Path}: {error.Message}");
             }
@@ -297,7 +297,7 @@ public sealed class PrettierService : IAsyncDisposable
             {
                 await process.StandardInput.WriteLineAsync(request.AsMemory(), ending.Token).ConfigureAwait(false);
                 await process.StandardInput.FlushAsync(ending.Token).ConfigureAwait(false);
-                return await process.StandardOutput.ReadLineAsync(ending.Token).ConfigureAwait(false);
+                return await ChildProcesses.Output(process).ReadLineAsync(ending.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
             {

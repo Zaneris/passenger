@@ -64,7 +64,7 @@ public static class GpgLoopback
         start.RedirectStandardError = true;
         using Process signing = await ChildProcesses.StartAsync(start);
         await using Stream output = Console.OpenStandardOutput();
-        Task signature = signing.StandardOutput.BaseStream.CopyToAsync(output);
+        Task signature = ChildProcesses.OutputStream(signing).CopyToAsync(output);
         await using Stream errors = Console.OpenStandardError();
         Task said = StatusAsync(signing, errors, socket);
         await signing.WaitForExitAsync();
@@ -78,7 +78,8 @@ public static class GpgLoopback
     {
         string? user = null;
         string? key = null;
-        while (await signing.StandardError.ReadLineAsync() is { } line)
+        TextReader words = ChildProcesses.Errors(signing);
+        while (await words.ReadLineAsync() is { } line)
         {
             await errors.WriteAsync(Encoding.UTF8.GetBytes(line + "\n"));
             await errors.FlushAsync();
@@ -158,8 +159,8 @@ public static class GpgLoopback
         using Process signing = await ChildProcesses.StartAsync(start);
         using MemoryStream output = new();
         using MemoryStream errors = new();
-        Task written = signing.StandardOutput.BaseStream.CopyToAsync(output);
-        Task said = signing.StandardError.BaseStream.CopyToAsync(errors);
+        Task written = ChildProcesses.OutputStream(signing).CopyToAsync(output);
+        Task said = ChildProcesses.ErrorStream(signing).CopyToAsync(errors);
         if (input is not null)
         {
             await signing.StandardInput.WriteAsync(input);
@@ -189,7 +190,7 @@ public static class GpgLoopback
             await input.CopyToAsync(through.StandardInput.BaseStream);
             through.StandardInput.Close();
         });
-        Task copied = Task.WhenAll(through.StandardOutput.BaseStream.CopyToAsync(output), through.StandardError.BaseStream.CopyToAsync(errors));
+        Task copied = Task.WhenAll(ChildProcesses.OutputStream(through).CopyToAsync(output), ChildProcesses.ErrorStream(through).CopyToAsync(errors));
         await through.WaitForExitAsync();
         await EndedAsync(through, copied);
         // git's input to gpg is written whole before git reads its output, so what is left of it is nobody's.

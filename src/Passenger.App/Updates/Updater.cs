@@ -172,7 +172,7 @@ public abstract class Updater
             // As the process ends, after its last window: nothing is left to await it.
             Synchronously.Run(() => start(Installed));
         }
-        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or TimeoutException or InvalidOperationException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             IdeErrors.Write($"Updates: {Installed} could not be started again: {error.Message}");
         }
@@ -185,7 +185,7 @@ public abstract class Updater
         {
             return await ChildProcesses.RunAsync(command, limit: limit, cancel: cancel).ConfigureAwait(false);
         }
-        catch (Exception error) when (error is TimeoutException or System.ComponentModel.Win32Exception)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             return new ChildResult(-1, string.Empty, error.Message);
         }
@@ -212,7 +212,7 @@ public abstract class Updater
                     return $"process {processId}: {command}";
                 }
             }
-            catch (Exception error) when (error is TimeoutException or System.ComponentModel.Win32Exception)
+            catch (Exception error) when (ChildFailures.Of(error))
             {
                 // Named by its executable instead.
             }

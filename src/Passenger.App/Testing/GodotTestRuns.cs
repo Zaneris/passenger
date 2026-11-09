@@ -105,11 +105,7 @@ public static class GodotTestRuns
             await ended.WaitAsync(cancel);
             return new Ended(written, string.Empty, true, "Godot ended");
         }
-        ProcessStartInfo run = ChildProcesses.Command(godot, arguments, asked.Folder);
-        foreach ((string name, string value) in environment)
-        {
-            run.Environment[name] = value;
-        }
+        ProcessStartInfo run = ChildProcesses.Command(godot, arguments, asked.Folder, environment);
         // Not held: read for as long as the game runs, which a wait for the IDE to be quiet would otherwise wait out whole.
         ChildRead<string> ran = await ChildProcesses.RunAsync(run, output => BackgroundWork.Unheld(() => HearAsync(output, asked, cancel)), cancel: cancel);
         return new Ended(written, ran.Output, false, $"Godot ended with {new ChildResult(ran.ExitCode, ran.Output, ran.Error).Ended}");

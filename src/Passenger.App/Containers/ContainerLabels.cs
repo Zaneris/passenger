@@ -379,7 +379,7 @@ public static partial class ContainerLabels
                 IdeErrors.Write($"Containers: removed {Plural.Of(removed.Count, "container")} and networks an earlier Passenger left");
             }
         }
-        catch (Exception failed) when (failed is ContainerCommandException or TimeoutException or JsonException or System.ComponentModel.Win32Exception)
+        catch (Exception failed) when (failed is ContainerCommandException or JsonException || ChildFailures.Of(failed))
         {
             // No engine running: what is left is removed at a start that finds one.
         }

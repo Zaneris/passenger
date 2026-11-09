@@ -331,11 +331,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             int id;
             if (debugger is null)
             {
-                ProcessStartInfo start = ChildProcesses.Command(Dotnet.Host(), arguments, folder);
-                foreach ((string variable, string value) in environment ?? new Dictionary<string, string>())
-                {
-                    start.Environment[variable] = value;
-                }
+                ProcessStartInfo start = ChildProcesses.Command(Dotnet.Host(), arguments, folder, environment);
                 start.RedirectStandardOutput = true;
                 start.RedirectStandardError = true;
                 try

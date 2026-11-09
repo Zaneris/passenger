@@ -301,20 +301,20 @@ public static class ContainerTools
             start.RedirectStandardError = true;
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception failed) when (failed is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             throw new ContainerToolsException($"Could not read the system of container {container}: {failed.Message}");
         }
         using (process)
         {
-            UnawaitedWork.Dismiss(process.StandardError.ReadToEndAsync(CancellationToken.None));
+            UnawaitedWork.Dismiss(ChildProcesses.Hear(process, errors: _ => { }));
             using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
             limit.CancelAfter(ContainerEngine.AskLimit);
             try
             {
                 // An archive's first header is 512 bytes: their coming says the file is there.
                 byte[] header = new byte[512];
-                int read = await process.StandardOutput.BaseStream.ReadAtLeastAsync(header, header.Length, throwOnEndOfStream: false, limit.Token).ConfigureAwait(false);
+                int read = await ChildProcesses.OutputStream(process).ReadAtLeastAsync(header, header.Length, throwOnEndOfStream: false, limit.Token).ConfigureAwait(false);
                 if (read == header.Length)
                 {
                     return true;

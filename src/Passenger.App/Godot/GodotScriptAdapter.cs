@@ -202,14 +202,10 @@ public sealed class GodotScriptAdapter
         {
             return await LaunchInTerminalAsync(program, arguments);
         }
-        System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(program, arguments.Args ?? [], arguments.Cwd);
+        System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(program, arguments.Args ?? [], arguments.Cwd, arguments.Env);
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         start.RedirectStandardInput = true;
-        foreach ((string name, string value) in arguments.Env ?? new Dictionary<string, string>())
-        {
-            start.Environment[name] = value;
-        }
         if (arguments.Unseen == true)
         {
             ChildProcesses.OnDesktopOfItsOwn(start, $"{game.Name} is an agent's game, drawn where no one sees it for its frames");
@@ -220,7 +216,7 @@ public sealed class GodotScriptAdapter
         {
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             throw new DapException(DapCommands.Launch, $"Could not start {Path.GetFileName(start.FileName)}: {error.Message}");
         }

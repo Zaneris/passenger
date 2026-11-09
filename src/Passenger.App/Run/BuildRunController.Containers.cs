@@ -408,7 +408,7 @@ public sealed partial class BuildRunController
                 $"{{{{.Names}}}}\t{{{{.Label \"{ComposeLabels.Service}\"}}}}\t{{{{.Label \"{ContainerLabels.Machine}\"}}}}\t{{{{.Label \"{ContainerLabels.Process}\"}}}}"],
                 ContainerEngine.AskLimit, work.Stopping));
         }
-        catch (Exception unasked) when (unasked is TimeoutException or FileNotFoundException or System.ComponentModel.Win32Exception)
+        catch (Exception unasked) when (ChildFailures.Of(unasked))
         {
             // An engine that does not list them now refuses up's own commands next, which says why.
             return null;

@@ -108,7 +108,7 @@ public static class EfDatabases
         {
             (published, _) = await run.Engine.PublishedPortAsync(run.Plan.Compose, service.Name, target, run.Plan.Folder, cancel);
         }
-        catch (Exception failed) when (failed is TimeoutException or IOException or System.ComponentModel.Win32Exception)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return null;
         }

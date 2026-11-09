@@ -163,17 +163,14 @@ public sealed class ProfilingSession : IAsyncDisposable
         start.RedirectStandardError = true;
         // An input of its own that stays open, for a program that waits on a read.
         start.RedirectStandardInput = true;
-        foreach ((string key, string value) in target.Environment)
-        {
-            start.Environment[key] = value;
-        }
+        ChildProcesses.WithVariables(start, target.Environment);
         start.Environment[RuntimeVariables.DiagnosticPorts] = $"{port},suspend";
         Process process;
         try
         {
             process = ChildProcesses.Start(start);
         }
-        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             await StopListeningAsync(connecting, limit, port);
             throw new ProfilingException($"Could not start {Path.GetFileName(target.Program)} to profile {target.Name}: {error.Message}", error);
@@ -289,16 +286,13 @@ public sealed class ProfilingSession : IAsyncDisposable
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         start.RedirectStandardInput = true;
-        foreach ((string key, string value) in target.Environment)
-        {
-            start.Environment[key] = value;
-        }
+        ChildProcesses.WithVariables(start, target.Environment);
         Process process;
         try
         {
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             throw new ProfilingException($"Could not start {Path.GetFileName(target.Program)} to profile {target.Name}: {error.Message}", error);
         }
@@ -439,7 +433,7 @@ public sealed class ProfilingSession : IAsyncDisposable
             {
                 try
                 {
-                    await tools.StandardOutput.BaseStream.CopyToAsync(file).ConfigureAwait(false);
+                    await ChildProcesses.OutputStream(tools).CopyToAsync(file).ConfigureAwait(false);
                 }
                 catch (Exception error) when (error is IOException or ObjectDisposedException)
                 {

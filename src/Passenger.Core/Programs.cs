@@ -81,7 +81,7 @@ public static class Programs
                 return developerFolder = folder;
             }
         }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or IOException or TimeoutException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             // No xcode-select to ask: the stub has nothing to run either.
         }

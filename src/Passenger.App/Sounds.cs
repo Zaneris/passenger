@@ -174,7 +174,7 @@ public static class Sounds
             Playing.Started(ask, await ChildProcesses.StartAsync(start));
             return null;
         }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return $"The sound player could not start: {failed.Message}";
         }

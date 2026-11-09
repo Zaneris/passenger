@@ -82,7 +82,7 @@ public static partial class DevelopmentCertificate
         {
             return (Standing.Unknown, $"dotnet dev-certs https --check did not answer within {CheckLimit.TotalSeconds:0} s", null);
         }
-        catch (Exception failed) when (failed is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return (Standing.Unknown, failed.Message, null);
         }
@@ -106,7 +106,7 @@ public static partial class DevelopmentCertificate
         {
             return $"dotnet dev-certs https --trust did not end within {ExportLimit.TotalSeconds:0} s (the system's certificate store may be asking for a password)";
         }
-        catch (Exception failed) when (failed is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             return failed.Message;
         }
@@ -155,8 +155,7 @@ public static partial class DevelopmentCertificate
         {
             return (null, $"dotnet dev-certs https -ep did not end within {ExportLimit.TotalSeconds:0} s (the system's certificate store may be asking for a password)");
         }
-        catch (Exception failed) when (failed is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or FileNotFoundException
-            or InvalidOperationException)
+        catch (Exception failed) when (failed is UnauthorizedAccessException || ChildFailures.Of(failed))
         {
             return (null, failed.Message);
         }

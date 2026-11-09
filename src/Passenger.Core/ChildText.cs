@@ -7,8 +7,8 @@ namespace Passenger.Core;
 /// <summary>A stream's text as it comes, decoded as the process's own reader decodes a child's output: in its encoding,
 /// unless the text begins with a byte order mark, which names another and is left out. A read of a buffer that waits
 /// allocates nothing, waiting as itself (one task source, used again by every read) on its stream's own read, so over a
-/// <see cref="ChildPipe"/> nothing at all; its reads of a line or of the whole text are a TextReader's own, each on a
-/// thread of the pool. It owns its stream, let go once the text has ended; one read at a time.</summary>
+/// <see cref="ChildPipe"/> nothing at all; a read of a line or of the whole text waits as the stream's own read does, so
+/// its cancellation ends the wait. It owns its stream, let go once the text has ended; one read at a time.</summary>
 internal sealed class ChildText : TextReader, IValueTaskSource<int>
 {
     private const int Size = 4096;
@@ -79,6 +79,42 @@ internal sealed class ChildText : TextReader, IValueTaskSource<int>
 
     public override Task<int> ReadAsync(char[] buffer, int index, int count) => ReadAsync(buffer.AsMemory(index, count)).AsTask();
 
+    /// <summary>A line as StreamReader reads one, its end ("\n", "\r\n" or "\r") left off; null at the text's end.</summary>
+    public override async ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
+    {
+        StringBuilder line = new();
+        bool any = false;
+        while (await FilledAsync(cancellationToken).ConfigureAwait(false))
+        {
+            any = true;
+            if (TakeLine(line) is not { } ending)
+            {
+                continue;
+            }
+            if (ending == '\r' && await FilledAsync(cancellationToken).ConfigureAwait(false) && chars[next] == '\n')
+            {
+                next++;
+            }
+            return line.ToString();
+        }
+        return any ? line.ToString() : null;
+    }
+
+    public override Task<string?> ReadLineAsync() => ReadLineAsync(CancellationToken.None).AsTask();
+
+    public override async Task<string> ReadToEndAsync(CancellationToken cancellationToken)
+    {
+        StringBuilder text = new();
+        while (await FilledAsync(cancellationToken).ConfigureAwait(false))
+        {
+            text.Append(chars, next, end - next);
+            next = end;
+        }
+        return text.ToString();
+    }
+
+    public override Task<string> ReadToEndAsync() => ReadToEndAsync(CancellationToken.None);
+
     public override int Read(Span<char> buffer)
     {
         while (next == end && !ended && !buffer.IsEmpty)
@@ -140,6 +176,36 @@ internal sealed class ChildText : TextReader, IValueTaskSource<int>
             Decode(Brought(read));
         }
         return true;
+    }
+
+    /// <summary>Whether there are characters to read, the stream read until there are or the text has ended.</summary>
+    private async ValueTask<bool> FilledAsync(CancellationToken cancellation)
+    {
+        while (next == end && !ended)
+        {
+            int read;
+            try
+            {
+                read = await stream.ReadAsync(bytes.AsMemory(held), cancellation).ConfigureAwait(false);
+            }
+            catch (SocketException failed)
+            {
+                throw new IOException(failed.Message, failed);
+            }
+            Decode(read);
+        }
+        return next < end;
+    }
+
+    /// <summary>The characters to read up to a line's end taken into <paramref name="line"/>, the end passed and given; null
+    /// where none came before the characters ran out, all of them taken.</summary>
+    private char? TakeLine(StringBuilder line)
+    {
+        ReadOnlySpan<char> left = chars.AsSpan(next, end - next);
+        int at = left.IndexOfAny('\r', '\n');
+        line.Append(at < 0 ? left : left[..at]);
+        next += at < 0 ? left.Length : at + 1;
+        return at < 0 ? null : left[at];
     }
 
     /// <summary>The read waited on has ended: the text read on until the read waiting has its answer.</summary>

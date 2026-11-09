@@ -179,10 +179,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         start.RedirectStandardError = true;
         // Otherwise ChildProcesses closes it as the program starts.
         start.RedirectStandardInput = takesInput;
-        foreach ((string key, string value) in environment ?? new Dictionary<string, string>())
-        {
-            start.Environment[key] = value;
-        }
+        ChildProcesses.WithVariables(start, environment);
     }
 
     /// <summary>The process started once its wait is over, unless it was stopped meanwhile.</summary>
@@ -224,7 +221,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         {
             started = ChildProcesses.Start(start);
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             return Refused(start, error);
         }
@@ -244,7 +241,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         {
             started = await ChildProcesses.StartAsync(start);
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             return Refused(start, error);
         }

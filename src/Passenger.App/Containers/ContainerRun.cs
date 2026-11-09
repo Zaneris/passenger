@@ -1349,7 +1349,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
                 }
             }
         }
-        catch (Exception failed) when (failed is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception failed) when (ChildFailures.Of(failed))
         {
             console.Write($"Compose's watch could not start: {failed.Message}\n", ConsoleStream.Error);
         }

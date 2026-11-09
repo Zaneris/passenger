@@ -48,7 +48,7 @@ internal sealed class LiveSession : IAsyncDisposable
     {
         ContainerTrace recording = await ContainerTrace.StartAsync(place, processId, resume: false, kind, to, doing, cancel);
         Process tools = recording.Tools;
-        return new LiveSession(tools.StandardOutput.BaseStream, follow, async () =>
+        return new LiveSession(ChildProcesses.OutputStream(tools), follow, async () =>
         {
             // Their input's end stops the session there.
             await ChildProcesses.EndThroughInputAsync(tools, TimeSpan.FromSeconds(5));

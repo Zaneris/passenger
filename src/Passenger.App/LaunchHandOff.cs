@@ -99,7 +99,7 @@ public static partial class LaunchHandOff
             IdeErrors.Write(opened.Succeeded ? $"Launch: {bundle} brought in front through LaunchServices"
                 : $"Launch: open -a {bundle} ended with {opened.Ended}");
         }
-        catch (Exception error) when (error is TimeoutException or IOException or System.ComponentModel.Win32Exception)
+        catch (Exception error) when (ChildFailures.Of(error))
         {
             IdeErrors.Write($"Launch: {bundle} could not be brought in front through LaunchServices: {error.Message}");
         }
