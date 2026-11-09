@@ -930,6 +930,10 @@ public sealed record ChildResult(int ExitCode, string Output, string Error)
     /// the first line of its errors, else of its output, where one says anything ("exit code 139 (SIGSEGV): …").</summary>
     public string Ended => FirstLineOf(Words) is { Length: > 0 } first ? $"{ExitCodes.Said(ExitCode)}: {first}" : ExitCodes.Said(ExitCode);
 
+    /// <summary><see cref="Said"/> of its output and errors as <paramref name="shown"/> gives them (its secrets masked), each
+    /// passed whole before its lines are joined, so a secret of several lines (a PEM key) is found as it was written.</summary>
+    public string SaidAs(Func<string, string> shown) => (this with { Output = shown(Output), Error = shown(Error) }).Said;
+
     /// <summary>Its errors where they say anything, else its output.</summary>
     private string Words => Error.AsSpan().IsWhiteSpace() ? Output : Error;
 }

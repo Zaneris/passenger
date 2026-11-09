@@ -4,7 +4,8 @@ namespace Passenger.UnitTests.Core;
 
 /// <summary>A child's words as a person is told them: the first line that says anything, trimmed, whatever its lines end in;
 /// what a failed child said, its errors before its output, cut to its cap, and its exit code as <see cref="ExitCodes"/> says
-/// it where it said nothing, a crash's signal named; a child that gave no answer quoted by its first line.</summary>
+/// it where it said nothing, a crash's signal named; its words masked whole before their lines are joined; a child that
+/// gave no answer quoted by its first line.</summary>
 public class ChildResultTests
 {
     [Theory]
@@ -64,5 +65,15 @@ public class ChildResultTests
         string said = new ChildResult(1, string.Empty, log).Said;
         Assert.True(said.StartsWith("#1 building step 1 #2 ", StringComparison.Ordinal) && said.Contains("#40 building step 40 … and 5 more lines", StringComparison.Ordinal)
             && !said.Contains("#41", StringComparison.Ordinal), $"A failed compose build's 45 lines of log, said as its problem, were not cut to 40: {said}");
+    }
+
+    [Fact]
+    public void A_secret_of_several_lines_is_masked_whole_before_its_lines_are_joined()
+    {
+        const string Key = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----";
+        ChildResult echoed = new(15, "invalid interpolation: SIGNING_KEY=-----BEGIN PRIVATE KEY-----\r\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\r\n-----END PRIVATE KEY-----\r\nis not valid\r\n",
+            string.Empty);
+        string said = echoed.SaidAs(words => words.Replace("\r", string.Empty, StringComparison.Ordinal).Replace(Key, "••••••", StringComparison.Ordinal));
+        Assert.True(said == "invalid interpolation: SIGNING_KEY=•••••• is not valid", $"A PEM key compose echoed was shown, its lines joined before the mask could find it: {said}");
     }
 }

@@ -284,8 +284,13 @@ public sealed class ContainerEngine
 
     /// <summary>What a failed command said (<see cref="ChildResult.Said"/>), its secrets masked
     /// (<see cref="ContainerSecrets.InSaid"/>: Compose's errors echo what it interpolated, from the .env in the
-    /// <paramref name="folder"/> it ran in among the rest).</summary>
-    public static string Said(ChildResult result, string? folder = null) => ContainerSecrets.InSaid(result.Said, folder);
+    /// <paramref name="folder"/> it ran in among the rest) before its lines are joined, a secret of several lines among them.</summary>
+    public static string Said(ChildResult result, string? folder = null)
+    {
+        Func<string, string> masking = ContainerSecrets.Masking(folder);
+        // A secret of several lines is found by its value's own line ends, whatever line ends the CLI wrote.
+        return result.SaidAs(words => masking(words.Replace("\r", string.Empty, StringComparison.Ordinal)));
+    }
 
     /// <summary>The engine's state, asked again once the last answer is <see cref="Fresh"/> no more (or at once when
     /// <paramref name="again"/>); one question at a time, whoever asks.</summary>
