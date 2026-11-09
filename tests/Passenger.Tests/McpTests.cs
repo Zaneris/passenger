@@ -1694,7 +1694,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             await Waiting.UntilAsync(() => Task.FromResult((said = File.Exists(log) ? Ui.Shared(log) : string.Empty)
                 .Contains("open terminal failed: not a terminal", StringComparison.Ordinal)), TimeSpan.FromSeconds(10), Cancel, TimeSpan.FromMilliseconds(200));
             string? line = said.Split('\n').FirstOrDefault(l => l.Contains("The login shell's environment was not read", StringComparison.Ordinal));
-            Assert.True(line?.Contains($"{fails} -l -i: it exited with 1: open terminal failed: not a terminal", StringComparison.Ordinal) == true,
+            Assert.True(line?.Contains($"{fails} -l -i: it ended with exit code 1: open terminal failed: not a terminal", StringComparison.Ordinal) == true,
                 $"Over a login shell that fails with no terminal, Passenger's log does not say so, naming it, in its words: {line ?? said[Math.Max(0, said.Length - 2000)..]}");
         }
 

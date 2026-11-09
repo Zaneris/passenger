@@ -339,7 +339,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
                     Line?.Invoke(this, partialLine.ToString());
                     partialLine.Clear();
                 }
-                console.Append($"\nProcess finished with exit code {code}.\n");
+                console.Append($"\nProcess finished with {ExitCodes.Said(code)}.\n");
                 running = false;
                 ending.TrySetResult(code);
                 Exited?.Invoke(this, code);

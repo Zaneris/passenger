@@ -458,10 +458,10 @@ public sealed class WebLanguages : IAsyncDisposable
             }
             else
             {
-                IdeErrors.Write($"npm install in {where} failed with exit code {result.ExitCode}:\n{result.Error}{result.Output}");
+                IdeErrors.Write($"npm install in {where} failed with {ExitCodes.Said(result.ExitCode)}:\n{result.Error}{result.Output}");
                 string said = (result.Error + "\n" + result.Output).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .FirstOrDefault(l => l.Contains("error", StringComparison.OrdinalIgnoreCase)) ?? "the IDE's log has what it said";
-                Message?.Invoke(this, $"npm install failed in {Shown(where)} (exit code {result.ExitCode}): {said}");
+                Message?.Invoke(this, $"npm install failed in {Shown(where)} ({ExitCodes.Said(result.ExitCode)}): {said}");
             }
         }
         catch (OperationCanceledException)

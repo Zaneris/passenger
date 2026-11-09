@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Settings;
+using Passenger.Core;
 using Passenger.Terminal;
 
 namespace Passenger.App.ToolWindows;
@@ -263,7 +264,7 @@ public sealed class TerminalPanel : DockPanel
                 if (!session.IsRunning)
                 {
                     string said = string.Join(' ', session.Screen.Lines.Select(l => l.Text().Trim()).Where(l => l.Length > 0)).Trim();
-                    return (session, $"The Agent Shell's shell, '{program}', ended as it started, with exit code {code}{(said.Length > 0 ? $": {said}" : string.Empty)}");
+                    return (session, $"The Agent Shell's shell, '{program}', ended as it started, with {ExitCodes.Said(code)}{(said.Length > 0 ? $": {said}" : string.Empty)}");
                 }
                 if (session.Screen.Version != version)
                 {

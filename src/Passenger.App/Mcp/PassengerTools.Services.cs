@@ -362,7 +362,7 @@ public sealed partial class PassengerTools
         string status = resource is null ? $"{name} is no longer one of {run}'s {listed.ToLowerInvariant()}"
             : unstarted is not null ? $"{name} of {run}: {unstarted}"
             : resource.IsUp ? $"{name} of {run} is up"
-            : resource.HasEnded ? $"{name} of {run} ended: {resource.State}{(resource.ExitCode is { } code ? $" (exit code {code})" : string.Empty)}"
+            : resource.HasEnded ? $"{name} of {run} ended: {resource.State}{(resource.ExitCode is { } code ? $" ({ExitCodes.Said(code)})" : string.Empty)}"
             : $"{name} of {run} is not up within {Math.Max(0, waitSeconds)} s: {resource.State ?? "Unknown"}{(resource.Health is { } said ? $" ({said})" : string.Empty)}";
         status += $"\n{listed} of {run}:\n{string.Join('\n', all.Select(s => $"  {s}"))}" + string.Concat(notes.Select(note => $"\nNote: {note}"));
         return new RunResult(resource is not null && !resource.HasEnded, resource is { HasEnded: true } ? resource.ExitCode : null, status, output);

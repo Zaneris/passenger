@@ -123,7 +123,7 @@ public static class GodotLaunch
             if (!imported.Succeeded)
             {
                 throw new LaunchException($"{configuration.Name} cannot run: Godot could not import {PathNames.Shown(folder, null)}'s assets, which the game loads as Godot's editor "
-                    + $"imports them (exit code {imported.ExitCode}): {ChildResult.FirstLineOf(imported.Error.Length > 0 ? imported.Error : imported.Output)}");
+                    + $"imports them: it ended with {imported.Ended}");
             }
         }
         List<string> arguments = [.. Chosen(setting)?.Arguments ?? []];

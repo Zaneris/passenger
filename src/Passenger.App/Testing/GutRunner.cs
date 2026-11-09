@@ -104,7 +104,7 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
                 output = ran.Output;
                 if (!File.Exists(results))
                 {
-                    string said = $"GUT wrote no results (Godot ended with exit code {ran.ExitCode}): {ChildResult.FirstLineOf(ran.Error.Length > 0 ? ran.Error : ran.Output)}";
+                    string said = $"GUT wrote no results: Godot ended with {ran.Ended}";
                     log?.Invoke(said);
                     return new RunSummary(Stopwatch.GetElapsedTime(began), false, true, said);
                 }
@@ -228,7 +228,7 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
         {
             return null;
         }
-        string said = $"Godot could not import {PathNames.Shown(folder, null)} for GUT (exit code {imported.ExitCode}): {ChildResult.FirstLineOf(imported.Error.Length > 0 ? imported.Error : imported.Output)}";
+        string said = $"Godot could not import {PathNames.Shown(folder, null)} for GUT: it ended with {imported.Ended}";
         log?.Invoke(said);
         return said;
     }

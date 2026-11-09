@@ -97,7 +97,7 @@ public static partial class LaunchHandOff
         {
             ChildResult opened = await ChildProcesses.RunAsync(ChildProcesses.Command("/usr/bin/open", ["-a", bundle]), limit: Waits.Of(ActivateLimit), cancel: cancel);
             IdeErrors.Write(opened.Succeeded ? $"Launch: {bundle} brought in front through LaunchServices"
-                : $"Launch: open -a {bundle} ended with exit code {opened.ExitCode}: {opened.Error.Trim()}");
+                : $"Launch: open -a {bundle} ended with {opened.Ended}");
         }
         catch (Exception error) when (error is TimeoutException or IOException or System.ComponentModel.Win32Exception)
         {

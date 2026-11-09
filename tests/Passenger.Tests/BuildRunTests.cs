@@ -547,12 +547,12 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
                 WaitWatched(window, () => window.Status?.Contains("dotnet watch applied the changes", StringComparison.Ordinal) == true
                     && window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, "the Apply of a changed signature to end with the changes applied");
                 Write("asked", "");
-                WaitWatched(window, () => window.Status is { } said && said.StartsWith("Hot Reload: Hello exited with code ", StringComparison.Ordinal)
+                WaitWatched(window, () => window.Status is { } said && said.StartsWith("Hot Reload: Hello ended with exit code ", StringComparison.Ordinal)
                     && said.EndsWith("; dotnet watch starts it again when a change is saved, or Rerun starts it now", StringComparison.Ordinal),
                     "the status bar to say the program ended on the deleted method and dotnet watch waits for a change", TimeSpan.FromMinutes(1));
                 Assert.True(Processes.Gone(running), "The program dotnet watch said had ended still runs");
                 string? waiting = window.BottomPanel.Run.Waiting;
-                Assert.True(waiting is not null && waiting.StartsWith("Hello exited with code ", StringComparison.Ordinal)
+                Assert.True(waiting is not null && waiting.StartsWith("Hello ended with exit code ", StringComparison.Ordinal)
                     && waiting.EndsWith(": dotnet watch starts it again when a change is saved", StringComparison.Ordinal),
                     $"The Run window should say the program ended and dotnet watch waits for a change; it says \"{waiting}\"");
                 string[] offered = [.. window.BottomPanel.Run.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).Select(b => b.Content).OfType<string>()];
@@ -621,7 +621,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
             // Ended, it waits for a change; one that does not compile fails the build that would start it again.
             Write("asked", "");
-            WaitWatched(window, () => window.Status == "Hot Reload: Hello exited with code 0; dotnet watch starts it again when a change is saved, or Rerun starts it now",
+            WaitWatched(window, () => window.Status == "Hot Reload: Hello ended with exit code 0; dotnet watch starts it again when a change is saved, or Rerun starts it now",
                 "the status bar to say the program ended and dotnet watch waits for a change", TimeSpan.FromMinutes(1));
             File.Delete(asked);
             Mend("Console.WriteLine(\"mended\");", "Console.WriteLine(Missing);");

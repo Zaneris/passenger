@@ -878,7 +878,7 @@ public sealed partial class McpProxy
             }
             if (headless is { } ended && !DotnetProcesses.Runs(ended))
             {
-                throw new NotJoined($"The Passenger started on {here} ended with exit code {ended.ExitCode} before its window opened.");
+                throw new NotJoined($"The Passenger started on {here} ended with {ExitCodes.Said(ended.ExitCode)} before its window opened.");
             }
             await Task.Delay(TimeSpan.FromMilliseconds(250), cancel);
         }

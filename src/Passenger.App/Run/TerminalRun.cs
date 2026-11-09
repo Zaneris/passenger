@@ -101,7 +101,7 @@ public sealed class TerminalRun : IRunningProgram
         int exitCode = stopping && code == 0 && !OperatingSystem.IsWindows() ? Killed : code;
         ChildProcesses.Exited(ProcessId, start, exitCode, Stopwatch.GetElapsedTime(began));
         // After a blank line wherever the program left the cursor, in the terminal's colours, and the cursor hidden.
-        Session.Say($"\x1b[0m{(Session.Screen.CursorColumn > 0 ? "\r\n" : string.Empty)}\r\nProcess finished with exit code {exitCode}.\r\n\x1b[?25l");
+        Session.Say($"\x1b[0m{(Session.Screen.CursorColumn > 0 ? "\r\n" : string.Empty)}\r\nProcess finished with {ExitCodes.Said(exitCode)}.\r\n\x1b[?25l");
         ended.TrySetResult(exitCode);
     }
 }

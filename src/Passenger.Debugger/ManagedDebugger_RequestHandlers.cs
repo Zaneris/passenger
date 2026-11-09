@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using Microsoft.CodeAnalysis.CSharp;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
@@ -147,7 +148,7 @@ public partial class ManagedDebugger
             _logger?.Invoke($"Taking hold of process {processId} failed: {error}");
             // A program that ended meanwhile is why, whatever the debugger was refused on the way.
             await Task.WhenAny(launchExit, Task.Delay(TimeSpan.FromMilliseconds(500)));
-            string ended = launchExit.IsCompletedSuccessfully && launchExit.Result is int code ? $" (the program had ended, with exit code {code})" : "";
+            string ended = launchExit.IsCompletedSuccessfully && launchExit.Result is int code ? $" (the program had ended, with {ExitCodes.Said(code)})" : "";
             // A program the debugger could not take hold of (not .NET, or failed first) is not left behind, held.
             launch.Kill();
             throw new InvalidOperationException($"Could not take hold of process {processId} as it started: {error.Message}{ended}", error);

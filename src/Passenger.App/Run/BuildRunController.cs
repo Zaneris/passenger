@@ -264,7 +264,7 @@ public sealed partial class BuildRunController
     public Func<Task>? LettingGo { get; set; }
 
     /// <summary>How a run that ended is named, in the status bar and to an agent.</summary>
-    public static string RunEnded(string name, int code) => $"{name} exited with code {code}";
+    public static string RunEnded(string name, int code) => $"{name} ended with {ExitCodes.Said(code)}";
 
     /// <summary>Whether a build, rebuild or clean is under way, from its start until its callers have heard how it ended.</summary>
     public bool IsBuilding => building is not null;
@@ -658,7 +658,7 @@ public sealed partial class BuildRunController
             : code == 0 ? new BuildOutcome(BuildStatus.Succeeded, $"{noun} succeeded{warned}")
             : problems.FirstOrDefault(Run.SdkChosen.IsPlaced) is { } chose ? new BuildOutcome(BuildStatus.Failed, $"{noun} failed: {chose.Message.Split('\n')[0]}")
             : new BuildOutcome(BuildStatus.Failed, $"{noun} failed{FailedIn(problems)}: {Plural.Of(errors, "error")}, {Plural.Of(warnings, "warning")}; "
-                + (errors > 0 ? "Problems lists them" : $"dotnet exited with code {code}, the Build window says why"));
+                + (errors > 0 ? "Problems lists them" : $"dotnet ended with {ExitCodes.Said(code)}, the Build window says why"));
         if (ended.Succeeded && checking is { Count: > 0 } checks)
         {
             IdeErrors.Observe(KeepAsync(checks, ended));

@@ -412,7 +412,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
 
         Assert.Equal("not debugging", (await Call(client, McpTools.DebugContinue)).GetProperty("state").GetString());
         output = (await Call(client, McpTools.Output)).GetString()!;
-        Assert.True(output.StartsWith("Sum: Ran exited with code 0:\n", StringComparison.Ordinal) && output.Contains("said ran", StringComparison.Ordinal),
+        Assert.True(output.StartsWith("Sum: Ran ended with exit code 0:\n", StringComparison.Ordinal) && output.Contains("said ran", StringComparison.Ordinal),
             $"output naming no console, once the debugged program had ended too, answered:\n{output}");
     }
 

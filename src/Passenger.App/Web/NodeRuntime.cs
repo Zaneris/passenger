@@ -33,7 +33,7 @@ public sealed partial record NodeRuntime(string? Path, Version? Version, string?
             {
                 return new NodeRuntime(path, version, null);
             }
-            return new NodeRuntime(path, null, $"{path} did not say its version as Node.js does (exit code {asked.ExitCode})");
+            return new NodeRuntime(path, null, $"{path} did not say its version as Node.js does ({ExitCodes.Said(asked.ExitCode)})");
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or TimeoutException)
         {

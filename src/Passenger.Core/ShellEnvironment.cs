@@ -86,7 +86,7 @@ public static class ShellEnvironment
             ChildResult read = await ChildProcesses.RunAsync(start, limit: Limit);
             if (!read.Succeeded)
             {
-                Unread(shell, $"it exited with {read.ExitCode}", errors);
+                Unread(shell, $"it ended with {ExitCodes.Said(read.ExitCode)}", errors);
                 return;
             }
             foreach (string pair in (await File.ReadAllTextAsync(file)).Split('\0', StringSplitOptions.RemoveEmptyEntries))

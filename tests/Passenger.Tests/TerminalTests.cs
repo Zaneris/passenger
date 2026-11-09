@@ -1017,7 +1017,7 @@ public sealed class TerminalTests
 
         Assert.Equal(3, Ui.Await(run.Ended, "the program's end"));
         WaitForLine(program, "Process finished with exit code 3.", "its tab saying how it ended");
-        Assert.Equal("Keys exited with code 3", window.Status);
+        Assert.Equal("Keys ended with exit code 3", window.Status);
         Assert.False(window.FindControl<Button>("StopButton")!.IsEnabled, "The toolbar's Stop could still be clicked once the program ended");
         Assert.True(window.TerminalPanel.Tabs is [{ Name: "Keys", HasEnded: true }], "The ended program's tab was not kept to say how it ended");
         window.Close();
@@ -1040,7 +1040,7 @@ public sealed class TerminalTests
         Assert.True(Processes.Gone(run.ProcessId), $"Stop left the program running: {Processes.Describe(run.ProcessId)}");
         Assert.True(Processes.Gone(child), $"Stop left the program's child running: {Processes.Describe(child)}");
         // SIGKILL's, as a shell gives it, on macOS and Linux; Windows' is what TerminateProcess was given.
-        WaitForLine(run.Session, l => OperatingSystem.IsWindows() ? l.StartsWith("Process finished with exit code ", StringComparison.Ordinal) : l == "Process finished with exit code 137.",
+        WaitForLine(run.Session, l => OperatingSystem.IsWindows() ? l.StartsWith("Process finished with exit code ", StringComparison.Ordinal) : l == "Process finished with exit code 137 (SIGKILL).",
             "its tab saying it was ended");
         Assert.False(window.IsRunning || window.FindControl<Button>("StopButton")!.IsEnabled, "The window says the stopped program still runs");
         window.Close();

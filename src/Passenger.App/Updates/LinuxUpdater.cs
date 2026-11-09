@@ -414,11 +414,11 @@ public sealed partial class LinuxUpdater : Updater
             ? ChildProcesses.Command("/bin/sh", [script, .. arguments])
             : ChildProcesses.Command(asker, [script, .. arguments]);
         ChildResult ran = Run(command);
-        IdeErrors.Write($"Updates: {ChildProcesses.Display(command)} said: {Said(ran)}");
+        IdeErrors.Write($"Updates: {ChildProcesses.Display(command)} said: {ran.Said}");
         return ran.Succeeded ? null
             : ran.ExitCode == 126 && asker is not null ? $"no administrator's password was given to pkexec. To install it, run {Command(passenger)}"
-            : ran.ExitCode == 127 && asker is not null ? $"pkexec could not ask for an administrator's password ({Said(ran)}). To install it, run {Command(passenger)}"
-            : $"install.sh failed ({Said(ran)}). To install it, run {Command(passenger)}";
+            : ran.ExitCode == 127 && asker is not null ? $"pkexec could not ask for an administrator's password ({ran.Said}). To install it, run {Command(passenger)}"
+            : $"install.sh failed ({ran.Said}). To install it, run {Command(passenger)}";
     }
 
     /// <summary>The menu entry, its icons and file types and the command's link, refreshed by the installed install.sh,
@@ -429,8 +429,8 @@ public sealed partial class LinuxUpdater : Updater
         command.Environment.Remove("SUDO_USER");
         ChildResult ran = Run(command);
         IdeErrors.Write(ran.Succeeded
-            ? $"Updates: install.sh refreshed the menu entry, icons and command: {Said(ran)}"
-            : $"Updates: install.sh did not refresh the menu entry, icons and command: {Said(ran)}");
+            ? $"Updates: install.sh refreshed the menu entry, icons and command: {ran.Said}"
+            : $"Updates: install.sh did not refresh the menu entry, icons and command: {ran.Said}");
     }
 
     public override Task DiscardAsync()
@@ -551,11 +551,6 @@ public sealed partial class LinuxUpdater : Updater
             return new ChildResult(-1, string.Empty, error.Message);
         }
     }
-
-    private static string Said(ChildResult result) =>
-        string.Join(" ", (result.Output + "\n" + result.Error).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) is { Length: > 0 } said
-            ? said
-            : $"exit code {result.ExitCode}";
 
     /// <summary>AT_FDCWD: a path relative to the working folder, or absolute.</summary>
     private const int WorkingFolder = -100;

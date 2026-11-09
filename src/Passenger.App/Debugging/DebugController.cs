@@ -2474,7 +2474,7 @@ public sealed class DebugController : IDisposable
         _ when session.Gone is { } gone => $"Debugging {name} ended: {gone}",
         _ => session.Failure is { } failure
             ? $"Debugging {name} ended: {failure}"
-            : $"Debugging {name} ended{(session.ExitCode is int code ? $" with exit code {code}" : "")}",
+            : $"Debugging {name} ended{(session.ExitCode is int code ? $" with {ExitCodes.Said(code)}" : "")}",
     };
 
     /// <summary>Shows a stop: its exception described, then its thread's frames and the top one's values. An exception the

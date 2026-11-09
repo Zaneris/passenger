@@ -281,7 +281,7 @@ public sealed class AspireClient(string? program = null)
             if (process.ExitCode != 0)
             {
                 string reason = string.IsNullOrWhiteSpace(await errors) ? await output : await errors;
-                throw new InvalidOperationException($"Aspire command failed (exit {process.ExitCode}): {SanitizeDiagnostic(reason)}");
+                throw new InvalidOperationException($"Aspire command failed ({ExitCodes.Said(process.ExitCode)}): {SanitizeDiagnostic(reason)}");
             }
             return await output;
         }

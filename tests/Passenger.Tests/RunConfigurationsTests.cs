@@ -978,7 +978,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         string shown = string.Concat(run.Session.Screen.Scrollback.Concat(run.Session.Screen.Lines).Select(l => l.Text() + (l.Wrapped ? string.Empty : "\n")));
         Assert.True(shown.Contains($" [one] in {project}", StringComparison.Ordinal) && shown.Contains("Process finished with exit code 0.", StringComparison.Ordinal),
             $"The program did not run in the terminal with the configuration's arguments and folder:\n{shown}");
-        Assert.Equal("Hello in the terminal exited with code 0", window.Status);
+        Assert.Equal("Hello in the terminal ended with exit code 0", window.Status);
         window.Close();
 
         MainWindow again = Keeping();

@@ -164,7 +164,7 @@ public sealed class ContainerStatsPane : DockPanel
                 await process.WaitForExitAsync();
                 // What it said last, unless something it left holds its errors open.
                 string? said = await Task.WhenAny(errors, Task.Delay(TimeSpan.FromSeconds(2))) == errors ? await errors : null;
-                string why = said is null ? $"docker stats ended with exit code {process.ExitCode}" : $"docker stats ended: {ContainerSecrets.InSaid(said)}";
+                string why = said is null ? $"docker stats ended with {ExitCodes.Said(process.ExitCode)}" : $"docker stats ended: {ContainerSecrets.InSaid(said)}";
                 UiThread.Post(() => Ended(process, why));
             }
             catch (Exception ended) when (ended is IOException or ObjectDisposedException or InvalidOperationException)

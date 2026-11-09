@@ -212,7 +212,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         {
             string? said = await SaidLastAsync();
             string why = !DotnetProcesses.Runs(process)
-                ? $"{target.Name} never reached the profiler: it ended first, with exit code {process.ExitCode}{(said is null ? ". Is it a .NET program?" : $" ({said})")}"
+                ? $"{target.Name} never reached the profiler: it ended first, with {ExitCodes.Said(process.ExitCode)}{(said is null ? ". Is it a .NET program?" : $": {said}")}"
                 : $"{target.Name} never reached the profiler in 30 s: is it a .NET program?";
             await FailAsync();
             cancellation.ThrowIfCancellationRequested();
@@ -233,7 +233,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         {
             string? said = await SaidLastAsync();
             string why = !DotnetProcesses.Runs(process)
-                ? $"{target.Name} ended as the profiler began, with exit code {process.ExitCode}{(said is null ? string.Empty : $" ({said})")}"
+                ? $"{target.Name} ended as the profiler began, with {ExitCodes.Said(process.ExitCode)}{(said is null ? string.Empty : $": {said}")}"
                 : $"The profiler could not begin recording {target.Name}: {error.Message}";
             session?.Dispose();
             await FailAsync();

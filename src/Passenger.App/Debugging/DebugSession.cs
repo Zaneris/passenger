@@ -801,7 +801,7 @@ public sealed class DebugSession
             AdapterExited(code, log);
             return;
         }
-        IdeLog.Write(IdeLog.Debugger, $"[{adapter.Name}] ended with exit code {code} as {place!.Where} stopped, debugging {Program}");
+        IdeLog.Write(IdeLog.Debugger, $"[{adapter.Name}] ended with {ExitCodes.Said(code)} as {place!.Where} stopped, debugging {Program}");
         if (State != DebugState.Ended && !programEnded)
         {
             Gone = $"{place.Where} stopped";
@@ -821,17 +821,17 @@ public sealed class DebugSession
             {
                 said = string.Join('\n', errors);
             }
-            IdeErrors.Write($"Passenger's debugger ({adapter.Described}) stopped with exit code {code} debugging {Program}"
+            IdeErrors.Write($"Passenger's debugger ({adapter.Described}) stopped with {ExitCodes.Said(code)} debugging {Program}"
                 + (said.Length > 0 ? $":\n{said}" : string.Empty));
             if (State != DebugState.Ended && !programEnded)
             {
-                Failure = $"the debugger itself stopped (exit code {code})";
-                log($"Passenger's debugger stopped unexpectedly with exit code {code}");
+                Failure = $"the debugger itself stopped ({ExitCodes.Said(code)})";
+                log($"Passenger's debugger stopped unexpectedly with {ExitCodes.Said(code)}");
             }
             else if (State != DebugState.Ended)
             {
                 // Its debugging library can crash tearing down after the program has gone, whose end was told already.
-                log($"Passenger's debugger stopped with exit code {code} after the program ended");
+                log($"Passenger's debugger stopped with {ExitCodes.Said(code)} after the program ended");
             }
         }
         EndLaunched(log);
@@ -1529,7 +1529,7 @@ public sealed class DebugSession
             return;
         }
         ExitCode = exitCode ?? ExitCode ?? (Terminal?.Ended is { IsCompletedSuccessfully: true } inTerminal ? inTerminal.Result : null);
-        IdeLog.Write(IdeLog.Debugger, $"[{connection.Name}] Ended debugging {Program}{(ExitCode is { } code ? $": exit code {code}" : string.Empty)}{(Failure is { } failed ? $": {failed}" : string.Empty)}");
+        IdeLog.Write(IdeLog.Debugger, $"[{connection.Name}] Ended debugging {Program}{(ExitCode is { } code ? $": {ExitCodes.Said(code)}" : string.Empty)}{(Failure is { } failed ? $": {failed}" : string.Empty)}");
         breakpoints.Changed -= OnBreakpointsChanged;
         breakpoints.ExceptionsChanged -= OnExceptionsChanged;
         breakpoints.DataChanged -= OnDataChanged;

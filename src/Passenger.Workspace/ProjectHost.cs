@@ -200,7 +200,7 @@ public sealed class ProjectHost : IAsyncDisposable
     {
         try
         {
-            return process.WaitForExit(2000) ? $"exit code {process.ExitCode}" : "still running";
+            return process.WaitForExit(2000) ? ExitCodes.Said(process.ExitCode) : "still running";
         }
         catch (InvalidOperationException)
         {
@@ -560,7 +560,7 @@ public sealed class ProjectHost : IAsyncDisposable
             await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
             // Its error stream read to its end too, which holds what it wrote as it crashed.
             await errorsHeard.WaitAsync(limit.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-            how = $"exit code {process.ExitCode}";
+            how = ExitCodes.Said(process.ExitCode);
         }
         catch (Exception error) when (error is OperationCanceledException or InvalidOperationException)
         {

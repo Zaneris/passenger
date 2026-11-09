@@ -192,7 +192,7 @@ public sealed partial class DiskImageUpdater : Updater
         if (!copied.Succeeded)
         {
             Remove(beside);
-            return ($"it could not be copied beside it: {Said(copied)}", null);
+            return ($"it could not be copied beside it: {copied.Said}", null);
         }
         failed = Swap(beside, Bundle);
         if (failed == 0)
@@ -260,7 +260,7 @@ public sealed partial class DiskImageUpdater : Updater
         ChildResult attached = await RunAsync("hdiutil", ["attach", image, "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount], cancel).ConfigureAwait(false);
         if (!attached.Succeeded)
         {
-            throw new UpdateRefusedException($"{Path.GetFileName(image)} does not open as a disk image", Said(attached));
+            throw new UpdateRefusedException($"{Path.GetFileName(image)} does not open as a disk image", attached.Said);
         }
         try
         {
@@ -272,7 +272,7 @@ public sealed partial class DiskImageUpdater : Updater
             ChildResult copied = await RunAsync("ditto", [inside, app], cancel).ConfigureAwait(false);
             if (!copied.Succeeded)
             {
-                throw new UpdateFailedException($"{AppName} could not be copied out of {Path.GetFileName(image)}: {Said(copied)}");
+                throw new UpdateFailedException($"{AppName} could not be copied out of {Path.GetFileName(image)}: {copied.Said}");
             }
         }
         finally
@@ -299,7 +299,7 @@ public sealed partial class DiskImageUpdater : Updater
         ChildResult verified = await RunAsync("codesign", [.. verify, app], cancel).ConfigureAwait(false);
         if (!verified.Succeeded)
         {
-            throw new UpdateRefusedException($"the signature of the disk image's {AppName} does not hold{(team is null ? string.Empty : $" for {team}")}", Said(verified));
+            throw new UpdateRefusedException($"the signature of the disk image's {AppName} does not hold{(team is null ? string.Empty : $" for {team}")}", verified.Said);
         }
     }
 
@@ -401,7 +401,7 @@ public sealed partial class DiskImageUpdater : Updater
         ChildResult opened = await ChildProcesses.RunAsync(ChildProcesses.Command("/usr/bin/open", [.. arguments, bundle]), limit: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
         if (!opened.Succeeded)
         {
-            throw new InvalidOperationException($"open {bundle}: {Said(opened)}");
+            throw new InvalidOperationException($"open {bundle}: {opened.Said}");
         }
     }
 
@@ -423,9 +423,6 @@ public sealed partial class DiskImageUpdater : Updater
             return new ChildResult(-1, string.Empty, error.Message);
         }
     }
-
-    private static string Said(ChildResult result) =>
-        (result.Error.Trim() is { Length: > 0 } error ? error : result.Output.Trim()) is { Length: > 0 } said ? said : $"exit code {result.ExitCode}";
 
     private static string Signed(string? team) => team is null ? " (signed ad hoc, as the installed app is)" : $" and is {team}'s";
 

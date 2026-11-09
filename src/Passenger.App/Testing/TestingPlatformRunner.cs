@@ -482,7 +482,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             if (process is not null && await Exited(TimeSpan.FromSeconds(1)))
             {
                 await heard.WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
-                why += $" (exit code {process.ExitCode})";
+                why += $" ({ExitCodes.Said(process.ExitCode)})";
             }
             return new TestHostFailed(Written(why, said));
         }
@@ -508,7 +508,7 @@ public sealed class TestingPlatformRunner : ITestRunner
                         {
                             // What it wrote last is read to its end before it is quoted.
                             await Task.WhenAll(process.WaitForExitAsync(CancellationToken.None), heard).WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
-                            exit = $" with exit code {process.ExitCode}";
+                            exit = $" with {ExitCodes.Said(process.ExitCode)}";
                         }
                         throw new TestHostFailed(Written($"{name} ended{exit} before it connected", said));
                     }

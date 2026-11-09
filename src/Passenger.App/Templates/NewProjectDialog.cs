@@ -790,7 +790,7 @@ public sealed class NewProjectDialog : IdeWindow
             }
             if (code != 0)
             {
-                Fail($"Installation of {pack.Id} has failed (exit code {code}): its output says why");
+                Fail($"Installation of {pack.Id} has failed ({ExitCodes.Said(code)}): its output says why");
                 return;
             }
             ProjectTemplates.Forget();

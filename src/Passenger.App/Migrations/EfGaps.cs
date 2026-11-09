@@ -141,7 +141,7 @@ public static partial class EfGaps
         }
         string said = outcome.Errors.FirstOrDefault(e => e.Trim().Length > 0 && !IsFrame(e))?.Trim()
             ?? outcome.Lines.Select(l => EfRun.Split(l).Said.Trim()).LastOrDefault(l => l.Length > 0 && !IsFrame(l) && !l.StartsWith("Build ", StringComparison.Ordinal))
-            ?? $"dotnet ef exited with code {outcome.ExitCode}";
+            ?? $"dotnet ef ended with {ExitCodes.Said(outcome.ExitCode)}";
         return new EfGap(said, []);
     }
 

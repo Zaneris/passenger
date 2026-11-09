@@ -307,7 +307,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.True(code == 0, $"The screenshot with the failing login shell was not taken: exit code {code}\n{error}");
         string log = await File.ReadAllTextAsync(Path.Combine(state, "logs", "passenger.log"), TestContext.Current.CancellationToken);
         string? unread = log.Split('\n').FirstOrDefault(l => l.Contains("The login shell's environment was not read", StringComparison.Ordinal));
-        Assert.True(unread?.Contains($"{shell} -l -i: it exited with 1", StringComparison.Ordinal) == true,
+        Assert.True(unread?.Contains($"{shell} -l -i: it ended with exit code 1", StringComparison.Ordinal) == true,
             $"The log does not say the login shell's environment was not read for its exit code 1:\n{log}");
         string masked = global::Passenger.App.Containers.ContainerSecrets.Masked;
         Assert.True(!log.Contains(Token, StringComparison.Ordinal) && !log.Contains(Key, StringComparison.Ordinal)

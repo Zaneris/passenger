@@ -872,18 +872,24 @@ public sealed record ChildResult(int ExitCode, string Output, string Error)
     private const int SaidLines = 40;
 
     /// <summary>What a failed child said: its errors, else its output, their lines joined (the rest counted past
-    /// <see cref="SaidLines"/>), else its exit code.</summary>
+    /// <see cref="SaidLines"/>), else its exit code as <see cref="ExitCodes"/> says it.</summary>
     public string Said
     {
         get
         {
-            string said = (Error.Trim().Length > 0 ? Error : Output).Trim();
-            string[] lines = said.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            return lines.Length == 0 ? $"it exited with {ExitCode}"
+            string[] lines = Words.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            return lines.Length == 0 ? ExitCodes.Said(ExitCode)
                 : lines.Length <= SaidLines ? string.Join(' ', lines)
                 : $"{string.Join(' ', lines.Take(SaidLines))} … and {Plural.Of(lines.Length - SaidLines, "more line")}";
         }
     }
+
+    /// <summary>How a failed child ended, for a sentence that names it: its exit code as <see cref="ExitCodes"/> says it, then
+    /// the first line of its errors, else of its output, where one says anything ("exit code 139 (SIGSEGV): …").</summary>
+    public string Ended => FirstLineOf(Words) is { Length: > 0 } first ? $"{ExitCodes.Said(ExitCode)}: {first}" : ExitCodes.Said(ExitCode);
+
+    /// <summary>Its errors where they say anything, else its output.</summary>
+    private string Words => Error.AsSpan().IsWhiteSpace() ? Output : Error;
 }
 
 /// <summary>How a child run to its end went, its output read as it came (<see cref="ChildProcesses.RunAsync{T}"/>): its exit

@@ -76,7 +76,7 @@ public static partial class DevelopmentCertificate
             ChildResult answered = await ChildProcesses.RunAsync(dotnet(["dev-certs", "https", "--check", "--trust"], folder), limit: CheckLimit, cancel: cancel,
                 answers: [6, 7]);
             string? thumbprint = answered.ExitCode is 0 or 7 && Thumbprint().Match(answered.Output) is { Success: true } found ? found.Value.ToUpperInvariant() : null;
-            return (answered.ExitCode switch { 0 => Standing.Trusted, 6 => Standing.Missing, 7 => Standing.NotTrusted, _ => Standing.Unknown }, Said(answered), thumbprint);
+            return (answered.ExitCode switch { 0 => Standing.Trusted, 6 => Standing.Missing, 7 => Standing.NotTrusted, _ => Standing.Unknown }, answered.Said, thumbprint);
         }
         catch (TimeoutException)
         {
@@ -100,7 +100,7 @@ public static partial class DevelopmentCertificate
         {
             ChildResult trusted = await ChildProcesses.RunAsync(dotnet(["dev-certs", "https", "--trust"], folder), limit: ExportLimit, cancel: cancel);
             Forget(state);
-            return trusted.Succeeded ? null : $"dotnet dev-certs https --trust ended with exit code {trusted.ExitCode}: {Said(trusted)}";
+            return trusted.Succeeded ? null : $"dotnet dev-certs https --trust ended with {trusted.Ended}";
         }
         catch (TimeoutException)
         {
@@ -140,7 +140,7 @@ public static partial class DevelopmentCertificate
                 limit: ExportLimit, cancel: cancel);
             if (!exported.Succeeded || !File.Exists(file) || !File.Exists(key))
             {
-                return (null, $"dotnet dev-certs https -ep ended with exit code {exported.ExitCode}: {Said(exported)}");
+                return (null, $"dotnet dev-certs https -ep ended with {exported.Ended}");
             }
             // Whatever modes dev-certs gave them, in the folder no one else enters.
             OwnFiles.Keep(file);
@@ -188,7 +188,4 @@ public static partial class DevelopmentCertificate
             // An export kept stands until the next one replaces it.
         }
     }
-
-    private static string Said(ChildResult result) =>
-        string.Join(' ', ((string[])[result.Error.Trim(), result.Output.Trim()]).Where(s => s.Length > 0)) is { Length: > 0 } said ? said : "it said nothing";
 }

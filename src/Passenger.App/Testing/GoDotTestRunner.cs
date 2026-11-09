@@ -127,7 +127,7 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
                 }
                 // Not held: read for as long as the game runs, which a wait for the IDE to be quiet would otherwise wait out whole.
                 ChildRead<string> ran = await ChildProcesses.RunAsync(run, output => BackgroundWork.Unheld(() => HearAsync(output, telling, cancel)), cancel: cancel);
-                said = $"Godot ended with exit code {ran.ExitCode}: {ChildResult.FirstLineOf(ran.Error.Length > 0 ? ran.Error : ran.Output)}";
+                said = $"Godot ended with {new ChildResult(ran.ExitCode, ran.Output, ran.Error).Ended}";
             }
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)

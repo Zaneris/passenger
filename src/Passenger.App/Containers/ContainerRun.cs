@@ -1244,7 +1244,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             await StreamAsync([.. Plan.Compose, "logs", "--no-color", "--tail", "40"], cancel);
             string last = up.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(l => !ContainerEngine.ProviderFailed(l)).ToArray()
                 is { Length: > 0 } lines
-                ? lines.LastOrDefault(l => l.Contains("rror", StringComparison.Ordinal)) ?? lines[^1] : $"exit code {up.ExitCode}";
+                ? lines.LastOrDefault(l => l.Contains("rror", StringComparison.Ordinal)) ?? lines[^1] : ExitCodes.Said(up.ExitCode);
             return $"{Plan.Name} did not come up: {ContainerSecrets.InSaid(last, Plan.Folder)}";
         }
         if (Plan.Watched.Count > 0)
@@ -1345,7 +1345,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
                 await started.WaitForExitAsync();
                 if (watching == started && !IsStopped)
                 {
-                    console.Write($"Compose's watch of {string.Join(", ", Plan.Watched)} ended with exit code {started.ExitCode}\n", ConsoleStream.Error);
+                    console.Write($"Compose's watch of {string.Join(", ", Plan.Watched)} ended with {ExitCodes.Said(started.ExitCode)}\n", ConsoleStream.Error);
                 }
             }
         }
@@ -1508,7 +1508,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
                 ChildResult restarted = up ? await UpCommandAsync(words, stop) : await StreamAsync(words, stop);
                 if (!restarted.Succeeded)
                 {
-                    return $"{Plan.Name}'s services did not restart: docker compose {words[Plan.Compose.Count]} ended with exit code {restarted.ExitCode}";
+                    return $"{Plan.Name}'s services did not restart: docker compose {words[Plan.Compose.Count]} ended with {ExitCodes.Said(restarted.ExitCode)}";
                 }
                 foreach (string service in named)
                 {
@@ -1545,7 +1545,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         {
             using CancellationTokenSource restartEnding = CancellationTokenSource.CreateLinkedTokenSource(cancel, ending.Token);
             ChildResult restarted = await StreamAsync([.. Plan.Compose, "restart", "--", .. services], restartEnding.Token);
-            return restarted.Succeeded ? null : $"{Plan.Name}'s services did not restart: docker compose restart ended with exit code {restarted.ExitCode}";
+            return restarted.Succeeded ? null : $"{Plan.Name}'s services did not restart: docker compose restart ended with {ExitCodes.Said(restarted.ExitCode)}";
         });
 
     /// <summary>The services' state as the engine says it now, for an agent.</summary>
@@ -1631,7 +1631,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         }
         using CancellationTokenSource publishEnding = CancellationTokenSource.CreateLinkedTokenSource(cancel, ending.Token);
         ChildResult published = await StreamAsync(start, publishEnding.Token);
-        return published.Succeeded ? null : $"{Plan.Name} could not be made as deployed: dotnet publish ended with exit code {published.ExitCode}; the Run window has what it said";
+        return published.Succeeded ? null : $"{Plan.Name} could not be made as deployed: dotnet publish ended with {ExitCodes.Said(published.ExitCode)}; the Run window has what it said";
     }
 
     /// <summary>A command run into the run's console (<see cref="ConsoleCommand"/>), its words first, its secrets masked as

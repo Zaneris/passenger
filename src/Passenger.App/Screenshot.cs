@@ -233,7 +233,7 @@ public static class Screenshot
         }
         if (ended.Result != 0)
         {
-            throw new StepRefused($"{named} ended with exit code {ended.Result}");
+            throw new StepRefused($"{named} ended with {ExitCodes.Said(ended.Result)}");
         }
 
         static async Task<int> Ended(Task<Run.TerminalRun> starting) => await (await starting).Ended;

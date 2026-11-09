@@ -1118,7 +1118,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         BackgroundWork.Track(running);
         EfOutcome outcome = await running;
         return outcome.ExitCode == 0 ? null
-            : outcome.Lines.LastOrDefault(l => l.Trim().Length > 0)?.Trim() ?? $"dotnet {arguments[0]} {arguments[1]} exited with code {outcome.ExitCode}";
+            : outcome.Lines.LastOrDefault(l => l.Trim().Length > 0)?.Trim() ?? $"dotnet {arguments[0]} {arguments[1]} ended with {ExitCodes.Said(outcome.ExitCode)}";
     }
 
     /// <summary>A package added to a project through the NuGet window's one way, as one step of global undo.</summary>
