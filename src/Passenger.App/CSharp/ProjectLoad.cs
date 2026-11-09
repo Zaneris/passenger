@@ -45,6 +45,10 @@ internal enum LoadReportKind
 
     /// <summary>The server finished loading (or reloading) every project it was loading.</summary>
     BatchEnded,
+
+    /// <summary>A restore's failure (<see cref="RestoreReports"/>), its project's errors: the server restores once the batch
+    /// that loaded the project has ended, so no batch's end follows to say it.</summary>
+    RestoreFailed,
 }
 
 /// <summary>A line Roslyn's project system logs as it loads projects: "Warning while loading P: message" and "Error while

@@ -1295,7 +1295,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             foreach (ProjectLoadProblem failed in restores.Hear(message.Message))
             {
                 string? unwritable = FolderAccess.Unwritable(failed, folder);
-                UiThread.Post(() => OnLoadReport(server, new LoadReport(LoadReportKind.Problem,
+                UiThread.Post(() => OnLoadReport(server, new LoadReport(LoadReportKind.RestoreFailed,
                     failed with { Message = unwritable is null ? InFolder(failed.Message) : Unwritable(unwritable, failed.Message) }, null)));
             }
         };
@@ -1344,7 +1344,7 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     /// <summary>What the server logged of a project's load: a warning or error replaces what the project's last load
     /// reported (the first of a batch) or joins it; a load with none takes them away; a batch's end says any problems the
-    /// toast did not.</summary>
+    /// toast did not, and a failed restore's are said as it fails.</summary>
     private void OnLoadReport(LanguageServer from, LoadReport report)
     {
         if (disposed || (session is { } current && current.Server != from))
@@ -1353,7 +1353,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
         switch (report)
         {
-            case { Kind: LoadReportKind.Problem, Problem: { } problem }:
+            case { Kind: LoadReportKind.Problem or LoadReportKind.RestoreFailed, Problem: { } problem }:
                 if (!batch.Any(p => PathNames.Same(p.Project, problem.Project)) || !loadProblems.ContainsKey(problem.Project))
                 {
                     loadProblems[problem.Project] = [];
@@ -1365,6 +1365,10 @@ public sealed partial class CSharpService : IAsyncDisposable
                 batch.Add(problem);
                 ProjectProblemsChanged?.Invoke(this, EventArgs.Empty);
                 Reported(from, problem.Project);
+                if (report.Kind == LoadReportKind.RestoreFailed)
+                {
+                    SayLoadProblems();
+                }
                 break;
             case { Kind: LoadReportKind.Loaded, Project: { } project }:
                 Reported(from, project);
