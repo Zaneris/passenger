@@ -309,6 +309,7 @@ public sealed partial record LaunchPlan
         string program;
         string? built = null;
         int leading = 0;
+        bool appHost = false;
         if (configuration.Program is { Length: > 0 } named)
         {
             program = Executable(Expand(named), project.Folder);
@@ -324,7 +325,14 @@ public sealed partial record LaunchPlan
         {
             ofProject = arguments.Count == 0 ? ProjectArguments(properties, target) : [];
             arguments.AddRange(ofProject);
-            if (target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            if (properties.GetValueOrDefault(MSBuildNames.RunCommand) is { Length: > 0 } host && IsAppHost(host, target))
+            {
+                // As dotnet run: only the apphost carries the app's manifest, icon and name (#1416).
+                program = PathNames.Canonical(host);
+                built = target;
+                appHost = true;
+            }
+            else if (target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             {
                 program = Dotnet.Host();
                 arguments.Insert(0, target);
@@ -341,6 +349,11 @@ public sealed partial record LaunchPlan
             ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)))
             : System.IO.Path.GetDirectoryName(target)!;
         Dictionary<string, string> environment = Variables();
+        if (appHost && !environment.Keys.Any(k => string.Equals(k, RuntimeVariables.Root, StringComparison.OrdinalIgnoreCase)))
+        {
+            // The apphost runs on the .NET Passenger builds with, as dotnet run gives it, never one it finds itself.
+            environment[RuntimeVariables.Root] = Dotnet.Root();
+        }
         string? other = DesktopPrograms.NamedProject(program, arguments, working) is { } runs && !PathNames.Same(runs, project.Path) && !PathNames.Same(runs, project.Folder) ? runs : null;
         if (SandboxedState(built ?? program, environment, stateFolder) is { } sandbox)
         {

@@ -46,7 +46,9 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             spun.Set();
             foreach (Thread thread in waiting) { thread.Join(); }
             Console.WriteLine($"allocated {Work.Allocate(60_000)}");
-            using Process child = Process.Start(new ProcessStartInfo(Environment.ProcessPath!, [typeof(Work).Assembly.Location, "child"]) { RedirectStandardOutput = true })!;
+            // Run starts the apphost, which runs the assembly itself, as dotnet run does.
+            string[] given = Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet" ? [typeof(Work).Assembly.Location, "child"] : ["child"];
+            using Process child = Process.Start(new ProcessStartInfo(Environment.ProcessPath!, given) { RedirectStandardOutput = true })!;
             Console.WriteLine($"child said: {(child.WaitForExit(15000) ? child.StandardOutput.ReadToEnd().Trim() : "nothing, held at its start")}");
             static class Work
             {
