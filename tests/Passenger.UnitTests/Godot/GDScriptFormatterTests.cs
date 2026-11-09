@@ -191,6 +191,10 @@ public class GDScriptFormatterTests
         GDScriptFormatSettings read = new GDScriptFormatSettings().Over(key => config.GetValueOrDefault(key));
         Assert.Equal(new GDScriptFormatSettings { LineLength = 80, BlankLinesAroundFunctions = 1, TrailingCommas = false }, read);
         Assert.False(new GDScriptFormatSettings().Over(key => key == "max_line_length" ? "off" : null).WrapLongLines);
+        Assert.False(new GDScriptFormatSettings().Over(key => key == "max_line_length" ? "off  # no wrap" : null).WrapLongLines,
+            "max_line_length = off  # no wrap left GDScript's long lines wrapped");
+        Assert.Equal(new GDScriptFormatSettings { LineLength = 80, TrailingCommas = false },
+            new GDScriptFormatSettings().Over(key => key == "max_line_length" ? "80 # columns" : key == "gdscript_trailing_comma" ? "False;none" : null));
         // A value that does not read as its option's is passed over.
         Assert.Equal(new GDScriptFormatSettings(), new GDScriptFormatSettings().Over(key => key == "max_line_length" ? "wide" : key == "gdscript_blank_lines_around_functions" ? "7" : "maybe"));
         Assert.Equal(new GDScriptFormatOptions(false, 2, 2, 0, 1, false),

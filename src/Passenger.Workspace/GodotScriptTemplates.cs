@@ -1,3 +1,5 @@
+using Passenger.Text;
+
 namespace Passenger.Workspace;
 
 /// <summary>How a project writes its C#, as a script template for it writes it: the namespace its files take (none where
@@ -41,12 +43,11 @@ public static class GodotScriptTemplates
         string? declared = Word(setting("csharp_style_namespace_declarations"));
         string? braces = Word(setting("csharp_new_line_before_open_brace"));
         bool tabs = Word(setting("indent_style")) == "tab";
-        int size = int.TryParse(Word(setting("indent_size")), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int given) && given > 0
-            ? given : 4;
+        int size = EditorConfig.Number(setting("indent_size")) is int given and > 0 ? given : 4;
         return new GodotScriptStyle(rootNamespace is { Length: > 0 } ? rootNamespace : null, fileScopedTaken && declared != "block_scoped", braces != "none", tabs, size);
 
         // A value's word before any severity (file_scoped:warning).
-        static string? Word(string? value) => value?.Split(':')[0].Trim().ToLowerInvariant();
+        static string? Word(string? value) => EditorConfig.Word(value)?.Split(':')[0];
     }
 
     /// <summary>A base class's template in a style: Godot's lifecycle methods for a node, an empty class for a resource.</summary>

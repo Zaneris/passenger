@@ -1,4 +1,4 @@
-using System.Globalization;
+using Passenger.Text;
 
 namespace Passenger.Xaml.Features;
 
@@ -149,23 +149,23 @@ public sealed record XamlFormatSettings
         }
         read = read with
         {
-            SpacesAroundEquals = Flag(Xml("spaces_around_eq_in_attribute")) ?? read.SpacesAroundEquals,
-            SpaceAfterLastAttribute = Flag(Xml("space_after_last_attribute")) ?? read.SpaceAfterLastAttribute,
-            SpaceBeforeSelfClosing = Flag(Xml("space_before_self_closing")) ?? read.SpaceBeforeSelfClosing,
-            KeepLineBreaks = Flag(Xml("keep_user_linebreaks")) ?? read.KeepLineBreaks,
+            SpacesAroundEquals = EditorConfig.Flag(Xml("spaces_around_eq_in_attribute")) ?? read.SpacesAroundEquals,
+            SpaceAfterLastAttribute = EditorConfig.Flag(Xml("space_after_last_attribute")) ?? read.SpaceAfterLastAttribute,
+            SpaceBeforeSelfClosing = EditorConfig.Flag(Xml("space_before_self_closing")) ?? read.SpaceBeforeSelfClosing,
+            KeepLineBreaks = EditorConfig.Flag(Xml("keep_user_linebreaks")) ?? read.KeepLineBreaks,
             MaxBlankLines = Number(Xml("max_blank_lines_between_tags"), MostBlankLines) ?? read.MaxBlankLines,
-            MultilineElementsOnNewLine = Flag(Xml("linebreak_before_multiline_elements")) ?? read.MultilineElementsOnNewLine,
-            SinglelineElementsOnNewLine = Flag(Xml("linebreak_before_singleline_elements")) ?? read.SinglelineElementsOnNewLine,
-            BreaksInsideElementsWithChildren = Flag(Xml("linebreaks_inside_tags_for_elements_with_child_elements")) ?? read.BreaksInsideElementsWithChildren,
-            BreaksInsideMultilineElements = Flag(Xml("linebreaks_inside_tags_for_multiline_elements")) ?? read.BreaksInsideMultilineElements,
-            BlankLineAfterProcessingInstructions = Flag(Xml("blank_line_after_pi")) ?? read.BlankLineAfterProcessingInstructions,
-            WrapTags = Flag(Xml("wrap_tags_and_pi")) ?? read.WrapTags,
-            WrapAroundElements = Flag(Xml("wrap_around_elements")) ?? read.WrapAroundElements,
-            ReorderAttributes = Flag(editorConfig("xaml_enable_attribute_reordering")) ?? read.ReorderAttributes,
-            CollapseEmptyElements = Flag(editorConfig("xaml_remove_ending_tag_of_empty_element")) ?? read.CollapseEmptyElements,
+            MultilineElementsOnNewLine = EditorConfig.Flag(Xml("linebreak_before_multiline_elements")) ?? read.MultilineElementsOnNewLine,
+            SinglelineElementsOnNewLine = EditorConfig.Flag(Xml("linebreak_before_singleline_elements")) ?? read.SinglelineElementsOnNewLine,
+            BreaksInsideElementsWithChildren = EditorConfig.Flag(Xml("linebreaks_inside_tags_for_elements_with_child_elements")) ?? read.BreaksInsideElementsWithChildren,
+            BreaksInsideMultilineElements = EditorConfig.Flag(Xml("linebreaks_inside_tags_for_multiline_elements")) ?? read.BreaksInsideMultilineElements,
+            BlankLineAfterProcessingInstructions = EditorConfig.Flag(Xml("blank_line_after_pi")) ?? read.BlankLineAfterProcessingInstructions,
+            WrapTags = EditorConfig.Flag(Xml("wrap_tags_and_pi")) ?? read.WrapTags,
+            WrapAroundElements = EditorConfig.Flag(Xml("wrap_around_elements")) ?? read.WrapAroundElements,
+            ReorderAttributes = EditorConfig.Flag(editorConfig("xaml_enable_attribute_reordering")) ?? read.ReorderAttributes,
+            CollapseEmptyElements = EditorConfig.Flag(editorConfig("xaml_remove_ending_tag_of_empty_element")) ?? read.CollapseEmptyElements,
         };
         string? margin = Xml("max_line_length") ?? editorConfig("max_line_length");
-        if (margin?.Trim().Equals("off", StringComparison.OrdinalIgnoreCase) == true)
+        if (EditorConfig.Word(margin) == "off")
         {
             read = read with { RightMargin = 0 };
         }
@@ -184,7 +184,7 @@ public sealed record XamlFormatSettings
     /// for one option and <c>OneIndent</c> for another).</summary>
     private static T? Choice<T>(string? value) where T : struct, Enum
     {
-        if (Word(value) is not { } word)
+        if (EditorConfig.Word(value) is not { } word)
         {
             return null;
         }
@@ -199,25 +199,5 @@ public sealed record XamlFormatSettings
         return null;
     }
 
-    private static bool? Flag(string? value) => Word(value)?.ToLowerInvariant() switch
-    {
-        "true" => true,
-        "false" => false,
-        _ => null,
-    };
-
-    private static int? Number(string? value, int most) =>
-        int.TryParse(Word(value), NumberStyles.None, CultureInfo.InvariantCulture, out int number) && number <= most ? number : null;
-
-    /// <summary>A value's first word: what follows it (an inline comment, which older editorconfigs allowed) is not part of it.</summary>
-    private static string? Word(string? value)
-    {
-        string? trimmed = value?.Trim();
-        if (string.IsNullOrEmpty(trimmed))
-        {
-            return null;
-        }
-        int space = trimmed.AsSpan().IndexOfAny(' ', '\t');
-        return space < 0 ? trimmed : trimmed[..space];
-    }
+    private static int? Number(string? value, int most) => EditorConfig.Number(value) is int number && number <= most ? number : null;
 }

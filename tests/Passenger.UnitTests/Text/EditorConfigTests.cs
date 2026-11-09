@@ -3,8 +3,9 @@ using Passenger.Text;
 
 namespace Passenger.UnitTests.Text;
 
-/// <summary>An .editorconfig's sections: which files a glob matches, brackets taking each character as itself; and a
-/// section whose glob cannot be used matching no file, named where it is, while the file's other sections still apply.</summary>
+/// <summary>An .editorconfig's sections: which files a glob matches, brackets taking each character as itself; a section
+/// whose glob cannot be used matching no file, named where it is, while the file's other sections still apply; and a
+/// value read by its first word, an inline comment after it left out.</summary>
 public sealed class EditorConfigTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -39,6 +40,45 @@ public sealed class EditorConfigTests : IDisposable
         Assert.Equal("its braces nest more than 64 deep", refused[1].Why);
         Assert.Equal("its range a-] is in reverse order", refused[3].Why);
         Assert.False(EditorConfig.Matches(deepest, "/b"), "A glob nested too deep matched a file");
+    }
+
+    [Theory]
+    [InlineData("off", "off")]
+    [InlineData("  Off  # no wrap", "off")]
+    [InlineData("off#no wrap", "off")]
+    [InlineData("Tab;tabs", "tab")]
+    [InlineData("file_scoped:warning", "file_scoped:warning")]
+    [InlineData("# a comment alone", null)]
+    [InlineData("  ", null)]
+    [InlineData(null, null)]
+    public void A_values_word_is_its_first_in_lower_case_without_the_comment_after_it(string? value, string? word) =>
+        Assert.Equal(word, EditorConfig.Word(value));
+
+    [Fact]
+    public void A_flag_and_a_number_are_read_from_a_values_word_whatever_comment_follows()
+    {
+        Assert.True(EditorConfig.Flag("TRUE  # always"));
+        Assert.False(EditorConfig.Flag("false;never"));
+        Assert.Null(EditorConfig.Flag("yes"));
+        Assert.Equal(80, EditorConfig.Number("80  # columns"));
+        Assert.Null(EditorConfig.Number("+80"));
+        Assert.Null(EditorConfig.Number("off"));
+        Assert.Null(EditorConfig.Number("99999999999"));
+    }
+
+    [Fact]
+    public void A_files_values_followed_by_a_comment_say_what_their_word_says()
+    {
+        File.WriteAllText(Path.Join(root, EditorConfig.FileName),
+            "root = true # top\n\n[*]\nindent_style = space # no tabs\nindent_size = 2;two\nend_of_line = lf  # unix\ninsert_final_newline = true # always\n");
+        string inner = Directory.CreateDirectory(Path.Join(root, "inner")).FullName;
+        File.WriteAllText(Path.Join(inner, EditorConfig.FileName), "[*]\nindent_size = unset # the outer's\n");
+
+        EditorConfig notes = EditorConfig.For(Path.Join(root, "notes.txt"));
+        Assert.Equal(new IndentOptions(2, false, 2), notes.Indent(new IndentOptions(4, true, 4)));
+        Assert.Equal(LineSeparator.LF, notes.EndOfLine);
+        Assert.True(notes.InsertFinalNewline, "insert_final_newline = true # always asked for no line break at the end");
+        Assert.True(EditorConfig.For(Path.Join(inner, "notes.txt"))["indent_size"] is null, "indent_size = unset # the outer's left the outer's size in force");
     }
 
     [Fact]

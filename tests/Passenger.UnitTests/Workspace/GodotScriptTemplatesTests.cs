@@ -51,6 +51,19 @@ public class GodotScriptTemplatesTests
     }
 
     [Fact]
+    public void A_style_read_from_values_with_a_comment_after_them_is_what_their_words_say()
+    {
+        GodotScriptStyle style = Style(new()
+        {
+            ["csharp_style_namespace_declarations"] = "block_scoped:silent # braces",
+            ["csharp_new_line_before_open_brace"] = "none;same line",
+            ["indent_style"] = "tab  # tabs",
+            ["indent_size"] = "2 # two",
+        });
+        Assert.Equal(new GodotScriptStyle("Spin.Game", FileScoped: false, BracesOnOwnLine: false, Tabs: true, IndentSize: 2), style);
+    }
+
+    [Fact]
     public void Braces_at_the_lines_end_a_namespace_in_braces_and_tabs_are_written_as_the_project_says()
     {
         GodotScriptStyle style = Style(new() { ["csharp_style_namespace_declarations"] = "block_scoped", ["csharp_new_line_before_open_brace"] = "none", ["indent_style"] = "tab" });

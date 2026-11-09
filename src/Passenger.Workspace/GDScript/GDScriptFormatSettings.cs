@@ -1,4 +1,4 @@
-using System.Globalization;
+using Passenger.Text;
 
 namespace Passenger.Workspace.GDScript;
 
@@ -41,27 +41,22 @@ public sealed record GDScriptFormatSettings
     public GDScriptFormatSettings Over(Func<string, string?> editorConfig)
     {
         GDScriptFormatSettings read = this;
-        string? length = Word(editorConfig("max_line_length"));
-        if (string.Equals(length, "off", StringComparison.OrdinalIgnoreCase))
+        string? length = editorConfig("max_line_length");
+        if (EditorConfig.Word(length) == "off")
         {
             read = read with { WrapLongLines = false };
         }
-        else if (Number(length) is int columns and >= ShortestLine and <= LongestLine)
+        else if (EditorConfig.Number(length) is int columns and >= ShortestLine and <= LongestLine)
         {
             read = read with { WrapLongLines = true, LineLength = columns };
         }
-        if (Number(Word(editorConfig("gdscript_blank_lines_around_functions"))) is int blanks and >= 1 and <= 2)
+        if (EditorConfig.Number(editorConfig("gdscript_blank_lines_around_functions")) is int blanks and >= 1 and <= 2)
         {
             read = read with { BlankLinesAroundFunctions = blanks };
         }
-        switch (Word(editorConfig("gdscript_trailing_comma"))?.ToLowerInvariant())
+        if (EditorConfig.Flag(editorConfig("gdscript_trailing_comma")) is bool commas)
         {
-            case "true":
-                read = read with { TrailingCommas = true };
-                break;
-            case "false":
-                read = read with { TrailingCommas = false };
-                break;
+            read = read with { TrailingCommas = commas };
         }
         return read;
     }
@@ -69,19 +64,4 @@ public sealed record GDScriptFormatSettings
     /// <summary>The formatter's options: these, with the file's indentation.</summary>
     public GDScriptFormatOptions Options(bool useTabs, int indentSize, int tabWidth) =>
         new(useTabs, indentSize, tabWidth, WrapLongLines ? LineLength : 0, BlankLinesAroundFunctions, TrailingCommas);
-
-    private static int? Number(string? value) =>
-        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int number) ? number : null;
-
-    /// <summary>A value's first word: what follows it (an inline comment, which older editorconfigs allowed) is not part of it.</summary>
-    private static string? Word(string? value)
-    {
-        string? trimmed = value?.Trim();
-        if (string.IsNullOrEmpty(trimmed))
-        {
-            return null;
-        }
-        int space = trimmed.AsSpan().IndexOfAny(' ', '\t');
-        return space < 0 ? trimmed : trimmed[..space];
-    }
 }

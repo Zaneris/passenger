@@ -194,6 +194,25 @@ public class XmlTreeTests
     }
 
     [Fact]
+    public void An_editorconfigs_max_line_length_off_with_a_comment_after_it_turns_xaml_wrapping_off()
+    {
+        string text = $"<Grid xmlns=\"https://github.com/avaloniaui\" Tag=\"{new string('t', 60)}\" Name=\"{new string('n', 60)}\" />";
+        XamlFormatSettings off = new XamlFormatSettings().Over(key => key == "max_line_length" ? "off  # no wrap" : null);
+
+        Assert.True(off.RightMargin == 0, $"max_line_length = off  # no wrap left XAML's right margin at {off.RightMargin} columns");
+        Assert.Contains(XamlFormatter.Format(text, new XamlFormatSettings(), new IndentOptions(), "\n").Edits, e => e.Text.Contains('\n'));
+        Assert.DoesNotContain(XamlFormatter.Format(text, off, new IndentOptions(), "\n").Edits, e => e.Text.Contains('\n'));
+        XamlFormatSettings read = new XamlFormatSettings().Over(key => key switch
+        {
+            "xml_space_before_self_closing" => "false # tight",
+            "xml_max_blank_lines_between_tags" => "1;one",
+            "xml_attribute_style" => "on_different_lines  # one each",
+            _ => null,
+        });
+        Assert.Equal(new XamlFormatSettings { SpaceBeforeSelfClosing = false, MaxBlankLines = 1, AttributeStyle = XamlAttributeStyle.OnDifferentLines }, read);
+    }
+
+    [Fact]
     public void A_file_read_in_part_is_neither_laid_out_nor_renamed_in()
     {
         string text = Nested(100_000);

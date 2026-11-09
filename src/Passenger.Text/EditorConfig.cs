@@ -94,7 +94,7 @@ public sealed class EditorConfig
         };
         string? size = Word(this["indent_size"]);
         int? sized = Width(size);
-        int? tabWidth = Width(Word(this["tab_width"]));
+        int? tabWidth = Width(this["tab_width"]);
         if (tabs is null && sized is null && tabWidth is null && size != "tab")
         {
             return null;
@@ -121,17 +121,12 @@ public sealed class EditorConfig
         _ => null,
     };
 
-    public bool TrimTrailingWhitespace => Word(this["trim_trailing_whitespace"]) == "true";
+    public bool TrimTrailingWhitespace => Flag(this["trim_trailing_whitespace"]) == true;
 
     public bool InsertFinalNewline => FinalNewline == true;
 
     /// <summary>What <c>insert_final_newline</c> asks of a file's end: a line break (true), none (false), or nothing (null).</summary>
-    public bool? FinalNewline => Word(this["insert_final_newline"]) switch
-    {
-        "true" => true,
-        "false" => false,
-        _ => null,
-    };
+    public bool? FinalNewline => Flag(this["insert_final_newline"]);
 
     /// <summary>The encoding <c>charset</c> asks a file be written in (UTF-16 with its BOM, the only way it is read back as
     /// UTF-16); null for none.</summary>
@@ -150,21 +145,33 @@ public sealed class EditorConfig
     public string? Said(string name) =>
         properties.TryGetValue(name, out (string Value, string From) found) ? $"{name} = {Word(found.Value)} in {found.From}" : null;
 
-    /// <summary>A value's first word, lower case: the known values are single words, and what follows one (an inline
-    /// comment, which older versions of the format allowed) is not part of it.</summary>
-    private static string? Word(string? value)
+    /// <summary>A value's first word, lower case, or null for none: the values read are single words, so what follows one
+    /// after a space, '#' or ';' (an inline comment, which older versions of the format allowed) is not part of it.</summary>
+    public static string? Word(string? value)
     {
-        if (value is null)
+        ReadOnlySpan<char> text = value.AsSpan().TrimStart();
+        int end = 0;
+        while (end < text.Length && !char.IsWhiteSpace(text[end]) && text[end] is not ('#' or ';'))
         {
-            return null;
+            end++;
         }
-        int space = value.AsSpan().IndexOfAny(' ', '\t');
-        return (space < 0 ? value : value[..space]).ToLowerInvariant();
+        return end == 0 ? null : text[..end].ToString().ToLowerInvariant();
     }
 
+    /// <summary>A value's word as true or false, in any letter case, or null for one that is neither.</summary>
+    public static bool? Flag(string? value) => Word(value) switch
+    {
+        "true" => true,
+        "false" => false,
+        _ => null,
+    };
+
+    /// <summary>A value's word as a whole number written in digits alone, or null for one that is not.</summary>
+    public static int? Number(string? value) =>
+        int.TryParse(Word(value), NumberStyles.None, CultureInfo.InvariantCulture, out int number) ? number : null;
+
     /// <summary>A width in columns, or null for a value that is not one.</summary>
-    private static int? Width(string? value) =>
-        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int width) && width is >= 1 and <= 32 ? width : null;
+    private static int? Width(string? value) => Number(value) is int width and >= 1 and <= 32 ? width : null;
 
     /// <summary>A section: its glob, the line its header is on (from 1) and where the glob starts in the file's text.</summary>
     private sealed record Section(string Glob, int Line, int Offset, List<(string Key, string Value)> Pairs);
@@ -244,7 +251,7 @@ public sealed class EditorConfig
             }
             else if (!inSections && key == "root")
             {
-                root = Word(value) == "true";
+                root = Flag(value) == true;
             }
         }
         return new ConfigFile(root, sections);
