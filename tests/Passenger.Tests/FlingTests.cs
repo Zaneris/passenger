@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics.Tracing;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Headless;
@@ -47,24 +49,24 @@ public sealed class FlingTests
         double screen = Math.Floor(editor.Bounds.Height / 50);
         long runs = editor.RunsFormatted;
         int first = editor.LinesShown.First;
-        List<long> batches = [];
+        List<int> batches = [];
+        using Finalized finalized = new();
         while (editor.LinesShown.Last < Lines - 1)
         {
-            // A few frames between full collections, too few to start one of their own: each counts what they left.
-            Collected();
-            long idle = Collected();
+            // A few frames between full collections: each batch counts what its frames left, however young.
+            finalized.Begin();
             for (int frame = 0; frame < 4; frame++)
             {
                 rig.Window.MouseWheel(over, new Vector(0, -screen));
                 Ui.Draw();
             }
-            batches.Add(Math.Max(0, Collected() - idle));
+            batches.Add(finalized.End());
         }
         int flung = editor.LinesShown.First - first;
         Assert.True(editor.RunsFormatted - runs > 4L * flung, $"The fling through {flung} lines laid out only {editor.RunsFormatted - runs} runs: its lines were not of many colours");
-        long left = batches.Sum();
+        int left = batches.Sum();
         Assert.True(left <= flung / 10,
-            $"A fling through {flung} lines of several colours left the finalizer {left} objects ({string.Join(", ", batches)} by each batch of frames), where its lines' layouts leave it none: each buffer the formatter splits waits for it, "
+            $"A fling through {flung} lines of several colours left the finalizer {left} objects ({string.Join(", ", batches)} by each batch of frames; {finalized.Named()}), where its lines' layouts leave it none: each buffer the formatter splits waits for it, "
             + "is promoted with what it holds, and takes the pooled arrays it shares out of the pool");
     }
 
@@ -99,17 +101,115 @@ public sealed class FlingTests
             $"Flung through 8,000 lines, the editor kept {many.Hints} rows' hints, against {few.Hints} through 500, with {many.Rows} rows on screen: the hints of rows scrolled past are kept");
     }
 
-    /// <summary>The finalizable objects a full collection found dead, the queue emptied before: what the work since the last
-    /// such call left the finalizer, beside what every full collection finds (the runtime's pools register a callback that
-    /// is found dead and registers itself again at each).</summary>
-    private static long Collected()
+    /// <summary>The objects the runtime finalizes, by type, as its own events name each, whichever collection found it, but
+    /// for what is no fling's: the callback of the runtime's pools that every full collection finds and that registers itself
+    /// again, what a thread leaves as it ends (the pool lets go of threads left idle a while, those the tests run before
+    /// in the process kept busy among them, some hundred objects for a dozen), and the properties of the surface the
+    /// headless platform makes for each frame it draws, which it never disposes.</summary>
+    private sealed class Finalized : EventListener
     {
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        long found = GC.GetGCMemoryInfo(GCKind.FullBlocking).FinalizationPendingCount;
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        return found;
+        private const EventKeywords Collector = (EventKeywords)0x1;
+
+        private static readonly HashSet<string> NoFlings = new(StringComparer.Ordinal)
+        {
+            "System.Gen2GcCallback",
+            "System.Threading.Thread",
+            "System.Threading.ThreadPoolWorkQueueThreadLocals",
+            "System.Threading.ThreadInt64PersistentCounter+ThreadLocalNodeFinalizationHelper",
+            "System.Threading.ThreadLocal`1+FinalizationHelper",
+            "System.Threading.LowLevelLifoSemaphore+LifoBlockerNode",
+            "System.Threading.WaitSubsystem+ThreadWaitInfo",
+            "Microsoft.Win32.SafeHandles.SafeWaitHandle",
+            "SkiaSharp.SKSurfaceProperties",
+        };
+
+        private readonly ConcurrentDictionary<Type, int> found = new();
+        private readonly Dictionary<string, int> named = new(StringComparer.Ordinal);
+        private volatile TaskCompletionSource heard = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Starts a batch once what came before it is finalized and its word has come.</summary>
+        public void Begin()
+        {
+            Collected();
+            Heard();
+            found.Clear();
+        }
+
+        /// <summary>What the batch since <see cref="Begin"/> left the finalizer.</summary>
+        public int End()
+        {
+            Collected();
+            Heard();
+            int left = 0;
+            foreach ((Type type, int count) in found)
+            {
+                named[type.FullName ?? type.Name] = named.GetValueOrDefault(type.FullName ?? type.Name) + count;
+                left += count;
+            }
+            return left;
+        }
+
+        /// <summary>The types the batches left, the most first.</summary>
+        public string Named() => named.Count == 0 ? "none named" : string.Join(", ", named.OrderByDescending(n => n.Value).Select(n => $"{n.Value} {n.Key}"));
+
+        protected override void OnEventSourceCreated(EventSource eventSource)
+        {
+            if (eventSource.Name == "Microsoft-Windows-DotNETRuntime")
+            {
+                EnableEvents(eventSource, EventLevel.Verbose, Collector);
+            }
+        }
+
+        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        {
+            if (eventData.EventName != "FinalizeObject" || eventData.Payload is not [nint handle, ..] || Type.GetTypeFromHandle(RuntimeTypeHandle.FromIntPtr(handle)) is not { } type)
+            {
+                return;
+            }
+            if (type == typeof(Marker))
+            {
+                heard.TrySetResult();
+            }
+            else if (!NoFlings.Contains((type.IsGenericType ? type.GetGenericTypeDefinition() : type).FullName ?? type.Name))
+            {
+                found.AddOrUpdate(type, 1, static (_, count) => count + 1);
+            }
+        }
+
+        /// <summary>Waits for the word of every finalizer run so far: a marker's, finalized after them by the one thread that
+        /// runs finalizers, whose words come in the order it gave them.</summary>
+        private void Heard()
+        {
+            heard = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            int before = Marker.Finalized;
+            Marker.Drop();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            Assert.True(Marker.Finalized > before, "The marker outlived a full collection, so its word says nothing of the finalizers before it");
+            Ui.Idle(heard.Task, "the runtime's word of the finalizers it ran");
+        }
+
+        private static void Collected()
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+    }
+
+    /// <summary>An object made only to be finalized after the rest.</summary>
+    private sealed class Marker
+    {
+        private static int finalized;
+
+        ~Marker() => Interlocked.Increment(ref finalized);
+
+        public static int Finalized => Volatile.Read(ref finalized);
+
+        /// <summary>Makes one and lets it go, outside the caller's frame, which could keep it.</summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        public static void Drop() => GC.KeepAlive(new Marker());
     }
 
     private static string Line(int i) => (i % 10) switch
