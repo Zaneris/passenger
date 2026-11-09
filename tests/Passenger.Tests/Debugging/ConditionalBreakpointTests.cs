@@ -32,6 +32,32 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("Lambda expressions are not supported in breakpoint conditions.", breakpoint.Message);
     }
 
+    /// <summary>A condition nested past what the parser reads (interpolations within interpolations, each a level of a lexer
+    /// that checks no stack) is refused when set, saying so, where reading it ended the adapter; the program then runs to a
+    /// breakpoint after it, the refused one never bound.</summary>
+    [Fact]
+    public async Task A_condition_nested_past_what_the_parser_reads_is_refused_saying_so_and_the_adapter_runs_on()
+    {
+        string deep = string.Concat(Enumerable.Repeat("$\"{", 20_000)) + "0" + string.Concat(Enumerable.Repeat("}\"", 20_000)) + " == \"0\"";
+        bool startSuspended = true;
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
+        await host
+            .InitializeAsync()
+            .AttachAsync(debuggee.Id)
+            .WaitForInitializedEvent();
+
+        SetBreakpointsResponse response = await host.SetBreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
+            [new DapSourceBreakpoint(LogWritten, Condition: deep), new DapSourceBreakpoint(Debuggees.MyMethodEnd)]);
+        DapBreakpoint refused = response.Breakpoints[0];
+        Assert.True(!refused.Verified && refused.Message == "The condition nests deeper than the debugger reads.",
+            $"A condition too deep to read was taken, or refused saying something else: {refused.Message}");
+
+        await host.ConfigurationDoneAsync().ResumeRuntimeAsync(debuggee.Id, startSuspended);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.True(stop.ReadStopInfo().line == Debuggees.MyMethodEnd,
+            $"The program stopped at line {stop.ReadStopInfo().line} of {stop.ReadStopInfo().filePath} before MyMethod's end: the refused breakpoint was bound");
+    }
+
     /// <summary>A lambda condition is refused when set on a function breakpoint and on a data breakpoint, as on a line's,
     /// rather than stopping at every hit saying it could not be told: the program runs past the function breakpoint to the
     /// line breakpoint after it.</summary>

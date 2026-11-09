@@ -1,9 +1,9 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
-using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator.Compiler;
 using Passenger.Debugger.Interop;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Debugger.ExpressionEvaluator.Cil;
 internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses primitiveTypes, ManagedDebugger debugger)
@@ -101,7 +101,7 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
             }
         })];
 
-        static string? Nameable(string? type) => type is not null && !SyntaxFactory.ParseTypeName(type).ContainsDiagnostics ? type : null;
+        static string? Nameable(string? type) => type is not null && CodeBrackets.ReadsAsType(type) ? type : null;
     }
 
     /// <summary>Whether an expression fails to compile with one of the errors <paramref name="ids"/> (CS8331, a readonly

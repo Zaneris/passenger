@@ -309,14 +309,14 @@
 
   <!-- How the properties pane edits a running game's values and where Keep writes one, from a property's hint and the
        scenes' and scripts' texts alone, and how a console folds Godot's errors, from their text alone, compiled in since
-       their project is the app's. -->
+       their project is the app's. CSharpParsing reads through the debugger's CodeBrackets, which it shows these tests:
+       a copy of their own would be a second type of the one name. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Godot/GodotHints.cs" Link="App/GodotHints.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotText.cs" Link="App/GodotText.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotKeep.cs" Link="App/GodotKeep.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotConsoleFold.cs" Link="App/GodotConsoleFold.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/CSharpParsing.cs" Link="Languages/CSharpParsing.cs" />
-    <Compile Include="../../src/Passenger.Languages/CSharp/CodeBrackets.cs" Link="Languages/CodeBrackets.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/SnapshotText.cs" Link="Languages/SnapshotText.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/ParameterTypes.cs" Link="Languages/ParameterTypes.cs" />
   </ItemGroup>

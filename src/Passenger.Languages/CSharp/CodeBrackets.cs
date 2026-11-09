@@ -1,17 +1,54 @@
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Core;
 
 namespace Passenger.Languages.CSharp;
 
-/// <summary>Whether a C# text's brackets go past what a parser is given, its strings, comments and the branches its
-/// conditions leave out apart: a parser recurses only through what it reads as code. The text as it stands is read first
-/// (<see cref="Brackets"/>), which real code passes at the cost of a search; only what that finds deep is read by the lexer,
-/// the parser's own, so nothing a parser reads as code passes for a string. Compiled into each assembly that parses.</summary>
+/// <summary>Every in-process parse of C#, and the options it is made with: a parse runs on a stack it can't run out of
+/// (<see cref="DeepText"/>), and a text whose brackets go past what a parser is given is read as nothing, its strings,
+/// comments and the branches its conditions leave out apart, as a parser recurses only through what it reads as code. The
+/// text as it stands is read first (<see cref="Brackets"/>), which real code passes at the cost of a search; only what that
+/// finds deep is read by the lexer, the parser's own, so nothing a parser reads as code passes for a string. Compiled into
+/// each assembly that parses.</summary>
 internal static class CodeBrackets
 {
+    private static readonly ConcurrentDictionary<(LanguageVersion Version, string Symbols), CSharpParseOptions> Made = new();
+
+    /// <summary>A text's tree: a text nested too deeply for the parser is a tree of nothing, its spans still the text's.</summary>
+    public static SyntaxTree Parse(SourceText text, CSharpParseOptions? options = null, string path = "") =>
+        DeepText.Read(text.Length, () => CSharpSyntaxTree.ParseText(DeepAt(text, options) is int at ? new Unread(text.Length, at) : text, options, path));
+
+    /// <summary>Where a tree's text went too deep, read as nothing; null for a text read.</summary>
+    public static int? DeepAt(SyntaxTree tree) => tree.TryGetText(out SourceText? text) && text is Unread unread ? unread.At : null;
+
+    /// <summary>A text read as an expression on its own; null for one nested too deeply for the parser.</summary>
+    public static ExpressionSyntax? Expression(string text) =>
+        DeepText.Read(text.Length, () => DeepAt(SourceText.From(text), null) is null ? SyntaxFactory.ParseExpression(text) : null);
+
+    /// <summary>A text read as a type's name on its own; null for one nested too deeply for the parser.</summary>
+    public static TypeSyntax? TypeName(string text) =>
+        DeepText.Read(text.Length, () => DeepAt(SourceText.From(text), null) is null ? SyntaxFactory.ParseTypeName(text) : null);
+
+    /// <summary>Whether a text reads as a type's name.</summary>
+    public static bool ReadsAsType(string text) => TypeName(text) is { ContainsDiagnostics: false };
+
+    /// <summary>The options defining these symbols, each once, any that is not an identifier left out as the compiler leaves
+    /// it out, at a C# version as a project's LangVersion writes it ("12", "latest"); one the parser does not know (a newer
+    /// C#'s), or none, is its preview, the newest it reads. One options object a set of symbols and a version, so the files
+    /// of one framework share theirs and a parse knows by reference whether they changed.</summary>
+    public static CSharpParseOptions Defining(IEnumerable<string> symbols, string? languageVersion)
+    {
+        string[] valid = [.. symbols.Where(SyntaxFacts.IsValidIdentifier).Distinct(StringComparer.Ordinal)];
+        LanguageVersion version = languageVersion is not null && LanguageVersionFacts.TryParse(languageVersion, out LanguageVersion written) ? written : LanguageVersion.Preview;
+        return Made.GetOrAdd((version, string.Join(';', valid)),
+            static (key, defined) => new CSharpParseOptions(key.Version, DocumentationMode.Parse, preprocessorSymbols: defined), valid);
+    }
+
     /// <summary>Where a text first goes too deep, null for one that doesn't, asked on a stack of its characters' (<see
     /// cref="DeepText.Read"/>): the lexer recurses through an interpolation's brackets, so a text past what a stack <see
     /// cref="DeepText.Holds"/> stays as deep as it reads.</summary>
@@ -146,5 +183,19 @@ internal static class CodeBrackets
     {
         brackets.Read(text);
         return brackets.TooDeep;
+    }
+
+    /// <summary>What's parsed in place of a text too deep: nothing, its length, and where it went too deep.</summary>
+    internal sealed class Unread(int length, int at) : SourceText
+    {
+        public int At => at;
+
+        public override Encoding? Encoding => null;
+
+        public override int Length => length;
+
+        public override char this[int position] => ' ';
+
+        public override void CopyTo(int sourceIndex, char[] destination, int destinationIndex, int count) => destination.AsSpan(destinationIndex, count).Fill(' ');
     }
 }

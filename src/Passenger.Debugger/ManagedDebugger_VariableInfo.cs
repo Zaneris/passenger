@@ -12,6 +12,7 @@ using Passenger.Debugger.Interop;
 using Passenger.Debugger.Models.Response;
 using Passenger.Debugger.PresentationHintModels;
 using ZLinq;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Debugger;
 
@@ -492,7 +493,7 @@ public partial class ManagedDebugger
 
         int first = result.Count;
         string declaring = GetCorDebugTypeFriendlyName(corDebugType);
-        string? owner = SyntaxFactory.ParseTypeName(declaring).ContainsDiagnostics ? null : declaring;
+        string? owner = CodeBrackets.ReadsAsType(declaring) ? declaring : null;
         await AddFields(staticFieldDefs, metadataImport, corDebugType, corDebugValue, result, threadId, stackDepth, owner);
         // The reference itself, not unwrapped: the getters are called on it.
         await AddProperties(staticProperties, metadataImport, corDebugType, threadId, stackDepth, corDebugValue, result, owner);

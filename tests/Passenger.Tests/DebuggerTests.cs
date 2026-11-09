@@ -781,6 +781,43 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>Smart Step Into in a file whose text, written since its build, nests past what the parser reads (interpolations
+    /// within interpolations, where reading it ended the adapter) has no calls placed to choose between, so it steps into the
+    /// first, Inner, as Step Into does; a watch nested as deep is refused saying so, and the program stays paused.</summary>
+    [AvaloniaFact]
+    public void Smart_step_into_in_a_file_nested_past_what_the_parser_reads_steps_into_the_first_call_and_a_watch_as_deep_is_refused()
+    {
+        const string Calls = "int nested = Outer(Inner());\nConsole.WriteLine(nested);\n\nstatic int Inner() => 20;\nstatic int Outer(int value)\n{\n    return value + 1;\n}\n";
+        string deep = string.Concat(Enumerable.Repeat("$\"{", 5_000)) + "0" + string.Concat(Enumerable.Repeat("}\"", 5_000));
+        Write("Program.cs", Calls);
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(0, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Contains(new LineMark(0, LineMarkKind.ExecutionPoint)),
+            "the stop at the line of calls");
+
+        Write("Program.cs", Calls + $"\nstatic class Deep\n{{\n    public static string Text = {deep};\n}}\n");
+        Ui.WaitFor(() => editor.Document.Snapshot.Length > Calls.Length, "the file's deep text in its editor");
+        editor.Focus();
+        Ui.Run(window, AppActions.SmartStepInto);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Contains(new LineMark(3, LineMarkKind.ExecutionPoint)),
+            "the step into Inner, the line's first call");
+        Assert.False(editor.IsChoosing, "Smart Step Into offered calls placed in a file too deep to read");
+
+        Passenger.App.ToolWindows.DebugModel view = window.BottomPanel.Debug;
+        Ui.Run(window, AppActions.Evaluate);
+        window.KeyTextInput(deep);
+        Ui.Press(window, OperatingSystem.IsMacOS() ? "meta shift Enter" : "control shift Enter");
+        Ui.WaitFor(() => view.Tree.Rows.Any(r => r.Role == VariableRole.Watch && r.Value?.Contains("The expression nests deeper than the debugger reads", StringComparison.Ordinal) == true),
+            () => $"the watch too deep to read refused saying so: {string.Join("; ", view.Tree.Rows.Where(r => r.Role == VariableRole.Watch).Select(r => r.Value))}");
+        Assert.Equal(DebugState.Paused, window.Debugger.Session?.State);
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
     /// <summary>One program of calls stepped through: a step over a call lists what it returned at the top of Variables, which
     /// a watch names and the next step's calls replace; then Smart Step Into marks the next line's calls in the order they
     /// run, and Enter steps into the one chosen. Resumed, the program ends in an exception the runtime throws, which stops it

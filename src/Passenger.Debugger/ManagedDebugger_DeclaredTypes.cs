@@ -1,8 +1,8 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
-using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Debugger.Interop;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Debugger;
 
@@ -89,7 +89,7 @@ public partial class ManagedDebugger
             return expression;
         }
         string type = GetCorDebugTypeFriendlyName(own);
-        return SyntaxFactory.ParseTypeName(type).ContainsDiagnostics ? expression : RowExpressions.As(expression, type);
+        return CodeBrackets.ReadsAsType(type) ? RowExpressions.As(expression, type) : expression;
     }
 
     /// <summary>Where a value's variable is declared as an interface its type implements: how many of the type and its base

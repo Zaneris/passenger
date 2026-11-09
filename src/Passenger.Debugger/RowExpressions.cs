@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Debugger;
 
@@ -50,7 +51,7 @@ internal static class RowExpressions
             depth += name[at] switch { '<' => 1, '>' => -1, _ => 0 };
             dot = name[at] == '.' && depth == 0 ? at : dot;
         }
-        if (dot <= 0 || SyntaxFactory.ParseTypeName(name[..dot]) is not { ContainsDiagnostics: false } type)
+        if (dot <= 0 || CodeBrackets.TypeName(name[..dot]) is not { ContainsDiagnostics: false } type)
         {
             return null;
         }
@@ -63,7 +64,7 @@ internal static class RowExpressions
     /// element, a call), so *p's member is (*p).x.</summary>
     public static string Operand(string expression) =>
         expression.StartsWith('$') && SyntaxFacts.IsValidIdentifier(expression[1..])
-        || SyntaxFactory.ParseExpression(expression) is { ContainsDiagnostics: false } and (SimpleNameSyntax or MemberAccessExpressionSyntax
+        || CodeBrackets.Expression(expression) is { ContainsDiagnostics: false } and (SimpleNameSyntax or MemberAccessExpressionSyntax
             or ElementAccessExpressionSyntax or InvocationExpressionSyntax or ParenthesizedExpressionSyntax or ThisExpressionSyntax)
             ? expression
             : $"({expression})";
@@ -72,6 +73,6 @@ internal static class RowExpressions
     private sealed class Closing(IReadOnlyDictionary<string, string> closed) : CSharpSyntaxRewriter
     {
         public override Microsoft.CodeAnalysis.SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node) =>
-            node.Parent is not QualifiedNameSyntax && closed.TryGetValue(node.Identifier.ValueText, out string? argument) ? SyntaxFactory.ParseTypeName(argument) : node;
+            node.Parent is not QualifiedNameSyntax && closed.TryGetValue(node.Identifier.ValueText, out string? argument) ? CodeBrackets.TypeName(argument) ?? (Microsoft.CodeAnalysis.SyntaxNode)node : node;
     }
 }

@@ -14,9 +14,11 @@ using Microsoft.CodeAnalysis.ExpressionEvaluator;
 using Microsoft.CodeAnalysis.PooledObjects;
 using Microsoft.VisualStudio.Debugger.Clr;
 using Microsoft.VisualStudio.Debugger.Evaluation;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Debugger.ExpressionEvaluator.Compiler;
 
@@ -122,17 +124,21 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
 
     /// <summary>Compiles an expression in the frame or type context, or says why not, with its errors' ids (CS8331), and
     /// which assemblies it needs that the program has not loaded (System.Linq, for a LINQ method on a list where the program
-    /// has used none yet), to be loaded and the expression compiled again.</summary>
+    /// has used none yet), to be loaded and the expression compiled again. One nested too deep for the parser is refused.</summary>
     public CompiledEvaluationMethod? TryCompile(string expression, CompiledExpressionEvaluationContext context, out string? errorMessage, out ImmutableArray<string> errors,
         out ImmutableArray<string> missingAssemblies)
     {
         errorMessage = null;
         errors = [];
         missingAssemblies = [];
+        if (CodeBrackets.Expression(expression) is not { } syntax)
+        {
+            errorMessage = $"The expression {ManagedDebugger.NestedTooDeep}";
+            return null;
+        }
         if (context.RootValue is not null)
         {
-            ExpressionSyntax syntax = SyntaxFactory.ParseExpression(expression);
-            expression = new RemoveFormatSpecifierAlignmentRewriter().Visit(syntax)!.ToFullString();
+            expression = DeepText.Read(expression.Length, () => new RemoveFormatSpecifierAlignmentRewriter().Visit(syntax)!.ToFullString());
         }
         ICorDebugILFrame frame = debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth);
         ICorDebugModule preferredModule = context.RootValue is not null ? context.RootValue.ExactType.Class.Module : frame.Function.Module;
@@ -162,33 +168,7 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         try
         {
             ImmutableArray<Alias> aliases = GetAliases(exception, returnValues);
-            string scoped = ScopeDeclaredVariables(expression);
-            CompileResult? result = evaluationContext.CompileExpression(
-                scoped,
-                DkmEvaluationFlags.TreatAsExpression,
-                aliases,
-                diagnostics,
-                out _,
-                testData: null);
-            if ((result is null || diagnostics.HasAnyErrors()) && scoped != expression)
-            {
-                // The expression as written, whose errors (or success) name what was written.
-                diagnostics.Clear();
-                result = evaluationContext.CompileExpression(expression, DkmEvaluationFlags.TreatAsExpression, aliases, diagnostics, out _, testData: null);
-            }
-            bool atExactType = false;
-            if ((result is null || diagnostics.HasAnyErrors()) && exactType is not null && definition is not null)
-            {
-                (HashSet<string> instanceMembers, HashSet<string> staticMembers) = MemberNames(definition);
-                if (ExactFragment.Of(expression, exactType, instanceMembers, staticMembers) is { } rewritten)
-                {
-                    // What the definition's type parameters can't say, and its errors, are the construction's.
-                    diagnostics.Clear();
-                    result = evaluationContext.CompileExpression(ScopeDeclaredVariables(rewritten), DkmEvaluationFlags.TreatAsExpression, aliases, diagnostics, out _, testData: null);
-                    atExactType = true;
-                }
-            }
-
+            (CompileResult? result, bool atExactType) = DeepText.Read(expression.Length, () => Compile(evaluationContext, expression, aliases, diagnostics, exactType, definition));
             if (result is null || diagnostics.HasAnyErrors())
             {
                 errorMessage = string.Join("; ", diagnostics.AsEnumerable()
@@ -214,6 +194,33 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         }
     }
 
+    /// <summary>An expression compiled in a context, on a stack sized for it (the compiler parses and binds it as deep as it
+    /// nests): with the variables it declares scoped, else as written, else at the exact type of the value whose definition
+    /// the context is, as AtExactType says.</summary>
+    private static (CompileResult? Result, bool AtExactType) Compile(EvaluationContext context, string expression, ImmutableArray<Alias> aliases, DiagnosticBag diagnostics,
+        string? exactType, NamedTypeSymbol? definition)
+    {
+        string scoped = ScopeDeclaredVariables(expression);
+        CompileResult? result = context.CompileExpression(scoped, DkmEvaluationFlags.TreatAsExpression, aliases, diagnostics, out _, testData: null);
+        if ((result is null || diagnostics.HasAnyErrors()) && scoped != expression)
+        {
+            // The expression as written, whose errors (or success) name what was written.
+            diagnostics.Clear();
+            result = context.CompileExpression(expression, DkmEvaluationFlags.TreatAsExpression, aliases, diagnostics, out _, testData: null);
+        }
+        if ((result is null || diagnostics.HasAnyErrors()) && exactType is not null && definition is not null)
+        {
+            (HashSet<string> instanceMembers, HashSet<string> staticMembers) = MemberNames(definition);
+            if (ExactFragment.Of(expression, exactType, instanceMembers, staticMembers) is { } rewritten)
+            {
+                // What the definition's type parameters can't say, and its errors, are the construction's.
+                diagnostics.Clear();
+                return (context.CompileExpression(ScopeDeclaredVariables(rewritten), DkmEvaluationFlags.TreatAsExpression, aliases, diagnostics, out _, testData: null), true);
+            }
+        }
+        return (result, false);
+    }
+
     /// <summary>A value's type where it is a construction of a generic type, as an expression names it from any scope; null for
     /// any other type, and for one no expression can name: a compiler's own, or a shared instantiation's stand-in.</summary>
     private static string? ExactGenericType(ICorDebugValue value)
@@ -224,7 +231,7 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
             return null;
         }
         string name = ManagedDebugger.GetCorDebugTypeGlobalName(type);
-        return name.Contains("System.__Canon", StringComparison.Ordinal) || SyntaxFactory.ParseTypeName(name).ContainsDiagnostics ? null : name;
+        return name.Contains("System.__Canon", StringComparison.Ordinal) || !CodeBrackets.ReadsAsType(name) ? null : name;
     }
 
     /// <summary>The names of the members a type and those it derives from hold, its instances' and its own.</summary>
@@ -246,14 +253,14 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
     /// LINQ call, which binds only once the program has loaded System.Linq, whatever another method of that name (an
     /// extension of a span's, a property) makes its compile's error say without it.</summary>
     internal static bool NamesLinq(string expression) =>
-        SyntaxFactory.ParseExpression(expression).DescendantNodesAndSelf().Any(node => node switch
+        CodeBrackets.Expression(expression)?.DescendantNodesAndSelf().Any(node => node switch
         {
             QueryExpressionSyntax => true,
             MemberAccessExpressionSyntax access => _linqNames.Contains(access.Name.Identifier.ValueText),
             MemberBindingExpressionSyntax binding => _linqNames.Contains(binding.Name.Identifier.ValueText),
             IdentifierNameSyntax { Identifier.ValueText: nameof(Enumerable) } => true,
             _ => false,
-        });
+        }) == true;
 
     /// <summary>Whether the program has loaded an assembly of this name.</summary>
     private bool Loaded(string assembly) => debugger.AllModules.Any(module =>

@@ -1,9 +1,9 @@
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Debugger.ExpressionEvaluator;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.ExpressionEvaluator.Compiler;
 using Passenger.Debugger.Interop;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Debugger;
 
@@ -24,6 +24,10 @@ internal interface IHitBreakpoint
 /// asked for with those set, and one pipeline a hit goes through (hit count, condition, log message, suspend).</summary>
 public partial class ManagedDebugger
 {
+    /// <summary>What's said of an expression the parser would recurse through past its stack (<see cref="CodeBrackets.Expression"/>),
+    /// after what it is.</summary>
+    internal const string NestedTooDeep = "nests deeper than the debugger reads";
+
     /// <summary>A data or exception breakpoint's message, by its id, written by a hit whose condition could not be told.</summary>
     public event Action<int, string>? OnBreakpointMessage;
 
@@ -31,7 +35,12 @@ public partial class ManagedDebugger
     /// breakpoint is refused when set, of every kind, rather than stopping at every hit saying it could not be told.</summary>
     internal static string? Unreadable(string? condition, string? hitCondition)
     {
-        if (condition is not null && SyntaxFactory.ParseExpression(condition).DescendantNodesAndSelf().Any(static node => node is AnonymousFunctionExpressionSyntax))
+        ExpressionSyntax? parsed = condition is null ? null : CodeBrackets.Expression(condition);
+        if (condition is not null && parsed is null)
+        {
+            return $"The condition {NestedTooDeep}.";
+        }
+        if (parsed?.DescendantNodesAndSelf().Any(static node => node is AnonymousFunctionExpressionSyntax) == true)
         {
             return "Lambda expressions are not supported in breakpoint conditions.";
         }

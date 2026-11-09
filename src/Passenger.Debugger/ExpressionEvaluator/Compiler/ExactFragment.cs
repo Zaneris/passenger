@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Debugger.ExpressionEvaluator.Compiler;
 
@@ -16,8 +17,7 @@ internal static class ExactFragment
     /// a dot or naming an argument or an initialized member is no member of the value.</summary>
     public static string? Of(string expression, string exactType, IReadOnlySet<string> instanceMembers, IReadOnlySet<string> staticMembers)
     {
-        ExpressionSyntax fragment = SyntaxFactory.ParseExpression(expression);
-        if (fragment.ContainsDiagnostics)
+        if (CodeBrackets.Expression(expression) is not { ContainsDiagnostics: false } fragment)
         {
             return null;
         }
@@ -26,7 +26,7 @@ internal static class ExactFragment
         SyntaxNode[] reads = [.. fragment.DescendantNodesAndSelf().Where(node => node is ThisExpressionSyntax
             || (node is SimpleNameSyntax name && !declared.Contains(name.Identifier.ValueText) && ReadsTheValue(name)
                 && (instanceMembers.Contains(name.Identifier.ValueText) || staticMembers.Contains(name.Identifier.ValueText))))];
-        return reads.Length == 0 ? null : fragment.ReplaceNodes(reads, (node, _) => SyntaxFactory.ParseExpression(Through(node)).WithTriviaFrom(node)).ToFullString();
+        return reads.Length == 0 ? null : fragment.ReplaceNodes(reads, (node, _) => CodeBrackets.Expression(Through(node))?.WithTriviaFrom(node) ?? node).ToFullString();
 
         string Through(SyntaxNode node) => node is SimpleNameSyntax name
             ? $"{(instanceMembers.Contains(name.Identifier.ValueText) ? value : exactType)}.{name.WithoutTrivia().ToFullString()}"

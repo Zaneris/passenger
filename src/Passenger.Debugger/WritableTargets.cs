@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Debugger;
 
@@ -14,14 +15,8 @@ internal static class WritableTargets
     /// a nullable.</summary>
     public static IEnumerable<string> Of(string target, Func<string, bool> isNullable)
     {
-        ExpressionSyntax whole = SyntaxFactory.ParseExpression(target);
-        if (whole.ContainsDiagnostics)
-        {
-            yield break;
-        }
-        string through = Through(whole, isNullable);
-        ExpressionSyntax rewritten = SyntaxFactory.ParseExpression(through);
-        if (rewritten.ContainsDiagnostics)
+        if (CodeBrackets.Expression(target) is not { ContainsDiagnostics: false } whole
+            || CodeBrackets.Expression(Through(whole, isNullable)) is not { ContainsDiagnostics: false } rewritten)
         {
             yield break;
         }

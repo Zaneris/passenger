@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using Passenger.Core;
 using Passenger.Languages.CSharp;
 using Passenger.Xaml.Syntax;
 
@@ -45,15 +44,11 @@ public sealed class SourceTypes
     /// makes when no C# does.</summary>
     public static SourceTypes Declaring(string path, IReadOnlyList<ClrType> types) => new(path, types, [], [], null);
 
-    /// <summary>A text's tree, its parser running out of no stack; a text nested too deeply for it holds nothing.</summary>
-    internal static SyntaxTree Parsed(string text, CSharpParseOptions parsing, string path = "") =>
-        DeepText.Read(text.Length, () => CSharpSyntaxTree.ParseText(CodeBrackets.DeepAt(SourceText.From(text), parsing) is null ? text : string.Empty, parsing, path));
-
     /// <summary>A C# file's, parsed with what its project compiles it with (<paramref name="parsing"/>), its documentation
     /// comments passed over.</summary>
     public static SourceTypes Read(string path, string text, string assemblyName, CSharpParseOptions parsing)
     {
-        SyntaxTree tree = Parsed(text, parsing.WithDocumentationMode(DocumentationMode.None), path);
+        SyntaxTree tree = CodeBrackets.Parse(SourceText.From(text), parsing.WithDocumentationMode(DocumentationMode.None), path);
         CompilationUnitSyntax root = tree.GetCompilationUnitRoot();
         Reader reader = new(path, tree, assemblyName);
         reader.Unit(root);

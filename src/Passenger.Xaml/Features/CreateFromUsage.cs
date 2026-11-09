@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Metadata;
@@ -231,7 +232,7 @@ public static class CreateFromUsage
     /// blank line between, indented as the type's members are; the class made partial and the usings added that it needs.</summary>
     private static IReadOnlyList<TextEdit> Edits(string text, ClrType owner, Planned member, CSharpParseOptions parsing)
     {
-        SyntaxNode root = SourceTypes.Parsed(text, parsing).GetRoot();
+        SyntaxNode root = CodeBrackets.Parse(Microsoft.CodeAnalysis.Text.SourceText.From(text), parsing).GetRoot();
         TypeDeclarationSyntax? type = root.DescendantNodes().OfType<TypeDeclarationSyntax>().FirstOrDefault(t => FullName(t) == owner.FullName);
         if (type is null || type.OpenBraceToken.IsMissing)
         {
