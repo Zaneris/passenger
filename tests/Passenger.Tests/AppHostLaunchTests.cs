@@ -97,7 +97,8 @@ public sealed class AppHostLaunchTests : IClassFixture<RestoredFolders>, IDispos
             Ui.Launched(window, window.DebugAsync(), "the debug session's start", TimeSpan.FromMinutes(2));
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && ShownPath(window) is not null,
                 () => $"the stop at the breakpoint with the program's path; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}: {Ui.Said(window)}");
-            Assert.True(ShownPath(window)?.Contains(AppHost, StringComparison.Ordinal) == true,
+            // The debugger shows a string as C# writes one, each backslash of a Windows path doubled.
+            Assert.True(ShownPath(window)?.Contains(AppHost.Replace("\\", "\\\\", StringComparison.Ordinal), StringComparison.Ordinal) == true,
                 $"Debug stopped a program started as {ShownPath(window)}, not from its apphost {AppHost}, so on Windows its manifest, icon and name are lost");
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end");
