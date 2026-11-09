@@ -357,7 +357,9 @@ a new name, and `just site-shots` retakes its images.
   writes a Razor component as `X_razor.g.cs` and `X_razor.decl.g.cs` (`@code`; read both, `SymbolNames.HintsOf`),
   restores after its load batch ends (a failed restore is said as heard), takes a project's assets as seen at load (a
   given build reading what changed since loads it again, `ProjectGiven.Stale`), streams a pull's results as named
-  `$/progress`, and registers its watches as one brace of `**/` choices (`FileWatch` matches each alone).
+  `$/progress`, and registers its watches as one brace of `**/` choices (`FileWatch` matches each alone), every watch
+  under a folder it watches with subfolders folded into that folder's one (`ServerWatches` walks it for each project's
+  build output).
 - **Roslyn's server makes a C# file opened before its project loads a Miscellaneous File** (with no SDK, of no
   references), so a loading project's files open only once it loaded, a file come since once a load that read it ended
   (`CSharpService.Arrivals`); references come from `CSharpService.ProjectsNow`, never the start-time `workspace`. A
