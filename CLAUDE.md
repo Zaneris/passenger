@@ -347,9 +347,16 @@ a new name, and `just site-shots` retakes its images.
 
 ## Traps
 
-- **Roslyn's server** stays at 5.11.0 until a published build carries dotnet/roslyn#86130 (merged 2026-10-20): the
-  builds since start Visual Studio Telemetry's session even with telemetry off (#234). After lowering it, delete
-  `artifacts/bin/*/debug/roslyn*`, or the copy leaves a mixed server that won't start.
+- **Roslyn's server** is carried patched (`tools/Passenger.RoslynPatch`, `PatchRoslynServer`): until a carried build holds
+  dotnet/roslyn#86130, every build since 5.12 starts Visual Studio Telemetry's session even with telemetry off, so its
+  `CreateSession` returns null, the assembly is written IL-only, and the build fails on any other session start (#234);
+  drop the patch once a carried build has the fix. After moving its version, delete `artifacts/bin/*/debug/roslyn*`, or
+  the copy leaves a mixed server that won't start.
+- **Roslyn's server 5.13** gives one half of a partial member's references (`RoslynSession.ReferencesAsync` adds both),
+  writes a Razor component as `X_razor.g.cs` and `X_razor.decl.g.cs` (`@code`; read both, `SymbolNames.HintsOf`),
+  restores after its load batch ends (a failed restore is said as heard), takes a project's assets as seen at load (a
+  given build reading what changed since loads it again, `ProjectGiven.Stale`), streams a pull's results as named
+  `$/progress`, and registers its watches as one brace of `**/` choices (`FileWatch` matches each alone).
 - **Roslyn's server makes a C# file opened before its project loads a Miscellaneous File** (with no SDK, of no
   references), so a loading project's files open only once it loaded, a file come since once a load that read it ended
   (`CSharpService.Arrivals`); references come from `CSharpService.ProjectsNow`, never the start-time `workspace`. A
