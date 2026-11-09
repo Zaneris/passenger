@@ -116,15 +116,9 @@ public static class GodotLaunch
             throw new LaunchException($"{configuration.Name} cannot run: its {GodotProject.FileName} names no main scene for the game to start in: choose one in Godot's editor "
                 + "(Project Settings, Application, Run, Main Scene), or give one in the configuration's arguments (res://main.tscn)");
         }
-        if (!configuration.GodotEditor && await BackgroundWork.Run(() => Godot.GodotScripts.Unimported(folder), cancel))
+        if (!configuration.GodotEditor && await Godot.GodotScripts.ImportIfNeededAsync(found.Executable, Chosen(setting)?.Arguments ?? [], folder, environment, cancel) is { } unimported)
         {
-            // A game loads only what Godot's editor imported, which a project never opened in it has not.
-            ChildResult imported = await Godot.GodotScripts.ImportAsync(found.Executable, Chosen(setting)?.Arguments ?? [], folder, environment, Godot.GodotScripts.MadeFiles.Uids, cancel);
-            if (!imported.Succeeded)
-            {
-                throw new LaunchException($"{configuration.Name} cannot run: Godot could not import {PathNames.Shown(folder, null)}'s assets, which the game loads as Godot's editor "
-                    + $"imports them: it ended with {imported.Ended}");
-            }
+            throw new LaunchException($"{configuration.Name} cannot run: {unimported}");
         }
         List<string> arguments = [.. Chosen(setting)?.Arguments ?? []];
         bool ownDesktop = false;

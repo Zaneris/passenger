@@ -112,9 +112,10 @@ public sealed class GodotFile
 {
     private readonly int[] lineStarts;
 
-    private GodotFile(string text, IReadOnlyList<GodotSection> sections, int[] lineStarts)
+    private GodotFile(string text, IReadOnlyList<GodotEntry> untagged, IReadOnlyList<GodotSection> sections, int[] lineStarts)
     {
         Text = text;
+        Untagged = untagged;
         Sections = sections;
         this.lineStarts = lineStarts;
         Externals = [.. sections.Where(s => s.Tag == "ext_resource").Select(s => new GodotExternal(s))];
@@ -123,6 +124,9 @@ public sealed class GodotFile
     }
 
     public IReadOnlyList<GodotSection> Sections { get; }
+
+    /// <summary>The properties written before any tag: a ConfigFile's keys of no section (a class cache's <c>list</c>).</summary>
+    public IReadOnlyList<GodotEntry> Untagged { get; }
 
     /// <summary>The text it was read from.</summary>
     public string Text { get; }
@@ -217,6 +221,7 @@ public sealed class GodotFile
         }
         int[] lineStarts = [.. starts];
         List<GodotSection> sections = [];
+        List<GodotEntry> untagged = [];
         int at = 0;
         while ((at = SkipBlank(text, at)) < text.Length)
         {
@@ -227,8 +232,11 @@ public sealed class GodotFile
             }
             if (text[at] != '[')
             {
-                // A property before any tag: passed over with its value.
-                at = Entry(text, at, inTag: false, out _);
+                at = Entry(text, at, inTag: false, out GodotEntry? loose);
+                if (loose is not null)
+                {
+                    untagged.Add(loose);
+                }
                 continue;
             }
             int start = at;
@@ -251,7 +259,104 @@ public sealed class GodotFile
             int line = Math.Max(0, Sorted.FirstAfter<int>(lineStarts, start) - 1);
             sections.Add(new GodotSection(tag, start, end, line, attributes, properties));
         }
-        return new GodotFile(text, sections, lineStarts);
+        return new GodotFile(text, untagged, sections, lineStarts);
+    }
+
+    /// <summary>The values an array holds at its top (<c>[1, "a", { … }]</c>), each read as a property's value is; none for a
+    /// value that is no array.</summary>
+    public IReadOnlyList<GodotValue> ItemsOf(GodotValue array) =>
+        array.Start < array.End && Text[array.Start] == '[' ? [.. Parts(array).Select(part => ValueAt(Text, part.Start, part.End))] : [];
+
+    /// <summary>The keys and values a dictionary holds at its top (<c>{ "class": &amp;"Actor", "path": "res://actor.gd" }</c>),
+    /// a key by what its string says (or its word), each value read as a property's value is; none for a value that is no
+    /// dictionary.</summary>
+    public IReadOnlyList<GodotEntry> EntriesOf(GodotValue dictionary)
+    {
+        if (dictionary.Start >= dictionary.End || Text[dictionary.Start] != '{')
+        {
+            return [];
+        }
+        List<GodotEntry> entries = [];
+        foreach ((int start, int end) in Parts(dictionary))
+        {
+            if (TopColon(start, end) is not { } colon || ValueAt(Text, start, Trimmed(start, colon)) is not { } named || (named.Text ?? named.Word) is not { } key)
+            {
+                continue;
+            }
+            entries.Add(new GodotEntry(key, start, ValueAt(Text, SkipBlank(Text, colon + 1), end)) { Quoted = Text[start] == '"' });
+        }
+        return entries;
+    }
+
+    /// <summary>Where each value an array's or a dictionary's brackets hold at their top lies, the blanks around it left out.</summary>
+    private List<(int Start, int End)> Parts(GodotValue value)
+    {
+        List<(int Start, int End)> parts = [];
+        int depth = 0;
+        int from = value.Start + 1;
+        for (int at = from; at < value.End; at++)
+        {
+            char c = Text[at];
+            if (c == '"')
+            {
+                at = Quoted(Text, at).Next - 1;
+            }
+            else if (c is '(' or '[' or '{')
+            {
+                depth++;
+            }
+            else if ((c is ')' or ']' or '}' && depth-- == 0) || (c == ',' && depth == 0))
+            {
+                int start = SkipBlank(Text, from);
+                if (Trimmed(start, at) > start)
+                {
+                    parts.Add((start, Trimmed(start, at)));
+                }
+                if (c != ',')
+                {
+                    break;
+                }
+                from = at + 1;
+            }
+        }
+        return parts;
+    }
+
+    /// <summary>The ':' parting a dictionary's key from its value, outside its strings and brackets; null for none.</summary>
+    private int? TopColon(int start, int end)
+    {
+        int depth = 0;
+        for (int at = start; at < end; at++)
+        {
+            char c = Text[at];
+            if (c == '"')
+            {
+                at = Quoted(Text, at).Next - 1;
+            }
+            else if (c is '(' or '[' or '{')
+            {
+                depth++;
+            }
+            else if (c is ')' or ']' or '}')
+            {
+                depth--;
+            }
+            else if (c == ':' && depth == 0)
+            {
+                return at;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Where text from a start ends once the blanks before an end are left out.</summary>
+    private int Trimmed(int start, int end)
+    {
+        while (end > start && char.IsWhiteSpace(Text[end - 1]))
+        {
+            end--;
+        }
+        return end;
     }
 
     /// <summary>A tag from its '[': its name, its attributes, and where the text goes on after its ']'.</summary>

@@ -10,11 +10,11 @@ namespace Passenger.App.Testing;
 /// <see cref="GodotTestRuns"/>), with the arguments Settings gives each start of it, headless unless the person asks for its
 /// window (<see cref="GodotStart"/>), the chosen scripts given, a pre-run hook leaving them the chosen tests alone where those
 /// are not whole scripts (<see cref="GutRuns.Hook"/>), GUT's JUnit XML read back for each test's outcome, its failure's line
-/// linked, and what it printed under each test as its output, a test it ran beside them told too; a project whose global
-/// classes Godot has yet to import (GutTest among them) imported first, headless. Debugged, the run starts under the
-/// GDScript debugger, its breakpoints set from the run's start, and in a C# game under .NET's too, so the C# a test calls
-/// stops at its breakpoints. Its tests are those the code declares (<paramref name="declared"/>, by the project,
-/// <see cref="GutScripts"/>).</summary>
+/// linked, and what it printed under each test as its output, a test it ran beside them told too; the project imported first
+/// where Godot has yet to (GutTest is a global class), headless (<see cref="GodotTestRuns.RunAsync"/>). Debugged, the run
+/// starts under the GDScript debugger, its breakpoints set from the run's start, and in a C# game under .NET's too, so the C#
+/// a test calls stops at its breakpoints. Its tests are those the code declares (<paramref name="declared"/>, by the
+/// project, <see cref="GutScripts"/>).</summary>
 public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = null) : ITestRunner
 {
     public bool IsUsable => true;
@@ -46,21 +46,15 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
     {
         long began = Stopwatch.GetTimestamp();
         string folder = Path.GetDirectoryName(project)!;
-        string? godot = environment.GetValueOrDefault(GodotTestRuns.BinaryVariable) ?? Environment.GetEnvironmentVariable(GodotTestRuns.BinaryVariable);
-        if (godot is not { Length: > 0 })
-        {
-            string none = $"GUT's tests cannot run: {Run.GodotLaunch.NotFound}";
-            log?.Invoke(none);
-            return new RunSummary(TimeSpan.Zero, false, true, none);
-        }
-        if (await BackgroundWork.Run(() => NeedsImport(folder), cancel) && await ImportAsync(godot, folder, environment, log, cancel) is { } unimported)
-        {
-            return new RunSummary(Stopwatch.GetElapsedTime(began), false, true, unimported);
-        }
         string? hook = await BackgroundWork.Run(() => WriteHook(folder, tests, declared), cancel);
         try
         {
-            return await RunGutAsync(project, folder, tests, hook, began, godot, outcomes, log, debugger, environment, start, cancel);
+            GodotTestRuns.Asked asked = new(GutScripts.Framework, folder, ".xml", results => GutRuns.Arguments([.. tests.Select(t => Parts(folder, t))], results, hook))
+            {
+                CSharp = debugger is not null && await BackgroundWork.Run(() => Directory.EnumerateFiles(folder, "*.csproj").Any()),
+                KeepsOutput = true,
+            };
+            return await GodotTestRuns.RunAsync(asked, ended => ToldAsync(ended, project, folder, tests, began, outcomes, log), began, log, debugger, environment, start, cancel);
         }
         finally
         {
@@ -71,63 +65,26 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
         }
     }
 
-    /// <summary>GUT's run of these tests of a project, with the hook that keeps them where one is written.</summary>
-    private static async Task<RunSummary> RunGutAsync(string project, string folder, IReadOnlyList<TestItem> tests, string? hook, long began, string godot, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string> environment, GodotStart start, CancellationToken cancel)
+    /// <summary>What GUT's run of these tests of a project came to, by the results it wrote.</summary>
+    private static async Task<RunSummary> ToldAsync(GodotTestRuns.Ended ended, string project, string folder, IReadOnlyList<TestItem> tests, long began,
+        Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log)
     {
-        string results = Path.Combine(Path.GetTempPath(), $"passenger-gut-{Guid.NewGuid():N}.xml");
-        List<string> leading = [.. start.Leading, "--path", folder];
-        List<string> arguments = [.. leading, .. GutRuns.Arguments([.. tests.Select(t => Parts(folder, t))], results, hook)];
-        string output = string.Empty;
-        try
+        if (!File.Exists(ended.Written))
         {
-            if (debugger is not null)
-            {
-                bool csharp = await BackgroundWork.Run(() => Directory.EnumerateFiles(folder, "*.csproj").Any(), cancel);
-                Task ended = await debugger.DebugGameAsync(new TestHostStart(godot, arguments, folder, environment), folder, leading.Count, csharp);
-                await ended.WaitAsync(cancel);
-                if (!File.Exists(results))
-                {
-                    const string unsaid = "GUT wrote no results: its Godot ended before it told them (the Debug window has what it wrote)";
-                    log?.Invoke(unsaid);
-                    return new RunSummary(Stopwatch.GetElapsedTime(began), false, true, unsaid);
-                }
-            }
-            else
-            {
-                ProcessStartInfo run = ChildProcesses.Command(godot, arguments, folder);
-                foreach ((string name, string value) in environment)
-                {
-                    run.Environment[name] = value;
-                }
-                ChildResult ran = await ChildProcesses.RunAsync(run, cancel: cancel);
-                output = ran.Output;
-                if (!File.Exists(results))
-                {
-                    string said = $"GUT wrote no results: Godot ended with {ran.Ended}";
-                    log?.Invoke(said);
-                    return new RunSummary(Stopwatch.GetElapsedTime(began), false, true, said);
-                }
-            }
-        }
-        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
-        {
-            return new RunSummary(Stopwatch.GetElapsedTime(began), true, false, null);
+            string unsaid = ended.Debugged ? "GUT wrote no results: its Godot ended before it told them (the Debug window has what it wrote)" : $"GUT wrote no results: {ended.Said}";
+            log?.Invoke(unsaid);
+            return new RunSummary(Stopwatch.GetElapsedTime(began), false, true, unsaid);
         }
         IReadOnlyList<TestOutcome> told;
         try
         {
-            told = await BackgroundWork.Run(() => Outcomes(File.ReadAllText(results), project, folder, tests, output));
+            told = await BackgroundWork.Run(() => Outcomes(File.ReadAllText(ended.Written), project, folder, tests, ended.Output));
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or XmlException)
         {
             string said = $"GUT's results could not be read: {unread.Message}";
             log?.Invoke(said);
             return new RunSummary(Stopwatch.GetElapsedTime(began), false, true, said);
-        }
-        finally
-        {
-            File.Delete(results);
         }
         outcomes(told);
         HashSet<TestItem> asked = new(tests, TestItem.ById);
@@ -155,7 +112,7 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
             return null;
         }
         string config = Path.Combine(folder, GutScripts.ConfigFile);
-        string hook = Path.Combine(Path.GetTempPath(), $"passenger-gut-{Guid.NewGuid():N}.gd");
+        string hook = GodotTestRuns.TemporaryFile(GutScripts.Framework, ".gd");
         AtomicFile.Write(hook, Encoding.UTF8.GetBytes(GutRuns.Hook(kept, File.Exists(config) ? GutScripts.PreRunScript(File.ReadAllText(config)) : null)));
         return hook;
     }
@@ -204,34 +161,6 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
         StackTrace = result is { Status: "fail", Line: > 0 } ? $"   at {test.Method}() in {script}:line {result.Line}" : null,
         Output = result.Output,
     };
-
-    /// <summary>Whether Godot has yet to import the project's global classes as they now are: its class cache missing, or
-    /// older than a GDScript file or project.godot. A worker's.</summary>
-    private static bool NeedsImport(string folder)
-    {
-        string cache = Path.Combine(folder, ".godot", "global_script_class_cache.cfg");
-        if (!File.Exists(cache))
-        {
-            return true;
-        }
-        DateTime imported = File.GetLastWriteTimeUtc(cache);
-        return File.GetLastWriteTimeUtc(Path.Combine(folder, "project.godot")) > imported
-            || GutScripts.Files(folder).Any(path => File.GetLastWriteTimeUtc(path) > imported);
-    }
-
-    /// <summary>Godot's headless import of the project, what it writes over of the person's editor put back; null once
-    /// done, else why it failed.</summary>
-    private static async Task<string?> ImportAsync(string godot, string folder, IReadOnlyDictionary<string, string> environment, Action<string>? log, CancellationToken cancel)
-    {
-        ChildResult imported = await Godot.GodotScripts.ImportAsync(godot, [], folder, environment, Godot.GodotScripts.MadeFiles.None, cancel);
-        if (imported.Succeeded)
-        {
-            return null;
-        }
-        string said = $"Godot could not import {PathNames.Shown(folder, null)} for GUT: it ended with {imported.Ended}";
-        log?.Invoke(said);
-        return said;
-    }
 
     public void Dispose()
     {

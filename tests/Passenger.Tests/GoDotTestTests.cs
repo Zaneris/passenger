@@ -130,9 +130,9 @@ public static class GoDotTestGame
 
 /// <summary>A Godot 4 C# game's GoDotTest tests in the Unit Tests window, as a person who added GoDotTest to the game finds
 /// them: shown from the code before any build, run inside the game on the Godot found (headless, its user folders the
-/// run's), a failure shown with its exception at its line and what the test printed, the gutter marking each test by how
-/// it ran, and debugged under .NET's debugger, a breakpoint in a test stopping there. Without a Godot 4 .NET build each
-/// test skips saying why. Debugged, so run alone.</summary>
+/// run's), the game imported first where it never was, a failure shown with its exception at its line and what the test
+/// printed, the gutter marking each test by how it ran, and debugged under .NET's debugger, a breakpoint in a test stopping
+/// there. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GoDotTestTests : IDisposable
 {
@@ -199,6 +199,60 @@ public sealed class GoDotTestTests : IDisposable
             }
             Ui.Launched(window, debugged, "the debugged run to end", TimeSpan.FromMinutes(2));
             Assert.True(spins.State == TestState.Failed, $"The debugged test did not fail with its exception:\n{spins.Details}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Two tests, the second loading the game's icon, which a game loads only once Godot has imported it.</summary>
+    private const string LoadsIcon = """
+        namespace Spinner.Tests;
+
+        using System;
+        using Chickensoft.GoDotTest;
+        using Godot;
+
+        public class SpinnerTest : TestClass
+        {
+            public SpinnerTest(Node testScene) : base(testScene) { }
+
+            [Test]
+            public void Adds()
+            {
+            }
+
+            [Test]
+            public void Spins()
+            {
+                if (ResourceLoader.Load<Texture2D>("res://icon.svg") is null)
+                {
+                    throw new InvalidOperationException("the icon was never imported");
+                }
+            }
+        }
+
+        """;
+
+    /// <summary>A game never opened in Godot's editor, whose test loads an asset with no .import beside it, is imported before
+    /// its tests run: the test loads the asset and passes, and the asset's .import is left for the game.</summary>
+    [AvaloniaFact]
+    public void A_game_never_imported_is_imported_before_its_tests_run_and_a_test_loading_its_asset_passes()
+    {
+        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
+        GoDotTestGame.Make(folder, godot!, testCode: LoadsIcon);
+        string icon = Path.Combine(folder, "icon.svg");
+        File.WriteAllText(icon, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\" fill=\"#478cbf\"/></svg>\n");
+        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
+        MainWindow window = Opened();
+        try
+        {
+            Assert.False(File.Exists(icon + ".import"), "Opening the game's folder made a .import beside icon.svg before its tests ran");
+            Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Spins")!]), "the game's import and the run of its test", TimeSpan.FromMinutes(5));
+            Assert.True(Method(window, "Spins")!.State == TestState.Passed,
+                $"The test loading the game's icon did not pass: {Method(window, "Spins")!.Details} ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})");
+            Assert.True(File.Exists(icon + ".import"), "The import before the tests left no .import beside icon.svg for the game");
         }
         finally
         {

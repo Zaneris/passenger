@@ -71,6 +71,9 @@ public sealed class GDScriptTree
     /// with the offset its positions count from.</summary>
     internal IEnumerable<(GDScriptAnnotation Annotation, int Offset)> Regions => runs.SelectMany((run, i) => run.Regions.Select(a => (a, starts[i])));
 
+    /// <summary>A script's own class as its first lines declare it, read alone: the <see cref="Class"/> its whole parse gives.</summary>
+    public static GDScriptClass Preamble(string text) => GDScriptParser.Of(text).ParsePreamble();
+
     public static GDScriptTree Parse(string text)
     {
         GDScriptParser parser = GDScriptParser.Of(text);

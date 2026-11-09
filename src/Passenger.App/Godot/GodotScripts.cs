@@ -189,32 +189,77 @@ public static class GodotScripts
         }
     }
 
-    /// <summary>Godot's headless import of a project, through <see cref="PuttingBackAsync"/>: its files written over put
-    /// back and what it made of <paramref name="removes"/> taken away, the .import files it makes left for what runs next.</summary>
-    internal static Task<ChildResult> ImportAsync(string godot, IReadOnlyList<string> leading, string project, IReadOnlyDictionary<string, string> environment,
-        MadeFiles removes, CancellationToken cancel)
+    /// <summary>Godot's headless import of a project where what runs next without its editor needs one (<see cref="NeedsImport"/>),
+    /// as a game, GUT's and GoDotTest's tests load only what the editor imported: started with the arguments Settings gives each
+    /// start of Godot (<paramref name="leading"/>), through <see cref="PuttingBackAsync"/>, its files written over put back and its
+    /// .uid files taken away, the .import files it makes left for what runs next. Null where it imported or none was needed,
+    /// else why Godot could not.</summary>
+    internal static async Task<string?> ImportIfNeededAsync(string godot, IReadOnlyList<string> leading, string project, IReadOnlyDictionary<string, string> environment,
+        CancellationToken cancel)
     {
+        if (!await BackgroundWork.Run(() => NeedsImport(project), cancel))
+        {
+            return null;
+        }
         ProcessStartInfo start = ChildProcesses.Command(godot, [.. leading, GodotExecutables.Headless, "--path", project, "--import"], project);
         foreach ((string name, string value) in environment)
         {
             start.Environment[name] = value;
         }
-        return PuttingBackAsync(project, () => ChildProcesses.RunAsync(start, cancel: cancel), removes);
+        ChildResult imported = await PuttingBackAsync(project, () => ChildProcesses.RunAsync(start, cancel: cancel), MadeFiles.Uids);
+        return imported.Succeeded ? null
+            : $"Godot could not import {PathNames.Shown(project, null)} as its editor does: it ended with {imported.Ended}";
     }
 
-    /// <summary>Whether a project has assets Godot has not imported (one with no .import beside it), which a game run without
-    /// its editor cannot load. A worker's.</summary>
-    internal static bool Unimported(string project)
+    /// <summary>Whether Godot has yet to import a project as a run without its editor reads it, of the files Godot's editor scans
+    /// (<see cref="Scanned"/>): an asset with no .import beside it, which a game cannot load, or any asset of a project never
+    /// imported here (no cache of its global classes); or global classes the cache no longer lists as its GDScript files
+    /// declare them (<see cref="GodotClassCache.Stale"/>), those newer than the cache read, or every one where there is none.
+    /// A worker's.</summary>
+    private static bool NeedsImport(string folder)
     {
-        try
+        // By the walk's own spelling of the paths it finds, so each is the project's res:// path.
+        string project = PathNames.Canonical(folder);
+        string cache = Path.Combine(project, GodotClassCache.RelativePath);
+        string? listed = Text(cache);
+        DateTime? cached = listed is null ? null : File.GetLastWriteTimeUtc(cache);
+        List<string> scripts = [];
+        foreach ((string _, IReadOnlyList<string> files) in PathNames.FilesUnder(project, Scanned))
         {
-            return Directory.EnumerateFiles(project, "*", Listing).Any(file => Imported.Contains(Path.GetExtension(file)) && !File.Exists(file + ".import"));
+            foreach (string file in files.Where(f => !Path.GetFileName(f).StartsWith('.')))
+            {
+                string extension = Path.GetExtension(file);
+                if (Imported.Contains(extension) && (cached is null || !File.Exists(file + ".import")))
+                {
+                    return true;
+                }
+                if (extension.Equals(".gd", StringComparison.OrdinalIgnoreCase) && (cached is null || File.GetLastWriteTimeUtc(file) > cached)
+                    && GodotResPaths.Of(project, file) is { } script)
+                {
+                    scripts.Add(script);
+                }
+            }
         }
-        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        return GodotClassCache.Stale(listed, scripts, path => GodotResPaths.FileOf(project, path) is { } file ? Text(file) : null,
+            path => GodotResPaths.FileOf(project, path) is { } file && File.Exists(file));
+
+        static string? Text(string file)
         {
-            return false;
+            try
+            {
+                return File.Exists(file) ? File.ReadAllText(file) : null;
+            }
+            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
         }
     }
+
+    /// <summary>Whether Godot's editor scans a folder of a project: none hidden (its cache, Git's), none a .gdignore leaves out,
+    /// and none holding a project of its own.</summary>
+    private static bool Scanned(string folder) =>
+        !Path.GetFileName(folder).StartsWith('.') && !File.Exists(Path.Combine(folder, ".gdignore")) && !File.Exists(Path.Combine(folder, GodotProject.FileName));
 
     /// <summary>The project's files as Godot's editor scans them: dot folders (its cache, Git's) passed over.</summary>
     private static readonly EnumerationOptions Listing = new() { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System };
