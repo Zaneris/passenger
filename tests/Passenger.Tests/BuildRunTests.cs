@@ -725,6 +725,33 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>Run starts a project's apphost, as dotnet run does, so what only it carries (a Windows app's manifest, its
+    /// icon, its name) reaches the program, which runs on the .NET Passenger builds with, never one the apphost finds
+    /// itself (#1416).</summary>
+    [AvaloniaFact]
+    public void Run_starts_the_projects_apphost_on_the_dotnet_passenger_builds_with()
+    {
+        Write("src/Hello/Program.cs", $$"""
+            Console.WriteLine($"started as {Path.GetFileNameWithoutExtension(Environment.ProcessPath)}");
+            Console.WriteLine($"runtime from {Environment.GetEnvironmentVariable("{{RuntimeVariables.Root}}")}");
+
+            """);
+        MainWindow window = Open();
+        try
+        {
+            window.Perform(AppActions.RunProgram);
+            Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to end", TimeSpan.FromMinutes(2));
+            string output = Output(window);
+            Assert.True(output.Contains("started as Hello", StringComparison.Ordinal) && output.Contains($"runtime from {Dotnet.Root()}", StringComparison.Ordinal),
+                $"Run started the program other than through its apphost on Passenger's .NET ({Dotnet.Root()}), so an app's manifest is lost or it runs on "
+                + $"another runtime: {output}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
 
     /// <summary>A test program's expression of the static delegates of the exception a body an update deleted throws (none
