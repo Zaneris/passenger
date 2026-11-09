@@ -94,8 +94,8 @@ internal static class LocalizationSource
         return new LocalizedReadsFound(keys, resources);
     }
 
-    /// <summary>The documents a file is: a C# file's own (one a target framework), or for a Razor file the C# Razor's generator
-    /// makes of it in each project that has it.</summary>
+    /// <summary>The documents a file is: a C# file's own (one a target framework), or for a Razor file each file of C# Razor's
+    /// generator makes of it (its markup's and its code's) in each project that has it.</summary>
     internal static async Task<IReadOnlyList<(Document Document, Project Project)>> DocumentsOfAsync(Solution solution, string path, bool razor, CancellationToken cancel)
     {
         if (!razor)
@@ -106,28 +106,24 @@ internal static class LocalizationSource
         foreach (Project project in solution.Projects)
         {
             if (project.AdditionalDocuments.FirstOrDefault(d => SamePath(d.FilePath, path)) is not { } markup
-                || SymbolNames.HintOf(project, markup.FilePath!) is not { } hint)
+                || SymbolNames.HintsOf(project, markup.FilePath!) is not { Count: > 0 } hints)
             {
                 continue;
             }
             IEnumerable<SourceGeneratedDocument> made = await project.GetSourceGeneratedDocumentsAsync(cancel).ConfigureAwait(false);
-            SourceGeneratedDocument? mine = made.FirstOrDefault(d => d.HintName.EndsWith(hint, StringComparison.Ordinal));
-            if (mine is null)
+            List<SourceGeneratedDocument> mine = [.. made.Where(d => hints.Any(hint => d.HintName.EndsWith(hint, StringComparison.Ordinal)))];
+            if (mine.Count == 0)
             {
                 foreach (SourceGeneratedDocument candidate in made)
                 {
                     if (await candidate.GetSyntaxTreeAsync(cancel).ConfigureAwait(false) is { } tree
                         && tree.GetLineMappings(cancel).Any(m => m.MappedSpan.HasMappedPath && SamePath(m.MappedSpan.Path, path)))
                     {
-                        mine = candidate;
-                        break;
+                        mine.Add(candidate);
                     }
                 }
             }
-            if (mine is not null)
-            {
-                generated.Add((mine, project));
-            }
+            generated.AddRange(mine.Select(document => ((Document)document, project)));
         }
         return generated;
     }

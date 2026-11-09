@@ -39,12 +39,13 @@ internal static class SymbolNames
 {
     private static readonly SymbolDisplayFormat Short = SymbolDisplayFormat.CSharpShortErrorMessageFormat;
 
-    /// <summary>How the hint name of a file Razor's generator makes ends.</summary>
-    private const string Generated = ".g.cs";
+    /// <summary>How the hint name of a file Razor's generator makes ends: its markup's (the render tree), and its code's
+    /// declarations', which a generator that splits them writes apart (an <c>@code</c> block's members).</summary>
+    private static readonly string[] Generated = [".g.cs", ".decl.g.cs"];
 
-    /// <summary>How the hint names of the files Razor's generator makes of a component and of a page end.</summary>
-    private static readonly (string Component, string Page) RazorGenerated =
-        (Identifier(RazorFiles.Component) + Generated, Identifier(RazorFiles.Page) + Generated);
+    /// <summary>How the hint names of the files Razor's generator makes of a component and of a page end, each kind.</summary>
+    private static readonly string[] RazorGenerated =
+        [.. Generated.SelectMany(made => (string[])[Identifier(RazorFiles.Component) + made, Identifier(RazorFiles.Page) + made])];
 
     /// <summary>The class a Razor file makes, and its name's span in the C# Razor's generator makes of the file, a place the
     /// server takes the class at, as the Razor file has none (its code maps the class to no line); none for a file of no
@@ -200,20 +201,20 @@ internal static class SymbolNames
     /// Razor file's path in its project with every character but a letter or digit an underscore; null for any other
     /// generated file.</summary>
     private static string? MadeOf(SourceGeneratedDocument generated) =>
-        IsRazorGenerated(generated.HintName) ? Identifier(generated.HintName[..^Generated.Length]) : null;
+        IsRazorGenerated(generated.HintName) && Generated.OrderByDescending(made => made.Length).First(made => generated.HintName.EndsWith(made, StringComparison.OrdinalIgnoreCase)) is { } made
+            ? Identifier(generated.HintName[..^made.Length]) : null;
 
     /// <summary>A Razor file's path in its project as the hint name of the file Razor's generator makes of it writes it.</summary>
     private static string? MadeOf(Project project, string razor) =>
         Path.GetDirectoryName(project.FilePath) is { } folder ? Identifier(Path.GetRelativePath(folder, razor)) : null;
 
-    /// <summary>The hint name of the file Razor's generator makes of a Razor file of a project; null for a project with no
-    /// file of its own.</summary>
-    public static string? HintOf(Project project, string razor) => MadeOf(project, razor) is { } made ? made + Generated : null;
+    /// <summary>The hint names of the files Razor's generator makes of a Razor file of a project, each kind (<see cref="Generated"/>);
+    /// none for a project with no file of its own.</summary>
+    public static IReadOnlyList<string> HintsOf(Project project, string razor) => MadeOf(project, razor) is { } made ? [.. Generated.Select(kind => made + kind)] : [];
 
     private static string Identifier(string path) => string.Concat(path.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
 
-    private static bool IsRazorGenerated(string hint) => hint.EndsWith(RazorGenerated.Component, StringComparison.OrdinalIgnoreCase)
-        || hint.EndsWith(RazorGenerated.Page, StringComparison.OrdinalIgnoreCase);
+    private static bool IsRazorGenerated(string hint) => RazorGenerated.Any(made => hint.EndsWith(made, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>A name's dotted parts, generic arguments kept inside their part, and its parameters' types when it gives
     /// them (none for <c>()</c>).</summary>
