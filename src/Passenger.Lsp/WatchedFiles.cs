@@ -371,9 +371,16 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
         return false;
     }
 
-    /// <summary>What a pattern's last name asks a file's name to end with or be; none where it is not of those shapes.</summary>
+    /// <summary>What a pattern's last name asks a file's name to end with or be, each choice's where the whole pattern is
+    /// one brace of them; none where it is not of those shapes.</summary>
     private static (string Text, bool Whole)[] NamesOf(string pattern)
     {
+        string[] choices = ChoicesOf.GetOrAdd(pattern, Choices);
+        if (choices.Length > 1)
+        {
+            (string Text, bool Whole)[][] each = [.. choices.Select(NamesOf)];
+            return each.Any(names => names.Length == 0) ? [] : [.. each.SelectMany(names => names).Distinct()];
+        }
         string last = pattern[(pattern.LastIndexOf('/') + 1)..];
         if (last.Length == 0 || last.IndexOfAny(['?', '[', ']', '!', '}']) >= 0 && !last.StartsWith("*.{", StringComparison.Ordinal))
         {
@@ -420,10 +427,58 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
         }
         string named = Folder is null ? path : PathNames.Below(path, Folder).ToString();
         string relative = "/" + named.Replace('\\', '/').TrimStart('/');
-        string glob = "/" + Pattern.TrimStart('/');
-        // Where the path's folder takes names in any letter case, so does the glob.
-        return EditorConfig.Matches(glob, relative)
-            || EditorConfig.Matches(glob.ToLowerInvariant(), relative.ToLowerInvariant()) && PathNames.CaseIgnoredIn(Path.GetDirectoryName(path) ?? path);
+        foreach (string choice in ChoicesOf.GetOrAdd(Pattern, Choices))
+        {
+            string glob = "/" + choice.TrimStart('/');
+            // Where the path's folder takes names in any letter case, so does the glob.
+            if (EditorConfig.Matches(glob, relative)
+                || EditorConfig.Matches(glob.ToLowerInvariant(), relative.ToLowerInvariant()) && PathNames.CaseIgnoredIn(Path.GetDirectoryName(path) ?? path))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Each pattern's choices (<see cref="Choices"/>).</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string[]> ChoicesOf = new(StringComparer.Ordinal);
+
+    /// <summary>A pattern whose whole is one brace of choices (<c>{**/*.cs,**/*.csproj}</c>) as its choices, each matched as
+    /// a pattern of its own, so one starting <c>**/</c> matches a file in the folder itself, as it would alone; any other
+    /// pattern as itself.</summary>
+    private static string[] Choices(string pattern)
+    {
+        if (pattern.Length < 2 || pattern[0] != '{' || pattern[^1] != '}')
+        {
+            return [pattern];
+        }
+        List<string> choices = [];
+        int depth = 0;
+        int start = 1;
+        for (int i = 1; i < pattern.Length - 1; i++)
+        {
+            switch (pattern[i])
+            {
+                case '\\':
+                    i++;
+                    break;
+                case '{':
+                    depth++;
+                    break;
+                case '}' when depth == 0:
+                    // The first brace closes before the end: the pattern is more than one brace.
+                    return [pattern];
+                case '}':
+                    depth--;
+                    break;
+                case ',' when depth == 0:
+                    choices.Add(pattern[start..i]);
+                    start = i + 1;
+                    break;
+            }
+        }
+        choices.Add(pattern[start..^1]);
+        return depth == 0 ? [.. choices] : [pattern];
     }
 
     /// <summary>Whether a folder may hold a path the watcher matches, or lies on the way down to its folder: one under its
