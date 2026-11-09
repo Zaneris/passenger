@@ -21,6 +21,12 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 
 | Package | In Passenger | Licence | Copyright |
 |---|---|---|---|
+| `Microsoft.Data.Sqlite`, `Microsoft.Data.Sqlite.Core` | The Database window's SQLite provider | MIT | © Microsoft Corporation. All rights reserved. |
+| `SQLitePCLRaw.bundle_e_sqlite3`, `SQLitePCLRaw.lib.e_sqlite3`, `SQLitePCLRaw.provider.e_sqlite3` | The SQLite provider's native runtime and interop | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
+| `Npgsql` | The Database window's PostgreSQL provider | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
+| `MySqlConnector` | The Database window's MySQL and MariaDB provider | MIT | Copyright 2016–2026 Bradley Grainger |
+| `Microsoft.Data.SqlClient`, `Microsoft.Data.SqlClient.Extensions.Abstractions`, `Microsoft.Data.SqlClient.Internal.Logging`, `Microsoft.Data.SqlClient.SNI.runtime` | The Database window's SQL Server provider and its native transport | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.Bcl.Cryptography`, `Microsoft.IdentityModel.JsonWebTokens`, `Microsoft.IdentityModel.Logging`, `Microsoft.IdentityModel.Protocols`, `Microsoft.IdentityModel.Protocols.OpenIdConnect`, `Microsoft.IdentityModel.Tokens`, `Microsoft.SqlServer.Server`, `System.IdentityModel.Tokens.Jwt`, `System.Threading.RateLimiting`, `System.Security.Cryptography.Pkcs` | SQL Server's authentication, cryptography and protocol dependencies | MIT | © Microsoft Corporation. All rights reserved. |
 | `Google.Protobuf` | Aspire resource service protocol messages | BSD-3-Clause | Copyright 2015, Google Inc. |
 | `Grpc.Net.Client`, `Grpc.Net.Common`, `Grpc.Core.Api` | Native Aspire interactions and resource commands | Apache-2.0 | Copyright 2019 The gRPC Authors |
 | `Microsoft.Extensions.Logging.Abstractions` | gRPC client's logging contracts | MIT | © Microsoft Corporation. All rights reserved. |
@@ -231,10 +237,9 @@ Packages the build or the tests use that no app carries.
 | `Hex1b` | Aspire hosting's terminal dependency, restored for the tests' local feed | MIT | Copyright (c) 2024 Mitch Denny |
 | `Polly.RateLimiting` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2024, App vNext |
 | `Polly.Core` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2015-2026, App vNext |
-| `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.Abstractions`, `Microsoft.EntityFrameworkCore.Analyzers`, `Microsoft.EntityFrameworkCore.Relational`, `Microsoft.EntityFrameworkCore.Sqlite`, `Microsoft.EntityFrameworkCore.Sqlite.Core`, `Microsoft.EntityFrameworkCore.Design`, `Microsoft.Data.Sqlite.Core`, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.DependencyModel`, `Microsoft.CodeAnalysis.CSharp.Workspaces`, `Microsoft.CodeAnalysis.Workspaces.Common`, `Microsoft.CodeAnalysis.Workspaces.MSBuild`, `System.Composition` | EF Core with SQLite and the Design package dotnet ef loads, and what they depend on: the graph of the projects the Migrations window's tests write, restored for the tests' local feed (tests/EfGraphs), `Microsoft.Extensions.DependencyModel` also NUnit's adapter's dependency, downloaded for the tests' package cache (tests/UnitTestGraphs); Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.Abstractions`, `Microsoft.EntityFrameworkCore.Analyzers`, `Microsoft.EntityFrameworkCore.Relational`, `Microsoft.EntityFrameworkCore.Sqlite`, `Microsoft.EntityFrameworkCore.Sqlite.Core`, `Microsoft.EntityFrameworkCore.Design`, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.DependencyModel`, `Microsoft.CodeAnalysis.CSharp.Workspaces`, `Microsoft.CodeAnalysis.Workspaces.Common`, `Microsoft.CodeAnalysis.Workspaces.MSBuild`, `System.Composition` | EF Core with SQLite and the Design package dotnet ef loads, and what they depend on: the graph of the projects the Migrations window's tests write, restored for the tests' local feed (tests/EfGraphs), `Microsoft.Extensions.DependencyModel` also NUnit's adapter's dependency, downloaded for the tests' package cache (tests/UnitTestGraphs); Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
 | `dotnet-ef` | EF Core's command-line tool at the tests' EF Core version, the one before and EF Core 11's, downloaded for the tests' local feed, from which the Migrations window's tests install it as a local tool; Passenger never carries it, and installs it only when asked | MIT | © Microsoft Corporation. All rights reserved. |
 | `Mono.TextTemplating` | the EF Core Design package's template engine, restored for the tests' local feed | MIT | no copyright line; its author: Mikayla Hutchinson |
-| `SQLitePCLRaw.bundle_e_sqlite3`, `SQLitePCLRaw.lib.e_sqlite3`, `SQLitePCLRaw.provider.e_sqlite3` | SQLite for EF Core's SQLite provider, restored for the tests' local feed | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
 | `SQLitePCLRaw.config.e_sqlite3` | SQLite's configuration for EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | Apache-2.0 | Copyright 2014-2026 SourceGear, LLC |
 | `gdUnit4.api`, `gdUnit4.test.adapter` | GdUnit4's API and its VSTest adapter, which the Godot tests write into a game: downloaded for the tests' package cache (tests/GodotGraphs); Passenger never carries them | MIT | © 2026 Mike Schulze |
 | `Chickensoft.GoDotTest` | GoDotTest, the test runner inside a Godot C# game, which the Godot tests write into a game: downloaded for the tests' package cache (tests/GodotGraphs); Passenger never carries it | MIT | © 2023 Chickensoft |
@@ -250,7 +255,7 @@ Packages the build or the tests use that no app carries.
 | `NUnit3TestAdapter` | NUnit's adapter and its own runner on the Testing Platform, which the unit testing tests write into the test projects they make: downloaded for the tests' package cache (tests/UnitTestGraphs); Passenger never carries it | MIT | Copyright (c) 2011-2021 Charlie Poole, 2014-2026 Terje Sandstrom |
 | `Serilog` | Serilog at the version the Solution view's evaluation tests pin in the project they make, downloaded for the tests' package cache; Passenger never carries it | Apache-2.0 | Copyright © 2013-24 Serilog Contributors |
 | `SQLite` | SQLite's native builds under EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | public domain (the package's LICENSE.txt: "SQLite is Public Domain", https://sqlite.org/copyright.html) | Copyright 2014-2026 SourceGear, LLC (the package's builds) |
-| `Npgsql.EntityFrameworkCore.PostgreSQL`, `Npgsql` | EF Core's PostgreSQL provider and the driver under it: the graph of the web app the Migrations window's compose run test writes, restored for the tests' local feed (tests/EfGraphs); Passenger never carries them | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
+| `Npgsql.EntityFrameworkCore.PostgreSQL` | EF Core's PostgreSQL provider: the graph of the web app the Migrations window's compose run test writes, restored for the tests' local feed (tests/EfGraphs); Passenger never carries it | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
 | `Polly.Extensions` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2024, App vNext |
 | `System.Drawing.Common` | Aspire hosting's dependency, restored for the tests' local feed | MIT | © Microsoft Corporation. All rights reserved. |
 | `QRCoder` | Aspire hosting's dependency, restored for the tests' local feed | MIT | Copyright © 2013-2025 Raffael Herrmann. Copyright © 2024-2025 Shane Krueger. All rights reserved. |
@@ -539,7 +544,8 @@ Authors, under the SIL Open Font License 1.1, whose full text is beside the font
 `src/Passenger.App/Theme/Icons.axaml` holds path data from Microsoft's Fluent UI System Icons
 (https://github.com/microsoft/fluentui-system-icons), written by `tools/icons.py`, which lists every
 icon used. A project's web root folder is drawn with Folder Globe, and its Properties folder with Folder
-Globe's folder and Calendar Settings' gear, put together by the script.
+Globe's folder and Calendar Settings' gear, put together by the script. The Database window uses Database,
+and the Migrations window uses Database Arrow Right, from the same pinned Fluent icon set.
 
 ```
 MIT License

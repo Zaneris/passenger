@@ -99,6 +99,7 @@ public partial class MainWindow : IdeWindow
         AddRequestMarks();
         AddRequests();
         AddMigrations();
+        AddDatabase();
         AddContainers();
         AddRunMarks();
         AddRunHere();
@@ -861,6 +862,7 @@ public partial class MainWindow : IdeWindow
             branches.Favorites = branchFavorites;
         }
         session.Keep(opening);
+        database?.Keep(opening.Database);
         WorkspaceState kept = opening.Workspace.Value;
         if (kept.UnloadedProjects.Count > 0)
         {
@@ -1109,7 +1111,7 @@ public partial class MainWindow : IdeWindow
     {
         string? named = Folder is not { } folder ? null : session.Workspace?.Name ?? Path.GetFileName(folder);
         OpenDocument? shown = Editors.ShownInMain;
-        Title = shown is null ? named ?? "Welcome to Passenger" : $"{(named is null ? "" : named + " – ")}{shown.Name}";
+        Title = shown is null ? named ?? "Welcome to Passenger" : $"{(named is null ? "" : named + " – ")}{shown.DatabaseTable?.Title ?? shown.Name}";
         FollowInDiscord();
     }
 
@@ -1117,6 +1119,7 @@ public partial class MainWindow : IdeWindow
     /// reports under way (its projects loading, and how far) whenever there is some.</summary>
     private string LanguageLabel()
     {
+        if (Editors.Active?.DatabaseTable is not null) { return "Database"; }
         // A diff's tab names no language of its own.
         string language = Editors.Active is { Diff: null } file ? file.Language.Name : string.Empty;
         if (Editors.Active is { Diff: null } active && Web.WebLanguages.LanguageOf(active.Path) is not null)

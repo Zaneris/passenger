@@ -132,8 +132,9 @@ ICONS = [
     ("Aspire", "Cube Tree", "20_regular"),
     # Attach to a service as it runs: the debugger plugged in, beside Detach's plug unplugged.
     ("Attach", "Plug Connected", "20_regular"),
-    # The Migrations window's stripe button: a database, whose migrations it lists and applies.
+    # The Database and Migrations windows: the database itself, and changes applied to it.
     ("Database", "Database", "20_regular"),
+    ("Migrations", "Database Arrow Right", "20_regular"),
     # A web project's web root (wwwroot) in the Explorer: the folder whose files are served on the web.
     ("WebRootFolder", "Folder Globe", "20_regular"),
     # A signed commit's mark in the Git log: a good signature, one unverified, a bad one and one expired.

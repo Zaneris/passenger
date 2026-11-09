@@ -9,6 +9,7 @@ type="expression"`), which `Passenger.Notices` writes into the app's notices und
 - `ISC.txt`: the same release's `text/ISC.txt`, for an npm package under web/ that states ISC and carries no licence
   file of its own (boolbase).
 - `BSD-3-Clause.txt`: the same release's `text/BSD-3-Clause.txt`, for Google.Protobuf.
+- `PostgreSQL.txt`: the same release's `text/PostgreSQL.txt`, for Npgsql in the Database window.
 - `MS-PL.txt`: the same release's `text/MS-PL.txt`, for Svg.Custom, the SVG model Svg.Skia draws from (the owner's
   choice for SVG files' pictures).
 

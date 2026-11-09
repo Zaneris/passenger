@@ -293,6 +293,7 @@ public partial class MainWindow
         BindErrorPins(next);
         BindEndpoints(next);
         BindMigrations(next);
+        BindDatabase(next);
         BindPackages(next);
         BindContainers(next);
         // The Explorer's filter shows the files the index has, so it follows them as they are walked, come and go.

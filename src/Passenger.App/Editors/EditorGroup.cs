@@ -399,7 +399,7 @@ public sealed class EditorGroup : DockPanel
     /// <summary>What shows in the editor's place for a tab that is no text to edit: a diff, an asset's preview, or release
     /// notes rendered.</summary>
     private Control PreviewOf(OpenDocument document) =>
-        document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
+        document.DatabaseTable is { } table ? table.Make() : document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
 
     /// <summary>The diff this group shows while it shows a diff's tab, else null.</summary>
     public Vcs.DiffView? Diff => preview as Vcs.DiffView;
@@ -414,13 +414,17 @@ public sealed class EditorGroup : DockPanel
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
-    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null;
+    private static bool InEditor(OpenDocument document) => document.DatabaseTable is null && document.Asset is null && !document.IsReleaseNotes && document.Diff is null;
 
     /// <summary>Gives the keys to what shows the file: a diff's file's side, its preview or rendered notes, which its keys
     /// move through, else the editor.</summary>
     public void FocusShown()
     {
-        if (preview is Vcs.DiffView diff)
+        if (active?.Document.DatabaseTable is not null && preview?.GetVisualDescendants().OfType<CellGrid>().FirstOrDefault() is { } cells)
+        {
+            cells.Focus();
+        }
+        else if (preview is Vcs.DiffView diff)
         {
             diff.Right.Focus();
         }
@@ -584,7 +588,7 @@ public sealed class EditorGroup : DockPanel
     private void ShowBanner(OpenDocument document)
     {
         // A diff's own bar says what it is.
-        string[] said = [.. new[] { document.IsReadOnly && document.Diff is null ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
+        string[] said = [.. new[] { document.IsReadOnly && document.Diff is null && document.DatabaseTable is null ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
         banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
         bannerLink.IsVisible = document.Notice is not null && document.NoticeAction is not null;
         bannerLink.Content = document.NoticeAction?.Text;
@@ -835,7 +839,7 @@ public sealed class EditorGroup : DockPanel
             name.Text = document.Title;
             icon.Data = document.Icon;
             icon.Foreground = document.IconBrush;
-            ToolTip.SetTip(border, document.Path);
+            ToolTip.SetTip(border, document.DatabaseTable?.Title ?? document.Path);
             modified.IsVisible = document.IsModified;
             border.Classes.Set(StyleClasses.Active, tab.IsActive);
             border.Classes.Set(StyleClasses.Elsewhere, !IsCurrent);

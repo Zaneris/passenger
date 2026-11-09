@@ -105,7 +105,7 @@ public partial class MainWindow
     {
         List<Crumb> wanted = wantedCrumbs;
         wanted.Clear();
-        if (Editors.Active is { } document)
+        if (Editors.Active is { DatabaseTable: null } document)
         {
             wanted.AddRange(FileCrumbs(document.Path));
             if (outlined == document.Path)

@@ -200,6 +200,7 @@ public sealed class ProjectState
         Commit = new(Path.Combine(Folder, "commit.json"));
         Godot = new(Path.Combine(Folder, "godot.json"));
         Endpoints = new(Path.Combine(Folder, "endpoints.json"));
+        Database = new(Path.Combine(Folder, "database.json"));
         Publish = new(Path.Combine(Folder, "publish.json"));
         ProjectModels = new(Path.Combine(Folder, "projectModels.json"));
         ProjectBuilds = new(Path.Combine(Folder, "projectBuilds.json"));
@@ -249,6 +250,8 @@ public sealed class ProjectState
     /// <summary>The environment variables and files outside the folder its .http requests may send, each to one host.</summary>
     public StateDocument<Passenger.App.Endpoints.EndpointsState> Endpoints { get; }
 
+    public StateDocument<Passenger.App.Database.DatabaseHistory> Database { get; }
+
     /// <summary>The publish profile each project last published with, which Publish Again publishes it with.</summary>
     public StateDocument<Run.PublishState> Publish { get; }
 
@@ -262,7 +265,7 @@ public sealed class ProjectState
     /// with no read of its own. Done at once for those read already.</summary>
     public Task ReadAsync() => Task.WhenAll(Workspace.ValueAsync(), Layout.ValueAsync(), Breakpoints.ValueAsync(), Bookmarks.ValueAsync(),
         RunConfigurations.ValueAsync(), Find.ValueAsync(), UnitTests.ValueAsync(), UnitTestResults.ValueAsync(), GitBranches.ValueAsync(), Commit.ValueAsync(),
-        Godot.ValueAsync(), Endpoints.ValueAsync(), Publish.ValueAsync());
+        Godot.ValueAsync(), Endpoints.ValueAsync(), Database.ValueAsync(), Publish.ValueAsync());
 
     public void Flush()
     {
@@ -280,6 +283,7 @@ public sealed class ProjectState
         Commit.Flush();
         Godot.Flush();
         Endpoints.Flush();
+        Database.Flush();
         Publish.Flush();
     }
 }
