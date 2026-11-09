@@ -284,6 +284,43 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's question taken away, the agent having given up on the call that waited on it: the question goes,
+    /// held by nothing the window keeps for the questions after it.</summary>
+    [AvaloniaFact]
+    public void An_agents_question_taken_away_is_let_go()
+    {
+        string unattended = Plain("mcp-question-gone-");
+        MainWindow window = new() { Width = 1200, Height = 800, AgentAnswerLimit = TimeSpan.FromMinutes(10), StartsLanguageServer = false };
+        window.Show();
+        window.OpenFolder(unattended);
+        Ui.Settle();
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Ui.Collected(AskedAndTakenAway(window, client), "the question taken away to be let go: held by the window, each question an agent "
+                + "raised would keep its dialog for the window's life");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
+    /// <summary>The window asked whether the agent may work there, then the agent giving up on its call: the question held only
+    /// weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private WeakReference<AgentAdmissionDialog> AskedAndTakenAway(MainWindow window, McpClient client)
+    {
+        using CancellationTokenSource giveUp = new();
+        Task<CallToolResult> givenUp = Waiting.Apart(() => CallGivingUp(client, McpTools.Workspace, new(), giveUp.Token));
+        WaitFor(() => window.OwnedWindows.OfType<AgentAdmissionDialog>().Any(d => d.IsVisible), "the window to ask whether the agent may work there");
+        WeakReference<AgentAdmissionDialog> asked = new(window.OwnedWindows.OfType<AgentAdmissionDialog>().Single(d => d.IsVisible));
+        giveUp.Cancel();
+        WaitFor(() => givenUp.IsCompleted && !window.OwnedWindows.OfType<AgentAdmissionDialog>().Any(), "the question to go once the agent gave up on its call");
+        return asked;
+    }
+
     /// <summary>Settings' MCP Server page gives each agent its setup for this copy of Passenger, as the person pastes it: the
     /// running program's own path in every command and configuration, Claude Desktop's with the window's folder after
     /// --mcp-attach, the configurations JSON and TOML that read, and each Copy putting its text on the clipboard whole.</summary>
