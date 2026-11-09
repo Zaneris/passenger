@@ -25,7 +25,7 @@ public sealed class FoldRegions
         All = all;
     }
 
-    /// <summary>Every region, in order of where it starts.</summary>
+    /// <summary>Every region, in order of where it starts, in the runs the window carries them in through its keys.</summary>
     public IReadOnlyList<FoldRegion> All { get; }
 
     /// <summary>The tree these are of, which the next parse is compared with.</summary>
@@ -64,7 +64,7 @@ public sealed class FoldRegions
         Made[] made = [.. owned];
         FoldRegion[] comments = [.. walk.Comments];
         // Regions starting together in this order: the file's header and usings, nodes, #regions, comments.
-        return new FoldRegions(root, made, comments, Merge([usings, new Unmade(made), [.. regions.OrderBy(r => r.Start)], comments]));
+        return new FoldRegions(root, made, comments, FoldList.Of(Merge([usings, new Unmade(made), [.. regions.OrderBy(r => r.Start)], comments])));
     }
 
     /// <summary>A pair of braces over several lines: from the end of the line before an opening brace on its own line,

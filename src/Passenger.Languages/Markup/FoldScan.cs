@@ -7,12 +7,16 @@ namespace Passenger.Languages.Markup;
 
 /// <summary>What folds in a file no parser reads (XML and the project files, JSON), found by one scan of its text off the
 /// UI thread, a chunk of the rope at a time with nothing copied: one scan at a time, the keys typed while one runs read
-/// by one more scan of the newest text. A scan of 20,000 lines takes a few milliseconds and allocates the list of the
-/// regions it finds.</summary>
+/// by one more scan of the newest text. A scan of 20,000 lines takes a few milliseconds and allocates the regions it
+/// finds, handed on once.</summary>
 public sealed class FoldScan : IFoldFinder, IDisposable
 {
     private readonly TextDocument document;
-    private readonly Func<TextSnapshot, int, List<FoldRegion>> find;
+    private readonly Action<TextSnapshot, List<FoldRegion>> find;
+
+    /// <summary>What each scan fills as it reads, scans following one another (<see cref="ScanAsync"/>), so a scan allocates
+    /// no list of its own.</summary>
+    private readonly List<FoldRegion> scratch = [];
     private int version;
     private bool scanning;
     private bool disposed;
@@ -20,7 +24,7 @@ public sealed class FoldScan : IFoldFinder, IDisposable
     private long scanTicks;
     private int scans;
 
-    private FoldScan(TextDocument document, Func<TextSnapshot, int, List<FoldRegion>> find)
+    private FoldScan(TextDocument document, Action<TextSnapshot, List<FoldRegion>> find)
     {
         this.document = document;
         this.find = find;
@@ -72,8 +76,7 @@ public sealed class FoldScan : IFoldFinder, IDisposable
             {
                 int scanned = version;
                 TextSnapshot text = document.Snapshot;
-                int count = Folds.Count;
-                IReadOnlyList<FoldRegion> found = await BackgroundWork.Run(() => Scan(text, count))
+                IReadOnlyList<FoldRegion> found = await BackgroundWork.Run(() => Scan(text))
                     .ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.ForceYielding);
                 if (disposed)
                 {
@@ -93,19 +96,21 @@ public sealed class FoldScan : IFoldFinder, IDisposable
         }
     }
 
-    /// <summary>The regions of a text, in a list made for as many as the text before had (and a few more), so a key typed
-    /// allocates the list once and copies it never.</summary>
-    private List<FoldRegion> Scan(TextSnapshot text, int count)
+    /// <summary>The regions of a text, found in the scans' own list and handed on in runs (<see cref="FoldList"/>) made here,
+    /// so the window's thread copies none of them as it carries them.</summary>
+    private FoldList Scan(TextSnapshot text)
     {
         long allocated = GC.GetAllocatedBytesForCurrentThread();
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        List<FoldRegion> regions = find(text, count + 16);
+        scratch.Clear();
+        find(text, scratch);
         // In order of where they start, the widest first of those starting on one line.
-        regions.Sort(static (a, b) => a.Start != b.Start ? a.Start.CompareTo(b.Start) : b.End.CompareTo(a.End));
+        scratch.Sort(static (a, b) => a.Start != b.Start ? a.Start.CompareTo(b.Start) : b.End.CompareTo(a.End));
+        FoldList found = FoldList.Of(scratch);
         Interlocked.Add(ref scanTicks, System.Diagnostics.Stopwatch.GetTimestamp() - started);
         Interlocked.Add(ref scanBytes, GC.GetAllocatedBytesForCurrentThread() - allocated);
         Interlocked.Increment(ref scans);
-        return regions;
+        return found;
     }
 
     /// <summary>Where a bracket or an element opened: its line, that line's end once the scan has read past it (where its
@@ -121,9 +126,9 @@ public sealed class FoldScan : IFoldFinder, IDisposable
 
     /// <summary>What every scan shares: the offset and line being read, and the ends of the lines things opened on,
     /// filled as the scan reads each line's break.</summary>
-    private abstract class Scanner(int capacity)
+    private abstract class Scanner(List<FoldRegion> found)
     {
-        protected readonly List<FoldRegion> found = new(capacity);
+        protected readonly List<FoldRegion> found = found;
         protected Opened[] stack = new Opened[32];
         protected int depth;
         protected int pos;
@@ -136,7 +141,7 @@ public sealed class FoldScan : IFoldFinder, IDisposable
         /// <summary>The line end of what is being read that opened on the line being read (a tag, a comment), once known.</summary>
         protected int markupLineEnd = -1;
 
-        public List<FoldRegion> Read(TextSnapshot text)
+        public void Read(TextSnapshot text)
         {
             text.VisitChunks(0, text.Length, chunk =>
             {
@@ -165,7 +170,6 @@ public sealed class FoldScan : IFoldFinder, IDisposable
                     i++;
                 }
             });
-            return found;
         }
 
         /// <summary>How many characters from the start of <paramref name="rest"/> mean nothing in the state the scan is in
@@ -227,7 +231,7 @@ public sealed class FoldScan : IFoldFinder, IDisposable
     {
         private readonly Dictionary<string, string> closers = new(StringComparer.Ordinal);
 
-        public List<FoldRegion> Find(TextSnapshot text, int capacity) => new XmlScanner(this, capacity).Read(text);
+        public void Find(TextSnapshot text, List<FoldRegion> found) => new XmlScanner(this, found).Read(text);
 
         /// <summary>The placeholder of an element named so: its end tag after the dots.</summary>
         private string Closer(ReadOnlySpan<char> name)
@@ -260,7 +264,7 @@ public sealed class FoldScan : IFoldFinder, IDisposable
             Instruction,
         }
 
-        private sealed class XmlScanner(XmlFolds owner, int capacity) : Scanner(capacity)
+        private sealed class XmlScanner(XmlFolds owner, List<FoldRegion> found) : Scanner(found)
         {
             private static readonly SearchValues<char> InText = SearchValues.Create("<\n");
             private static readonly SearchValues<char> InTag = SearchValues.Create("\"'>/\n");
@@ -481,7 +485,7 @@ public sealed class FoldScan : IFoldFinder, IDisposable
     /// over, and the comments JSON with comments allows (appsettings.json, tsconfig.json).</summary>
     private static class JsonFolds
     {
-        public static List<FoldRegion> Find(TextSnapshot text, int capacity) => new JsonScanner(capacity).Read(text);
+        public static void Find(TextSnapshot text, List<FoldRegion> found) => new JsonScanner(found).Read(text);
 
         private enum State
         {
@@ -494,7 +498,7 @@ public sealed class FoldScan : IFoldFinder, IDisposable
             BlockStar,
         }
 
-        private sealed class JsonScanner(int capacity) : Scanner(capacity)
+        private sealed class JsonScanner(List<FoldRegion> found) : Scanner(found)
         {
             private static readonly SearchValues<char> InValue = SearchValues.Create("\"/{}[]\n");
             private static readonly SearchValues<char> InString = SearchValues.Create("\"\\\n");

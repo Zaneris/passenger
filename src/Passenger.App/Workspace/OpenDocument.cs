@@ -1189,7 +1189,7 @@ public sealed class OpenDocument : Observable
         {
             return;
         }
-        HashSet<int>? folded = null;
+        List<int>? folded = null;
         IReadOnlyList<FoldRegion> regions = FoldRegions;
         for (int i = 0; i < regions.Count; i++)
         {
@@ -1198,19 +1198,7 @@ public sealed class OpenDocument : Observable
                 (folded ??= []).Add(regions[i].Start);
             }
         }
-        if (folded is null)
-        {
-            FoldRegions = found;
-        }
-        else
-        {
-            FoldRegion[] kept = new FoldRegion[found.Count];
-            for (int i = 0; i < kept.Length; i++)
-            {
-                kept[i] = found[i] with { Folded = folded.Contains(found[i].Start) };
-            }
-            FoldRegions = kept;
-        }
+        FoldRegions = folded is null ? found : FoldList.Of(found).FoldedAt(folded);
     }
 
     /// <summary>The first regions, folded as the file opens: as <see cref="FoldsAtFirst"/> says, but for one hiding a caret.</summary>

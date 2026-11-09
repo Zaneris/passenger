@@ -394,6 +394,104 @@ public sealed class FoldingTests : IDisposable
             $"A key allocated at least {folding / 1024:N0} KB on the UI thread above {regions} regions, {plain / 1024:N0} KB above {plainRegions}: {each} bytes for each region, which the window copied");
     }
 
+    /// <summary>An Enter that splits an element or a comment over two lines, making a region, and its Undo, taking it away,
+    /// copy none of the file's regions on the UI thread as the regions found anew land and the next key carries them: in a
+    /// project file of 8,000 regions, and in C# of 8,000 with its usings folded, the two cost a few bytes a region more than
+    /// among 2,000, the split near the top of both, so the rows around it are numbered alike.</summary>
+    [AvaloniaFact]
+    public void An_Enter_that_makes_a_region_and_its_Undo_copy_none_of_the_files_regions_on_the_UI_thread()
+    {
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700, languageServer: false);
+        foreach ((string name, Func<int, string> text) in new (string, Func<int, string>)[] { ("Items.props", Items), ("Members.cs", Members) })
+        {
+            (long fewBytes, int fewRegions) = RegionMade(window, "Few" + name, text(2000));
+            (long manyBytes, int manyRegions) = RegionMade(window, "Many" + name, text(8000));
+            long each = (manyBytes - fewBytes) / (manyRegions - fewRegions);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"{name}: an Enter making a region and its Undo allocated {fewBytes / 1024:N0} KB on the UI thread among {fewRegions:N0} regions, {manyBytes / 1024:N0} KB among {manyRegions:N0}: {each} bytes a region");
+            Assert.True(each < 12,
+                $"In {name}, an Enter making a region and its Undo allocated {manyBytes / 1024:N0} KB on the UI thread among {manyRegions:N0} regions, {fewBytes / 1024:N0} KB among {fewRegions:N0}: {each} bytes for each region, which the window copied");
+        }
+        window.Close();
+
+        // A project file's item groups, one region each, the hundredth's None on one line.
+        static string Items(int groups)
+        {
+            StringBuilder xml = new("<Project Sdk=\"Microsoft.NET.Sdk\">\n");
+            for (int i = 0; i < groups; i++)
+            {
+                xml.Append(System.Globalization.CultureInfo.InvariantCulture,
+                    $"  <ItemGroup Label=\"Group {i}\">\n    <Compile Include=\"File{i}.cs\" />\n    <None Update=\"{(i == 100 ? "Split" : "Notes")}{i}.json\"><CopyToOutputDirectory>Always</CopyToOutputDirectory></None>\n  </ItemGroup>\n");
+            }
+            return xml.Append("</Project>\n").ToString();
+        }
+
+        // A class of methods, a region each, under two usings, the hundredth's comment on one line.
+        static string Members(int members)
+        {
+            StringBuilder code = new("using System;\nusing System.Collections.Generic;\n\nclass Many\n{\n");
+            for (int i = 0; i < members; i++)
+            {
+                code.Append(System.Globalization.CultureInfo.InvariantCulture,
+                    $"    int Member{i}()\n    {{\n        return {i}; /* {(i == 100 ? "Split" : "the")} member */\n    }}\n\n");
+            }
+            return code.Append("}\n").ToString();
+        }
+    }
+
+    /// <summary>What an Enter allocates on the UI thread, the middle of five, splitting the line after "Split" and making a
+    /// region, with the regions found again landing, and what its Undo allocates, taking the region away, the caret's blinks
+    /// in the waits set aside; and the regions.</summary>
+    private (long Bytes, int Regions) RegionMade(MainWindow window, string name, string source)
+    {
+        string path = Path.Combine(folder, name);
+        File.WriteAllText(path, source);
+        window.OpenFile(path);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.FoldsFound, $"{name}'s regions");
+        int regions = document.FoldRegions.Count;
+        bool csharp = name.EndsWith(".cs", StringComparison.Ordinal);
+        Assert.True(!csharp || document.FoldRegions.Any(r => r.Folded && r.Kind == FoldKind.Imports), $"{name} opened with its usings open");
+        int split = source.IndexOf("Split", StringComparison.Ordinal);
+        editor.Selections = SelectionSet.Single(source.IndexOf(csharp ? " member" : "<Copy", split, StringComparison.Ordinal));
+        editor.Focus();
+        Ui.Settle();
+        string undo = Ui.Shortcut(EditorActions.Undo);
+        long blink = Ui.BlinkBytes(editor);
+        List<long> enters = [];
+        List<long> undos = [];
+        // What a key and the wait for its regions allocate, less the caret's blinks a slow wait outlasts.
+        long Pressed(string keys)
+        {
+            GC.Collect();
+            long blinks = editor.Blinks;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Ui.Press(window, keys);
+            return GC.GetAllocatedBytesForCurrentThread() - before - ((editor.Blinks - blinks) * blink);
+        }
+        // The first round's Enter carries the regions as the file opened, the rest those an Undo's regions left.
+        for (int i = 0; i < 6; i++)
+        {
+            long entered = Pressed("ENTER");
+            Assert.True(document.FoldRegions.Count == regions + 1, $"An Enter after Split in {name} left {document.FoldRegions.Count} regions, not {regions + 1}");
+            long undone = Pressed(undo);
+            Assert.True(document.FoldRegions.Count == regions, $"Undo of an Enter in {name} left {document.FoldRegions.Count} regions, not {regions}");
+            if (i > 0)
+            {
+                enters.Add(entered);
+                undos.Add(undone);
+            }
+        }
+        Assert.Equal(source, document.Text.Snapshot.ToString());
+        window.EditorArea.Close(document);
+        Ui.Settle();
+        enters.Sort();
+        undos.Sort();
+        return (enters[enters.Count / 2] + undos[undos.Count / 2], regions);
+    }
+
     /// <summary>The least of twenty keys typed in a method at the top of a file allocates on the UI thread, its parse landing
     /// included, with 2,000 members below under doc comments or plain ones, the last folded; and the file's regions. What
     /// else lands in a key's wait goes into some keys alone (the caret's blink draws the editor again, 28 KB, in a wait past

@@ -86,6 +86,47 @@ public sealed class FoldList : IReadOnlyList<FoldRegion>
         return new FoldList(moved, Count);
     }
 
+    /// <summary>These regions with those starting at one of <paramref name="starts"/> (in order) folded and the rest open:
+    /// only the runs where that changes a region are made again, the rest shared.</summary>
+    public FoldList FoldedAt(IReadOnlyList<int> starts)
+    {
+        Run[]? made = null;
+        int next = 0;
+        for (int k = 0; k < runs.Length; k++)
+        {
+            Run run = runs[k];
+            int first = run.At(0).Start;
+            while (next < starts.Count && starts[next] < first)
+            {
+                next++;
+            }
+            if (!run.AnyFolded && (next == starts.Count || starts[next] > run.At(run.Regions.Count - 1).Start))
+            {
+                continue;
+            }
+            FoldRegion[] regions = new FoldRegion[run.Regions.Count];
+            bool changed = false;
+            int at = next;
+            for (int i = 0; i < regions.Length; i++)
+            {
+                FoldRegion region = run.At(i);
+                while (at < starts.Count && starts[at] < region.Start)
+                {
+                    at++;
+                }
+                bool folded = at < starts.Count && starts[at] == region.Start;
+                changed |= folded != region.Folded;
+                regions[i] = region with { Folded = folded };
+            }
+            if (changed)
+            {
+                made ??= (Run[])runs.Clone();
+                made[k] = Run.Of(regions);
+            }
+        }
+        return made is null ? this : new FoldList(made, Count);
+    }
+
     /// <summary>The first folded region at or after an index, or <see cref="Count"/>: runs with none folded are passed over
     /// whole.</summary>
     public int NextFolded(int index)
