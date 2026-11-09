@@ -68,6 +68,46 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         first.Close();
     }
 
+    /// <summary>A folder opened over another in its window: every session the window had before it (the empty one it began
+    /// with, the first folder's) goes, held by nothing the window keeps for the sessions after them.</summary>
+    [AvaloniaFact]
+    public void A_folder_opened_over_another_in_its_window_lets_go_of_the_sessions_before_it()
+    {
+        File.WriteAllText(Path.Combine(alpha, "One.cs"), "class One { }\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        try
+        {
+            WeakReference<ProjectSession>[] before = OpenedOver(window, alpha, beta);
+            for (int i = 0; i < before.Length; i++)
+            {
+                Ui.Collected(before[i], $"session {i + 1} of the {before.Length} the window had before another folder opened in it to be let go: "
+                    + "held by a handler the window keeps, each folder opened would keep the last one's workspace, Git, index and services for good");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The window started on a folder with a file open, then another folder opened over it in This Window: the
+    /// sessions it had before, held only weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference<ProjectSession>[] OpenedOver(MainWindow window, string first, string then)
+    {
+        WeakReference<ProjectSession> empty = new(window.Session);
+        window.Show();
+        window.Start(LaunchOptions.Empty with { Folder = first });
+        Ui.Settle();
+        window.OpenFile(Path.Combine(first, "One.cs"));
+        Ui.Settle();
+        WeakReference<ProjectSession> opened = new(window.Session);
+        Assert.Null(window.Open(then));
+        Ui.ClickButton(Asked(window), OpenProjectDialog.ThisWindow);
+        Ui.WaitFor(() => window.Folder == PathNames.Canonical(then), $"{then} to open in the window over {first}");
+        return [empty, opened];
+    }
+
     [AvaloniaFact]
     public void Open_asks_This_Window_or_New_Window_and_Dont_ask_again_makes_the_answer_the_setting_every_window_follows()
     {

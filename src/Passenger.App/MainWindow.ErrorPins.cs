@@ -42,11 +42,17 @@ public partial class MainWindow
             next.ErrorPins.Attach(document.Path, document.Text);
             document.ErrorPins = PinsOf(next, document.Path);
         }
-        if (pinsWired)
+        if (!pinsWired)
         {
-            return;
+            pinsWired = true;
+            WirePins();
         }
-        pinsWired = true;
+    }
+
+    /// <summary>The open files' pins follow whichever session is the window's: wired once, in a method of its own, so the
+    /// handlers it leaves on the window's editors hold no session.</summary>
+    private void WirePins()
+    {
         Editors.Opened += (_, document) =>
         {
             session.ErrorPins.Attach(document.Path, document.Text);
