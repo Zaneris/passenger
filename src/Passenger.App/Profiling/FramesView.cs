@@ -1,11 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Styling;
-using Passenger.Editor;
 using Passenger.Profiler;
 using Passenger.Core;
 
@@ -54,43 +50,19 @@ public sealed class FramesView : DockPanel
     {
         chart = new FrameChart();
         chart.Chosen += (_, _) => Fill();
-        ScrollViewer strip = new()
-        {
-            Content = chart,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-        };
-        StackPanel legend = new() { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(12, 2, 12, 0) };
-        foreach ((string label, string brush) in new[] { ("Measure", TokenKeys.Graph_0), ("Arrange", TokenKeys.Graph_1), ("Render", TokenKeys.Graph_2), ("Other UI work", TokenKeys.TextMuted), ("Compositor", TokenKeys.Graph_3) })
-        {
-            Border swatch = new() { Width = 9, Height = 9, VerticalAlignment = VerticalAlignment.Center, Opacity = brush == TokenKeys.TextMuted ? 0.35 : 1 };
-            swatch.Bind(Border.BackgroundProperty, swatch.GetResourceObservable(brush));
-            legend.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { swatch, Muted(label) } });
-        }
-        summary = Muted(string.Empty);
+        ScrollViewer strip = FramesTable.Strip(chart);
+        StackPanel legend = FramesTable.Legend([("Measure", TokenKeys.Graph_0), ("Arrange", TokenKeys.Graph_1), ("Render", TokenKeys.Graph_2), ("Other UI work", TokenKeys.TextMuted),
+            ("Compositor", TokenKeys.Graph_3)]);
+        summary = FramesTable.Muted(string.Empty);
         summary.Margin = new Thickness(12, 6, 12, 6);
         summary.TextWrapping = TextWrapping.Wrap;
         ColumnTitles titles = ColumnTitles.OfNumbers(("Control", 0), ("Own time", NumberWidth), ("Measures", NumberWidth), ("Measure time", NumberWidth),
             ("Arranges", NumberWidth), ("Arrange time", NumberWidth + 16));
-        table = new ListBox
-        {
-            Classes = { StyleClasses.Tree },
-            ItemsSource = rows,
-        };
-        ReusedRows.Use(table, () => RowOf(titles));
-        table.Styles.Add(new Style(x => x.OfType<ListBoxItem>())
-        {
-            Setters = { new Setter(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch) },
-        });
+        table = FramesTable.Table(rows, () => RowOf(titles));
         table.DoubleTapped += (_, _) => Open();
         TreeKeys.Attach<LayoutRow>(table, Toggle, OpenControl);
         shown = new BandOverTable(new StackPanel { Children = { legend, strip, summary } }, titles, table);
-        placeholder = Muted(NoFrames);
-        placeholder.HorizontalAlignment = HorizontalAlignment.Center;
-        placeholder.VerticalAlignment = VerticalAlignment.Center;
-        placeholder.TextWrapping = TextWrapping.Wrap;
-        placeholder.MaxWidth = 560;
-        placeholder.TextAlignment = TextAlignment.Center;
+        placeholder = FramesTable.Placeholder(NoFrames);
         Children.Add(new Panel { Children = { shown, placeholder } });
         Show([], 0);
     }
@@ -226,20 +198,9 @@ public sealed class FramesView : DockPanel
     /// time and counts in their columns.</summary>
     private Control RowOf(ColumnTitles titles)
     {
-        RowIcon chevron = RowIcon.Chevron();
-        Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        StackPanel named = new() { Orientation = Orientation.Horizontal, Children = { toggle, name } };
-        TextBlock[] numbers = [Number(), Number(), Number(), Number(), Number()];
+        (StackPanel named, RowIcon chevron, TextBlock name) = FramesTable.Named<LayoutRow>(Toggle);
+        TextBlock[] numbers = [FramesTable.Number(), FramesTable.Number(), FramesTable.Number(), FramesTable.Number(), FramesTable.Number()];
         Grid row = titles.Row([named, .. numbers]);
-        toggle.PointerPressed += (_, e) =>
-        {
-            if (row.DataContext is LayoutRow shown)
-            {
-                Toggle(shown);
-                e.Handled = true;
-            }
-        };
         return row.Showing<LayoutRow>(shown =>
         {
             chevron.IsVisible = shown.Cost.Controls.Count > 0;
@@ -251,28 +212,11 @@ public sealed class FramesView : DockPanel
                 : Plural.Of(shown.Cost.Controls.Count, "control"));
             named.Margin = new Thickness(shown.Depth * 14, 0, 0, 0);
             LayoutWork work = shown.Cost.Work;
-            Put(numbers[0], $"{work.SelfMs:N1} ms");
-            Put(numbers[1], $"{work.Measures:N0}");
-            Put(numbers[2], $"{work.MeasureMs:N1} ms");
-            Put(numbers[3], $"{work.Arranges:N0}");
-            Put(numbers[4], $"{work.ArrangeMs:N1} ms");
+            FramesTable.Put(numbers[0], $"{work.SelfMs:N1} ms");
+            FramesTable.Put(numbers[1], $"{work.Measures:N0}");
+            FramesTable.Put(numbers[2], $"{work.MeasureMs:N1} ms");
+            FramesTable.Put(numbers[3], $"{work.Arranges:N0}");
+            FramesTable.Put(numbers[4], $"{work.ArrangeMs:N1} ms");
         });
-    }
-
-    private static TextBlock Number() =>
-        new TextBlock { FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
-
-    /// <summary>A number in its cell, muted where it is nothing.</summary>
-    private static void Put(TextBlock cell, string text)
-    {
-        cell.Text = text;
-        cell.Classes.Set(StyleClasses.Muted, text is "0" or "0.0 ms");
-    }
-
-    private static TextBlock Muted(string text)
-    {
-        TextBlock block = MutedText.Of(text);
-        block.FontSize = 12;
-        return block;
     }
 }

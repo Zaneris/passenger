@@ -1,11 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Styling;
 using Passenger.Core;
-using Passenger.Editor;
 using Passenger.Profiler;
 
 namespace Passenger.App.Profiling;
@@ -80,23 +77,12 @@ public sealed class GameFramesView : DockPanel
     {
         chart = new FrameChart();
         chart.Chosen += (_, _) => Fill();
-        ScrollViewer strip = new()
-        {
-            Content = chart,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-        };
-        StackPanel legend = new() { [DockProperty] = Dock.Left, Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(12, 2, 12, 0) };
-        foreach ((string label, string brush) in new[] { ("Physics", TokenKeys.Graph_1), ("GDScript", TokenKeys.Graph_0), ("C# (sampled)", TokenKeys.Graph_2), ("Godot", TokenKeys.TextMuted) })
-        {
-            Border swatch = new() { Width = 9, Height = 9, VerticalAlignment = VerticalAlignment.Center, Opacity = brush == TokenKeys.TextMuted ? 0.35 : 1 };
-            swatch.Bind(Border.BackgroundProperty, swatch.GetResourceObservable(brush));
-            legend.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { swatch, Muted(label) } });
-        }
-        summary = Muted(string.Empty);
+        ScrollViewer strip = FramesTable.Strip(chart);
+        StackPanel legend = FramesTable.Legend([("Physics", TokenKeys.Graph_1), ("GDScript", TokenKeys.Graph_0), ("C# (sampled)", TokenKeys.Graph_2), ("Godot", TokenKeys.TextMuted)]);
+        summary = FramesTable.Muted(string.Empty);
         summary.Margin = new Thickness(12, 6, 12, 2);
         summary.TextWrapping = TextWrapping.Wrap;
-        TextBlock joining = Muted(Joining);
+        TextBlock joining = FramesTable.Muted(Joining);
         joining.Margin = new Thickness(12, 0, 12, 6);
         joining.TextWrapping = TextWrapping.Wrap;
         // On the legend's line, so the table under the band keeps its room in a short panel.
@@ -111,25 +97,11 @@ public sealed class GameFramesView : DockPanel
         };
         ColumnTitles titles = ColumnTitles.OfNumbers(("Function", 0), ("Own time", NumberWidth), ("Time in all", NumberWidth), ("Calls", NumberWidth),
             ("In Godot's API", NumberWidth + 16));
-        table = new ListBox
-        {
-            Classes = { StyleClasses.Tree },
-            ItemsSource = rows,
-        };
-        ReusedRows.Use(table, () => RowOf(titles));
-        table.Styles.Add(new Style(x => x.OfType<ListBoxItem>())
-        {
-            Setters = { new Setter(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch) },
-        });
+        table = FramesTable.Table(rows, () => RowOf(titles));
         table.DoubleTapped += (_, _) => Open();
         TreeKeys.Attach<GameRow>(table, Toggle, OpenRow);
         shown = new BandOverTable(new StackPanel { Children = { new DockPanel { Children = { legend, frameLink } }, strip, summary, joining } }, titles, table);
-        placeholder = Muted(NoFrames);
-        placeholder.HorizontalAlignment = HorizontalAlignment.Center;
-        placeholder.VerticalAlignment = VerticalAlignment.Center;
-        placeholder.TextWrapping = TextWrapping.Wrap;
-        placeholder.MaxWidth = 560;
-        placeholder.TextAlignment = TextAlignment.Center;
+        placeholder = FramesTable.Placeholder(NoFrames);
         Children.Add(new Panel { Children = { shown, placeholder } });
     }
 
@@ -334,24 +306,13 @@ public sealed class GameFramesView : DockPanel
     /// and calls in their columns.</summary>
     private Control RowOf(ColumnTitles titles)
     {
-        RowIcon chevron = RowIcon.Chevron();
-        Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        TextBlock place = Muted(string.Empty);
+        TextBlock place = FramesTable.Muted(string.Empty);
         place.VerticalAlignment = VerticalAlignment.Center;
         place.Margin = new Thickness(8, 0, 0, 0);
         place.TextTrimming = TextTrimming.CharacterEllipsis;
-        StackPanel named = new() { Orientation = Orientation.Horizontal, Children = { toggle, name, place } };
-        TextBlock[] numbers = [Number(), Number(), Number(), Number()];
+        (StackPanel named, RowIcon chevron, TextBlock name) = FramesTable.Named<GameRow>(Toggle, place);
+        TextBlock[] numbers = [FramesTable.Number(), FramesTable.Number(), FramesTable.Number(), FramesTable.Number()];
         Grid row = titles.Row([named, .. numbers]);
-        toggle.PointerPressed += (_, e) =>
-        {
-            if (row.DataContext is GameRow shown)
-            {
-                Toggle(shown);
-                e.Handled = true;
-            }
-        };
         return row.Showing<GameRow>(shown =>
         {
             chevron.IsVisible = shown.Children.Count > 0;
@@ -360,27 +321,10 @@ public sealed class GameFramesView : DockPanel
             name.FontWeight = shown.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
             place.Text = shown.Place ?? string.Empty;
             named.Margin = new Thickness(shown.Depth * 14, 0, 0, 0);
-            Put(numbers[0], shown.Own is { } own ? $"{own:N1} ms" : string.Empty);
-            Put(numbers[1], shown.All is { } all ? $"{all:N1} ms" : string.Empty);
-            Put(numbers[2], shown.Calls is { } calls ? $"{calls:N0}" : string.Empty);
-            Put(numbers[3], shown.Engine is { } engine ? $"{engine:N1} ms" : string.Empty);
+            FramesTable.Put(numbers[0], shown.Own is { } own ? $"{own:N1} ms" : string.Empty);
+            FramesTable.Put(numbers[1], shown.All is { } all ? $"{all:N1} ms" : string.Empty);
+            FramesTable.Put(numbers[2], shown.Calls is { } calls ? $"{calls:N0}" : string.Empty);
+            FramesTable.Put(numbers[3], shown.Engine is { } engine ? $"{engine:N1} ms" : string.Empty);
         });
-    }
-
-    private static TextBlock Number() =>
-        new TextBlock { FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
-
-    /// <summary>A number in its cell, muted where it is nothing.</summary>
-    private static void Put(TextBlock cell, string text)
-    {
-        cell.Text = text;
-        cell.Classes.Set(StyleClasses.Muted, text is "0" or "0.0 ms");
-    }
-
-    private static TextBlock Muted(string text)
-    {
-        TextBlock block = MutedText.Of(text);
-        block.FontSize = 12;
-        return block;
     }
 }
