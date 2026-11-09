@@ -79,25 +79,42 @@ internal sealed class ChildText : TextReader, IValueTaskSource<int>
 
     public override Task<int> ReadAsync(char[] buffer, int index, int count) => ReadAsync(buffer.AsMemory(index, count)).AsTask();
 
-    /// <summary>A line as StreamReader reads one, its end ("\n", "\r\n" or "\r") left off; null at the text's end.</summary>
-    public override async ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
+    /// <summary>A line as StreamReader reads one, its end ("\n", "\r\n" or "\r") left off; null at the text's end. A line
+    /// within what was decoded is made a string from where it lies, at once; only one cut by a read is gathered first.</summary>
+    public override ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
     {
-        StringBuilder line = new();
-        bool any = false;
+        ReadOnlySpan<char> left = chars.AsSpan(next, end - next);
+        int at = left.IndexOfAny('\r', '\n');
+        // A '\r' the decoded characters end with may have its '\n' still to come.
+        if (at < 0 || at + 1 == left.Length && left[at] == '\r')
+        {
+            return GatheredLineAsync(cancellationToken);
+        }
+        string line = new(left[..at]);
+        next += left[at] == '\r' && left[at + 1] == '\n' ? at + 2 : at + 1;
+        return new ValueTask<string?>(line);
+    }
+
+    private async ValueTask<string?> GatheredLineAsync(CancellationToken cancellationToken)
+    {
+        StringBuilder? cut = null;
         while (await FilledAsync(cancellationToken).ConfigureAwait(false))
         {
-            any = true;
-            if (TakeLine(line) is not { } ending)
+            int from = next;
+            if (TakeLine() is not { } ending)
             {
+                (cut ??= new StringBuilder()).Append(chars, from, next - from);
                 continue;
             }
+            int length = next - 1 - from;
+            string line = cut is null ? new string(chars, from, length) : cut.Append(chars, from, length).ToString();
             if (ending == '\r' && await FilledAsync(cancellationToken).ConfigureAwait(false) && chars[next] == '\n')
             {
                 next++;
             }
-            return line.ToString();
+            return line;
         }
-        return any ? line.ToString() : null;
+        return cut?.ToString();
     }
 
     public override Task<string?> ReadLineAsync() => ReadLineAsync(CancellationToken.None).AsTask();
@@ -178,8 +195,11 @@ internal sealed class ChildText : TextReader, IValueTaskSource<int>
         return true;
     }
 
-    /// <summary>Whether there are characters to read, the stream read until there are or the text has ended.</summary>
-    private async ValueTask<bool> FilledAsync(CancellationToken cancellation)
+    /// <summary>Whether there are characters to read, the stream read until there are or the text has ended; at once, with
+    /// no read, where there are.</summary>
+    private ValueTask<bool> FilledAsync(CancellationToken cancellation) => next < end ? new ValueTask<bool>(true) : FillAsync(cancellation);
+
+    private async ValueTask<bool> FillAsync(CancellationToken cancellation)
     {
         while (next == end && !ended)
         {
@@ -197,13 +217,12 @@ internal sealed class ChildText : TextReader, IValueTaskSource<int>
         return next < end;
     }
 
-    /// <summary>The characters to read up to a line's end taken into <paramref name="line"/>, the end passed and given; null
-    /// where none came before the characters ran out, all of them taken.</summary>
-    private char? TakeLine(StringBuilder line)
+    /// <summary>The characters to read up to a line's end passed, the end too, and the end given; null where none came before
+    /// the characters ran out, all of them passed.</summary>
+    private char? TakeLine()
     {
         ReadOnlySpan<char> left = chars.AsSpan(next, end - next);
         int at = left.IndexOfAny('\r', '\n');
-        line.Append(at < 0 ? left : left[..at]);
         next += at < 0 ? left.Length : at + 1;
         return at < 0 ? null : left[at];
     }

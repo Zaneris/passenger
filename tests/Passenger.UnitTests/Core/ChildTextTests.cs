@@ -14,6 +14,7 @@ public class ChildTextTests
     public static TheoryData<string, byte[]> Texts => new()
     {
         { "ASCII with its line ends", "one\r\ntwo\nthree\r"u8.ToArray() },
+        { "empty lines between ends of each kind", "a\r\r\n\n\rb\n\r\r"u8.ToArray() },
         { "UTF-8 of one to four bytes a character", Encoding.UTF8.GetBytes("café 漢字 \U0001F600 €") },
         { "UTF-8 after its mark", [0xEF, 0xBB, 0xBF, .. "mark"u8] },
         { "UTF-16 after its little-endian mark", [0xFF, 0xFE, .. Encoding.Unicode.GetBytes("hé 漢")] },
@@ -66,6 +67,27 @@ public class ChildTextTests
         }
         using ChildText single = new(new ChunkedStream(bytes, _ => 1), Utf8);
         Assert.Equal(expected, await LinesAsync(single, cancel));
+    }
+
+    /// <summary>A line whose end came in the same read costs its string alone: a child that writes thousands of lines (a
+    /// build, a test run) costs its reader no more than those lines.</summary>
+    [Fact]
+    public async Task A_line_read_whole_costs_its_string_alone()
+    {
+        const int Count = 2_000;
+        byte[] bytes = Encoding.ASCII.GetBytes(string.Concat(Enumerable.Range(0, Count).Select(i => $"Line {i:D5} of a child's output, as a build or a test runner writes it.\r\n")));
+        using ChildText reader = new(new MemoryStream(bytes), Utf8);
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        Assert.NotNull(await reader.ReadLineAsync(cancel));
+        int length = 0;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 1; i < Count; i++)
+        {
+            length = (await reader.ReadLineAsync(cancel))!.Length;
+        }
+        long each = (GC.GetAllocatedBytesForCurrentThread() - before) / (Count - 1);
+        int line = 22 + 2 * length;
+        Assert.True(each <= line + 48, $"A line of {length} characters cost {each:N0} bytes to read, past its {line:N0}-byte string: a child's every line costs its reader that again");
     }
 
     /// <summary>A line waits for its end, which its stream's read brings, and a wait whose read is cancelled is cancelled.</summary>
