@@ -206,9 +206,9 @@ public sealed class MarkdownPreviewTests
 
     /// <summary>A '\r' standing alone in a Markdown file with '\n' line ends (one pasted in from an old Mac file) ends a line
     /// for the preview and not for the document: the headings after it are still in Structure, nested by level, beside the
-    /// preview, where reading the outline failed on them.</summary>
+    /// preview, and each goes to its own line in the editor, as the document counts its lines.</summary>
     [AvaloniaFact]
-    public void Headings_after_a_carriage_return_standing_alone_are_in_Structure()
+    public void Headings_after_a_carriage_return_standing_alone_are_in_Structure_and_go_to_their_lines()
     {
         string folder = TestFolders.Create("markdown-return-");
         File.WriteAllText(Path.Combine(folder, "NOTES.md"), "# One\rwritten on an old Mac\n\n## Two\n\nWords.\n\n# Three\n");
@@ -221,6 +221,15 @@ public sealed class MarkdownPreviewTests
             () => $"the headings in Structure: {string.Join(", ", structure.Rows.Select(r => r.Name))} ({structure.Said})");
         Assert.Equal([("One", 0), ("Two", 1), ("Three", 0)], structure.Rows.Select(r => (r.Name, r.Depth)));
         Assert.True(Shown(window.EditorArea.ActiveGroup).GetLogicalDescendants().OfType<MarkdownText>().Any(t => t.Shown == "Three"), "The preview does not show the last heading");
+
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        ListBox list = structure.GetVisualDescendants().OfType<ListBox>().First();
+        foreach ((string name, string written) in (ReadOnlySpan<(string, string)>)[("Three", "# Three"), ("Two", "## Two")])
+        {
+            Ui.Click(Ui.Row(list, structure.Rows.First(r => r.Name == name)));
+            Ui.WaitFor(() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line) == written,
+                () => $"the row of {name} to go to its line, not to line {editor.CaretPosition.Line}, '{editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}'");
+        }
         window.Close();
     }
 

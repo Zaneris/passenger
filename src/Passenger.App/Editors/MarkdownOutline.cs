@@ -22,20 +22,23 @@ internal sealed class MarkdownOutline(TextDocument document) : FileOutline
     {
         List<Part> roots = [];
         Stack<Part> open = [];
-        foreach (Markdown.Placed placed in (of is null ? Markdown.ParsePlaced(text, null) : Markdown.ReadOf(of, text)).Placed)
+        Markdown.Parsed read = of is null ? Markdown.ParsePlaced(text, null) : Markdown.ReadOf(of, text);
+        foreach (Markdown.Placed placed in read.Placed)
         {
-            if (placed.Block is not Markdown.Heading heading || Words.GetValue(heading, static read => Markdown.Plain(Markdown.Inlines(read.Text)).Trim()) is not { Length: > 0 } words)
+            if (placed.Block is not Markdown.Heading heading || Words.GetValue(heading, static said => Markdown.Plain(Markdown.Inlines(said.Text)).Trim()) is not { Length: > 0 } words)
             {
                 continue;
             }
-            while (open.TryPeek(out Part? above) && above.Level >= heading.Level)
-            {
-                open.Pop().Last = placed.Line - 1;
-            }
-            // A heading is its one line, as the preview read it, which a '\r' of its own may end before the document's does.
+            // Its line as read may begin after a '\r' standing alone, inside a line of the document's.
             string line = placed.Source;
             int column = line.Length - line.TrimStart(' ').TrimStart('#').TrimStart(' ').Length;
-            Part part = new(heading.Level, new SymbolRow(words, null, null, SymbolRow.HeadingKind, path, new TextPosition(placed.Line, column)), placed.Line);
+            TextPosition at = text.GetPosition(read.Text.Start(placed.Line) + column);
+            while (open.TryPeek(out Part? above) && above.Level >= heading.Level)
+            {
+                Part ended = open.Pop();
+                ended.Last = Math.Max(ended.First, at.Line - 1);
+            }
+            Part part = new(heading.Level, new SymbolRow(words, null, null, SymbolRow.HeadingKind, path, at), at.Line);
             (open.TryPeek(out Part? parent) ? parent.Children : roots).Add(part);
             open.Push(part);
         }
