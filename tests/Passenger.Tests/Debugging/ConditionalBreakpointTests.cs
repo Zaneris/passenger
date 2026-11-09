@@ -77,7 +77,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
             new SetDataBreakpointsArguments([new DapDataBreakpoint("data:1", "write", Condition: Lambda)]));
         foreach ((string kind, DapBreakpoint refused) in new[] { ("function", Assert.Single(functions.Breakpoints)), ("data", Assert.Single(data.Breakpoints)) })
         {
-            Assert.True(!refused.Verified && refused.Reason == "failed", $"The {kind} breakpoint's lambda condition was taken, to fail at every hit: {refused.Message}");
+            Assert.True(!refused.Verified && refused.Reason == BreakpointReasons.Failed, $"The {kind} breakpoint's lambda condition was taken, to fail at every hit: {refused.Message}");
             Assert.Equal("Lambda expressions are not supported in breakpoint conditions.", refused.Message);
         }
 
@@ -328,7 +328,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
                 [new DapSourceBreakpoint(AfterCount, HitCondition: hitCondition), new DapSourceBreakpoint(CountUp)]);
             DapBreakpoint refused = response.Breakpoints[0];
             Assert.False(refused.Verified, $"The hit count \"{hitCondition}\" was taken");
-            Assert.Equal("failed", refused.Reason);
+            Assert.Equal(BreakpointReasons.Failed, refused.Reason);
             Assert.Contains($"The hit count \"{hitCondition}\" is not one the debugger can read", refused.Message, StringComparison.Ordinal);
             Assert.True(response.Breakpoints[1].Verified, $"the breakpoint beside the hit count \"{hitCondition}\" binds");
         }

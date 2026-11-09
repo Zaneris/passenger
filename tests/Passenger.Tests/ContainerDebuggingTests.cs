@@ -346,7 +346,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     private static string Evaluate(DebugSession session, string expression)
     {
         IReadOnlyList<Passenger.Dap.DapStackFrame> frames = Ui.Await(session.StackTraceAsync(session.StoppedThread ?? 0), "the stop's frames");
-        return Ui.Await(session.EvaluateAsync(expression, frames[0].Id, "watch"), $"{expression} to be evaluated").Result;
+        return Ui.Await(session.EvaluateAsync(expression, frames[0].Id, Dap.EvaluateContexts.Watch), $"{expression} to be evaluated").Result;
     }
 
     /// <summary>The program the tests debug, built here in Debug for .NET 10 four ways (as it is, naming the container's

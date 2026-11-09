@@ -50,7 +50,7 @@ public sealed class GodotScriptQuestionsTests
             // Asked again, the stack comes; an evaluation in its frame then has the game end under it.
             played.Answering = true;
             IReadOnlyList<DapStackFrame> frames = Ui.Await(session.StackTraceAsync((int)GodotMessage.MainThread), "the stop's stack asked again", TimeSpan.FromMinutes(1));
-            Task<EvaluateResponse> evaluated = session.EvaluateAsync("counter", frames[0].Id, "watch");
+            Task<EvaluateResponse> evaluated = session.EvaluateAsync("counter", frames[0].Id, EvaluateContexts.Watch);
             Ui.WaitFor(() => evaluated.IsCompleted, "the evaluation the game ended under to be refused", TimeSpan.FromMinutes(1));
             Assert.True(evaluated.IsFaulted && evaluated.Exception?.InnerException is DapException,
                 $"The evaluation the game ended under came to {(evaluated.IsFaulted ? evaluated.Exception?.InnerException?.ToString() : "an answer")}, not a refusal");

@@ -344,7 +344,7 @@ public sealed class BindingValuesController
                 EvaluateResponse answer;
                 try
                 {
-                    answer = await debugged.EvaluateAsync(expression, top.Id, "watch");
+                    answer = await debugged.EvaluateAsync(expression, top.Id, EvaluateContexts.Watch);
                 }
                 catch (DapException error)
                 {

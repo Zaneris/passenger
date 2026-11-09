@@ -107,9 +107,9 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
         int frame = (await host.TopFrameAsync(thread)).Id;
-        Task<EvaluateResponse> endless = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Leaves.Endless", frame, "watch"));
+        Task<EvaluateResponse> endless = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Leaves.Endless", frame, EvaluateContexts.Watch));
         await host.WaitForEvent<OutputEvent>(o => o.Output.Contains("evaluating", StringComparison.Ordinal));
-        Task<EvaluateResponse> counted = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Leaves.Count", frame, "watch"));
+        Task<EvaluateResponse> counted = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Leaves.Count", frame, EvaluateContexts.Watch));
 
         await host.Send<ContinueResponse>(DapCommands.Continue, new ThreadArguments(thread)).WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
         // Said only of an evaluation the continue left before its time was up: one it waited out says it took too long.
@@ -156,7 +156,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         await host.BreakpointsAsync([Line("Thread.Sleep(10); // each turn of the program let go")], Source).ConfigurationDoneAsync();
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
-        Task<EvaluateResponse> slow = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("LetsGo.Slow", frame, "watch"));
+        Task<EvaluateResponse> slow = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("LetsGo.Slow", frame, EvaluateContexts.Watch));
         await evaluating.Task.WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
 
         Assert.True(await host.DisconnectAsync(DebugSession.RequestLimit), "The detach was not answered: it waited out the evaluation's ten minutes, not its half-second end");
@@ -222,7 +222,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         await using DebugSession host = await LaunchCase("locks", Held, Later);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
-        Task<EvaluateResponse> waits = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Locks.Taken", (await host.TopFrameAsync(thread)).Id, "watch"));
+        Task<EvaluateResponse> waits = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Locks.Taken", (await host.TopFrameAsync(thread)).Id, EvaluateContexts.Watch));
         await host.WaitForEvent<OutputEvent>(o => o.Output.Contains("taking the lock", StringComparison.Ordinal));
 
         await host.Send<ContinueResponse>(DapCommands.Continue, new ThreadArguments(thread)).WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);

@@ -148,7 +148,7 @@ public sealed class DebugAdapter
         connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, async arguments =>
         {
             // A hover, or a value the client shows of itself, is an implicit evaluation.
-            VariableInfo value = await Read(() => debugger.Evaluate(arguments.Expression, arguments.FrameId, implicitly: arguments.Context is "hover" or "variables",
+            VariableInfo value = await Read(() => debugger.Evaluate(arguments.Expression, arguments.FrameId, implicitly: arguments.Context is EvaluateContexts.Hover or EvaluateContexts.Variables,
                 letThreadsRun: arguments.LetThreadsRun is true));
             return new EvaluateResponse
             {
@@ -285,8 +285,8 @@ public sealed class DebugAdapter
                 Column = stop.FilePath is null ? null : ColumnOut(stop.Column),
             });
         };
-        debugger.OnBreakpointChanged += breakpoint => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = "changed", Breakpoint = ToProtocol(breakpoint, isEvent: true) });
-        debugger.OnBreakpointMessage += (id, message) => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = "changed", Breakpoint = new DapBreakpoint { Id = id, Verified = true, Message = message } });
+        debugger.OnBreakpointChanged += breakpoint => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = ToProtocol(breakpoint, isEvent: true) });
+        debugger.OnBreakpointMessage += (id, message) => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = new DapBreakpoint { Id = id, Verified = true, Message = message } });
         // Told only when known: a process attached to on macOS or Linux tells its exit code to its parent alone.
         debugger.OnExited += exitCode =>
         {
@@ -296,10 +296,10 @@ public sealed class DebugAdapter
             }
         };
         debugger.OnTerminated += () => connection.SendEvent(DapEvents.Terminated, new TerminatedEvent());
-        debugger.OnThreadStarted += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent("started", threadId));
-        debugger.OnThreadExited += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent("exited", threadId));
-        debugger.OnModuleLoaded += (id, name, path) => connection.SendEvent(DapEvents.Module, new ModuleEvent("new", new DapModule(id, name, path)));
-        debugger.OnModuleUnloaded += (id, name, path) => connection.SendEvent(DapEvents.Module, new ModuleEvent("removed", new DapModule(id, name, path)));
+        debugger.OnThreadStarted += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent(EventReasons.Started, threadId));
+        debugger.OnThreadExited += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent(EventReasons.Exited, threadId));
+        debugger.OnModuleLoaded += (id, name, path) => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.New, new DapModule(id, name, path)));
+        debugger.OnModuleUnloaded += (id, name, path) => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.Removed, new DapModule(id, name, path)));
         debugger.OnProcessStarted += (processId, name) => connection.SendEvent(DapEvents.Process, new ProcessEvent(name, processId, IsLocalProcess: !Remote, StartMethod: DapCommands.Launch));
         debugger.OnAttached += processId => connection.SendEvent(DapEvents.Process, new ProcessEvent($"process {processId}", processId, IsLocalProcess: !Remote, StartMethod: DapCommands.Attach));
         debugger.OnOutput += (output, isStdError) => connection.SendEvent(DapEvents.Output, new OutputEvent(output, isStdError ? DapOutputCategories.Stderr : DapOutputCategories.Stdout));
@@ -448,7 +448,7 @@ public sealed class DebugAdapter
     {
         FunctionBreakpointRequest[] requests = [.. (arguments.Breakpoints ?? []).Select(b => new FunctionBreakpointRequest(b.Name, b.Condition, b.HitCondition, b.LogMessage, b.Suspend))];
         List<BreakpointManager.BreakpointInfo> breakpoints = await Locked(() => debugger.SetFunctionBreakpoints(requests));
-        return new SetBreakpointsResponse([.. breakpoints.Select(b => new DapBreakpoint { Id = b.Id, Verified = b.Verified, Message = b.Message, Reason = b.Refused ? "failed" : null })]);
+        return new SetBreakpointsResponse([.. breakpoints.Select(b => new DapBreakpoint { Id = b.Id, Verified = b.Verified, Message = b.Message, Reason = b.Refused ? BreakpointReasons.Failed : null })]);
     }
 
     private async Task<SetExceptionBreakpointsResponse> SetExceptionBreakpoints(SetExceptionBreakpointsArguments arguments)
@@ -468,7 +468,7 @@ public sealed class DebugAdapter
         return new SetExceptionBreakpointsResponse(
         [
             .. requests.Select(_ => new DapBreakpoint { Verified = true }),
-            .. made.Select(rule => new DapBreakpoint { Id = rule.Id, Verified = rule.Refused is null, Message = rule.Refused ?? rule.Message, Reason = rule.Refused is null ? null : "failed" }),
+            .. made.Select(rule => new DapBreakpoint { Id = rule.Id, Verified = rule.Refused is null, Message = rule.Refused ?? rule.Message, Reason = rule.Refused is null ? null : BreakpointReasons.Failed }),
         ]);
 
         static ExceptionBreakpointFilter ExceptionFilter(string filter) => filter switch
@@ -515,7 +515,7 @@ public sealed class DebugAdapter
                 breakpoint.Suspend ?? string.IsNullOrEmpty(breakpoint.LogMessage)));
         }
         List<DataBreakpointResult> results = await Locked(() => debugger.SetDataBreakpoints(requests));
-        return new SetDataBreakpointsResponse([.. results.Select(r => new DapBreakpoint { Id = r.Id, Verified = r.Verified, Message = r.Message, Reason = r.Verified ? null : "failed" })]);
+        return new SetDataBreakpointsResponse([.. results.Select(r => new DapBreakpoint { Id = r.Id, Verified = r.Verified, Message = r.Message, Reason = r.Verified ? null : BreakpointReasons.Failed })]);
     }
 
     private async Task<ExceptionInfoResponse> ExceptionInfo(ThreadArguments arguments)
@@ -692,7 +692,7 @@ public sealed class DebugAdapter
             EndColumn = bound && breakpoint.EndColumn is int endColumn ? ColumnOut(endColumn) : null,
             Offset = isEvent && bound ? 0 : null,
             Message = breakpoint.Message,
-            Reason = breakpoint.Refused || breakpoint.Unbindable ? "failed" : breakpoint.Verified ? null : "pending",
+            Reason = breakpoint.Refused || breakpoint.Unbindable ? BreakpointReasons.Failed : breakpoint.Verified ? null : BreakpointReasons.Pending,
             Source = source,
         };
     }

@@ -2149,7 +2149,7 @@ public sealed class DebugController : IDisposable
         CancellationToken gone = stopShown.Token;
         try
         {
-            EvaluateResponse value = await session.EvaluateAsync(expression, at.Id, "hover").WaitAsync(cancellation);
+            EvaluateResponse value = await session.EvaluateAsync(expression, at.Id, EvaluateContexts.Hover).WaitAsync(cancellation);
             if (stop != shown)
             {
                 return null;
@@ -2209,7 +2209,7 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>How Quick Evaluate Expression asks for its value: as the Evaluate box does, a call run as it is written.</summary>
-    private const string QuickContext = "repl";
+    private const string QuickContext = EvaluateContexts.Repl;
 
     /// <summary>Where the expression the hover reads at an offset begins (<see cref="ExpressionAt"/>), or -1 with none.</summary>
     private static int ExpressionStart(TextSnapshot text, int offset)
@@ -2230,7 +2230,7 @@ public sealed class DebugController : IDisposable
     /// stop it was read at and of no other; its rows' actions are the Variables view's own (Add to Watches, Inspect, Set
     /// Value, a data breakpoint), and a value set there shows the value read again, as <paramref name="context"/> reads it,
     /// with what was open still open. One that did not evaluate is its <paramref name="error"/>'s row.</summary>
-    private VariablesList HoverValues(DebugSession session, DapStackFrame at, int stop, string expression, EvaluateResponse? value, string context = "hover",
+    private VariablesList HoverValues(DebugSession session, DapStackFrame at, int stop, string expression, EvaluateResponse? value, [IdentifierOf(typeof(EvaluateContexts))] string context = EvaluateContexts.Hover,
         string? error = null)
     {
         VariablesTree tree = new()
@@ -2514,9 +2514,9 @@ public sealed class DebugController : IDisposable
             {
                 // The inspector's call says the values and what set the new one, its place at the editor's line.
                 if ((await session.StackTraceAsync(thread)).FirstOrDefault() is { } changed
-                    && StringValue((await session.EvaluateAsync("change", changed.Id, "watch")).Result) is { } words)
+                    && StringValue((await session.EvaluateAsync("change", changed.Id, EvaluateContexts.Watch)).Result) is { } words)
                 {
-                    propertyChange = words + AppPlaces.At(SetAt(await session.EvaluateAsync("setAt", changed.Id, "watch")), CSharp.ServerPlaces.Texts(editors));
+                    propertyChange = words + AppPlaces.At(SetAt(await session.EvaluateAsync("setAt", changed.Id, EvaluateContexts.Watch)), CSharp.ServerPlaces.Texts(editors));
                 }
             }
             catch (DapException)
@@ -2584,8 +2584,8 @@ public sealed class DebugController : IDisposable
         {
             return null;
         }
-        EvaluateResponse error = await session.EvaluateAsync("bindingError", call.Id, "watch");
-        if (StringValue((await session.EvaluateAsync("bindingError.Said", call.Id, "watch")).Result) is not { } said)
+        EvaluateResponse error = await session.EvaluateAsync("bindingError", call.Id, EvaluateContexts.Watch);
+        if (StringValue((await session.EvaluateAsync("bindingError.Said", call.Id, EvaluateContexts.Watch)).Result) is not { } said)
         {
             return null;
         }
@@ -2850,7 +2850,7 @@ public sealed class DebugController : IDisposable
     {
         try
         {
-            EvaluateResponse value = await session.EvaluateAsync(expression, frame.Id, role == VariableRole.Watch ? "watch" : "repl");
+            EvaluateResponse value = await session.EvaluateAsync(expression, frame.Id, role == VariableRole.Watch ? EvaluateContexts.Watch : EvaluateContexts.Repl);
             return new VariableNode(expression, value.Result, value.Type, value.VariablesReference, 0, role) { NeedsThreads = VariableNode.SaysNeedsThreads(value.PresentationHint) };
         }
         catch (DapException error)
@@ -2882,7 +2882,7 @@ public sealed class DebugController : IDisposable
         EvaluateResponse read;
         try
         {
-            read = await session.EvaluateAsync(expression, current.Id, node.Role == VariableRole.Watch ? "watch" : "repl", letThreadsRun: true);
+            read = await session.EvaluateAsync(expression, current.Id, node.Role == VariableRole.Watch ? EvaluateContexts.Watch : EvaluateContexts.Repl, letThreadsRun: true);
         }
         catch (DapException error)
         {

@@ -980,10 +980,9 @@ public sealed class DebugSession
         }
     }
 
-    /// <summary>An expression's value in a frame; context is watch, hover or repl.</summary>
     /// <summary>An expression's value in a frame; with <paramref name="letThreadsRun"/>, run with every thread of the program
     /// let go, which only the person asks for.</summary>
-    public Task<EvaluateResponse> EvaluateAsync(string expression, int? frameId, string context, bool letThreadsRun = false) =>
+    public Task<EvaluateResponse> EvaluateAsync(string expression, int? frameId, [IdentifierOf(typeof(EvaluateContexts))] string context, bool letThreadsRun = false) =>
         connection.RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, context, letThreadsRun ? true : null));
 
     /// <summary>Sets the paused program going (a continue or a step), saying it runs at once, as the adapter takes it ahead
@@ -1312,7 +1311,7 @@ public sealed class DebugSession
             {
                 propertyById[id] = sending[i];
             }
-            said.Add((sending[i], answer.Verified ? BreakpointStatus.Bound : answer.Reason == "failed" ? BreakpointStatus.Invalid : BreakpointStatus.Unknown, answer.Message));
+            said.Add((sending[i], answer.Verified ? BreakpointStatus.Bound : answer.Reason == BreakpointReasons.Failed ? BreakpointStatus.Invalid : BreakpointStatus.Unknown, answer.Message));
         }
         breakpoints.ReportProperties(this, said);
         if (bindingErrors is not null && response.Breakpoints.Count > sending.Count)
@@ -1342,8 +1341,8 @@ public sealed class DebugSession
     /// <summary>What the debugger said of XAML Binding Errors: until an Avalonia or WPF app's inspector has loaded, it has nowhere
     /// to stop, which is no fault of the breakpoint.</summary>
     private void ReportBindingErrors(DapBreakpoint answer) =>
-        breakpoints.ReportBindingErrors(this, answer.Verified ? BreakpointStatus.Bound : answer.Reason == "failed" ? BreakpointStatus.Invalid : BreakpointStatus.Unknown,
-            answer.Verified || answer.Reason == "failed" ? answer.Message : NoInspectedApp);
+        breakpoints.ReportBindingErrors(this, answer.Verified ? BreakpointStatus.Bound : answer.Reason == BreakpointReasons.Failed ? BreakpointStatus.Invalid : BreakpointStatus.Unknown,
+            answer.Verified || answer.Reason == BreakpointReasons.Failed ? answer.Message : NoInspectedApp);
 
     /// <summary>Why XAML Binding Errors has not bound in a program the debugger runs.</summary>
     private const string NoInspectedApp = "No Avalonia or WPF app has started under the debugger with the Live Visual Tree's inspector, which tells of its failed bindings";
@@ -1476,7 +1475,7 @@ public sealed class DebugSession
     }
 
     private static (BreakpointStatus, string?, int?) Status(DapBreakpoint breakpoint) =>
-        (breakpoint.Verified ? BreakpointStatus.Bound : breakpoint.Reason == "failed" ? BreakpointStatus.Invalid : BreakpointStatus.Unknown, breakpoint.Message, breakpoint.Line - 1);
+        (breakpoint.Verified ? BreakpointStatus.Bound : breakpoint.Reason == BreakpointReasons.Failed ? BreakpointStatus.Invalid : BreakpointStatus.Unknown, breakpoint.Message, breakpoint.Line - 1);
 
     /// <summary>What the debugger said of a file's breakpoint, the line it bound to (the compiler's, in the build) where that
     /// line's code is now, as the editor counts lines.</summary>

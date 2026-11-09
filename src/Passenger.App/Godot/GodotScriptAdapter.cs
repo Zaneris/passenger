@@ -342,7 +342,7 @@ public sealed class GodotScriptAdapter
         if (resource is null)
         {
             string why = $"Not in the Godot project the game runs ({game.Folder}), whose scripts alone it stops in";
-            return new SetBreakpointsResponse([.. asked.Select(_ => new DapBreakpoint { Verified = false, Reason = "failed", Message = why })]);
+            return new SetBreakpointsResponse([.. asked.Select(_ => new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = why })]);
         }
         string text = await BackgroundWork.Run(() => File.Exists(path) ? File.ReadAllText(path!) : string.Empty);
         List<DapBreakpoint> said = [];
@@ -354,14 +354,14 @@ public sealed class GodotScriptAdapter
             {
                 if (!HitCondition.TryParse(hitText, out HitCondition parsed, out string? problem))
                 {
-                    said.Add(new DapBreakpoint { Verified = false, Reason = "failed", Message = problem, Line = breakpoint.Line });
+                    said.Add(new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = problem, Line = breakpoint.Line });
                     continue;
                 }
                 hits = parsed;
             }
             if (!GodotScriptBreakpoints.IsCodeLine(text, breakpoint.Line))
             {
-                said.Add(new DapBreakpoint { Verified = false, Reason = "failed", Line = breakpoint.Line,
+                said.Add(new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Line = breakpoint.Line,
                     Message = $"Line {breakpoint.Line} has no code of the script's on it, and GDScript stops only at a line with code" });
                 continue;
             }
@@ -400,7 +400,7 @@ public sealed class GodotScriptAdapter
         }
         errors = on ? new Wanted(0, 0, options?.Condition, hits, options?.LogMessage, options?.Suspend ?? true) : null;
         await SendAsync(GodotWords.IgnoreErrorBreaks, !on);
-        return new SetExceptionBreakpointsResponse(on ? [new DapBreakpoint { Verified = problem is null, Reason = problem is null ? null : "failed", Message = problem }] : []);
+        return new SetExceptionBreakpointsResponse(on ? [new DapBreakpoint { Verified = problem is null, Reason = problem is null ? null : BreakpointReasons.Failed, Message = problem }] : []);
     }
 
     private ThreadsResponse Threads() =>

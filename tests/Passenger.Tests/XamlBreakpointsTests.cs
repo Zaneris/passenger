@@ -95,7 +95,7 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
         Resume(window);
         stop = Stopped(window, "the stop where the second row is made");
         AssertAt(stop, Xaml, row, Column(Xaml, row, "local:Row"));
-        Assert.Equal("1", Ui.Await(window.Debugger.Session!.EvaluateAsync("XamlBreakpointsApp.Row.Made", stop.Top!.Id, "watch"), "the rows made so far").Result);
+        Assert.Equal("1", Ui.Await(window.Debugger.Session!.EvaluateAsync("XamlBreakpointsApp.Row.Made", stop.Top!.Id, EvaluateContexts.Watch), "the rows made so far").Result);
 
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");

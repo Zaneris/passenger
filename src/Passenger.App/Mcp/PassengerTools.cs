@@ -2195,7 +2195,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Session.Debug.RefreshAsync();
             return Variable(expression, set.Value, set.Type, set.VariablesReference, expression) with { Frame = below };
         }
-        EvaluateResponse result = await paused.EvaluateAsync(expression, chosen.Id, "repl", letThreadsRun);
+        EvaluateResponse result = await paused.EvaluateAsync(expression, chosen.Id, EvaluateContexts.Repl, letThreadsRun);
         if (letThreadsRun)
         {
             // The window shows where the threads are now, as it does after its own.

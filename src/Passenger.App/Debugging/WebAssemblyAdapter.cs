@@ -255,7 +255,7 @@ public sealed class WebAssemblyAdapter
         IReadOnlyList<DapSourceBreakpoint> asked = arguments.Breakpoints ?? [];
         if (arguments.Source.Path is not { } path || browser is not { } run)
         {
-            return new SetBreakpointsResponse([.. asked.Select(_ => new DapBreakpoint { Verified = false, Reason = "failed", Message = "The browser is not debugged" })]);
+            return new SetBreakpointsResponse([.. asked.Select(_ => new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = "The browser is not debugged" })]);
         }
         List<Placed> had = [.. placed.GetValueOrDefault(path) ?? []];
         List<Placed> now = [];
@@ -267,7 +267,7 @@ public sealed class WebAssemblyAdapter
             {
                 if (!HitCondition.TryParse(hitText, out HitCondition parsed, out string? problem))
                 {
-                    said.Add(new DapBreakpoint { Verified = false, Reason = "failed", Message = problem, Line = breakpoint.Line });
+                    said.Add(new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = problem, Line = breakpoint.Line });
                     continue;
                 }
                 hits = parsed;
@@ -303,7 +303,7 @@ public sealed class WebAssemblyAdapter
     /// <summary>What the session is told of a breakpoint: bound where the page has its code, else waiting for it to load.</summary>
     private static DapBreakpoint Said(Placed breakpoint, DapSource source) => breakpoint.Bound is int line
         ? new DapBreakpoint { Id = breakpoint.Id, Verified = true, Line = line, Source = source }
-        : new DapBreakpoint { Id = breakpoint.Id, Verified = false, Reason = "pending", Line = breakpoint.Line, Source = source,
+        : new DapBreakpoint { Id = breakpoint.Id, Verified = false, Reason = BreakpointReasons.Pending, Line = breakpoint.Line, Source = source,
             Message = "The page has not loaded this code yet: it binds as the browser loads it" };
 
     /// <summary>A breakpoint by its file, for the proxy: its line and column from zero, the file matched whole by a pattern.</summary>
@@ -321,7 +321,7 @@ public sealed class WebAssemblyAdapter
             await run.Page.SendAsync(CdpCommands.SetPauseOnExceptions, new { state });
         }
         return new SetExceptionBreakpointsResponse([.. options.Select(o => Typed(o)
-            ? new DapBreakpoint { Verified = false, Reason = "failed", Message = "In the browser, .NET's debug proxy stops at every exception or every one left unhandled, never by type" }
+            ? new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = "In the browser, .NET's debug proxy stops at every exception or every one left unhandled, never by type" }
             : new DapBreakpoint { Verified = true })]);
     }
 

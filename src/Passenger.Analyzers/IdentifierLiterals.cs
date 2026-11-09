@@ -10,7 +10,8 @@ namespace Passenger.Analyzers;
 /// written, being no ordinary word; a plain word ("run") only where it is given to, or compared with, a parameter,
 /// property or field marked [IdentifierOf] its home's type. Homes are read from this compilation and the Passenger
 /// assemblies it references, where it may see them. Passed over: the homes' own constants and generated code, the only
-/// places that cannot name the member (an attribute's argument takes the constant like any other).</summary>
+/// places that cannot name the member (an attribute's argument takes the constant like any other), and a parameter's
+/// default that a call leaves out, which is written at the parameter, not the call.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class IdentifierLiterals : DiagnosticAnalyzer
 {
@@ -40,7 +41,7 @@ public sealed class IdentifierLiterals : DiagnosticAnalyzer
 
     private static void Check(OperationAnalysisContext context, Homes homes)
     {
-        if (context.Operation.ConstantValue is not { HasValue: true, Value: string text } || !homes.Holds(text)
+        if (context.Operation.ConstantValue is not { HasValue: true, Value: string text } || !homes.Holds(text) || context.Operation.IsImplicit
             || homes.Contains(context.ContainingSymbol))
         {
             return;
@@ -58,13 +59,15 @@ public sealed class IdentifierLiterals : DiagnosticAnalyzer
         text.Any(char.IsLetter) && text.IndexOfAny(['.', '_', '/', '-', '=', ':']) >= 0 && !text.Any(char.IsWhiteSpace);
 
     /// <summary>The homes' types the literal's place takes ([IdentifierOf]): the parameter it is given to, the property or
-    /// field it is stored in, or the one it is compared with.</summary>
+    /// field it is stored in, or the one it is compared with, as a branch of a conditional or a coalesce's fallback too.</summary>
     private static IEnumerable<ITypeSymbol> TakenBy(IOperation literal)
     {
         IOperation value = literal;
-        while (value.Parent is IConversionOperation conversion)
+        while (value.Parent is IConversionOperation
+            || value.Parent is IConditionalOperation conditional && conditional.Condition != value
+            || value.Parent is ICoalesceOperation coalesce && coalesce.WhenNull == value)
         {
-            value = conversion;
+            value = value.Parent;
         }
         ISymbol? place = value.Parent switch
         {

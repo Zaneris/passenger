@@ -205,7 +205,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
             Assert.Contains(new LineMark(5, LineMarkKind.BreakpointBound), editor.LineMarks);
             Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.Any(r => r.Name == "said" && r.Value.Contains("Howdy", StringComparison.Ordinal)),
                 "the edited method's new local in Variables");
-            Dap.EvaluateResponse length = Ui.Await(window.Debugger.Session!.EvaluateAsync("said.Substring(0, 5) + i.ToString()", window.BottomPanel.Debug.Frames[0].Id, "watch"),
+            Dap.EvaluateResponse length = Ui.Await(window.Debugger.Session!.EvaluateAsync("said.Substring(0, 5) + i.ToString()", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
                 "an expression in the edited method");
             Assert.StartsWith("\"Howdy", length.Result, StringComparison.Ordinal);
         }

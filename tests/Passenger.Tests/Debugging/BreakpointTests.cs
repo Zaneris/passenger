@@ -28,13 +28,13 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
 
         BreakpointEvent expectedBreakpointEvent1 = new BreakpointEvent
         {
-            Reason = "changed",
+            Reason = EventReasons.Changed,
             Breakpoint = new DapBreakpoint
             {
                 Id = 1,
                 Message = "Breakpoint has not been processed by the debugger.",
                 Verified = false,
-                Reason = "pending",
+                Reason = BreakpointReasons.Pending,
                 Line = MyIntSet
             }
         };
@@ -43,7 +43,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
 
         BreakpointEvent expectedBreakpointEvent2 = new BreakpointEvent
         {
-            Reason = "changed",
+            Reason = EventReasons.Changed,
             Breakpoint = new DapBreakpoint
             {
                 Id = 1,

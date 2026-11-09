@@ -88,6 +88,57 @@ public static class StopReasons
     public const string Unknown = "unknown";
 }
 
+/// <summary>Why a breakpoint is not verified, its reason by the protocol's names: what the adapters say and the IDE tells
+/// apart, each written once.</summary>
+[IdentifierHome]
+public static class BreakpointReasons
+{
+    /// <summary>One the debugger refused, and will not take as it is.</summary>
+    public const string Failed = "failed";
+
+    /// <summary>One that may yet bind.</summary>
+    public const string Pending = "pending";
+}
+
+/// <summary>Where an evaluation is asked from, evaluate's context by the protocol's names: what the IDE asks with and the
+/// adapter tells apart, each written once.</summary>
+[IdentifierHome]
+public static class EvaluateContexts
+{
+    /// <summary>A value the pointer rests on in the editor.</summary>
+    public const string Hover = "hover";
+
+    /// <summary>A value of the Variables view.</summary>
+    public const string Variables = "variables";
+
+    /// <summary>A watch's expression.</summary>
+    public const string Watch = "watch";
+
+    /// <summary>An expression the person or an agent runs as it is written, calls and all.</summary>
+    public const string Repl = "repl";
+}
+
+/// <summary>What a breakpoint, thread or module event tells of its subject, its reason by the protocol's names: what the
+/// adapters tell and the IDE reads, each written once.</summary>
+[IdentifierHome]
+public static class EventReasons
+{
+    /// <summary>A breakpoint bound, moved or given a message.</summary>
+    public const string Changed = "changed";
+
+    /// <summary>A module loaded.</summary>
+    public const string New = "new";
+
+    /// <summary>A module unloaded.</summary>
+    public const string Removed = "removed";
+
+    /// <summary>A thread started.</summary>
+    public const string Started = "started";
+
+    /// <summary>A thread ended.</summary>
+    public const string Exited = "exited";
+}
+
 /// <summary>The rows Passenger's debug adapter adds to a frame's values and among a value's members, by their names, which
 /// the IDE tells apart and an expression may name (<see cref="Exception"/>, <see cref="ReturnValue"/>): each written once
 /// for both ends.</summary>

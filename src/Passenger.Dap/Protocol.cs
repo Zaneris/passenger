@@ -135,8 +135,8 @@ public sealed record DapBreakpoint
     public bool Verified { get; init; }
     public string? Message { get; init; }
 
-    /// <summary>Why one is not verified: "failed" for one the debugger refused (and will not take as it is), "pending" for
-    /// one that may yet bind.</summary>
+    /// <summary>Why one is not verified: <see cref="BreakpointReasons.Failed"/> or <see cref="BreakpointReasons.Pending"/>.</summary>
+    [IdentifierOf(typeof(BreakpointReasons))]
     public string? Reason { get; init; }
     public DapSource? Source { get; init; }
     public int? Line { get; init; }
@@ -348,7 +348,8 @@ public sealed record DapPresentationHint(string? Kind = null, IReadOnlyList<stri
 
 /// <summary>An evaluation; Passenger's own <paramref name="LetThreadsRun"/> runs it with every thread of the program let go,
 /// which the person asks for where one with the others held did not end (<see cref="DapAttributes.NeedsThreads"/>).</summary>
-public sealed record EvaluateArguments(string Expression, int? FrameId = null, string? Context = null, bool? LetThreadsRun = null);
+public sealed record EvaluateArguments(string Expression, int? FrameId = null,
+    [IdentifierOf(typeof(EvaluateContexts))][property: IdentifierOf(typeof(EvaluateContexts))] string? Context = null, bool? LetThreadsRun = null);
 
 public sealed record EvaluateResponse
 {
@@ -496,7 +497,7 @@ public sealed record TerminatedEvent(bool? Restart = null);
 public sealed record ContinuedEvent(int ThreadId, bool? AllThreadsContinued = null);
 
 /// <summary>A thread started or exited.</summary>
-public sealed record ThreadEvent(string Reason, int ThreadId);
+public sealed record ThreadEvent([IdentifierOf(typeof(EventReasons))][property: IdentifierOf(typeof(EventReasons))] string Reason, int ThreadId);
 
 /// <summary>Output, of category stdout, stderr or console.</summary>
 public sealed record OutputEvent(string Output, string? Category = null);
@@ -504,11 +505,12 @@ public sealed record OutputEvent(string Output, string? Category = null);
 /// <summary>A breakpoint changed (bound, or moved), new or removed.</summary>
 public sealed record BreakpointEvent
 {
-    public string Reason { get; init; } = "changed";
+    [IdentifierOf(typeof(EventReasons))]
+    public string Reason { get; init; } = EventReasons.Changed;
     public DapBreakpoint Breakpoint { get; init; } = new();
 }
 
-public sealed record ModuleEvent(string Reason, DapModule Module);
+public sealed record ModuleEvent([IdentifierOf(typeof(EventReasons))][property: IdentifierOf(typeof(EventReasons))] string Reason, DapModule Module);
 
 public sealed record DapModule(string Id, string Name, string? Path = null);
 

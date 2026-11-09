@@ -836,7 +836,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     internal static string Evaluate(DebugSession session, string expression)
     {
         IReadOnlyList<Passenger.Dap.DapStackFrame> frames = Ui.Await(session.StackTraceAsync(session.StoppedThread ?? 0), "the stop's frames");
-        return Ui.Await(session.EvaluateAsync(expression, frames[0].Id, "watch"), $"{expression} to be evaluated").Result;
+        return Ui.Await(session.EvaluateAsync(expression, frames[0].Id, Dap.EvaluateContexts.Watch), $"{expression} to be evaluated").Result;
     }
 
     /// <summary>Resumes a tab's program as Resume does with its tab chosen, waiting for it to run.</summary>
