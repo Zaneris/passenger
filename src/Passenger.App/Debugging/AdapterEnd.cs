@@ -65,7 +65,7 @@ public sealed class ProcessEnd : AdapterEnd
 
     public override Stream ToAdapter => process.StandardInput.BaseStream;
 
-    public override Stream FromAdapter => process.StandardOutput.BaseStream;
+    public override Stream FromAdapter => ChildProcesses.OutputStream(process);
 
     public override Task HearErrors(Action<string> errors) => ChildProcesses.Hear(process, errors: errors);
 

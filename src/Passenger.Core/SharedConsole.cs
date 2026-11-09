@@ -72,7 +72,7 @@ public static unsafe partial class SharedConsole
             using (CancellationTokenSource limit = new(MakeLimit))
             using (limit.Token.Register(() => End(holder)))
             {
-                unmade = holder.StandardOutput.BaseStream.ReadByte() < 0 ? $"{start.FileName} wrote nothing within {MakeLimit.TotalSeconds:0} s"
+                unmade = ChildProcesses.OutputStream(holder).ReadByte() < 0 ? $"{start.FileName} wrote nothing within {MakeLimit.TotalSeconds:0} s"
                     : !AttachConsole((uint)holder.Id) ? $"error {Marshal.GetLastPInvokeError()} attaching to its console"
                     : !SetConsoleCtrlHandler(&PassOver, add: true) ? $"error {Marshal.GetLastPInvokeError()} passing over its Ctrl+C"
                     : null;

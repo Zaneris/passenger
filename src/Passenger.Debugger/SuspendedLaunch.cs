@@ -197,7 +197,7 @@ public sealed partial class SuspendedLaunch : IDisposable
             };
         }
         Process held = Process.Start(start) ?? throw new InvalidOperationException($"{program} did not start");
-        return new SuspendedLaunch(held.Id, 0, held, held.StandardInput.BaseStream, held.StandardOutput.BaseStream, held.StandardError.BaseStream)
+        return new SuspendedLaunch(held.Id, 0, held, held.StandardInput.BaseStream, ChildProcesses.OutputStream(held), ChildProcesses.ErrorStream(held))
         {
             InitialThreadId = OnlyThread(held),
         };

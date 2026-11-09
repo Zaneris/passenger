@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Passenger.Core;
 using Passenger.Tests.Debugging.Helpers;
 
@@ -51,5 +52,34 @@ public sealed class ChildReadsTests
             }
             throw new IOException("The output broke off");
         }
+    }
+
+    /// <summary>A child's output and errors are read only through ChildProcesses (Output, Errors, OutputStream, ErrorStream,
+    /// Hear, RunAsync): its readers, which the process's disposal never closes under a read, are the only streams a child
+    /// started on a desktop of its own has. Read from src's C# as written, ChildProcesses itself passed over.</summary>
+    [Fact]
+    public void No_childs_output_or_errors_are_read_past_ChildProcesses()
+    {
+        string root = Debuggees.Root;
+        List<string> found = [];
+        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        {
+            string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
+            if (relative == "src/Passenger.Core/ChildProcesses.cs" || relative.Contains("/obj/", StringComparison.Ordinal) || relative.Contains("/bin/", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            string[] lines = File.ReadAllLines(file);
+            for (int line = 0; line < lines.Length; line++)
+            {
+                if (Regex.IsMatch(lines[line], @"\.Standard(?:Output|Error)\b"))
+                {
+                    found.Add($"{relative}:{line + 1}: {lines[line].Trim()}");
+                }
+            }
+        }
+        Assert.True(found.Count == 0, $"A child's output or errors read from its process misses the streams of one started on a desktop of its own, and a read "
+            + $"of them may be closed under it as the process is disposed: read them through ChildProcesses (Output, Errors, OutputStream, ErrorStream, "
+            + $"Hear, RunAsync):\n{string.Join('\n', found)}");
     }
 }
