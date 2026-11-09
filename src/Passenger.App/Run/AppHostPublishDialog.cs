@@ -42,7 +42,7 @@ public sealed class AppHostPublishDialog : IdeWindow
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
         publish.Click += (_, _) => Publish();
         browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
         folderBox.TextChanged += (_, _) => Changed();

@@ -316,8 +316,7 @@ public sealed class Timeline : Control
             return new Palette(Brush(TokenKeys.Editor_Background), text, Brush(TokenKeys.Graph_2), Brush(TokenKeys.Graph_0), accent, new Pen(text, 0.5),
                 new Pen(accent, 1), new Typeface(TextElement.GetFontFamily(control)));
 
-            IBrush Brush(string key) =>
-                control.TryFindResource(key, control.ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;
+            IBrush Brush(string key) => Tokens.Brush(control, key);
         }
 
         /// <summary>The busy colour faded to an opacity, or null where its brush is no solid colour to carry it.</summary>

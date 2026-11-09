@@ -930,7 +930,7 @@ public sealed partial class LiveTreeController
 
     /// <summary>The colour a game draws its outline of the node chosen in: the window's accent, red, green and blue from 0 to 1.</summary>
     private (double Red, double Green, double Blue) Outline() =>
-        parts.Dock.TryFindResource(TokenKeys.Accent, parts.Dock.ActualThemeVariant, out object? found) && found is ISolidColorBrush { Color: var accent }
+        Tokens.Find(parts.Dock, TokenKeys.Accent) is ISolidColorBrush { Color: var accent }
             ? (accent.R / 255.0, accent.G / 255.0, accent.B / 255.0)
             : throw new InvalidOperationException("The theme gives no accent");
 

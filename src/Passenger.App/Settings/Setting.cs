@@ -140,7 +140,7 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
     {
         TextBox line = new() { Classes = { StyleClasses.Search }, Text = get(now) ?? string.Empty, PlaceholderText = found(), Width = 320 };
         TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Left };
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
         TextBlock runs = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = described is not null };
         int asked = 0;
         Said();

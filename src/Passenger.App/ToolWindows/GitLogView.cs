@@ -662,7 +662,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             Pen[] lines = new Pen[Keys.Length];
             for (int i = 0; i < Keys.Length; i++)
             {
-                fills[i] = BrushOf(Keys[i]);
+                fills[i] = Tokens.Brush(this, Keys[i]);
                 lines[i] = new Pen(fills[i], 1.6);
                 PensMade++;
             }
@@ -673,7 +673,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         {
             for (int i = 0; i < Keys.Length; i++)
             {
-                if (!ReferenceEquals(BrushOf(Keys[i]), fills[i]))
+                if (!ReferenceEquals(Tokens.Brush(this, Keys[i]), fills[i]))
                 {
                     return false;
                 }
@@ -694,9 +694,6 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             }
             return -1;
         }
-
-        private IBrush BrushOf(string key) =>
-            this.TryFindResource(key, ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;
     }
 }
 

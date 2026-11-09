@@ -95,7 +95,7 @@ public sealed class NewItemDialog : IdeWindow
             Spacing = 10,
             Children = { new StackPanel { Children = { heading, description }, Margin = new Thickness(0, 0, 0, 8) }, details },
         };
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
         working = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, IsVisible = false, Children = { bar, progress } };
         create.Click += (_, _) => IdeErrors.Observe(CreateAsync());
         Closing += (_, _) => creating?.Cancel();

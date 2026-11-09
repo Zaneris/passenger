@@ -41,7 +41,7 @@ public sealed class FeedDialog : IdeWindow
         enabled = new CheckBox { IsChecked = feed is null || !feed.DisabledHere };
         insecure = new CheckBox { IsChecked = feed?.AllowInsecure == true };
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
 
         Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto"), RowSpacing = 8 };
         Row(fields, 0, "Name:", name);

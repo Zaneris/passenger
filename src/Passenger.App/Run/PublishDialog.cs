@@ -100,7 +100,7 @@ public sealed class PublishDialog : IdeWindow
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
 
         publish.Click += (_, _) => IdeErrors.Observe(PublishAsync());
         saveButton.Click += (_, _) => IdeErrors.Observe(SaveAsync());

@@ -61,7 +61,7 @@ public sealed class GodotExportDialog : IdeWindow
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
         presetBox.ItemsSource = presets.Select(p => p.Name).ToArray();
         presetBox.SelectedIndex = Math.Max(0, presets.ToList().FindIndex(p => p.Name == chosen));
         export.Click += (_, _) => Chosen();

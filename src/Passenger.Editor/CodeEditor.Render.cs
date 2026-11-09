@@ -645,7 +645,7 @@ public sealed partial class CodeEditor
             // Fixed, so drawing one adds no resource to a row's drawing to be tracked, and one brush stays one look.
             IBrush? F(string key)
             {
-                IBrush? brush = Find(control, key);
+                IBrush? brush = Tokens.Find(control, key);
                 found.Add(brush);
                 if (brush is null)
                 {
@@ -734,9 +734,6 @@ public sealed partial class CodeEditor
 
         private static IBrush? Fade(IBrush? background) =>
             background is ISolidColorBrush solid ? new SolidColorBrush(solid.Color, 0.5).ToImmutable() : null;
-
-        private static IBrush? Find(Control control, string key) =>
-            control.TryFindResource(key, control.ActualThemeVariant, out object? value) ? value as IBrush : null;
 
         private static Geometry? Icon(Control control, string key) =>
             control.TryFindResource(key, control.ActualThemeVariant, out object? value) ? value as Geometry : null;

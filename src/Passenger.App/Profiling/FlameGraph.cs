@@ -320,13 +320,10 @@ public sealed class FlameGraph : Control
         public IBrush? Fill(int colour, bool dim) => faded[(colour * 2) + (dim ? 1 : 0)];
 
         public static Palette From(Control control) =>
-            new(Brush(control, TokenKeys.Editor_Background), Brush(control, TokenKeys.Text), [.. Colours.Select(key => Brush(control, key))],
+            new(Tokens.Brush(control, TokenKeys.Editor_Background), Tokens.Brush(control, TokenKeys.Text), [.. Colours.Select(key => Tokens.Brush(control, key))],
                 new Typeface(TextElement.GetFontFamily(control)));
 
         private static IBrush? Faded(IBrush brush, double opacity) =>
             brush is ISolidColorBrush solid ? new ImmutableSolidColorBrush(solid.Color, solid.Opacity * opacity) : null;
-
-        private static IBrush Brush(Control control, string key) =>
-            control.TryFindResource(key, control.ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;
     }
 }

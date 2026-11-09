@@ -168,7 +168,7 @@ public sealed partial class CodeEditor
     {
         if (!gutterBrushes.TryGetValue(key, out (IBrush Found, IBrush Drawn) brush))
         {
-            IBrush found = FindBrush(key) ?? Brushes.Transparent;
+            IBrush found = Tokens.Brush(this, key);
             gutterBrushes[key] = brush = (found, found.ToImmutable());
         }
         return brush.Drawn;
@@ -198,14 +198,13 @@ public sealed partial class CodeEditor
         return brush;
     }
 
-    private IBrush? FindBrush(string key) => this.TryFindResource(key, ActualThemeVariant, out object? value) ? value as IBrush : null;
 
     /// <summary>Whether a brush the columns drew with is another in the resources now (a colour scheme laid over them).</summary>
     private bool GutterBrushesChanged()
     {
         foreach ((string key, (IBrush found, IBrush _)) in gutterBrushes)
         {
-            if (!ReferenceEquals(FindBrush(key) ?? Brushes.Transparent, found))
+            if (!ReferenceEquals(Tokens.Brush(this, key), found))
             {
                 return true;
             }

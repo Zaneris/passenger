@@ -27,7 +27,7 @@ public abstract class RefactoringDialog : IdeWindow
 
         NextButton = DialogFooter.Default("Next");
         NextButton.Click += (_, _) => IdeErrors.Observe(Next());
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
         TextBlock about = new() { Text = description, TextWrapping = TextWrapping.Wrap, Classes = { StyleClasses.Muted } };
         Content = DialogFooter.Headed(page, about, body, DialogFooter.OkCancel(NextButton, () => Close(false), problem));
     }

@@ -2082,6 +2082,18 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + string.Join("\n", found));
     }
 
+    /// <summary>Words saying what is wrong are coloured one way, by the error class, so a change to how they look is made
+    /// once: a TextBlock's foreground bound by hand to the error colour fails here.</summary>
+    [Fact]
+    public void Error_words_take_the_error_class_never_the_colour_bound_by_hand()
+    {
+        Regex byHand = new(@"Bind\(\w+\.ForegroundProperty, \w+\.GetResourceObservable\(TokenKeys\.Error\)\)");
+        string[] found = [.. UiFiles().SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
+        Assert.True(found.Length == 0, $"{found.Length} TextBlocks bind the error colour by hand: give each the error class (Classes.Add(StyleClasses.Error)):\n"
+            + string.Join("\n", found));
+    }
+
     /// <summary>A dialog's OK and Cancel are made one way, by DialogFooter (Default, Cancel, OkCancel, Popup), so each
     /// stands in the platform's order and Cancel takes Escape where it should: a button worded OK or Cancel made anywhere
     /// else fails here, naming its line.</summary>

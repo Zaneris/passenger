@@ -33,7 +33,7 @@ public sealed class DiffStrip(Func<IEnumerable<DiffBand>> bands, MergeSide iconS
 
     public override void Render(DrawingContext context)
     {
-        context.FillRectangle(Find(TokenKeys.Editor_Background), new Rect(Bounds.Size));
+        context.FillRectangle(Tokens.Brush(this, TokenKeys.Editor_Background), new Rect(Bounds.Size));
         double width = Bounds.Width;
         foreach (DiffBand band in bands())
         {
@@ -57,8 +57,8 @@ public sealed class DiffStrip(Func<IEnumerable<DiffBand>> bands, MergeSide iconS
                 path.CubicBezierTo(new Point(width / 2, band.RightBottom), new Point(width / 2, band.LeftBottom), new Point(0, band.LeftBottom));
                 path.EndFigure(true);
             }
-            IBrush line = Find(edge);
-            context.DrawGeometry(Find(tint), new Pen(line, 1), shape);
+            IBrush line = Tokens.Brush(this, edge);
+            context.DrawGeometry(Tokens.Brush(this, tint), new Pen(line, 1), shape);
             Pen pen = new(line, 1.6, lineCap: PenLineCap.Round);
             if (Icon(band, ignore: false) is { } arrow)
             {
@@ -115,7 +115,4 @@ public sealed class DiffStrip(Func<IEnumerable<DiffBand>> bands, MergeSide iconS
         double x = iconSide == MergeSide.Left ? offset : Bounds.Width - offset - IconSize;
         return new Rect(x, y - (IconSize / 2), IconSize, IconSize);
     }
-
-    private IBrush Find(string key) =>
-        this.TryFindResource(key, ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;
 }

@@ -47,7 +47,7 @@ public sealed partial class CloneDialog : IdeWindow
         progress = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
         working = new StackPanel { Spacing = 6, IsVisible = false, Children = { bar, progress } };
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
 
         clone = DialogFooter.Default("Clone");
         clone.Click += (_, _) => IdeErrors.Observe(CloneAsync());

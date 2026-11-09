@@ -332,6 +332,10 @@
     <Style Selector="TextBlock.muted">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
     </Style>
+    <!-- Words saying what is wrong: a field's problem, what failed. -->
+    <Style Selector="TextBlock.error">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Error}" />
+    </Style>
     <!-- What a tool window or a list says while it has nothing to show: muted, centred, wrapping in a narrow pane rather
          than cut at its edge. -->
     <Style Selector="TextBlock.emptyText">

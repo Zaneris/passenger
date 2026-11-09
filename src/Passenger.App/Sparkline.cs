@@ -70,7 +70,7 @@ public sealed class Sparkline(int kept, bool fromZero, bool fromRight, params st
         int first = fromRight ? kept - readings.Count : 0;
         for (int line = 0; line < brushes.Length; line++)
         {
-            if (!this.TryFindResource(brushes[line], ActualThemeVariant, out object? found) || found is not IBrush colour)
+            if (Tokens.Find(this, brushes[line]) is not { } colour)
             {
                 continue;
             }

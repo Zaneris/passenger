@@ -69,7 +69,7 @@ public sealed class FrameChart : Control
 
     public override void Render(DrawingContext context)
     {
-        context.FillRectangle(Brush(TokenKeys.Editor_Background, Brushes.Transparent), new Rect(Bounds.Size));
+        context.FillRectangle(Tokens.Brush(this, TokenKeys.Editor_Background), new Rect(Bounds.Size));
         if (frames.Count == 0)
         {
             return;
@@ -79,7 +79,7 @@ public sealed class FrameChart : Control
         double[] totals = [.. frames.Select(Total).Order()];
         double span = Math.Max(Budget * 2, Math.Min(totals[^1], UiFrames.Percentile(totals, 0.9) * 1.5));
         double scale = (bottom - top) / span;
-        IBrush muted = Brush(TokenKeys.TextMuted, Brushes.Transparent);
+        IBrush muted = Tokens.Brush(this, TokenKeys.TextMuted);
         Typeface face = new(TextElement.GetFontFamily(this));
 
         double budget = bottom - (Budget * scale);
@@ -97,18 +97,18 @@ public sealed class FrameChart : Control
             {
                 if (!brushes.TryGetValue(part.Brush, out IBrush? brush))
                 {
-                    brushes[part.Brush] = brush = Brush(part.Brush, Brushes.Transparent);
+                    brushes[part.Brush] = brush = Tokens.Brush(this, part.Brush);
                 }
                 Stack(brush, part.Ms, part.Opacity);
             }
             if (Total(frame) > span)
             {
                 // Cut short: its top is the scale's, marked.
-                context.FillRectangle(Brush(TokenKeys.Graph_4, Brushes.Transparent), new Rect(x, top - 3, Bar, 2));
+                context.FillRectangle(Tokens.Brush(this, TokenKeys.Graph_4), new Rect(x, top - 3, Bar, 2));
             }
             if (chosen == i)
             {
-                context.DrawRectangle(null, new Pen(Brush(TokenKeys.Accent, Brushes.Transparent), 1.5), new Rect(x - 1.5, top - 5, Bar + 3, bottom - top + 7));
+                context.DrawRectangle(null, new Pen(Tokens.Brush(this, TokenKeys.Accent), 1.5), new Rect(x - 1.5, top - 5, Bar + 3, bottom - top + 7));
             }
 
             void Stack(IBrush brush, double ms, double opacity)
@@ -146,7 +146,4 @@ public sealed class FrameChart : Control
         FormattedText label = new(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, face, 9, brush);
         context.DrawText(label, new Point(Math.Max(0, Axis - 6 - label.Width), y - (label.Height / 2)));
     }
-
-    private IBrush Brush(string key, IBrush fallback) =>
-        this.TryFindResource(key, ActualThemeVariant, out object? found) && found is IBrush brush ? brush : fallback;
 }

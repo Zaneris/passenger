@@ -202,7 +202,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         setUp.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.CommitSigning);
         WrapPanel options = new() { Margin = new Thickness(10, 4, 10, 0), ItemSpacing = 16, Children = { amend, signOff, sign, setUp } };
         unsigned = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(10, 2, 10, 0) };
-        unsigned.Bind(TextBlock.ForegroundProperty, unsigned.GetResourceObservable(TokenKeys.Error));
+        unsigned.Classes.Add(StyleClasses.Error);
         message = new TextBox
         {
             Classes = { StyleClasses.Search },

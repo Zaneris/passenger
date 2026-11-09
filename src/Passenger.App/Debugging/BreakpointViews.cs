@@ -37,8 +37,8 @@ public sealed class BreakpointProperties : UserControl
         Grid.SetColumn(hitCountProblem, 1);
         fields.Children.Add(hitCountProblem);
         AddRow(fields, 3, "Log message:", log);
-        hitCountProblem.Bind(TextBlock.ForegroundProperty, hitCountProblem.GetResourceObservable(TokenKeys.Error));
-        inactive.Bind(TextBlock.ForegroundProperty, inactive.GetResourceObservable(TokenKeys.Error));
+        hitCountProblem.Classes.Add(StyleClasses.Error);
+        inactive.Classes.Add(StyleClasses.Error);
         hitCount.TextChanged += (_, _) => CheckHitCount();
 
         // The "Suspend If" panel: the exception breakpoint stops when one of each row holds.

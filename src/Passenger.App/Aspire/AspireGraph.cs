@@ -127,8 +127,8 @@ public sealed class AspireGraph : Canvas
     {
         public override void Render(DrawingContext context)
         {
-            IBrush? waits = Brush(TokenKeys.Link);
-            IBrush? references = Brush(TokenKeys.TextMuted);
+            IBrush? waits = Tokens.Find(this, TokenKeys.Link);
+            IBrush? references = Tokens.Find(this, TokenKeys.TextMuted);
             foreach (AspireEdge edge in graph.Edges)
             {
                 if (!graph.nodes.TryGetValue(edge.From, out Button? from) || !graph.nodes.TryGetValue(edge.To, out Button? to))
@@ -164,7 +164,5 @@ public sealed class AspireGraph : Canvas
                 }
             }
         }
-
-        private IBrush? Brush(string token) => this.TryFindResource(token, ActualThemeVariant, out object? found) ? found as IBrush : null;
     }
 }

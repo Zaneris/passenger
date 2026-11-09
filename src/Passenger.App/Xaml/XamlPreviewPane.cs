@@ -60,7 +60,7 @@ public sealed class XamlPreviewPane : DockPanel
             },
         });
         error = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        error.Bind(TextBlock.ForegroundProperty, error.GetResourceObservable(TokenKeys.Error));
+        error.Classes.Add(StyleClasses.Error);
         errorBar = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(10, 6), IsVisible = false, Child = error };
         errorBar.Bind(Border.BackgroundProperty, errorBar.GetResourceObservable(TokenKeys.Banner));
         image = new Image { Stretch = Stretch.Fill };

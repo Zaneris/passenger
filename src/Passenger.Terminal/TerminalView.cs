@@ -337,7 +337,7 @@ public sealed partial class TerminalView : Control
         InvalidateVisual();
     }
 
-    private IBrush? Find(string key) => this.TryFindResource(key, ActualThemeVariant, out object? found) && found is IBrush brush ? brush : null;
+    private IBrush? Find(string key) => Tokens.Find(this, key);
 
     private void Measure()
     {

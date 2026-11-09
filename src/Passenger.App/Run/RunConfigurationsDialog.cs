@@ -208,7 +208,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         Button applyButton = new() { Content = "Apply" };
         OkButton.Click += (_, _) => Ok();
         applyButton.Click += (_, _) => Apply();
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
 
         StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 6), Children = { AddButton, RemoveButton, CopyButton } };
         DockPanel left = new() { Width = 270 };

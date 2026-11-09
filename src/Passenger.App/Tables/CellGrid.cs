@@ -1024,8 +1024,7 @@ public sealed class CellGrid : Control, IOwnKeys
     {
         public static Palette From(Control control)
         {
-            IBrush Brush(string key) =>
-                control.TryFindResource(key, control.ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;
+            IBrush Brush(string key) => Tokens.Brush(control, key);
             return new Palette(
                 Brush(TokenKeys.Editor_Background),
                 Brush(TokenKeys.Editor_Text),

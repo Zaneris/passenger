@@ -155,7 +155,7 @@ public sealed class ValueSlider : Control
         context.DrawEllipse(Brush(TokenKeys.Popup), new Pen(Brush(IsFocused ? TokenKeys.Focus : TokenKeys.Accent), 2), new Point(x, middle), 6, 6);
     }
 
-    private IBrush Brush(string key) => this.TryFindResource(key, ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;
+    private IBrush Brush(string key) => Tokens.Brush(this, key);
 }
 
 /// <summary>A number to type or scrub: an axis's name (x, y, z), or a grip where it has none, that the pointer drags left

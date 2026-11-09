@@ -285,7 +285,7 @@ public sealed class NewProjectDialog : IdeWindow
         };
         Border rightPane = new() { Child = new ScrollViewer { Content = right } };
 
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
         windowsNote.Bind(TextBlock.ForegroundProperty, windowsNote.GetResourceObservable(TokenKeys.Warning));
         working = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, IsVisible = false, Children = { bar, progress } };
         create.Click += (_, _) => IdeErrors.Observe(CreateAsync());

@@ -208,7 +208,7 @@ internal sealed class InfoCard : Border, IHoverCard
     }
 
     internal static IBrush Brush(string key) =>
-        Application.Current is { } app && app.TryFindResource(key, app.ActualThemeVariant, out object? value) && value is IBrush brush ? brush : Brushes.Transparent;
+        Application.Current is { } app ? Tokens.Brush(app, key) : Brushes.Transparent;
 }
 
 /// <summary>One completion row: the badge for its kind (a coloured letter, its colour the theme's resource of that key,

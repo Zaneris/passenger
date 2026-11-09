@@ -36,7 +36,7 @@ public sealed class NuGetSourcesView : Panel
                 Draw();
             }
         };
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        problem.Classes.Add(StyleClasses.Error);
         DockPanel right = new();
         DockPanel.SetDock(problem, Dock.Bottom);
         problem.Margin = new Thickness(14, 0, 14, 8);
@@ -313,7 +313,7 @@ public sealed class NuGetSourcesView : Panel
     private static TextBlock Error(string text)
     {
         TextBlock error = new() { Text = text, TextWrapping = TextWrapping.Wrap };
-        error.Bind(TextBlock.ForegroundProperty, error.GetResourceObservable(TokenKeys.Error));
+        error.Classes.Add(StyleClasses.Error);
         return error;
     }
 
