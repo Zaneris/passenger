@@ -5,13 +5,14 @@ using Passenger.Text;
 
 namespace Passenger.Languages.CSharp;
 
-/// <summary>The language server's colours over the parser's: what only the compiler knows (that a name is a struct, a
-/// field, a local, an extension method) replaces the syntax's guess wherever the server says something. Tokens are
+/// <summary>The language server's colours over the parser's (<see cref="CarriedColours"/>): what only the compiler knows
+/// (that a name is a struct, a field, a local, an extension method) replaces the syntax's guess wherever the server says
+/// something. Tokens are
 /// asked for once edits settle and whenever the server says the code moved: the lines on screen first (a screen takes
 /// the server milliseconds, a long file about a second), then the whole file once typing has stopped
 /// (<see cref="Idle"/>). Each answer is decoded off the UI thread against the snapshot it was asked for and carried
 /// through the edits made since, so colours never lag a keystroke behind the text nor jump when an answer lands.</summary>
-public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposable
+public sealed class SemanticHighlighter : CarriedColours
 {
     /// <summary>How long typing must pause before new tokens are asked for.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(300);
@@ -25,13 +26,8 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
     /// pause, idle or not: every frame drawn beyond the screen's carries them through each.</summary>
     private const int MostCarried = 64;
 
-    private readonly IHighlighter syntax;
     private readonly LspDocument document;
     private readonly TokenKind?[] kinds;
-
-    /// <summary>Each change since the oldest tokens still shown, or since the snapshot a request still out was asked
-    /// for, with the version of the text it made.</summary>
-    private readonly List<(int Version, IReadOnlyList<Passenger.Text.TextEdit> Edits)> history = [];
 
     /// <summary>The whole file's tokens, and the screen's while they are newer.</summary>
     private Tokens? whole;
@@ -53,16 +49,12 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
     private SentRequest? outAfter;
 
     public SemanticHighlighter(IHighlighter syntax, LspDocument document, SemanticTokensLegend legend)
+        : base(syntax, document.Text)
     {
-        this.syntax = syntax;
         this.document = document;
         kinds = legend.TokenTypes.Select(Kind).ToArray();
-        syntax.Changed += OnSyntaxChanged;
-        document.Text.Changed += OnTextChanged;
         Refresh();
     }
-
-    public event EventHandler? Changed;
 
     /// <summary>Asks for fresh tokens now: the server's view moved (projects loaded, another project chosen).</summary>
     public void Refresh() => Request(TimeSpan.Zero);
@@ -78,88 +70,35 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
         Request(TimeSpan.Zero);
     }
 
-    public IReadOnlyList<SyntaxSpan> GetSpans(TextSnapshot snapshot, int start, int length)
+    public override IReadOnlyList<SyntaxSpan> GetSpans(TextSnapshot snapshot, int start, int length)
     {
-        IReadOnlyList<SyntaxSpan> parsed = syntax.GetSpans(snapshot, start, length);
+        IReadOnlyList<SyntaxSpan> parsed = Syntax.GetSpans(snapshot, start, length);
         Shown(start, length);
-        List<SyntaxSpan> semantic = Visible(start, start + length);
-        if (semantic.Count == 0)
-        {
-            return parsed;
-        }
-        List<SyntaxSpan> merged = new(parsed.Count + semantic.Count);
-        int s = 0;
-        foreach (SyntaxSpan span in parsed)
-        {
-            while (s < semantic.Count && semantic[s].End <= span.Start)
-            {
-                s++;
-            }
-            bool covered = s < semantic.Count && semantic[s].Start < span.End;
-            if (!covered)
-            {
-                merged.Add(span);
-            }
-        }
-        merged.AddRange(semantic);
-        merged.Sort((a, b) => a.Start.CompareTo(b.Start));
-        return merged;
+        return Over(parsed, Visible(start, start + length));
     }
 
-    public void Showing(TextSnapshot snapshot, int start, int length)
+    public override void Showing(TextSnapshot snapshot, int start, int length)
     {
         Shown(start, length);
-        syntax.Showing(snapshot, start, length);
+        base.Showing(snapshot, start, length);
     }
 
-    /// <summary>The parser's colours this layers over, which stand alone again once the server is gone.</summary>
-    public IHighlighter Syntax => syntax;
-
-    /// <summary>The syntax's pair: brackets are the parser's to tell, never the server's.</summary>
-    public BracePair? PairAt(TextSnapshot snapshot, int offset, bool far = false) => (syntax as IBraceMatcher)?.PairAt(snapshot, offset, far);
-
-    /// <summary>The syntax's tag pair, a Razor file's markup's.</summary>
-    public BracePair? TagPairAt(TextSnapshot snapshot, int caret, bool far = false) => (syntax as IBraceMatcher)?.TagPairAt(snapshot, caret, far);
-
-    public void Dispose()
+    public override void Dispose()
     {
         disposed = true;
         pending?.Cancel();
-        syntax.Changed -= OnSyntaxChanged;
-        document.Text.Changed -= OnTextChanged;
+        base.Dispose();
     }
-
-    private void OnSyntaxChanged(object? sender, EventArgs e)
-    {
-        KeptColours = syntax.KeptColours;
-        ChangedWithin = syntax.ChangedWithin;
-        Changed?.Invoke(this, EventArgs.Empty);
-        KeptColours = false;
-        ChangedWithin = null;
-    }
-
-    /// <summary>The parser's word of where its colours changed, while it is raised: the server's tokens are as they were.</summary>
-    public TextRange? ChangedWithin { get; private set; }
-
-    /// <summary>The parser's word that it kept every colour it had given, while it is raised: the server's tokens are as
-    /// they were.</summary>
-    public bool KeptColours { get; private set; }
-
-    /// <summary>How many changes the colours shown are carried through to the text as it stands, each range drawn going
-    /// through each: a run of typing in one place is one, however long the server takes to answer.</summary>
-    public int Carrying => history.Count;
 
     /// <summary>Whether the latest ask for colours, the pause before it included, has yet to be answered or refused.</summary>
     public bool Asking => answered != asked;
 
-    private void OnTextChanged(object? sender, DocumentChangedEventArgs e)
+    /// <summary>Whether tokens shown, or the request out, are of a version of the text.</summary>
+    protected override bool Holds(int version) => whole?.Version == version || screen?.Version == version || askedFor == version;
+
+    protected override void OnTextChanged(DocumentChangedEventArgs e)
     {
-        // The change before is joined only when no tokens shown, nor the request out, are of the text it made.
-        if (history.Count == 0 || whole?.Version == history[^1].Version || screen?.Version == history[^1].Version || askedFor == history[^1].Version
-            || !CarriedSpans.Join(history, e.Version, e.Edits))
-        {
-            history.Add((e.Version, e.Edits));
-        }
+        base.OnTextChanged(e);
         Request(Settle);
         Forget();
     }
@@ -231,7 +170,7 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
                 {
                     return;
                 }
-                if (whole is not null && history.Count - After(whole.Version) <= MostCarried)
+                if (whole is not null && CarriedThrough(whole.Version) <= MostCarried)
                 {
                     // The rest of the file once typing stops: nothing on screen waits for it, so no screenshot does.
                     BackgroundWork.End();
@@ -318,21 +257,12 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
             screen = tokens;
         }
         Forget();
-        Changed?.Invoke(this, EventArgs.Empty);
+        Raise(null);
         return true;
     }
 
     /// <summary>Lets go of the changes that no tokens shown, nor a request still out, have to be carried through.</summary>
-    private void Forget()
-    {
-        int floor = Math.Min(Math.Min(whole?.Version ?? int.MaxValue, screen?.Version ?? int.MaxValue), askedFor ?? int.MaxValue);
-        int done = 0;
-        while (done < history.Count && history[done].Version <= floor)
-        {
-            done++;
-        }
-        history.RemoveRange(0, done);
-    }
+    private void Forget() => Forget(Math.Min(Math.Min(whole?.Version ?? int.MaxValue, screen?.Version ?? int.MaxValue), askedFor ?? int.MaxValue));
 
     /// <summary>The protocol's relative encoding (each token as line and column deltas, length, type, modifiers) turned
     /// into offsets in the snapshot it was asked for, in order. Off the UI thread: a long file has hundreds of thousands
@@ -381,19 +311,16 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
     /// file's elsewhere.</summary>
     private List<SyntaxSpan> Visible(int start, int end)
     {
-        if (screen is not { Covered: { } covered } near)
+        if (screen is not { Covered: { } read } near)
         {
-            return whole is null ? [] : Carried(whole, start, end);
+            return whole is null ? [] : Carried(whole.Spans, whole.Version, start, end);
         }
-        for (int i = After(near.Version); i < history.Count; i++)
-        {
-            covered = TextEditing.MapRange(covered, history[i].Edits);
-        }
-        List<SyntaxSpan> spans = Carried(near, start, end);
+        TextRange covered = Carried(read, near.Version);
+        List<SyntaxSpan> spans = Carried(near.Spans, near.Version, start, end);
         Keep(spans, covered, inside: true);
         if (whole is not null && (start < covered.Start || end > covered.End))
         {
-            List<SyntaxSpan> around = Carried(whole, start, end);
+            List<SyntaxSpan> around = Carried(whole.Spans, whole.Version, start, end);
             Keep(around, covered, inside: false);
             spans.AddRange(around);
             spans.Sort((a, b) => a.Start.CompareTo(b.Start));
@@ -416,61 +343,6 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
             }
         }
         spans.RemoveRange(kept, spans.Count - kept);
-    }
-
-    /// <summary>One answer's tokens near a range of the current text: found in the answer's own text by halving, then
-    /// carried through every edit since.</summary>
-    private List<SyntaxSpan> Carried(Tokens tokens, int start, int end)
-    {
-        int first = After(tokens.Version);
-        int from = start;
-        int to = end;
-        for (int i = history.Count - 1; i >= first; i--)
-        {
-            from = CarriedSpans.Back(history[i].Edits, from, toEnd: false);
-            to = CarriedSpans.Back(history[i].Edits, to, toEnd: true) + 1;
-        }
-        SyntaxSpan[] all = tokens.Spans;
-        int low = Sorted.FirstAfter(all, static s => s.End, from - 1);
-        int last = low;
-        while (last < all.Length && all[last].Start <= to)
-        {
-            last++;
-        }
-        List<SyntaxSpan> spans = new(last - low);
-        for (int i = low; i < last; i++)
-        {
-            spans.Add(all[i]);
-        }
-        for (int i = first; i < history.Count; i++)
-        {
-            CarriedSpans.Forward(spans, history[i].Edits, Word);
-        }
-        return spans;
-    }
-
-    /// <summary>Where the changes made after a version begin in the history.</summary>
-    private int After(int version)
-    {
-        int first = 0;
-        while (first < history.Count && history[first].Version <= version)
-        {
-            first++;
-        }
-        return first;
-    }
-
-    /// <summary>Whether text typed inside a token keeps it one: a name's letters and digits, never what would split it.</summary>
-    private static bool Word(string text)
-    {
-        foreach (char c in text)
-        {
-            if (!char.IsLetterOrDigit(c) && c != '_')
-            {
-                return false;
-            }
-        }
-        return true;
     }
 
     /// <summary>Roslyn's token types, standard and its own, and Razor's for a Razor file's markup, as the editor's kinds:
