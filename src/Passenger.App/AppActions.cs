@@ -146,6 +146,14 @@ public static class AppActions
     // The Migrations window over the folder's EF Core contexts, its commands, and the fix of what keeps dotnet ef from
     // working that it shows first: no key of Rider's.
     public const string ShowMigrations = "app.showMigrations";
+    public const string ShowDatabase = "app.showDatabase";
+    public const string DatabaseRefresh = "app.database.refresh";
+    public const string DatabaseConnect = "app.database.connect";
+    public const string DatabaseBrowse = "app.database.browse";
+    public const string DatabaseQuery = "app.database.query";
+    public const string DatabaseNext = "app.database.next";
+    public const string DatabasePrevious = "app.database.previous";
+    public const string DatabaseEdit = "app.database.edit";
     public const string MigrationsRefresh = "app.migrations.refresh";
     public const string AddMigration = "app.migrations.add";
     public const string RemoveLastMigration = "app.migrations.removeLast";

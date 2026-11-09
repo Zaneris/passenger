@@ -40,6 +40,11 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
+    <PackageReference Include="MySqlConnector" />
     <PackageReference Include="Avalonia.Desktop" />
     <!-- Avalonia.Headless names this package, though nothing of it is read: the window draws in Passenger's own Inter
          (Fonts/), so its assets stay out of the app. -->
