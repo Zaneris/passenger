@@ -55,7 +55,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
             return true;
         }
         IReadOnlyList<CompletionItem> files = await BackgroundWork.Run(() => (IReadOnlyList<CompletionItem>)[.. index.FilesUnder(folder)
-            .Where(f => !PathNames.Same(f, shown.Path)).Select(f => GodotScenes.ResPathOf(folder, f)).OfType<string>().Order(StringComparer.Ordinal)
+            .Where(f => !PathNames.Same(f, shown.Path)).Select(f => GodotResPaths.Of(folder, f)).OfType<string>().Order(StringComparer.Ordinal)
             .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = Path.GetExtension(res), FilterText = res, SortText = " " + res })]);
         if (cancel.IsCancellationRequested || context.Editors.Active != shown || shown.Text.Snapshot != asked || files.Count == 0)
         {
@@ -96,7 +96,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
         }
         int open = row.LastIndexOf('"', column - 1);
         string typed = row[(open + 1)..column];
-        if (!(!begun && "res://".StartsWith(typed, StringComparison.Ordinal) || typed.StartsWith("res://", StringComparison.Ordinal)))
+        if (!(!begun && GodotResPaths.Scheme.StartsWith(typed, StringComparison.Ordinal) || typed.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal)))
         {
             return null;
         }
@@ -159,7 +159,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
     private async Task<Declared?> EntryDeclaredAsync(GodotScenes scenes, string res, GodotFile file, GodotSection section, GodotEntry entry)
     {
         GodotValue value = entry.Value;
-        if (value.Text is { } text && (text.StartsWith("res://", StringComparison.Ordinal) || text.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)))
+        if (value.Text is { } text && (text.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) || text.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)))
         {
             return FileDeclared(scenes, text);
         }

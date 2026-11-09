@@ -67,12 +67,8 @@ public sealed class AssetPreview : IDisposable
     public static bool Supports(string path) => KindOf(path) is not null;
 
     /// <summary>What a path's preview would be, by its name; null for a file shown as text.</summary>
-    public static AssetKind? KindOf(string path) => System.IO.Path.GetExtension(path).ToLowerInvariant() switch
-    {
-        ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".ico" => AssetKind.Image,
-        ".ttf" or ".otf" => AssetKind.Font,
-        _ => null,
-    };
+    public static AssetKind? KindOf(string path) => Passenger.Core.PictureFiles.Is(path) ? AssetKind.Image
+        : Passenger.Core.PathNames.HasExtension(path, [".ttf", ".otf"]) ? AssetKind.Font : null;
 
     /// <summary>What a tab shows until <see cref="Load"/> lands off the UI thread, given once the file opens at a size the
     /// decode takes: a missing, unreadable, empty or oversized file is refused at once, with the <see cref="IOException"/>

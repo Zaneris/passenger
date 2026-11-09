@@ -114,13 +114,13 @@ public sealed partial class GDScriptAnalyzer
     /// so in Godot's words.</summary>
     private bool BaseLacked(GDScriptClass node, string path, Context context)
     {
-        if (node.ExtendsPath is { } script && Engine?.Version >= new Version(4, 8) && !script.StartsWith("uid://", StringComparison.Ordinal)
+        if (node.ExtendsPath is { } script && Engine?.Version >= new Version(4, 8) && !script.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)
             && !script.EndsWith(".gd", StringComparison.OrdinalIgnoreCase))
         {
-            Error(context, node, $"\"{Absolute(script, path)}\" is not a GDScript.");
+            Error(context, node, $"\"{GodotResPaths.Resolved(script, path)}\" is not a GDScript.");
             return true;
         }
-        if (node.ExtendsPath is not { } written || Absolute(written, path) is not { } absolute || !Lacked(absolute))
+        if (node.ExtendsPath is not { } written || GodotResPaths.Resolved(written, path) is not { } absolute || !Lacked(absolute))
         {
             return false;
         }
@@ -130,7 +130,7 @@ public sealed partial class GDScriptAnalyzer
 
     /// <summary>Whether a res:// path written plainly (no uid, no <c>.</c> or <c>..</c> to resolve) names a file the project lacks.</summary>
     private bool Lacked(string absolute) =>
-        absolute.StartsWith("res://", StringComparison.Ordinal) && !absolute["res://".Length..].Split('/').Any(p => p is "" or "." or "..") && project.Lacks(absolute);
+        absolute.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && !absolute[GodotResPaths.Scheme.Length..].Split('/').Any(p => p is "" or "." or "..") && project.Lacks(absolute);
 
     /// <summary>The classes a script declares inside its own, an inner class's too, each by its offset.</summary>
     private static IEnumerable<GDScriptType> InnerClasses(IEnumerable<(GDScriptNode Node, int Offset)> members, string path)
@@ -314,7 +314,7 @@ public sealed partial class GDScriptAnalyzer
         }
         if (node.ExtendsPath is { } written)
         {
-            string path = Absolute(written, type.Script);
+            string path = GodotResPaths.Resolved(written, type.Script);
             GDScriptType? based = Tree(path) is { } tree ? ScriptClass(tree, path) : null;
             foreach (GDScriptIdentifier inner in node.Extends)
             {
@@ -359,32 +359,6 @@ public sealed partial class GDScriptAnalyzer
             return ScriptClass(globalTree, global);
         }
         return Engine?.Classes.ContainsKey(name) == true || Engine is null ? GDScriptType.Native(name) : null;
-    }
-
-    /// <summary>A path an <c>extends</c> or <c>preload</c> writes, relative to the script's folder where not res://.</summary>
-    public static string Absolute(string written, string? from)
-    {
-        if (written.StartsWith("res://", StringComparison.Ordinal) || from is null || written.StartsWith("uid://", StringComparison.Ordinal))
-        {
-            return written;
-        }
-        string folder = from[..(from.LastIndexOf('/') + 1)];
-        List<string> parts = [.. folder["res://".Length..].Split('/', StringSplitOptions.RemoveEmptyEntries)];
-        foreach (string part in written.Split('/'))
-        {
-            if (part == "..")
-            {
-                if (parts.Count > 0)
-                {
-                    parts.RemoveAt(parts.Count - 1);
-                }
-            }
-            else if (part is not ("." or ""))
-            {
-                parts.Add(part);
-            }
-        }
-        return "res://" + string.Join('/', parts);
     }
 
     private GDScriptType? InnerClass(GDScriptType owner, string name) => OwnNames(owner).TryGetValue(name, out (GDScriptNode Node, int Offset) named) ? named.Node switch
@@ -998,7 +972,7 @@ public sealed partial class GDScriptAnalyzer
             {
                 return false;
             }
-            if (node.ExtendsPath is { } written && Tree(Absolute(project.Resolved(written), at.Script)) is null
+            if (node.ExtendsPath is { } written && Tree(GodotResPaths.Resolved(project.Resolved(written), at.Script)) is null
                 || node.ExtendsPath is null && node.Extends.Count > 0 && ExtendedType(node.Extends[0].Name, at) is null)
             {
                 return false;

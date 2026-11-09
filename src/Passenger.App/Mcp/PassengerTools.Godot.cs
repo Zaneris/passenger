@@ -109,7 +109,7 @@ public sealed partial class PassengerTools
         }
 
         // A script's type by its file's name, which names its class: Main for res://Main.cs.
-        static string TypeOf(string type) => type.StartsWith("res://", StringComparison.Ordinal) || Path.IsPathRooted(type)
+        static string TypeOf(string type) => type.StartsWith(Passenger.Workspace.GodotResPaths.Scheme, StringComparison.Ordinal) || Path.IsPathRooted(type)
             ? Path.GetFileNameWithoutExtension(type)
             : type;
     }
@@ -179,7 +179,7 @@ public sealed partial class PassengerTools
         {
             throw new ArgumentException($"Nothing in {game.Name} matches {control}; app_tree shows what there is");
         }
-        Dictionary<long, string> scripts = root.All().Where(n => n.Type.StartsWith("res://", StringComparison.Ordinal)).ToDictionary(n => (long)n.Id, n => n.Type);
+        Dictionary<long, string> scripts = root.All().Where(n => n.Type.StartsWith(Passenger.Workspace.GodotResPaths.Scheme, StringComparison.Ordinal)).ToDictionary(n => (long)n.Id, n => n.Type);
         List<(AppNode Node, string Script, GodotScriptMembers Members)> read = [];
         Dictionary<string, GodotScriptMembers?> declared = new(StringComparer.Ordinal);
         foreach (AppNode node in found)
@@ -198,7 +198,7 @@ public sealed partial class PassengerTools
         }
         IReadOnlyList<GodotScriptRead> answers = await game.ScriptValuesAsync(
             [.. read.Select(r => new GodotScriptAsk(r.Script, (ulong)r.Node.Element.Id, [.. r.Members.Members.Select(m => m.Name)]))]);
-        return new AppScriptMembers(game.Name, [.. read.Select((r, i) => new AppNodeMembers(AppQuery.Short(r.Node.Element), Relative(ScriptFile(game, r.Script)), r.Members.Class,
+        return new AppScriptMembers(game.Name, [.. read.Select((r, i) => new AppNodeMembers(AppQuery.Short(r.Node.Element), Relative(ScriptFile(game, r.Script) ?? r.Script), r.Members.Class,
             [.. r.Members.Members.Where(m => answers[i].Values.ContainsKey(m.Name)).Select(m => new AppMemberValue(m.Name, m.Line + 1, GodotLiveWords.Of(answers[i].Values[m.Name])))]))]);
     }
 
@@ -206,7 +206,10 @@ public sealed partial class PassengerTools
     /// read and parsed off the window's thread); null for a file not there or of no script's class.</summary>
     private async Task<GodotScriptMembers?> ScriptMembersAsync(GodotGame game, string script)
     {
-        string file = ScriptFile(game, script);
+        if (ScriptFile(game, script) is not { } file)
+        {
+            return null;
+        }
         bool csharp = file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
         if (Editors.Find(file) is { HoldsText: true } open)
         {
@@ -233,8 +236,8 @@ public sealed partial class PassengerTools
         });
     }
 
-    /// <summary>The file of a game's script by its <c>res://</c> path.</summary>
-    private static string ScriptFile(GodotGame game, string script) => PathNames.Canonical(Path.Combine(game.Folder, script["res://".Length..]));
+    /// <summary>The file of a game's script by its <c>res://</c> path; null for one outside its project.</summary>
+    private static string? ScriptFile(GodotGame game, string script) => Passenger.Workspace.GodotResPaths.FileOf(game.Folder, script) is { } file ? PathNames.Canonical(file) : null;
 
     private async Task<AppElementDetails> GameDetailsAsync(GodotGame game, string control, string? window, string? properties)
     {

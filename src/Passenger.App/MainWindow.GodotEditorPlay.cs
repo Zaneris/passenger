@@ -49,7 +49,7 @@ public partial class MainWindow
             {
                 return $"{chosen.Name} cannot run: it starts in the scene open in the editor, and none is (a .tscn, or a script a scene's node runs)";
             }
-            scene = GodotProject.ResourcePath(folder, open);
+            scene = GodotResPaths.Of(folder, open);
         }
         else
         {

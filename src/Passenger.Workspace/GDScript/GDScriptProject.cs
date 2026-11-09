@@ -37,7 +37,7 @@ public sealed class GDScriptProject(GodotEngineApi? engine, Func<string, GDScrip
     public IEnumerable<string> Autoloads => autoloads.Keys;
 
     /// <summary>The res:// path a path written names: a uid:// one's file, any other as it is.</summary>
-    public string Resolved(string path) => path.StartsWith("uid://", StringComparison.Ordinal) && uids?.Invoke(path) is { } found ? found : path;
+    public string Resolved(string path) => path.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) && uids?.Invoke(path) is { } found ? found : path;
 
     /// <summary>The class of the resource a path names: a script's, a scene's (<c>PackedScene</c>), a resource file's own.</summary>
     public string ResourceClass(string path) => resourceClass?.Invoke(path) ?? LoadedAs(path) ?? "Resource";

@@ -10,7 +10,7 @@ public static partial class GodotResources
     /// pixels at its own size, any other drawn that wide; null for a file that is no picture Avalonia draws.</summary>
     public static Task<Bitmap?> PreviewAsync(string path, int most) => BackgroundWork.Run(() =>
     {
-        if (!PathNames.HasExtension(path, [".png", ".jpg", ".jpeg", ".webp", ".bmp"]))
+        if (!PictureFiles.Is(path))
         {
             return null;
         }
@@ -35,7 +35,7 @@ public static partial class GodotResources
     /// picture Avalonia draws.</summary>
     public static Task<Bitmap?> ThumbnailAsync(string path, int width) => BackgroundWork.Run(() =>
     {
-        if (!PathNames.HasExtension(path, [".png", ".jpg", ".jpeg", ".webp", ".bmp"]))
+        if (!PictureFiles.Is(path))
         {
             return null;
         }

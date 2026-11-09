@@ -125,7 +125,7 @@ public static class GodotKeep
     public static (GodotKept? Kept, string? WhyNot) InResource(string resource, string property, object? value, GodotProperty? declared,
         Func<string, (string File, string Text)?> read)
     {
-        if (!resource.StartsWith("res://", StringComparison.Ordinal))
+        if (!resource.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal))
         {
             return (null, "its resource was made as the game ran, so no file of the project's keeps its values");
         }
@@ -153,7 +153,7 @@ public static class GodotKeep
         string lineEnding = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         List<TextEdit> edits = [];
         string? written;
-        if (declared is { Type: GodotType.Object } && value is string resource && resource.StartsWith("res://", StringComparison.Ordinal))
+        if (declared is { Type: GodotType.Object } && value is string resource && resource.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal))
         {
             GodotFile parsed = GodotFile.Parse(text);
             string id;
@@ -279,7 +279,7 @@ public static class GodotKeep
 
     /// <summary>A value as C# writes it for a member of a declared type: a resource's path loaded as its type.</summary>
     private static string? Written(object? value, string type, IReadOnlyList<GodotChoice>? choices, GodotProperty? declared) =>
-        declared is { Type: GodotType.Object } && value is string resource && resource.StartsWith("res://", StringComparison.Ordinal)
+        declared is { Type: GodotType.Object } && value is string resource && resource.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal)
             ? $"GD.Load<{type}>({GodotText.CSharp(resource, "string")})"
             : GodotText.CSharp(value, type, choices);
 

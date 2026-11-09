@@ -132,7 +132,7 @@ public static partial class GDScriptRefactorings
         for (GDScriptRead? at = scripts.FirstOrDefault(s => s.Script == script); at is not null && found.Count < 32;)
         {
             GDScriptClass own = at.Tree.Class;
-            string? next = own.ExtendsPath is { } path ? (path.StartsWith("res://", StringComparison.Ordinal) ? path : GDScriptAnalyzer.Absolute(path, at.Script))
+            string? next = own.ExtendsPath is { } path ? GodotResPaths.Resolved(path, at.Script)
                 : own.Extends is [{ } first, ..] ? scripts.FirstOrDefault(s => s.Tree.Class.Identifier?.Name == first.Name)?.Script : null;
             if (next is null || found.Contains(next))
             {

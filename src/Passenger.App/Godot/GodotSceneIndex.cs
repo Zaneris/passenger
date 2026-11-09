@@ -48,12 +48,12 @@ public sealed class GodotSceneIndex
         }
         if (!ReferenceEquals(listed.From, files) || listed.Folder != folder)
         {
-            listed = (files, folder, new HashSet<string>(FilesUnder(folder).Select(f => GodotScenes.ResPathOf(folder, f)).OfType<string>(), PathNames.Comparer));
+            listed = (files, folder, new HashSet<string>(FilesUnder(folder).Select(f => GodotResPaths.Of(folder, f)).OfType<string>(), PathNames.Comparer));
         }
         HashSet<string> known = listed.Res;
-        return res => res.StartsWith("res://", StringComparison.Ordinal) && res["res://".Length..] is { Length: > 0 } relative
+        return res => res.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && res[GodotResPaths.Scheme.Length..] is { Length: > 0 } relative
             && !known.Contains(res) && !IgnoredFolders.AnyIn(folder, relative) && !IgnoredFolders.AnyHidden(relative)
-            && !res.EndsWith(".import", StringComparison.OrdinalIgnoreCase) && !res.EndsWith(".uid", StringComparison.OrdinalIgnoreCase);
+            && !GodotUids.IsBeside(res);
     }
 
     /// <summary>The folder of the Godot project a file of the open folder is of (<see cref="ProjectSession.GodotOf"/>); null for none.</summary>
@@ -70,7 +70,7 @@ public sealed class GodotSceneIndex
         }
         return [.. files.Select(f => Path.Combine(root, f)).Where(f => PathNames.IsUnder(f, folder) && !PathNames.Same(f, folder)
             && !Path.GetRelativePath(folder, f).Split(Path.DirectorySeparatorChar).Any(n => n.StartsWith('.'))
-            && !f.EndsWith(".import", StringComparison.OrdinalIgnoreCase) && !f.EndsWith(".uid", StringComparison.OrdinalIgnoreCase))];
+            && !GodotUids.IsBeside(f))];
     }
 
     /// <summary>A scene or resource of a project asked about came, went or was written, on the UI thread.</summary>
@@ -153,7 +153,7 @@ public sealed class GodotSceneIndex
             }
             foreach ((string path, string uid) in project.Beside)
             {
-                if (GodotScenes.ResPathOf(folder, GodotUids.BesideOf(path)) is { } res)
+                if (GodotResPaths.Of(folder, GodotUids.BesideOf(path)) is { } res)
                 {
                     uids[uid] = res;
                 }
@@ -421,7 +421,7 @@ public sealed class GodotSceneIndex
         /// <summary>A file's reading put in its place (or taken out, for none); whether a uid it gives another changed.</summary>
         public bool Take(string path, TextSnapshot? open, GodotFile? file, string? uid, string? text)
         {
-            string? res = resOf.TryGetValue(path, out string? known) ? known : resOf[path] = GodotScenes.ResPathOf(folder, path);
+            string? res = resOf.TryGetValue(path, out string? known) ? known : resOf[path] = GodotResPaths.Of(folder, path);
             string? was = Beside.GetValueOrDefault(path);
             Read.Remove(path);
             Raw.Remove(path);

@@ -54,7 +54,7 @@ internal static class GodotBeside
                 foreach (GodotChecks.Connected connected in GodotChecks.Connections(scenes, scene).Where(c => c.To?.Script is { } to && type.Scripts.Contains(to)))
                 {
                     int index = IndexOf(asked.Methods, GodotChecks.MethodAsked(connected));
-                    if (index < 0 || index >= found.Methods.Count || found.Methods[index] is not { Path: { } declaring, At: { } at } || !SameFile(declaring, asked.Path)
+                    if (index < 0 || index >= found.Methods.Count || found.Methods[index] is not { Path: { } declaring, At: { } at } || !Core.PathNames.SameFile(declaring, asked.Path)
                         || scenes.FileOf(scene) is not { } file)
                     {
                         continue;
@@ -114,6 +114,4 @@ internal static class GodotBeside
         }
         return -1;
     }
-
-    private static bool SameFile(string left, string right) => Core.PathNames.Same(left, right) || Core.PathNames.Same(Core.PathNames.Canonical(left), right);
 }

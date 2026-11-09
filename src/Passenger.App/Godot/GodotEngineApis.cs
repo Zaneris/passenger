@@ -201,7 +201,7 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
     /// <summary>Godot's reading of its classes, its script run on an empty project in <paramref name="working"/>, kept.</summary>
     private async Task<bool> ReadClassesAsync(GodotFound found, string kept, string working)
     {
-        AtomicFile.Write(Path.Combine(working, "project.godot"), "config_version=5\n"u8.ToArray());
+        AtomicFile.Write(Path.Combine(working, GodotProject.FileName), "config_version=5\n"u8.ToArray());
         AtomicFile.Write(Path.Combine(working, "PassengerClasses.gd"), ClassesScript.Value);
         string written = Path.Combine(working, "classes.json");
         ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--path", working, "--script", "res://PassengerClasses.gd", "--", written], working);
@@ -293,7 +293,7 @@ public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDiction
     private async Task<bool> ProbeShadersAsync(GodotFound found, GodotShaderTable carried, string kept, string working)
     {
         IReadOnlyList<GodotShaderProbe> probes = carried.Probes();
-        AtomicFile.Write(Path.Combine(working, "project.godot"), "config_version=5\n"u8.ToArray());
+        AtomicFile.Write(Path.Combine(working, GodotProject.FileName), "config_version=5\n"u8.ToArray());
         AtomicFile.Write(Path.Combine(working, "PassengerShaderProbes.gd"), ProbesScript.Value);
         string asked = Path.Combine(working, "probes.json");
         string refusedAt = Path.Combine(working, "refused.json");

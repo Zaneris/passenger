@@ -319,10 +319,8 @@ public sealed record TestOutcome(TestItem Test, TestState State, TimeSpan Durati
 /// <summary>A file a test's result carries, by the name the test gave it, where its runner wrote it.</summary>
 public sealed record TestAttachment(string Name, string Path)
 {
-    private static readonly string[] Pictures = [".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"];
-
     /// <summary>A picture the Unit Tests window shows as a frame of the result (a PNG of a window, as a rule).</summary>
-    public bool IsPicture => Pictures.Contains(System.IO.Path.GetExtension(Path), StringComparer.OrdinalIgnoreCase);
+    public bool IsPicture => PictureFiles.Is(Path);
 
     /// <summary>An attachment as a runner names it: a file URI or a path.</summary>
     public static TestAttachment Of(string name, string uriOrPath)

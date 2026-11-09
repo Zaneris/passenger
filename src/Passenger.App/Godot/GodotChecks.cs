@@ -578,7 +578,7 @@ internal static class GodotChecks
         {
             return null;
         }
-        bool here = method.At is not null && method.Path is not null && SameFile(method.Path, asked.Path);
+        bool here = method.At is not null && method.Path is not null && Core.PathNames.SameFile(method.Path, asked.Path);
         string takes = Takes(method.Parameters);
         string gives = Gives(given, signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Bound))));
         return new Finding(here ? method.At! : type.At, here ? method.End! : type.End, true, $"{where} connects {from}'s {connection.Signal}, which {gives}, to {connection.Method}, which {takes}");
@@ -593,7 +593,7 @@ internal static class GodotChecks
         HashSet<(string, int)> said = [];
         foreach (GodotMember export in type.Exports.Where(e => e.Node is not null))
         {
-            bool here = SameFile(export.Path, asked.Path);
+            bool here = Core.PathNames.SameFile(export.Path, asked.Path);
             foreach ((string scene, GodotTreeNode node) in type.Scripts.SelectMany(scenes.RunsOf))
             {
                 foreach ((string written, Passenger.Workspace.GodotNode section) in node.Written)
@@ -668,8 +668,6 @@ internal static class GodotChecks
         }
         return -1;
     }
-
-    private static bool SameFile(string left, string right) => Core.PathNames.Same(left, right) || Core.PathNames.Same(Core.PathNames.Canonical(left), Core.PathNames.Canonical(right));
 
     /// <summary>What a string of a kind may name, as Godot looks for it: the names defined, the words saying where Godot looks
     /// (after "No input action 'jump' is"), and whether those are all it may name, so a name none of them is is known
@@ -1418,7 +1416,7 @@ internal static class GodotChecks
     /// <summary>A Godot type as C# names it, for a fix's title: a script's by its file, a variant's as C# writes it.</summary>
     internal static string TypeShown(string type) => type switch
     {
-        _ when type.StartsWith("res://", StringComparison.Ordinal) => System.IO.Path.GetFileNameWithoutExtension(type.Split('/')[^1]),
+        _ when type.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) => System.IO.Path.GetFileNameWithoutExtension(type.Split('/')[^1]),
         "String" => "string",
         "PackedStringArray" => "string[]",
         "PackedByteArray" => "byte[]",

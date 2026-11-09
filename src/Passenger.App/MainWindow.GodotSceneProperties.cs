@@ -47,7 +47,11 @@ public partial class MainWindow
             sceneProperties.Show(null);
             return;
         }
-        string res = GodotProject.ResourcePath(folder, scene);
+        if (GodotResPaths.Of(folder, scene) is not { } res)
+        {
+            sceneProperties.Show(null);
+            return;
+        }
         GodotScenes scenes = await session.GodotScenes.ScenesAsync(folder);
         GodotTreeNode? tree = scenes.Tree(res)?.Below().FirstOrDefault(n => n.Written.Any(w => w.Scene == res && w.Node.Section.Start == node.Section.Start));
         string? type = node.Type ?? tree?.Type;
@@ -80,7 +84,7 @@ public partial class MainWindow
     /// <summary>What a Godot project holds a value's text to: its files on the disk, and the Godot found's version and classes
     /// (none known with no Godot; a GDExtension's classes are its own, so with one in the project a class is left to Godot).</summary>
     private static GodotVariantBounds BoundsOf(string folder, GodotEngineApi? api) => new(api?.Version,
-        file => File.Exists(Path.Combine(folder, file["res://".Length..].Split("::")[0])),
+        file => GodotResPaths.FileOf(folder, file) is { } named && File.Exists(named),
         api is null || File.Exists(Path.Combine(folder, ".godot", "extension_list.cfg")) ? null : named => api.Classes.TryGetValue(named, out GodotApiClass? made) && made.Instantiable);
 
     /// <summary>The node a row of a scene's outline stands for: a node's own, or the node a row under it is of (its script,
@@ -122,11 +126,11 @@ public partial class MainWindow
             return [];
         }
         List<GodotBeneath> beneath = [.. tree.Written.Where(w => w.Scene != res && scenes.Files.ContainsKey(w.Scene))
-            .Select(w => new GodotBeneath(Path.GetFileName(w.Scene["res://".Length..]), scenes.Files[w.Scene].Text, w.Node.Section))];
+            .Select(w => new GodotBeneath(Path.GetFileName(w.Scene), scenes.Files[w.Scene].Text, w.Node.Section))];
         if (tree.Instance is { } instanced && scenes.Files.TryGetValue(instanced, out GodotFile? file) && file.Nodes.FirstOrDefault(n => n.Parent is null) is { } root
             && !beneath.Any(b => b.Section.Start == root.Section.Start && b.Text == file.Text))
         {
-            beneath.Insert(0, new GodotBeneath(Path.GetFileName(instanced["res://".Length..]), file.Text, root.Section));
+            beneath.Insert(0, new GodotBeneath(Path.GetFileName(instanced), file.Text, root.Section));
         }
         return beneath;
     }

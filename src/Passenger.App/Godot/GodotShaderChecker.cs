@@ -107,7 +107,7 @@ internal sealed class GodotShaderChecker(GodotEngineApis apis)
     public async Task<GodotShaderChecked> CheckAsync(GodotShaderUnit unit, GodotScenes scenes)
     {
         (GodotShaderTable table, Version? godot) = await apis.ShaderTableAsync();
-        string? project = scenes.Texts.GetValueOrDefault("res://" + GodotProject.FileName);
+        string? project = scenes.Texts.GetValueOrDefault(GodotDefinitions.ProjectRes);
         GodotShaderChecked result = await BackgroundWork.Run(() => GodotShaderCheck.Check(unit, table, GodotShaderCheckOptions.Of(project, godot)));
         // A check that read no uniform for an error leaves what the last one read standing until one reads them again.
         if (result.Uniforms.Count > 0 || !result.Messages.Any(m => m.Error))

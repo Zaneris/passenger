@@ -195,7 +195,7 @@ public class GodotShadersTests
         IReadOnlyList<GodotShaderMessage> messages = [new(true, "", 2, "Shader include file does not exist: res://lib/gone.gdshaderinc")];
         GodotShaderMark mark = Assert.Single(unit.MarksIn(null, messages));
         Assert.Equal(("../lib/gone.gdshaderinc", "Shader include file does not exist: res://lib/gone.gdshaderinc"), (shader[mark.Start..mark.End], mark.Message));
-        Assert.Equal("res://shaders/a.gdshaderinc", GodotShaderUnit.Resolved("res://level.tscn::Shader_x", "shaders/./a.gdshaderinc"));
+        Assert.Equal("res://shaders/a.gdshaderinc", GodotResPaths.Resolved("shaders/./a.gdshaderinc", "res://level.tscn::Shader_x"));
     }
 
     /// <summary>Godot's preprocessor never reads an include in a branch it leaves out, so no file answering it is no fault.</summary>

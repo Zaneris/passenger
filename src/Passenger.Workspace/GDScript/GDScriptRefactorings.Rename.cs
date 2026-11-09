@@ -208,7 +208,7 @@ public static partial class GDScriptRefactorings
         for (int depth = 0; at is not null && depth < 64; depth++)
         {
             GDScriptClass declared = at.Tree.Class;
-            string? path = declared.ExtendsPath is { } written ? GDScriptAnalyzer.Absolute(written, at.Script)
+            string? path = declared.ExtendsPath is { } written ? GodotResPaths.Resolved(written, at.Script)
                 : declared.Extends.Count > 0 ? scripts.FirstOrDefault(s => s.Tree.Class.Identifier?.Name == declared.Extends[0].Name)?.Script : null;
             if (path is null)
             {

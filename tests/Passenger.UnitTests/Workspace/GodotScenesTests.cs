@@ -189,6 +189,26 @@ public class GodotScenesTests
         Assert.Equal((false, (13, 17)), (missing.Unknown, missing.Missing));
     }
 
+    /// <summary>Godot takes an extends path from the script's folder, a '..' past res:// kept, so a script at the top
+    /// extending "../base.gd" extends a file outside the project, never res://base.gd.</summary>
+    [Fact]
+    public void A_scripts_class_extends_by_a_relative_path_as_Godot_resolves_it()
+    {
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string>
+        {
+            ["res://base.gd"] = "extends Node\nfunc hit():\n\tpass\n",
+            ["res://sub/main.gd"] = "extends \"../base.gd\"\n",
+            ["res://top.gd"] = "extends \"../base.gd\"\n",
+        });
+
+        GodotScriptChain main = scenes.ChainOf("res://sub/main.gd");
+        Assert.True(main is { Whole: true, Engine: "Node" } && main.Scripts.Select(s => s.Script).SequenceEqual(["res://sub/main.gd", "res://base.gd"]),
+            $"A script's class did not take in the script its relative extends names: {string.Join(", ", main.Scripts.Select(s => s.Script))}");
+        GodotScriptChain top = scenes.ChainOf("res://top.gd");
+        Assert.True(top is { Whole: false } && top.Find(GodotScriptKind.Function, "hit") is null,
+            "A script extending a file outside the project was given res://base.gd's members, which Godot never loads for it");
+    }
+
     [Fact]
     public void A_script_runs_on_its_own_scenes_node_and_on_every_instance_of_that_scene()
     {
@@ -196,8 +216,8 @@ public class GodotScenesTests
         Assert.Equal([("res://main.tscn", "Player"), ("res://player.tscn", ".")], scenes.RunsOf("res://Player.cs").Select(r => (r.Scene, r.Node.Path)));
         Assert.Equal(["res://player.tscn"], scenes.AttachedOf("res://Player.cs").Select(r => r.Scene));
         Assert.Equal([("res://main.tscn", ".")], scenes.RunsOf("res://Main.cs").Select(r => (r.Scene, r.Node.Path)));
-        Assert.Equal("res://levels/one.tscn", GodotScenes.ResPathOf("/game", Path.Combine("/game", "levels", "one.tscn")));
-        Assert.Null(GodotScenes.FileOf("/game", "res://../outside.cs"));
+        Assert.Equal("res://levels/one.tscn", GodotResPaths.Of("/game", Path.Combine("/game", "levels", "one.tscn")));
+        Assert.Null(GodotResPaths.FileOf("/game", "res://../outside.cs"));
     }
 
     [Fact]

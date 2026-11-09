@@ -609,7 +609,7 @@ internal sealed partial class CSharpAssist
             foreach ((string from, string to) in project)
             {
                 bool isFolder = Directory.Exists(to);
-                if (GodotScenes.ResPathOf(folder, from) is { } was && GodotScenes.ResPathOf(folder, to) is { } now)
+                if (GodotResPaths.Of(folder, from) is { } was && GodotResPaths.Of(folder, to) is { } now)
                 {
                     paths.Add(isFolder ? (was + "/", now + "/") : (was, now));
                 }
@@ -636,7 +636,7 @@ internal sealed partial class CSharpAssist
             string Was(string res) => GodotScenes.Moved(back, res) ?? res;
             IReadOnlyList<(string Path, string Text, IReadOnlyList<TextEdit> Edits)> edited = await BackgroundWork.Run(() => (IReadOnlyList<(string, string, IReadOnlyList<TextEdit>)>)
                 [.. texts.Select(t => (t.Path, Text: open.Text(t.From))).Where(t => t.Text is not null)
-                    .Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths, Was(GodotScenes.ResPathOf(folder, t.Path) ?? "res://")))).Where(t => t.Item3.Count > 0),
+                    .Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths, Was(GodotResPaths.Of(folder, t.Path) ?? GodotResPaths.Scheme)))).Where(t => t.Item3.Count > 0),
                 .. scripts.Select(s => (s.Path, s.Res, Text: open.Text(s.Path))).Where(s => s.Text is not null)
                     .Select(s => (s.Path, s.Text!, GodotScriptDeclarations.IsScript(s.Res) ? GodotScenes.MovedScriptEdits(s.Text!, Was(s.Res), paths) : GodotScenes.MovedShaderEdits(s.Text!, Was(s.Res), paths)))
                     .Where(s => s.Item3.Count > 0)]);

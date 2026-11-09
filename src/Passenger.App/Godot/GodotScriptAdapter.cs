@@ -337,7 +337,7 @@ public sealed class GodotScriptAdapter
     {
         IReadOnlyList<DapSourceBreakpoint> asked = arguments.Breakpoints ?? [];
         string? path = arguments.Source.Path;
-        string? resource = path is null ? null : Passenger.Workspace.GodotScenes.ResPathOf(game.Folder, path);
+        string? resource = path is null ? null : Passenger.Workspace.GodotResPaths.Of(game.Folder, path);
         if (resource is null)
         {
             string why = $"Not in the Godot project the game runs ({game.Folder}), whose scripts alone it stops in";

@@ -325,56 +325,14 @@ public sealed class GodotScenes
     }
 
     /// <summary>The res:// path a script's <c>extends</c> path names: a res:// or uid:// one as it is, another from the script's folder.</summary>
-    private string? Beside(string script, string path) => path.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) ? ResOfUid(path) : BesideScript(script, path);
-
-    /// <summary>The res:// path a path a script writes names: a res:// one as it is, another from the script's folder.</summary>
-    private static string? BesideScript(string script, string path)
-    {
-        if (path.StartsWith("res://", StringComparison.Ordinal) || !script.StartsWith("res://", StringComparison.Ordinal))
-        {
-            return path.StartsWith("res://", StringComparison.Ordinal) ? path : null;
-        }
-        List<string> names = [.. script["res://".Length..].Split('/')[..^1]];
-        foreach (string name in path.Split('/'))
-        {
-            if (name == "..")
-            {
-                if (names.Count == 0)
-                {
-                    return null;
-                }
-                names.RemoveAt(names.Count - 1);
-            }
-            else if (name is not ("." or ""))
-            {
-                names.Add(name);
-            }
-        }
-        return "res://" + string.Join('/', names);
-    }
-
-    /// <summary>The res:// path of a file under a Godot project's folder; null outside it.</summary>
-    public static string? ResPathOf(string folder, string path) =>
-        PathNames.IsUnder(path, folder) && !PathNames.Same(path, folder) ? "res://" + System.IO.Path.GetRelativePath(folder, path).Replace('\\', '/') : null;
-
-    /// <summary>The file a res:// path names under a Godot project's folder; null for a path not res://, or one that climbs out.</summary>
-    public static string? FileOf(string folder, string res)
-    {
-        if (!res.StartsWith("res://", StringComparison.Ordinal))
-        {
-            return null;
-        }
-        string relative = res["res://".Length..].Split(':')[0];
-        string full = System.IO.Path.GetFullPath(System.IO.Path.Combine(folder, relative.Replace('/', System.IO.Path.DirectorySeparatorChar)));
-        return PathNames.IsUnder(full, folder) ? full : null;
-    }
+    private string? Beside(string script, string path) => path.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) ? ResOfUid(path) : GodotResPaths.Resolved(path, script);
 
     /// <summary>The file a res:// path, or a uid:// name of one, names; null for neither, or a uid no file has.</summary>
     public string? FileOf(string res) => res.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)
-        ? ResOfUid(res) is { } path ? FileOf(Folder, path) : null
-        : FileOf(Folder, res);
+        ? ResOfUid(res) is { } path ? GodotResPaths.FileOf(Folder, path) : null
+        : GodotResPaths.FileOf(Folder, res);
 
-    public string? ResPathOf(string path) => ResPathOf(Folder, path);
+    public string? ResPathOf(string path) => GodotResPaths.Of(Folder, path);
 
     /// <summary>A scene's tree, built once; null for a file that is no scene, or has no root.</summary>
     public GodotTreeNode? Tree(string scene)
@@ -783,7 +741,7 @@ public sealed class GodotScenes
     /// project.godot, an .import) takes as files and folders move (<see cref="Moved"/>): each string it gives a res:// path in
     /// that names one moved, an external resource's path, a property's, an autoload's after its '*', and each <c>#include</c>
     /// of a Shader it writes itself (<see cref="MovedShaderEdits"/>), where the file writes it.</summary>
-    public static IReadOnlyList<TextEdit> MovedEdits(GodotFile file, IReadOnlyList<(string From, string To)> moves, string res = "res://")
+    public static IReadOnlyList<TextEdit> MovedEdits(GodotFile file, IReadOnlyList<(string From, string To)> moves, string res = GodotResPaths.Scheme)
     {
         List<TextEdit> edits = [];
         foreach (GodotSection section in file.Sections)
@@ -805,7 +763,7 @@ public sealed class GodotScenes
                     continue;
                 }
                 int star = text.StartsWith("*res://", StringComparison.Ordinal) ? 1 : 0;
-                if ((star == 1 || text.StartsWith("res://", StringComparison.Ordinal)) && Moved(moves, text[star..]) is { } now)
+                if ((star == 1 || text.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal)) && Moved(moves, text[star..]) is { } now)
                 {
                     edits.Add(new TextEdit(value.TextStart + star, value.TextEnd - value.TextStart - star, GodotWrites.Escaped(now)));
                 }
@@ -826,11 +784,11 @@ public sealed class GodotScenes
     {
         List<TextEdit> edits = [];
         string now = Moved(moves, shader) ?? shader;
-        foreach (GodotShaderInclude include in GodotShaderCode.Read(code).Includes.Where(i => i.Path.Length > 0 && (!i.Path.Contains("://", StringComparison.Ordinal) || i.Path.StartsWith("res://", StringComparison.Ordinal))))
+        foreach (GodotShaderInclude include in GodotShaderCode.Read(code).Includes.Where(i => i.Path.Length > 0 && (!i.Path.Contains("://", StringComparison.Ordinal) || i.Path.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal))))
         {
-            string was = GodotShaderUnit.Resolved(shader, include.Path);
+            string was = GodotResPaths.Resolved(include.Path, shader);
             string went = Moved(moves, was) ?? was;
-            if (GodotShaderUnit.Resolved(now, include.Path) != went)
+            if (GodotResPaths.Resolved(include.Path, now) != went)
             {
                 edits.Add(new TextEdit(include.Start, include.End - include.Start, went));
             }
@@ -848,14 +806,14 @@ public sealed class GodotScenes
         foreach (GodotScriptToken token in GodotScriptStrings.Read(text).Where(t => !t.Word))
         {
             string? path = null;
-            if (token.Text.StartsWith("res://", StringComparison.Ordinal))
+            if (token.Text.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal))
             {
                 path = Moved(moves, token.Text);
             }
-            else if ((token.Extends || token.Call == "preload") && token.Text.Length > 0 && !token.Text.Contains("://", StringComparison.Ordinal) && BesideScript(script, token.Text) is { } was)
+            else if ((token.Extends || token.Call == "preload") && token.Text.Length > 0 && !token.Text.Contains("://", StringComparison.Ordinal) && GodotResPaths.Resolved(token.Text, script) is var was)
             {
                 string went = Moved(moves, was) ?? was;
-                path = BesideScript(now, token.Text) == went ? null : went;
+                path = GodotResPaths.Resolved(token.Text, now) == went ? null : went;
             }
             if (path is not null && GodotScriptStrings.Written(path, token.Quote, token.Raw) is { } written)
             {

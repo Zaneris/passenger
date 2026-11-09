@@ -334,7 +334,10 @@ public sealed class GodotLiveValues
         {
             return known.Members;
         }
-        string script = "res://" + Path.GetRelativePath(read.Folder, document.Path).Replace('\\', '/');
+        if (Passenger.Workspace.GodotResPaths.Of(read.Folder, document.Path) is not { } script)
+        {
+            return null;
+        }
         GodotScriptMembers? found = text switch
         {
             Languages.CSharp.ParsedText syntax => GodotMembers.OfCSharp(syntax.Root, syntax.Text, script),

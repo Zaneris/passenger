@@ -134,7 +134,7 @@ internal sealed partial class CSharpAssist
     /// refused once the script declares it.</summary>
     private async Task<RefactorOutcome> MakeFunctionAsync(OpenDocument file, string title, GodotScriptFunction function)
     {
-        if (context.GodotOf(file.Path) is not (_, { } folder) || GodotScenes.FileOf(folder, function.Script) is not { } path)
+        if (context.GodotOf(file.Path) is not (_, { } folder) || GodotResPaths.FileOf(folder, function.Script) is not { } path)
         {
             return RefactorOutcome.Refused($"{title} was not applied: {function.Script} is not of the open folder's Godot project");
         }
@@ -183,7 +183,7 @@ internal sealed partial class CSharpAssist
     /// where it is not of the open folder's Godot project, cannot be read, or defines the name already.</summary>
     private async Task<(string Path, string Was, string Now)?> DefinedAsync(OpenDocument file, GodotDefine define)
     {
-        if (context.CSharp?.GodotOf?.Invoke(file.Path) is not { } folder || GodotScenes.FileOf(folder, define.File) is not { } path)
+        if (context.CSharp?.GodotOf?.Invoke(file.Path) is not { } folder || GodotResPaths.FileOf(folder, define.File) is not { } path)
         {
             return null;
         }

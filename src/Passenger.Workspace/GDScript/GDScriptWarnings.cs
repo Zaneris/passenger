@@ -168,7 +168,7 @@ public sealed record GDScriptWarningSettings(bool Enabled, IReadOnlyDictionary<s
         Dictionary<string, bool> rules = new(StringComparer.Ordinal);
         foreach (GodotDefinitions.Entry rule in GodotDefinitions.DictionaryOf(written, GodotFile.ValueAt(written, 0, written.Length)))
         {
-            if (rule.Key.StartsWith("res://", StringComparison.Ordinal) && rule.Value.Word is "0" or "1")
+            if (rule.Key.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && rule.Value.Word is "0" or "1")
             {
                 rules[rule.Key.EndsWith('/') ? rule.Key : rule.Key + "/"] = rule.Value.Word == "1";
             }

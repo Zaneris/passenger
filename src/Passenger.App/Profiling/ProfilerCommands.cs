@@ -1175,8 +1175,8 @@ public sealed class ProfilerCommands
     /// <summary>A Godot script function opened at its line, its <c>res://</c> path under the game's folder.</summary>
     private void OpenScript(ScriptFunction function, string folder)
     {
-        string file = function.File.StartsWith("res://", StringComparison.Ordinal) && folder.Length > 0
-            ? Path.GetFullPath(Path.Combine(folder, function.File["res://".Length..]))
+        string file = function.File.StartsWith(Passenger.Workspace.GodotResPaths.Scheme, StringComparison.Ordinal) && folder.Length > 0
+            ? Passenger.Workspace.GodotResPaths.FileOf(folder, function.File) ?? function.File
             : function.File;
         if (!File.Exists(file))
         {

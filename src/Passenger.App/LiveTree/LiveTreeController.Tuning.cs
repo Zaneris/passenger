@@ -215,11 +215,11 @@ public sealed partial class LiveTreeController : IGodotTuner
     /// <summary>A <c>res://</c> path's file in the game's project, and its text as the window has it.</summary>
     private (string File, string Text)? Read(GodotTuning tuning, string res)
     {
-        if (!res.StartsWith("res://", StringComparison.Ordinal))
+        if (Passenger.Workspace.GodotResPaths.FileOf(tuning.Folder, res) is not { } file)
         {
             return null;
         }
-        string path = PathNames.Canonical(Path.Combine(tuning.Folder, res["res://".Length..]));
+        string path = PathNames.Canonical(file);
         return parts.Editors.TextOf(path) is { } text ? (path, text.ToString()) : null;
     }
 }

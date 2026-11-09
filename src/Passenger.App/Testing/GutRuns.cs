@@ -21,7 +21,7 @@ public static partial class GutRuns
         public string Suite => Inner is null ? Script : $"{Script}.{Inner}";
 
         /// <summary>Its suite and name as GUT's results key them (<see cref="Read"/>).</summary>
-        public string Key => $"{Suite["res://".Length..]}::{Method}";
+        public string Key => $"{Suite[Passenger.Workspace.GodotResPaths.Scheme.Length..]}::{Method}";
 
         /// <summary>A test from the key GUT's results name it by.</summary>
         public static Chosen Of(string key)
@@ -142,7 +142,7 @@ public static partial class GutRuns
         List<string> lines = [];
         foreach (string line in output.Split('\n').Select(l => l.TrimEnd('\r')))
         {
-            bool heading = line.StartsWith("res://", StringComparison.Ordinal);
+            bool heading = line.StartsWith(Passenger.Workspace.GodotResPaths.Scheme, StringComparison.Ordinal);
             bool next = line.StartsWith("* ", StringComparison.Ordinal);
             if (heading || next || Tally().IsMatch(line))
             {
@@ -151,7 +151,7 @@ public static partial class GutRuns
             }
             if (heading)
             {
-                suite = line.Trim()["res://".Length..];
+                suite = line.Trim()[Passenger.Workspace.GodotResPaths.Scheme.Length..];
             }
             else if (next && suite is not null)
             {

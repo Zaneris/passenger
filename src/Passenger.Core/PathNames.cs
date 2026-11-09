@@ -72,6 +72,9 @@ public static partial class PathNames
     /// <summary>Whether two paths name the same place, compared as the file system compares names.</summary>
     public static bool Same(string path, string other) => Comparer.Equals(path, other);
 
+    /// <summary>Whether two paths name one file, as written or once each is made canonical (one reached through a link).</summary>
+    public static bool SameFile(string path, string other) => Same(path, other) || Same(Canonical(path), Canonical(other));
+
     /// <summary>Whether a path lies inside a folder, at any depth: the folder's name and then a separator begin it, so
     /// /x/app2/Foo.cs is not under /x/app. The folder itself is not under itself.</summary>
     public static bool IsUnder(string path, string folder) => IsUnder(path.AsSpan(), folder);

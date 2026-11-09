@@ -116,7 +116,7 @@ internal sealed partial class CodeActions
             open[script.Path] = script.Text.Snapshot.ToString();
         }
         string? folder = context.GodotOf(document.Path)?.Folder;
-        if (folder is not null && await types.ProjectReadAsync(document.Path, open) is { } scripts && GodotScenes.ResPathOf(folder, document.Path) is { } res
+        if (folder is not null && await types.ProjectReadAsync(document.Path, open) is { } scripts && GodotResPaths.Of(folder, document.Path) is { } res
             && scripts.FirstOrDefault(s => s.Script == res) is { } own)
         {
             return (scripts, own, folder);
@@ -263,7 +263,7 @@ internal sealed partial class CodeActions
         {
             return RefactorOutcome.Refused($"{title} was not applied: {refused}");
         }
-        string PathOf(GDScriptRead script) => folder is not null && GodotScenes.FileOf(folder, script.Script) is { } file ? file : document.Path;
+        string PathOf(GDScriptRead script) => folder is not null && GodotResPaths.FileOf(folder, script.Script) is { } file ? file : document.Path;
         List<PlacedEdits> placed = [.. beside, .. made.Scripts.Select(e => scripts.First(s => s.Script == e.Script)).Select(s => new PlacedEdits(PathOf(s), [], s.Text))];
         if (await context.Languages.CSharp.GodotOutOfDateAsync(placed, null, patience) is { } unread)
         {
@@ -369,7 +369,7 @@ internal sealed partial class CodeActions
     private static IReadOnlyList<string> Shown(IReadOnlyList<GDScriptRead> scripts, IReadOnlyList<GDScriptPlace> places)
     {
         List<string> shown = [.. places.Take(8).Select(p => scripts.FirstOrDefault(s => s.Script == p.Script) is { } read
-            ? $"{p.Script.Replace("res://", string.Empty, StringComparison.Ordinal)}:{read.Text.AsSpan(0, Math.Min(p.Start, read.Text.Length)).Count('\n') + 1}: {p.What}"
+            ? $"{p.Script.Replace(GodotResPaths.Scheme, string.Empty, StringComparison.Ordinal)}:{read.Text.AsSpan(0, Math.Min(p.Start, read.Text.Length)).Count('\n') + 1}: {p.What}"
             : $"{p.Script}: {p.What}")];
         if (places.Count > 8)
         {
@@ -382,7 +382,7 @@ internal sealed partial class CodeActions
     /// no tab shows it.</summary>
     private async Task<T> BesideAsync<T>(OpenDocument document, string folder, GDScriptTarget target, Func<OpenDocument, Task<T>> ask)
     {
-        if (GodotScenes.FileOf(folder, target.Script) is not { } file || PathNames.Same(file, document.Path))
+        if (GodotResPaths.FileOf(folder, target.Script) is not { } file || PathNames.Same(file, document.Path))
         {
             return await ask(document);
         }
@@ -412,7 +412,7 @@ internal sealed partial class CodeActions
         foreach (IGrouping<string, (string Script, int Start, int End)> script in found.Places.GroupBy(p => p.Script, StringComparer.Ordinal))
         {
             GDScriptRead read = scripts.First(s => s.Script == script.Key);
-            string path = folder is not null && GodotScenes.FileOf(folder, read.Script) is { } file ? file : document.Path;
+            string path = folder is not null && GodotResPaths.FileOf(folder, read.Script) is { } file ? file : document.Path;
             TextSnapshot text = TextSnapshot.From(read.Text);
             foreach ((_, int start, int end) in script)
             {

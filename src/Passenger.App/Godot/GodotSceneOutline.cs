@@ -90,7 +90,7 @@ internal static class GodotSceneOutline
         {
             int line = at < 0 ? -1 : text.GetLineFromOffset(at);
             string file = named.Split("::")[0];
-            string name = file.StartsWith("res://", StringComparison.Ordinal) ? file["res://".Length..] : file;
+            string name = file.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) ? file[GodotResPaths.Scheme.Length..] : file;
             SymbolRow row = scenes.FileOf(file) is { } target && exists(target)
                 ? new SymbolRow(name, what, null, SymbolRow.FileKind, target, new TextPosition(0, 0))
                 : new SymbolRow(name, what, null, SymbolRow.FileKind, path, at < 0 ? new TextPosition(0, 0) : text.GetPosition(at));
@@ -123,7 +123,7 @@ internal static class GodotSceneOutline
         {
             GodotScenes scenes = await index.ScenesAsync(folder);
             cancel.ThrowIfCancellationRequested();
-            if (GodotScenes.ResPathOf(folder, path) is not { } res)
+            if (GodotResPaths.Of(folder, path) is not { } res)
             {
                 return Outline<SymbolRow>.Empty;
             }

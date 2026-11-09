@@ -37,7 +37,7 @@ public sealed record GodotShaderUnit(string Res, string Code, IReadOnlyDictionar
             }
             foreach (GodotShaderInclude include in GodotShaderCode.Read(text).Includes)
             {
-                string path = Resolved(from, include.Path);
+                string path = GodotResPaths.Resolved(include.Path, from);
                 if (includes.ContainsKey(path) || missing.Contains(path))
                 {
                     continue;
@@ -55,38 +55,6 @@ public sealed record GodotShaderUnit(string Res, string Code, IReadOnlyDictionar
         }
     }
 
-    /// <summary>The res:// path an include written in a file resolves to, as Godot resolves it: simplified, and a relative
-    /// one taken from the folder of the file (a scene's own Shader's, its scene's).</summary>
-    public static string Resolved(string from, string written)
-    {
-        string path = written.Replace('\\', '/');
-        if (!path.StartsWith("res://", StringComparison.Ordinal) && !path.StartsWith("user://", StringComparison.Ordinal))
-        {
-            string file = from.Split("::")[0];
-            int slash = file.LastIndexOf('/');
-            string folder = slash >= "res://".Length ? file[..slash] : "res:/";
-            path = $"{folder}/{path}";
-        }
-        int scheme = path.IndexOf("://", StringComparison.Ordinal) + 3;
-        List<string> parts = [];
-        foreach (string part in path[scheme..].Split('/'))
-        {
-            if (part is "" or ".")
-            {
-                continue;
-            }
-            if (part == ".." && parts.Count > 0)
-            {
-                parts.RemoveAt(parts.Count - 1);
-            }
-            else if (part != "..")
-            {
-                parts.Add(part);
-            }
-        }
-        return path[..scheme] + string.Join('/', parts);
-    }
-
     /// <summary>The marks a compile's messages put on one of the unit's texts: the shader's own (<paramref name="include"/>
     /// null) or an include's. A message on a line of the text is marked there, on the name it quotes where the line writes
     /// it; one in a file the text includes is marked on the <c>#include</c> leading to it, naming its place; one saying no
@@ -102,16 +70,16 @@ public sealed record GodotShaderUnit(string Res, string Code, IReadOnlyDictionar
         {
             bool here = message.File.Length == 0 ? include is null : message.File == include;
             if (here && message.Text.StartsWith(NoInclude, StringComparison.Ordinal)
-                && code.Includes.FirstOrDefault(i => i.Line + 1 == message.Line && Missing.Contains(Resolved(res, i.Path))) is { } written)
+                && code.Includes.FirstOrDefault(i => i.Line + 1 == message.Line && Missing.Contains(GodotResPaths.Resolved(i.Path, res))) is { } written)
             {
-                marks.Add(new GodotShaderMark(written.Start, written.End, true, $"{NoInclude} {Resolved(res, written.Path)}"));
+                marks.Add(new GodotShaderMark(written.Start, written.End, true, $"{NoInclude} {GodotResPaths.Resolved(written.Path, res)}"));
             }
             else if (here)
             {
                 (int start, int end) = OnLine(text, message.Line, message.Text);
                 marks.Add(new GodotShaderMark(start, end, message.Error, message.Text, message.Note));
             }
-            else if (message.File.Length > 0 && code.Includes.FirstOrDefault(i => Reaches(Resolved(res, i.Path), message.File, 0)) is { } leading)
+            else if (message.File.Length > 0 && code.Includes.FirstOrDefault(i => Reaches(GodotResPaths.Resolved(i.Path, res), message.File, 0)) is { } leading)
             {
                 marks.Add(new GodotShaderMark(leading.Start, leading.End, message.Error, $"{message.File}:{message.Line}: {message.Text}", message.Note));
             }
@@ -130,7 +98,7 @@ public sealed record GodotShaderUnit(string Res, string Code, IReadOnlyDictionar
         {
             return false;
         }
-        return GodotShaderCode.Read(text).Includes.Any(i => Reaches(Resolved(from, i.Path), target, depth + 1));
+        return GodotShaderCode.Read(text).Includes.Any(i => Reaches(GodotResPaths.Resolved(i.Path, from), target, depth + 1));
     }
 
     /// <summary>Where a message on a line (from one, lines ended by '\n' as Godot's compiler counts them) is marked: the name

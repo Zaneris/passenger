@@ -324,12 +324,12 @@ public sealed record GodotError(long Milliseconds, string File, string Function,
     /// <summary>The file and line (from one) it is placed at among a project's files under <paramref name="folder"/>: the place
     /// it was raised at, else the first frame of its stack, that is the project's own (<paramref name="local"/> turning a
     /// <c>res://</c> path into one), outside the build's output in <c>.godot</c>; no file where none is (an engine error).</summary>
-    public (string? Path, int Line) PlaceIn(string folder, Func<string, string> local)
+    public (string? Path, int Line) PlaceIn(string folder, Func<string, string?> local)
     {
         string output = Path.Combine(folder, ".godot");
         foreach ((string file, int line) in Frames.Select(f => (f.File, f.Line)).Prepend((File, Line)))
         {
-            string path = file.Length > 0 ? local(file) : string.Empty;
+            string path = file.Length > 0 ? local(file) ?? string.Empty : string.Empty;
             if (line > 0 && Path.IsPathFullyQualified(path) && Passenger.Core.PathNames.IsUnder(path, folder) && !Passenger.Core.PathNames.IsUnder(path, output))
             {
                 return (path, line);

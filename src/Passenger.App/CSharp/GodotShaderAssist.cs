@@ -201,7 +201,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
             return [];
         }
         return [.. index.FilesUnder(folder).Where(f => f.EndsWith(".gdshaderinc", StringComparison.OrdinalIgnoreCase) && !PathNames.Same(f, shader.Path))
-            .Select(f => GodotScenes.ResPathOf(folder, f)).OfType<string>().Order(StringComparer.Ordinal)
+            .Select(f => GodotResPaths.Of(folder, f)).OfType<string>().Order(StringComparer.Ordinal)
             .Select(res => (new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = "shader include", FilterText = res, SortText = res }, $"#include \"{res}\""))];
     }
 
@@ -343,7 +343,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
         int at = scene?.At ?? offset;
         if (shader.Code.Includes.FirstOrDefault(i => i.Start <= at && at <= i.End) is { } include)
         {
-            string res = GodotShaderUnit.Resolved(shader.Res ?? string.Empty, include.Path);
+            string res = GodotResPaths.Resolved(include.Path, shader.Res ?? string.Empty);
             return shader.Scenes?.FileOf(res) is { } file && File.Exists(file)
                 ? new Declared([new LspLocation(DocumentUris.FromPath(file), new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)))], string.Empty)
                 : new Declared([], $"No file {res} is in the Godot project");

@@ -1005,7 +1005,7 @@ public sealed class GodotDefinitions
         GodotShaderCode code = GodotShaderCode.Read(text);
         foreach (GodotShaderInclude include in code.Includes)
         {
-            whole &= ReadShader(GodotShaderUnit.Resolved(shader, include.Path), found, through, depth + 1);
+            whole &= ReadShader(GodotResPaths.Resolved(include.Path, shader), found, through, depth + 1);
         }
         List<GodotShaderDeclaration> declared = [.. code.Declarations.Where(d => d is { Kind: GodotShaderDeclared.Uniform, Scope: null })];
         foreach (GodotShaderDeclaration uniform in declared)

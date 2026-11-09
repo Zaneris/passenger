@@ -122,7 +122,7 @@ public sealed class GodotResourcePicker : Border
         {
             name.Text = path.Split('/')[^1];
             string under = path[..(path.Length - name.Text.Length)];
-            where.Text = under == "res://" ? string.Empty : under;
+            where.Text = under == Passenger.Workspace.GodotResPaths.Scheme ? string.Empty : under;
             IdeErrors.Observe(ThumbnailAsync(thumbnail, path));
         });
     }
@@ -131,7 +131,7 @@ public sealed class GodotResourcePicker : Border
     {
         image.Tag = path;
         image.Source = null;
-        Avalonia.Media.Imaging.Bitmap? made = await GodotResources.ThumbnailAsync(Path.Combine(folder, path["res://".Length..]), 36);
+        Avalonia.Media.Imaging.Bitmap? made = Passenger.Workspace.GodotResPaths.FileOf(folder, path) is { } file ? await GodotResources.ThumbnailAsync(file, 36) : null;
         if (Equals(image.Tag, path))
         {
             image.Source = made;

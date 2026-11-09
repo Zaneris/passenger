@@ -8,7 +8,6 @@ namespace Passenger.App.Godot;
 /// a picture, a sound, or a scene with its top nodes, the root's first and then its children's.</summary>
 internal static class GodotPreviews
 {
-    private static readonly string[] Pictures = [".png", ".jpg", ".jpeg", ".webp", ".bmp"];
     private static readonly string[] Sounds = [".wav", ".ogg", ".mp3"];
 
     /// <summary>The most of a scene's root's children its preview names.</summary>
@@ -23,7 +22,7 @@ internal static class GodotPreviews
         {
             return null;
         }
-        if (PathNames.HasExtension(file, Pictures))
+        if (PictureFiles.Is(file))
         {
             return new FilePreview(file, res, PreviewKind.Picture, $"{res}, a picture", []);
         }

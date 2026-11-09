@@ -742,7 +742,7 @@ public sealed class DebugController : IDisposable
     /// their lines now, and whether its script errors stop it (GDScript Errors on); none of either while muted.</summary>
     public Godot.GodotScriptStart ScriptStart(string folder) => new(
         Breakpoints.Muted ? [] : [.. Breakpoints.All.Where(b => b.Enabled && Godot.GodotScriptAdapter.Takes(b.Path))
-            .Select(b => (Resource: Passenger.Workspace.GodotScenes.ResPathOf(folder, b.Path), Line: b.Line + 1))
+            .Select(b => (Resource: Passenger.Workspace.GodotResPaths.Of(folder, b.Path), Line: b.Line + 1))
             .Where(b => b.Resource is not null).Select(b => (b.Resource!, b.Line))],
         !Breakpoints.Muted && Breakpoints.ScriptErrors.Enabled);
 

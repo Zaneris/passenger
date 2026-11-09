@@ -150,7 +150,7 @@ public sealed partial class PassengerTools
         if (refactoring == CSharp.GDScriptRefactoring.Move)
         {
             string script = name ?? throw new ArgumentException("move needs options {script}: the script it goes to, as res:// or the folder's path");
-            name = script.StartsWith("res://", StringComparison.Ordinal) ? script : "res://" + script.Replace('\\', '/').TrimStart('/');
+            name = script.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) ? script : GodotResPaths.Scheme + script.Replace('\\', '/').TrimStart('/');
         }
         if (name is null && refactoring is CSharp.GDScriptRefactoring.ExtractVariable or CSharp.GDScriptRefactoring.ExtractFunction or CSharp.GDScriptRefactoring.IntroduceParameter)
         {

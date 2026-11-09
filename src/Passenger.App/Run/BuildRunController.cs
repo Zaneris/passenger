@@ -2492,7 +2492,7 @@ public sealed partial class BuildRunController
         List<string> reloaded = [];
         foreach (Godot.GodotGame game in session.Games.Where(g => g is { State: LiveAppState.Connected, ReloadsScripts: true }).ToList())
         {
-            if (Passenger.Workspace.GodotScenes.ResPathOf(game.Folder, path) is not { } resource)
+            if (GodotResPaths.Of(game.Folder, path) is not { } resource)
             {
                 continue;
             }

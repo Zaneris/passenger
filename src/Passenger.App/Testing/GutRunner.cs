@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Xml;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Testing;
 
@@ -142,7 +143,7 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
     {
         int dot = test.Method.LastIndexOf('.');
         (string script, string? inner) = GutScripts.ScriptOf(folder, test.Method[..dot], test.Path);
-        return new GutRuns.Chosen(GutScripts.ResourceOf(folder, script), inner, test.Method[(dot + 1)..]);
+        return new GutRuns.Chosen(GodotResPaths.Of(folder, script) ?? script, inner, test.Method[(dot + 1)..]);
     }
 
     /// <summary>The pre-run hook that keeps these tests of a project (<see cref="GutRuns.Hook"/>), written where the system
@@ -179,7 +180,10 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
         foreach ((string key, GutRuns.Result result) in results.Where(r => !chosen.Contains(r.Key)).OrderBy(r => r.Key, StringComparer.Ordinal))
         {
             GutRuns.Chosen parts = GutRuns.Chosen.Of(key);
-            string script = Path.Combine(folder, parts.Script["res://".Length..].Replace('/', Path.DirectorySeparatorChar));
+            if (GodotResPaths.FileOf(folder, parts.Script) is not { } script)
+            {
+                continue;
+            }
             string type = GutScripts.TypeOf(folder, script) + (parts.Inner is { } inner ? $"+{inner}" : string.Empty);
             told.Add(Outcome(new TestItem(project, $"{type}.{parts.Method}", parts.Method) { Framework = GutScripts.Framework, Path = script, Line = result.Line }, parts, result, script));
         }

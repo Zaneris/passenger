@@ -357,12 +357,12 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             string text = snapshot.ToString();
             TextEdit? made = tree is not null && treeText is not null && change is { } edit && edit.Fits(treeText.Length, text.Length) ? edit.Edit(text) : null;
             GDScriptTree parsed = made is { } one ? tree!.Reparse(text, one) : GDScriptTree.Parse(text);
-            string res = scenes?.ResPathOf(path) ?? "res://" + Path.GetFileName(path);
+            string res = scenes?.ResPathOf(path) ?? GodotResPaths.Scheme + Path.GetFileName(path);
             GDScriptProject project = ProjectOf(scenes, api, res, parsed, lacks);
             GDScriptAnalyzer analyzer = new(project);
             GDScriptAnalysis analysis = analyzer.Analyze(parsed, res);
             HintList hints = HintList.Of([.. analysis.Inferred().Select(i => new InlayHint(i.Offset, $": {i.Type}", Kind: InlayHintKind.Type))]);
-            GDScriptWarningSettings settings = GDScriptWarningSettings.Of(scenes?.Texts.GetValueOrDefault("res://" + GodotProject.FileName));
+            GDScriptWarningSettings settings = GDScriptWarningSettings.Of(scenes?.Texts.GetValueOrDefault(GodotDefinitions.ProjectRes));
             IReadOnlyList<GDScriptFinding> findings = [.. analysis.Findings(settings).Where(f => f.End <= text.Length)];
             // In the order of their places, as the editor keeps them, those at one place in Godot's.
             Marker[] marks = [.. findings.OrderBy(f => f.Start).Select(f => Marker.Coded(TextRange.FromBounds(f.Start, f.End),

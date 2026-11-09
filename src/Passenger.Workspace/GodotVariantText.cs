@@ -551,7 +551,7 @@ public static class GodotVariantText
                 {
                     return "Resource takes one path and one uid";
                 }
-                if (second is null && first.StartsWith("res://", StringComparison.Ordinal))
+                if (second is null && first.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal))
                 {
                     Files.Add(first);
                 }
@@ -565,7 +565,7 @@ public static class GodotVariantText
             return Next() == Token.RoundClose ? null : "')' is expected after a resource's id";
         }
 
-        private static bool IsUid(string path) => path.StartsWith("uid://", StringComparison.Ordinal);
+        private static bool IsUid(string path) => path.StartsWith(GodotUids.Scheme, StringComparison.Ordinal);
 
         /// <summary>A typed container's element type, up to the token that ends it: a type's name, however Godot takes it (one
         /// it doesn't know leaves the container untyped), or a script's resource.</summary>

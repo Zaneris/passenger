@@ -90,6 +90,25 @@ public class GDScriptAnalyzerTests
         Assert.Empty(analysis.Findings(GDScriptWarningSettings.Of(null)).Where(f => f.IsError).Select(f => f.Message));
     }
 
+    /// <summary>Godot takes an extends path from the script's folder, a '..' past res:// kept, so a script at the top
+    /// extending "../base.gd" extends a file outside the project, never res://base.gd.</summary>
+    [Fact]
+    public void A_classs_base_by_a_relative_path_is_the_script_Godot_loads()
+    {
+        Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal)
+        {
+            ["res://base.gd"] = GDScriptTree.Parse("extends Node\n"),
+            ["res://sub/main.gd"] = GDScriptTree.Parse("extends \"../base.gd\"\n"),
+            ["res://top.gd"] = GDScriptTree.Parse("extends \"../base.gd\"\n"),
+        };
+        GDScriptAnalyzer analyzer = new(new GDScriptProject(Engine, path => trees.GetValueOrDefault(path), new Dictionary<string, string>(StringComparer.Ordinal),
+            new Dictionary<string, string>(StringComparer.Ordinal)));
+
+        Assert.Equal("res://base.gd", analyzer.BaseOf(GDScriptAnalyzer.ScriptClass(trees["res://sub/main.gd"], "res://sub/main.gd"))?.Script);
+        GDScriptType? outside = analyzer.BaseOf(GDScriptAnalyzer.ScriptClass(trees["res://top.gd"], "res://top.gd"));
+        Assert.True(outside is { Script: null }, $"A script extending a file outside the project was given {outside?.Script}'s class, which Godot never loads for it");
+    }
+
     /// <summary>A valid script nested past what Passenger reads is marked only where reading stopped, with a note: a name
     /// declared after it and a mistake past it say nothing, as nothing can be said of what went unread.</summary>
     [Fact]

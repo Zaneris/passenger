@@ -387,7 +387,7 @@ public sealed partial class GDScriptAnalyzer
         {
             return;
         }
-        string? based = node.ExtendsPath is { } written ? Absolute(written, script)
+        string? based = node.ExtendsPath is { } written ? GodotResPaths.Resolved(written, script)
             : node.Extends.Count == 0 ? null
             : project.ClassPath(node.Extends[0].Name) ?? (node == own.Class || InnerClass(ScriptClass(own, script), node.Extends[0].Name) is null ? project.Autoload(node.Extends[0].Name) : null);
         if (based is null || based == script || Tree(based) is not { Class.IsTool: true })

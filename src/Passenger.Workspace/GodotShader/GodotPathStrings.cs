@@ -4,8 +4,8 @@ namespace Passenger.Workspace.GodotShader;
 /// get_base_dir and path_join, by which its preprocessor names the file an include asks for. Pure.</summary>
 public static class GodotPathStrings
 {
-    /// <summary>The path with its slashes made '/', '//' made one, '.' dropped and each '..' taking the name before it
-    /// (one at the start kept), after its drive or <c>res://</c>.</summary>
+    /// <summary>The path with its slashes made '/', '//' made one, '.' dropped and each '..' taking the name before it, after
+    /// its drive or <c>res://</c>: one with no name before it kept, but at the start of a full path other than res://.</summary>
     public static string SimplifyPath(string path)
     {
         string s = path;
@@ -51,6 +51,7 @@ public static class GodotPathStrings
             s = s.Replace("//", "/", StringComparison.Ordinal);
         }
         List<string> dirs = [.. s.Split('/', StringSplitOptions.RemoveEmptyEntries)];
+        bool absolute = IsAbsolutePath(path) && !path.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal);
         for (int i = 0; i < dirs.Count; i++)
         {
             if (dirs[i] == ".")
@@ -58,11 +59,16 @@ public static class GodotPathStrings
                 dirs.RemoveAt(i);
                 i--;
             }
-            else if (dirs[i] == ".." && i != 0)
+            else if (dirs[i] == ".." && i != 0 && dirs[i - 1] != "..")
             {
                 dirs.RemoveAt(i);
                 dirs.RemoveAt(i - 1);
                 i -= 2;
+            }
+            else if (dirs[i] == ".." && i == 0 && absolute)
+            {
+                dirs.RemoveAt(i);
+                i--;
             }
         }
         return drive + string.Join('/', dirs);

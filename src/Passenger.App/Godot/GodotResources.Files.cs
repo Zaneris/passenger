@@ -70,9 +70,9 @@ public static partial class GodotResources
         {
             foreach (string file in files)
             {
-                if (Takes(file, classes, WrittenType))
+                if (Takes(file, classes, WrittenType) && Passenger.Workspace.GodotResPaths.Of(root, file) is { } res)
                 {
-                    found.Add("res://" + Path.GetRelativePath(root, file).Replace('\\', '/'));
+                    found.Add(res);
                     if (found.Count >= most)
                     {
                         return [.. found.Order(StringComparer.Ordinal)];

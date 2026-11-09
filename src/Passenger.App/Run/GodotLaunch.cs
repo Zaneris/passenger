@@ -106,7 +106,8 @@ public static class GodotLaunch
         {
             // The scene at hand, or one its script is attached in, as the editor's configuration opens it.
             starts = atHand is not null && await BackgroundWork.Run(() => GodotProject.SceneOf(folder, atHand, game.MainScene)) is { } open
-                ? GodotProject.ResourcePath(folder, open)
+                && GodotResPaths.Of(folder, open) is { } res
+                ? res
                 : throw new LaunchException($"{configuration.Name} cannot run: it starts in the scene open in the editor, and none of {game.Name ?? project.Name} is "
                     + "(a .tscn, or a script a scene's node runs)");
         }
@@ -147,9 +148,10 @@ public static class GodotLaunch
         {
             arguments.Add("--editor");
             // The scene at hand, or one its script is attached in, opens in the editor, unless the configuration names one.
-            if (atHand is not null && !NamesScene(own) && await BackgroundWork.Run(() => GodotProject.SceneOf(folder, atHand, game.MainScene)) is { } scene)
+            if (atHand is not null && !NamesScene(own) && await BackgroundWork.Run(() => GodotProject.SceneOf(folder, atHand, game.MainScene)) is { } scene
+                && GodotResPaths.Of(folder, scene) is { } res)
             {
-                arguments.Add(GodotProject.ResourcePath(folder, scene));
+                arguments.Add(res);
             }
         }
         if (starts is not null)

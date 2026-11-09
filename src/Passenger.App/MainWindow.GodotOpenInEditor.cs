@@ -123,7 +123,10 @@ public partial class MainWindow
     private async Task<(string? Scene, string Node, string? Why)> GodotPlaceAtAsync(string folder, OpenDocument shown, int caret)
     {
         TextSnapshot text = shown.Text.Snapshot;
-        string res = GodotProject.ResourcePath(folder, shown.Path);
+        if (GodotResPaths.Of(folder, shown.Path) is not { } res)
+        {
+            return (null, ".", null);
+        }
         if (GodotProject.IsScene(shown.Path))
         {
             int line = text.GetLineFromOffset(Math.Min(caret, text.Length));

@@ -349,9 +349,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>The scene Godot's editor edits, for a relayed game: what its live editing is set back to after Passenger's.</summary>
     public string EditorScene { get; set; } = string.Empty;
 
-    /// <summary>A <c>res://</c> path as a path on this machine, under the project's folder; another path as it is.</summary>
-    public string PathOf(string path) => path.StartsWith("res://", StringComparison.Ordinal)
-        ? Path.GetFullPath(Path.Combine(Folder, path["res://".Length..]))
+    /// <summary>A <c>res://</c> path as a file on this machine, under the project's folder, null where it climbs out of it;
+    /// another path as it is.</summary>
+    public string? PathOf(string path) => path.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal)
+        ? GodotResPaths.FileOf(Folder, path) is { } file ? PathNames.Canonical(file) : null
         : path;
 
     private async Task ServeAsync()
@@ -920,7 +921,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>A node as the tree shows it, a script's path that names its type ("res://Main.cs") by its file's name;
     /// Passenger's own helper left out.</summary>
     private static Element ElementOf(GodotNode node) =>
-        new((long)node.Id, node.Type.StartsWith("res://", StringComparison.Ordinal) ? Path.GetFileName(node.Type) : node.Type, node.Name, [], false,
+        new((long)node.Id, node.Type.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) ? Path.GetFileName(node.Type) : node.Type, node.Name, [], false,
             node.SceneFile.Length > 0, node.Visible, [.. node.Children.Where(c => !GodotAgent.Is(c)).Select(ElementOf)]) { Deeper = node.Deeper ? true : null };
 
     /// <summary>Whether the game draws on Passenger's own X server (<see cref="VirtualDisplays"/>), held while it runs.</summary>
@@ -1400,7 +1401,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         GodotObjectState state = await InspectAsync((ulong)element);
         string? name = state.Properties.FirstOrDefault(p => p.Name == "name")?.Value?.ToString();
         string? script = state.Properties.FirstOrDefault(p => p.Name == "script")?.Value as string;
-        SourcePlace? source = script is { Length: > 0 } && File.Exists(PathOf(script)) ? new SourcePlace(PathOf(script), 0, 0) : null;
+        SourcePlace? source = script is { Length: > 0 } && PathOf(script) is { } file && File.Exists(file) ? new SourcePlace(file, 0, 0) : null;
         ranByReading[(ulong)element] = source is null ? [] : await BackgroundWork.Run(() => GodotMembers.RunByReading(script!, TextOf));
         List<PropertyValue> properties = [.. state.Properties.Where(p => p.Name is not ("name" or "script"))
             .Select(p => new PropertyValue(p.Name, p.Category, false, p.Type.ToString(), GodotVariant.Shown(p.Value), p.Category, null, null))];
@@ -1417,7 +1418,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     {
         try
         {
-            return File.ReadAllText(PathOf(res));
+            return PathOf(res) is { } file ? File.ReadAllText(file) : null;
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or ArgumentException)
         {

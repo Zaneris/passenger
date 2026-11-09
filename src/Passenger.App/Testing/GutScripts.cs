@@ -52,7 +52,10 @@ public static partial class GutScripts
         /// <summary>Whether GUT runs a script of the project in <paramref name="folder"/>.</summary>
         public bool Takes(string folder, string path)
         {
-            string script = ResourceOf(folder, path);
+            if (GodotResPaths.Of(folder, path) is not { } script)
+            {
+                return false;
+            }
             if (Tests.Contains(script, StringComparer.Ordinal))
             {
                 return true;
@@ -120,9 +123,6 @@ public static partial class GutScripts
     public static string TypeOf(string folder, string path) =>
         Path.ChangeExtension(Path.GetRelativePath(folder, path), null).Replace(Path.DirectorySeparatorChar, '.').Replace(Path.AltDirectorySeparatorChar, '.');
 
-    /// <summary>A script's path as Godot names it in its project ("res://test/test_math.gd").</summary>
-    public static string ResourceOf(string folder, string path) => "res://" + Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
-
     /// <summary>The project's GDScript file a test class is in, and its inner class (null for the script's own).</summary>
     public static (string Path, string? Inner) ScriptOf(string folder, string type, string? path)
     {
@@ -138,7 +138,7 @@ public static partial class GutScripts
     public static (FileTests Tests, FilePlaces Places) Read(string text, string folder, string path, IReadOnlySet<string>? bases = null, Config? config = null)
     {
         string type = TypeOf(folder, path);
-        string resource = ResourceOf(folder, path);
+        string resource = GodotResPaths.Of(folder, path) ?? path;
         bool IsGut(string testClass) => IsGutTest(testClass, bases);
         string[] lines = text.Split('\n');
         List<(string, int)> types = [];
@@ -286,24 +286,7 @@ public static partial class GutScripts
         {
             return named;
         }
-        string script = named[1..^1];
-        if (script.StartsWith("res://", StringComparison.Ordinal))
-        {
-            return script;
-        }
-        List<string> parts = [.. resource["res://".Length..].Split('/')[..^1]];
-        foreach (string part in script.Split('/'))
-        {
-            if (part == ".." && parts.Count > 0)
-            {
-                parts.RemoveAt(parts.Count - 1);
-            }
-            else if (part is not ("." or "" or ".."))
-            {
-                parts.Add(part);
-            }
-        }
-        return "res://" + string.Join('/', parts);
+        return GodotResPaths.Resolved(named[1..^1], resource);
     }
 
     /// <summary>The last line (from zero) of a function or an inner class beginning at <paramref name="start"/>: the last

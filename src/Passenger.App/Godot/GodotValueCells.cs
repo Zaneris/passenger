@@ -490,11 +490,11 @@ internal sealed class GodotValueCell : LiveValueCell
     {
         image.Tag = path;
         image.Source = null;
-        if (path is null || !path.StartsWith("res://", StringComparison.Ordinal) || values is not GodotGame game)
+        if (path is null || !path.StartsWith(Passenger.Workspace.GodotResPaths.Scheme, StringComparison.Ordinal) || values is not GodotGame game)
         {
             return;
         }
-        Avalonia.Media.Imaging.Bitmap? made = await GodotResources.ThumbnailAsync(game.PathOf(path), 36);
+        Avalonia.Media.Imaging.Bitmap? made = game.PathOf(path) is { } file ? await GodotResources.ThumbnailAsync(file, 36) : null;
         if (Equals(image.Tag, path))
         {
             image.Source = made;

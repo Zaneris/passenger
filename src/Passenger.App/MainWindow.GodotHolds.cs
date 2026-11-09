@@ -14,11 +14,10 @@ public partial class MainWindow
     /// <summary>What Godot's editor holds of a file that a write of it would go over, in words, or null.</summary>
     private string? HeldInGodot(string path)
     {
-        if (session.GodotEditors.Editors is not [_, ..] editors || GodotFolder() is not { } folder || !PathNames.IsUnder(path, folder))
+        if (session.GodotEditors.Editors is not [_, ..] editors || GodotFolder() is not { } folder || GodotResPaths.Of(folder, path) is not { } res)
         {
             return null;
         }
-        string res = GodotProject.ResourcePath(folder, path);
         foreach (GodotEditorPeer peer in editors)
         {
             if (Passenger.Workspace.GodotHolds.Of(res, peer.OpenScenes, peer.UnsavedScenes, peer.SaysUnsaved, peer.Inspected) is { } hold)
@@ -33,8 +32,8 @@ public partial class MainWindow
     public string? HeldByGodot(string path) => HeldInGodot(PathNames.Canonical(path));
 
     /// <summary>Whether Godot's editor has a scene open, as its addon last said.</summary>
-    public bool GodotHasOpen(string path) => GodotFolder() is { } folder && PathNames.IsUnder(path, folder)
-        && session.GodotEditors.Editors.Any(e => e.OpenScenes.Contains(GodotProject.ResourcePath(folder, PathNames.Canonical(path)), StringComparer.Ordinal));
+    public bool GodotHasOpen(string path) => GodotFolder() is { } folder && GodotResPaths.Of(folder, PathNames.Canonical(path)) is { } res
+        && session.GodotEditors.Editors.Any(e => e.OpenScenes.Contains(res, StringComparer.Ordinal));
 
     /// <summary>The gate's answer to a write of files Godot's editor holds: null where the person lets it go over them, else
     /// why not, an agent's refused unasked.</summary>
@@ -61,11 +60,10 @@ public partial class MainWindow
         }
         UiThread.Post(() =>
         {
-            if (GodotFolder() is not { } folder || !PathNames.IsUnder(path, folder))
+            if (GodotFolder() is not { } folder || GodotResPaths.Of(folder, path) is not { } res)
             {
                 return;
             }
-            string res = GodotProject.ResourcePath(folder, path);
             foreach (GodotEditorPeer peer in session.GodotEditors.Editors.Where(p => Passenger.Workspace.GodotHolds.Reloads(res, p.OpenScenes, p.UnsavedScenes, p.SaysUnsaved)))
             {
                 IdeErrors.Observe(peer.AskAsync("reload", new System.Text.Json.Nodes.JsonObject { ["path"] = res }, TimeSpan.FromSeconds(10)));
@@ -79,19 +77,19 @@ public partial class MainWindow
     private void ShowGodotSelection(string? scene, string? node)
     {
         UiThread.Check();
-        if (!settings.GodotSelectionFollows || scene is null || node is null || !scene.StartsWith("res://", StringComparison.Ordinal) || GodotFolder() is not { } folder)
+        if (!settings.GodotSelectionFollows || scene is null || node is null || GodotFolder() is not { } folder || GodotResPaths.FileOf(folder, scene) is not { } named)
         {
             return;
         }
-        string file = PathNames.Canonical(Path.Combine(folder, scene["res://".Length..]));
+        string file = PathNames.Canonical(named);
         if (Text.FileText.Load(file) is not { } read || GodotFile.Parse(read.Text) is not { } parsed
             || parsed.Nodes.FirstOrDefault(n => n.PathInScene == node) is not { } selected)
         {
             return;
         }
-        if (parsed.External(selected.Script)?.Path is { } res && res.StartsWith("res://", StringComparison.Ordinal))
+        if (parsed.External(selected.Script)?.Path is { } res && GodotResPaths.FileOf(folder, res) is { } attached)
         {
-            string script = PathNames.Canonical(Path.Combine(folder, res["res://".Length..]));
+            string script = PathNames.Canonical(attached);
             if (Editors.Find(script) is null && Editors.Open(script, focus: false) is null && Editors.Find(script) is { } opened)
             {
                 opened.Selections = Passenger.Text.SelectionSet.Single(ClassAt(opened.Text.Snapshot, Path.GetFileNameWithoutExtension(script)));

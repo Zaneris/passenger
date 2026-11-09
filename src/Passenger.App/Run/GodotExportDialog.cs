@@ -157,7 +157,7 @@ public sealed class GodotExportDialog : IdeWindow
         GodotPreset? preset = Preset;
         platform.Text = preset?.Platform ?? string.Empty;
         string path = pathBox.Text?.Trim() ?? string.Empty;
-        string? output = path.Length == 0 ? null : Path.GetFullPath(Path.Combine(folder, path.StartsWith("res://", StringComparison.Ordinal) ? path["res://".Length..] : path));
+        string? output = path.Length == 0 ? null : GodotResPaths.Globalized(folder, path);
         destination.Text = output is null ? string.Empty : $"Exports to {PathNames.Shown(output, null)}";
         command.Text = preset is null ? string.Empty
             : $"godot {GodotExecutables.Headless} --path {Word(folder)} {(IsDebug ? "--export-debug" : "--export-release")} {Word(preset.Name)} {Word(output ?? path)}";

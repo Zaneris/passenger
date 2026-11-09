@@ -93,8 +93,7 @@ public partial class MainWindow
             string? FileOf(string? res)
             {
                 string? named = Named(res);
-                return named is not null && named.StartsWith("res://", StringComparison.Ordinal)
-                    && Path.Combine(folder, named["res://".Length..].Replace('/', Path.DirectorySeparatorChar)) is var path && File.Exists(path) ? path : null;
+                return named is not null && GodotResPaths.FileOf(folder, named) is { } path && File.Exists(path) ? path : null;
             }
 
             (string, int, string?)? main = project.MainScene is { Length: > 0 } scene && defined.SettingOf("application", "run/main_scene") is ({ } place, _)

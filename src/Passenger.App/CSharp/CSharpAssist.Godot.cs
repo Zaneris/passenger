@@ -133,14 +133,14 @@ internal sealed partial class CSharpAssist
         {
             return AutoloadCompletion(read, start, tail, await EditorNamesAsync(read, document.Path, GodotIdeKind.NodePaths, cancel));
         }
-        if (typed.StartsWith("res://", StringComparison.Ordinal) && csharp.GodotScenes is { } index)
+        if (typed.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && csharp.GodotScenes is { } index)
         {
             Task<IReadOnlyList<string>> resources = EditorNamesAsync(read, document.Path, GodotIdeKind.ResourcePaths, cancel);
             Task<IReadOnlyList<string>> scenes = EditorNamesAsync(read, document.Path, GodotIdeKind.ScenePaths, cancel);
-            List<CompletionItem> files = [.. index.FilesUnder(read.Folder).Select(f => GodotScenes.ResPathOf(read.Folder, f)).OfType<string>()
+            List<CompletionItem> files = [.. index.FilesUnder(read.Folder).Select(f => GodotResPaths.Of(read.Folder, f)).OfType<string>()
                 .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = Path.GetExtension(res), FilterText = res, SortText = " " + res })];
             HashSet<string> listed = [.. files.Select(f => f.Label)];
-            files.AddRange((await resources).Concat(await scenes).Where(res => res.StartsWith("res://", StringComparison.Ordinal) && listed.Add(res))
+            files.AddRange((await resources).Concat(await scenes).Where(res => res.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && listed.Add(res))
                 .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = $"{Path.GetExtension(res)} · the open Godot editor's", FilterText = res, SortText = " " + res }));
             return files.Count == 0 ? null : new CodeCompletion.OwnItems(start, files, tail) { WordCharacters = PathCharacters };
         }
@@ -267,7 +267,7 @@ internal sealed partial class CSharpAssist
         }
         foreach (GodotClassFound type in read.Found.Classes)
         {
-            if (type.Exports.FirstOrDefault(e => SameFile(e.Path, document.Path) && OffsetOf(lsp, e.At) <= offset && offset <= OffsetOf(lsp, e.End)) is { } export)
+            if (type.Exports.FirstOrDefault(e => PathNames.SameFile(e.Path, document.Path) && OffsetOf(lsp, e.At) <= offset && offset <= OffsetOf(lsp, e.End)) is { } export)
             {
                 IReadOnlyList<string> set = ExportValues(read.Scenes, type.Scripts, export.Name);
                 return (set.Count == 0 ? $"No scene or resource sets {export.Name}: each takes its default" : string.Join('\n', [$"{export.Name} is set in:", .. set]), false);
@@ -305,8 +305,6 @@ internal sealed partial class CSharpAssist
     }
 
     private static string Shortened(string value) => value.Length > 80 ? value[..77] + "…" : value.ReplaceLineEndings(" ");
-
-    private static bool SameFile(string left, string right) => PathNames.Same(left, right) || PathNames.Same(PathNames.Canonical(left), right);
 
     /// <summary>Where Go to Declaration goes from a Godot string: a script's signal, method or property a string Godot's calls
     /// take names; what a string of a kind names (<see cref="GodotKindDeclaredAsync"/>); a res:// path's file; a GetNode

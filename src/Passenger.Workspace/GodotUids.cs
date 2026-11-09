@@ -77,7 +77,7 @@ public static class GodotUids
             }
             string res = Encoding.UTF8.GetString(bytes.Slice(at, length)).TrimEnd('\0');
             at += length;
-            if (Text(id) is { } uid && res.StartsWith("res://", StringComparison.Ordinal))
+            if (Text(id) is { } uid && res.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal))
             {
                 entries.Add((uid, res));
             }

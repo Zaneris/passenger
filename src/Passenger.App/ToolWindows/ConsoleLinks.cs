@@ -416,7 +416,7 @@ public sealed partial class ConsoleLinks : IHighlighter
     private static partial Regex Frame();
 
     /// <summary>Where a Godot game's own files are named from, its project's folder.</summary>
-    private const string GodotResource = "res://";
+    private const string GodotResource = Passenger.Workspace.GodotResPaths.Scheme;
 
     /// <summary>The place a Godot game's error or warning was raised at, on the line after it: "   at: void Main._Process(double)
     /// (res://Main.cs:19)", the function before the place in parentheses at the line's end.</summary>

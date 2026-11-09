@@ -139,7 +139,7 @@ public static class GDScriptFixes
         {
             GDScriptTypeKind.Builtin => type.Name != "Nil" && type.Elements.All(e => Written(e) is not null),
             GDScriptTypeKind.Native => true,
-            GDScriptTypeKind.Class => !type.Name.StartsWith("res://", StringComparison.Ordinal) && type.Class is { Identifier: not null },
+            GDScriptTypeKind.Class => !type.Name.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && type.Class is { Identifier: not null },
             GDScriptTypeKind.Enum => !shown.Contains(".gd", StringComparison.Ordinal) && !shown.Contains('<', StringComparison.Ordinal),
             _ => false,
         };

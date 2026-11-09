@@ -96,15 +96,12 @@ public sealed partial record GodotProject(string Folder, string? Name, string? M
         path.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".scn", StringComparison.OrdinalIgnoreCase)
         || path.EndsWith(".escn", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A project file's <c>res://</c> path.</summary>
-    public static string ResourcePath(string folder, string path) => "res://" + Path.GetRelativePath(folder, path).Replace('\\', '/');
-
     /// <summary>The scene of a Godot project to open for a file of it: the file itself when it is a scene, else a text scene
     /// that uses it as a resource (a script attached to one of its nodes), the main scene first, then by path; null for none.
     /// Its own folders only, so neither Godot's cache (.godot) nor the build's output is read.</summary>
     public static string? SceneOf(string folder, string file, string? mainScene)
     {
-        if (!PathNames.IsUnder(file, folder))
+        if (GodotResPaths.Of(folder, file) is not { } used)
         {
             return null;
         }
@@ -112,10 +109,9 @@ public sealed partial record GodotProject(string Folder, string? Name, string? M
         {
             return File.Exists(file) ? file : null;
         }
-        string used = ResourcePath(folder, file);
         List<string> scenes = [.. PathNames.FilesUnder(folder, ProjectFolders.Enters).SelectMany(f => f.Files)
             .Where(f => f.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".escn", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(f => mainScene is not null && ResourcePath(folder, f) == mainScene ? 0 : 1).ThenBy(f => f, StringComparer.Ordinal)];
+            .OrderBy(f => mainScene is not null && GodotResPaths.Of(folder, f) == mainScene ? 0 : 1).ThenBy(f => f, StringComparer.Ordinal)];
         foreach (string scene in scenes)
         {
             try

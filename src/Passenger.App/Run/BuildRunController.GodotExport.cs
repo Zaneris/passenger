@@ -41,7 +41,7 @@ public sealed record GodotExportPlan(string Program, IReadOnlyList<string> Argum
         string? version = answer is null ? null : GodotExports.TemplatesVersion(answer);
         string? templates = version is null ? null
             : GodotExports.TemplatesFolder(found.Executable, version, OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(), name => GodotUserFolders.Variable(folders, name), File.Exists);
-        string output = System.IO.Path.GetFullPath(System.IO.Path.Combine(request.Folder, path.StartsWith("res://", StringComparison.Ordinal) ? path["res://".Length..] : path));
+        string output = GodotResPaths.Globalized(request.Folder, path);
         List<string> arguments = [.. GodotLaunch.Chosen(setting)?.Arguments ?? []];
         if (!GodotExecutables.RunsHeadless(arguments))
         {

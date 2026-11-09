@@ -49,14 +49,14 @@ public partial class MainWindow
         {
             return null;
         }
-        if (given.StartsWith("res://", StringComparison.Ordinal) || given.StartsWith("uid://", StringComparison.Ordinal))
+        if (given.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) || given.StartsWith(GodotUids.Scheme, StringComparison.Ordinal))
         {
             return given;
         }
         string folder = GodotFolder() ?? throw new InvalidOperationException(Refusals.NoGodotProject);
         string full = PathNames.Canonical(Path.GetFullPath(given, Folder ?? folder));
-        return PathNames.IsUnder(full, folder) ? GodotProject.ResourcePath(folder, full)
-            : throw new ArgumentException($"{given} is outside the Godot project at {PathNames.Shown(folder, Folder)}");
+        return GodotResPaths.Of(folder, full)
+            ?? throw new ArgumentException($"{given} is outside the Godot project at {PathNames.Shown(folder, Folder)}");
     }
 
     /// <summary>Plays a scene of the folder's Godot game (res://; null for its main scene) in the person's Godot editor,

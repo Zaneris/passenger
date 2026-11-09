@@ -552,7 +552,7 @@ public sealed partial class GDScriptAnalyzer
                 {
                     return GDScriptType.Native("Resource");
                 }
-                string preloaded = Absolute(path, context.Analysis.Path);
+                string preloaded = GodotResPaths.Resolved(path, context.Analysis.Path);
                 if (preload.Path is { } written && context.Analysis.Tree is not null && Knows(context.Class) && Lacked(preloaded))
                 {
                     Error(context, written, $"Preload file \"{preloaded}\" does not exist.");

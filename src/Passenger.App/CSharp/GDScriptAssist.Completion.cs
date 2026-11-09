@@ -505,12 +505,12 @@ internal sealed partial class GDScriptAssist
         GodotScenes scenes = await index.ScenesAsync(folder);
         string res = typed.Analysis.Path;
         List<CompletionItem> items = [];
-        if (typedSoFar.StartsWith("res://", StringComparison.Ordinal) || call is { Name: "load" or "preload" or "change_scene_to_file" or "exists", Argument: 0 })
+        if (typedSoFar.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) || call is { Name: "load" or "preload" or "change_scene_to_file" or "exists", Argument: 0 })
         {
             IReadOnlyList<string> files = index.FilesUnder(folder);
             foreach (string file in files)
             {
-                if (GodotScenes.ResPathOf(folder, file) is { } path && !path.EndsWith(".import", StringComparison.Ordinal) && !path.EndsWith(".uid", StringComparison.Ordinal))
+                if (GodotResPaths.Of(folder, file) is { } path)
                 {
                     items.Add(Item(path, CompletionItemKind.File, Path.GetExtension(path), " ", new OfWords(path), null, 0, Replacing.String));
                 }
