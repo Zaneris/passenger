@@ -195,4 +195,33 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         Assert.Contains("not a .NET program", failed.Reason, StringComparison.Ordinal);
         Assert.True(DotnetProcesses.Runs(other), "The attach that failed ended the program it could not take hold of");
     }
+
+    /// <summary>An attach whose let-go meets a diagnostic port that fails as it is asked (here a socket at a path longer than
+    /// an address holds, which the diagnostics client throws for as it names it) fails its configurationDone saying why, and
+    /// its end tells the program was not let go, rather than the port's fault passing both.</summary>
+    [Fact]
+    public async Task An_attach_whose_diagnostic_port_fails_as_it_is_asked_says_why_and_that_the_program_was_not_let_go()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' diagnostic port is a named pipe, with no socket path to be too long");
+        Process other = Debuggees.NotDotnet();
+        string socket = Path.Combine(Path.GetTempPath(), $"dotnet-diagnostic-{other.Id}-{new string('7', 120)}-socket");
+        File.WriteAllBytes(socket, []);
+        try
+        {
+            await using DebugSession host = DebugSession.ForAttach(testOutputHelper, other);
+            await host
+                .InitializeAsync()
+                .AttachAsync(other.Id)
+                .WaitForInitializedEvent();
+
+            DapException failed = await Assert.ThrowsAsync<DapException>(() => host.ConfigurationDoneAsync());
+            Assert.Contains($"Could not attach to process {other.Id}", failed.Reason, StringComparison.Ordinal);
+            OutputEvent told = await host.WaitForEvent<OutputEvent>(o => o.Output.Contains($"Process {other.Id} was not let go", StringComparison.Ordinal));
+            Assert.True(told.Category == DapOutputCategories.Console, $"The program left held was told as: {told.Category}: {told.Output}");
+        }
+        finally
+        {
+            File.Delete(socket);
+        }
+    }
 }

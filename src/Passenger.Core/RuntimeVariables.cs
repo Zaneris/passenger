@@ -19,6 +19,15 @@ public static class RuntimeVariables
     /// suspend or nosuspend.</summary>
     public const string DiagnosticPorts = "DOTNET_DiagnosticPorts";
 
+    /// <summary>"0" turns every diagnostic the runtime offers off: its debugger, its diagnostic port and its profiling.</summary>
+    public const string EnableDiagnostics = "DOTNET_EnableDiagnostics";
+
+    /// <summary>"0" turns the runtime's debugger off alone.</summary>
+    public const string EnableDiagnosticsDebugger = "DOTNET_EnableDiagnostics_Debugger";
+
+    /// <summary>"0" turns the runtime's diagnostic port off alone.</summary>
+    public const string EnableDiagnosticsIpc = "DOTNET_EnableDiagnostics_IPC";
+
     /// <summary>"debug" lets a debugger change the program's unoptimized code as it runs (Hot Reload), read by the runtime
     /// as each module loads.</summary>
     public const string ModifiableAssemblies = "DOTNET_MODIFIABLE_ASSEMBLIES";

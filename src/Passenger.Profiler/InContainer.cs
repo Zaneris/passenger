@@ -97,7 +97,7 @@ public static class InContainer
     /// never opened.</summary>
     private static string Unreachable(int processId, Exception? error) =>
         error is null or ServerNotAvailableException or ArgumentException
-            ? $"Process {processId} has no diagnostic port to reach in this container: it has ended, is no .NET program, or its runtime was started with DOTNET_EnableDiagnostics=0"
+            ? $"Process {processId} has no diagnostic port to reach in this container: it has ended, is no .NET program, or its runtime was started with {RuntimeVariables.EnableDiagnostics}=0"
             : $"The profiler could not reach process {processId}: {error.Message}";
 
     /// <summary>The session's stream to the output until either ends: the output gone (the IDE's docker CLI ended) ends it too.</summary>

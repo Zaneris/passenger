@@ -325,7 +325,7 @@ public sealed class GodotAddonTests : IDisposable
             code.GoTo(new TextPosition(Line(code, "int answer = 6 * 7;"), 13));
             Ui.Run(window, AppActions.ToggleBreakpoint);
 
-            StartEditor([("DOTNET_EnableDiagnostics_Debugger", "0")]);
+            StartEditor([(RuntimeVariables.EnableDiagnosticsDebugger, "0")]);
             Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
 
             TestFolders.Write(folder, "play.txt", "play\n");

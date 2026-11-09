@@ -1,4 +1,5 @@
 using Microsoft.Diagnostics.NETCore.Client;
+using Passenger.Core;
 
 namespace Passenger.Profiler;
 

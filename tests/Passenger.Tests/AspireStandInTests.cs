@@ -1866,7 +1866,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
             Ui.Launched(window, window.DebugAsync(), "the stand-in AppHost to come up debugged");
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice", "Debug",
-                new Dictionary<string, string> { ["DOTNET_EnableDiagnostics"] = "0" });
+                new Dictionary<string, string> { [RuntimeVariables.EnableDiagnostics] = "0" });
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the held API's start: {answer} ({window.Status})");
             int api = Api(window);
@@ -1900,7 +1900,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
             Ui.Launched(window, window.DebugAsync(), "the stand-in AppHost to come up debugged");
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice", "Debug",
-                new Dictionary<string, string> { ["DOTNET_EnableDiagnostics_Debugger"] = "0", ["STAND_IN_CHILD"] = "1" });
+                new Dictionary<string, string> { [RuntimeVariables.EnableDiagnosticsDebugger] = "0", ["STAND_IN_CHILD"] = "1" });
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the held API's start: {answer} ({window.Status})");
             int api = Api(window);

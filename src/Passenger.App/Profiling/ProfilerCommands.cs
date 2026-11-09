@@ -1,4 +1,3 @@
-using Microsoft.Diagnostics.NETCore.Client;
 using Passenger.App.Containers;
 using Passenger.App.Debugging;
 using Passenger.App.Docking;
@@ -382,8 +381,7 @@ public sealed class ProfilerCommands
             parts.Say(stopped);
             return stopped;
         }
-        catch (Exception error) when (error is ProfilingException or InvalidOperationException or IOException or UnauthorizedAccessException
-            or TimeoutException or System.ComponentModel.Win32Exception or DiagnosticsClientException)
+        catch (Exception error) when (error is ProfilingException or System.ComponentModel.Win32Exception || DiagnosticsFailures.Of(error))
         {
             inspected?.Dispose();
             game?.Dispose();
@@ -600,8 +598,7 @@ public sealed class ProfilerCommands
             View.Stopped($"Profiling {name} was stopped as it started");
             throw;
         }
-        catch (Exception refused) when (refused is ProfilingException or InvalidOperationException or IOException or UnauthorizedAccessException
-            or TimeoutException or System.ComponentModel.Win32Exception or DiagnosticsClientException)
+        catch (Exception refused) when (refused is ProfilingException or System.ComponentModel.Win32Exception || DiagnosticsFailures.Of(refused))
         {
             string why = $"Could not profile {service.Name}: {refused.Message}";
             if (profiled == Session && !profiled.IsEnded)
@@ -1100,8 +1097,7 @@ public sealed class ProfilerCommands
             parts.Say($"{heap.Name} of {name}: {heap.Objects:N0} objects, {heap.Bytes / 1048576.0:N1} MB{(heap.Lacks is null ? string.Empty : ", read from its runtime's GC heap dump")}");
             return (heap, note ?? heap.Lacks);
         }
-        catch (Exception error) when (error is InvalidOperationException or IOException or ServerNotAvailableException or DiagnosticsClientException
-            or TimeoutException or HeapUnreadableException or ProfilingException or OperationCanceledException)
+        catch (Exception error) when (error is HeapUnreadableException or ProfilingException or OperationCanceledException || DiagnosticsFailures.Of(error))
         {
             if (error is not OperationCanceledException && await EndedAsync(run))
             {

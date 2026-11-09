@@ -30,7 +30,7 @@ public static class HeldStart
     /// null) turns its runtime's debugger off, null while it is on. Such a program is never held at its start, since no
     /// debugger would come to let it go, though its diagnostic port may still hold it.</summary>
     public static string? DebuggerOff(Func<string, string?> variable) =>
-        ((string[])["DOTNET_EnableDiagnostics", "DOTNET_EnableDiagnostics_Debugger"]).FirstOrDefault(name => variable(name) == "0") is { } off
+        ((string[])[RuntimeVariables.EnableDiagnostics, RuntimeVariables.EnableDiagnosticsDebugger]).FirstOrDefault(name => variable(name) == "0") is { } off
             ? $"Its runtime was started with {off}=0, which turns its debugger off: nothing can attach to it"
             : null;
 
@@ -58,7 +58,7 @@ public static class HeldStart
                     return Task.CompletedTask;
                 }, sinceItStarted: true).ConfigureAwait(false);
             }
-            catch (Exception unread) when (unread is DiagnosticsClientException or IOException or TimeoutException or UnauthorizedAccessException or InvalidOperationException)
+            catch (Exception unread) when (DiagnosticsFailures.Of(unread))
             {
                 return null;
             }
@@ -68,11 +68,11 @@ public static class HeldStart
 
     /// <summary>Whether a runtime started with this environment waits at its start: asked to, with its diagnostic port on.</summary>
     public static bool Holds(Func<string, string?> variable) => variable(RuntimeVariables.DefaultDiagnosticPortSuspend) == "1"
-        && variable("DOTNET_EnableDiagnostics") != "0" && variable("DOTNET_EnableDiagnostics_IPC") != "0";
+        && variable(RuntimeVariables.EnableDiagnostics) != "0" && variable(RuntimeVariables.EnableDiagnosticsIpc) != "0";
 
     /// <summary>Lets go the runtime <paramref name="client"/> reaches, held at its start, its hold cleared first; a runtime
-    /// not held takes the word as done. Null once let go, else why not; a port not listening yet is a
-    /// <see cref="ServerNotAvailableException"/>, which <see cref="AtPortAsync"/> waits out.</summary>
+    /// not held takes the word as done. Null once let go, else why not (<see cref="DiagnosticsFailures"/>); a port not
+    /// listening yet is a <see cref="ServerNotAvailableException"/>, which <see cref="AtPortAsync"/> waits out.</summary>
     public static string? LetGo(DiagnosticsClient client)
     {
         try
@@ -88,15 +88,14 @@ public static class HeldStart
             client.ResumeRuntime();
             return null;
         }
-        catch (Exception error) when (error is (DiagnosticsClientException and not ServerNotAvailableException) or IOException or TimeoutException
-            or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception error) when (error is not ServerNotAvailableException && DiagnosticsFailures.Of(error))
         {
             return error.Message;
         }
     }
 
-    /// <summary>Lets a program go (<see cref="LetGo"/>) once its port is open, as <see cref="AtPortAsync"/> waits for it.
-    /// Null once let go, or once its runtime has <paramref name="answered"/> otherwise; else why not.</summary>
+    /// <summary>Lets the program of <paramref name="processId"/> go as the overload given its process does; one gone already
+    /// said so.</summary>
     public static async Task<string?> LetGoAsync(int processId, CancellationToken stop = default, Task? answered = null, bool sinceItStarted = false,
         TimeSpan? within = null)
     {
@@ -111,19 +110,29 @@ public static class HeldStart
         }
         using (process)
         {
-            string? refused = null;
-            return await AtPortAsync(process, client =>
-            {
-                refused = LetGo(client);
-                return Task.CompletedTask;
-            }, stop, answered, sinceItStarted, within).ConfigureAwait(false) switch
-            {
-                PortWait.Reached => refused,
-                PortWait.Answered => null,
-                PortWait.Ended => "it ended first",
-                _ => $"it opened no diagnostic port in {PortLimit.TotalSeconds:0} s",
-            };
+            return await LetGoAsync(process, stop, answered, sinceItStarted, within).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>Lets a program go (<see cref="LetGo"/>) once its port is open, as <see cref="AtPortAsync"/> waits for it.
+    /// Null once let go, or once its runtime has <paramref name="answered"/> otherwise; else why not, a port that failed as
+    /// it was asked (<see cref="DiagnosticsFailures"/>) said too. <paramref name="stop"/> throws.</summary>
+    public static async Task<string?> LetGoAsync(Process process, CancellationToken stop = default, Task? answered = null, bool sinceItStarted = false,
+        TimeSpan? within = null)
+    {
+        string? refused = null;
+        return await AtPortAsync(process, client =>
+        {
+            refused = LetGo(client);
+            return Task.CompletedTask;
+        }, stop, answered, sinceItStarted, within).ConfigureAwait(false) switch
+        {
+            PortWait.Reached => refused,
+            PortWait.Answered => null,
+            PortWait.Ended => "it ended before it could be let go",
+            _ => $"it is not a .NET program that can be reached: {(answered is null ? string.Empty : "no runtime in it answered, and ")}it opened no "
+                + $"diagnostic port within {PortLimit.TotalSeconds:0} s",
+        };
     }
 
     /// <summary>Runs <paramref name="ask"/> at the program's diagnostic port, waiting for the port while the program lives,

@@ -1152,7 +1152,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         };
         if (undiagnosed)
         {
-            configuration = configuration with { Environment = new Dictionary<string, string> { ["DOTNET_EnableDiagnostics"] = "0" } };
+            configuration = configuration with { Environment = new Dictionary<string, string> { [RuntimeVariables.EnableDiagnostics] = "0" } };
         }
         window.SetConfigurations([configuration], name);
     }
