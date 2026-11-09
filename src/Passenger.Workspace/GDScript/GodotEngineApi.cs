@@ -121,7 +121,7 @@ public sealed class GodotEngineApi
     public static GodotEngineApi Read(ReadOnlySpan<byte> json)
     {
         GodotEngineApi api = new();
-        Utf8JsonReader reader = new(json, new JsonReaderOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+        Utf8JsonReader reader = new(json, LenientJson.Reader);
         using JsonDocument document = JsonDocument.ParseValue(ref reader);
         JsonElement root = document.RootElement;
         if (JsonMembers.Object(root, "header") is { } header && Count(header, "version_major") is int major && Count(header, "version_minor") is int minor)

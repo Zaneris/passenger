@@ -45,7 +45,7 @@ public sealed class GodotClassReference
     /// <summary>The compact file of a dump's descriptions: one object of each text by its key, the empty ones left out.</summary>
     public static byte[] Reduce(ReadOnlySpan<byte> dump)
     {
-        Utf8JsonReader reader = new(dump, new JsonReaderOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+        Utf8JsonReader reader = new(dump, LenientJson.Reader);
         using JsonDocument document = JsonDocument.ParseValue(ref reader);
         JsonElement root = document.RootElement;
         using MemoryStream kept = new();

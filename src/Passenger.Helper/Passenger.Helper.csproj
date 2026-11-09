@@ -12,8 +12,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- A helper's runtimeconfig.json read as every other program's JSON is. -->
+    <!-- A helper's runtimeconfig.json read as every other program's JSON is, and as .NET's host reads it. -->
     <Compile Include="../Passenger.Core/JsonMembers.cs" Link="JsonMembers.cs" />
+    <Compile Include="../Passenger.Core/LenientJson.cs" Link="LenientJson.cs" />
   </ItemGroup>
 
   <!-- The four files Passenger carries of it: what it runs as and is run by, without the runtime a self-contained build

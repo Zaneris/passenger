@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.Core;
+using Passenger.Tools;
 
 namespace Passenger.NodePackages;
 
@@ -56,15 +58,10 @@ public sealed class Inputs
     public static Inputs Read(string path)
     {
         Inputs inputs = new();
-        foreach (string line in File.ReadAllLines(path).Where(l => l.Length > 0))
+        InputsFile file = new(path, problem => new PackageException(problem));
+        foreach ((string name, string value) in file.Lines())
         {
-            int equals = line.IndexOf('=', StringComparison.Ordinal);
-            if (equals < 0)
-            {
-                throw new PackageException($"{path}: '{line}' is not name=value");
-            }
-            string value = line[(equals + 1)..].Trim();
-            switch (line[..equals].Trim())
+            switch (name)
             {
                 case "lock":
                     inputs.Lock = value;
@@ -82,15 +79,11 @@ public sealed class Inputs
                     inputs.LeftOut.Add(value.Replace('\\', '/'));
                     break;
                 case "move":
-                    string[] parts = value.Replace('\\', '/').Split('|', 2);
-                    if (parts.Length != 2)
-                    {
-                        throw new PackageException($"{path}: move takes a glob and the folder its files go to, as glob|folder, not '{value}'");
-                    }
-                    inputs.Moved.Add((parts[0], parts[1]));
+                    (string glob, string to) = file.Pair(name, value, "a glob and the folder its files go to, as glob|folder");
+                    inputs.Moved.Add((glob.Replace('\\', '/'), to.Replace('\\', '/')));
                     break;
                 default:
-                    throw new PackageException($"{path}: '{line[..equals]}' is not something this tool reads");
+                    throw file.Failure($"'{name}' is not something this tool reads");
             }
         }
         if (inputs.Lock.Length == 0 || inputs.Cache.Length == 0 || inputs.Out.Length == 0 || inputs.Stamp.Length == 0)
@@ -177,7 +170,7 @@ public static class Packages
     public static IReadOnlyList<Locked> Read(byte[] lockFile, string path)
     {
         using JsonDocument document = JsonDocument.Parse(lockFile);
-        if (!document.RootElement.TryGetProperty("packages", out JsonElement entries) || entries.ValueKind != JsonValueKind.Object)
+        if (JsonMembers.Object(document.RootElement, "packages") is not { } entries)
         {
             throw new PackageException($"{path} has no \"packages\": it is not a lock file of npm 7 or later (lockfileVersion 2 or 3)");
         }
@@ -189,7 +182,7 @@ public static class Packages
                 continue;
             }
             JsonElement value = entry.Value;
-            if (Flag(value, "dev") || Flag(value, "link"))
+            if (JsonMembers.Bool(value, "dev") == true || JsonMembers.Bool(value, "link") == true)
             {
                 continue;
             }
@@ -197,13 +190,13 @@ public static class Packages
             {
                 throw new PackageException($"{path}: '{entry.Name}' is not a place under node_modules/");
             }
-            if (value.TryGetProperty("os", out _) || value.TryGetProperty("cpu", out _))
+            if (JsonMembers.Value(value, "os") is not null || JsonMembers.Value(value, "cpu") is not null)
             {
                 throw new PackageException($"{path}: {entry.Name} is only for some systems, and Passenger carries one copy of these packages for every system");
             }
-            string version = Text(value, "version") ?? throw new PackageException($"{path}: {entry.Name} has no version");
-            string resolved = Text(value, "resolved") ?? throw new PackageException($"{path}: {entry.Name} has no resolved tarball");
-            string integrity = Text(value, "integrity") ?? throw new PackageException($"{path}: {entry.Name} has no integrity");
+            string version = JsonMembers.Text(value, "version") ?? throw new PackageException($"{path}: {entry.Name} has no version");
+            string resolved = JsonMembers.Text(value, "resolved") ?? throw new PackageException($"{path}: {entry.Name} has no resolved tarball");
+            string integrity = JsonMembers.Text(value, "integrity") ?? throw new PackageException($"{path}: {entry.Name} has no integrity");
             if (!Uri.TryCreate(resolved, UriKind.Absolute, out Uri? tarball) || tarball.Scheme != Uri.UriSchemeHttps)
             {
                 throw new PackageException($"{path}: {entry.Name}'s tarball {resolved} is not an https URL");
@@ -217,11 +210,6 @@ public static class Packages
         }
         return packages;
     }
-
-    private static bool Flag(JsonElement value, string name) => value.TryGetProperty(name, out JsonElement flag) && flag.ValueKind == JsonValueKind.True;
-
-    private static string? Text(JsonElement value, string name) =>
-        value.TryGetProperty(name, out JsonElement text) && text.ValueKind == JsonValueKind.String ? text.GetString() : null;
 
     /// <summary>What the folder was made from: the lock file's hash and the files left out and moved, which a build compares.</summary>
     private static string Stamp(byte[] lockFile, Inputs inputs) =>

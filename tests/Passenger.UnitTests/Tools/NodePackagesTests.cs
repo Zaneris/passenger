@@ -1,17 +1,21 @@
+extern alias NodePackages;
+
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Passenger.Core;
-using Inputs = Passenger.NodePackages.Inputs;
-using NodeInstall = Passenger.NodePackages.Packages;
+using Inputs = NodePackages::Passenger.NodePackages.Inputs;
+using NodeInstall = NodePackages::Passenger.NodePackages.Packages;
+using PackageException = NodePackages::Passenger.NodePackages.PackageException;
 
 namespace Passenger.UnitTests.Tools;
 
 /// <summary>The build's install of npm packages from a lock file (tools/Passenger.NodePackages) beside another into the same
 /// download cache, as two worktrees' builds, or a restore beside a publish, fill it: each download lands in the cache whole,
-/// whichever install wrote it, and both installs succeed with every package in place.</summary>
+/// whichever install wrote it, and both installs succeed with every package in place; and the file of what to do read as
+/// the build tools read theirs.</summary>
 public sealed class NodePackagesTests : IDisposable
 {
     private const int Count = 12;
@@ -58,6 +62,24 @@ public sealed class NodePackagesTests : IDisposable
             }
             Assert.True(Directory.EnumerateFiles(cache, "*.partial").ToArray() is [], $"In round {round}, downloads left half-written files in the cache");
         }
+    }
+
+    [Fact]
+    public void The_file_of_what_to_do_is_read_by_trimmed_names_and_values_and_a_malformed_line_fails_naming_the_file()
+    {
+        string told = Path.Join(root, "told.txt");
+        File.WriteAllText(told, " move = dist\\**\\*.wasm|lib \n\nlock=a\ncache=b\nout=c\nstamp=d\n");
+        Assert.True(Inputs.Read(told).Moved is [("dist/**/*.wasm", "lib")],
+            "A move written with spaces around it and Windows' separators did not read as its glob and folder, so the build would move nothing");
+
+        File.WriteAllText(told, "move=dist/*.wasm\n");
+        string said = Assert.Throws<PackageException>(() => Inputs.Read(told)).Message;
+        Assert.True(said == $"{told}: move takes a glob and the folder its files go to, as glob|folder, not 'dist/*.wasm'",
+            $"A move with no folder failed the build saying '{said}', which names neither the file nor what move takes");
+
+        File.WriteAllText(told, "lock\n");
+        said = Assert.Throws<PackageException>(() => Inputs.Read(told)).Message;
+        Assert.True(said == $"{told}: 'lock' is not name=value", $"A line with no value failed the build saying '{said}', which names neither the file nor the line");
     }
 
     private Inputs Read(string lockFile, string cache, string output)

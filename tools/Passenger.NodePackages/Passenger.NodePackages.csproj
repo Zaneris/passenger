@@ -5,4 +5,10 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>Passenger.NodePackages</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The file the build hands it, read as the other build tools read theirs, and JSON as every program's is. -->
+    <Compile Include="../Shared/InputsFile.cs" Link="InputsFile.cs" />
+    <Compile Include="../../src/Passenger.Core/JsonMembers.cs" Link="JsonMembers.cs" />
+  </ItemGroup>
 </Project>

@@ -55,7 +55,7 @@ public static class Program
         {
             return;
         }
-        using JsonDocument config = JsonDocument.Parse(File.ReadAllBytes(runtimeConfig), new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+        using JsonDocument config = JsonDocument.Parse(File.ReadAllBytes(runtimeConfig), LenientJson.Document);
         foreach (JsonProperty property in JsonMembers.Properties(JsonMembers.Object(config.RootElement, "runtimeOptions"), "configProperties"))
         {
             AppContext.SetData(property.Name, property.Value.ValueKind switch

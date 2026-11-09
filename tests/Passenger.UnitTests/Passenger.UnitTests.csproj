@@ -29,7 +29,8 @@
     <ProjectReference Include="../../src/Passenger.Vcs/Passenger.Vcs.csproj" />
     <ProjectReference Include="../../src/Passenger.Workspace/Passenger.Workspace.csproj" />
     <ProjectReference Include="../../src/Passenger.Xaml/Passenger.Xaml.csproj" />
-    <ProjectReference Include="../../tools/Passenger.NodePackages/Passenger.NodePackages.csproj" />
+    <!-- Under an alias, since the tool compiles in Core's JsonMembers, which the tests take from Core. -->
+    <ProjectReference Include="../../tools/Passenger.NodePackages/Passenger.NodePackages.csproj" Aliases="NodePackages" />
   </ItemGroup>
 
   <!-- What the container runs read of Compose's and Docker's files, as text and paths alone, compiled in since their

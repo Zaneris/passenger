@@ -2,6 +2,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Passenger.Core;
+using Passenger.Tools;
 
 namespace Passenger.Notices;
 
@@ -97,19 +99,10 @@ public sealed class Inputs
     public static Inputs Read(string path)
     {
         Inputs inputs = new();
-        foreach (string line in File.ReadAllLines(path))
+        InputsFile file = new(path, problem => new NoticeException([problem]));
+        foreach ((string name, string value) in file.Lines())
         {
-            if (line.Length == 0)
-            {
-                continue;
-            }
-            int equals = line.IndexOf('=', StringComparison.Ordinal);
-            if (equals < 0)
-            {
-                throw new NoticeException([$"{path}: '{line}' is not name=value"]);
-            }
-            string value = line[(equals + 1)..].Trim();
-            switch (line[..equals].Trim())
+            switch (name)
             {
                 case "out":
                     inputs.Out = value;
@@ -119,7 +112,7 @@ public sealed class Inputs
                     {
                         "app" => false,
                         "tools" => true,
-                        _ => throw new NoticeException([$"{path}: for={value} names neither the app nor the tools"]),
+                        _ => throw file.Failure($"for={value} names neither the app nor the tools"),
                     };
                     break;
                 case "tools":
@@ -162,11 +155,10 @@ public sealed class Inputs
                     inputs.NodeModules.Add(value);
                     break;
                 case "text":
-                    string[] parts = value.Split('|', 2);
-                    inputs.Texts.Add((parts[0], parts[1]));
+                    inputs.Texts.Add(file.Pair(name, value, "a licence's title and the file of its text, as title|path"));
                     break;
                 default:
-                    throw new NoticeException([$"{path}: '{line[..equals]}' is not something the notices read"]);
+                    throw file.Failure($"'{name}' is not something the notices read");
             }
         }
         if (inputs.Out.Length == 0 || inputs.License.Length == 0 || inputs.Notices.Length == 0 || inputs.Licenses.Length == 0 || inputs.PackageRoot.Length == 0)
@@ -450,8 +442,8 @@ public static partial class NoticesFile
                 problems.Add($"{folder} has no package.json that reads: {error.Message}");
                 return;
             }
-            string? name = Field(package, "name");
-            string? version = Field(package, "version");
+            string? name = JsonMembers.Text(package, "name");
+            string? version = JsonMembers.Text(package, "version");
             if (name is null || version is null)
             {
                 problems.Add($"{folder}'s package.json names no name and version");
@@ -462,7 +454,7 @@ public static partial class NoticesFile
             {
                 return;
             }
-            string? expression = Field(package, "license");
+            string? expression = JsonMembers.Text(package, "license");
             if (expression is null)
             {
                 problems.Add($"{name} {version} (under web/) states no SPDX licence in its package.json: give the notices its licence's text");
@@ -483,9 +475,8 @@ public static partial class NoticesFile
                 problems.Add($"{name} {version} (under web/) is under {expression}, carries no licence file, and {missing} has no text in {inputs.Licenses}: add SPDX's text/{missing}.txt there (its README says from where)");
                 return;
             }
-            string? author = package.TryGetProperty("author", out JsonElement by)
-                ? by.ValueKind == JsonValueKind.Object ? Field(by, "name") : by.ValueKind == JsonValueKind.String ? by.GetString() : null
-                : null;
+            // npm takes an author as a string, or as an object with a name.
+            string? author = JsonMembers.Text(package, "author") ?? JsonMembers.Text(JsonMembers.Object(package, "author"), "name");
             entry.Copyright = file is not null && entry.Text.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => CopyrightLine().IsMatch(l)) is { } line
                 ? OneLine(line.TrimStart('*', ' '))
                 : $"no copyright line; its author: {author ?? "none named"}";
@@ -513,17 +504,13 @@ public static partial class NoticesFile
     private static IEnumerable<(string Id, string Version, string? Path)> Dependencies(string deps)
     {
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(deps));
-        if (!document.RootElement.TryGetProperty("libraries", out JsonElement libraries))
-        {
-            yield break;
-        }
-        foreach (JsonProperty library in libraries.EnumerateObject())
+        foreach (JsonProperty library in JsonMembers.Properties(document.RootElement, "libraries"))
         {
             string[] name = library.Name.Split('/');
-            switch (library.Value.GetProperty("type").GetString())
+            switch (JsonMembers.Text(library.Value, "type"))
             {
                 case "package":
-                    yield return (name[0], name[1], library.Value.TryGetProperty("path", out JsonElement path) ? path.GetString() : null);
+                    yield return (name[0], name[1], JsonMembers.Text(library.Value, "path"));
                     break;
                 case "runtimepack":
                     yield return (name[0]["runtimepack.".Length..], name[1], null);
@@ -553,9 +540,6 @@ public static partial class NoticesFile
             }
         }
     }
-
-    private static string? Field(JsonElement value, string name) =>
-        value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out JsonElement field) && field.ValueKind == JsonValueKind.String ? field.GetString() : null;
 
     /// <summary>THIRD_PARTY_NOTICES.md's "Inside roslyn/" table: each package it names, with the licence and copyright its
     /// row gives. The server's package carries these, but not their nuspecs.</summary>
