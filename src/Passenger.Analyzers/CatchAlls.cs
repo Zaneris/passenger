@@ -32,7 +32,7 @@ public sealed class CatchAlls : DiagnosticAnalyzer
     {
         foreach (ICatchClauseOperation clause in ((ITryOperation)context.Operation).Catches)
         {
-            if (clause.Filter is null && (clause.ExceptionType.SpecialType == SpecialType.System_Object || Same(clause.ExceptionType, exception))
+            if (clause.Filter is null && (clause.ExceptionType.SpecialType == SpecialType.System_Object || Symbols.Same(clause.ExceptionType, exception))
                 && !PassesOn(clause) && clause.Syntax is CatchClauseSyntax syntax)
             {
                 Location place = Location.Create(syntax.SyntaxTree,
@@ -86,7 +86,7 @@ public sealed class CatchAlls : DiagnosticAnalyzer
         {
             case IThrowOperation { Exception: null }:
                 return true;
-            case ILocalReferenceOperation local when caught is not null && Same(local.Local, caught):
+            case ILocalReferenceOperation local when caught is not null && Symbols.Same(local.Local, caught):
                 return Handed(local);
             case IAnonymousFunctionOperation or ILocalFunctionOperation:
                 return false;
@@ -143,6 +143,4 @@ public sealed class CatchAlls : DiagnosticAnalyzer
         }
         return false;
     }
-
-    private static bool Same(ISymbol? one, ISymbol? other) => one is not null && SymbolEqualityComparer.Default.Equals(one, other);
 }

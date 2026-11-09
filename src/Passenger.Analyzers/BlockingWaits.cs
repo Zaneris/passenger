@@ -122,7 +122,7 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
         }
         for (IOperation? parent = at.Parent; parent is not null; parent = parent.Parent)
         {
-            if (parent is IAnonymousFunctionOperation function && Same(function.Symbol, lambda))
+            if (parent is IAnonymousFunctionOperation function && Symbols.Same(function.Symbol, lambda))
             {
                 IOperation? given = function.Parent is IDelegateCreationOperation created ? created.Parent : function.Parent;
                 return given is IArgumentOperation { Parent: IInvocationOperation { TargetMethod: { Name: "ContinueWith" } method } }
@@ -322,7 +322,7 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
     {
         IFieldSymbol field => field.IsReadOnly,
         IPropertySymbol { Parameters.Length: 0 } property => property.SetMethod is null or { IsInitOnly: true }
-            && property.ContainingType.GetMembers().OfType<IFieldSymbol>().Any(f => Same(f.AssociatedSymbol, property)),
+            && property.ContainingType.GetMembers().OfType<IFieldSymbol>().Any(f => Symbols.Same(f.AssociatedSymbol, property)),
         _ => false,
     };
 
@@ -353,10 +353,10 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
 
     private static bool Names(IOperation operation, ISymbol symbol) => operation switch
     {
-        ILocalReferenceOperation { IsDeclaration: false } local => Same(local.Local, symbol),
-        IParameterReferenceOperation parameter => Same(parameter.Parameter, symbol),
-        IFieldReferenceOperation field => Same(field.Field, symbol),
-        IPropertyReferenceOperation property => Same(property.Property, symbol),
+        ILocalReferenceOperation { IsDeclaration: false } local => Symbols.Same(local.Local, symbol),
+        IParameterReferenceOperation parameter => Symbols.Same(parameter.Parameter, symbol),
+        IFieldReferenceOperation field => Symbols.Same(field.Field, symbol),
+        IPropertyReferenceOperation property => Symbols.Same(property.Property, symbol),
         _ => false,
     };
 
@@ -365,7 +365,7 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
     private static bool AssignedOnce(ILocalSymbol local, IOperation write, IOperation root)
     {
         IOperation[] all = [.. root.DescendantsAndSelf()];
-        if (all.OfType<IVariableDeclaratorOperation>().FirstOrDefault(d => Same(d.Symbol, local)) is not { Initializer: null } declarator
+        if (all.OfType<IVariableDeclaratorOperation>().FirstOrDefault(d => Symbols.Same(d.Symbol, local)) is not { Initializer: null } declarator
             || all.OfType<ILabeledOperation>().Any() || write.Parent is not ISimpleAssignmentOperation)
         {
             return false;
@@ -421,8 +421,6 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
         }
         return operation;
     }
-
-    private static bool Same(ISymbol? one, ISymbol? other) => one is not null && SymbolEqualityComparer.Default.Equals(one, other);
 
     /// <summary>A task named by where it is held: a local, parameter, this object's type or a type's member, then each member
     /// read from it; empty when it is not held anywhere fixed.</summary>
