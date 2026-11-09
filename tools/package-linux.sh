@@ -5,10 +5,7 @@
 # entry's template, its icon and the file types it opens (tools/linux). The archive is then unpacked again and checked:
 # its layout, every ELF file built for its processor, and the launcher running the app. Made on Linux or macOS.
 set -eu
-fail() {
-    echo "package-linux: $*" >&2
-    exit 1
-}
+. "$(dirname "$0")/release-common.sh"
 rid=${1:-linux-x64}
 case $rid in
     linux-x64) machine=x86-64 ;;
@@ -27,18 +24,11 @@ folder="$stage/passenger"
 check="$work/check"
 archive="$out/Passenger-linux-${rid#linux-}.tar.gz"
 
-# A vX.Y.Z tag on this commit, else Directory.Build.props' Version.
-version=$(git -C "$root" describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)
-[ -n "$version" ] || version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$root/Directory.Build.props" | head -n 1)
-if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-    fail "the version '$version' is not X.Y.Z in numbers (a vX.Y.Z tag on the commit, or Version in Directory.Build.props)"
-fi
+version=$(release_version "$root")
 
 rm -rf "$work" "$archive"
 mkdir -p "$work"
-# Only the packages the lock files pin, and no MSBuild node left running once it is done.
-dotnet publish "$root/src/Passenger.App" -c Release -r "$rid" --self-contained -p:PublishReadyToRun=true -p:Version="$version" \
-    -p:RestoreLockedMode=true -nodeReuse:false -o "$publish" -nologo -v quiet
+publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
 
 linux="$root/tools/linux"
 mkdir -p "$folder"

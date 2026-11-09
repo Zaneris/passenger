@@ -9,10 +9,7 @@
 # and the notary's commands to a file instead of running them, and signs ad hoc. The image is then mounted read-only
 # and checked.
 set -eu
-fail() {
-    echo "package-mac: $*" >&2
-    exit 1
-}
+. "$(dirname "$0")/release-common.sh"
 rid=osx-arm64
 dry_run=
 for arg in "$@"; do
@@ -48,12 +45,8 @@ app="$stage/Passenger.app"
 mount="$work/mount"
 commands="$work/dry-run.txt"
 image="$out/Passenger-macos-$arch.dmg"
-# A vX.Y.Z tag on this commit, else Directory.Build.props' Version; the build number counts the commits, so each rises.
-version=$(git -C "$root" describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)
-[ -n "$version" ] || version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$root/Directory.Build.props" | head -n 1)
-if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-    fail "the version '$version' is not X.Y.Z in numbers (a vX.Y.Z tag on the commit, or Version in Directory.Build.props)"
-fi
+version=$(release_version "$root")
+# The build number counts the commits, so each rises.
 if [ "$(git -C "$root" rev-parse --is-shallow-repository)" = true ]; then
     fail "a shallow clone cannot count its commits for the build number; fetch the whole history"
 fi
@@ -127,9 +120,7 @@ fi
 rm -rf "$work" "$image"
 mkdir -p "$work"
 
-# Only the packages the lock files pin, and no MSBuild node left running once it is done.
-dotnet publish "$root/src/Passenger.App" -c Release -r "$rid" --self-contained -p:PublishReadyToRun=true -p:Version="$version" \
-    -p:RestoreLockedMode=true -nodeReuse:false -o "$publish" -nologo -v quiet
+publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp -R "$publish/." "$app/Contents/MacOS/"
 # The web servers go in Resources, since codesign takes a dotted folder under Contents/MacOS for a nested bundle.

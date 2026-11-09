@@ -10,10 +10,7 @@
 # /sha1, /fd sha256, /tr and /td sha256), or PASSENGER_ARTIFACT_SIGNING_METADATA, an Azure Artifact Signing account's
 # metadata.json, its identity from AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET or an `az login`.
 set -eu
-fail() {
-    echo "package-win: $*" >&2
-    exit 1
-}
+. "$(dirname "$0")/release-common.sh"
 rid=${1:-win-x64}
 case $rid in
     win-x64 | win-arm64) ;;
@@ -47,16 +44,10 @@ if [ -n "$signing_metadata" ]; then
     signing_metadata=$(cygpath -m "$signing_metadata")
 fi
 
-# A vX.Y.Z tag on this commit, else Directory.Build.props' Version.
-version=$(git -C "$root" describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)
-[ -n "$version" ] || version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$root/Directory.Build.props" | head -n 1)
-if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-    fail "the version '$version' is not X.Y.Z in numbers (a vX.Y.Z tag on the commit, or Version in Directory.Build.props)"
-fi
+version=$(release_version "$root")
 
 rm -rf "$work" "$installer"
-dotnet publish "$root/src/Passenger.App" -c Release -r "$rid" --self-contained -p:PublishReadyToRun=true -p:Version="$version" \
-    -o "$publish" -nologo -v quiet
+publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
 
 # The pack id is not Passenger: the uninstaller empties its folder, and %LocalAppData%\Passenger is the person's state.
 set -- --packId PassengerIDE --packVersion "$version" --packTitle Passenger --packAuthors Passenger \

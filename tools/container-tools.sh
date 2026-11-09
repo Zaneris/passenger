@@ -5,6 +5,7 @@
 # glibc one for the container engine's processor, else this machine's.
 #   tools/container-tools.sh [linux-x64|linux-arm64|linux-musl-x64|linux-musl-arm64] [--archive]
 set -eu
+. "$(dirname "$0")/release-common.sh"
 cd "$(dirname "$0")/.."
 
 rid=
@@ -38,9 +39,8 @@ if [ -z "$rid" ]; then
     esac
 fi
 
-# A vX.Y.Z tag on this commit, else Directory.Build.props' Version: the IDE takes tools of its own version alone.
-version=$(git describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)
-[ -n "$version" ] || version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -n 1)
+# The release's version: the IDE takes tools of its own version alone.
+version=$(release_version .)
 
 out=artifacts/container-tools/$rid
 rm -rf "$out"

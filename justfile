@@ -58,10 +58,17 @@ screenshot path *args:
 screenshot path *args:
     dotnet run --project {{app}} -- --screenshot {{path}} {{args}}
 
-# Precompiled with ReadyToRun for startup; no Intel Mac build ships.
+# As the packages publish it, at the release's version (tools/release-common.sh): precompiled with ReadyToRun for startup,
+# only the packages the lock files pin. No Intel Mac build ships. The inner sh is named publish, which its failures say.
 # A self-contained Release build for one platform: just publish osx-arm64 | win-x64 | win-arm64 | linux-x64 | linux-arm64
+[unix]
 publish rid:
-    dotnet publish {{app}} -c Release -r {{rid}} --self-contained -p:PublishReadyToRun=true
+    sh -c '. tools/release-common.sh && version=$(release_version .) && publish_app . "$1" "$version"' publish {{ quote(rid) }}
+
+# A self-contained Release build for one platform, by Git's sh: just publish win-x64 | win-arm64 | ...
+[windows]
+publish rid:
+    $sh = (Get-Command sh -ErrorAction SilentlyContinue).Source; if (-not $sh) { $sh = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'bin\sh.exe' }; & $sh -c '. tools/release-common.sh && version=$(release_version .) && publish_app . $1 $version' publish {{rid}}
 
 # Passenger's container tools (its debug adapter and process lister, run inside a Linux container) self-contained for one
 # system into artifacts/container-tools/<rid>/, where a dev build finds them; --archive also packs the release's
