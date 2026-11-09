@@ -496,7 +496,7 @@ public partial class MainWindow
         string? parent = commit.Parents.Count > 0 ? commit.Parents[0] : null;
         string before = parent is null || file.Kind is ChangeKind.Added ? string.Empty : (await session.Vcs.VersionAsync(parent, file.From ?? file.Path, file.Path))?.Text ?? string.Empty;
         string after = file.Kind is ChangeKind.Deleted ? string.Empty : (await session.Vcs.VersionAsync(commit.Hash, file.Path, file.Path))?.Text ?? string.Empty;
-        string leftTitle = parent is null ? "Before the first commit" : parent[..Math.Min(8, parent.Length)];
+        string leftTitle = parent is null ? "Before the first commit" : GitHashes.Short(parent);
         TextDocument mine = new(after);
         TextSnapshot text = mine.Snapshot;
         FileDiff diff = await BackgroundWork.Run(() => FileDiff.Compare(before, text));

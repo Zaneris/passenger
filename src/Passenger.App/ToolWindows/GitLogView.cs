@@ -569,30 +569,13 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         };
     }
 
-    /// <summary>A changed file's row for whichever file the list hands its container: its icon, name in its change's
-    /// colour, and folder.</summary>
+    /// <summary>A changed file's row for whichever file the list hands its container (<see cref="ChangedFileRow"/>), its
+    /// folder from the repository's top.</summary>
     private Control FileRow()
     {
-        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(8, 0, 6, 0) };
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12 };
-        folder.Classes.Add(StyleClasses.Muted);
-        string? kind = null;
-        // The folder gives way first, then the name, each ending in an ellipsis, in a narrow pane.
-        ShrinkingRow row = new() { Height = RowHeight, Children = { icon, name, folder } };
-        return row.Showing<FileChange>(change =>
-        {
-            icon.Data = Explorer.FileIcons.ForFile(change.Path);
-            icon.Foreground = Explorer.FileIcons.BrushForFile(change.Path);
-            name.Text = change.Name;
-            string token = CommitView.KindToken(change.Kind);
-            if (token != kind)
-            {
-                kind = token;
-                name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(token));
-            }
-            folder.Text = vcs.Repository is { } repository ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty;
-        });
+        ChangedFileRow row = new();
+        return row.Line.Showing<FileChange>(change =>
+            row.Show(change.Path, change.Kind, vcs.Repository is { } repository ? ChangedFileRow.Folder(repository.Relative(change.Path)) : string.Empty));
     }
 
     /// <summary>The lanes' colours as a theme gives them, and a pen of each.</summary>

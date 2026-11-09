@@ -355,9 +355,9 @@ public sealed partial class ConsoleLinks : IHighlighter
         {
             relative = path[3..];
         }
-        else if (path.StartsWith("~/", StringComparison.Ordinal) || path.StartsWith(@"~\", StringComparison.Ordinal))
+        else if (PathNames.Expanded(path) is { } home)
         {
-            return Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..]));
+            return Exists(home);
         }
         else if (Path.IsPathFullyQualified(path))
         {

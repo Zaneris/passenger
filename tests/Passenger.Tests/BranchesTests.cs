@@ -208,7 +208,7 @@ public sealed class BranchesTests : IDisposable
 
         string clone = TestFolders.Create("branches-clone-");
         TestGit.Run(clone, "clone", "-q", "-b", "feature", origin, ".");
-        TestGit.Run(clone, "config", "user.email", "tests@passenger.invalid");
+        TestGit.Run(clone, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
         TestGit.Run(clone, "config", "user.name", "Passenger Tests");
         File.WriteAllText(Path.Combine(clone, "Feature.cs"), "class Feature { int more; }\n");
         TestGit.Run(clone, "commit", "-q", "-am", "More");

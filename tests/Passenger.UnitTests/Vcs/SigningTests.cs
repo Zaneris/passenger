@@ -135,6 +135,16 @@ public class SigningTests
         Assert.Equal((GitQuestionKind.Passphrase, "0xA1B2C3", true, "gpgsm"), (x509.Kind, x509.Place, x509.Signs, x509.SignsWith));
     }
 
+    /// <summary>The keys signing reads are asked of git by a pattern that takes each whole, in the lower case git gives a
+    /// key's section and name, and no other.</summary>
+    [Fact]
+    public void Signings_keys_are_asked_of_git_each_whole_in_lower_case()
+    {
+        System.Text.RegularExpressions.Regex asked = new(GitConfigKeys.Pattern(GitConfigKeys.GpgSshDefaultKeyCommand, GitConfigKeys.GpgFormat));
+        Assert.True(asked.IsMatch("gpg.ssh.defaultkeycommand") && asked.IsMatch(GitConfigKeys.GpgFormat), "Git's lower-case names of the keys asked for are not taken, so signing reads none of them");
+        Assert.False(asked.IsMatch("gpg.formats") || asked.IsMatch("gpgxformat") || asked.IsMatch("my.gpg.format"), "A key not asked for is taken for one that is");
+    }
+
     /// <summary>gpgsm is the one git's config names for X.509 (gpg.x509.program), beside gpg's own setting.</summary>
     [Fact]
     public void Gits_config_names_the_gpgsm_an_x509_commit_is_signed_with()

@@ -151,8 +151,8 @@ public sealed class CommitSigningTests : IDisposable
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
         TestGit.Init(root);
         string id = Ui.AwaitPumped(Waiting.Apart(() => TestGpgKeys.MakeAsync(Passphrase)), "the test's GPG key", TimeSpan.FromMinutes(2));
-        TestGit.Run(root, "config", "user.signingkey", id);
-        TestGit.Run(root, "config", "commit.gpgsign", "true");
+        TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, id);
+        TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.CommitGpgSign, "true");
         try
         {
             MainWindow window = Open(root);
@@ -199,7 +199,7 @@ public sealed class CommitSigningTests : IDisposable
         Assert.SkipWhen(TestX509Keys.WhyNot is not null, TestX509Keys.WhyNot ?? string.Empty);
         string made = PathNames.Canonical(TestFolders.Create("signing-x509-keys-"));
         folders.Add(made);
-        Signs("signing-x509-", "harbour-gate-6", () => TestX509Keys.MakeAsync("harbour-gate-6", made), ["gpg.format", "x509"], "Passphrase for 0x", null,
+        Signs("signing-x509-", "harbour-gate-6", () => TestX509Keys.MakeAsync("harbour-gate-6", made), [Passenger.Vcs.GitConfigKeys.GpgFormat, "x509"], "Passphrase for 0x", null,
             () => TestGpgKeys.EndAgentAsync(TestX509Keys.Gpgsm));
     }
 
@@ -213,8 +213,8 @@ public sealed class CommitSigningTests : IDisposable
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
         TestGit.Init(root);
         string id = Ui.AwaitPumped(Waiting.Apart(make), "the test's signing key", TimeSpan.FromMinutes(2));
-        TestGit.Run(root, "config", "user.signingkey", id);
-        TestGit.Run(root, "config", "commit.gpgsign", "true");
+        TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, id);
+        TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.CommitGpgSign, "true");
         for (int at = 0; at + 1 < config.Length; at += 2)
         {
             TestGit.Run(root, "config", config[at], config[at + 1]);
@@ -258,7 +258,7 @@ public sealed class CommitSigningTests : IDisposable
     {
         Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
         (string root, string key) = Repository(passphrase: null);
-        TestGit.Run(root, "config", "user.signingkey", Path.Combine(Path.GetDirectoryName(key)!, "gone.pub"));
+        TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, Path.Combine(Path.GetDirectoryName(key)!, "gone.pub"));
         MainWindow window = Open(root);
         CommitView commit = window.CommitView;
         Ui.Landed(() => commit.SignWith == "Sign with SSH key gone.pub", "the Commit window's Sign with gone.pub");
@@ -306,7 +306,7 @@ public sealed class CommitSigningTests : IDisposable
         string Local(string name) => TestGit.Run(root, "config", "--local", "--get", name).Trim();
         string signers = Path.Combine(root, ".git", "allowed_signers");
         Assert.Equal(["ssh", key + ".pub", "true", signers],
-            [Local("gpg.format"), Local("user.signingkey"), Local("commit.gpgsign"), PathNames.Canonical(Local("gpg.ssh.allowedSignersFile"))]);
+            [Local(Passenger.Vcs.GitConfigKeys.GpgFormat), Local(Passenger.Vcs.GitConfigKeys.UserSigningKey), Local(Passenger.Vcs.GitConfigKeys.CommitGpgSign), PathNames.Canonical(Local(Passenger.Vcs.GitConfigKeys.GpgSshAllowedSignersFile))]);
         string publicKey = string.Join(' ', TestSshKeys.Public(key).Split(' ')[..2]);
         Assert.True(File.ReadAllText(signers) == $"tests@passenger.invalid namespaces=\"git\" {publicKey}\n",
             $"The repository's allowed signers file holds\n{File.ReadAllText(signers)}\nnot the committer's email and key");
@@ -416,7 +416,7 @@ public sealed class CommitSigningEverywhereTests : IDisposable
         TestGit.Init(other);
         string local = Path.Combine(folder, "shop_signers");
         File.WriteAllText(local, string.Empty);
-        TestGit.Run(root, "config", "--local", "gpg.ssh.allowedSignersFile", local);
+        TestGit.Run(root, "config", "--local", Passenger.Vcs.GitConfigKeys.GpgSshAllowedSignersFile, local);
         string key = Ui.AwaitPumped(Waiting.Apart(() => TestSshKeys.MakeAsync(keys, "mine")), "the test's key", TimeSpan.FromMinutes(1));
 
         MainWindow window = Ui.OpenFolder(root, languageServer: false);
@@ -433,7 +433,7 @@ public sealed class CommitSigningEverywhereTests : IDisposable
         Ui.ClickButton(dialog, "OK");
         Ui.Landed(() => commit.SignWith == "Sign with SSH key mine.pub", $"the Commit window signing with mine.pub, where it says \"{commit.SignWith}\"");
 
-        string signers = TestGit.Run(other, "config", "--type=path", "--get", "gpg.ssh.allowedSignersFile").Trim();
+        string signers = TestGit.Run(other, "config", "--type=path", "--get", Passenger.Vcs.GitConfigKeys.GpgSshAllowedSignersFile).Trim();
         Assert.True(signers.Length > 0 && !PathNames.Same(signers, local), $"Another repository reads the allowed signers \"{signers}\", so it could not verify a commit signed with the key");
         string publicKey = string.Join(' ', TestSshKeys.Public(key).Split(' ')[..2]);
         Assert.True(File.ReadAllText(signers).Contains(publicKey, StringComparison.Ordinal), $"The global allowed signers file holds\n{File.ReadAllText(signers)}\nnot the key");

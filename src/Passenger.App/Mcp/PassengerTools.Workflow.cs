@@ -277,7 +277,7 @@ public sealed partial class PassengerTools
                 throw new InvalidOperationException(failed);
             }
         }
-        return [.. (await vcs.StashesAsync()).Select(s => new StashSummary(s.Index, s.Commit[..Math.Min(8, s.Commit.Length)], s.Message, s.Time))];
+        return [.. (await vcs.StashesAsync()).Select(s => new StashSummary(s.Index, GitHashes.Short(s.Commit), s.Message, s.Time))];
     });
 
     // Packages

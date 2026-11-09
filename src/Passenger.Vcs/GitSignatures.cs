@@ -171,7 +171,7 @@ public sealed partial class Git
         {
             return new Dictionary<string, CommitSignature>();
         }
-        string[] unlisted = formats.ContainsValue(SigningFormat.Ssh) && !await HasAllowedSignersAsync() ? ["-c", $"gpg.ssh.allowedSignersFile={noSigners}"] : [];
+        string[] unlisted = formats.ContainsValue(SigningFormat.Ssh) && !await HasAllowedSignersAsync() ? ["-c", $"{GitConfigKeys.GpgSshAllowedSignersFile}={noSigners}"] : [];
         GitResult checkedThem = await RunAsync(Root, [.. unlisted, "log", "--no-walk=unsorted", "--stdin", "--format=%H%x1f%G?%x1f%GS%x1f%GK%x1e"],
             string.Concat(formats.Keys.Select(h => $"{h}\n")));
         return CommitSignature.Verdicts(checkedThem.Output, formats, checkedThem.Error);
@@ -181,7 +181,7 @@ public sealed partial class Git
     /// signatures against.</summary>
     private async Task<bool> HasAllowedSignersAsync()
     {
-        GitResult file = await RunAsync(Root, ["config", "--type=path", "--get", "gpg.ssh.allowedSignersFile"], answers: [1]);
+        GitResult file = await RunAsync(Root, ["config", "--type=path", "--get", GitConfigKeys.GpgSshAllowedSignersFile], answers: [1]);
         return file.Succeeded && file.Output.Trim() is { Length: > 0 } path && File.Exists(System.IO.Path.GetFullPath(path, Root));
     }
 }

@@ -402,31 +402,11 @@ public sealed class HistoryTab : DockPanel
         });
     }
 
-    /// <summary>A changed file's row: its icon, its name in its change's colour (struck through when deleted), and its
-    /// folder under the folder whose history this is.</summary>
+    /// <summary>A changed file's row (<see cref="ChangedFileRow"/>), its folder under the folder whose history this is.</summary>
     private Control FileRow()
     {
-        RowIcon icon = new()
-        {
-            Width = 14,
-            Height = 14,
-            Margin = new Thickness(4, 0, 6, 0),
-        };
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock folder = MutedText.Of(string.Empty);
-        folder.FontSize = 12;
-        folder.Margin = new Thickness(8, 0, 0, 0);
-        string? colour = null;
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = RowHeight, Children = { icon, name, folder } };
-        return row.Showing<HistoryDifference>(file =>
-        {
-            icon.Data = Explorer.FileIcons.ForFile(file.Path);
-            icon.Foreground = Explorer.FileIcons.BrushForFile(file.Path);
-            name.Text = file.Name;
-            name.Resource(TextBlock.ForegroundProperty, ref colour, CommitView.KindToken(file.Kind));
-            name.TextDecorations = file.Kind is ChangeKind.Deleted ? TextDecorations.Strikethrough : null;
-            folder.Text = System.IO.Path.GetDirectoryName(PathNames.Shown(file.Path, Path))?.Replace('\\', '/') ?? string.Empty;
-        });
+        ChangedFileRow row = new();
+        return row.Line.Showing<HistoryDifference>(file => row.Show(file.Path, file.Kind, ChangedFileRow.Folder(PathNames.Shown(file.Path, Path))));
     }
 
 }

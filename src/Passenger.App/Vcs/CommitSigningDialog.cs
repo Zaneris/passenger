@@ -41,7 +41,7 @@ public sealed class CommitSigningDialog : IdeWindow
         foundNone.TextWrapping = TextWrapping.Wrap;
         here = Radio("scope", "This repository", setup.KeyScope is not "global");
         everywhere = Radio("scope", "All your repositories (your global git config)", setup.KeyScope is "global");
-        every = new CheckBox { Content = "Sign every commit (commit.gpgsign)", IsChecked = setup.Signs || !configured };
+        every = new CheckBox { Content = $"Sign every commit ({GitConfigKeys.CommitGpgSign})", IsChecked = setup.Signs || !configured };
         listed = MutedText.Of(string.Empty);
         listed.TextWrapping = TextWrapping.Wrap;
         foreach (RadioButton format in new[] { ssh, gpg, x509 })

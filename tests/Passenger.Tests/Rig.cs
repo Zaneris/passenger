@@ -2326,7 +2326,7 @@ public static class TestGit
     public static async Task InitAsync(string folder)
     {
         await RunAsync(folder, "init", "-q", "-b", "main");
-        await RunAsync(folder, "config", "user.email", "tests@passenger.invalid");
+        await RunAsync(folder, "config", Passenger.Vcs.GitConfigKeys.UserEmail, "tests@passenger.invalid");
         await RunAsync(folder, "config", "user.name", "Passenger Tests");
         await RunAsync(folder, "config", "core.autocrlf", "false");
         await RunAsync(folder, "add", "-A");
@@ -2401,10 +2401,10 @@ public static class TestSshKeys
         await TestGit.InitAsync(root);
         string allowed = Path.Combine(Path.GetDirectoryName(key)!, "allowed_signers");
         File.WriteAllText(allowed, $"tests@passenger.invalid {Public(key)}\n");
-        await TestGit.RunAsync(root, "config", "gpg.format", "ssh");
-        await TestGit.RunAsync(root, "config", "gpg.ssh.allowedSignersFile", allowed);
-        await TestGit.RunAsync(root, "config", "user.signingkey", key + ".pub");
-        await TestGit.RunAsync(root, "config", "commit.gpgsign", "true");
+        await TestGit.RunAsync(root, "config", Passenger.Vcs.GitConfigKeys.GpgFormat, "ssh");
+        await TestGit.RunAsync(root, "config", Passenger.Vcs.GitConfigKeys.GpgSshAllowedSignersFile, allowed);
+        await TestGit.RunAsync(root, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, key + ".pub");
+        await TestGit.RunAsync(root, "config", Passenger.Vcs.GitConfigKeys.CommitGpgSign, "true");
     }
 
     /// <summary>A key's fingerprint as git names a signature's key (%GK).</summary>
@@ -2422,9 +2422,9 @@ public static class TestSshKeys
         string unknown = await MakeAsync(keys, "unknown");
         string allowed = Path.Combine(keys, "allowed_signers");
         File.WriteAllText(allowed, $"tests@passenger.invalid {Public(known)}\n");
-        await TestGit.RunAsync(root, "config", "gpg.format", "ssh");
-        await TestGit.RunAsync(root, "config", "gpg.ssh.allowedSignersFile", allowed);
-        await TestGit.RunAsync(root, "config", "user.signingkey", known + ".pub");
+        await TestGit.RunAsync(root, "config", Passenger.Vcs.GitConfigKeys.GpgFormat, "ssh");
+        await TestGit.RunAsync(root, "config", Passenger.Vcs.GitConfigKeys.GpgSshAllowedSignersFile, allowed);
+        await TestGit.RunAsync(root, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, known + ".pub");
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    int count;\n}\n");
         await TestGit.RunAsync(root, "commit", "-q", "-S", "-a", "-m", "Signed by a known signer");
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    long count;\n}\n");

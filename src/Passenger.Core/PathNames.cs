@@ -122,6 +122,12 @@ public static partial class PathNames
         return Alike(path.AsSpan().TrimEnd(Separators), top) ? Path.GetFileName(top).ToString() : path;
     }
 
+    /// <summary>The path a "~/" at the start of one names in the person's home folder ("~\" too on Windows), as git's
+    /// config and a program's output write one; null for a path that does not start so.</summary>
+    public static string? Expanded(string path) => path.Length >= 2 && path[0] == '~' && Separators.Contains(path[1])
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..])
+        : null;
+
     /// <summary>A folder and the folders under it that <paramref name="enters"/> lets the walk into, nearest first,
     /// each once by its canonical path whatever links reach it (named as first reached), and none a link goes up to
     /// (the first folder or one above it), which would have the walk go round the tree for good. A folder that cannot

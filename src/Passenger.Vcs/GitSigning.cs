@@ -30,26 +30,26 @@ public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key,
             string name = line < 0 ? entry : entry[..line];
             set[name] = (parts[i], line < 0 ? "true" : entry[(line + 1)..]);
             // gpg.program is gpg.openpgp.program's older name: the one set last is the one git runs.
-            if (name.Equals("gpg.program", StringComparison.OrdinalIgnoreCase) || name.Equals("gpg.openpgp.program", StringComparison.OrdinalIgnoreCase))
+            if (name.Equals(GitConfigKeys.GpgProgram, StringComparison.OrdinalIgnoreCase) || name.Equals(GitConfigKeys.GpgOpenPgpProgram, StringComparison.OrdinalIgnoreCase))
             {
                 program = set[name].Value.Trim() is { Length: > 0 } given ? given : null;
             }
-            else if (name.Equals("gpg.x509.program", StringComparison.OrdinalIgnoreCase))
+            else if (name.Equals(GitConfigKeys.GpgX509Program, StringComparison.OrdinalIgnoreCase))
             {
                 x509 = set[name].Value.Trim() is { Length: > 0 } given ? given : null;
             }
         }
-        bool signs = set.TryGetValue("commit.gpgsign", out (string Scope, string Value) sign) && Truth(sign.Value);
-        SigningFormat format = set.GetValueOrDefault("gpg.format").Value?.ToLowerInvariant() switch
+        bool signs = set.TryGetValue(GitConfigKeys.CommitGpgSign, out (string Scope, string Value) sign) && Truth(sign.Value);
+        SigningFormat format = set.GetValueOrDefault(GitConfigKeys.GpgFormat).Value?.ToLowerInvariant() switch
         {
             "ssh" => SigningFormat.Ssh,
             "x509" => SigningFormat.X509,
             _ => SigningFormat.OpenPgp,
         };
-        (string? scope, string? key) = set.TryGetValue("user.signingkey", out (string Scope, string Value) named) && named.Value.Trim().Length > 0
+        (string? scope, string? key) = set.TryGetValue(GitConfigKeys.UserSigningKey, out (string Scope, string Value) named) && named.Value.Trim().Length > 0
             ? (named.Scope, named.Value.Trim())
             : (null, null);
-        return new SigningSetup(signs, format, key, scope, set.GetValueOrDefault("gpg.ssh.defaultKeyCommand").Value is { Length: > 0 }, set.ContainsKey("gpg.format"), program)
+        return new SigningSetup(signs, format, key, scope, set.GetValueOrDefault(GitConfigKeys.GpgSshDefaultKeyCommand).Value is { Length: > 0 }, set.ContainsKey(GitConfigKeys.GpgFormat), program)
         {
             X509Program = x509,
         };
@@ -75,7 +75,7 @@ public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key,
     /// its type), a GPG or X.509 key by its id, the committer's where none is set.</summary>
     public string KeyShown => Key switch
     {
-        null when KeyCommand => $"the {Kind} key gpg.ssh.defaultKeyCommand gives",
+        null when KeyCommand => $"the {Kind} key {GitConfigKeys.GpgSshDefaultKeyCommand} gives",
         null => Format is SigningFormat.Ssh ? "no key" : $"the committer's {Kind} key",
         { } whole when !KeyIsFile && Format is SigningFormat.Ssh => Whole(whole.StartsWith("key::", StringComparison.Ordinal) ? whole[5..] : whole),
         { } path when KeyIsFile => $"{Kind} key {Path.GetFileName(path)}",
@@ -279,7 +279,7 @@ public static class SigningFailure
             _ when Has(said, "incorrect passphrase supplied") || Has(said, "Bad passphrase") =>
                 $"the passphrase given is not that of {key}. Commit again and give its passphrase",
             _ when Has(said, "Couldn't load public key") || (Has(said, "Load key") && Has(said, "No such file")) =>
-                $"{key} is not there (user.signingkey). Choose a key in {SetUp}",
+                $"{key} is not there ({GitConfigKeys.UserSigningKey}). Choose a key in {SetUp}",
             _ when Has(said, "user.signingKey needs to be set") || Has(said, "either user.signingkey or gpg.ssh.defaultKeyCommand") =>
                 $"git signs with SSH, but no key is set to sign with. Choose one in {SetUp}",
             _ when Has(said, "Couldn't get agent socket") || Has(said, "agent refused operation") || Has(said, "Couldn't find key in agent") =>
@@ -332,9 +332,9 @@ public sealed partial class Git
         };
         List<string[]> settings =
         [
-            ["config", scope, "gpg.format", format],
-            choice.Key is { Length: > 0 } key ? ["config", scope, "user.signingkey", key] : ["config", scope, "--unset-all", "user.signingkey"],
-            ["config", scope, "commit.gpgsign", choice.SignEvery ? "true" : "false"],
+            ["config", scope, GitConfigKeys.GpgFormat, format],
+            choice.Key is { Length: > 0 } key ? ["config", scope, GitConfigKeys.UserSigningKey, key] : ["config", scope, "--unset-all", GitConfigKeys.UserSigningKey],
+            ["config", scope, GitConfigKeys.CommitGpgSign, choice.SignEvery ? "true" : "false"],
         ];
         foreach (string[] setting in settings)
         {
@@ -348,17 +348,17 @@ public sealed partial class Git
         {
             return new GitResult(0, string.Empty, string.Empty);
         }
-        GitResult named = await RunAsync(Root, ["config", .. choice.Global ? [scope] : Array.Empty<string>(), "--type=path", "--get", "gpg.ssh.allowedSignersFile"], answers: [1]);
+        GitResult named = await RunAsync(Root, ["config", .. choice.Global ? [scope] : Array.Empty<string>(), "--type=path", "--get", GitConfigKeys.GpgSshAllowedSignersFile], answers: [1]);
         string file = named.Succeeded && named.Output.Trim() is { Length: > 0 } listed ? System.IO.Path.GetFullPath(listed, Root)
             : choice.AllowedSigners ?? System.IO.Path.Combine(GitDir, "allowed_signers");
-        GitResult email = await RunAsync(Root, ["config", "--get", "user.email"], answers: [1]);
+        GitResult email = await RunAsync(Root, ["config", "--get", GitConfigKeys.UserEmail], answers: [1]);
         string signer = email.Output.Trim() is { Length: > 0 } address ? address : "*";
         if (AllowedSigners.With(File.Exists(file) ? await File.ReadAllTextAsync(file) : string.Empty, signer, publicKey) is { } written)
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file)!);
             AtomicFile.Write(file, System.Text.Encoding.UTF8.GetBytes(written));
         }
-        return named.Succeeded ? named : await RunAsync(Root, ["config", scope, "gpg.ssh.allowedSignersFile", file]);
+        return named.Succeeded ? named : await RunAsync(Root, ["config", scope, GitConfigKeys.GpgSshAllowedSignersFile, file]);
     }
 
     /// <summary>The host a push goes to over SSH (the upstream's remote, else origin, else the only one), from its URL
@@ -379,8 +379,8 @@ public sealed partial class Git
     /// <summary>How the tree's git config has a commit signed, read by one git.</summary>
     public async Task<SigningSetup> SigningAsync()
     {
-        GitResult config = await RunAsync(Root, ["config", "-z", "--show-scope", "--get-regexp",
-            @"^(commit\.gpgsign|gpg\.format|user\.signingkey|gpg\.ssh\.defaultkeycommand|gpg\.program|gpg\.openpgp\.program|gpg\.x509\.program)$"], answers: [1]);
+        GitResult config = await RunAsync(Root, ["config", "-z", "--show-scope", "--get-regexp", GitConfigKeys.Pattern(GitConfigKeys.CommitGpgSign, GitConfigKeys.GpgFormat,
+            GitConfigKeys.UserSigningKey, GitConfigKeys.GpgSshDefaultKeyCommand, GitConfigKeys.GpgProgram, GitConfigKeys.GpgOpenPgpProgram, GitConfigKeys.GpgX509Program)], answers: [1]);
         return config.Succeeded ? SigningSetup.Of(config.Output) : SigningSetup.None;
     }
 }

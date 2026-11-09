@@ -3,7 +3,7 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>How the IDE compares, shows and walks paths: a folder's files and nothing beside it whose name begins the same, a
-/// path shown from the open folder, letter case as the system's file systems take it.</summary>
+/// path shown from the open folder, letter case as the system's file systems take it, a "~/" as the person's home.</summary>
 public class PathNamesTests
 {
     private static readonly string Root = OperatingSystem.IsWindows() ? @"C:\x" : "/x";
@@ -65,6 +65,19 @@ public class PathNamesTests
         Assert.True(PathNames.IsSystemFile(".DS_Store"));
         Assert.True(PathNames.IsSystemFile("THUMBS.DB"));
         Assert.False(PathNames.IsSystemFile("DS_Store"));
+    }
+
+    /// <summary>A "~/" at a path's start (git's config, a program's output) is the person's home folder, "~\" too on Windows;
+    /// a "~" anywhere else, or one naming another person's home, is no home of theirs.</summary>
+    [Fact]
+    public void A_tilde_and_separator_at_a_paths_start_is_the_persons_home_and_nothing_else_is()
+    {
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        Assert.Equal(Path.Combine(home, ".ssh/id_ed25519.pub"), PathNames.Expanded("~/.ssh/id_ed25519.pub"));
+        Assert.Equal(OperatingSystem.IsWindows() ? Path.Combine(home, @".ssh\id.pub") : null, PathNames.Expanded(@"~\.ssh\id.pub"));
+        Assert.Null(PathNames.Expanded("~"));
+        Assert.Null(PathNames.Expanded("~other/.ssh/id.pub"));
+        Assert.Null(PathNames.Expanded("keys/~/id.pub"));
     }
 
     [Fact]

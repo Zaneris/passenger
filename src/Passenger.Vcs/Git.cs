@@ -82,7 +82,7 @@ public enum SubmoduleChange
 /// and its subject.</summary>
 public sealed record CommitInfo(string Hash, IReadOnlyList<string> Parents, string Author, string Email, DateTimeOffset Time, IReadOnlyList<string> Refs, string Subject)
 {
-    public string Short => Hash[..Math.Min(8, Hash.Length)];
+    public string Short => GitHashes.Short(Hash);
 }
 
 /// <summary>What Show History is of: a file, followed through its renames; a folder; or a file's lines, from 0 as the last
@@ -129,7 +129,7 @@ public sealed record BlameLine(string Hash, string Author, DateTimeOffset Time, 
 {
     public bool IsCommitted => Hash.Any(c => c != '0');
 
-    public string Short => Hash[..Math.Min(8, Hash.Length)];
+    public string Short => GitHashes.Short(Hash);
 }
 
 /// <summary>What one status read found, together: the branch checked out (null on a detached head), the commit HEAD
@@ -446,7 +446,7 @@ public sealed partial class Git
     public async Task<MergeState> MergeStateAsync(string? branch, string? head)
     {
         string? message = Read("MERGE_MSG");
-        string ours = branch ?? Short(head) ?? "HEAD";
+        string ours = branch ?? GitHashes.Short(head) ?? "HEAD";
         if (Read("MERGE_HEAD") is { } merging)
         {
             return new MergeState(MergeOperation.Merge, ours, await NameAsync(merging), null, Message(message));
@@ -462,15 +462,15 @@ public sealed partial class Git
             string? applying = Read("REBASE_HEAD") ?? Read(System.IO.Path.Combine(folder, "stopped-sha"));
             // A pick stopped for conflicts leaves its message in MERGE_MSG, which an edit, a break or an exec never writes.
             RebaseStop? stop = message is null && folder == "rebase-merge" ? RebaseStop.Of(Read(System.IO.Path.Combine(folder, "done"))) : null;
-            return new MergeState(MergeOperation.Rebase, onto is null ? ours : await NameAsync(onto), theirs, Short(applying), null, stop);
+            return new MergeState(MergeOperation.Rebase, onto is null ? ours : await NameAsync(onto), theirs, GitHashes.Short(applying), null, stop);
         }
         if (Read("CHERRY_PICK_HEAD") is { } picked)
         {
-            return new MergeState(MergeOperation.CherryPick, ours, null, Short(picked), Message(message));
+            return new MergeState(MergeOperation.CherryPick, ours, null, GitHashes.Short(picked), Message(message));
         }
         if (Read("REVERT_HEAD") is { } reverted)
         {
-            return new MergeState(MergeOperation.Revert, ours, null, Short(reverted), Message(message));
+            return new MergeState(MergeOperation.Revert, ours, null, GitHashes.Short(reverted), Message(message));
         }
         return new MergeState(MergeOperation.None, ours, null, null, null);
 
@@ -512,14 +512,12 @@ public sealed partial class Git
         string[] refs = at.Succeeded ? at.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries) : [];
         string name = refs.FirstOrDefault(r => r.StartsWith("refs/heads/", StringComparison.Ordinal))?[11..]
             ?? refs.FirstOrDefault(r => r.StartsWith("refs/remotes/", StringComparison.Ordinal) && !r.EndsWith("/HEAD", StringComparison.Ordinal))?[13..]
-            ?? Short(hash)!;
+            ?? GitHashes.Short(hash);
         named = (hash, name);
         return name;
     }
 
     private (string Hash, string Name)? named;
-
-    private static string? Short(string? hash) => hash is null ? null : hash[..Math.Min(8, hash.Length)];
 
     /// <summary>A conflicted file's three versions as git keeps them while it is in conflict, each as its bytes would be
     /// checked out (the working tree's filters and line breaks, CRLF under core.autocrlf): the one both sides came from,

@@ -29,7 +29,7 @@ public static class SigningKeys
         {
             foreach (string line in options.Split('\n', StringSplitOptions.TrimEntries))
             {
-                if (line.StartsWith("identityfile ", StringComparison.OrdinalIgnoreCase) && Expanded(line[13..].Trim()) is { } file && File.Exists(file + ".pub"))
+                if (line.StartsWith("identityfile ", StringComparison.OrdinalIgnoreCase) && KeyFile(line[13..].Trim()) is { } file && File.Exists(file + ".pub"))
                 {
                     found.Add(new SigningKey(file + ".pub", $"{Path.GetFileName(file)}.pub, which you push to {host} with"));
                 }
@@ -63,9 +63,7 @@ public static class SigningKeys
         }
         return [.. found.DistinctBy(k => k.Value, PathNames.Comparer)];
 
-        static string? Expanded(string file) => file.StartsWith("~/", StringComparison.Ordinal)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), file[2..])
-            : Path.IsPathRooted(file) ? file : null;
+        static string? KeyFile(string file) => PathNames.Expanded(file) ?? (Path.IsPathRooted(file) ? file : null);
     }
 
     /// <summary>gpg's or gpgsm's secret keys from their --with-colons list: each key's line (sec, or crs for a certificate)

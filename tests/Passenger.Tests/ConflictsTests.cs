@@ -331,7 +331,7 @@ public sealed class ConflictsTests : IDisposable
     {
         string clone = TestFolders.Create("conflicts-clone-");
         Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
-        TestGit.Run(clone, "config", "user.email", "tests@passenger.invalid");
+        TestGit.Run(clone, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
         TestGit.Run(clone, "config", "user.name", "Passenger Tests");
         TestGit.Run(clone, "config", "pull.rebase", "true");
         File.WriteAllText(Path.Combine(clone, "Shop.cs"), Shop.Replace("int count", "short count", StringComparison.Ordinal));

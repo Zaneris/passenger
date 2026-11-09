@@ -1071,11 +1071,11 @@ public sealed class VcsController : IDisposable
         GitAsker? asker = Asker();
         if (asker is not null && (signing.Sign ?? setup.Signs) && setup.Format is SigningFormat.OpenPgp && GpgPrograms.Gpg(setup.Program) is { } gpg)
         {
-            signing = signing with { Config = [$"gpg.program={asker.Helper}"], Environment = new Dictionary<string, string> { [GpgLoopback.Variable] = gpg } };
+            signing = signing with { Config = [$"{GitConfigKeys.GpgProgram}={asker.Helper}"], Environment = new Dictionary<string, string> { [GpgLoopback.Variable] = gpg } };
         }
         else if (asker is not null && (signing.Sign ?? setup.Signs) && setup.Format is SigningFormat.X509 && GpgPrograms.Gpgsm(setup.X509Program) is { } gpgsm)
         {
-            signing = signing with { Config = [$"gpg.x509.program={asker.Helper}"], Environment = new Dictionary<string, string> { [GpgLoopback.X509Variable] = gpgsm } };
+            signing = signing with { Config = [$"{GitConfigKeys.GpgX509Program}={asker.Helper}"], Environment = new Dictionary<string, string> { [GpgLoopback.X509Variable] = gpgsm } };
         }
         return (new Signer(signing, asker), setup);
     }
@@ -1148,7 +1148,7 @@ public sealed class VcsController : IDisposable
         {
             return key;
         }
-        string file = Path.GetFullPath(key.StartsWith("~/", StringComparison.Ordinal) ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), key[2..]) : key, root);
+        string file = Path.GetFullPath(PathNames.Expanded(key) ?? key, root);
         foreach (string candidate in file.EndsWith(".pub", StringComparison.Ordinal) ? [file] : new[] { file + ".pub", file })
         {
             try
@@ -1230,21 +1230,19 @@ public sealed class VcsController : IDisposable
 
     /// <summary>The Git log's commit actions: each saves first, and the open files follow what it did.</summary>
     public Task<VcsOutcome> CheckoutRevisionAsync(string hash) =>
-        SwitchAsync(repository => repository.CheckoutRevisionAsync(hash), $"Checked out {Short(hash)}", "Git checkout");
+        SwitchAsync(repository => repository.CheckoutRevisionAsync(hash), $"Checked out {GitHashes.Short(hash)}", "Git checkout");
 
     public Task<VcsOutcome> NewBranchAtAsync(string name, string hash) =>
-        SwitchAsync(repository => repository.NewBranchAtAsync(name, hash), $"Created and checked out {name} at {Short(hash)}", "Git checkout");
+        SwitchAsync(repository => repository.NewBranchAtAsync(name, hash), $"Created and checked out {name} at {GitHashes.Short(hash)}", "Git checkout");
 
     public Task<VcsOutcome> CherryPickAsync(string hash) =>
-        SignedSwitchAsync((repository, signer) => repository.CherryPickAsync(hash, signer), $"Cherry-picked {Short(hash)}", "Git cherry-pick", "Cherry-pick was performed with conflicts");
+        SignedSwitchAsync((repository, signer) => repository.CherryPickAsync(hash, signer), $"Cherry-picked {GitHashes.Short(hash)}", "Git cherry-pick", "Cherry-pick was performed with conflicts");
 
     public Task<VcsOutcome> RevertAsync(string hash) =>
-        SignedSwitchAsync((repository, signer) => repository.RevertAsync(hash, signer), $"Reverted {Short(hash)}", "Git revert", "Revert was performed with conflicts");
+        SignedSwitchAsync((repository, signer) => repository.RevertAsync(hash, signer), $"Reverted {GitHashes.Short(hash)}", "Git revert", "Revert was performed with conflicts");
 
     public Task<VcsOutcome> ResetAsync(string hash, ResetMode mode) =>
-        SwitchAsync(repository => repository.ResetAsync(hash, mode), $"Reset {Branch ?? "HEAD"} to {Short(hash)} ({mode.ToString().ToLowerInvariant()})", "Git reset");
-
-    private static string Short(string hash) => hash.Length > 8 ? hash[..8] : hash;
+        SwitchAsync(repository => repository.ResetAsync(hash, mode), $"Reset {Branch ?? "HEAD"} to {GitHashes.Short(hash)} ({mode.ToString().ToLowerInvariant()})", "Git reset");
 
     /// <summary>The Git log's branches, as its branches panel lists them, with the remotes; none outside a working tree.</summary>
     public async Task<(IReadOnlyList<BranchInfo> Branches, IReadOnlyList<string> Remotes)> BranchTreeAsync() =>

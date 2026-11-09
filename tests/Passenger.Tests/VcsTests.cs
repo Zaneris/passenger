@@ -384,7 +384,7 @@ public sealed class VcsTests : IDisposable
                 Passenger.Core.ChildProcesses.Command("git", ["init", "-q", "-b", "main", "--ref-format=reftable"], repository), limit: TimeSpan.FromMinutes(1).Scaled())),
                 "git to make a reftable repository", TimeSpan.FromMinutes(1).Scaled() + TestFolders.Spare);
             Assert.SkipUnless(made.Succeeded, $"The git here makes no reftable repository (Git 2.45 and later do): {made.Error}{made.Output}");
-            TestGit.Run(repository, "config", "user.email", "tests@passenger.invalid");
+            TestGit.Run(repository, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
             TestGit.Run(repository, "config", "user.name", "Passenger Tests");
             TestGit.Run(repository, "config", "core.autocrlf", "false");
             TestGit.Run(repository, "add", "-A");
@@ -1041,7 +1041,7 @@ public sealed class VcsTests : IDisposable
     {
         string clone = TestFolders.Create("git-clone-");
         Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
-        TestGit.Run(clone, "config", "user.email", "tests@passenger.invalid");
+        TestGit.Run(clone, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
         TestGit.Run(clone, "config", "user.name", "Passenger Tests");
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "long count", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Long");
@@ -1134,7 +1134,7 @@ public sealed class VcsTests : IDisposable
         Git("commit", "-q", "-m", "Notes");
         string clone = TestFolders.Create("git-clone-");
         Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
-        TestGit.Run(clone, "config", "user.email", "tests@passenger.invalid");
+        TestGit.Run(clone, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
         TestGit.Run(clone, "config", "user.name", "Passenger Tests");
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), Notes.Replace("one", "one, upstream", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Upstream");
@@ -1339,7 +1339,7 @@ public sealed class VcsTests : IDisposable
         {
             File.WriteAllText(Path.Combine(tree, "Shop.cs"), Original);
             TestGit.Run(tree, "init", "-q", "-b", "main", "--object-format=sha256");
-            TestGit.Run(tree, "config", "user.email", "tests@passenger.invalid");
+            TestGit.Run(tree, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
             TestGit.Run(tree, "config", "user.name", "Passenger Tests");
             TestGit.Run(tree, "config", "core.autocrlf", "false");
             TestGit.Run(tree, "add", "-A");

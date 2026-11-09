@@ -885,7 +885,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("Signed by an agent G", (await TestGit.RunAsync(repository, "log", "-1", "--format=%s %G?")).Trim());
 
         string guarded = await TestSshKeys.MakeAsync(keys, "guarded", "nobody-types-this");
-        await TestGit.RunAsync(repository, "config", "user.signingkey", guarded + ".pub");
+        await TestGit.RunAsync(repository, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, guarded + ".pub");
         File.WriteAllText(Path.Combine(repository, "Shop.cs"), "class Shop\n{\n    long count;\n}\n");
         CallToolResult refused = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Needs a passphrase" });
         Assert.True(refused.IsError == true && Text(refused).Contains("The commit was not signed: git asked for the passphrase of key guarded, and nobody is at this IDE to give it", StringComparison.Ordinal),

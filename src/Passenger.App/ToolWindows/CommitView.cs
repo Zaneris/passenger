@@ -680,12 +680,11 @@ public sealed class CommitView : DockPanel, IOwnKeys
         resolve.Click += (_, _) => ResolveRequested?.Invoke(this, EventArgs.Empty);
         StackPanel groupLine = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { groupBox, groupName, count, resolve } };
         CheckBox fileBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(22, 0, 2, 0) };
-        (DockPanel fileLine, RowIcon icon, TextBlock name, TextBlock folder) = FileLineParts();
+        ChangedFileRow shown = new() { Line = { Margin = default } };
         DockPanel.SetDock(fileBox, Dock.Left);
-        fileLine.Children.Insert(0, fileBox);
+        DockPanel fileLine = new() { Height = ListRow.Height, Children = { fileBox, shown.Line } };
         Panel row = new() { Children = { groupLine, fileLine } };
         bool setting = false;
-        string? nameColour = null;
         string? groupColour = null;
         groupBox.IsCheckedChanged += (_, _) =>
         {
@@ -725,7 +724,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 fileBox.IsVisible = file.CanChoose;
                 fileBox.IsChecked = file.IsChosen;
                 fileLine.Margin = new Thickness(file.CanChoose ? 0 : 44, 0, 0, 0);
-                ShowFile(fileLine, icon, name, folder, ref nameColour, file.Change, vcs.Repository);
+                ShowFile(shown, file.Change, vcs.Repository);
             }
             setting = false;
         });
@@ -747,57 +746,21 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
     }
 
-    /// <summary>A changed file as the window shows it: its icon, its name in its change's colour (struck through when
-    /// deleted) and its folder from the repository's top.</summary>
-    private static DockPanel FileLine(FileChange change, Git? repository)
+    /// <summary>A changed file as the window shows it, with no box (<see cref="ChangedFileRow"/>).</summary>
+    private static Control FileLine(FileChange change, Git? repository)
     {
-        (DockPanel line, RowIcon icon, TextBlock name, TextBlock folder) = FileLineParts();
-        string? colour = null;
-        ShowFile(line, icon, name, folder, ref colour, change, repository);
-        return line;
+        ChangedFileRow line = new() { Line = { Margin = default } };
+        ShowFile(line, change, repository);
+        return line.Line;
     }
 
-    /// <summary>A file's line with nothing in it yet, for <see cref="ShowFile"/> to show a file in.</summary>
-    private static (DockPanel Line, RowIcon Icon, TextBlock Name, TextBlock Folder) FileLineParts()
+    /// <summary>Shows a changed file in a line, its folder from the repository's top.</summary>
+    private static void ShowFile(ChangedFileRow line, FileChange change, Git? repository)
     {
-        RowIcon icon = new()
-        {
-            Width = 14,
-            Height = 14,
-            Margin = new Thickness(0, 0, 6, 0),
-        };
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
-        folder.Classes.Add(StyleClasses.Muted);
-        // The folder takes what the row leaves, ending in an ellipsis in a narrow window rather than cut mid-letter.
-        DockPanel.SetDock(icon, Dock.Left);
-        DockPanel.SetDock(name, Dock.Left);
-        DockPanel line = new() { Height = ListRow.Height, Children = { icon, name, folder } };
-        return (line, icon, name, folder);
-    }
-
-    /// <summary>Shows a changed file in a line's parts, its name's colour bound anew only for another kind of change.</summary>
-    private static void ShowFile(DockPanel line, RowIcon icon, TextBlock name, TextBlock folder, ref string? colour, FileChange change, Git? repository)
-    {
-        icon.Data = Explorer.FileIcons.ForFile(change.Path);
-        icon.Foreground = Explorer.FileIcons.BrushForFile(change.Path);
-        name.Text = change.Name;
-        name.Resource(TextBlock.ForegroundProperty, ref colour, KindToken(change.Kind));
-        name.TextDecorations = change.Kind is ChangeKind.Deleted ? TextDecorations.Strikethrough : null;
         // A change with nothing to commit here says why in its folder's place.
-        folder.Text = change.Uncommittable ?? (repository is not null ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty);
-        ToolTip.SetTip(line, change.From is { } from ? $"{change.Kind}: {from} -> {change.Path}"
+        line.Show(change.Path, change.Kind, change.Uncommittable ?? (repository is not null ? ChangedFileRow.Folder(repository.Relative(change.Path)) : string.Empty));
+        ToolTip.SetTip(line.Line, change.From is { } from ? $"{change.Kind}: {from} -> {change.Path}"
             : change.Uncommittable is { } why ? $"{change.Kind}: {change.Path}\n{why}"
             : $"{change.Kind}: {change.Path}");
     }
-
-    /// <summary>A changed file's colour by how it changed (modified, added, deleted, new).</summary>
-    internal static string KindToken(ChangeKind kind) => kind switch
-    {
-        ChangeKind.Added => TokenKeys.Vcs_File_Added,
-        ChangeKind.Deleted => TokenKeys.Vcs_File_Deleted,
-        ChangeKind.Unversioned => TokenKeys.Vcs_File_Unversioned,
-        ChangeKind.Conflicted => TokenKeys.Vcs_File_Conflicted,
-        _ => TokenKeys.Vcs_File_Modified,
-    };
 }
