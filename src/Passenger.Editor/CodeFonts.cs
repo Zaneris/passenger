@@ -47,7 +47,7 @@ public static class CodeFonts
         {
             return CodeEditor.CodeFont;
         }
-        return Installed(trimmed) is { } family && IsMonospaced(family) ? family : null;
+        return Installed(trimmed) is { } family && IsMonospaced(family) ? FallbackFonts.Of(family.Name) : null;
     }
 
     /// <summary>Why a name gives no code font, as words after it; null when it gives one.</summary>

@@ -2055,15 +2055,15 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>No font family is written by name outside the theme files (WindowFonts), but the code font Passenger carries
-    /// (CodeEditor.CodeFont, CodeFonts' fallback): the window's words take the typeface Settings puts in force and code the
-    /// code font, so a family named anywhere else draws in a font no setting reaches.</summary>
+    /// (CodeEditor.CodeFont, CodeFonts' fallback, carried through FallbackFonts): the window's words take the typeface Settings
+    /// puts in force and code the code font, so a family named anywhere else draws in a font no setting reaches.</summary>
     [Fact]
     public void No_font_family_is_named_outside_the_theme_files_but_the_carried_code_font()
     {
         Regex named = new(@"\bnew\s+(?:FontFamily|Typeface)\s*\(\s*""|\b(?:FontFamily|Typeface)\s+\w+\s*=\s*new\s*\(\s*""|\bFontFamily\s*=\s*""|\bFontFamily\.Parse\s*\(\s*""|\bFontFamily=""(?!\{)");
         string[] found = [.. UiFiles().SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
             .Where(l => !l.Text.TrimStart().StartsWith("//", StringComparison.Ordinal) && named.IsMatch(l.Text)
-                && !(l.Path.EndsWith("/CodeEditor.cs", StringComparison.Ordinal) && l.Text.Contains("CodeFont = new(", StringComparison.Ordinal)))
+                && !(l.Path.EndsWith("/CodeEditor.cs", StringComparison.Ordinal) && l.Text.Contains("CodeFont = FallbackFonts.Carry(new FontFamily(", StringComparison.Ordinal)))
             .Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
         Assert.True(found.Length == 0, $"{found.Length} font families are named outside Theme/, drawing in a font no setting reaches: take the window's "
             + $"(TextElement.GetFontFamily, the font a control inherits) or the code font in force (CodeFonts):\n{string.Join("\n", found)}");

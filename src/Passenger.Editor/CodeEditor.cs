@@ -17,8 +17,9 @@ namespace Passenger.Editor;
 public sealed partial class CodeEditor : Control
 {
     /// <summary>The code font Passenger carries, JetBrains Mono: the editor's, the terminal's and code's wherever the
-    /// window shows it, unless Settings puts another in force (<see cref="CodeFonts"/>).</summary>
-    public static readonly FontFamily CodeFont = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
+    /// window shows it, unless Settings puts another in force (<see cref="CodeFonts"/>); named through
+    /// <see cref="FallbackFonts"/>, so what it lacks is drawn in the platform's own fallback.</summary>
+    public static readonly FontFamily CodeFont = FallbackFonts.Carry(new FontFamily("avares://Passenger.Editor/Fonts#JetBrains Mono"));
 
     public static readonly StyledProperty<double> FontSizeProperty =
         AvaloniaProperty.Register<CodeEditor, double>(nameof(FontSize), 13);

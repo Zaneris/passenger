@@ -24,6 +24,7 @@ public partial class App : Application
     {
         AvaloniaXamlLoader.Load(this);
         Themes.TakeAccentFromTokens(this);
+        Passenger.Editor.FallbackFonts.Install(PlatformFallback.Named);
         Passenger.Editor.CodeFonts.Use(this, Passenger.Editor.CodeEditor.CodeFont);
         WindowFonts.Use(this, WindowFonts.Carried);
         if (classHandlersAdded)
