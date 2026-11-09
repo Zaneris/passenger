@@ -212,7 +212,33 @@ public sealed partial class EditorArea : UserControl
     public IReadOnlyList<OpenDocument> Diffs => [.. AllGroups.SelectMany(g => g.Tabs).Select(t => t.Document).Where(d => d.Diff is not null).Distinct()];
 
     /// <summary>Every group of tabs: the main window's, then each editor window's.</summary>
-    public IReadOnlyList<EditorGroup> Groups => [.. AllGroups];
+    /// <summary>Every frame's groups, in order: the list made last while the frames' groups stay those, so what asks at
+    /// every key and caret move makes none.</summary>
+    public IReadOnlyList<EditorGroup> Groups
+    {
+        get
+        {
+            int at = 0;
+            bool same = true;
+            foreach (EditorFrame frame in frames)
+            {
+                same = same && frame.Root.Lists(groups, ref at);
+            }
+            if (same && at == groups.Length)
+            {
+                return groups;
+            }
+            List<EditorGroup> all = [];
+            foreach (EditorFrame frame in frames)
+            {
+                frame.Root.AddTo(all);
+            }
+            groups = [.. all];
+            return groups;
+        }
+    }
+
+    private EditorGroup[] groups = [];
 
     public EditorGroup ActiveGroup => activeGroup;
 

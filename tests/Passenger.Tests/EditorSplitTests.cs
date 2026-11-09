@@ -56,6 +56,33 @@ public sealed class EditorSplitTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The editor area's groups, which what follows each key and caret move asks for, are the list made last while
+    /// the groups stay those: asked again it is that list and allocates nothing on the UI thread, and a split and its close
+    /// each give the groups there are then, in order.</summary>
+    [AvaloniaFact]
+    public void The_groups_asked_again_allocate_nothing_and_a_split_and_its_close_change_them()
+    {
+        MainWindow window = Open("One.cs");
+        EditorArea area = window.EditorArea;
+        EditorGroup left = area.ActiveGroup;
+        IReadOnlyList<EditorGroup> one = area.Groups;
+        GC.Collect();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        IReadOnlyList<EditorGroup> again = area.Groups;
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Same(one, again);
+        Assert.True(allocated == 0, $"The editor groups asked again allocated {allocated} bytes on the UI thread, where nothing changed them");
+        Assert.True(window.Perform(AppActions.SplitRight));
+        Ui.Settle();
+        EditorGroup right = area.ActiveGroup;
+        Assert.Equal([left, right], area.Groups);
+        Assert.Same(area.Groups, area.Groups);
+        area.CloseTab(right, right.Active!);
+        Ui.Settle();
+        Assert.Equal([left], area.Groups);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Close_takes_the_tab_from_the_split_worked_in_alone_and_the_split_goes_with_its_last_tab()
     {

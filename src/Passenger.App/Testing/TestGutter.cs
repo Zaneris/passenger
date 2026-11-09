@@ -255,8 +255,16 @@ public sealed class TestGutter
             file.Tests = FileTests.None;
             file.Places = FilePlaces.None;
         }
-        HashSet<int> testLines = [.. file.Tests.Tests.Select(t => t.Line), .. file.Tests.Types.Select(t => t.Line)];
-        List<(int Line, TestNode Method)> found = byFile.GetValueOrDefault(document.Path) ?? [];
+        HashSet<int> testLines = new(file.Tests.Tests.Count + file.Tests.Types.Count);
+        foreach (DeclaredTest test in file.Tests.Tests)
+        {
+            testLines.Add(test.Line);
+        }
+        foreach ((_, int line) in file.Tests.Types)
+        {
+            testLines.Add(line);
+        }
+        List<(int Line, TestNode Method)> found = byFile.GetValueOrDefault(document.Path) ?? NoneFound;
         List<TestMark> marks = new(file.Tests.Types.Count + file.Tests.Tests.Count);
         IReadOnlySet<string>? projects = null;
         foreach (DeclaredPlace place in file.Places.Types)
@@ -302,6 +310,9 @@ public sealed class TestGutter
             }
         }
     }
+
+    /// <summary>The methods a file without tests is known to hold: none, never added to.</summary>
+    private static readonly List<(int Line, TestNode Method)> NoneFound = [];
 
     /// <summary>Indexes the tree's methods once for each set of tests found, as <see cref="TestsAtCaret.Matches"/> would
     /// match them: a method by its whole name (its data rows in it), a type by every name it starts.</summary>

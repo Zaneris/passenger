@@ -112,6 +112,12 @@ internal sealed class EditorFrame
     {
         public abstract IEnumerable<EditorGroup> Groups { get; }
 
+        /// <summary>Whether its groups, in order, are those of a list from a place on, which it moves past them.</summary>
+        public abstract bool Lists(EditorGroup[] groups, ref int at);
+
+        /// <summary>Adds its groups, in order, to a list.</summary>
+        public abstract void AddTo(List<EditorGroup> groups);
+
         /// <summary>The tree with a group's leaf replaced by what a function makes of it.</summary>
         public abstract Node Replace(EditorGroup group, Func<Leaf, Node> with);
 
@@ -128,6 +134,8 @@ internal sealed class EditorFrame
     {
         public EditorGroup Group { get; } = group;
         public override IEnumerable<EditorGroup> Groups => [Group];
+        public override bool Lists(EditorGroup[] groups, ref int at) => at < groups.Length && groups[at++] == Group;
+        public override void AddTo(List<EditorGroup> groups) => groups.Add(Group);
         public override Node Replace(EditorGroup target, Func<Leaf, Node> with) => target == Group ? with(this) : this;
         public override Node? Without(EditorGroup target) => target == Group ? null : this;
     }
@@ -160,6 +168,13 @@ internal sealed class EditorFrame
         /// <summary>The grid this split was last drawn as.</summary>
         public Grid? Built { get; set; }
         public override IEnumerable<EditorGroup> Groups => First.Groups.Concat(Second.Groups);
+        public override bool Lists(EditorGroup[] groups, ref int at) => First.Lists(groups, ref at) && Second.Lists(groups, ref at);
+
+        public override void AddTo(List<EditorGroup> groups)
+        {
+            First.AddTo(groups);
+            Second.AddTo(groups);
+        }
 
         public override Node Replace(EditorGroup target, Func<Leaf, Node> with) =>
             new SplitNode(Orientation, First.Replace(target, with), Second.Replace(target, with)) { Ratio = Ratio };

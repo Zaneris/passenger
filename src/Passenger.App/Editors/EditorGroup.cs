@@ -380,7 +380,12 @@ public sealed class EditorGroup : DockPanel
     /// release notes shown are drawn again from their new text (a build that carries others).</summary>
     private void OnTabTextChanged(object? sender, DocumentChangedEventArgs e)
     {
-        if (tabs.FirstOrDefault(t => t.Document.Text == sender) is not { } tab)
+        EditorTab? tab = null;
+        for (int i = 0; i < tabs.Count && tab is null; i++)
+        {
+            tab = tabs[i].Document.Text == sender ? tabs[i] : null;
+        }
+        if (tab is null)
         {
             return;
         }
