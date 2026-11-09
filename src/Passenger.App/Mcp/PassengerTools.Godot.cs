@@ -236,8 +236,8 @@ public sealed partial class PassengerTools
         });
     }
 
-    /// <summary>The file of a game's script by its <c>res://</c> path; null for one outside its project.</summary>
-    private static string? ScriptFile(GodotGame game, string script) => Passenger.Workspace.GodotResPaths.FileOf(game.Folder, script) is { } file ? PathNames.Canonical(file) : null;
+    /// <summary>The file of a game's script by its <c>res://</c> path; null for one outside its project or built into a scene.</summary>
+    private static string? ScriptFile(GodotGame game, string script) => Passenger.Workspace.GodotResPaths.ScriptFileOf(game.Folder, script) is { } file ? PathNames.Canonical(file) : null;
 
     private async Task<AppElementDetails> GameDetailsAsync(GodotGame game, string control, string? window, string? properties)
     {

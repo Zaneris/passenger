@@ -68,7 +68,7 @@ public partial class MainWindow
             return false;
         }
         string? game = GodotOfFile(pin.Path) ?? session.Game?.Folder;
-        GodotPinPopup popup = new(pin, file => (game is null ? null : Passenger.Workspace.GodotResPaths.FileOf(game, file)) ?? file);
+        GodotPinPopup popup = new(pin, file => (game is null ? null : Passenger.Workspace.GodotResPaths.ScriptFileOf(game, file)) ?? file);
         popup.Done += (_, _) => ClosePins();
         popup.Cleared += (_, all) =>
         {

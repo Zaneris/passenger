@@ -349,10 +349,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>The scene Godot's editor edits, for a relayed game: what its live editing is set back to after Passenger's.</summary>
     public string EditorScene { get; set; } = string.Empty;
 
-    /// <summary>A <c>res://</c> path as a file on this machine, under the project's folder, null where it climbs out of it;
-    /// another path as it is.</summary>
+    /// <summary>A script's <c>res://</c> path as its file on this machine, under the project's folder, null where it climbs out
+    /// of it or names a script built into a scene (<see cref="GodotResPaths.ScriptFileOf"/>); another path as it is.</summary>
     public string? PathOf(string path) => path.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal)
-        ? GodotResPaths.FileOf(Folder, path) is { } file ? PathNames.Canonical(file) : null
+        ? GodotResPaths.ScriptFileOf(Folder, path) is { } file ? PathNames.Canonical(file) : null
         : path;
 
     private async Task ServeAsync()

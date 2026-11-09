@@ -26,6 +26,13 @@ public static class GodotResPaths
         return PathNames.IsUnder(full, project) ? full : null;
     }
 
+    /// <summary>Whether a resolved res:// path names a file outside its project, a <c>..</c> kept at its start.</summary>
+    public static bool ClimbsOut(string path) => path == Scheme + ".." || path.StartsWith(Scheme + "../", StringComparison.Ordinal);
+
+    /// <summary>The file of a script a res:// path names, whose lines are its file's: as <see cref="FileOf"/>, but null for a
+    /// script built into a scene or resource (<c>res://main.tscn::GDScript_x</c>), whose lines are none of its file's.</summary>
+    public static string? ScriptFileOf(string project, string path) => path.Contains("::", StringComparison.Ordinal) ? null : FileOf(project, path);
+
     /// <summary>The file a path given to Godot names from a project's folder: a res:// path's or a relative one's from the
     /// folder, wherever it climbs to (an export's output may lie outside); a full one as it is.</summary>
     public static string Globalized(string project, string path) =>

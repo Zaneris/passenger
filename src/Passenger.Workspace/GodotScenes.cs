@@ -779,7 +779,7 @@ public sealed class GodotScenes
     /// <summary>The edits a shader's code (<paramref name="shader"/>, its res:// path before the moves, a scene's own Shader's
     /// by that scene's and <c>::id</c>) takes as files and folders move (<see cref="Moved"/>): each <c>#include</c> naming one
     /// moved, or written from the shader's folder where its own move leaves it naming another, written anew from the top. A
-    /// uid:// names the file wherever it goes.</summary>
+    /// uid:// names the file wherever it goes, and one naming a file outside the project is left.</summary>
     public static IReadOnlyList<TextEdit> MovedShaderEdits(string code, string shader, IReadOnlyList<(string From, string To)> moves)
     {
         List<TextEdit> edits = [];
@@ -788,7 +788,7 @@ public sealed class GodotScenes
         {
             string was = GodotResPaths.Resolved(include.Path, shader);
             string went = Moved(moves, was) ?? was;
-            if (GodotResPaths.Resolved(include.Path, now) != went)
+            if (!GodotResPaths.ClimbsOut(was) && GodotResPaths.Resolved(include.Path, now) != went)
             {
                 edits.Add(new TextEdit(include.Start, include.End - include.Start, went));
             }
@@ -798,7 +798,8 @@ public sealed class GodotScenes
 
     /// <summary>The edits a GDScript (<paramref name="script"/>, its res:// path before the moves) takes as files and folders move
     /// (<see cref="Moved"/>): each string saying a res:// path one moved, and each path written from the script's folder, as a
-    /// <c>preload</c> and <c>extends</c> may, that its own move or the file's leaves naming another, written anew from the top.</summary>
+    /// <c>preload</c> and <c>extends</c> may, that its own move or the file's leaves naming another, written anew from the top;
+    /// one naming a file outside the project is left.</summary>
     public static IReadOnlyList<TextEdit> MovedScriptEdits(string text, string script, IReadOnlyList<(string From, string To)> moves)
     {
         List<TextEdit> edits = [];
@@ -810,7 +811,8 @@ public sealed class GodotScenes
             {
                 path = Moved(moves, token.Text);
             }
-            else if ((token.Extends || token.Call == "preload") && token.Text.Length > 0 && !token.Text.Contains("://", StringComparison.Ordinal) && GodotResPaths.Resolved(token.Text, script) is var was)
+            else if ((token.Extends || token.Call == "preload") && token.Text.Length > 0 && !token.Text.Contains("://", StringComparison.Ordinal) && GodotResPaths.Resolved(token.Text, script) is var was
+                && !GodotResPaths.ClimbsOut(was))
             {
                 string went = Moved(moves, was) ?? was;
                 path = GodotResPaths.Resolved(token.Text, now) == went ? null : went;

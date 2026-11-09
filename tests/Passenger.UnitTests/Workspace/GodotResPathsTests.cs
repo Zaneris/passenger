@@ -44,6 +44,17 @@ public class GodotResPathsTests
         Assert.Null(GodotResPaths.FileOf(Game, "res://"));
     }
 
+    /// <summary>A script built into a scene has lines of its own, none of them the scene's: an error, a stack frame or a
+    /// profile's function in it goes to no line of main.tscn, where the scene as a resource is still main.tscn.</summary>
+    [Fact]
+    public void A_script_built_into_a_scene_names_no_file_and_one_of_its_own_names_its_file()
+    {
+        Assert.Null(GodotResPaths.ScriptFileOf(Game, "res://main.tscn::GDScript_abc12"));
+        Assert.Equal(Path.Combine(Game, "main.tscn"), GodotResPaths.FileOf(Game, "res://main.tscn::GDScript_abc12"));
+        Assert.Equal(Path.Combine(Game, "actors", "player.gd"), GodotResPaths.ScriptFileOf(Game, "res://actors/player.gd"));
+        Assert.Null(GodotResPaths.ScriptFileOf(Game, "res://../outside.gd"));
+    }
+
     [Fact]
     public void An_exports_output_is_taken_from_the_projects_folder_wherever_it_goes()
     {

@@ -495,7 +495,7 @@ internal sealed class GodotValueCell : LiveValueCell
         {
             return;
         }
-        Avalonia.Media.Imaging.Bitmap? made = game.PathOf(path) is { } file ? await GodotResources.ThumbnailAsync(file, 36) : null;
+        Avalonia.Media.Imaging.Bitmap? made = Passenger.Workspace.GodotResPaths.FileOf(game.Folder, path) is { } file ? await GodotResources.ThumbnailAsync(file, 36) : null;
         if (Equals(image.Tag, path))
         {
             image.Source = made;

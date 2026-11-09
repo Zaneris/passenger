@@ -835,6 +835,18 @@ public class GodotScenesTests
             Apply(beside, GodotScenes.MovedScriptEdits(beside, "res://game/main.gd", [("res://game/", "res://stage/"), ("res://art/", "res://paint/")])));
     }
 
+    /// <summary>A path written from a file's folder that climbs out of the project names a file the move never reaches, so it
+    /// is left as written, never made a res://../ path.</summary>
+    [Fact]
+    public void A_path_climbing_out_of_the_project_is_left_as_its_file_moves()
+    {
+        const string script = "extends \"../base.gd\"\n\nconst Beside = preload(\"beside.tscn\")\n";
+        List<(string, string)> moves = [("res://main.gd", "res://deep/main.gd")];
+        Assert.Equal("extends \"../base.gd\"\n\nconst Beside = preload(\"res://beside.tscn\")\n", Apply(script, GodotScenes.MovedScriptEdits(script, "res://main.gd", moves)));
+        const string shader = "shader_type spatial;\n#include \"../outside.gdshaderinc\"\n";
+        Assert.Empty(GodotScenes.MovedShaderEdits(shader, "res://water.gdshader", [("res://water.gdshader", "res://fx/water.gdshader")]));
+    }
+
     /// <summary>As files and folders move, every res:// path a Godot text file gives naming one follows it: an external
     /// resource's, a sub-resource's with its "::", a property's, project.godot's main scene and an autoload's after its '*',
     /// and a path inside a moved folder; a call's argument, a path none moved and a uid are left as they are.</summary>

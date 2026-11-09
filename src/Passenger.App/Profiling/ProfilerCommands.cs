@@ -1176,7 +1176,7 @@ public sealed class ProfilerCommands
     private void OpenScript(ScriptFunction function, string folder)
     {
         string file = function.File.StartsWith(Passenger.Workspace.GodotResPaths.Scheme, StringComparison.Ordinal) && folder.Length > 0
-            ? Passenger.Workspace.GodotResPaths.FileOf(folder, function.File) ?? function.File
+            ? Passenger.Workspace.GodotResPaths.ScriptFileOf(folder, function.File) ?? function.File
             : function.File;
         if (!File.Exists(file))
         {
