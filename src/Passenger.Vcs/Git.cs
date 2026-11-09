@@ -1789,10 +1789,54 @@ public sealed partial class Git
             {
                 return Full(Encoding.UTF8.GetString(relative));
             }
+            if (Joined(relative) is { } joined)
+            {
+                return joined;
+            }
             Span<char> chars = stackalloc char[Longest];
             Ascii.ToUtf16(relative, chars, out int written);
             ReadOnlySpan<char> name = chars[..written];
             return System.IO.Path.GetFullPath(System.IO.Path.IsPathRooted(name) ? name.ToString() : System.IO.Path.Join(root, name));
+        }
+
+        /// <summary>A path of plain names below the root, as git writes them, joined to it in the one string the full path
+        /// comes to, the system's separators in place of '/'; null for any other, which <see cref="System.IO.Path.GetFullPath(string)"/>
+        /// would change.</summary>
+        private string? Joined(ReadOnlySpan<byte> relative)
+        {
+            char separator = System.IO.Path.DirectorySeparatorChar;
+            int between = root.EndsWith(separator) ? 0 : 1;
+            int length = root.Length + between + relative.Length;
+            if (relative.IsEmpty || length > 2048 || !PlainNames(relative))
+            {
+                return null;
+            }
+            Span<char> chars = stackalloc char[length];
+            root.CopyTo(chars);
+            if (between == 1)
+            {
+                chars[root.Length] = separator;
+            }
+            Span<char> name = chars[(root.Length + between)..];
+            Ascii.ToUtf16(relative, name, out _);
+            name.Replace('/', separator);
+            return new string(chars);
+        }
+
+        /// <summary>Whether a path is names between '/' that a full path keeps as they are: none empty, '.' or '..', and on
+        /// Windows none ending in a dot or a space or holding a '\' or ':', which its full path would trim or take apart.</summary>
+        private static bool PlainNames(ReadOnlySpan<byte> relative)
+        {
+            foreach (Range part in relative.Split((byte)'/'))
+            {
+                ReadOnlySpan<byte> name = relative[part];
+                if (name.IsEmpty || name.SequenceEqual("."u8) || name.SequenceEqual(".."u8)
+                    || OperatingSystem.IsWindows() && (name[^1] is (byte)'.' or (byte)' ' || name.IndexOfAny((byte)'\\', (byte)':') >= 0))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         /// <summary>A folder's names by their composed form; none where it cannot be listed (a file deleted with it).</summary>
