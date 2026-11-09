@@ -73,7 +73,7 @@ public sealed class MigrationsPostgresTests
             DatabaseTests.Tool(window, AppActions.DatabaseConnect);
             Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
             Avalonia.Controls.ListBox tables = window.DatabaseView.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single(l => l.Name == "DatabaseTables");
-            tables.SelectedItem = window.Database.Tables.Single(t => t.Name == "Products");
+            DatabaseTests.ChooseTable(window, "Products");
             DatabaseTests.Tool(window, AppActions.DatabaseBrowse);
             Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
             Assert.Contains(window.Database.Schema!.Columns, c => c.Name == "Id" && c.Primary);

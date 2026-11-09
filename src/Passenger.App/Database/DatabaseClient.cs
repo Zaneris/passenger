@@ -8,6 +8,8 @@ using Npgsql;
 
 namespace Passenger.App.Database;
 
+public sealed record DatabaseFilter(string Column, string Value, string Operator);
+
 internal static class DatabaseClient
 {
     internal const int PageSize = 100;
@@ -113,13 +115,36 @@ internal static class DatabaseClient
         return new DatabaseSchema(table, columns, keys, indexes);
     }
 
-    internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel)
+    internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter = null)
     {
         await using DbConnection connection = await OpenAsync(source, cancel);
         string order = string.Join(",", schema.Columns.Where(c => c.Primary).Select(c => Quote(source.Kind, c.Name)));
-        string sql = $"SELECT * FROM {Full(source.Kind, schema.Table)} ORDER BY {(order.Length == 0 ? "1" : order)}";
+        List<(string Name, object? Value)> parameters = [("@offset", offset), ("@take", PageSize + 1)];
+        string where = string.Empty;
+        if (filter is not null)
+        {
+            if (!schema.Columns.Any(c => c.Name == filter.Column)) { throw new InvalidOperationException("Choose a column of this table"); }
+            string column = Quote(source.Kind, filter.Column);
+            string text = source.Kind switch
+            {
+                DatabaseKind.SqlServer => $"CONVERT(nvarchar(max), {column})",
+                DatabaseKind.MySql => $"CAST({column} AS CHAR)",
+                _ => $"CAST({column} AS TEXT)",
+            };
+            where = filter.Operator switch
+            {
+                "Is NULL" => $" WHERE {column} IS NULL",
+                "Is not NULL" => $" WHERE {column} IS NOT NULL",
+                "Equals" => $" WHERE {text} = @filter",
+                _ => $" WHERE LOWER({text}) LIKE LOWER(@filter) ESCAPE '!'",
+            };
+            string value = filter.Operator == "Contains" ? "%" + filter.Value.Replace("!", "!!", StringComparison.Ordinal).Replace("%", "!%", StringComparison.Ordinal)
+                .Replace("_", "!_", StringComparison.Ordinal).Replace("[", "![", StringComparison.Ordinal) + "%" : filter.Value;
+            parameters.Add(("@filter", value));
+        }
+        string sql = $"SELECT * FROM {Full(source.Kind, schema.Table)}{where} ORDER BY {(order.Length == 0 ? "1" : order)}";
         sql += source.Kind == DatabaseKind.SqlServer ? " OFFSET @offset ROWS FETCH NEXT @take ROWS ONLY" : " LIMIT @take OFFSET @offset";
-        DatabaseRows rows = await ReadAsync(connection, sql, [("@offset", offset), ("@take", PageSize + 1)], cancel, PageSize);
+        DatabaseRows rows = await ReadAsync(connection, sql, parameters, cancel, PageSize);
         return new DatabaseRows(rows.Columns, rows.Rows, rows.More) { Schema = schema, Offset = offset };
     }
 
@@ -179,6 +204,8 @@ internal static class DatabaseClient
         {
             Add(command, name, value);
         }
+        using CancellationTokenRegistration interrupt = connection is SqliteConnection { Handle: { } handle }
+            ? cancel.Register(() => SQLitePCL.raw.sqlite3_interrupt(handle)) : default;
         await using DbDataReader reader = await command.ExecuteReaderAsync(cancel);
         string[] columns = [.. Enumerable.Range(0, reader.FieldCount).Select(reader.GetName)];
         List<object?[]> rows = [];

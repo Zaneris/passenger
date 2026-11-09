@@ -668,7 +668,7 @@ public sealed partial class EditorArea : UserControl
             return false;
         }
         // A tool window's tab opens again as the window does, never from a file.
-        if (document.Tool is null)
+        if (document.Tool is null && document.DatabaseTable is null)
         {
             closedTabs.Add(document.Diff is { } diff ? closing with { Diff = diff.Shown.Kept } : closing);
         }
@@ -1137,7 +1137,7 @@ public sealed partial class EditorArea : UserControl
         }
         EditorGroup group = ((EditorFrame.Leaf)node).Group;
         // A diff's tab is not kept: what it compared may be gone by the next time, and the folder opens on its files.
-        List<EditorTab> kept = [.. group.Tabs.Where(t => t.Document.Diff is null && t.Document.Tool is null)];
+        List<EditorTab> kept = [.. group.Tabs.Where(t => t.Document.Diff is null && t.Document.Tool is null && t.Document.DatabaseTable is null)];
         return new EditorLayout
         {
             Tabs = [.. kept.Select(t =>
@@ -1284,6 +1284,10 @@ public sealed partial class EditorArea : UserControl
     /// the folder's.</summary>
     public bool CloseAll()
     {
+        foreach (OpenDocument table in AllGroups.SelectMany(g => g.Tabs).Select(t => t.Document).Where(d => d.DatabaseTable is not null).Distinct().ToList())
+        {
+            Close(table, forGood: true);
+        }
         foreach (OpenDocument diff in Diffs)
         {
             Close(diff, forGood: true);

@@ -126,7 +126,7 @@ public partial class MainWindow
         List<Crumb> wanted = wantedCrumbs;
         wanted.Clear();
         // A tool window's tab has no file to name.
-        if (Editors.Active is { Tool: null } document)
+        if (Editors.Active is { Tool: null, DatabaseTable: null } document)
         {
             wanted.AddRange(FileCrumbs(document.Path));
             if (outlined == document.Path && !Editors.NamesWhereInBar(document))

@@ -163,6 +163,17 @@ public sealed class OpenDocument : Observable
     /// for a file's.</summary>
     public Editors.ToolTab? Tool { get; private init; }
 
+    public Database.DatabaseTableTab? DatabaseTable { get; private init; }
+
+    public static OpenDocument OfDatabase(Database.DatabaseTableTab table, string path)
+    {
+        OpenDocument document = new(path, new FileText(string.Empty, new UTF8Encoding(false), false), Language.PlainText, null) { DatabaseTable = table };
+        document.FollowReadOnly();
+        return document;
+    }
+
+    internal void DatabaseTitleChanged() => Raise(nameof(Title));
+
     /// <summary>What Save saves with this tab shown: the file, or the open file a diff's tab edits (itself where it edits none).</summary>
     public OpenDocument Saves => Diff?.Shown.File ?? this;
 
@@ -874,6 +885,7 @@ public sealed class OpenDocument : Observable
         closed = true;
         Diff?.LetGo();
         Tool?.LetGo();
+        DatabaseTable?.Dispose();
         Asset?.Dispose();
         (Highlighter as IDisposable)?.Dispose();
         if (!ReferenceEquals(parser, Highlighter))
@@ -888,7 +900,7 @@ public sealed class OpenDocument : Observable
 
     /// <summary>What its tab is called: its name, a diff's title ("Shop.cs: HEAD and your version"), or for release notes the
     /// app carries what they are ("What's New in 0.2.0").</summary>
-    public string Title => Tool?.Window.Title ?? Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
+    public string Title => DatabaseTable?.Title ?? Tool?.Window.Title ?? Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
 
     /// <summary>Whether this is release notes the app carries, which its tab shows rendered (What's New), read-only.</summary>
     public bool IsReleaseNotes => Updates.ReleaseNotes.VersionOf(Path) is not null;
@@ -1385,7 +1397,7 @@ public sealed class OpenDocument : Observable
     /// SDK or any file of a package as NuGet restored it, a copy of a container's file or of what the engine says of one, a
     /// copy of a source generator's code, or a stylesheet a page links on the web as it was downloaded: those its path decides
     /// read-only whether open or not (<see cref="ReadOnlyFiles"/>).</summary>
-    public bool IsReadOnly => Asset is not null || Diff is not null || Tool is not null || IsWorkbook || IsBinary || ReadOnlyFiles.Holds(Path);
+    public bool IsReadOnly => Asset is not null || Diff is not null || Tool is not null || DatabaseTable is not null || IsWorkbook || IsBinary || ReadOnlyFiles.Holds(Path);
 
     /// <summary>Why every change of it is refused, in Refusals' words, while it is read-only (<see cref="IsReadOnly"/>); null
     /// while it is not. Its text read-only by where it lies is refused as every write of such a file is, open or not, a
@@ -1416,10 +1428,11 @@ public sealed class OpenDocument : Observable
     /// <summary>Whether its tab holds the file's text: an asset preview's and a workbook's hold an empty stand-in, a
     /// binary file's its bytes drawn as signs, release notes' their Markdown shown rendered and a diff's none, so nothing searches, reads,
     /// edits or writes it as the file's (<see cref="ShownAs"/> says what the file is instead).</summary>
-    public bool HoldsText => Asset is null && Diff is null && Tool is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
+    public bool HoldsText => Asset is null && Diff is null && Tool is null && DatabaseTable is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
 
     /// <summary>What a file whose tab holds no text is shown as, for what refuses its text to say; null for text.</summary>
-    public string? ShownAs => Asset is { Kind: AssetKind.Image } ? "an image, shown as a read-only preview"
+    public string? ShownAs => DatabaseTable is not null ? "a database table"
+        : Asset is { Kind: AssetKind.Image } ? "an image, shown as a read-only preview"
         : Asset is not null ? "a font, shown as a read-only preview"
         : IsWorkbook ? "an Excel workbook, shown as its sheets' cells"
         : IsBinary ? "a binary file, shown as its bytes' text"
@@ -1456,7 +1469,7 @@ public sealed class OpenDocument : Observable
     /// <summary>Whether text has unsaved changes; a read-only asset is never considered modified.</summary>
     public bool IsModified => Asset is null && Text.IsModified;
     /// <summary>The theme's key of its tab's icon: its tool window's, a diff's, or its file's by its name.</summary>
-    public string IconKey => Tool is { } tool ? tool.Window.Icon : Diff is not null ? Explorer.FileIcons.DiffKey : Explorer.FileIcons.FileKey(Path);
+    public string IconKey => DatabaseTable is not null ? IconKeys.Database : Tool is { } tool ? tool.Window.Icon : Diff is not null ? Explorer.FileIcons.DiffKey : Explorer.FileIcons.FileKey(Path);
 
     /// <summary>The theme's key of its tab's icon's tint, its file's.</summary>
     public string IconBrushKey => Explorer.FileIcons.FileBrushKey(Path);
