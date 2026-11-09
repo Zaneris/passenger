@@ -77,7 +77,7 @@ public sealed class PackageManager
 
     /// <summary>Moves several packages to their versions together (EF Core's packages and a provider): each written without a
     /// restore, so none is refused for a downgrade the others take back, then one restore of the project.</summary>
-    public async Task<bool> InstallSetAsync(string project, IReadOnlyList<(string Id, string Version)> packages)
+    public async Task<bool> InstallSetAsync(string project, IReadOnlyList<(string Id, string Version)> packages, CancellationToken cancel = default)
     {
         if (packages.Any(p => Refused(p.Id, p.Version)))
         {
@@ -85,12 +85,12 @@ public sealed class PackageManager
         }
         foreach ((string id, string version) in packages)
         {
-            if (!await RunAsync(["add", project, "package", id, "--version", version, "--no-restore"]))
+            if (cancel.IsCancellationRequested || !await RunAsync(["add", project, "package", id, "--version", version, "--no-restore"]))
             {
                 return false;
             }
         }
-        return await RestoreAsync(project);
+        return !cancel.IsCancellationRequested && await RestoreAsync(project);
     }
 
     /// <summary>Restores the project as it is.</summary>

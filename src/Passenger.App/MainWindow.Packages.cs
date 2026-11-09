@@ -30,6 +30,10 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools", 0, 0)],
         });
         actions!.Add(new IdeAction(AppActions.NuGetRefresh, "Refresh NuGet", "NuGet", _ => IdeErrors.Observe(NuGet.RefreshAskedAsync())) { WhyNot = NeedsFolder });
+        actions.Add(new IdeAction(AppActions.NuGetUpdateAll, "Update All NuGet Packages", "NuGet", _ => IdeErrors.Observe(NuGet.UpdateAllAsync()))
+        {
+            WhyNot = c => NeedsFolder(c) ?? NuGet.UpdateAllWhyNot,
+        });
     }
 
     /// <summary>The session's packages followed while it is the window's: a change's end said in the status bar, its files
@@ -37,6 +41,7 @@ public partial class MainWindow
     /// the Sources tab wrote taken too, wherever they are; and the NuGet window, once built, shows them.</summary>
     private void BindPackages(ProjectSession next)
     {
+        next.Packages.EvaluationProperties = project => Passenger.App.Workspace.ProjectModels.Properties(next.Workspace, project);
         next.Packages.Changed += (_, outcome) =>
         {
             if (session != next)

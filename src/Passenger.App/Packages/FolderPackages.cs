@@ -12,7 +12,7 @@ namespace Passenger.App.Packages;
 /// package sources its nuget.config files give, read when first asked for and again after one changes, their feeds, the
 /// audit's known vulnerabilities, and the one way a package goes in, moves or comes out of a project, through the .NET
 /// command line, one change at a time, each one command of Undo. A session's own, ended with it; a UI-thread object.</summary>
-public sealed class FolderPackages
+public sealed partial class FolderPackages
 {
     /// <summary>What a package change's work is held under in the window, which no action names.</summary>
     public const string Changing = "nuget.change";
@@ -262,7 +262,7 @@ public sealed class FolderPackages
         return CentralPackages.UnchangedByDotnet(project) is { } props
             ? ChangeAsync(stage, name, project, within, () => manager.RestoreAsync(project.Path), () => manager.RestoreAsync(project.Path),
                 () => WrittenCentrallyAsync(project, props, written()))
-            : ChangeAsync(stage, name, project, within, () => manager.InstallSetAsync(project.Path, written()), () => manager.RestoreAsync(project.Path));
+            : ChangeAsync(stage, name, project, within, () => manager.InstallSetAsync(project.Path, written(), bulkStopping?.Token ?? CancellationToken.None), () => manager.RestoreAsync(project.Path));
     }
 
     /// <summary>Packages at their versions written into a project and the Directory.Packages.props that holds its versions,
@@ -322,7 +322,11 @@ public sealed class FolderPackages
     public void Wrote(IReadOnlyList<string> configs) => ConfigsWritten?.Invoke(this, configs);
 
     /// <summary>Ends a package change still under way, as the folder is left.</summary>
-    public void Stop() => manager.Stop();
+    public void Stop()
+    {
+        bulkStopping?.Cancel();
+        manager.Stop();
+    }
 
     /// <summary>The next package change waits until <paramref name="until"/> has ended before its command runs, as a slow
     /// restore keeps it, for a test of what goes on meanwhile: done once that change is waiting.</summary>
@@ -341,7 +345,7 @@ public sealed class FolderPackages
     private async Task<PackageOutcome> ChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, Func<Task<bool>> change,
         Func<Task<bool>>? again = null, Func<Task<string?>>? own = null)
     {
-        if (IsBusy)
+        if (IsBusy && (within is null || !ReferenceEquals(within, bulkRecording)))
         {
             return new PackageOutcome(false, [], []) { Name = name, Refused = Work?.Of(Changing) is { } under ? ActionWork.Busy(under) : $"Already under way: {changing}" };
         }
@@ -349,7 +353,7 @@ public sealed class FolderPackages
         changing = stage;
         ChangeBegun?.Invoke(this, stage);
         using IDisposable held = BackgroundWork.Scope();
-        using Working? working = Work?.Begin(Changing, stage, stoppable: false);
+        using Working? working = bulkRecording is null ? Work?.Begin(Changing, stage, stoppable: false) : null;
         List<string> said = [];
         EventHandler<string> heard = (_, line) => said.Add(line);
         manager.Line += heard;
@@ -360,7 +364,19 @@ public sealed class FolderPackages
             PackageOutcome outcome;
             try
             {
-                if (SaveFirst is { } save && await save(working, CancellationToken.None) is { } unsaved)
+                string? heldChange = null;
+                if (bulkRecording is not null && holdNext is { } hold)
+                {
+                    holdNext = null;
+                    byte[]?[] heldFiles = [.. files.Select(Bytes)];
+                    hold.Reached.TrySetResult();
+                    await hold.Until;
+                    if (Unlike(files, heldFiles).Length > 0)
+                    {
+                        heldChange = "Project package files changed while waiting; refresh before updating";
+                    }
+                }
+                if (bulkRecording is null && SaveFirst is { } save && await save(working, CancellationToken.None) is { } unsaved)
                 {
                     outcome = new PackageOutcome(false, [], []) { Name = name, Refused = unsaved };
                 }
@@ -383,13 +399,14 @@ public sealed class FolderPackages
                         recording?.Watch(file);
                     }
                     // Its own writes before a save is heard as the person's.
-                    string? unwritten = own is null ? null : await own();
+                    string? unwritten = heldChange ?? (bulkStopping?.IsCancellationRequested == true ? "Stopped"
+                        : bulkRecording is not null && ChangedBulkFile() is { } changed ? changed : own is null ? null : await own());
                     FileText.Wrote += saving;
-                    if (holdNext is { } hold)
+                    if (bulkRecording is null && holdNext is { } afterSave)
                     {
                         holdNext = null;
-                        hold.Reached.TrySetResult();
-                        await hold.Until;
+                        afterSave.Reached.TrySetResult();
+                        await afterSave.Until;
                     }
                     bool done;
                     try
@@ -398,7 +415,7 @@ public sealed class FolderPackages
                         {
                             said.Add(unwritten);
                         }
-                        done = unwritten is null && await change();
+                        done = unwritten is null && bulkStopping?.IsCancellationRequested != true && await change();
                     }
                     finally
                     {
@@ -419,15 +436,44 @@ public sealed class FolderPackages
                         Line?.Invoke(this, $"{PackageOutcome.Named(meanwhile)} saved meanwhile, left as saved");
                     }
                     outcome = new(done, done ? written : [.. Unlike(files, before).Select(i => files[i])], said) { Name = name, Written = written, Meanwhile = meanwhile };
+                    if (bulkRecording is { } bulk)
+                    {
+                        for (int i = 0; i < files.Count; i++)
+                        {
+                            byte[]? afterBytes = Bytes(files[i]);
+                            if (saved.ContainsKey(files[i]) || Same(before[i], afterBytes))
+                            {
+                                if (!bulkSnapshots.ContainsKey(files[i]))
+                                {
+                                    bulk.Unwritten(files[i]);
+                                }
+                                continue;
+                            }
+                            if (bulk.Owns(files[i]) && afterBytes is not null && FileText.FromBytes(afterBytes) is { } after)
+                            {
+                                string prior = before[i] is { } priorBytes ? FileText.FromBytes(priorBytes)?.Text ?? string.Empty : string.Empty;
+                                bulk.Wrote(files[i], TextSnapshot.From(prior), TextSnapshot.From(after.Text));
+                            }
+                            bulkSnapshots[files[i]] = afterBytes;
+                        }
+                    }
                 }
             }
             finally
             {
-                IsBusy = false;
-                changing = null;
+                IsBusy = bulkStopping is not null;
+                changing = bulkStopping is null ? null : "Updating all NuGet packages…";
                 manager.Line -= heard;
             }
+            if (within is not null && ReferenceEquals(within, bulkRecording))
+            {
+                bulkLastChange = outcome;
+            }
             Changed?.Invoke(this, outcome);
+            if (within is not null && ReferenceEquals(within, bulkRecording))
+            {
+                within.TakeOpen();
+            }
             return outcome;
         }
         finally
