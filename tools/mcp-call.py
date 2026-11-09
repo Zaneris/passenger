@@ -38,13 +38,13 @@ SILENCE_LIMIT = 600
 
 def idle_minutes():
     """Minutes with no call before a keeper ends its server: IDLE_VARIABLE's, else 20; a malformed one is fatal."""
-    given = os.environ.get(IDLE_VARIABLE, "20")
+    setting = os.environ.get(IDLE_VARIABLE, "20")
     try:
-        minutes = float(given)
+        minutes = float(setting)
     except ValueError:
         minutes = 0
     if minutes <= 0:
-        sys.exit(f"mcp-call: {IDLE_VARIABLE} takes a number of minutes above 0, not '{given}'")
+        sys.exit(f"mcp-call: {IDLE_VARIABLE} takes a number of minutes above 0, not '{setting}'")
     return minutes
 
 
@@ -54,10 +54,10 @@ def serving_checkout():
         return ROOT
     common = subprocess.run(["git", "-C", ROOT, "rev-parse", "--path-format=absolute", "--git-common-dir"],
                             capture_output=True, text=True, check=False).stdout.strip()
-    main = os.path.dirname(common) if common else ""
-    if main and os.access(os.path.join(main, BUILD), os.X_OK):
-        print(f"mcp-call: no build in {ROOT}, so the main checkout's at {main} serves", file=sys.stderr)
-        return main
+    main_checkout = os.path.dirname(common) if common else ""
+    if main_checkout and os.access(os.path.join(main_checkout, BUILD), os.X_OK):
+        print(f"mcp-call: no build in {ROOT}, so the main checkout's at {main_checkout} serves", file=sys.stderr)
+        return main_checkout
     sys.exit(f"mcp-call: no build at {os.path.join(ROOT, BUILD)}; run just build first")
 
 
@@ -86,7 +86,7 @@ def connect(path):
         return None
 
 
-def reach(folder, serving, sock, lock, log):
+def reach(folder, serving, sock, lock, log_file):
     """The folder's keeper, started first when none answers, one start at a time."""
     if (client := connect(sock)) is not None:
         return client
@@ -96,7 +96,7 @@ def reach(folder, serving, sock, lock, log):
             return client
         if os.path.exists(sock):
             os.unlink(sock)
-        with open(log, "a") as written:
+        with open(log_file, "a") as written:
             # A session of its own, so the shell that made the first call takes nothing of it down as it ends.
             subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), "--keep", folder, serving, sock], cwd="/",
                              stdin=subprocess.DEVNULL, stdout=written, stderr=written, start_new_session=True, close_fds=True)
@@ -105,7 +105,7 @@ def reach(folder, serving, sock, lock, log):
             if (client := connect(sock)) is not None:
                 return client
             time.sleep(0.1)
-    sys.exit(f"mcp-call: the keeper did not start within {START_LIMIT} s; its log is {log}")
+    sys.exit(f"mcp-call: the keeper did not start within {START_LIMIT} s; its log is {log_file}")
 
 
 def lines_of(connection):
@@ -145,7 +145,7 @@ def call(start, folder, tool, text):
     if not os.path.isdir(folder):
         sys.exit(f"mcp-call: no folder at {folder}")
     serving = serving_checkout()
-    sock, lock, log = places(folder, serving)
+    sock, lock, log_file = places(folder, serving)
     if tool == "--stop":
         if (client := connect(sock)) is None:
             print(f"mcp-call: no server runs over {folder}")
@@ -153,7 +153,7 @@ def call(start, folder, tool, text):
         request = {"stop": True}
     else:
         request = {"list": True} if tool in ("", "--list") else {"tool": tool, "arguments": given(text)}
-        client = reach(folder, serving, sock, lock, log)
+        client = reach(folder, serving, sock, lock, log_file)
     with client:
         send(client, request)
         client.settimeout(SILENCE_LIMIT)
@@ -165,14 +165,14 @@ def call(start, folder, tool, text):
                     print(f"mcp-call: the server over {folder} {'has ended' if message.get('ended') else 'is ending'}")
                     return 0
                 elif "failed" in message:
-                    print(f"mcp-call: {message['failed']} (the keeper's log: {log})", file=sys.stderr)
+                    print(f"mcp-call: {message['failed']} (the keeper's log: {log_file})", file=sys.stderr)
                     return 2
                 elif "answer" in message:
-                    return shown(message["answer"], request, log)
+                    return shown(message["answer"], request, log_file)
         except socket.timeout:
-            print(f"mcp-call: no word from the server in {SILENCE_LIMIT} s; its log is {log}", file=sys.stderr)
+            print(f"mcp-call: no word from the server in {SILENCE_LIMIT} s; its log is {log_file}", file=sys.stderr)
             return 2
-    print(f"mcp-call: the keeper ended without answering; its log is {log}", file=sys.stderr)
+    print(f"mcp-call: the keeper ended without answering; its log is {log_file}", file=sys.stderr)
     return 2
 
 
@@ -188,7 +188,7 @@ def given(text):
     return value
 
 
-def shown(answer, request, log):
+def shown(answer, request, log_file):
     if "error" in answer:
         print(f"mcp-call: {answer['error'].get('message', answer['error'])}", file=sys.stderr)
         return 2
@@ -202,7 +202,7 @@ def shown(answer, request, log):
             print(item["text"])
         elif item.get("type") == "image":
             extension = {"image/png": ".png", "image/jpeg": ".jpg"}.get(item.get("mimeType"), ".bin")
-            picture = os.path.join(os.path.dirname(log), f"{request['tool']}-{time.strftime('%H%M%S')}{extension}")
+            picture = os.path.join(os.path.dirname(log_file), f"{request['tool']}-{time.strftime('%H%M%S')}{extension}")
             with open(picture, "wb") as written:
                 written.write(base64.b64decode(item["data"]))
             print(f"(an image, written to {picture})")
@@ -216,8 +216,8 @@ def parameters(tool):
     schema = tool.get("inputSchema", {})
     required = set(schema.get("required", []))
     def typed(shape):
-        given = shape.get("type", "any")
-        return "|".join(given) if isinstance(given, list) else given
+        kind = shape.get("type", "any")
+        return "|".join(kind) if isinstance(kind, list) else kind
     return ", ".join(f"{name}{'' if name in required else '?'}: {typed(shape)}" for name, shape in schema.get("properties", {}).items())
 
 

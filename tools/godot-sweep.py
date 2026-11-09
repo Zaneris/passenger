@@ -313,15 +313,15 @@ def sweep_project(entry, clone_folder, relative, run_folder, godot, environment,
         log(f"{name}: run")
         for tool, arguments in (("run", {"waitSeconds": 90}), ("app_tree", {"depth": 1}), ("stop", {})):
             result["steps"].append(passenger.call(tool, arguments))
-        breakpoint = main_script(project)
-        result["breakpoint"] = breakpoint
-        log(f"{name}: debug{f' at {breakpoint[0]}:{breakpoint[1]}' if breakpoint and breakpoint[1] else ''}")
-        if breakpoint and breakpoint[1]:
-            result["steps"].append(passenger.call("breakpoint_set", {"path": breakpoint[0], "line": breakpoint[1]}))
+        stop = main_script(project)
+        result["breakpoint"] = stop
+        log(f"{name}: debug{f' at {stop[0]}:{stop[1]}' if stop and stop[1] else ''}")
+        if stop and stop[1]:
+            result["steps"].append(passenger.call("breakpoint_set", {"path": stop[0], "line": stop[1]}))
         result["steps"].append(passenger.call("debug_start", {"waitSeconds": 90}))
         result["steps"].append(passenger.call("stop", {}))
-        if breakpoint and breakpoint[1]:
-            result["steps"].append(passenger.call("breakpoint_set", {"path": breakpoint[0], "line": breakpoint[1], "remove": True}))
+        if stop and stop[1]:
+            result["steps"].append(passenger.call("breakpoint_set", {"path": stop[0], "line": stop[1], "remove": True}))
     passenger.stop()
     result["times"]["passenger"] = round(time.monotonic() - began, 1)
     result["files changed"] = changed(before, snapshot(project))

@@ -227,14 +227,14 @@ def weights(classes, system, times, share):
     return {c: (known[c] if c in known else guess(c)) * share.get(c, 1.0) for c in classes}, guessed
 
 
-def deal(weights, count):
+def deal(weighed, count):
     """The classes in count hands, the heaviest first, each to the lightest hand so far (the first of equals)."""
     hands = [[] for _ in range(count)]
     totals = [0.0] * count
-    for name in sorted(weights, key=lambda c: (-weights[c], c)):
+    for name in sorted(weighed, key=lambda c: (-weighed[c], c)):
         lightest = min(range(count), key=lambda i: (totals[i], i))
         hands[lightest].append(name)
-        totals[lightest] += weights[name]
+        totals[lightest] += weighed[name]
     return hands, totals
 
 
