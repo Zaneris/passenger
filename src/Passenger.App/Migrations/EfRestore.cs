@@ -111,12 +111,10 @@ public sealed record EfRestore(string? Runtime, string? Design, IReadOnlyList<Ef
         {
             return $"EF Core {from}";
         }
-        if (from.Length > 0 && to.Length > 0 && given[^1] == ')' && Major(to) == Major(from) + 1 && to.EndsWith(".0.0", StringComparison.Ordinal))
+        if (given[^1] == ')' && VersionOrder.Major(from) is { } major && VersionOrder.Major(to) == major + 1 && to.EndsWith(".0.0", StringComparison.Ordinal))
         {
-            return $"EF Core {Major(from)}";
+            return $"EF Core {major}";
         }
         return to.Length == 0 ? $"EF Core {from} and later" : $"EF Core {from} to {to}";
     }
-
-    private static int Major(string version) => int.TryParse(version.Split('.')[0], out int major) ? major : -1;
 }

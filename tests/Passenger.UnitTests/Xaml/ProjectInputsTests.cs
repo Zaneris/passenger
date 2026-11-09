@@ -44,6 +44,24 @@ public sealed class ProjectInputsTests : IDisposable
         Assert.Equal("net10.0", missing.TargetFramework);
     }
 
+    /// <summary>The SDK's packs of a framework, a release candidate's beside its release: the release's reference
+    /// assemblies are read, whatever order the folder lists them in, as the SDK builds against the release.</summary>
+    [Fact]
+    public void A_shared_frameworks_pack_folder_holding_a_release_candidate_and_its_release_reads_the_release()
+    {
+        string project = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        string assets = Assets("net10.0", "net11.0");
+        string dotnet = Path.Combine(root, "dotnet");
+        Write("dotnet/packs/Microsoft.NETCore.App.Ref/10.0.0-rc.2.25502.107/ref/net10.0/Candidate.dll", string.Empty);
+        Write("dotnet/packs/Microsoft.NETCore.App.Ref/10.0.0/ref/net10.0/Release.dll", string.Empty);
+        Write("dotnet/packs/Microsoft.NETCore.App.Ref/9.0.11/ref/net9.0/Nine.dll", string.Empty);
+
+        ProjectInputs inputs = ProjectInputs.Read(project, dotnet, new ProjectEvaluation(assets, null, new Dictionary<string, string>()));
+
+        string[] shared = [.. inputs.References.Where(r => r.StartsWith(dotnet, StringComparison.Ordinal)).Select(Path.GetFileName).OfType<string>()];
+        Assert.True(shared is ["Release.dll"], $"net10.0's XAML reads the reference assemblies [{string.Join(", ", shared)}], not 10.0.0's release");
+    }
+
     [Fact]
     public void A_restore_whose_members_are_of_other_kinds_reads_as_far_as_it_can_rather_than_throw()
     {

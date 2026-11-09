@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Passenger.Core;
 
 /// <summary>What a .NET installation's folder holds, newest first: its SDKs (each a folder under sdk holding the CLI's
@@ -18,24 +16,8 @@ public sealed record DotnetInstallation(string Root, IReadOnlyList<string> Sdks,
     /// <summary>Whether an SDK's folder has the runtime it says it runs on, at that version or a later one of its major, as
     /// the host rolls forward: without it the SDK is short of what it needs and never starts. One that says none is taken
     /// at its folder's word.</summary>
-    private static bool Runs(string sdk, IReadOnlyList<string> runtimes) => RuntimeOf(Path.Combine(sdk, "dotnet.runtimeconfig.json")) is not { } needs
+    private static bool Runs(string sdk, IReadOnlyList<string> runtimes) => RuntimeConfig.Read(Path.Combine(sdk, "dotnet.dll"))?.VersionOf(Runtime) is not { } needs
         || runtimes.Any(r => r.Split('.')[0] == needs.Split('.')[0] && VersionOrder.Instance.Compare(r, needs) >= 0);
-
-    /// <summary>The version of the .NET runtime a runtimeconfig.json names, as one framework or among several; null for none.</summary>
-    private static string? RuntimeOf(string config)
-    {
-        try
-        {
-            using JsonDocument read = JsonDocument.Parse(File.ReadAllBytes(config), LenientJson.Document);
-            JsonElement? options = JsonMembers.Object(read.RootElement, "runtimeOptions");
-            IEnumerable<JsonElement> named = JsonMembers.Object(options, "framework") is { } one ? [one] : JsonMembers.Items(options, "frameworks");
-            return named.Where(f => JsonMembers.Text(f, "name") == Runtime).Select(f => JsonMembers.Text(f, "version")).FirstOrDefault();
-        }
-        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return null;
-        }
-    }
 
     /// <summary>The newest SDK, or null for a runtime alone.</summary>
     public string? NewestSdk => Sdks.Count > 0 ? Sdks[0] : null;

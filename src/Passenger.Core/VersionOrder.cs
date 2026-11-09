@@ -9,6 +9,11 @@ public sealed class VersionOrder : IComparer<string>
 
     public static bool IsPrerelease(string version) => Release(version).Contains('-', StringComparison.Ordinal);
 
+    /// <summary>A version's first number (9 of 9.0.1 and 9.0.0-rc.2); null for a version that starts with none.</summary>
+    public static int? Major(string version) =>
+        int.TryParse(Release(version.Trim()).Split('-', 2)[0].Split('.')[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int major)
+            ? major : null;
+
     public int Compare(string? x, string? y)
     {
         (long[] a, string[]? aLabel) = Parse(x ?? string.Empty);

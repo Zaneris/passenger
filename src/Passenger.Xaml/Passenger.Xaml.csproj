@@ -13,6 +13,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
+    <!-- The package cache a project's restores use, as its nuget.config names it, for a project not restored yet. -->
+    <ProjectReference Include="../Passenger.Packages/Passenger.Packages.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
   </ItemGroup>
 </Project>

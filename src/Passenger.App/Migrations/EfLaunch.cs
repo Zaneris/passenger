@@ -46,9 +46,8 @@ internal sealed class EfLaunch
     {
         bool eleven = tool.Major >= 11;
         if (tool.EfDll(Path.GetDirectoryName(startupPath)!) is not { } efDll
-            || !Value(startup, MSBuildNames.TargetFrameworkMoniker).StartsWith(".NETCoreApp,Version=v", StringComparison.Ordinal)
-            || !System.Version.TryParse(Value(startup, MSBuildNames.TargetFrameworkMoniker)[".NETCoreApp,Version=v".Length..], out Version? version)
-            || version.Major < (eleven ? 10 : 2)
+            || FrameworkNames.Major(Value(startup, MSBuildNames.TargetFrameworkMoniker)) is not { } major
+            || major < (eleven ? 10 : 2)
             || (eleven && (defaults?.Beyond == true || Value(startup, MSBuildNames.TargetPlatformIdentifier).Length > 0 || Value(startup, MSBuildNames.DesignAssembly).Length > 0
                 || (Value(startup, MSBuildNames.PlatformTarget) is { Length: > 0 } platform && !platform.Equals("AnyCPU", StringComparison.OrdinalIgnoreCase)))))
         {

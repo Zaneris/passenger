@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Passenger.Core;
 
 namespace Passenger.App.Migrations;
 
@@ -72,7 +73,7 @@ public static partial class EfGaps
                 fixes.Add(new EfFix(EfFixKind.UpdateGlobalTool, $"Update the Global {EfTools.Id} to {runtime}"));
             }
             // Another major's tool runs on a runtime the project may not have, and reads another major's Design package.
-            gaps.Add(new EfGap($"{Capital(tool.Shown)} does not match {startup}'s EF Core {runtime}", fixes, Blocks: Major(tool.Version) != Major(runtime)));
+            gaps.Add(new EfGap($"{Capital(tool.Shown)} does not match {startup}'s EF Core {runtime}", fixes, Blocks: VersionOrder.Major(tool.Version) != VersionOrder.Major(runtime)));
         }
         if (restore.Design is null)
         {
@@ -167,8 +168,6 @@ public static partial class EfGaps
     }
 
     private static string Capital(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
-
-    private static int Major(string version) => int.TryParse(version.Split('.')[0], out int major) ? major : -1;
 
     [GeneratedRegex(@"Unable to create (?:a 'DbContext' of type|an object of type) '([^']+)'\.?(.*)")]
     private static partial Regex UnableToCreate();

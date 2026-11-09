@@ -53,7 +53,7 @@ public sealed record EfTool(EfToolPlace Place, string Version, string Where)
         }
         string version = Version.ToLowerInvariant();
         string? package = Place == EfToolPlace.Local
-            ? EfTools.PackagesFolder(folder) is { } packages ? Path.Combine(packages, EfTools.Id, version) : null
+            ? Passenger.Packages.NuGetSettings.GlobalPackagesFolder(folder) is { } packages ? Path.Combine(packages, EfTools.Id, version) : null
             : Path.Combine(Path.GetDirectoryName(Where)!, ".store", EfTools.Id, version, EfTools.Id, version);
         string? efDll = package is null ? null : Path.Combine([package, .. inside]);
         return efDll is not null && File.Exists(efDll) ? efDll : null;
@@ -132,21 +132,7 @@ public static class EfTools
     /// <summary>Whether the tool's package at a version is in the package cache the folder's restores use, so restoring the
     /// folder's local tools reaches no feed.</summary>
     public static bool Cached(string version, string folder) =>
-        PackagesFolder(folder) is { } packages && File.Exists(Path.Combine(packages, Id, version.ToLowerInvariant(), $"{Id}.{version.ToLowerInvariant()}.nupkg"));
-
-    /// <summary>The package cache the folder's restores use; null where its configuration does not read, so a restore is
-    /// asked about as one that downloads.</summary>
-    public static string? PackagesFolder(string folder)
-    {
-        try
-        {
-            return NuGet.Configuration.SettingsUtility.GetGlobalPackagesFolder(Passenger.Packages.NuGetSettings.Load(folder));
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or NuGet.Configuration.NuGetConfigurationException)
-        {
-            return null;
-        }
-    }
+        Passenger.Packages.NuGetSettings.GlobalPackagesFolder(folder) is { } packages && File.Exists(Path.Combine(packages, Id, version.ToLowerInvariant(), $"{Id}.{version.ToLowerInvariant()}.nupkg"));
 
     /// <summary>Each folder's manifests from the folder up, nearest first, as dotnet looks for them.</summary>
     private static IEnumerable<string> Manifests(string folder)

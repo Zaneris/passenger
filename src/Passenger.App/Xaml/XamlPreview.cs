@@ -447,23 +447,6 @@ public sealed class XamlPreview : IDisposable
             : $"Build {project} to preview its XAML: the previewer draws its last build";
     }
 
-    /// <summary>The target framework a build's runtime configuration says it runs on (its <c>runtimeOptions.tfm</c>); null for
-    /// a build with none, or one that does not read. Read off the window's thread.</summary>
-    internal static string? FrameworkOfBuild(string assembly)
-    {
-        string configuration = Path.ChangeExtension(assembly, ".runtimeconfig.json");
-        try
-        {
-            using FileStream stream = File.OpenRead(configuration);
-            using System.Text.Json.JsonDocument json = System.Text.Json.JsonDocument.Parse(stream, LenientJson.Document);
-            return JsonMembers.Text(JsonMembers.Object(json.RootElement, "runtimeOptions"), "tfm");
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
-        {
-            return null;
-        }
-    }
-
     /// <summary>A previewer's boxes on the elements of the text it drew: a box's line and column (from one) are its element's
     /// name, or its '&lt;', as an XML reader places it, a lone '\r' ending a line (<see cref="Lsp.ServerLines.OfXml"/>).</summary>
     internal static List<PreviewElement> Placed(TextSnapshot text, IReadOnlyList<(int Line, int Column, Rect Box)> boxes)
@@ -500,12 +483,6 @@ public sealed class XamlPreview : IDisposable
         TextPosition at = sent.GetPosition(Lsp.ServerLines.OfXml(sent).OffsetOf(reported - 1, Math.Max(0, (column ?? 1) - 1)));
         return column is null ? $" (line {at.Line + 1})" : $" (line {at.Line + 1}, column {at.Column + 1})";
     }
-
-    /// <summary>A target framework's .NET version (net8.0-windows is 8.0); null for one before .NET 5 or none.</summary>
-    internal static Version? Framework(string? moniker) =>
-        moniker is not null && moniker.StartsWith("net", StringComparison.Ordinal) && Version.TryParse(moniker[3..].Split('-')[0], out Version? version) && version.Major >= 5
-            ? version
-            : null;
 
     private void Stop()
     {

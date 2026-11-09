@@ -63,7 +63,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             preview.SayUnbuilt(inputs);
             return null;
         }
-        string? runs = await BackgroundWork.Run(() => XamlPreview.FrameworkOfBuild(built)) ?? inputs.TargetFramework;
+        string? runs = await BackgroundWork.Run(() => RuntimeConfig.Read(built)?.TargetFramework) ?? inputs.TargetFramework;
         if (HostApp(inputs, runs) is not { } designer)
         {
             string why = NoHostApp(inputs, runs);
@@ -348,7 +348,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         {
             return null;
         }
-        Version target = XamlPreview.Framework(runs) ?? new Version(99, 0);
+        Version target = FrameworkNames.VersionOf(runs) ?? new Version(99, 0);
         return Directory.EnumerateDirectories(Path.Combine(package, "tools"))
             .Select(d => (Folder: d, Version: ToolsFramework(Path.GetFileName(d))))
             .Where(d => d.Version is not null && d.Version <= target)
@@ -372,10 +372,10 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         return $"No previewer for {runs ?? project} in {PathNames.Shown(tools, null)} (it has {(frameworks.Length == 0 ? "none" : string.Join(", ", frameworks))}): designer/Avalonia.Designer.HostApp.dll is looked for in each";
     }
 
-    /// <summary>A tools/ folder's framework: net5.0 and later as themselves, and netstandard or netcoreapp (Avalonia 11's
+    /// <summary>A tools/ folder's framework: its .NET for net5.0 and later and netcoreapp, and netstandard (Avalonia 11's
     /// host, which the project's runtime runs) below them all; null for .NET Framework's.</summary>
     private static Version? ToolsFramework(string folder) =>
-        XamlPreview.Framework(folder)
+        FrameworkNames.VersionOf(folder)
         ?? (folder.StartsWith("netstandard", StringComparison.Ordinal) || folder.StartsWith("netcoreapp", StringComparison.Ordinal) ? new Version(1, 0) : null);
 
     /// <summary>The longest <see cref="EndAsync"/> waits for the previewer's process to exit once it is killed.</summary>

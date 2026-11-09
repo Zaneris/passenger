@@ -281,10 +281,9 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// and references WPF's assemblies, as a Windows Forms app does not.</summary>
     private static bool IsWpf(string built)
     {
-        string config = Path.ChangeExtension(built, ".runtimeconfig.json");
         try
         {
-            if (!File.Exists(built) || !File.Exists(config) || !File.ReadAllText(config).Contains(FrameworkNames.WindowsDesktop, StringComparison.Ordinal))
+            if (!File.Exists(built) || RuntimeConfig.Read(built)?.OnWindowsDesktop != true)
             {
                 return false;
             }

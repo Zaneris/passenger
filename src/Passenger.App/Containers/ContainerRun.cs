@@ -485,7 +485,7 @@ public static class ContainerPlans
         {
             string image = properties.GetValueOrDefault("PassengerImage") is { Length: > 0 } published ? published
                 : properties.GetValueOrDefault(CarriedProperties.ContainerBaseImage) is { Length: > 0 } basis ? basis
-                : $"mcr.microsoft.com/dotnet/{(ContainerConfigurations.IsWeb(project, workspace.Projects) ? "aspnet" : "runtime")}:{FrameworkTag(project, framework)}";
+                : DotnetImages.Runtime(ContainerConfigurations.IsWeb(project, workspace.Projects), DotnetImages.Tag(framework ?? DotnetImages.Newest(project.TargetFrameworks)));
             service["image"] = image;
             exposed.AddRange((properties.GetValueOrDefault(MSBuildNames.ContainerPort) ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries)
                 .Select(p => int.TryParse(p.Split(':')[0], NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : 0).Where(n => n > 0));
@@ -513,11 +513,6 @@ public static class ContainerPlans
         }
         return (composed, run.Uncarried);
     }
-
-    /// <summary>The image tag of the .NET a project runs for (10.0 of net10.0): the framework given, else its newest, else 10.0.</summary>
-    private static string FrameworkTag(ProjectModel project, string? framework) =>
-        (framework is null ? project.TargetFrameworks : [framework]).Select(f => f.Split('-')[0]).Where(f => f.StartsWith("net", StringComparison.OrdinalIgnoreCase) && Version.TryParse(f[3..], out _))
-            .Select(f => Version.Parse(f[3..])).OrderByDescending(v => v).Select(v => $"{v.Major}.{Math.Max(0, v.Minor)}").FirstOrDefault() ?? "10.0";
 
     /// <summary>The override Passenger lays over the files: its labels on every service, image and network it makes (an image
     /// built as deployed tagged apart from the one its files name); for each .NET service it starts, in fast mode its image's

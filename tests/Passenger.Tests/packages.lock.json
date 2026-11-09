@@ -660,6 +660,7 @@
         "dependencies": {
           "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
           "Passenger.Core": "[0.3.0, )",
+          "Passenger.Packages": "[0.3.0, )",
           "Passenger.Text": "[0.3.0, )"
         }
       },

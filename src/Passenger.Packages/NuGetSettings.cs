@@ -27,6 +27,20 @@ public static class NuGetSettings
         return Settings.LoadDefaultSettings(root);
     }
 
+    /// <summary>The package cache a folder's restores use (NUGET_PACKAGES, else the globalPackagesFolder its configs name,
+    /// else the user's); null where its configs do not read, so the cache is unknown.</summary>
+    public static string? GlobalPackagesFolder(string folder)
+    {
+        try
+        {
+            return SettingsUtility.GetGlobalPackagesFolder(Load(folder));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or NuGetConfigurationException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The configs NuGet reads for a folder, by the places it looks in.</summary>
     private static IEnumerable<string> Files(string root)
     {

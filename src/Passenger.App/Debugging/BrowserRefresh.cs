@@ -70,7 +70,7 @@ public sealed class BrowserRefresh : IDisposable
             return (null, plan, null);
         }
         string name = Path.GetFileNameWithoutExtension(project);
-        if (plan.RunsOn is { } framework && UpdateHandlerHook.MajorOf(framework) is > 0 and < 6)
+        if (plan.RunsOn is { } framework && FrameworkNames.Major(framework) is < 6)
         {
             return (null, plan, $"Hot Reload: the browser is not kept up: {name} runs on {framework}, older than the SDK's browser refresh (.NET 6)");
         }

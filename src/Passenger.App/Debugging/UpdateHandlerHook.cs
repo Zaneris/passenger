@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net.Sockets;
 using System.Text;
 using Passenger.App.State;
@@ -61,33 +60,18 @@ public sealed class UpdateHandlerHook : IDisposable
     /// null where it cannot be loaded: the assembly on a .NET older than the hook's, as its runtimeconfig.json says.</summary>
     public static (UpdateHandlerHook Hook, IReadOnlyDictionary<string, string> Variables)? ForTestHost(string assembly, IReadOnlyDictionary<string, string> environment)
     {
-        if (FrameworkOf(assembly) is not { } framework || Listen(framework, Path.GetFileNameWithoutExtension(assembly), environment) is not ({ } hook, { } variables))
+        if (RuntimeConfig.Read(assembly)?.TargetFramework is not { } framework || Listen(framework, Path.GetFileNameWithoutExtension(assembly), environment) is not ({ } hook, { } variables))
         {
             return null;
         }
         return (hook, new Dictionary<string, string>(variables) { [RuntimeVariables.ModifiableAssemblies] = "debug" });
     }
 
-    /// <summary>The framework a built assembly runs on, as the runtimeconfig.json beside it names it; null where none does.</summary>
-    private static string? FrameworkOf(string assembly)
-    {
-        string config = Path.ChangeExtension(assembly, ".runtimeconfig.json");
-        try
-        {
-            using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(File.ReadAllText(config));
-            return JsonMembers.Text(JsonMembers.Object(read.RootElement, "runtimeOptions"), "tfm");
-        }
-        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
-        {
-            return null;
-        }
-    }
-
     /// <summary>A hook listening on a socket of its own for a program on <paramref name="framework"/>, and the variables that
     /// load it there; null on a .NET older than the hook's (8), with the hook missing, or no socket to be made.</summary>
     private static (UpdateHandlerHook Hook, IReadOnlyDictionary<string, string> Variables)? Listen(string framework, string name, IReadOnlyDictionary<string, string> environment)
     {
-        if (MajorOf(framework) < 8 || !File.Exists(HookPath))
+        if (FrameworkNames.Major(framework) is not >= 8 || !File.Exists(HookPath))
         {
             return null;
         }
@@ -115,11 +99,6 @@ public sealed class UpdateHandlerHook : IDisposable
         };
         return (new UpdateHandlerHook(socket, listener), variables);
     }
-
-    /// <summary>The major version of a .NET target framework ("net10.0", "net8.0-windows"), zero for any other.</summary>
-    internal static int MajorOf(string framework) =>
-        framework.StartsWith("net", StringComparison.OrdinalIgnoreCase) && framework.Length > 3 && char.IsAsciiDigit(framework[3])
-        && int.TryParse(framework[3..].Split('.', '-')[0], NumberStyles.None, CultureInfo.InvariantCulture, out int major) && major >= 5 ? major : 0;
 
     /// <summary>Tells the hook the debugger applied an update, so the program runs its handlers as it next runs; nothing when
     /// the hook never connected (the program is on an older .NET than it said, or started without it).</summary>

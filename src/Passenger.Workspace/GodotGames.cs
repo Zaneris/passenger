@@ -66,18 +66,16 @@ public static class GodotGames
     /// no preview, as the host rolls forward to a released runtime alone; all offered where no runtime is known.</summary>
     public static IReadOnlyList<string> Runnable(IReadOnlyList<string> offered, IReadOnlyList<string> runtimes)
     {
-        List<int> released = [.. runtimes.Where(r => !r.Contains('-', StringComparison.Ordinal)).Select(r => Major(r.Split('.')[0])).OfType<int>()];
+        List<int> released = [.. runtimes.Where(r => !VersionOrder.IsPrerelease(r)).Select(VersionOrder.Major).OfType<int>()];
         if (released.Count == 0)
         {
             return offered;
         }
         int newest = released.Max();
-        return [.. offered.Where(f => f.StartsWith("net", StringComparison.Ordinal)).Select(f => Major(f[3..].Split('.')[0])).OfType<int>()
+        return [.. offered.Select(FrameworkNames.Major).OfType<int>()
             .Concat(released).Where(major => major >= 8 && major <= newest).Distinct().OrderDescending()
             .Select(major => $"net{major.ToString(System.Globalization.CultureInfo.InvariantCulture)}.0")];
     }
-
-    private static int? Major(string text) => int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int major) ? major : null;
 
     private static string Project(string name, bool csharp, string version)
     {

@@ -40,14 +40,40 @@ public static class FrameworkNames
         return $"net{version}";
     }
 
+    /// <summary>The .NET a target framework is for, its platform left off, in any letter case as MSBuild takes it: 8.0 of
+    /// net8.0, NET8.0-windows, netcoreapp8.0 and <c>.NETCoreApp,Version=v8.0</c>, 3.1 of netcoreapp3.1; null for any other
+    /// framework (net48, netstandard2.0) or none.</summary>
+    public static Version? VersionOf(string? framework)
+    {
+        string name = (framework ?? string.Empty).Trim().Split('-')[0];
+        (string? number, bool coreApp) = name.StartsWith(NetCoreApp, StringComparison.OrdinalIgnoreCase)
+            ? (name[NetCoreApp.Length..].Replace(",Version=v", string.Empty, StringComparison.OrdinalIgnoreCase), true)
+            : name.StartsWith(CoreAppShort, StringComparison.OrdinalIgnoreCase) ? (name[CoreAppShort.Length..], true)
+            : name.StartsWith(Net, StringComparison.OrdinalIgnoreCase) ? (name[Net.Length..], false)
+            : (null, false);
+        // net4.8 is .NET Framework's; from net5.0 the short name is .NET's own.
+        return number is { Length: > 0 } && char.IsAsciiDigit(number[0]) && number.Contains('.', StringComparison.Ordinal)
+            && Version.TryParse(number, out Version? version) && (coreApp || version.Major >= 5) ? version : null;
+    }
+
+    /// <summary>The major version of the .NET a target framework is for (10 of net10.0 and NET10.0-windows); null for any
+    /// other framework or none.</summary>
+    public static int? Major(string? framework) => VersionOf(framework)?.Major;
+
     /// <summary>Whether a target framework is .NET Framework's (net48, net472, <c>.NETFramework,Version=v4.8</c>), which
     /// Passenger never runs: it runs CoreCLR's alone.</summary>
     public static bool IsNetFramework(string framework) =>
         framework.StartsWith(NetFramework, StringComparison.OrdinalIgnoreCase)
-        || (framework.Length > 3 && framework.StartsWith("net", StringComparison.OrdinalIgnoreCase) && framework[3..].All(char.IsAsciiDigit));
+        || (framework.Length > Net.Length && framework.StartsWith(Net, StringComparison.OrdinalIgnoreCase) && framework[Net.Length..].All(char.IsAsciiDigit));
 
     /// <summary>.NET Framework's identifier in a target framework's long name (<c>.NETFramework,Version=v4.8</c>).</summary>
     private const string NetFramework = ".NETFramework";
+
+    /// <summary>A short name's start: .NET's from net5.0, .NET Framework's below.</summary>
+    private const string Net = "net";
+
+    /// <summary>A short name's start for .NET before 5 (netcoreapp3.1), which later versions may also be written with.</summary>
+    private const string CoreAppShort = "netcoreapp";
 
     /// <summary>A framework's name as MSBuild compares it, in any letter case.</summary>
     private static bool Is(string framework, string name) => framework.Equals(name, StringComparison.OrdinalIgnoreCase);

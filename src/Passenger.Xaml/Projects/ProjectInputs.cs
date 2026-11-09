@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Core;
+using Passenger.Packages;
 
 namespace Passenger.Xaml.Projects;
 
@@ -144,7 +145,7 @@ public sealed record ProjectInputs(
             versions.TryAdd(id, version);
         }
         Dictionary<string, string> folders = read is null ? new(StringComparer.OrdinalIgnoreCase) : new(read.Folders, StringComparer.OrdinalIgnoreCase);
-        FindInCache(folders, versions, [evaluation?.PackageRoot, .. read?.PackageFolders ?? [], .. PackageRoots()]);
+        FindInCache(folders, versions, [evaluation?.PackageRoot, .. read?.PackageFolders ?? []], folder);
         // Two profiles of one framework (WPF's and Windows Forms') share its pack.
         return new ProjectInputs(projectPath, assemblyName, framework, [.. references.Distinct(StringComparer.Ordinal)], projectReferences, SourceFilesOf(folder),
             ImplicitUsingsOf(assets, framework), assets, packages)
@@ -159,10 +160,12 @@ public sealed record ProjectInputs(
     }
 
     /// <summary>The folder of each package the restore's assets did not place, at the version the project takes, from the
-    /// first package folder that holds it: what a project with no assets to read, or assets Passenger could not find, has.</summary>
-    private static void FindInCache(Dictionary<string, string> folders, IReadOnlyDictionary<string, string> versions, IEnumerable<string?> roots)
+    /// first package folder that holds it, the package cache the project's folder restores into last: what a project with
+    /// no assets to read, or assets Passenger could not find, has.</summary>
+    private static void FindInCache(Dictionary<string, string> folders, IReadOnlyDictionary<string, string> versions, IEnumerable<string?> roots, string folder)
     {
-        string[] places = [.. roots.OfType<string>().Where(r => r.Length > 0).Distinct(PathNames.Comparer)];
+        List<string> places = [.. roots.OfType<string>().Where(r => r.Length > 0).Distinct(PathNames.Comparer)];
+        bool cached = false;
         foreach ((string id, string version) in versions)
         {
             // A range or a floating version names no one folder.
@@ -170,21 +173,20 @@ public sealed record ProjectInputs(
             {
                 continue;
             }
+            // Read only once a package is still to be found, as reading it reads the folder's configs.
+            if (!cached)
+            {
+                cached = true;
+                if (NuGetSettings.GlobalPackagesFolder(folder) is { Length: > 0 } cache && !places.Contains(cache, PathNames.Comparer))
+                {
+                    places.Add(cache);
+                }
+            }
             if (places.Select(p => Path.Combine(p, id.ToLowerInvariant(), version.ToLowerInvariant())).FirstOrDefault(Directory.Exists) is { } found)
             {
                 folders[id] = found;
             }
         }
-    }
-
-    /// <summary>The package folders a restore takes when nothing says otherwise: NUGET_PACKAGES, else the user's .nuget/packages.</summary>
-    private static IEnumerable<string> PackageRoots()
-    {
-        if (Environment.GetEnvironmentVariable("NUGET_PACKAGES") is { Length: > 0 } set)
-        {
-            yield return set;
-        }
-        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
     }
 
     /// <summary>The files an item type of the project file includes (<c>AvaloniaResource</c>), its globs expanded and its
@@ -418,7 +420,7 @@ public sealed record ProjectInputs(
     private static IEnumerable<string> FrameworkAssemblies(string? dotnetRoot, Assets read, string framework)
     {
         string pack = (FrameworkNames.IsWindowsDesktop(framework) ? FrameworkNames.WindowsDesktop : framework) + ".Ref";
-        string target = Regex.Match(read.Framework, @"^net\d+\.\d+").Value is { Length: > 0 } bare ? bare : read.Framework;
+        string target = FrameworkNames.VersionOf(read.Framework) is { Major: >= 5 } net ? $"net{net.Major}.{net.Minor}" : read.Framework;
         foreach ((string id, string version) in read.Downloads.Where(d => string.Equals(d.Id, pack, StringComparison.OrdinalIgnoreCase)))
         {
             foreach (string folder in read.PackageFolders)
@@ -435,13 +437,13 @@ public sealed record ProjectInputs(
         {
             return [];
         }
-        string major = Regex.Match(target, @"^net(\d+)\.").Groups[1].Value;
-        List<(Version Version, string Folder)> versions = [.. Directory.EnumerateDirectories(packs)
-            .Select(d => (Parsed: Version.TryParse(Path.GetFileName(d).Split('-')[0], out Version? v) ? v : null, Folder: d))
-            .Where(v => v.Parsed is not null)
-            .Select(v => (v.Parsed!, v.Folder))
-            .OrderByDescending(v => v.Item1)];
-        foreach ((Version version, string folder) in versions.Where(v => v.Version.Major.ToString(System.Globalization.CultureInfo.InvariantCulture) == major).Concat(versions))
+        int? major = FrameworkNames.Major(target);
+        // A release above its previews and release candidates, which share its numbers.
+        List<(string Version, string Folder)> versions = [.. Directory.EnumerateDirectories(packs)
+            .Select(d => (Version: Path.GetFileName(d), Folder: d))
+            .Where(v => v.Version.Length > 0 && char.IsAsciiDigit(v.Version[0]))
+            .OrderByDescending(v => v.Version, VersionOrder.Instance)];
+        foreach ((_, string folder) in versions.Where(v => major is not null && VersionOrder.Major(v.Version) == major).Concat(versions))
         {
             string reference = Path.Combine(folder, "ref", target);
             if (Directory.Exists(reference))

@@ -105,8 +105,8 @@ internal sealed class WpfPreviewHost : IPreviewHost
         string name = Path.GetFileNameWithoutExtension(assembly);
         string configuration = Path.Combine(shadow, name + ".runtimeconfig.json");
         // A class library has no runtime configuration, and a build for one older than .NET 8 runs no previewer built for 8.
-        string? runs = await BackgroundWork.Run(() => XamlPreview.FrameworkOfBuild(assembly));
-        bool own = runs is null || XamlPreview.Framework(runs) is not { Major: >= 8 };
+        string? runs = await BackgroundWork.Run(() => RuntimeConfig.Read(assembly)?.TargetFramework);
+        bool own = FrameworkNames.Major(runs) is not >= 8;
         if (own)
         {
             configuration = Path.ChangeExtension(Previewer, ".runtimeconfig.json");

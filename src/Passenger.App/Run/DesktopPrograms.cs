@@ -1,6 +1,5 @@
 using System.Reflection.PortableExecutable;
 using System.Text;
-using System.Text.Json;
 using Passenger.Core;
 using Passenger.Packages;
 using Passenger.Workspace;
@@ -67,8 +66,7 @@ public static class DesktopPrograms
         }
         try
         {
-            string config = Path.ChangeExtension(file, ".runtimeconfig.json");
-            if (File.Exists(config) && File.ReadAllText(config).Contains(FrameworkNames.WindowsDesktop, StringComparison.Ordinal))
+            if (RuntimeConfig.Read(file)?.OnWindowsDesktop == true)
             {
                 return WindowsDesktop;
             }
@@ -226,24 +224,7 @@ public static class DesktopPrograms
 
     /// <summary>What keeps startup hooks out of a program: a build that turned them off in its runtime configuration; null
     /// where they go in.</summary>
-    private static string? HooksOff(string file)
-    {
-        try
-        {
-            string config = Path.ChangeExtension(file, ".runtimeconfig.json");
-            if (!File.Exists(config))
-            {
-                return null;
-            }
-            using JsonDocument read = JsonDocument.Parse(File.ReadAllText(config));
-            JsonElement? properties = JsonMembers.Object(JsonMembers.Object(read.RootElement, "runtimeOptions"), "configProperties");
-            return JsonMembers.Bool(properties, StartupHooksSwitch) == false
-                ? "Its build turns startup hooks off (StartupHookSupport), so the inspector that puts it on Avalonia's headless platform cannot go in"
-                : null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return null;
-        }
-    }
+    private static string? HooksOff(string file) => RuntimeConfig.Read(file)?.Switch(StartupHooksSwitch) == false
+        ? "Its build turns startup hooks off (StartupHookSupport), so the inspector that puts it on Avalonia's headless platform cannot go in"
+        : null;
 }

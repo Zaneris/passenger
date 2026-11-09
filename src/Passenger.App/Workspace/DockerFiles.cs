@@ -50,7 +50,7 @@ public static class DockerFiles
             }
         }
         bool web = AspNetCore(restores, all);
-        return new DockerProject(project.Path, bare, assembly, Newest(project.TargetFrameworks), web, web ? Run.LaunchProfile.HttpPorts(Run.LaunchProfile.Read(project)) : [], restores);
+        return new DockerProject(project.Path, bare, assembly, DotnetImages.Newest(project.TargetFrameworks), web, web ? Run.LaunchProfile.HttpPorts(Run.LaunchProfile.Read(project)) : [], restores);
     }
 
     private const string AspNetCoreApp = "Microsoft.AspNetCore.App";
@@ -90,17 +90,6 @@ public static class DockerFiles
         }
     }
 
-    /// <summary>The newest .NET a project targets (net10.0 of net8.0;net10.0), its platform left off; null for none.</summary>
-    private static string? Newest(IReadOnlyList<string> frameworks) =>
-        frameworks.Select(f => f.Split('-')[0])
-            .Where(f => f.StartsWith("net", StringComparison.OrdinalIgnoreCase) && Version.TryParse(f[3..], out Version? v) && v.Major >= 5)
-            .OrderByDescending(f => Version.Parse(f[3..]))
-            .FirstOrDefault();
-
-    /// <summary>The image tag of a target framework: 10.0 of net10.0; null for one that is not .NET 5 or later.</summary>
-    private static string? Tag(string? framework) => framework is { Length: > 3 } && Version.TryParse(framework[3..], out Version? version)
-        ? $"{version.Major}.{Math.Max(0, version.Minor)}" : null;
-
     /// <summary>A project's Dockerfile, its build's context the folder given (the solution's): the runtime stage it runs in
     /// (aspnet for an ASP.NET Core app, else runtime, at its framework's version, as its own unprivileged user, listening
     /// on its launch profiles' HTTP ports), the SDK stage that restores from the project files alone first (so a change of
@@ -108,8 +97,7 @@ public static class DockerFiles
     /// mounted where it stands for the commands that restore (<see cref="NuGetSecrets"/>), never copied into a layer.</summary>
     public static string Dockerfile(DockerProject project, string context)
     {
-        string tag = Tag(project.Framework) ?? "10.0";
-        int major = int.Parse(tag.Split('.')[0], System.Globalization.CultureInfo.InvariantCulture);
+        string tag = DotnetImages.Tag(project.Framework);
         string relative = Relative(context, project.Path);
         string folder = Relative(context, project.Folder);
         string file = System.IO.Path.GetFileName(project.Path);
@@ -123,8 +111,8 @@ public static class DockerFiles
             text.Append(" --secret id=").Append(id).Append(",src=").Append(Relative(context, config));
         }
         text.Append(" .\n");
-        text.Append("FROM mcr.microsoft.com/dotnet/").Append(project.Web ? "aspnet" : "runtime").Append(':').Append(tag).Append(" AS base\n");
-        if (major >= 8)
+        text.Append("FROM ").Append(DotnetImages.Runtime(project.Web, tag)).Append(" AS base\n");
+        if (DotnetImages.HasAppUser(tag))
         {
             // .NET 8's images have an unprivileged user, which the app runs as.
             text.Append("USER $APP_UID\n");
@@ -142,7 +130,7 @@ public static class DockerFiles
         {
             text.Append("EXPOSE 8080\n");
         }
-        text.Append("\nFROM mcr.microsoft.com/dotnet/sdk:").Append(tag).Append(" AS build\n");
+        text.Append("\nFROM ").Append(DotnetImages.Sdk(tag)).Append(" AS build\n");
         text.Append("ARG BUILD_CONFIGURATION=Release\n");
         text.Append("WORKDIR /src\n");
         foreach (string copied in shared.Where(f => !IsNuGetConfig(f)).Concat(project.Restores))
