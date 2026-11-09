@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.LanguageServer;
 using Microsoft.CodeAnalysis.Shared.Extensions;
 using Microsoft.CodeAnalysis.Text;
 using Roslyn.LanguageServer.Protocol;
+using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -35,8 +36,8 @@ public sealed class WrittenPlaces : IExtensionWorkspaceMessageHandler<WrittenSpa
         if (await ProtocolConversions.TextSpanToLocationAsync(document, generated, isStale: false, cancel).ConfigureAwait(false) is { } mapped
             && mapped.DocumentUri.ParsedDocumentUri?.Scheme != SourceGeneratedDocumentUri.Scheme)
         {
-            return new UriSpan(mapped.DocumentUri.UriString, new Place(mapped.Range.Start.Line, mapped.Range.Start.Character),
-                new Place(mapped.Range.End.Line, mapped.Range.End.Character));
+            LinePositionSpan lines = ProtocolConversions.RangeToLinePositionSpan(mapped.Range);
+            return new UriSpan(mapped.DocumentUri.UriString, PlaceOf(lines.Start), PlaceOf(lines.End));
         }
         if (!document.IsRazorSourceGeneratedDocument() || await document.GetSyntaxTreeAsync(cancel).ConfigureAwait(false) is not { } tree
             || tree.GetLineMappings(cancel).Select(m => m.MappedSpan).FirstOrDefault(m => m.HasMappedPath && m.Path.Length > 0) is not { Path: { } path })

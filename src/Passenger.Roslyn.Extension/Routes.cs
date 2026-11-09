@@ -451,8 +451,7 @@ internal static partial class RouteReading
             {
                 return (null, null);
             }
-            LinePosition start = location.GetLineSpan().StartLinePosition;
-            return (path, new Place(start.Line, start.Character));
+            return (path, PlaceOf(location.GetLineSpan().StartLinePosition));
         }
 
         /// <summary>Where each of a handler's parameters comes from, as ASP.NET Core binds it, and the body parameter's type.

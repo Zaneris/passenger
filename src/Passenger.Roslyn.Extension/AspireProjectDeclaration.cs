@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Extensions;
+using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -52,7 +53,7 @@ public sealed class AspireProjectDeclaration : IExtensionDocumentMessageHandler<
                     continue;
                 }
                 IParameterSymbol? parameter = Parameter(method, invocation, argument);
-                if (parameter?.Name == "projectPath" && model.GetConstantValue(argument.Expression, cancellationToken) is { HasValue: true, Value: string path })
+                if (parameter?.Name == "projectPath" && Constant(argument.Expression, model, cancellationToken) is { } path)
                 {
                     return new AspireProjectTarget(Path.IsPathFullyQualified(path) ? path
                         : await AspireSource.ProjectPathAsync(document, invocation, model, cancellationToken).ConfigureAwait(false));
@@ -99,7 +100,7 @@ public sealed class AspireProjectDeclaration : IExtensionDocumentMessageHandler<
                 expression = returned.Expression;
             }
             if (expression is not null
-                && compilation.GetSemanticModel(expression.SyntaxTree).GetConstantValue(expression, cancel) is { HasValue: true, Value: string path }
+                && Constant(expression, compilation.GetSemanticModel(expression.SyntaxTree), cancel) is { } path
                 && Path.IsPathFullyQualified(path))
             {
                 return path;

@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Core;
 using Passenger.Languages.CSharp;
+using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -678,8 +679,7 @@ internal static class Signatures
             delta += length - change.Span.Length;
         }
         SourceText text = await was.GetTextAsync(cancel).ConfigureAwait(false);
-        LinePosition place = text.Lines.GetLinePosition(Math.Clamp(offset - delta, 0, text.Length));
-        return new UseLeft(was.FilePath ?? was.Name, new Place(place.Line, place.Character), why);
+        return new UseLeft(was.FilePath ?? was.Name, PlaceAt(text, Math.Clamp(offset - delta, 0, text.Length)), why);
     }
 
     /// <summary>A declaration's parameters as asked: each kept one as it is in this declaration, given the type, modifier

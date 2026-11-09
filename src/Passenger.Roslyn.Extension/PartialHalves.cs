@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.LanguageServer;
 using Microsoft.CodeAnalysis.Shared.Extensions;
 using Microsoft.CodeAnalysis.Text;
 using Roslyn.LanguageServer.Protocol;
+using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -40,7 +41,7 @@ public sealed class PartialHalf : IExtensionWorkspaceMessageHandler<HalfAsked, H
     internal static async Task<UriSpan> SpanAsync(Document document, TextSpan span, CancellationToken cancel)
     {
         LinePositionSpan lines = (await document.GetValueTextAsync(cancel).ConfigureAwait(false)).Lines.GetLinePositionSpan(span);
-        return new UriSpan(document.GetURI().UriString, new Place(lines.Start.Line, lines.Start.Character), new Place(lines.End.Line, lines.End.Character));
+        return new UriSpan(document.GetURI().UriString, PlaceOf(lines.Start), PlaceOf(lines.End));
     }
 }
 

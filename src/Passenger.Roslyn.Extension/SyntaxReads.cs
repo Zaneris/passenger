@@ -6,15 +6,28 @@ using Passenger.Core;
 namespace Passenger.Roslyn.Extension;
 
 /// <summary>What the extension's readers of code (routes, configuration, localization, Aspire's code help, Godot's) read of a
-/// call and its text the same way: a place in a document, whether two paths name one file, a string constant, a string
-/// written as its characters, the name a call is called by, its receiver and the argument it gives a parameter.</summary>
+/// call and its text the same way: a place in a document or the Razor file it is made of, whether two paths name one file,
+/// a string constant, a string written as its characters, the name a call is called by, its receiver and the argument it
+/// gives a parameter.</summary>
 internal static class SyntaxReads
 {
     /// <summary>An offset in a document as the protocol's line and character.</summary>
-    public static Place PlaceAt(SourceText text, int offset)
+    public static Place PlaceAt(SourceText text, int offset) => PlaceOf(text.Lines.GetLinePosition(offset));
+
+    /// <summary>A line and character as the protocol's place.</summary>
+    public static Place PlaceOf(LinePosition position) => new(position.Line, position.Character);
+
+    /// <summary>Where a span of a document is in the file asked about: for a Razor file (<paramref name="razor"/>), whose
+    /// document is the C# its generator makes, the place in the .razor the code's line directives map it to, null where
+    /// they map it to another file or none; else its place in the document's own text.</summary>
+    public static (Place At, Place End)? PlacesIn(SyntaxTree tree, SourceText text, TextSpan span, string path, bool razor, CancellationToken cancel)
     {
-        LinePosition position = text.Lines.GetLinePosition(offset);
-        return new Place(position.Line, position.Character);
+        if (!razor)
+        {
+            return (PlaceAt(text, span.Start), PlaceAt(text, span.End));
+        }
+        FileLinePositionSpan mapped = tree.GetMappedLineSpan(span, cancel);
+        return mapped.HasMappedPath && SamePath(mapped.Path, path) ? (PlaceOf(mapped.StartLinePosition), PlaceOf(mapped.EndLinePosition)) : null;
     }
 
     /// <summary>Whether two paths name one file, compared as <see cref="PathNames"/> compares them, each made canonical when

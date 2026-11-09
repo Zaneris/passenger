@@ -181,8 +181,8 @@ internal static class ConfigurationSource
                 FileLinePositionSpan? span = declared?.GetLineSpan();
                 yield return new ConfigurationKey(project, key, ConfigurationKinds.Option, shaped.Shape.Type, property.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
                     HasValue(property, compilation), span is { } at ? at.Path : null,
-                    span is { } start ? new Place(start.StartLinePosition.Line, start.StartLinePosition.Character) : null,
-                    span is { } end ? new Place(end.EndLinePosition.Line, end.EndLinePosition.Character) : null,
+                    span is { } start ? PlaceOf(start.StartLinePosition) : null,
+                    span is { } end ? PlaceOf(end.EndLinePosition) : null,
                     shaped.Shape.Values, property.ContainingType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) + "." + property.Name);
                 ITypeSymbol? inner = shaped.Shape.Type switch
                 {

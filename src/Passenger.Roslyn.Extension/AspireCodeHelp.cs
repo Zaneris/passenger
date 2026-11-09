@@ -103,7 +103,7 @@ internal static class AspireSource
                 foreach (ArgumentSyntax argument in added.ArgumentList.Arguments)
                 {
                     string? parameter = AspireProjectDeclaration.Parameter(method, added, argument)?.Name;
-                    if (model.GetConstantValue(argument.Expression, cancel) is not { HasValue: true, Value: string value })
+                    if (Constant(argument.Expression, model, cancel) is not { } value)
                     {
                         continue;
                     }
@@ -356,7 +356,7 @@ internal static class AspireSource
             }
             ArgumentSyntax? nameArgument = add.ArgumentList.Arguments.FirstOrDefault(a => AspireProjectDeclaration.Parameter(method, add, a)
                 ?.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == "Aspire.Hosting.ApplicationModel.ResourceNameAttribute") == true);
-            if (nameArgument is null || model.GetConstantValue(nameArgument.Expression, cancel) is not { HasValue: true, Value: string name })
+            if (nameArgument is null || Constant(nameArgument.Expression, model, cancel) is not { } name)
             {
                 return null;
             }
@@ -370,7 +370,7 @@ internal static class AspireSource
                 else
                 {
                     ArgumentSyntax? pathArgument = add.ArgumentList.Arguments.FirstOrDefault(a => AspireProjectDeclaration.Parameter(method, add, a)?.Name == "projectPath");
-                    if (pathArgument is not null && model.GetConstantValue(pathArgument.Expression, cancel) is { HasValue: true, Value: string path })
+                    if (pathArgument is not null && Constant(pathArgument.Expression, model, cancel) is { } path)
                     {
                         projectPath = ResolvePath(path, AppHostDirectory(model.Compilation));
                     }
@@ -397,7 +397,7 @@ internal static class AspireSource
                 ?.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == "Aspire.Hosting.ApplicationModel.ResourceNameAttribute") == true);
             if (method.Name.StartsWith("Add", StringComparison.Ordinal) && resourceName is not null)
             {
-                if (model.GetConstantValue(resourceName.Expression, cancel) is not { HasValue: true, Value: string name }
+                if (Constant(resourceName.Expression, model, cancel) is not { } name
                     || !declaredNames.Add(name) || !resources.Any(r => r.Declaration.Span.Contains(call.Span)))
                 {
                     return null;
@@ -507,7 +507,7 @@ internal static class AspireSource
                 _ => null,
             };
             if (arguments?.Arguments.FirstOrDefault()?.Expression is not { } uriExpression
-                || model.GetConstantValue(uriExpression, cancel) is not { HasValue: true, Value: string uri })
+                || Constant(uriExpression, model, cancel) is not { } uri)
             {
                 continue;
             }
@@ -536,7 +536,7 @@ internal static class AspireSource
                 continue;
             }
             ArgumentSyntax? argument = call.ArgumentList.Arguments.FirstOrDefault(a => NamesConnection(method, call, a));
-            if (argument is not null && model.GetConstantValue(argument.Expression, cancel) is { HasValue: true, Value: string name })
+            if (argument is not null && Constant(argument.Expression, model, cancel) is { } name)
             {
                 named.Add(argument.Expression);
                 yield return new Use(argument.Expression, name, true);

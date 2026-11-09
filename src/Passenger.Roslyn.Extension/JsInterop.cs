@@ -82,22 +82,7 @@ internal static class JsInteropSource
 
             void Add(ExpressionSyntax where, string identifier, string? module)
             {
-                Place at;
-                Place end;
-                if (razor)
-                {
-                    FileLinePositionSpan mapped = root.SyntaxTree.GetMappedLineSpan(where.Span, cancel);
-                    if (!mapped.HasMappedPath || !SamePath(mapped.Path, path))
-                    {
-                        return;
-                    }
-                    (at, end) = (new Place(mapped.StartLinePosition.Line, mapped.StartLinePosition.Character), new Place(mapped.EndLinePosition.Line, mapped.EndLinePosition.Character));
-                }
-                else
-                {
-                    (at, end) = (PlaceAt(text, where.Span.Start), PlaceAt(text, where.Span.End));
-                }
-                if (seen.Add((at.Line, at.Character)))
+                if (PlacesIn(root.SyntaxTree, text, where.Span, path, razor, cancel) is ({ } at, { } end) && seen.Add((at.Line, at.Character)))
                 {
                     calls.Add(new JsInteropCall(identifier, at, end, module));
                 }

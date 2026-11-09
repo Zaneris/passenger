@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -56,7 +57,7 @@ internal static class Changes
     private static Edit EditOf(SourceText text, TextChange change)
     {
         LinePositionSpan span = text.Lines.GetLinePositionSpan(change.Span);
-        return new Edit(new Place(span.Start.Line, span.Start.Character), new Place(span.End.Line, span.End.Character), change.NewText ?? string.Empty);
+        return new Edit(PlaceOf(span.Start), PlaceOf(span.End), change.NewText ?? string.Empty);
     }
 
     /// <summary>The type declared at an offset of a file: the one the caret names, else the innermost one around it.</summary>

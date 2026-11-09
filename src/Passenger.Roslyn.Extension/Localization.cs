@@ -56,22 +56,7 @@ internal static class LocalizationSource
             SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
             foreach ((string key, TextSpan span, bool exact, Resource resource) in Read(root, model, classes, cancel))
             {
-                Place? at;
-                Place? end;
-                if (razor)
-                {
-                    FileLinePositionSpan mapped = root.SyntaxTree.GetMappedLineSpan(span, cancel);
-                    if (!mapped.HasMappedPath || !SamePath(mapped.Path, path))
-                    {
-                        continue;
-                    }
-                    (at, end) = (new Place(mapped.StartLinePosition.Line, mapped.StartLinePosition.Character), new Place(mapped.EndLinePosition.Line, mapped.EndLinePosition.Character));
-                }
-                else
-                {
-                    (at, end) = (PlaceAt(text, span.Start), PlaceAt(text, span.End));
-                }
-                if (!seen.Add((key, at.Line, at.Character)))
+                if (PlacesIn(root.SyntaxTree, text, span, path, razor, cancel) is not ({ } at, { } end) || !seen.Add((key, at.Line, at.Character)))
                 {
                     continue;
                 }

@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.LanguageServer;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Core;
+using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -68,7 +69,7 @@ internal static class SymbolNames
                 }
                 LinePositionSpan name = (await generated.GetTextAsync(cancel).ConfigureAwait(false)).Lines.GetLinePositionSpan(declared.Identifier.Span);
                 return new ComponentFound(Named(solution, symbol), new UriSpan(SourceGeneratedDocumentUri.Create(generated.Identity).UriString,
-                    new Place(name.Start.Line, name.Start.Character), new Place(name.End.Line, name.End.Character)));
+                    PlaceOf(name.Start), PlaceOf(name.End)));
             }
         }
         return new ComponentFound(null, null);
@@ -156,12 +157,11 @@ internal static class SymbolNames
             FileLinePositionSpan mapped = location.GetMappedLineSpan();
             if (mapped.HasMappedPath && mapped.Path.Length > 0)
             {
-                return (mapped.Path, new Place(mapped.StartLinePosition.Line, mapped.StartLinePosition.Character));
+                return (mapped.Path, PlaceOf(mapped.StartLinePosition));
             }
             if (solution.GetDocument(location.SourceTree!) is { FilePath: { Length: > 0 } file } document && document is not SourceGeneratedDocument)
             {
-                LinePosition start = location.GetLineSpan().StartLinePosition;
-                return (file, new Place(start.Line, start.Character));
+                return (file, PlaceOf(location.GetLineSpan().StartLinePosition));
             }
         }
         foreach (Location location in sources)
