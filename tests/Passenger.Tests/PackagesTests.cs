@@ -91,7 +91,7 @@ public sealed class PackagesTests : IDisposable
     }
 
     /// <summary>The Install button on a project's line among the chosen package's projects.</summary>
-    private static Button? InstallButton(NuGetView nuget, string name) => nuget.GetLogicalDescendants().OfType<StackPanel>()
+    private static Button? InstallButton(NuGetView nuget, string name) => nuget.GetLogicalDescendants().OfType<Panel>()
         .Where(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == name)
         .SelectMany(line => line.Children.OfType<Button>())
         .FirstOrDefault(button => (string?)button.Content == "Install");
@@ -234,7 +234,7 @@ public sealed class PackagesTests : IDisposable
     }
 
     /// <summary>The version a project's line shows for the chosen package: the one installed there, or nothing.</summary>
-    private static string? ShownVersion(NuGetView nuget, string name) => nuget.GetLogicalDescendants().OfType<StackPanel>()
+    private static string? ShownVersion(NuGetView nuget, string name) => nuget.GetLogicalDescendants().OfType<Panel>()
         .Where(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == name)
         .Select(line => line.Children.OfType<TextBlock>().Skip(1).FirstOrDefault()?.Text)
         .FirstOrDefault();
