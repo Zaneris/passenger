@@ -129,12 +129,15 @@ public sealed class GDScriptRefactorCommandsTests
             Ui.Click(renaming.NextButton, settle: false);
             Ui.PumpUntil(() => !renaming.IsVisible || renaming.Problem.Length > 0, "Change Signature to be made", TimeSpan.FromSeconds(30));
             Assert.False(renaming.IsVisible, $"Change Signature stayed open: {renaming.Problem}");
-            Ui.PumpUntil(() => File.ReadAllText(Path.Combine(folder, "main.tscn")).Contains("method=\"strike\"", StringComparison.Ordinal), "the scene's connection renamed",
-                TimeSpan.FromSeconds(30));
+            string scene = Path.Combine(folder, "main.tscn");
+            string enemyScript = Path.Combine(folder, "enemy.gd");
+            const string EnemyRenamed = "extends Node\n\n\nfunc attack(player: Player):\n\tplayer.strike(\"enemy\", 5)\n\tplayer.call(\"strike\", \"far\")\n";
+            // Read as the IDE reads: Windows refuses a read sharing no writes or deletion while a closed file's change lands on it.
+            bool struck = Ui.Pumped(() => Ui.Shared(scene).Contains("method=\"strike\"", StringComparison.Ordinal) && Ui.Shared(enemyScript) == EnemyRenamed, TimeSpan.FromSeconds(30));
+            Assert.True(struck, $"Change Signature did not rename hit in the scene's connection and enemy.gd's calls ({window.Status}):\n{Ui.Shared(enemyScript)}\n{Ui.Shared(scene)}");
             Assert.Contains("func strike(target, amount = 1):", Text(), StringComparison.Ordinal);
             Assert.Contains("\tstrike(\"self\")\n", Text(), StringComparison.Ordinal);
-            string enemy = File.ReadAllText(Path.Combine(folder, "enemy.gd"));
-            Assert.Equal("extends Node\n\n\nfunc attack(player: Player):\n\tplayer.strike(\"enemy\", 5)\n\tplayer.call(\"strike\", \"far\")\n", enemy);
+            string enemy = Ui.Shared(enemyScript);
             Clean(Text());
             Clean(enemy);
             Ui.Run(window, AppActions.SaveAll, settle: false);
@@ -148,11 +151,10 @@ public sealed class GDScriptRefactorCommandsTests
             };
             editor.Focus();
             Ui.Run(window, EditorActions.Undo, settle: false);
-            bool undone = Ui.Pumped(() => Text() == Player && File.ReadAllText(Path.Combine(folder, "enemy.gd")) == Enemy && File.ReadAllText(Path.Combine(folder, "main.tscn")) == Scene,
-                TimeSpan.FromSeconds(30));
+            bool undone = Ui.Pumped(() => Text() == Player && Ui.Shared(enemyScript) == Enemy && Ui.Shared(scene) == Scene, TimeSpan.FromSeconds(30));
             Assert.Contains("Change Signature", Assert.Single(asked), StringComparison.Ordinal);
-            Assert.True(undone, $"One Undo did not take the rename back from both scripts and the scene ({window.Status}):\n{Text()}\n{File.ReadAllText(Path.Combine(folder, "enemy.gd"))}"
-                + File.ReadAllText(Path.Combine(folder, "main.tscn")));
+            Assert.True(undone, $"One Undo did not take the rename back from both scripts and the scene ({window.Status}):\n{Text()}\n{Ui.Shared(enemyScript)}"
+                + Ui.Shared(scene));
         }
         finally
         {
