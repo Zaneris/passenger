@@ -204,6 +204,26 @@ public sealed class MarkdownPreviewTests
         window.Close();
     }
 
+    /// <summary>A '\r' standing alone in a Markdown file with '\n' line ends (one pasted in from an old Mac file) ends a line
+    /// for the preview and not for the document: the headings after it are still in Structure, nested by level, beside the
+    /// preview, where reading the outline failed on them.</summary>
+    [AvaloniaFact]
+    public void Headings_after_a_carriage_return_standing_alone_are_in_Structure()
+    {
+        string folder = TestFolders.Create("markdown-return-");
+        File.WriteAllText(Path.Combine(folder, "NOTES.md"), "# One\rwritten on an old Mac\n\n## Two\n\nWords.\n\n# Three\n");
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        Assert.Null(window.OpenFile("NOTES.md"));
+        Ui.Settle();
+        Ui.Run(window, AppActions.ShowStructure);
+        StructureView structure = window.StructureView;
+        Ui.WaitFor(() => structure.Rows.Any(r => r.Name == "Three"),
+            () => $"the headings in Structure: {string.Join(", ", structure.Rows.Select(r => r.Name))} ({structure.Said})");
+        Assert.Equal([("One", 0), ("Two", 1), ("Three", 0)], structure.Rows.Select(r => (r.Name, r.Depth)));
+        Assert.True(Shown(window.EditorArea.ActiveGroup).GetLogicalDescendants().OfType<MarkdownText>().Any(t => t.Shown == "Three"), "The preview does not show the last heading");
+        window.Close();
+    }
+
     /// <summary>A page in a folder of its own links to the guide and draws a picture from the open folder's root, a slash
     /// first, as GitHub resolves them: on macOS and Linux too, where such a target also reads as a file's address.</summary>
     /// <summary>What is written deeper than a page reads is its words, and however deep a file goes the window stays.</summary>

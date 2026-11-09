@@ -107,6 +107,18 @@ internal static partial class Markdown
         return WrittenSnapshot.HasLoneReturn(text) ? ParsePlaced(text.ToString(), before) : ParsePlaced(new WrittenSnapshot(text), before);
     }
 
+    /// <summary>The last read of each document's text, which the preview and the outline both read again from.</summary>
+    private static readonly ConditionalWeakTable<TextDocument, Parsed> LastReads = new();
+
+    /// <summary>The blocks of a document's text as of a snapshot, read again from the last read of it, the preview's or the
+    /// outline's, where it changed.</summary>
+    public static Parsed ReadOf(TextDocument document, TextSnapshot text)
+    {
+        Parsed read = ParsePlaced(text, LastReads.TryGetValue(document, out Parsed? before) ? before : null);
+        LastReads.AddOrUpdate(document, read);
+        return read;
+    }
+
     /// <summary>The blocks of a text's top level, as <see cref="ParsePlaced(string)"/> reads them, those of the read of the
     /// text before an edit (<paramref name="before"/>) taken where the edit cannot have changed them: each block whose
     /// reading looked only at lines before the first the edit changed, and the blocks from one beginning where a block began

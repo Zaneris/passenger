@@ -13,17 +13,18 @@ internal sealed class MarkdownOutline(TextDocument document) : FileOutline
     public override Task<Outline<SymbolRow>> ReadAsync(string path, Outline<SymbolRow>? before, CancellationToken cancel)
     {
         TextSnapshot text = document.Snapshot;
-        return BackgroundWork.Run(() => Of(text, path, before, cancel), cancel);
+        return BackgroundWork.Run(() => Of(text, path, before, cancel, document), cancel);
     }
 
-    /// <summary>The outline of a Markdown text, its rows leading to <paramref name="path"/>; a heading with no words is left out.</summary>
-    public static Outline<SymbolRow> Of(TextSnapshot text, string path, Outline<SymbolRow>? before = null, CancellationToken cancel = default)
+    /// <summary>The outline of a Markdown text, its rows leading to <paramref name="path"/>; a heading with no words is left out.
+    /// A document's text is read again from its last read, its preview's or its outline's, where it changed.</summary>
+    public static Outline<SymbolRow> Of(TextSnapshot text, string path, Outline<SymbolRow>? before = null, CancellationToken cancel = default, TextDocument? of = null)
     {
         List<Part> roots = [];
         Stack<Part> open = [];
-        foreach (Markdown.Placed placed in Markdown.ParsePlaced(text.ToString()))
+        foreach (Markdown.Placed placed in (of is null ? Markdown.ParsePlaced(text, null) : Markdown.ReadOf(of, text)).Placed)
         {
-            if (placed.Block is not Markdown.Heading heading || Markdown.Plain(Markdown.Inlines(heading.Text)).Trim() is not { Length: > 0 } words)
+            if (placed.Block is not Markdown.Heading heading || Words.GetValue(heading, static read => Markdown.Plain(Markdown.Inlines(read.Text)).Trim()) is not { Length: > 0 } words)
             {
                 continue;
             }
@@ -31,7 +32,8 @@ internal sealed class MarkdownOutline(TextDocument document) : FileOutline
             {
                 open.Pop().Last = placed.Line - 1;
             }
-            string line = text.GetLineText(placed.Line);
+            // A heading is its one line, as the preview read it, which a '\r' of its own may end before the document's does.
+            string line = placed.Source;
             int column = line.Length - line.TrimStart(' ').TrimStart('#').TrimStart(' ').Length;
             Part part = new(heading.Level, new SymbolRow(words, null, null, SymbolRow.HeadingKind, path, new TextPosition(placed.Line, column)), placed.Line);
             (open.TryPeek(out Part? parent) ? parent.Children : roots).Add(part);
@@ -43,6 +45,9 @@ internal sealed class MarkdownOutline(TextDocument document) : FileOutline
         }
         return Outline<SymbolRow>.Of<Part>(roots, part => part.Children, (part, depth) => (part.Row with { Depth = depth }, part.First, part.Last), before, cancel);
     }
+
+    /// <summary>Each heading's words as a person reads them, by the heading read, which a read of its text again keeps.</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Markdown.Heading, string> Words = new();
 
     /// <summary>A heading's row and its level, with the lines (from zero) it spans and the headings under it.</summary>
     private sealed class Part(int level, SymbolRow row, int first)

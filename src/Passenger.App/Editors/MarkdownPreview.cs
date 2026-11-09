@@ -223,23 +223,22 @@ public sealed class MarkdownPreview : ScrollViewer
         TextSnapshot text = shown.Text.Snapshot;
         int version = shown.Text.Version;
         IReadOnlyList<MarkdownBlocks.Entry> drawn = into.Entries;
-        Markdown.Parsed? before = into.Parsed;
-        (MarkdownBlocks.Entry[] read, Markdown.Parsed parsed) = await BackgroundWork.Run(() => Read(text, drawn, before));
+        TextDocument from = shown.Text;
+        (MarkdownBlocks.Entry[] read, Markdown.Parsed parsed) = await BackgroundWork.Run(() => Read(from, text, drawn));
         if (asked != generation || document != shown || page != into)
         {
             return;
         }
-        into.Parsed = parsed;
         LinesRead = parsed.Read;
         into.Take(read, shown.Text, version);
         FollowLaidOut();
     }
 
-    /// <summary>A text's blocks, read again only where it changed since <paramref name="before"/>, each taking the block drawn
-    /// it is (by its lines as written, in order), and each heading's anchor.</summary>
-    private static (MarkdownBlocks.Entry[] Read, Markdown.Parsed Parsed) Read(TextSnapshot text, IReadOnlyList<MarkdownBlocks.Entry> drawn, Markdown.Parsed? before)
+    /// <summary>A text's blocks, read again only where it changed since the document's last read (<see cref="Markdown.ReadOf"/>),
+    /// each taking the block drawn it is (by its lines as written, in order), and each heading's anchor.</summary>
+    private static (MarkdownBlocks.Entry[] Read, Markdown.Parsed Parsed) Read(TextDocument document, TextSnapshot text, IReadOnlyList<MarkdownBlocks.Entry> drawn)
     {
-        Markdown.Parsed parsed = Markdown.ParsePlaced(text, before);
+        Markdown.Parsed parsed = Markdown.ReadOf(document, text);
         IReadOnlyList<Markdown.Placed> placed = parsed.Placed;
         Dictionary<string, Queue<MarkdownBlocks.Entry>> byLines = new(StringComparer.Ordinal);
         foreach (MarkdownBlocks.Entry entry in drawn)
