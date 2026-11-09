@@ -26,6 +26,7 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
     public IReadOnlyList<string> History { get; private set; } = [];
     public string Said { get; private set; } = "Refresh to find this folder's database connections. Nothing connects until you choose Connect.";
     public bool Busy => running is not null;
+    public bool Discovered { get; private set; }
     public bool Connected => Source is not null && ReferenceEquals(Source, connected);
 
     public void Keep(StateDocument<DatabaseHistory> history)
@@ -51,6 +52,7 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
         kept = next.State?.Database;
         History = kept?.Value.Queries ?? [];
         Sources = [];
+        Discovered = false;
         Source = null;
         Forget();
         Sql = "SELECT ";
@@ -102,6 +104,7 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
         Sources = [];
         Source = null;
         Sources = await CurrentAsync(DatabaseDiscovery.ReadAsync(session, cancel), cancel);
+        Discovered = true;
         Source = Sources.FirstOrDefault();
         Forget();
         Said = Sources.Count == 0 ? "No supported connection strings found in this folder's runs." : "Connections found. Choose one and Connect.";
@@ -202,6 +205,7 @@ public sealed class DatabaseController(ActionWork work, Func<string, string, Tas
         catch (Exception error) when (error is DbException or IOException or UnauthorizedAccessException or JsonException or ArgumentException or InvalidOperationException or FormatException or OverflowException or TimeoutException)
         {
             Said = ContainerSecrets.InSaid(error.Message, known: Source is { } source ? [source.ConnectionString] : []);
+            IdeErrors.Write($"Database operation failed ({stage}): {Said}");
             working.Tell(false, Said);
         }
         finally

@@ -12,6 +12,29 @@ namespace Passenger.Tests;
 public sealed class DatabaseTests
 {
     [AvaloniaFact]
+    public void A_folder_without_connections_explains_why_connect_and_browse_are_disabled()
+    {
+        string folder = TestFolders.Create("database-empty");
+        TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Database);
+            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+            Assert.Empty(window.Database.Sources);
+            Assert.False(View<Button>(window, AppActions.DatabaseConnect).IsEnabled);
+            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
+            Assert.False(View<Button>(window, AppActions.DatabaseQuery).IsEnabled);
+            Assert.Contains("No supported connection strings", View<TextBlock>(window, "DatabaseStatus").Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void SQLite_is_browsed_paged_queried_and_edited_only_after_confirmation()
     {
         string folder = TestFolders.Create("database");
@@ -34,13 +57,18 @@ public sealed class DatabaseTests
         try
         {
             window.ShowToolWindow(ToolWindowIds.Database);
-            Run(window, AppActions.DatabaseRefresh);
+            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+            Assert.Equal(Passenger.App.Docking.ToolAnchor.RightBottom, window.DockHost[ToolWindowIds.Database].Anchor);
+            Assert.NotEqual(window.DockHost[ToolWindowIds.Migrations].Icon, window.DockHost[ToolWindowIds.Database].Icon);
             Assert.Single(window.Database.Sources);
             Assert.False(window.Database.Connected);
             Assert.Empty(window.Database.Tables);
+            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
             Run(window, AppActions.DatabaseConnect);
+            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
             ListBox tables = View<ListBox>(window, "DatabaseTables");
             tables.SelectedItem = window.Database.Tables.Single();
+            Assert.True(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
             Run(window, AppActions.DatabaseBrowse);
             Assert.Equal(100, window.Database.Rows!.RowCount);
             Assert.True(window.Database.Rows.More);
@@ -137,9 +165,13 @@ public sealed class DatabaseTests
             Assert.Equal([DatabaseKind.Sqlite, DatabaseKind.Postgres, DatabaseKind.SqlServer, DatabaseKind.MySql], window.Database.Sources.Select(s => s.Kind));
             Assert.False(window.Database.Connected);
             Assert.False(File.Exists(Path.Combine(folder, "missing.db")));
+            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
             Run(window, AppActions.DatabaseConnect);
             Assert.False(window.Database.Connected);
             Assert.Empty(window.Database.Tables);
+            Assert.Equal(window.Database.Said, View<TextBlock>(window, "DatabaseStatus").Text);
+            Assert.Contains("Database operation failed", LogsTests.WholeIdeLog(), StringComparison.Ordinal);
+            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
             Assert.False(File.Exists(Path.Combine(folder, "missing.db")));
         }
         finally
