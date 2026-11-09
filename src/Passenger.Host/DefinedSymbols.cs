@@ -42,7 +42,7 @@ internal static class DefinedSymbols
     {
         List<string> symbols = [];
         string identifier = project.GetPropertyValue("TargetFrameworkIdentifier");
-        string written = project.GetPropertyValue("TargetFrameworkVersion").TrimStart('v', 'V');
+        string written = project.GetPropertyValue(MSBuildNames.TargetFrameworkVersion).TrimStart('v', 'V');
         if (identifier.Length == 0 || identifier == ".NETPortable" || Version(written) is not { } version)
         {
             return symbols;

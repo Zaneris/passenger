@@ -183,7 +183,7 @@ public sealed class ProjectLoadTests : IDisposable
         window.Perform(AppActions.ShowNuGet);
         Ui.Landed(() => nuget.Selected is { IsVulnerable: true } && nuget.ChosenVersion == "1.0.1", "the vulnerable package and its fix offered");
 
-        Button update = Descendants<StackPanel>(nuget).Where(l => l.Children.FirstOrDefault() is TextBlock { Text: "Web" })
+        Button update = Descendants<Panel>(nuget).Where(l => l.Children.FirstOrDefault() is TextBlock { Text: "Web" })
             .SelectMany(l => l.Children.OfType<Button>()).FirstOrDefault(b => (string?)b.Content == "Update")
             ?? throw new Xunit.Sdk.XunitException("The NuGet window offers no Update on Web's line");
         Ui.Click(update, settle: false);

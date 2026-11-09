@@ -165,7 +165,7 @@ public sealed class PackageSourcesTests : NuGetFeedsFolder
         Search(nuget, "private");
         Assert.True(nuget.Selected?.Id == "Passenger.Private", $"The search chose {nuget.Selected?.Id}, not the private package");
 
-        Button install = Descendants<StackPanel>(nuget).Where(l => l.Children.FirstOrDefault() is TextBlock { Text: "Lib" })
+        Button install = Descendants<Panel>(nuget).Where(l => l.Children.FirstOrDefault() is TextBlock { Text: "Lib" })
             .SelectMany(l => l.Children.OfType<Button>()).FirstOrDefault(b => (string?)b.Content == "Install")
             ?? throw new Xunit.Sdk.XunitException("The NuGet window offers no Install on Lib's line");
         Ui.Click(install, settle: false);

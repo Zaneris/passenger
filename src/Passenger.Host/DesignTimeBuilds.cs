@@ -304,7 +304,7 @@ internal static class DesignTimeBuilds
             DefaultNamespace = Property(CarriedProperties.RootNamespace) ?? string.Empty,
             TargetFramework = Property(MSBuildNames.TargetFramework),
             TargetFrameworkIdentifier = Property("TargetFrameworkIdentifier"),
-            TargetFrameworkVersion = Property("TargetFrameworkVersion"),
+            TargetFrameworkVersion = Property(MSBuildNames.TargetFrameworkVersion),
             ProjectAssetsFilePath = Property(CarriedProperties.ProjectAssetsFile),
             CommandLineArgs = arguments,
             Documents = [.. instance.GetItems("Compile").Where(i => !Path.GetFileName(i.EvaluatedInclude).StartsWith("TemporaryGeneratedFile_", StringComparison.Ordinal)).Select(i => Document(i, directory))],
