@@ -23,9 +23,12 @@ public sealed class AspireFiles(ProjectSession session)
     /// <summary>The most single-file AppHosts a folder offers, so a folder of generated ones cannot flood the configurations.</summary>
     private const int AppHostLimit = 200;
 
-    /// <summary>Each C# file a walk listed or the watcher named, and whether it is a single-file AppHost: touched only by the
-    /// reads, which run one at a time on a worker.</summary>
-    private readonly Dictionary<string, bool> read = new(PathNames.Comparer);
+    /// <summary>Each C# file read, by its path from the folder as the index holds it, the index's own string, so the record
+    /// costs no path of its own: touched only by the reads, which run one at a time on a worker.</summary>
+    private HashSet<string> read = new(PathNames.Comparer);
+
+    /// <summary>The single-file AppHosts among the files read, by their paths; touched only by the reads.</summary>
+    private readonly HashSet<string> appHosts = new(PathNames.Comparer);
 
     /// <summary>Whether the next walk reads every C# file it lists again, the watcher having lost changes; the reads' alone too.</summary>
     private bool again;
@@ -51,23 +54,26 @@ public sealed class AspireFiles(ProjectSession session)
         Then(walk: true, () =>
         {
             HashSet<string> listed = new(PathNames.Comparer);
+            HashSet<string> hostsListed = new(PathNames.Comparer);
             foreach (string relative in files)
             {
                 if (IsSource(root, relative))
                 {
+                    listed.Add(relative);
                     string path = Path.Join(root, relative);
-                    listed.Add(path);
-                    if (again || !read.ContainsKey(path))
+                    if (again || !read.Contains(relative))
                     {
-                        read[path] = IsAppHost(path) ?? read.GetValueOrDefault(path);
+                        Found(path, IsAppHost(path));
+                    }
+                    if (appHosts.Contains(path))
+                    {
+                        hostsListed.Add(path);
                     }
                 }
             }
             again = false;
-            foreach (string gone in read.Keys.Where(path => !listed.Contains(path)).ToList())
-            {
-                read.Remove(gone);
-            }
+            read = listed;
+            appHosts.IntersectWith(hostsListed);
         });
     }
 
@@ -82,14 +88,16 @@ public sealed class AspireFiles(ProjectSession session)
             {
                 if (IsSource(root, relative))
                 {
-                    read.Remove(Path.Join(root, relative));
+                    read.Remove(relative);
+                    appHosts.Remove(Path.Join(root, relative));
                 }
             }
             foreach (string relative in came)
             {
-                if (IsSource(root, relative) && Path.Join(root, relative) is { } path && !read.ContainsKey(path))
+                if (IsSource(root, relative) && read.Add(relative))
                 {
-                    read[path] = IsAppHost(path) ?? false;
+                    string path = Path.Join(root, relative);
+                    Found(path, IsAppHost(path) ?? false);
                 }
             }
         });
@@ -117,7 +125,8 @@ public sealed class AspireFiles(ProjectSession session)
             {
                 if (IsAppHost(path) is { } appHost)
                 {
-                    read[path] = appHost;
+                    read.Add(PathNames.Below(path, root).ToString());
+                    Found(path, appHost);
                 }
             }
         });
@@ -172,7 +181,7 @@ public sealed class AspireFiles(ProjectSession session)
                 IReadOnlyList<string> found = await BackgroundWork.Run(() =>
                 {
                     work();
-                    return (IReadOnlyList<string>)[.. read.Where(file => file.Value).Select(file => file.Key).Order(StringComparer.Ordinal).Take(AppHostLimit)];
+                    return (IReadOnlyList<string>)[.. appHosts.Order(StringComparer.Ordinal).Take(AppHostLimit)];
                 });
                 if (!session.IsEnded && !found.SequenceEqual(session.Configurations.SingleFileAppHosts, PathNames.Comparer))
                 {
@@ -203,6 +212,19 @@ public sealed class AspireFiles(ProjectSession session)
         }
         ReadOnlySpan<char> folders = relative[..Math.Max(0, relative.LastIndexOfAny(PathNames.Separators))];
         return !IgnoredFolders.AnyHidden(folders) && !IgnoredFolders.AnyIn(root, folders);
+    }
+
+    /// <summary>Takes what a read found of a file: an AppHost or not; null, unread, keeps what was found before.</summary>
+    private void Found(string path, bool? appHost)
+    {
+        if (appHost == true)
+        {
+            appHosts.Add(path);
+        }
+        else if (appHost == false)
+        {
+            appHosts.Remove(path);
+        }
     }
 
     /// <summary>Whether a file is a single-file AppHost; null when it could not be read, which keeps what was read before.</summary>
