@@ -227,7 +227,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         ConfirmDialog dialog = Asked(window);
         Assert.Equal($"Install the .NET SDK {sdk.Version}?", dialog.Title);
         // Its size, which the metadata does not give, from the archive's HEAD.
-        string size = $", {Math.Max(1, new FileInfo(sdk.Path).Length / (1024 * 1024))} MB,";
+        string size = $", {Sizes.Said(new FileInfo(sdk.Path).Length)},";
         Assert.True(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains(size, StringComparison.Ordinal) == true),
             $"The question does not give the download's size{size}: {string.Join(" | ", dialog.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text))}");
         CheckBox onPath = dialog.GetVisualDescendants().OfType<CheckBox>().Single(c => c.Name == "AddDotnetToPath");
