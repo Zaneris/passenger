@@ -290,9 +290,9 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Change Signature onto a name and parameter types another member of the type has (renamed to an existing
     /// overload's, or a parameter retyped to match one) is refused naming that member, nothing changed, and a change made
     /// says the files it changed: the build would otherwise break, a second change writing its temporary names into the
-    /// other member.</summary>
+    /// other member. A type or value nested past what the parser is given is refused saying so, the server answering on.</summary>
     [Fact]
-    public async Task An_agent_changing_a_signature_onto_another_members_is_refused_naming_it_and_a_change_counts_the_files_it_changed()
+    public async Task An_agent_changing_a_signature_onto_another_members_or_nested_too_deeply_is_refused_saying_why_and_a_change_counts_the_files_it_changed()
     {
         await TakeFolderAsync();
         const string Tally = "namespace Shop;\n\npublic class Tally\n{\n    public int Add(int a, int b)\n    {\n        return a + b;\n    }\n\n"
@@ -312,6 +312,19 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         CallToolResult field = await Result(client, McpTools.Refactor, Place("change_signature", "Tally.cs", Tally, "int Ad", new { name = "Count" }));
         Assert.True(field.IsError == true && Text(field).Contains("Tally already has the field Tally.Count, whose name the new signature of method 'Tally.Add' would take", StringComparison.Ordinal),
             $"Change Signature renaming Add to Count beside the field Count answered: {Text(field)}");
+        string deepType = string.Concat(Enumerable.Repeat("List<", 1100)) + "int" + new string('>', 1100);
+        CallToolResult deep = await Result(client, McpTools.Refactor, Place("change_signature", "Tally.cs", Tally, "int Ad", new
+        {
+            parameters = new object[] { new { from = "a", type = deepType }, new { from = "b" } },
+        }));
+        Assert.True(deep.IsError == true && Text(deep).Contains("A parameter's type is nested too deeply to read", StringComparison.Ordinal),
+            $"Change Signature retyping a parameter to a type nested 1100 deep, which would end the language server, answered: {Text(deep)}");
+        CallToolResult deepValue = await Result(client, McpTools.Refactor, Place("change_signature", "Tally.cs", Tally, "int Ad", new
+        {
+            parameters = new object[] { new { from = "a" }, new { from = "b", defaultValue = new string('(', 1100) + "1" + new string(')', 1100) } },
+        }));
+        Assert.True(deepValue.IsError == true && Text(deepValue).Contains("A parameter's value is nested too deeply to read", StringComparison.Ordinal),
+            $"Change Signature giving a parameter a default value nested 1100 deep answered: {Text(deepValue)}");
         Assert.Equal(Tally, File.ReadAllText(PathOf("Tally.cs")));
         const string Twins = "namespace Shop;\n\npublic class Twins\n{\n    public int Of(int a) => a;\n\n    public int Of(int b) => b;\n}\n";
         Write("Twins.cs", Twins);

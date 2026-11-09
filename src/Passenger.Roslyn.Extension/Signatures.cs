@@ -7,6 +7,8 @@ using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Core;
+using Passenger.Languages.CSharp;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -165,9 +167,15 @@ internal static class Signatures
         {
             return change.Name.Trim().Length == 0 ? "Method name can not be empty" : $"'{change.Name}' is not a valid method name";
         }
-        if (method.MethodKind == MethodKind.Ordinary && !IsReturnType(change.ReturnType))
+        if (method.MethodKind == MethodKind.Ordinary)
         {
-            return "The return type is invalid";
+            switch (IsReturnType(change.ReturnType))
+            {
+                case null:
+                    return "The return type is nested too deeply to read";
+                case false:
+                    return "The return type is invalid";
+            }
         }
         HashSet<string> names = new(StringComparer.Ordinal);
         HashSet<int> kept = [];
@@ -191,17 +199,26 @@ internal static class Signatures
             {
                 return "Parameters should have different names";
             }
-            if (!IsType(parameter.Type))
+            switch (IsType(parameter.Type))
             {
-                return "A parameter has an invalid type";
+                case null:
+                    return "A parameter's type is nested too deeply to read";
+                case false:
+                    return "A parameter has an invalid type";
             }
             if (!Modifiers.Contains(Normalized(parameter.Modifier)))
             {
                 return $"'{parameter.Modifier}' is not a parameter modifier";
             }
-            if (!IsExpression(parameter.DefaultValue) || !IsExpression(parameter.CallValue))
+            foreach (string value in (string[])[parameter.DefaultValue, parameter.CallValue])
             {
-                return "Error in default value expression";
+                switch (IsExpression(value))
+                {
+                    case null:
+                        return "A parameter's value is nested too deeply to read";
+                    case false:
+                        return "Error in default value expression";
+                }
             }
             if (Normalized(parameter.Modifier) == "params" && i != change.Parameters.Count - 1)
             {
@@ -225,12 +242,14 @@ internal static class Signatures
 
     private static string Normalized(string modifier) => string.Join(" ", modifier.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
-    private static bool IsType(string text) => text.Trim().Length > 0 && !SyntaxFactory.ParseTypeName(text).ContainsDiagnostics;
+    /// <summary>Whether a text is a type; null for one nested too deeply for the parser to be given.</summary>
+    private static bool? IsType(string text) => text.Trim().Length == 0 ? false : CodeBrackets.TypeName(text) is { } type ? !type.ContainsDiagnostics : null;
 
     /// <summary>A type a method can return: any type, or void, which a type's parser takes for none.</summary>
-    private static bool IsReturnType(string text) => Normalized(text) == "void" || IsType(text);
+    private static bool? IsReturnType(string text) => Normalized(text) == "void" ? true : IsType(text);
 
-    private static bool IsExpression(string text) => text.Trim().Length == 0 || !SyntaxFactory.ParseExpression(text).ContainsDiagnostics;
+    /// <summary>Whether a text is an expression or nothing; null for one nested too deeply for the parser to be given.</summary>
+    private static bool? IsExpression(string text) => text.Trim().Length == 0 ? true : CodeBrackets.Expression(text) is { } expression ? !expression.ContainsDiagnostics : null;
 
     /// <summary>The method and every method its signature is tied to: what it overrides and implements, and what overrides
     /// and implements those, as far as they go both ways. A constructor stands alone.</summary>
@@ -303,7 +322,7 @@ internal static class Signatures
             List<(ITypeSymbol Type, bool ByRef)> parameters = [];
             foreach (ParameterChange parameter in change.Parameters)
             {
-                TypeInfo bound = model.GetSpeculativeTypeInfo(declaration.ParameterList.SpanStart, SyntaxFactory.ParseTypeName(parameter.Type), SpeculativeBindingOption.BindAsTypeOrNamespace);
+                TypeInfo bound = model.GetSpeculativeTypeInfo(declaration.ParameterList.SpanStart, CodeBrackets.TypeName(parameter.Type)!, SpeculativeBindingOption.BindAsTypeOrNamespace);
                 if (bound.Type is { TypeKind: not TypeKind.Error } found)
                 {
                     parameters.Add((found, RefKindOf(parameter.Modifier).Length > 0));
@@ -530,7 +549,7 @@ internal static class Signatures
                 now = now.WithParameterList(Parameters(now.ParameterList, original, change));
                 if (now is MethodDeclarationSyntax named && Normalized(change.ReturnType) != Normalized(named.ReturnType.ToString()) && change.ReturnType.Trim().Length > 0)
                 {
-                    now = named.WithReturnType(SyntaxFactory.ParseTypeName(change.ReturnType.Trim()).WithTriviaFrom(named.ReturnType));
+                    now = named.WithReturnType(CodeBrackets.TypeName(change.ReturnType.Trim())!.WithTriviaFrom(named.ReturnType));
                 }
                 return marked ? now.WithAdditionalAnnotations(marker) : now;
             });
@@ -697,7 +716,7 @@ internal static class Signatures
     private static ParameterSyntax Parse(string modifier, string type, string name, string defaultValue)
     {
         string text = $"({Normalized(modifier)} {type.Trim()} {name}{(defaultValue.Trim().Length > 0 ? " = " + defaultValue.Trim() : string.Empty)})";
-        return SyntaxFactory.ParseParameterList(text).Parameters[0];
+        return DeepText.Read(text.Length, () => SyntaxFactory.ParseParameterList(text).Parameters[0]);
     }
 
     /// <summary>A list's commas: those it had, then new ones followed by a space.</summary>
@@ -935,7 +954,7 @@ internal static class Signatures
         foreach (Passed passed in plan)
         {
             ArgumentSyntax argument = passed.Value is { } value
-                ? SyntaxFactory.Argument(SyntaxFactory.ParseExpression(value))
+                ? SyntaxFactory.Argument(CodeBrackets.Expression(value)!)
                 : list.Arguments[passed.Index];
             if (passed.Keyword is { } keyword)
             {
