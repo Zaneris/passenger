@@ -1277,16 +1277,14 @@ public sealed class LocalHistory
                 return null;
             }
             using Stream stream = FileText.OpenRead(file);
-            byte[] start = new byte[FileText.BinaryProbe];
+            Span<byte> start = stackalloc byte[FileText.BinaryProbe];
             int probed = stream.ReadAtLeast(start, start.Length, throwOnEndOfStream: false);
-            if (FileText.LooksBinary(start.AsSpan(0, probed)))
+            if (FileText.LooksBinary(start[..probed]))
             {
                 return null;
             }
-            using MemoryStream bytes = new();
-            bytes.Write(start, 0, probed);
-            stream.CopyTo(bytes);
-            return bytes.Length <= FileText.KeptLimit ? bytes.ToArray() : null;
+            byte[] bytes = FileText.ReadRest(stream, start[..probed]);
+            return bytes.Length <= FileText.KeptLimit ? bytes : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

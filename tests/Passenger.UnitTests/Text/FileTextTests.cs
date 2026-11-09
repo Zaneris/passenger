@@ -4,7 +4,7 @@ using Passenger.Text;
 namespace Passenger.UnitTests.Text;
 
 /// <summary>A file's bytes read by the byte-order mark they start with, and the bytes a save writes of what was read; a
-/// file on disk read into one array of its length.</summary>
+/// file on disk read into one array of its length, whole or on after its first bytes.</summary>
 public sealed class FileTextTests
 {
     private const string Code = "class Café\r\n{\r\n    // 🚀 ü\r\n}\r\n";
@@ -65,5 +65,34 @@ public sealed class FileTextTests
         {
             Directory.Delete(folder, recursive: true);
         }
+    }
+
+    /// <summary>The rest of a file after its first bytes were probed, as Local History reads what it keeps: in one array of
+    /// the file's length, the probed bytes first; and from a stream of no length, as it comes.</summary>
+    [Fact]
+    public void A_file_read_on_after_its_probe_is_read_into_one_array_of_its_length()
+    {
+        byte[] file = [.. Enumerable.Range(0, 300_000).Select(i => (byte)('a' + i % 26))];
+        using MemoryStream warm = new(file);
+        warm.ReadAtLeast(new byte[FileText.BinaryProbe], FileText.BinaryProbe);
+        FileText.ReadRest(warm, file.AsSpan(0, FileText.BinaryProbe));
+
+        using MemoryStream stream = new(file);
+        byte[] probe = new byte[FileText.BinaryProbe];
+        stream.ReadAtLeast(probe, probe.Length);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        byte[] read = FileText.ReadRest(stream, probe);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(read.AsSpan().SequenceEqual(file), "A file read on after its probe came back other than it is");
+        Assert.True(allocated <= file.Length + 1024,
+            $"Reading a {file.Length:N0}-byte file on after its probe allocated {allocated:N0} bytes, so each file Local History keeps costs its size again and again");
+        Assert.Equal(file, FileText.ReadRest(new Unsized(file.AsSpan(4).ToArray()), file.AsSpan(0, 4)));
+    }
+
+    /// <summary>A stream that says nothing of its length, as a pipe's does.</summary>
+    private sealed class Unsized(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override bool CanSeek => false;
     }
 }
