@@ -886,6 +886,31 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
+    /// <summary>C# 15's collection expression arguments (<c>[with(…)]</c>) in a net11.0 project at LangVersion latest are
+    /// no preview feature to the language server, as the .NET 11 SDK's compiler builds them: the file lists its one warning
+    /// and no error (#1352).</summary>
+    [AvaloniaFact]
+    public void A_net11_projects_collection_expression_arguments_at_lang_version_latest_list_no_error()
+    {
+        string folder = Passenger.Core.PathNames.Canonical(TestFolders.Create("csharp15-"));
+        TestFolders.Write(folder, "Demo.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
+            + "    <LangVersion>latest</LangVersion>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <Nullable>enable</Nullable>\n  </PropertyGroup>\n</Project>\n");
+        TestFolders.Write(folder, "Class1.cs", "namespace Demo;\n\npublic class Class1\n{\n"
+            + "    private readonly Dictionary<string, string> _dict = [with(StringComparer.OrdinalIgnoreCase)];\n\n"
+            + "    public int Count => _dict.Count;\n\n    public void Unused()\n    {\n        int unused;\n    }\n}\n");
+        Restore.Run(folder);
+        MainWindow window = Ui.OpenFolder(folder);
+        window.OpenFile("Class1.cs");
+        window.Perform(AppActions.ShowProblems);
+        ProblemsModel problems = window.BottomPanel.Problems;
+        // The unused local's warning says the server has answered for the file.
+        Ui.WaitFor(() => problems.FileProblems.Any(p => p.Code == "CS0168"), "the unused local's warning from the language server");
+        Problem[] errors = [.. problems.FileProblems.Where(p => p.Severity == ProblemSeverity.Error || p.Code == "CS8652")];
+        Assert.True(errors.Length == 0,
+            $"Problems lists C# 15 that the .NET 11 SDK builds as an error: {string.Join("; ", errors.Select(p => $"{p.Code} {p.Message}"))}");
+        window.Close();
+    }
+
     private void Write(string name, string text) => project.Write(name, text);
 
     /// <summary>A console project of a program, a helper, its caller and a file with an error, restored once for every test,

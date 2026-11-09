@@ -84,24 +84,24 @@ releases there say:
 | Package | Licence | Copyright |
 |---|---|---|
 | `Microsoft.Bcl.AsyncInterfaces`, `Microsoft.Build.Framework`, `Microsoft.Build.Locator`, `Microsoft.CodeAnalysis.Elfie`, `Microsoft.DiaSymReader`, `Microsoft.Extensions.Configuration`, `Microsoft.Extensions.Configuration.Abstractions`, `Microsoft.Extensions.Configuration.Binder`, `Microsoft.Extensions.DependencyInjection`, `Microsoft.Extensions.DependencyInjection.Abstractions`, `Microsoft.Extensions.FileSystemGlobbing`, `Microsoft.Extensions.Logging`, `Microsoft.Extensions.Logging.Abstractions`, `Microsoft.Extensions.Logging.Configuration`, `Microsoft.Extensions.Logging.Console`, `Microsoft.Extensions.Options`, `Microsoft.Extensions.Options.ConfigurationExtensions`, `Microsoft.Extensions.Primitives`, `Microsoft.NET.StringTools`, `Microsoft.TestPlatform.ObjectModel`, `Microsoft.TestPlatform.TranslationLayer`, `Microsoft.VisualStudio.SolutionPersistence`, `Microsoft.VisualStudio.Threading.Only`, `System.CodeDom`, `System.ComponentModel.Composition`, `System.Composition.AttributedModel`, `System.Composition.Convention`, `System.Composition.Hosting`, `System.Composition.Runtime`, `System.Composition.TypedParts`, `System.Configuration.ConfigurationManager`, `System.Diagnostics.EventLog`, `System.Diagnostics.PerformanceCounter`, `System.Management`, `System.Security.Cryptography.Pkcs`, `System.Security.Cryptography.ProtectedData`, `System.Security.Permissions`, `System.Windows.Extensions` | MIT | © Microsoft Corporation. All rights reserved. |
-| `Microsoft.ServiceHub.Framework` (4.10.147), `Microsoft.VisualStudio.Composition` (18.9.20), `Microsoft.VisualStudio.Validation` (18.7.1), `StreamJsonRpc` (2.26.10), `System.CommandLine` (3.0.0-preview.6.26324.102): versions not on nuget.org | MIT (their releases there) | © Microsoft Corporation. All rights reserved. |
-| `NuGet.Common`, `NuGet.Configuration`, `NuGet.DependencyResolver.Core`, `NuGet.Frameworks`, `NuGet.LibraryModel`, `NuGet.Packaging`, `NuGet.ProjectModel`, `NuGet.Protocol`, `NuGet.Versioning` | Apache-2.0 | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.ServiceHub.Framework` (4.11.156), `Microsoft.VisualStudio.Composition` (18.9.89), `Microsoft.VisualStudio.Validation` (18.7.19), `StreamJsonRpc` (2.26.114), `System.CommandLine` (3.0.0-rtm.26480.105): versions not on nuget.org | MIT (their releases there) | © Microsoft Corporation. All rights reserved. |
+| `NuGet.Common`, `NuGet.Configuration`, `NuGet.DependencyResolver.Core`, `NuGet.Frameworks`, `NuGet.LibraryModel`, `NuGet.Packaging`, `NuGet.ProjectModel`, `NuGet.Protocol`, `NuGet.Versioning` (8.0.0-rc.48205, a version not on nuget.org, whose releases there are Apache-2.0) | Apache-2.0 | © Microsoft Corporation. All rights reserved. |
 | `Humanizer.Core` | MIT | Copyright (c) .NET Foundation and Contributors |
 | `ICSharpCode.Decompiler` (9.1.0.7988) | MIT | Copyright 2011-2025 AlphaSierraPapa |
 | `MessagePack`, `MessagePack.Annotations` | MIT | © Yoshifumi Kawai and contributors. All rights reserved. |
 | `Nerdbank.MessagePack`, `Nerdbank.Streams` | MIT | © Andrew Arnott. All rights reserved. |
 | `Newtonsoft.Json` (13.0.4) | MIT | Copyright © James Newton-King 2008 |
 | `PolyType` | MIT | 2024, Eirik Tsarpalis |
-| `SQLite3MC.PCLRaw.bundle`, `SQLite3MC.PCLRaw.lib`, `SQLite3MC.PCLRaw.provider` (SQLite3 Multiple Ciphers, the native `libsqlite3mc`) | MIT | Copyright (c) 2023-2026 Ulrich Telle, et al. |
-| `SQLitePCLRaw.core` | Apache-2.0 | Copyright 2014-2025 SourceGear, LLC |
-| `Microsoft.VisualStudio.Telemetry` (18.3.124, not on nuget.org) | not open source: its releases there link the Microsoft Visual Studio Telemetry license terms (https://visualstudio.microsoft.com/license-terms/mt736442/) | © Microsoft Corporation. All rights reserved. |
-| `Microsoft.VisualStudio.Utilities.Internal` (16.3.90) | not open source: the Microsoft Visual Studio Internal Utilities license terms (https://visualstudio.microsoft.com/license-terms/mt736439/) | © Microsoft Corporation. All rights reserved. |
+| `SQLitePCLRaw.bundle_green`, `SQLitePCLRaw.core`, `SQLitePCLRaw.lib.e_sqlite3` (SQLite, which is in the public domain, as the native `libe_sqlite3`), `SQLitePCLRaw.provider.dynamic_cdecl`, `SQLitePCLRaw.provider.e_sqlite3` | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
+| `Microsoft.VisualStudio.Telemetry` (18.3.193, not on nuget.org) | not open source: its releases there link the Microsoft Visual Studio Telemetry license terms (https://visualstudio.microsoft.com/license-terms/mt736442/) | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.VisualStudio.Utilities.Internal` (16.3.170, not on nuget.org) | not open source: its releases there link the Microsoft Visual Studio Internal Utilities license terms (https://visualstudio.microsoft.com/license-terms/mt736439/) | © Microsoft Corporation. All rights reserved. |
 
 The package carries six assemblies under Visual Studio's terms rather than an open-source licence. Which of them the
 server loads was found by logging every assembly each server and build host loaded through Passenger's C# tests (startup,
 projects and solutions opened, completion, hover, signature help, pulled diagnostics, colours, definitions, usages,
 renames, code actions and fixes, formatting, inlay hints), by reading Roslyn's source at the package's commit
-(dotnet/roslyn dc1db3e7), and by running those tests without each.
+(dotnet/roslyn dc1db3e7, the 5.11.0 package's), and by running those tests without each; the 5.13.0-1.26514.10 package
+(d82b7f7d) carries the same six.
 
 Left out of `roslyn/` (`RoslynServerLeftOut` in `src/Passenger.Lsp/RoslynServer.targets`, with their satellite
 resources; the build fails if the package stops carrying one, and a test checks that none is beside the server and that
@@ -110,12 +110,12 @@ the server never looks for one), since no path Passenger takes loads them:
 - `Microsoft.ServiceHub.Client` (4.6.3200; the Visual Studio Add-ons and Extensions terms): Visual Studio's ServiceHub
   client, used only by its out-of-process host (`ServiceHubRemoteHostClient`). The server reads it only because it
   searches every `Microsoft.ServiceHub*` file beside it for MEF parts, and it has none the server uses.
-- `Microsoft.VisualStudio.Debugger.Contracts` (18.3.0-beta.26277.4) and `Microsoft.VisualStudio.RpcContracts` (18.9.918),
+- `Microsoft.VisualStudio.Debugger.Contracts` (18.3.0-beta.26461.1) and `Microsoft.VisualStudio.RpcContracts` (18.12.772),
   under the same terms: Visual Studio's Hot Reload logging and RPC contracts, used only by Roslyn's ServiceHub host
   (`Microsoft.CodeAnalysis.Remote.ServiceHub`), which the server never loaded on any of those paths.
 - `Microsoft.VisualStudio.RemoteControl` (16.3.52; the Telemetry terms, mt736442): Visual Studio Telemetry's client for
-  remote settings, experiments and its manifest, which no server loaded on any of those paths (the telemetry session
-  Razor makes, below, is never started).
+  remote settings, experiments and its manifest, which a session loads as it starts and which no server loaded on any of
+  those paths (the telemetry session Razor makes, below, is never started, and the server's own is cut off, below).
 
 Kept: `Microsoft.VisualStudio.Telemetry` and `Microsoft.VisualStudio.Utilities.Internal`, which the server's own Razor
 support needs. It is in the server's MEF composition whenever `Microsoft.VisualStudioCode.RazorExtension.dll` is beside
@@ -126,6 +126,14 @@ leaving out the Razor extension too only moves the error to the server's own par
 At `initialized` Razor's in-process services create Visual Studio Telemetry's default session, which loads
 Utilities.Internal; nothing in the server starts that session, which it must be to send anything (`--telemetryLevel off`
 governs only Roslyn's own telemetry, which goes nowhere without C# Dev Kit).
+
+Changed: `Microsoft.CodeAnalysis.LanguageServer.dll`, the server's own (MIT), is carried as `tools/Passenger.RoslynPatch`
+writes it at build: its `LanguageServerTelemetry.CreateSession` returns no session, as it does when the server is given no
+telemetry level, and the assembly is IL alone, without its ReadyToRun code. Every server from 5.12.0-1.26475.2 until one
+carrying dotnet/roslyn#86130 makes Visual Studio Telemetry's default session and starts it from its `Main` whatever
+`--telemetryLevel` says, which would load RemoteControl and keep files under the user's folder. The build fails if any
+other method of the server's assemblies makes or starts a session, but the two the tool names: ServiceHub's, which the
+server never runs, and Razor's reporter, whose session nothing starts.
 
 ### Inside `web/`
 
@@ -873,7 +881,7 @@ Microsoft Corporation), unchanged, from the project its header names:
 
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
 dotnet/roslyn (https://github.com/dotnet/roslyn, where Razor's tooling moved from dotnet/razor; MIT, Copyright (c) .NET
-Foundation and Contributors) at the commit Roslyn's server is built from (dc1db3e7), unchanged, under
+Foundation and Contributors) at the 5.11.0 server's commit (dc1db3e7), unchanged, under
 `src/Razor/src/Razor/src/Microsoft.VisualStudio.RazorExtension/EmbeddedGrammars/`:
 
 - `aspnetcorerazor.tmLanguage.json`: Razor's own grammar, which embeds HTML's and C#'s.

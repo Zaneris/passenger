@@ -7,7 +7,7 @@ namespace Passenger.Lsp;
 /// <summary>Passenger's own extension to Roslyn's server (Passenger.Roslyn.Extension, carried under roslyn-extension/
 /// beside the app): the server loads it as it starts (its <c>--extension</c>), Passenger activates its message handlers
 /// once the server has answered (<c>server/_vs_activateExtension</c>), and each question is a message to one of them about
-/// a document (<c>textDocument/_vs_dipatchExtensionMessage</c>, the typo Roslyn's) or the solution
+/// a document (<c>textDocument/_vs_dispatchExtensionMessage</c>) or the solution
 /// (<c>workspace/_vs_dispatchExtensionMessage</c>), answered with what it found or would change.</summary>
 public static class RoslynExtension
 {

@@ -417,7 +417,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         Assert.DoesNotContain("Passenger.Sample", Children(window, "Dependencies"));
         Assert.True(window.CSharpService?.Session is not null, "No language server started");
         string log = Directory.EnumerateFiles(Passenger.App.CSharp.CSharpService.LogFolder, $"server-*-{window.CSharpService!.Session!.Server.ProcessId}.log").Single();
-        int Loads() => Ui.Shared(log).Split('\n').Count(l => l.Contains("Completed (re)load of all projects", StringComparison.Ordinal));
+        int Loads() => Ui.Shared(log).Split('\n').Count(l => l.Contains("Completed (re)load of ", StringComparison.Ordinal));
         int before = Loads();
         Ui.PlaceAfter(editor, "<ProjectReference Include=\"../\" />");
         Ui.Press(window, "ENTER");

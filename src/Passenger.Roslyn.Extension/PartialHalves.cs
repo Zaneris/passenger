@@ -13,10 +13,10 @@ namespace Passenger.Roslyn.Extension;
 /// to the server two symbols, each with only some of its calls.</summary>
 public sealed class PartialHalf : IExtensionWorkspaceMessageHandler<HalfAsked, HalfFound>
 {
-    public async Task<HalfFound> ExecuteAsync(HalfAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    public async Task<HalfFound> ExecuteAsync(HalfAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
-        if (!System.Uri.TryCreate(message.At.Uri, UriKind.Absolute, out Uri? uri)
-            || (await context.Solution.GetTextDocumentsAsync(new DocumentUri(uri), cancellationToken).ConfigureAwait(false)).FirstOrDefault() is not Document document)
+        if (!System.Uri.TryCreate(message.At.Uri, UriKind.Absolute, out _)
+            || (await context.Solution.GetTextDocumentsAsync(new DocumentUri(message.At.Uri), cancellationToken).ConfigureAwait(false)).FirstOrDefault() is not Document document)
         {
             return new HalfFound(null);
         }
@@ -48,11 +48,11 @@ public sealed class PartialHalf : IExtensionWorkspaceMessageHandler<HalfAsked, H
 /// leaves out of any type with a part of the person's own. None for a file that holds no C#, as a Razor component's.</summary>
 public sealed class GeneratedParts : IExtensionWorkspaceMessageHandler<PartsAsked, PartsFound>
 {
-    public async Task<PartsFound> ExecuteAsync(PartsAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    public async Task<PartsFound> ExecuteAsync(PartsAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         List<UriSpan> parts = [];
-        if (System.Uri.TryCreate(message.Uri, UriKind.Absolute, out Uri? uri)
-            && (await context.Solution.GetTextDocumentsAsync(new DocumentUri(uri), cancellationToken).ConfigureAwait(false)).FirstOrDefault() is Document document)
+        if (System.Uri.TryCreate(message.Uri, UriKind.Absolute, out _)
+            && (await context.Solution.GetTextDocumentsAsync(new DocumentUri(message.Uri), cancellationToken).ConfigureAwait(false)).FirstOrDefault() is Document document)
         {
             SourceText text = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
             ISymbol? symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, WrittenPlaces.Offset(text, message.At), cancellationToken).ConfigureAwait(false);

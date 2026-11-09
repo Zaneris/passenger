@@ -89,8 +89,8 @@ public static class LspMethods
     /// <summary>Visual Studio's: a message for a handler of Roslyn's extensions, of the workspace.</summary>
     public const string DispatchExtensionMessage = "workspace/_vs_dispatchExtensionMessage";
 
-    /// <summary>Visual Studio's: a message for a handler of Roslyn's extensions, of a document; misspelt as Roslyn spells it.</summary>
-    public const string DispatchDocumentExtensionMessage = "textDocument/_vs_dipatchExtensionMessage";
+    /// <summary>Visual Studio's: a message for a handler of Roslyn's extensions, of a document.</summary>
+    public const string DispatchDocumentExtensionMessage = "textDocument/_vs_dispatchExtensionMessage";
 
     /// <summary>Roslyn's: a solution to open.</summary>
     public const string SolutionOpen = "solution/open";

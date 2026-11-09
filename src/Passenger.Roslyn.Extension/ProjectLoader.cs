@@ -44,6 +44,7 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
             _workspaceFactory.HostProjectFactory.SolutionPath = solution;
         }
         await using WorkDoneProgressTracker? tracker = request.Projects.Count > 0 ? new WorkDoneProgressTracker(progress, request.Projects.Count) : null;
+        ImmutableArray<LoadedProject>.Builder loading = ImmutableArray.CreateBuilder<LoadedProject>(request.Projects.Count);
         foreach (ProjectToOpen project in request.Projects)
         {
             if (project.Infos is { } infos)
@@ -56,11 +57,14 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
             {
                 await own.TryUnloadProjectAsync(project.Path).ConfigureAwait(false);
             }
-            await BeginLoadingProjectAsync(project.Path, null, tracker).ConfigureAwait(false);
+            LoadedProject loaded = await BeginLoadingProjectAsync(project.Path).ConfigureAwait(false);
             // One loaded already loads again with what it was given; one just begun is the same work, done once.
-            _projectsToReload.AddWork(new Microsoft.CodeAnalysis.LanguageServer.HostWorkspace.ProjectToLoad(project.Path, null, ReportTelemetry: false));
+            _projectsToReload.AddWork(loaded.ProjectFilePath, (int)ProjectReloadPriority.Medium);
+            loading.Add(loaded);
         }
-        await WaitForProjectsToFinishLoadingAsync().ConfigureAwait(false);
+        // As the server's own solution/open does, then until the reloads asked for here are done too.
+        await WaitForProjectLoadsAsync(loading.MoveToImmutable(), tracker).ConfigureAwait(false);
+        await ReloadsDoneAsync().ConfigureAwait(false);
         await ProjectInitializationHandler.SendProjectInitializationCompleteNotificationAsync(client).ConfigureAwait(false);
     }
 
@@ -99,10 +103,23 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
         }
         foreach (string project in holding)
         {
-            _projectsToReload.AddWork(new Microsoft.CodeAnalysis.LanguageServer.HostWorkspace.ProjectToLoad(project, null, ReportTelemetry: false));
+            _projectsToReload.AddWork(project, (int)ProjectReloadPriority.Medium);
         }
-        await WaitForProjectsToFinishLoadingAsync().ConfigureAwait(false);
+        await ReloadsDoneAsync().ConfigureAwait(false);
         return holding.Count;
+    }
+
+    /// <summary>Until the server's reload queue has run every batch it was given, a batch's failure included: each batch
+    /// chains the next onto the queue's task, so a task that is still the queue's once done was the last.</summary>
+    private async Task ReloadsDoneAsync()
+    {
+        Task last;
+        do
+        {
+            last = _projectsToReload._updateTask;
+            await Task.WhenAny(last).ConfigureAwait(false);
+        }
+        while (!ReferenceEquals(last, _projectsToReload._updateTask));
     }
 
     /// <summary>Says in the server's log what a deletion's projects did before the server was told of it.</summary>
@@ -298,7 +315,7 @@ internal sealed class FilesDeletedHandler(PassengerProjectLoader loader, LspDidC
         long began = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
-            int projects = await loader.LetGoAsync([.. request.Changes.Select(change => change.Uri.GetRequiredParsedUri().LocalPath)]).ConfigureAwait(false);
+            int projects = await loader.LetGoAsync([.. request.Changes.Select(change => change.Uri.GetDocumentFilePathFromUri())]).ConfigureAwait(false);
             if (projects > 0)
             {
                 loader.LetGo(projects, request.Changes.Length, System.Diagnostics.Stopwatch.GetElapsedTime(began));

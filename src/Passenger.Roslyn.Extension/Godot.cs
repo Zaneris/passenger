@@ -14,7 +14,7 @@ namespace Passenger.Roslyn.Extension;
 /// <summary>What a Godot project's C# file holds that its scenes speak of (<see cref="GodotSource"/>).</summary>
 public sealed class GodotCode : IExtensionWorkspaceMessageHandler<GodotCodeRequest, GodotCodeFound>
 {
-    public Task<GodotCodeFound> ExecuteAsync(GodotCodeRequest message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<GodotCodeFound> ExecuteAsync(GodotCodeRequest message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         GodotSource.ReadAsync(context.Solution, message, cancellationToken);
 }
 

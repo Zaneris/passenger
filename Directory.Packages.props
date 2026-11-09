@@ -3,10 +3,10 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- Roslyn's language server, a package per system downloaded rather than referenced (RoslynServer.targets), so its
-         version is a property. Held at 5.11.0 until a published build carries dotnet/roslyn#86130 (merged
-         2026-10-20): the builds since start Visual Studio Telemetry's session even with telemetry off, loading an
-         assembly left out of roslyn/, so the server ends as it starts. -->
-    <RoslynServerVersion>5.11.0</RoslynServerVersion>
+         version is a property: the newest on nuget.org, prerelease or not, at least as new as the compiler of
+         global.json's SDK. A build that starts Visual Studio Telemetry's session even with telemetry off (from
+         5.12.0-1.26475.2 until one carries dotnet/roslyn#86130) is carried with it cut off (tools/Passenger.RoslynPatch). -->
+    <RoslynServerVersion>5.13.0-1.26514.10</RoslynServerVersion>
     <!-- Avalonia's dotnet new templates at the Avalonia version below, downloaded for the tests' local feed so no test
          reaches nuget.org for them. -->
     <AvaloniaTemplatesVersion>12.1.5</AvaloniaTemplatesVersion>

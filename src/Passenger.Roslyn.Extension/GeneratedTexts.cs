@@ -12,7 +12,7 @@ namespace Passenger.Roslyn.Extension;
 /// and name, its generator and its hint name.</summary>
 public sealed class GeneratedTexts : IExtensionWorkspaceMessageHandler<GeneratedAsked, GeneratedFound>
 {
-    public async Task<GeneratedFound> ExecuteAsync(GeneratedAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    public async Task<GeneratedFound> ExecuteAsync(GeneratedAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         List<GeneratedText?> found = [];
         foreach (GeneratedSource source in message.Documents)
@@ -33,7 +33,7 @@ public sealed class GeneratedTexts : IExtensionWorkspaceMessageHandler<Generated
         {
             return null;
         }
-        if ((await solution.GetTextDocumentsAsync(new DocumentUri(uri), cancel).ConfigureAwait(false)).FirstOrDefault() is SourceGeneratedDocument named)
+        if ((await solution.GetTextDocumentsAsync(new DocumentUri(source.Uri), cancel).ConfigureAwait(false)).FirstOrDefault() is SourceGeneratedDocument named)
         {
             return named;
         }
@@ -60,7 +60,7 @@ public sealed class GeneratedTexts : IExtensionWorkspaceMessageHandler<Generated
 /// known by no URI: what an earlier run copied.</summary>
 public sealed class GeneratedNamed : IExtensionWorkspaceMessageHandler<GeneratedNameAsked, GeneratedFound>
 {
-    public async Task<GeneratedFound> ExecuteAsync(GeneratedNameAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    public async Task<GeneratedFound> ExecuteAsync(GeneratedNameAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         List<GeneratedText?> found = [];
         foreach (Project project in context.Solution.Projects.Where(p => (p.FilePath is { Length: > 0 } file ? Path.GetFileNameWithoutExtension(file) : p.Name) == message.Project))

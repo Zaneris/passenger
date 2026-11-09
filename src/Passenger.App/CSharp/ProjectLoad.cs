@@ -49,7 +49,7 @@ internal enum LoadReportKind
 
 /// <summary>A line Roslyn's project system logs as it loads projects: "Warning while loading P: message" and "Error while
 /// loading P: message" (its kind and path its own, the message MSBuild's or NuGet's), "Successfully completed load of P"
-/// when there were none, and "Completed (re)load of all projects in T" at a batch's end. The last two are the server's
+/// when there were none, and "Completed (re)load of N project(s) in T" at a batch's end. The last two are the server's
 /// English resources; a server in another language leaves a project's problems in place until it reports again.</summary>
 internal sealed partial record LoadReport(LoadReportKind Kind, ProjectLoadProblem? Problem, string? Project)
 {
@@ -87,7 +87,7 @@ internal sealed partial record LoadReport(LoadReportKind Kind, ProjectLoadProble
     [GeneratedRegex(@"^\s*(?:\[[^\]]*\]\s*)*Successfully completed load of (?<path>.+?\.(?:[A-Za-z]+proj|cs))\s*$")]
     private static partial Regex LoadedLine();
 
-    [GeneratedRegex(@"^\s*(?:\[[^\]]*\]\s*)*Completed \(re\)load of all projects")]
+    [GeneratedRegex(@"^\s*(?:\[[^\]]*\]\s*)*Completed \(re\)load of \d+ project\(s\)")]
     private static partial Regex BatchLine();
 
     [GeneratedRegex(@"\s+")]

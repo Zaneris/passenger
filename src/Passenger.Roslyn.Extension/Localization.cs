@@ -11,7 +11,7 @@ namespace Passenger.Roslyn.Extension;
 /// <summary>The localized strings a C# or Razor file reads (<see cref="LocalizationSource"/>).</summary>
 public sealed class LocalizedReads : IExtensionWorkspaceMessageHandler<LocalizedReadsRequest, LocalizedReadsFound>
 {
-    public Task<LocalizedReadsFound> ExecuteAsync(LocalizedReadsRequest message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<LocalizedReadsFound> ExecuteAsync(LocalizedReadsRequest message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         LocalizationSource.ReadsAsync(context.Solution, message.Path, cancellationToken);
 }
 

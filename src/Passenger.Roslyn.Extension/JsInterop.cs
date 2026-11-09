@@ -11,7 +11,7 @@ namespace Passenger.Roslyn.Extension;
 /// <summary>The JavaScript a C# or Razor file calls through .NET's JS interop (<see cref="JsInteropSource"/>).</summary>
 public sealed class JsInteropCalls : IExtensionWorkspaceMessageHandler<JsInteropRequest, JsInteropFound>
 {
-    public Task<JsInteropFound> ExecuteAsync(JsInteropRequest message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<JsInteropFound> ExecuteAsync(JsInteropRequest message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         JsInteropSource.CallsAsync(context.Solution, message.Path, cancellationToken);
 }
 

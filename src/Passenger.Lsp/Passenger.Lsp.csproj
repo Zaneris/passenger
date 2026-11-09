@@ -5,8 +5,16 @@
   </PropertyGroup>
 
   <!-- Microsoft's server (MIT, built in the Roslyn repo), one package per platform, copied beside the app under roslyn/;
-       RoslynServer.targets finds it. -->
+       RoslynServer.targets finds it. Its own assembly is carried as tools/Passenger.RoslynPatch writes it, built first
+       and run, never linked. -->
   <Import Project="RoslynServer.targets" />
+  <ItemGroup>
+    <ProjectReference Include="../../tools/Passenger.RoslynPatch/Passenger.RoslynPatch.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
+  </ItemGroup>
+  <PropertyGroup>
+    <RoslynServerPatched>$([MSBuild]::EnsureTrailingSlash('$(ArtifactsPath)'))roslyn-server/$(RoslynServerRid)/$(RoslynServerVersion)/Microsoft.CodeAnalysis.LanguageServer.dll</RoslynServerPatched>
+  </PropertyGroup>
   <!-- The web languages' servers, npm packages carried under web/; WebServers.targets puts them in place with
        tools/Passenger.NodePackages, built first and run, never linked. -->
   <Import Project="WebServers.targets" />
@@ -41,7 +49,7 @@
 
   <!-- The server's files become this project's output items, so every project that references this one gets them
        beside its own binaries, with the package's third-party notices. -->
-  <Target Name="IncludeRoslynServer" BeforeTargets="AssignTargetPaths" DependsOnTargets="FindRoslynServer">
+  <Target Name="IncludeRoslynServer" BeforeTargets="AssignTargetPaths" DependsOnTargets="FindRoslynServer;PatchRoslynServer">
     <ItemGroup>
       <RoslynServerNotices Include="$(RoslynServerPackage)ThirdPartyNotices.*" />
     </ItemGroup>
@@ -53,14 +61,38 @@
     <Error Condition="'@(RoslynServerLeftOutGone)' != ''"
            Text="roslyn-language-server.$(RoslynServerRid) $(RoslynServerVersion) no longer carries @(RoslynServerLeftOutGone->'%(Identity).dll', ', '), which Passenger leaves out: check again what the server loads, then the list and THIRD_PARTY_NOTICES.md." />
     <ItemGroup>
-      <!-- The package's files only: a server run from the package folder leaves its MEF cache in cache/ there. -->
+      <!-- The package's files only: a server run from the package folder leaves its MEF cache in cache/ there; its own
+           assembly as patched, never as the package has it. -->
       <RoslynServerFile Include="$(RoslynServerFolder)**/*"
-                        Exclude="$(RoslynServerFolder)cache/**;@(RoslynServerLeftOut->'$(RoslynServerFolder)%(Identity).dll');@(RoslynServerLeftOut->'$(RoslynServerFolder)*/%(Identity).resources.dll')" />
+                        Exclude="$(RoslynServerFolder)cache/**;$(RoslynServerFolder)Microsoft.CodeAnalysis.LanguageServer.dll;@(RoslynServerLeftOut->'$(RoslynServerFolder)%(Identity).dll');@(RoslynServerLeftOut->'$(RoslynServerFolder)*/%(Identity).resources.dll')" />
       <None Include="@(RoslynServerFile)" Link="roslyn/%(RoslynServerFile.RecursiveDir)%(RoslynServerFile.Filename)%(RoslynServerFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
+      <None Include="$(RoslynServerPatched)" Link="roslyn/Microsoft.CodeAnalysis.LanguageServer.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
       <None Include="@(RoslynServerNotices)" Link="roslyn/%(RoslynServerNotices.Filename)%(RoslynServerNotices.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
+  </Target>
+
+  <!-- The server's own assembly, written under artifacts/ without Visual Studio Telemetry's session by
+       tools/Passenger.RoslynPatch, once for each system's package and again only when the package, the tool or what the
+       server leaves out changes; the build fails when it can't be. Not in a design-time build, which copies nothing and
+       would run the tool before anything has built it. -->
+  <Target Name="PatchRoslynServer" DependsOnTargets="FindRoslynServer;FindRoslynPatch" Condition="'$(DesignTimeBuild)' != 'true'"
+          Inputs="$(RoslynServerFolder)Microsoft.CodeAnalysis.LanguageServer.dll;@(RoslynPatchTool);$(MSBuildThisFileDirectory)RoslynServer.targets"
+          Outputs="$(RoslynServerPatched)">
+    <PropertyGroup>
+      <RoslynPatchHost>$(DOTNET_HOST_PATH)</RoslynPatchHost>
+      <RoslynPatchHost Condition="'$(RoslynPatchHost)' == ''">dotnet</RoslynPatchHost>
+    </PropertyGroup>
+    <Exec Command="&quot;$(RoslynPatchHost)&quot; &quot;@(RoslynPatchTool)&quot; &quot;$(RoslynServerFolder)Microsoft.CodeAnalysis.LanguageServer.dll&quot; &quot;$(RoslynServerPatched)&quot; @(RoslynServerLeftOut, ' ')" />
+  </Target>
+
+  <Target Name="FindRoslynPatch">
+    <Error Condition="'$(ArtifactsPath)' == ''" Text="Roslyn's server is patched under the artifacts folder (UseArtifactsOutput), which this build has none of." />
+    <MSBuild Projects="../../tools/Passenger.RoslynPatch/Passenger.RoslynPatch.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="RoslynPatchTool" />
+    </MSBuild>
   </Target>
 
   <!-- Passenger's own extension to the server becomes this project's output under roslyn-extension/: a folder of its own,

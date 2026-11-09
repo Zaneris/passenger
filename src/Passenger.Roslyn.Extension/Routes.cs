@@ -15,14 +15,14 @@ namespace Passenger.Roslyn.Extension;
 /// <summary>The routes web projects declare in their code (<see cref="RouteReading"/>).</summary>
 public sealed class WebRoutes : IExtensionWorkspaceMessageHandler<RoutesRequest, RoutesFound>
 {
-    public Task<RoutesFound> ExecuteAsync(RoutesRequest message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<RoutesFound> ExecuteAsync(RoutesRequest message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         RouteReading.ReadAsync(context.Solution, message.Projects, cancellationToken);
 }
 
 /// <summary>One route's JSON body, shaped as a request of it is made (<see cref="RouteReading.BodyAsync"/>).</summary>
 public sealed class RouteBody : IExtensionWorkspaceMessageHandler<RouteBodyAsked, RouteBodyShaped>
 {
-    public Task<RouteBodyShaped> ExecuteAsync(RouteBodyAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<RouteBodyShaped> ExecuteAsync(RouteBodyAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         RouteReading.BodyAsync(context.Solution, message, cancellationToken);
 }
 

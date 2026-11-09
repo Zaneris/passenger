@@ -12,7 +12,7 @@ namespace Passenger.Roslyn.Extension;
 /// <summary>The strings of a kind naming one name in a Godot project's C# (<see cref="GodotKinds.UsesAsync"/>), which its rename edits.</summary>
 public sealed class GodotKindStrings : IExtensionWorkspaceMessageHandler<GodotKindAsked, GodotKindUses>
 {
-    public Task<GodotKindUses> ExecuteAsync(GodotKindAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<GodotKindUses> ExecuteAsync(GodotKindAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         GodotKinds.UsesAsync(context.Solution, message, cancellationToken);
 }
 

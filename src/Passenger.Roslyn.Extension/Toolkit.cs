@@ -16,8 +16,9 @@ public sealed class ToolkitRenames : IExtensionDocumentMessageHandler<ToolkitAsk
     private const string ObservableProperty = "CommunityToolkit.Mvvm.ComponentModel.ObservablePropertyAttribute";
     private const string RelayCommand = "CommunityToolkit.Mvvm.Input.RelayCommandAttribute";
 
-    public async Task<ToolkitFound> ExecuteAsync(ToolkitAsked message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken)
+    public async Task<ToolkitFound> ExecuteAsync(ToolkitAsked message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken)
     {
+        Document document = context.Document();
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
         int position = text.Lines.GetPosition(new LinePosition(message.At.Line, message.At.Character));
         ISymbol? symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, position, cancellationToken).ConfigureAwait(false);

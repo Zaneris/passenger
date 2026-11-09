@@ -11,7 +11,7 @@ namespace Passenger.Roslyn.Extension;
 /// <summary>A fix of a Godot check made in a script's code (<see cref="GodotFixRequest"/>).</summary>
 public sealed class GodotFix : IExtensionWorkspaceMessageHandler<GodotFixRequest, Refactored>
 {
-    public Task<Refactored> ExecuteAsync(GodotFixRequest message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<Refactored> ExecuteAsync(GodotFixRequest message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         GodotSource.FixAsync(context.Solution, message, cancellationToken);
 }
 

@@ -10,15 +10,16 @@ namespace Passenger.Roslyn.Extension;
 /// <summary>Reads a deliberately bounded, straight-line AppHost through Roslyn, never through resource-name heuristics.</summary>
 public sealed class AspireCodeHelp : IExtensionDocumentMessageHandler<AspireHelpRequest, AspireHelp>
 {
-    public Task<AspireHelp> ExecuteAsync(AspireHelpRequest message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        AspireSource.HelpAsync(document, message.At, message.Explain, cancellationToken);
+    public Task<AspireHelp> ExecuteAsync(AspireHelpRequest message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        AspireSource.HelpAsync(context.Document(), message.At, message.Explain, cancellationToken);
 }
 
 /// <summary>Recomputes a missing edge before applying it, so a previously offered fix cannot add a duplicate reference.</summary>
 public sealed class AspireReferenceFix : IExtensionDocumentMessageHandler<AspireFixRequest, Refactored>
 {
-    public async Task<Refactored> ExecuteAsync(AspireFixRequest message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken)
+    public async Task<Refactored> ExecuteAsync(AspireFixRequest message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken)
     {
+        Document document = context.Document();
         AspireHelp help = await AspireSource.HelpAsync(document, null, false, cancellationToken).ConfigureAwait(false);
         return help.Missing.FirstOrDefault(m => m.Service == message.Service && m.Resource == message.Resource
             && Compare(m.Start, message.At) <= 0 && Compare(message.At, m.End) <= 0)?.Fix
@@ -31,21 +32,21 @@ public sealed class AspireReferenceFix : IExtensionDocumentMessageHandler<Aspire
 /// <summary>Rename of a resource's name across its AppHost and the services that read it, worked out again as it is made.</summary>
 public sealed class AspireRename : IExtensionDocumentMessageHandler<AspireRenameRequest, AspireRenaming>
 {
-    public Task<AspireRenaming> ExecuteAsync(AspireRenameRequest message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        AspireSource.RenameAsync(document, message.At, message.NewName, cancellationToken);
+    public Task<AspireRenaming> ExecuteAsync(AspireRenameRequest message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        AspireSource.RenameAsync(context.Document(), message.At, message.NewName, cancellationToken);
 }
 
 /// <summary>The parameters an AppHost's file declares that take their value from its configuration alone.</summary>
 public sealed class AspireParameters : IExtensionDocumentMessageHandler<AspireParametersRequest, AspireParametersFound>
 {
-    public Task<AspireParametersFound> ExecuteAsync(AspireParametersRequest message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        AspireSource.ParametersAsync(document, cancellationToken);
+    public Task<AspireParametersFound> ExecuteAsync(AspireParametersRequest message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        AspireSource.ParametersAsync(context.Document(), cancellationToken);
 }
 
 /// <summary>The project resources an AppHost proves, each with where it is declared and that file's fingerprint.</summary>
 public sealed class AspireRunResources : IExtensionWorkspaceMessageHandler<AspireResourcesRequest, AspireRunResourcesResult>
 {
-    public Task<AspireRunResourcesResult> ExecuteAsync(AspireResourcesRequest message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<AspireRunResourcesResult> ExecuteAsync(AspireResourcesRequest message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         AspireSource.RunResourcesAsync(context.Solution, message.AppHost, cancellationToken);
 }
 
@@ -53,7 +54,7 @@ public sealed class AspireRunResources : IExtensionWorkspaceMessageHandler<Aspir
 /// configuration key it reads or binds (<see cref="ConfigurationSource"/>), from one walk of its documents.</summary>
 public sealed class ConnectionReads : IExtensionWorkspaceMessageHandler<ConnectionReadsRequest, ConnectionReadsFound>
 {
-    public Task<ConnectionReadsFound> ExecuteAsync(ConnectionReadsRequest message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<ConnectionReadsFound> ExecuteAsync(ConnectionReadsRequest message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         AspireSource.ConnectionReadsAsync(context.Solution, message.Projects, cancellationToken, message.Keys);
 }
 

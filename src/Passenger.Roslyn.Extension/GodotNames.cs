@@ -14,14 +14,14 @@ namespace Passenger.Roslyn.Extension;
 /// the engine's class or member there by Godot's own names (<see cref="GodotSource.EngineMember"/>).</summary>
 public sealed class GodotNames : IExtensionDocumentMessageHandler<GodotNamesAsked, GodotNamesFound>
 {
-    public Task<GodotNamesFound> ExecuteAsync(GodotNamesAsked message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        GodotGenerated.AtAsync(context.Solution, document, message, cancellationToken);
+    public Task<GodotNamesFound> ExecuteAsync(GodotNamesAsked message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        GodotGenerated.AtAsync(context.Solution, context.Document(), message, cancellationToken);
 }
 
 /// <summary>The res:// strings of a Godot project's C# naming files or folders asked for (<see cref="GodotGenerated.PathsAsync"/>).</summary>
 public sealed class GodotPaths : IExtensionWorkspaceMessageHandler<GodotPathsAsked, GodotPathsFound>
 {
-    public Task<GodotPathsFound> ExecuteAsync(GodotPathsAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<GodotPathsFound> ExecuteAsync(GodotPathsAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         GodotGenerated.PathsAsync(context.Solution, message, cancellationToken);
 }
 
@@ -373,6 +373,6 @@ internal sealed record GodotNameCall(GodotNameKind Kind, ITypeSymbol On, IMethod
 /// (<see cref="GodotGenerated.MemberStringsAsync"/>), which a GDScript member's usages list.</summary>
 public sealed class GodotNameStrings : IExtensionWorkspaceMessageHandler<GodotNameStringsAsked, GodotKindUses>
 {
-    public Task<GodotKindUses> ExecuteAsync(GodotNameStringsAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<GodotKindUses> ExecuteAsync(GodotNameStringsAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         GodotGenerated.MemberStringsAsync(context.Solution, message, cancellationToken);
 }

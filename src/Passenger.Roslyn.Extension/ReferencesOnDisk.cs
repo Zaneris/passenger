@@ -25,7 +25,7 @@ internal sealed class ReferencesOnDisk(IDocumentationProviderService documentati
         {
             if (!read.TryGetValue(resolvedPath, out (FileMark Mark, IMetadataService Reader) kept) || kept.Mark != now)
             {
-                kept = (now, new MetadataServiceFactory.MetadataService(documentation));
+                kept = (now, new MetadataServiceFactory.MetadataService(documentation, new MetadataReferenceCache()));
                 read[resolvedPath] = kept;
             }
             reader = kept.Reader;
@@ -71,7 +71,7 @@ internal sealed class ReferencesOnDiskFactory : IWorkspaceServiceFactory
 /// read: hearing of a change waits seconds for more to come, and what is asked the moment a build ends can't.</summary>
 public sealed class ReferencesRead : IExtensionWorkspaceMessageHandler<ReferencesAsked, ReferencesTaken>
 {
-    public async Task<ReferencesTaken> ExecuteAsync(ReferencesAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    public async Task<ReferencesTaken> ExecuteAsync(ReferencesAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         Solution solution = context.Solution;
         if (solution.Services.GetService<IMetadataService>() is not ReferencesOnDisk onDisk || solution.Workspace is not LanguageServerWorkspace { ProjectSystemProjectFactory: { } projects })

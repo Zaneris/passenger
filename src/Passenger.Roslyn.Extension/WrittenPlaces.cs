@@ -12,7 +12,7 @@ namespace Passenger.Roslyn.Extension;
 /// BuildRenderTree) is that file's at its start; any other span stays as it was.</summary>
 public sealed class WrittenPlaces : IExtensionWorkspaceMessageHandler<WrittenSpans, WrittenSpans>
 {
-    public async Task<WrittenSpans> ExecuteAsync(WrittenSpans message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    public async Task<WrittenSpans> ExecuteAsync(WrittenSpans message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         List<UriSpan> written = [];
         foreach (UriSpan span in message.Spans)
@@ -25,7 +25,7 @@ public sealed class WrittenPlaces : IExtensionWorkspaceMessageHandler<WrittenSpa
     private static async Task<UriSpan?> WrittenAsync(Solution solution, UriSpan span, CancellationToken cancel)
     {
         if (!System.Uri.TryCreate(span.Uri, UriKind.Absolute, out Uri? uri) || uri.Scheme != SourceGeneratedDocumentUri.Scheme
-            || (await solution.GetTextDocumentsAsync(new DocumentUri(uri), cancel).ConfigureAwait(false)).FirstOrDefault() is not SourceGeneratedDocument document)
+            || (await solution.GetTextDocumentsAsync(new DocumentUri(span.Uri), cancel).ConfigureAwait(false)).FirstOrDefault() is not SourceGeneratedDocument document)
         {
             return null;
         }
@@ -33,7 +33,7 @@ public sealed class WrittenPlaces : IExtensionWorkspaceMessageHandler<WrittenSpa
         int start = Offset(text, span.Start);
         TextSpan generated = TextSpan.FromBounds(start, Math.Max(start, Offset(text, span.End)));
         if (await ProtocolConversions.TextSpanToLocationAsync(document, generated, isStale: false, cancel).ConfigureAwait(false) is { } mapped
-            && mapped.DocumentUri.ParsedUri?.Scheme != SourceGeneratedDocumentUri.Scheme)
+            && mapped.DocumentUri.ParsedDocumentUri?.Scheme != SourceGeneratedDocumentUri.Scheme)
         {
             return new UriSpan(mapped.DocumentUri.UriString, new Place(mapped.Range.Start.Line, mapped.Range.Start.Character),
                 new Place(mapped.Range.End.Line, mapped.Range.End.Character));

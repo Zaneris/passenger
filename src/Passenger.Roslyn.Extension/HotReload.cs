@@ -11,31 +11,31 @@ namespace Passenger.Roslyn.Extension;
 
 public sealed class StartHotReload : IExtensionWorkspaceMessageHandler<HotReloadStart, HotReloadStarted>
 {
-    public Task<HotReloadStarted> ExecuteAsync(HotReloadStart message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<HotReloadStarted> ExecuteAsync(HotReloadStart message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         HotReload.StartAsync(message, context.Solution, cancellationToken);
 }
 
 public sealed class EmitHotReload : IExtensionWorkspaceMessageHandler<HotReloadEmit, HotReloadEmitted>
 {
-    public Task<HotReloadEmitted> ExecuteAsync(HotReloadEmit message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<HotReloadEmitted> ExecuteAsync(HotReloadEmit message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         HotReload.EmitAsync(message, context.Solution, cancellationToken);
 }
 
 public sealed class CommitHotReload : IExtensionWorkspaceMessageHandler<HotReloadSessionMessage, HotReloadDone>
 {
-    public Task<HotReloadDone> ExecuteAsync(HotReloadSessionMessage message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<HotReloadDone> ExecuteAsync(HotReloadSessionMessage message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         Task.FromResult(HotReload.Commit(message.Session));
 }
 
 public sealed class DiscardHotReload : IExtensionWorkspaceMessageHandler<HotReloadSessionMessage, HotReloadDone>
 {
-    public Task<HotReloadDone> ExecuteAsync(HotReloadSessionMessage message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<HotReloadDone> ExecuteAsync(HotReloadSessionMessage message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         Task.FromResult(HotReload.Discard(message.Session));
 }
 
 public sealed class EndHotReload : IExtensionWorkspaceMessageHandler<HotReloadSessionMessage, HotReloadDone>
 {
-    public Task<HotReloadDone> ExecuteAsync(HotReloadSessionMessage message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<HotReloadDone> ExecuteAsync(HotReloadSessionMessage message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         Task.FromResult(HotReload.End(message.Session));
 }
 
@@ -463,7 +463,7 @@ internal static class HotReload
     }
 
     /// <summary>Passenger's debugger as the service asks of it, answered from what Passenger's last emit said.</summary>
-    private sealed class Debugger(ImmutableArray<string> capabilities) : IManagedHotReloadService
+    private sealed class Debugger(ImmutableArray<string> capabilities) : IManagedHotReloadState
     {
         private volatile HotReloadEmit? said;
 
@@ -496,7 +496,7 @@ internal static class HotReload
         }
 
         // The runtime's, as Passenger's last message said them; those the session started with until one has.
-        public ValueTask<ImmutableArray<string>> GetCapabilitiesAsync(CancellationToken cancellation) =>
+        public ValueTask<ImmutableArray<string>> GetUpdateCapabilitiesAsync(CancellationToken cancellation) =>
             ValueTask.FromResult(said is { Capabilities.Count: > 0 } message ? [.. message.Capabilities] : capabilities);
 
         public ValueTask PrepareModuleForUpdateAsync(Guid module, CancellationToken cancellation) => ValueTask.CompletedTask;

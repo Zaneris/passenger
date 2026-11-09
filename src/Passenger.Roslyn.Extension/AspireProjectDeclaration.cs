@@ -8,9 +8,9 @@ namespace Passenger.Roslyn.Extension;
 /// declaration of the resource a service names in a string (a connection string's name, a service it discovers).</summary>
 public sealed class AspireProjectDeclaration : IExtensionDocumentMessageHandler<Caret, AspireProjectTarget>
 {
-    public async Task<AspireProjectTarget> ExecuteAsync(Caret message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        await ProjectAsync(message, document, cancellationToken).ConfigureAwait(false) is { Path: not null } project ? project
-            : await AspireSource.DeclarationAsync(document, message.At, cancellationToken).ConfigureAwait(false);
+    public async Task<AspireProjectTarget> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        await ProjectAsync(message, context.Document(), cancellationToken).ConfigureAwait(false) is { Path: not null } project ? project
+            : await AspireSource.DeclarationAsync(context.Document(), message.At, cancellationToken).ConfigureAwait(false);
 
     private static async Task<AspireProjectTarget> ProjectAsync(Caret message, Document document, CancellationToken cancellationToken)
     {

@@ -8,69 +8,77 @@ namespace Passenger.Roslyn.Extension;
 
 public sealed class DescribeSignature : IExtensionDocumentMessageHandler<Caret, Signature>
 {
-    public Task<Signature> ExecuteAsync(Caret message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        Signatures.DescribeAsync(document, message.At, cancellationToken);
+    public Task<Signature> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        Signatures.DescribeAsync(context.Document(), message.At, cancellationToken);
 }
 
 public sealed class ChangeSignature : IExtensionDocumentMessageHandler<SignatureChange, Refactored>
 {
-    public Task<Refactored> ExecuteAsync(SignatureChange message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        Signatures.ChangeAsync(document, message, cancellationToken);
+    public Task<Refactored> ExecuteAsync(SignatureChange message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        Signatures.ChangeAsync(context.Document(), message, cancellationToken);
 }
 
 public sealed class DescribeInterface : IExtensionDocumentMessageHandler<Caret, InterfaceSource>
 {
-    public Task<InterfaceSource> ExecuteAsync(Caret message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        Interfaces.DescribeAsync(document, message.At, cancellationToken);
+    public Task<InterfaceSource> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        Interfaces.DescribeAsync(context.Document(), message.At, cancellationToken);
 }
 
 public sealed class ExtractInterface : IExtensionDocumentMessageHandler<InterfaceExtraction, Refactored>
 {
-    public Task<Refactored> ExecuteAsync(InterfaceExtraction message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        Interfaces.ExtractAsync(document, message, cancellationToken);
+    public Task<Refactored> ExecuteAsync(InterfaceExtraction message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        Interfaces.ExtractAsync(context.Document(), message, cancellationToken);
 }
 
 public sealed class DescribeType : IExtensionDocumentMessageHandler<Caret, TypeSource>
 {
-    public Task<TypeSource> ExecuteAsync(Caret message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        TypeMoves.DescribeAsync(document, message.At, cancellationToken);
+    public Task<TypeSource> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        TypeMoves.DescribeAsync(context.Document(), message.At, cancellationToken);
 }
 
 public sealed class MoveTypeToFile : IExtensionDocumentMessageHandler<TypeToFile, Refactored>
 {
-    public Task<Refactored> ExecuteAsync(TypeToFile message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        TypeMoves.ToFileAsync(document, message, cancellationToken);
+    public Task<Refactored> ExecuteAsync(TypeToFile message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        TypeMoves.ToFileAsync(context.Document(), message, cancellationToken);
 }
 
 public sealed class MoveTypeToNamespace : IExtensionDocumentMessageHandler<TypeToNamespace, Refactored>
 {
-    public Task<Refactored> ExecuteAsync(TypeToNamespace message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        TypeMoves.ToNamespaceAsync(document, message, cancellationToken);
+    public Task<Refactored> ExecuteAsync(TypeToNamespace message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        TypeMoves.ToNamespaceAsync(context.Document(), message, cancellationToken);
 }
 
 public sealed class DescribeHierarchy : IExtensionDocumentMessageHandler<Caret, Hierarchy>
 {
-    public Task<Hierarchy> ExecuteAsync(Caret message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        MemberMoves.DescribeAsync(document, message.At, cancellationToken);
+    public Task<Hierarchy> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        MemberMoves.DescribeAsync(context.Document(), message.At, cancellationToken);
 }
 
 public sealed class PullMembersUp : IExtensionDocumentMessageHandler<MembersMove, Refactored>
 {
-    public Task<Refactored> ExecuteAsync(MembersMove message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        MemberMoves.PullUpAsync(document, message, cancellationToken);
+    public Task<Refactored> ExecuteAsync(MembersMove message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        MemberMoves.PullUpAsync(context.Document(), message, cancellationToken);
 }
 
 public sealed class PushMembersDown : IExtensionDocumentMessageHandler<MembersMove, Refactored>
 {
-    public Task<Refactored> ExecuteAsync(MembersMove message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
-        MemberMoves.PushDownAsync(document, message, cancellationToken);
+    public Task<Refactored> ExecuteAsync(MembersMove message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        MemberMoves.PushDownAsync(context.Document(), message, cancellationToken);
+}
+
+internal static class DocumentMessages
+{
+    /// <summary>The C# file a message names: Passenger sends a document's messages only about a .cs file, so its document
+    /// is a source document, never an additional or analyzer config file.</summary>
+    public static Document Document(this ExtensionDocumentMessageContext context) =>
+        context.TextDocument as Document ?? throw new InvalidOperationException($"{context.TextDocument.FilePath} is not a C# document");
 }
 
 /// <summary>The files' texts as the server holds them, by their fingerprints: a file changed on disk that the server has
 /// not read again since differs from the disk, and an edit placed by the server's lines would land elsewhere in it.</summary>
 public sealed class DocumentTexts : IExtensionWorkspaceMessageHandler<TextsAsked, TextsHeld>
 {
-    public async Task<TextsHeld> ExecuteAsync(TextsAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    public async Task<TextsHeld> ExecuteAsync(TextsAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         List<TextHeld> held = [];
         foreach (string path in message.Paths)
@@ -95,7 +103,7 @@ public sealed class DocumentTexts : IExtensionWorkspaceMessageHandler<TextsAsked
 /// server may hold as they were.</summary>
 public sealed class DocumentsWritten : IExtensionWorkspaceMessageHandler<WrittenAsked, WrittenFound>
 {
-    public async Task<WrittenFound> ExecuteAsync(WrittenAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    public async Task<WrittenFound> ExecuteAsync(WrittenAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         List<TextHeld> changed = [];
         foreach (string path in message.Changed)

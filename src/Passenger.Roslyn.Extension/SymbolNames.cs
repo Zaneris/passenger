@@ -11,15 +11,16 @@ namespace Passenger.Roslyn.Extension;
 /// <summary>The solution's own symbols a name names exactly (<see cref="SymbolNames"/>).</summary>
 public sealed class SymbolsNamed : IExtensionWorkspaceMessageHandler<SymbolsAsked, SymbolsFound>
 {
-    public Task<SymbolsFound> ExecuteAsync(SymbolsAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<SymbolsFound> ExecuteAsync(SymbolsAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         SymbolNames.FindAsync(context.Solution, message.Name, message.Limit, cancellationToken);
 }
 
 /// <summary>The symbol at a caret, the one a name there refers to or a declaration there declares, with its documentation id.</summary>
 public sealed class SymbolAt : IExtensionDocumentMessageHandler<Caret, SymbolsFound>
 {
-    public async Task<SymbolsFound> ExecuteAsync(Caret message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken)
+    public async Task<SymbolsFound> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken)
     {
+        Document document = context.Document();
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
         int position = text.Lines.GetPosition(new LinePosition(message.At.Line, message.At.Character));
         ISymbol? symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, position, cancellationToken).ConfigureAwait(false);
@@ -30,7 +31,7 @@ public sealed class SymbolAt : IExtensionDocumentMessageHandler<Caret, SymbolsFo
 /// <summary>The class a Razor component's file makes (<see cref="SymbolNames.ComponentAsync"/>).</summary>
 public sealed class ComponentClass : IExtensionWorkspaceMessageHandler<ComponentAsked, ComponentFound>
 {
-    public Task<ComponentFound> ExecuteAsync(ComponentAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+    public Task<ComponentFound> ExecuteAsync(ComponentAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
         SymbolNames.ComponentAsync(context.Solution, message.Path, cancellationToken);
 }
 
