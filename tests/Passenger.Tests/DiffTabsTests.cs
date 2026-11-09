@@ -267,6 +267,41 @@ public sealed class DiffTabsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A diff's tab closed, then its file's: what Reopen Closed Tab and Back keep of the diff is how it is asked for
+    /// afresh, so the closed file goes, its text and colours, the last commit's text and the differences with it, and the diff
+    /// still opens again.</summary>
+    [AvaloniaFact]
+    public void A_closed_diff_tab_kept_to_open_again_holds_none_of_its_texts_nor_its_closed_file()
+    {
+        MainWindow window = Open();
+        WeakReference<OpenDocument> closed = DiffThenFileClosed(window);
+        Ui.Collected(closed, "Shop.cs's document, closed after its diff's tab, to be let go: kept to open the diff again, each diff tab closed "
+            + "would hold its file, the last commit's text and the differences, up to fifty of them");
+
+        Assert.True(window.Perform(AppActions.ReopenClosedTab), "Reopen Closed Tab could not bring Shop.cs back");
+        Ui.Settle();
+        Assert.True(window.Perform(AppActions.ReopenClosedTab), "Reopen Closed Tab could not run with the diff's tab closed before Shop.cs's");
+        Ui.Landed(() => window.EditorArea.Diffs.Count == 1 && window.EditorArea.Active?.Diff is not null, "the closed diff's tab opened again by Reopen Closed Tab");
+        DiffView again = Assert.IsType<DiffView>(window.EditorArea.ActiveGroup.Diff);
+        Ui.WaitFor(() => again.Hunks.Count == 2, () => $"the reopened diff to show Shop.cs's two changes, where it has {string.Join(", ", again.Hunks)}");
+        window.Close();
+    }
+
+    /// <summary>Shop.cs's diff shown from the Commit window as a tab, closed, then Shop.cs's own tab: the file held only weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference<OpenDocument> DiffThenFileClosed(MainWindow window)
+    {
+        OpenDocument file = window.EditorArea.Active!;
+        Assert.IsType<DiffTab>(DiffFromCommit(window, byEnter: true));
+        Ui.Run(window, AppActions.CloseTab);
+        Ui.Settle();
+        Assert.True(window.EditorArea.Diffs.Count == 0 && window.EditorArea.Active == file, $"Closing the diff's tab showed {window.EditorArea.Active?.Title}, not Shop.cs");
+        Ui.Run(window, AppActions.CloseTab);
+        Ui.Settle();
+        Assert.DoesNotContain(file, window.EditorArea.Documents);
+        return new WeakReference<OpenDocument>(file);
+    }
+
     /// <summary>Find over a diff's side with the keys, typed into where the keys are: "count" twice on each side.</summary>
     private static void FindIn(Avalonia.Controls.Window keys, DiffView view, CodeEditor searched, CodeEditor beside)
     {

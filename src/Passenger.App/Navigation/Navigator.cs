@@ -108,7 +108,7 @@ public sealed class Navigator
         {
             TextSnapshot side = diff.Shown.File?.Text.Snapshot ?? diff.View?.Right.Document.Snapshot ?? tab.Text.Snapshot;
             int at = Math.Min(diff.Caret, side.Length);
-            return new HistoryPlace(tab.Path, at, side.GetLineFromOffset(at)) { Diff = diff.Shown };
+            return new HistoryPlace(tab.Path, at, side.GetLineFromOffset(at)) { Diff = diff.Shown.Kept };
         }
         TextSnapshot text = tab.Text.Snapshot;
         int offset = Math.Min(caret, text.Length);

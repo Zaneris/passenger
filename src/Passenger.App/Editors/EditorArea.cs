@@ -535,7 +535,7 @@ public sealed partial class EditorArea : UserControl
         {
             return false;
         }
-        closedTabs.Add(document.Diff is { } diff ? closing with { Diff = diff.Shown } : closing);
+        closedTabs.Add(document.Diff is { } diff ? closing with { Diff = diff.Shown.Kept } : closing);
         if (closedTabs.Count > ClosedTabsKept)
         {
             closedTabs.RemoveAt(0);

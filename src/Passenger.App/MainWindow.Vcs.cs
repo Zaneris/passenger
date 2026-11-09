@@ -482,6 +482,10 @@ public partial class MainWindow
         { Again = again });
     }
 
+    /// <summary>A text's differences from another, worked out off the window's thread in a closure of their own, so a way of
+    /// asking for the diff again made beside the call (<see cref="DiffContent.Again"/>) holds neither text.</summary>
+    private static Task<FileDiff> ComparedAsync(string before, TextSnapshot after) => BackgroundWork.Run(() => FileDiff.Compare(before, after));
+
     /// <summary>How the window's diffs and merges are made: Highlighting Differences as Settings has it, kept when a diff
     /// changes it.</summary>
     private DiffPanes Diffs => diffs ??= new(() => settings.DiffHighlighting, way => ApplySettings(settings with { DiffHighlighting = way }));

@@ -10,6 +10,13 @@ public sealed record DiffContent(string Title, string Key, string Path, OpenDocu
     /// <summary>The diff asked for afresh, at the versions as they are then (the last commit's, the file's), shown where
     /// Settings opens diffs; null where its versions are fixed (a commit's), which <see cref="Make"/> shows again.</summary>
     public Func<Task<IDiffHost?>>? Again { get; init; }
+
+    /// <summary>What is kept of it to show it again once its tab has closed (Reopen Closed Tab, Back): one asked for afresh
+    /// keeps its title, key and <see cref="Again"/>, none of its texts or its file; one of fixed versions is kept whole, as
+    /// only its own view shows it again.</summary>
+    public DiffContent Kept => Again is null ? this : this with { File = null, Make = Unmade };
+
+    private static DiffView Unmade() => throw new InvalidOperationException("A diff kept to be asked for afresh is never made from what it showed");
 }
 
 /// <summary>Where a diff is shown: a window of its own over the IDE's (<see cref="DiffWindow"/>) or a tab of the editors

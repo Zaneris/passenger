@@ -233,7 +233,7 @@ public partial class MainWindow
         OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;
         TextDocument mine = open?.Text ?? new TextDocument(EditorArea.ReadText(path) ?? string.Empty);
         TextSnapshot text = mine.Snapshot;
-        FileDiff diff = await BackgroundWork.Run(() => FileDiff.Compare(theirs, text));
+        FileDiff diff = await ComparedAsync(theirs, text);
         return OpenLocalDiff(path, open, mine, diff, version, again: () => CompareWithAsync(path, revision, version, then, origin));
     }
 }
