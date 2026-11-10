@@ -19,6 +19,100 @@ namespace Passenger.Tests;
 public sealed class SettingsTests : IDisposable
 {
     [AvaloniaFact]
+    public void Visual_edits_preview_without_saving_and_cancel_restores_the_last_apply()
+    {
+        MainWindow window = Open();
+        window.KeepSettings();
+        StateStore store = StateStore.Open(settings);
+        try
+        {
+            window.ApplySettings(window.Settings with { EditorFontSize = 15 });
+            store.Settings.Flush();
+            string file = Path.Combine(settings, StateStore.SettingsFile);
+            string saved = File.ReadAllText(file);
+            File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+            window.OpenFile(Path.Combine(folder, "One.cs"));
+            window.Perform(AppActions.SplitRight);
+            Ui.Settle();
+            SettingsDialog dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.EditorPage;
+            Ui.Settle();
+            Editor<NumericUpDown>(dialog, "Font size").Value = 19;
+            Ui.Click(Editor<CheckBox>(dialog, "Show line numbers"));
+            dialog.Change(s => s with { CloseTags = false, TerminalFontSize = 21, SolutionWideAnalysis = true });
+            Assert.All(window.EditorArea.Groups, g => Assert.Equal(19, g.Editor.FontSize));
+            Assert.False(window.EditorArea.CodeEditor.ShowLineNumbers);
+            Assert.True(window.EditorArea.CodeEditor.ClosesTags);
+            Assert.False(window.Settings.SolutionWideAnalysis);
+            Assert.Equal(15, window.Settings.EditorFontSize);
+            store.Settings.Flush();
+            Assert.Equal(saved, File.ReadAllText(file));
+            dialog.Close();
+            Assert.All(window.EditorArea.Groups, g => Assert.Equal(15, g.Editor.FontSize));
+            Assert.True(window.EditorArea.CodeEditor.ShowLineNumbers);
+
+            dialog = window.ShowSettings();
+            dialog.Change(s => s with { EditorFontSize = 17 });
+            dialog.Apply();
+            dialog.Change(s => s with { EditorFontSize = 22 });
+            Assert.Equal(22, window.EditorArea.CodeEditor.FontSize);
+            Ui.Click(dialog.GetVisualDescendants().OfType<Button>().First(b => b.Content as string == "Cancel"));
+            Assert.Equal(17, window.EditorArea.CodeEditor.FontSize);
+            Assert.Equal(17, window.Settings.EditorFontSize);
+
+            dialog = window.ShowSettings();
+            dialog.Change(s => s with { EditorFontSize = 20 });
+            dialog.Change(s => s with { EditorFontFamily = "Passenger Missing Font" });
+            Assert.NotNull(dialog.Refused);
+            Assert.Equal(CodeEditor.CodeFont, window.EditorArea.CodeEditor.FontFamily);
+            Ui.Press(dialog, "ESCAPE");
+            Assert.False(dialog.IsVisible);
+            Assert.Equal(17, window.EditorArea.CodeEditor.FontSize);
+        }
+        finally
+        {
+            window.Close();
+            store.Release();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Preview_overlays_other_windows_and_external_changes_without_undoing_them_on_close()
+    {
+        MainWindow window = Open();
+        MainWindow other = Open();
+        window.KeepSettings();
+        other.KeepSettings();
+        StateStore store = StateStore.Open(settings);
+        try
+        {
+            window.ApplySettings(window.Settings with { EditorFontSize = 13 });
+            store.Settings.Flush();
+            SettingsDialog dialog = window.ShowSettings();
+            dialog.Change(s => s with { EditorFontSize = 19 });
+            Assert.Equal(19, other.EditorArea.CodeEditor.FontSize);
+            other.ApplySettings(other.Settings with { EditorLineSpacing = 1.5 });
+            Assert.Equal(19, window.EditorArea.CodeEditor.FontSize);
+            Assert.Equal(1.5, window.EditorArea.CodeEditor.LineSpacing);
+            store.Settings.Flush();
+            WrittenElsewhere(Path.Combine(settings, StateStore.SettingsFile), 21);
+            store.Settings.LookAgain();
+            Ui.WaitFor(() => window.Settings.EditorFontSize == 21, "the external setting to be read during preview");
+            Assert.Equal(19, window.EditorArea.CodeEditor.FontSize);
+            dialog.Close();
+            Assert.Equal(21, window.EditorArea.CodeEditor.FontSize);
+            Assert.Equal(21, other.EditorArea.CodeEditor.FontSize);
+            Assert.Equal(1.5, window.EditorArea.CodeEditor.LineSpacing);
+        }
+        finally
+        {
+            other.Close();
+            window.Close();
+            store.Release();
+        }
+    }
+
+    [AvaloniaFact]
     public void Terminal_preferences_apply_to_the_view_and_are_kept_for_the_next_window()
     {
         string font = OtherTerminalFont();
@@ -194,6 +288,9 @@ public sealed class SettingsTests : IDisposable
             Assert.Equal(CodeFonts.Carried, family.SelectedItem?.ToString());
             TextBlock row = ChooseRow(family, font);
             Assert.Equal(font, row.FontFamily.Name);
+            Ui.Settle();
+            Assert.Equal(font, window.EditorArea.CodeEditor.FontFamily.Name);
+            Assert.Null(window.Settings.EditorFontFamily);
             dialog.Ok();
             Ui.Settle();
             Assert.Equal(font, window.Settings.EditorFontFamily);
@@ -485,12 +582,24 @@ public sealed class SettingsTests : IDisposable
             Color passenger = Ui.Pixel(window, bare);
 
             theme.SelectedItem = "Harbour";
-            dialog.Apply();
             Ui.Settle();
             Color harbour = Ui.Pixel(window, bare);
             Assert.True(window.TryFindResource(TokenKeys.Frame, window.ActualThemeVariant, out object? frame) && frame is ISolidColorBrush desk && desk.Color == harbour && harbour != passenger,
                 $"With Harbour applied the window's frame is {harbour}, where it was {passenger} under Passenger's own: Harbour's desk did not take its place");
 
+            Assert.Equal(Look.Passenger, window.Settings.Look);
+            theme.SelectedItem = "Passenger";
+            Ui.Settle();
+            Assert.Equal(passenger, Ui.Pixel(window, bare));
+            theme.SelectedItem = "Harbour";
+            Ui.Settle();
+            dialog.Close();
+            Ui.Settle();
+            Assert.Equal(passenger, Ui.Pixel(window, bare));
+            dialog = window.ShowSettings();
+            dialog.Change(s => s with { Look = Look.Harbour });
+            dialog.Apply();
+            Assert.Equal(Look.Harbour, window.Settings.Look);
             dialog.Page = SettingsDialog.EditorPage;
             Ui.Settle();
             Assert.Equal(["Same as theme", "Rider"], Editor<ComboBox>(dialog, "Colour scheme").Items.Cast<string>());
