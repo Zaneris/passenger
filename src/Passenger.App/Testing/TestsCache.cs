@@ -229,8 +229,9 @@ internal sealed class TestsCache(string path)
             }
             return number;
         }
-        KeyValuePair<string, IReadOnlySet<string>>[] attributes = [.. kept.Attributes];
-        KeyValuePair<string, Entry[]>[] files = [.. kept.Files];
+        // Their own snapshot: a spread reads the count, then copies, throwing on an entry added between.
+        KeyValuePair<string, IReadOnlySet<string>>[] attributes = kept.Attributes.ToArray();
+        KeyValuePair<string, Entry[]>[] files = kept.Files.ToArray();
         using MemoryStream body = new();
         using (BinaryWriter entries = new(body, Encoding.UTF8, leaveOpen: true))
         {
