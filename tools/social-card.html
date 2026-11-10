@@ -34,15 +34,17 @@
         box-shadow: 0 30px 80px rgb(0 0 0 / 0.55);
     }
     .shot img { display: block; width: 100%; }
+    /* The picture moved left past its Explorer, so the card shows the code and the debugger's values. */
+    .shot img.code { width: 1150px; margin-left: -330px; }
 </style>
 </head>
 <body>
     <div class="text">
         <div class="brand"><img src="../src/Passenger.App/Assets/passenger.svg" alt="">Passenger</div>
-        <h1><span>Now for Godot&nbsp;4 games.</span>The free IDE for<br>C# and .NET.</h1>
-        <p>Games in C# and GDScript debugged beside their code, Blazor's WebAssembly in the browser, XAML Hot Reload, and your coding agent driving it all.</p>
+        <h1><span>Built on .NET&nbsp;11.</span>The free IDE for<br>C# and .NET.</h1>
+        <p>C# 15 and runtime async from the editor to the debugger, live metrics from a program's first moment, Godot games, and your coding agent driving it all.</p>
     </div>
     <div class="url">passenger-ide.net · free and open source, MIT</div>
-    <div class="shot"><img src="../site/images/godot-live-tree-dark.webp" alt=""></div>
+    <div class="shot"><img class="code" src="../site/images/debugger-dark.webp" alt=""></div>
 </body>
 </html>
