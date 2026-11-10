@@ -970,6 +970,8 @@ public sealed class LanguageServer : IAsyncDisposable
         disposing = true;
         killed = true;
         Live.TryRemove(this, out _);
+        // Its callback holds the server, and through it what the client gave it, for as long as the timer runs.
+        watch.Dispose();
         socket?.Dispose();
         // Its tree and its process group, so a BuildHost it was loading with goes too.
         if (process is not null)
