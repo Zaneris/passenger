@@ -8,7 +8,7 @@ source under MIT, for Windows, macOS and Linux ([installing](#installing)).
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
   <a href="https://passenger-ide.net/#download">Download</a> •
-  <a href="docs/release-notes/0.3.0.md">What's new in 0.3.0</a> •
+  <a href="docs/release-notes/0.3.1.md">What's new in 0.3.1</a> •
   <a href="#what-it-does">What it does</a> •
   <a href="#installing">Installing</a> •
   <a href="#your-coding-agent-using-the-ide-as-you-do">Your coding agent</a> •
