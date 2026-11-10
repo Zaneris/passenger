@@ -324,6 +324,30 @@ public sealed partial class CodeEditor : Control
         }
     }
 
+    /// <summary>Whether keys go through Vim's modes first (<see cref="PressVim"/>); turned off, the editor is modeless again.</summary>
+    public bool UsesVim
+    {
+        get => vim is not null;
+        set
+        {
+            if (UsesVim != value)
+            {
+                vim = value ? new Vim() : null;
+                VimModeChanged?.Invoke(this, EventArgs.Empty);
+                InvalidateVisual();
+            }
+        }
+    }
+
+    /// <summary>Vim's mode now, or null with Vim mode off: for the status bar.</summary>
+    public VimMode? VimModeShown => vim?.Mode;
+
+    /// <summary>The keys of a Vim command typed so far ("2d"), empty with none or Vim mode off.</summary>
+    public string VimPending => vim?.Pending ?? string.Empty;
+
+    /// <summary>Vim's mode or its half-typed command changed.</summary>
+    public event EventHandler? VimModeChanged;
+
     /// <summary>Whether a pasted block takes the document's indentation; off where indentation is the text's own (Markdown's
     /// code blocks, plain text).</summary>
     public bool ReindentsPaste { get; set; } = true;
