@@ -28,6 +28,37 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-10
+
+- `McpRefactorTests`' `An_agent_refactoring_right_after_git_changed_and_deleted_files_…`, CI's Windows runner at 2b79cb29e
+  (run 42767140366): "Rename failed: Circle.cs could not be written: Could not find file". **A gap in the IDE**, read from
+  the code (the run kept no log): a deleted file was found only by its folder written within 2 s of the request or the
+  watcher's word, and a loaded machine can give neither; an edit to a closed file not on disk now waits for the server to
+  let go of it (8e5507804, held by `WorkspaceEditsTests`, #1444).
+- `AspireCodeHelpTests`' `Renaming_a_resource_…`, every system at 2b79cb29e (run 42767140366): IndexOutOfRangeException in
+  `ServerDiagnostics.Drop`. **A bug in the IDE**, not a flake: its loop ran to a reused list's length, past the
+  diagnostics kept (bc60b9e07, #1443).
+- `ContainerRunProfilingTests`' `A_container_runs_dotnet_service_has_its_request_duration_charted_…`, CI's Linux runner at
+  d69f16701 (run 42615378243) and 2b79cb29e (run 42767140366): nothing charted, the lookup finding no .NET service of the
+  folder's run. **The test chose wrong**: ContainersTests' listing test left its project, which has a web service, up for
+  the rest of the run, and the test chose the first web row; that test takes its project down and the container tests
+  choose their own project's rows (2873f0e90, #1436).
+- `MetricsPaneTests`' `A_runtime_that_takes_no_session_…`, CI's Windows runner at ddee64a65 (run 42712131206): "it asked
+  again", a third connection. **The test counted another process's**: Windows' pipe names are machine-wide, so it counts
+  only its own process's connections (1ff23f34c, f1fc653f6, #1442); the pane's start waiting at a silent runtime is given
+  up once let go of (f2402e6c5).
+- `FlingTests`' `A_fling_through_lines_of_many_colours_…`, CI's macOS runner at d69f16701 (run 42615378243): "Waited 180 s
+  for the runtime's word of the finalizers it ran". **The test's listener dropped it**: an in-process EventListener's 10 MB
+  session drops what overflows unsaid; it opens a sized, filtered EventPipe session and fails on a lost event (d017b5ed7,
+  f8d3a2699, #1435).
+- `GDScriptRefactorCommandsTests`' `Each_refactoring_changes_every_script_…`, CI's Windows runner at d69f16701 (run
+  42615378243): main.tscn "being used by another process". **The test held the file**: its `File.ReadAllText` poll met
+  the IDE's write; it reads as the IDE does (`Ui.Shared`, 9e93fbdd5, #1434).
+- `ExplorerFilesTests`' tests of a loaded project's build output, every system at d69f16701 (run 42615378243). **Roslyn's
+  server 5.13** folds a nested project's watches into its folder's (d6f3ff891); then on Windows a move during the server's
+  start met watches made after it let go, refused by Windows; the folders let go of hold for every server's watches made
+  meanwhile (41363a3fa, #1433).
+
 ## 2026-11-09
 
 - `VcsTests`' `An_edit_shows_a_change_bar_and_committing_it_from_the_commit_window_clears_it`, every system at 42e825d99
