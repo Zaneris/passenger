@@ -140,10 +140,11 @@ public sealed class FlingTests
         private readonly EventPipeSession session;
         private readonly Task reading;
         private readonly ConcurrentDictionary<Type, int> found = new();
-        private readonly Dictionary<string, int> named = new(StringComparer.Ordinal);
+        private readonly List<string> named = [];
         private volatile TaskCompletionSource heard = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private volatile EventPipeEventSource? source;
         private int markers;
+        private int ended;
         private int laters;
         private long mostPinned;
         private long lastPinned;
@@ -182,20 +183,25 @@ public sealed class FlingTests
         {
             Collected();
             Heard();
-            int left = 0;
+            List<(string Name, int Count)> batch = [];
             foreach (Type type in found.Keys)
             {
                 if (found.TryRemove(type, out int count))
                 {
-                    named[type.FullName ?? type.Name] = named.GetValueOrDefault(type.FullName ?? type.Name) + count;
-                    left += count;
+                    batch.Add((type.FullName ?? type.Name, count));
                 }
             }
+            int left = batch.Sum(b => b.Count);
+            if (left > 0)
+            {
+                named.Add($"batch {ended}: {string.Join(", ", batch.OrderByDescending(b => b.Count).Take(KindsTold).Select(b => $"{b.Count} {b.Name}"))}");
+            }
+            ended++;
             return left;
         }
 
-        /// <summary>The types the batches left, the most first.</summary>
-        public string Named() => named.Count == 0 ? "none named" : string.Join(", ", named.OrderByDescending(n => n.Value).Select(n => $"{n.Value} {n.Key}"));
+        /// <summary>The types each batch that left any left, the most first: a batch's own, apart from another's.</summary>
+        public string Named() => named.Count == 0 ? "none named" : string.Join("; ", named);
 
         /// <summary>What the session brought so far: its events by kind, the most first, what it lost, the collections it
         /// heard, and the pinned objects the runtime found at the test's full collections.</summary>
