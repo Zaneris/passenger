@@ -469,9 +469,9 @@ public sealed class TerminalSession : IAsyncDisposable
                 }
             }
         }
-        catch (Exception failed) when (failed is IOException or ObjectDisposedException)
+        catch (Exception failed) when (failed is IOException or ObjectDisposedException or UnauthorizedAccessException)
         {
-            // The pseudo-terminal closed with the shell.
+            // The pseudo-terminal closed with the shell; Windows refuses a read of a ConPTY pipe closed under it as denied.
         }
         finally
         {
@@ -491,9 +491,9 @@ public sealed class TerminalSession : IAsyncDisposable
                 writer.Flush();
             }
         }
-        catch (Exception failed) when (failed is IOException or ObjectDisposedException)
+        catch (Exception failed) when (failed is IOException or ObjectDisposedException or UnauthorizedAccessException)
         {
-            // The shell has gone; its exit says so.
+            // The shell has gone, its pipe closed (on Windows refused as denied); its exit says so.
         }
     }
 
