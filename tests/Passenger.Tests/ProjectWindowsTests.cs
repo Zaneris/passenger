@@ -513,6 +513,100 @@ public sealed class ProjectWindowDebuggingTests : ProjectWindowsFolders
             window.Close();
         }
     }
+
+    /// <summary>A program debugged with Hot Reload, held at its start so its update handlers' hook never reaches the window;
+    /// another folder opened over it in its window, then the window closed: the window goes, held by nothing the first
+    /// folder's debugger left listening for the program (#1450).</summary>
+    [AvaloniaFact]
+    public void A_window_that_debugged_with_hot_reload_then_opened_another_folder_is_let_go_once_closed()
+    {
+        using Debugging.Helpers.StartHold hold = new();
+        string gamma = Folders();
+        MainWindow first = Started(LaunchOptions.Empty with { Folder = gamma }, languageServer: false);
+        try
+        {
+            Ui.Collected(Debugged(first, hold, then: beta), "the window that debugged a program with Hot Reload, then opened another folder and closed, to be let go: "
+                + "held by the first folder's update handlers' hook, still waiting for its program, each such window would be kept for good");
+        }
+        finally
+        {
+            first.Close();
+        }
+    }
+
+    /// <summary>A program debugged with Hot Reload, held at its start so its update handlers' hook never reaches the window,
+    /// and the window closed as it debugs: the window goes, held by nothing its debugger left listening for the program
+    /// (#1450).</summary>
+    [AvaloniaFact]
+    public void A_window_closed_as_it_debugs_with_hot_reload_is_let_go()
+    {
+        using Debugging.Helpers.StartHold hold = new();
+        string gamma = Folders();
+        MainWindow first = Started(LaunchOptions.Empty with { Folder = gamma }, languageServer: false);
+        try
+        {
+            Ui.Collected(Debugged(first, hold, then: null), "the window closed as it debugged a program with Hot Reload to be let go: "
+                + "held by its update handlers' hook, still waiting for its program, each such window would be kept for good");
+        }
+        finally
+        {
+            first.Close();
+        }
+    }
+
+    /// <summary>Alpha and Beta, each a console project restored, and an empty folder for the window that stays open.</summary>
+    private string Folders()
+    {
+        Project(alpha, "Alpha");
+        Project(beta, "Beta");
+        Restore.Run(alpha);
+        Restore.Run(beta);
+        return TestFolders.Create("gamma-");
+    }
+
+    /// <summary>A window on alpha opened from <paramref name="first"/> that debugs its program with Hot Reload, the program
+    /// held at its start; then, with <paramref name="then"/>, that folder opened over it in the window; then the window
+    /// closed: held only weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private WeakReference<MainWindow> Debugged(MainWindow first, Debugging.Helpers.StartHold hold, string? then)
+    {
+        MainWindow window = InNewWindow(first, alpha);
+        int program = 0;
+        try
+        {
+            window.SetConfigurations([new RunConfiguration
+            {
+                Name = "Alpha held",
+                Project = Path.Combine(PathNames.Canonical(alpha), "Alpha.csproj"),
+                Environment = new Dictionary<string, string>(hold.Environment),
+            }], "Alpha held");
+            Task<int> held = hold.Held(TimeSpan.FromMinutes(3));
+            // Not settled: the start holds the window's background work for as long as the debugger waits for the program.
+            Assert.True(window.Perform(AppActions.Debug), $"Debug did not start: {Ui.Said(window)}");
+            program = Ui.AwaitPumped(held, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3));
+            Assert.Equal(Passenger.App.Debugging.DebugState.Starting, window.Debugger.Session?.State);
+            if (then is not null)
+            {
+                Assert.Null(window.Open(then));
+                // Not settled: the start under way holds the window's background work until leaving the folder stops it.
+                Ui.PumpUntil(() => window.Asking is not null, "the window to ask where the other folder opens", TimeSpan.FromSeconds(30));
+                Ui.Click(window.Asking!.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible && b.Content as string == OpenProjectDialog.ThisWindow), settle: false);
+                Ui.WaitFor(() => window.Folder == PathNames.Canonical(then), "the other folder to open in the window");
+                Assert.True(Processes.Gone(program), "The program debugged in the first folder still runs after another folder opened in its window");
+            }
+        }
+        finally
+        {
+            window.Close();
+            if (program != 0)
+            {
+                Processes.Kill(program);
+            }
+        }
+        Ui.Settle();
+        Assert.Equal([first], PassengerApp.Windows);
+        return new WeakReference<MainWindow>(window);
+    }
 }
 
 /// <summary>The state folder and two folders a test of several windows opens, and the helpers that start and ask them.</summary>

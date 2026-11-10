@@ -100,6 +100,9 @@ public sealed class DebugController : IDisposable
     private bool disposed;
     private bool ending;
 
+    /// <summary>The tabs this debugger placed that are still the Debug window's, whose hooks its end lets go of.</summary>
+    private readonly HashSet<DebugTab> placed = [];
+
     /// <summary>A folder's debugger over the window's editors and Debug window, which it has until it is disposed.</summary>
     public DebugController(EditorArea editors, DebugModel view)
     {
@@ -180,6 +183,17 @@ public sealed class DebugController : IDisposable
         foreach (DebugTab tab in view.Sessions)
         {
             StopFollowing(tab);
+        }
+        // The sessions the window's close leaves as they were are never heard to end.
+        foreach (DebugTab tab in placed)
+        {
+            tab.LetGoOfHooks();
+        }
+        placed.Clear();
+        foreach (RunningReload reload in running)
+        {
+            reload.Handlers?.Dispose();
+            reload.Browser?.Dispose();
         }
         foreach (OpenDocument document in following.Keys.ToList())
         {
@@ -991,9 +1005,8 @@ public sealed class DebugController : IDisposable
         tab.App = app ?? tab.App;
         tab.Plan = plan;
         view.TelemetryChanged();
-        tab.Handlers?.Dispose();
+        tab.LetGoOfHooks();
         tab.Handlers = hook;
-        tab.Browser?.Dispose();
         tab.Browser = browser;
         DebugTab says = tab;
         if (hook is not null)
@@ -1419,6 +1432,8 @@ public sealed class DebugController : IDisposable
         foreach (DebugTab gone in taken)
         {
             StopFollowing(gone);
+            gone.LetGoOfHooks();
+            placed.Remove(gone);
             view.Sessions.Remove(gone);
             if (gone.Console != console)
             {
@@ -1429,6 +1444,7 @@ public sealed class DebugController : IDisposable
         console.Clear();
         DebugTab tab = new(name, console);
         view.Sessions.Insert(Math.Min(at, view.Sessions.Count), tab);
+        placed.Add(tab);
         TabsChanged?.Invoke(this, EventArgs.Empty);
         return tab;
     }
@@ -1504,6 +1520,8 @@ public sealed class DebugController : IDisposable
         {
             return;
         }
+        tab.LetGoOfHooks();
+        placed.Remove(tab);
         view.Sessions.Remove(tab);
         view.ForgetConsole(tab.Console);
         if (tab != chosen)
@@ -2338,10 +2356,7 @@ public sealed class DebugController : IDisposable
             StopFollowing(tab);
             tab.HasEnded = true;
             tab.HotReload?.End();
-            tab.Handlers?.Dispose();
-            tab.Handlers = null;
-            tab.Browser?.Dispose();
-            tab.Browser = null;
+            tab.LetGoOfHooks();
             tab.Lines = null;
         }
         tab.Console.Flush();

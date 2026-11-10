@@ -67,6 +67,16 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     /// <summary>The SDK's browser refresh of its program's pages, a web app's debugged with Hot Reload; null for any other.</summary>
     internal Debugging.BrowserRefresh? Browser { get; set; }
 
+    /// <summary>Lets go of what Hot Reload holds open for its program (its update handlers' hook, its pages' refresh) once
+    /// its session has ended or the tab has gone, however that came; again, nothing.</summary>
+    internal void LetGoOfHooks()
+    {
+        Handlers?.Dispose();
+        Handlers = null;
+        Browser?.Dispose();
+        Browser = null;
+    }
+
     /// <summary>The programs it is debugged with (a container run's services, by its configuration's name): Hot Reload's
     /// changes go to each of them together.</summary>
     public string? Group { get; internal set; }
@@ -348,6 +358,11 @@ public sealed class DebugModel
     /// which is shown.</summary>
     public void ForgetSessions()
     {
+        // A session still ending as another folder's debugger takes the window ends where no tab hears it.
+        foreach (DebugTab tab in Sessions)
+        {
+            tab.LetGoOfHooks();
+        }
         Sessions.Clear();
         consoles.RemoveAll(c => c != first);
         ShowConsole(first);
