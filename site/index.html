@@ -39,9 +39,9 @@
     "url": "https://passenger-ide.net/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows, macOS, Linux",
-    "softwareVersion": "0.3.1",
+    "softwareVersion": "0.3.2",
     "downloadUrl": "https://github.com/Zaneris/passenger/releases",
-    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.3.1",
+    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.3.2",
     "offers": {
         "@type": "Offer",
         "price": "0",
@@ -87,6 +87,7 @@
         <a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28">Passenger</a>
         <nav aria-label="Sections">
             <a class="wide" href="/godot">Godot</a>
+            <a class="wide" href="#dotnet11">.NET 11</a>
             <a class="wide" href="#debugging">Debugger</a>
             <a class="wide" href="#xaml">XAML</a>
             <a class="wide" href="#agents">Agents</a>
@@ -101,8 +102,8 @@
 <main id="main">
     <div class="hero">
         <div class="wrap">
-            <a class="news" href="https://github.com/Zaneris/passenger/releases/tag/v0.3.0"><span class="tag">New in 0.3.0</span>
-                <span class="what">Godot 4 in C# and GDScript, Blazor WebAssembly debugging, XAML Hot Reload</span><span class="short">What's
+            <a class="news" href="#dotnet11"><span class="tag">New in 0.3.2</span>
+                <span class="what">Built on .NET 11: C# 15 and runtime async, from the editor to the debugger</span><span class="short">What's
                 new</span><span class="arrow" aria-hidden="true">&rarr;</span></a>
             <h1><span class="lead">Now for Godot&nbsp;4&nbsp;games.</span> The free IDE for C# and .NET.</h1>
             <p class="lede">Run, debug, profile and Hot Reload Godot games in C# and GDScript, their scenes and scripts
@@ -156,6 +157,51 @@
                 <li><a href="#migrations"><strong>EF Core migrations</strong>
                     <span>Listed, added and applied, with what would stop <code>dotnet&nbsp;ef</code> fixed first.</span></a></li>
             </ul>
+        </div>
+    </section>
+
+    <section id="dotnet11">
+        <div class="wrap">
+            <p class="kicker">.NET 11</p>
+            <h2>Built on .NET 11, ready for your .NET 11 code</h2>
+            <p class="intro">Passenger runs on its own copy of .NET 11, carried inside it, and reads what .NET 11 and C# 15
+                bring to your code in the editor, the debugger and the profiler. Your projects can target .NET 8 or later.</p>
+            <div class="grid">
+                <div class="card">
+                    <h3>Runtime async, stepped as written</h3>
+                    <p>Code compiled with .NET 11's runtime async debugs as you wrote it: Step Over an <code>await</code>
+                        stops on the method's next line once it goes on, whichever thread it goes on, and Step Out stops in
+                        the caller that awaited it, showing the value the method returned.</p>
+                </div>
+                <div class="card">
+                    <h3>C# 15, read as C# 15</h3>
+                    <p>A union is coloured as you declare it, and a collection expression's <code>with(&hellip;)</code>
+                        arguments build with no preview error. In the debugger a union shows the value it holds, as that
+                        value's own type.</p>
+                </div>
+                <div class="card">
+                    <h3>Measured from its first moment</h3>
+                    <p>Live metrics, the Requests window and your agent's telemetry read a .NET 11 program from its start,
+                        where an older one is first left a few seconds, and a memory snapshot reads a .NET 11 program's
+                        heap.</p>
+                </div>
+                <div class="card">
+                    <h3>Web apps on the new SDK</h3>
+                    <p>Under Hot Reload a debugged web app's open pages follow your edits through the .NET 11 SDK's browser
+                        refresh, as through the older SDKs', and the Migrations window runs EF Core 11's
+                        <code>dotnet&nbsp;ef</code> with the defaults your <code>.config/dotnet-ef.json</code> names.</p>
+                </div>
+                <div class="card">
+                    <h3>Several frameworks, one project</h3>
+                    <p>A project built for .NET 10 and .NET 11 runs its tests under each, every framework's results shown
+                        apart, and project files complete <code>net11.0</code> and C# 15's <code>LangVersion</code>.</p>
+                </div>
+                <div class="card">
+                    <h3>The SDK when you need it</h3>
+                    <p>Open a .NET 11 project on a machine without its SDK and Passenger says so and offers to install it
+                        into your own folder, used at once by Passenger, its terminal and what it starts.</p>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -774,7 +820,7 @@
                 </details>
                 <details>
                     <summary>Is it ready for daily work?</summary>
-                    <p>Passenger is young (0.3.1), and its own development runs through it every day: the coding agents
+                    <p>Passenger is young (0.3.2), and its own development runs through it every day: the coding agents
                         that write much of it work through its MCP server. Its tests drive the whole IDE, a window with real
                         keys and clicks, on macOS, Windows and Linux, and each release is tried on a standing set of real
                         Godot projects. Each release's notes say what it does and its known limits, so you can judge for

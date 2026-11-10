@@ -2,8 +2,9 @@
 
 **Now for Godot 4 games.** The free IDE for C# and .NET: run, debug, profile and Hot Reload Godot games in C# and
 GDScript, their scenes and scripts checked as Godot reads them and the running game beside your code. Blazor WebAssembly
-now debugs in the browser, Avalonia and WPF take XAML Hot Reload, and your coding agent can drive it all. Free and open
-source under MIT, for Windows, macOS and Linux ([installing](#installing)).
+now debugs in the browser, Avalonia and WPF take XAML Hot Reload, and your coding agent can drive it all. Built on
+.NET 11, it reads C# 15 and steps runtime async as written ([.NET 11](#net-11-and-c-15)). Free and open source under
+MIT, for Windows, macOS and Linux ([installing](#installing)).
 
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
@@ -50,6 +51,20 @@ What comes next is in the [milestones](https://github.com/Zaneris/passenger/mile
 them. The pictures here are of sample projects committed to this repository, in your system's light or dark.
 
 ## What it does
+
+### .NET 11 and C# 15
+
+Passenger is built on .NET 11 and runs on its own copy of it, carried inside it; your projects can target .NET 8 or
+later. C# 15 reads as C# 15: a union is coloured where you declare it and shows in the debugger as the value it holds,
+a collection expression's `with(…)` arguments build with no preview error, and project files complete `net11.0` and
+`LangVersion` 15. Code compiled with .NET 11's runtime async steps as you wrote it: Step Over an `await` stops on the
+method's next line once it goes on, whichever thread it goes on, and Step Out stops in the caller that awaited it,
+showing the value the method returned. Live metrics, the Requests window and an agent's telemetry read a .NET 11
+program from its start, where an older one is first left a few seconds, and a memory snapshot reads its heap. Under Hot
+Reload a debugged web app's open pages follow your edits through the .NET 11 SDK's browser refresh, the Migrations
+window runs EF Core 11's `dotnet ef` with the defaults `.config/dotnet-ef.json` names, and a project built for .NET 10
+and .NET 11 runs its tests under each. Open a .NET 11 project without its SDK and Passenger offers to install it into
+your own folder.
 
 ### Godot 4
 
@@ -196,8 +211,8 @@ and surround templates, inlay hints, and splits and tabs in windows of their own
 file's size. C# comes from Roslyn: diagnostics, completion, quick fixes and refactorings (Change Signature, Extract
 Interface, Move, Pull Members Up, Safe Delete and more), Go to Declaration, Implementation and Base Symbols, Find
 Usages, call and type hierarchies and decompiled library sources, and Problems lists the whole solution's without a
-build. .NET 11 and C# 15 as they ship: a file-based program (`dotnet run app.cs`) opens as a project of its own, a
-solution filter (`.slnf`) loads only the projects it names, and a union's value shows in the debugger as what it holds.
+build. A file-based program (`dotnet run app.cs`) opens as a project of its own, and a solution filter (`.slnf`) loads
+only the projects it names.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="site/images/editor-light.webp">
