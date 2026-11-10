@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net.Sockets;
-using System.Text;
 using Passenger.App.State;
 using Passenger.Core;
 
@@ -132,17 +131,14 @@ public sealed class SshKeygenQuestions : IAsyncDisposable
         try
         {
             await using NetworkStream stream = new(client, ownsSocket: true);
-            using MemoryStream prompt = new();
-            // Read to its end: a socket closed with input unread resets on Windows, losing the answer.
-            await stream.CopyToAsync(prompt, ending.Token);
-            string question = Encoding.UTF8.GetString(prompt.GetBuffer(), 0, (int)prompt.Length).Trim();
+            string question = (await Passenger.Vcs.GitAskPass.QuestionAsync(stream, ending.Token)).Trim();
             string? answer;
             lock (gate)
             {
                 asked.Add(question);
                 answer = unanswered is null && answers.TryDequeue(out string? next) ? next : null;
             }
-            await stream.WriteAsync(answer is null ? "-"u8.ToArray() : Encoding.UTF8.GetBytes("+" + answer), ending.Token);
+            await stream.WriteAsync(Passenger.Vcs.GitAskPass.ReplyOf(answer), ending.Token);
             client.Shutdown(SocketShutdown.Send);
             if (answer is null)
             {

@@ -219,8 +219,10 @@ public sealed class GitQuestions
 /// <summary>Git's askpass helper, both ends. Git runs with GIT_ASKPASS and SSH_ASKPASS naming Passenger's executable and
 /// <see cref="Variable"/> the operation's socket (<see cref="Prompting.Variables"/>); run with a prompt, the executable sends it
 /// there and writes the answer for git (<see cref="Answer"/>), or exits 1, which git takes as no answer. The helper sends
-/// the prompt and ends its side; the IDE says at once that it took it, then answers after a byte saying whether there is
-/// an answer. A secret goes only over the socket and git's pipe, never on a command line or into a file.</summary>
+/// the prompt and its <see cref="End"/>; the IDE says at once that it took it, then answers after a byte saying whether
+/// there is an answer, a given one ending the same way. Each end reads the other's words to their end byte, never to the
+/// other end's close of its side, which Windows' Unix sockets can fail to pass on. A secret goes only over the socket and
+/// git's pipe, never on a command line or into a file.</summary>
 public static class GitAskPass
 {
     /// <summary>The variable naming the socket of the operation git asks for.</summary>
@@ -230,6 +232,10 @@ public static class GitAskPass
     internal const byte Taken = (byte)'?';
     internal const byte Given = (byte)'+';
     internal const byte None = (byte)'-';
+
+    /// <summary>Ends a prompt and a given answer: no program's argument holds one, and git, ssh and gpg read an answer
+    /// only to its first.</summary>
+    internal const byte End = 0;
 
     /// <summary>The longest prompt read: ssh's question about a host is a few lines.</summary>
     internal const int Longest = 64 * 1024;
@@ -282,7 +288,8 @@ public static class GitAskPass
         {
             using Socket asking = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             asking.Connect(new UnixDomainSocketEndPoint(socket));
-            asking.Send(Encoding.UTF8.GetBytes(prompt));
+            asking.Send([.. Encoding.UTF8.GetBytes(prompt), End]);
+            // An IDE of an earlier build, still running as this one is installed over it, reads a prompt to this close.
             asking.Shutdown(SocketShutdown.Send);
             if (!asking.Poll(taking, SelectMode.SelectRead))
             {
@@ -291,7 +298,7 @@ public static class GitAskPass
             using MemoryStream reply = new();
             byte[] buffer = new byte[4096];
             int read;
-            while ((read = asking.Receive(buffer)) > 0)
+            while (!Whole(reply.GetBuffer().AsSpan(0, (int)reply.Length)) && (read = asking.Receive(buffer)) > 0)
             {
                 reply.Write(buffer, 0, read);
             }
@@ -304,15 +311,49 @@ public static class GitAskPass
     }
 
     /// <summary>The IDE's reply as the helper reads it: the byte saying the question was taken, where there is one, then one
-    /// saying whether there is an answer, then the answer.</summary>
+    /// saying whether there is an answer, then the answer to its <see cref="End"/>, or to the reply's end where an IDE of
+    /// an earlier build gives none.</summary>
     internal static (string? Answer, string? Why) Read(ReadOnlySpan<byte> reply)
     {
         int at = reply.Length > 0 && reply[0] == Taken ? 1 : 0;
         return reply.Length <= at ? (null, at == 1 ? "the IDE took its question and ended before answering" : "the IDE ended without taking its question")
-            : reply[at] == Given ? (Encoding.UTF8.GetString(reply[(at + 1)..]), null)
+            : reply[at] == Given ? (Encoding.UTF8.GetString(ToEnd(reply[(at + 1)..])), null)
             : reply[at] == None ? (null, null)
             : (null, $"the IDE answered in a way the helper does not read ({reply[at]})");
+
+        static ReadOnlySpan<byte> ToEnd(ReadOnlySpan<byte> answer) => answer.IndexOf(End) is int end and >= 0 ? answer[..end] : answer;
     }
+
+    /// <summary>Whether the IDE's reply so far is all the helper waits for: no answer, an answer to its <see cref="End"/>,
+    /// or a byte it does not read.</summary>
+    internal static bool Whole(ReadOnlySpan<byte> reply)
+    {
+        int at = reply.Length > 0 && reply[0] == Taken ? 1 : 0;
+        return reply.Length > at && (reply[at] != Given || reply[(at + 1)..].Contains(End));
+    }
+
+    /// <summary>A question as the IDE reads it off a helper's connection: the prompt to its <see cref="End"/>, or to the
+    /// connection's end, the first <see cref="Longest"/> bytes kept.</summary>
+    public static async Task<string> QuestionAsync(Stream connection, CancellationToken cancel)
+    {
+        using MemoryStream prompt = new();
+        byte[] buffer = new byte[4096];
+        int read;
+        while ((read = await connection.ReadAsync(buffer, cancel)) > 0)
+        {
+            int end = buffer.AsSpan(0, read).IndexOf(End);
+            prompt.Write(buffer, 0, (int)Math.Min(end < 0 ? read : end, Math.Max(0, Longest - prompt.Length)));
+            if (end >= 0)
+            {
+                break;
+            }
+        }
+        return Encoding.UTF8.GetString(prompt.GetBuffer(), 0, (int)prompt.Length);
+    }
+
+    /// <summary>The IDE's answer as it goes to the helper, after the byte saying the question was taken: the answer to its
+    /// <see cref="End"/>, or the byte saying there is none.</summary>
+    public static byte[] ReplyOf(string? answer) => answer is { } text ? [Given, .. Encoding.UTF8.GetBytes(text), End] : [None];
 }
 
 /// <summary>An operation's socket for git's helper while git runs (<see cref="GitAskPass"/>): each connection taken and
@@ -446,26 +487,18 @@ internal sealed class Prompting : IAsyncDisposable
             await using NetworkStream stream = new(client, ownsSocket: true);
             // Said at once, so the helper waits on the person's answer however long it takes, and on nothing else.
             await stream.WriteAsync((byte[])[GitAskPass.Taken], ending.Token);
-            using MemoryStream prompt = new();
-            byte[] buffer = new byte[4096];
-            int read;
-            // Read to its end, past the longest kept: a socket closed with input unread resets on Windows, losing the answer.
-            while ((read = await stream.ReadAsync(buffer, ending.Token)) > 0)
-            {
-                prompt.Write(buffer, 0, (int)Math.Min(read, Math.Max(0, GitAskPass.Longest - prompt.Length)));
-            }
+            string prompt = await GitAskPass.QuestionAsync(stream, ending.Token);
             GitAnswer answer;
             await turn.WaitAsync(ending.Token);
             try
             {
-                answer = await AnswerAsync(GitQuestion.Of(Encoding.UTF8.GetString(prompt.GetBuffer(), 0, (int)prompt.Length)));
+                answer = await AnswerAsync(GitQuestion.Of(prompt));
             }
             finally
             {
                 turn.Release();
             }
-            byte[] reply = answer.Text is { } text ? [GitAskPass.Given, .. Encoding.UTF8.GetBytes(text)] : [GitAskPass.None];
-            await stream.WriteAsync(reply, ending.Token);
+            await stream.WriteAsync(GitAskPass.ReplyOf(answer.Text), ending.Token);
             client.Shutdown(SocketShutdown.Send);
         }
         catch (Exception gone) when (gone is IOException or SocketException or OperationCanceledException or ObjectDisposedException)
