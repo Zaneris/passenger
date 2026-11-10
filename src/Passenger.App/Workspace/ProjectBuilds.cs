@@ -524,7 +524,11 @@ public sealed record ProjectBuildCache : IStateDocument<ProjectBuildCache>
 
     public Dictionary<string, KeptBuild> Projects { get; init; } = [];
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetAll, ForgetUnrestored];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetAll, ForgetUnrestored, ForgetUnconfigured];
+
+    /// <summary>Every build, kept before they stamped the .editorconfig and .globalconfig files looked for over a project's
+    /// sources, whose coming or going since would go unseen, the server given the analyzer configs that were there.</summary>
+    private static void ForgetUnconfigured(JsonObject document) => document.Remove("projects");
 
     /// <summary>Builds kept before restore outputs were stamped before the build may lack package references even though
     /// their stamps still hold.</summary>

@@ -207,6 +207,50 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         second.Close();
     }
 
+    /// <summary>An .editorconfig beside the solution, above its projects' folders, reaches the language server made while
+    /// the folder was closed or while it is open, and its going too: Reformat Code lays braces out as the one there says
+    /// (#1459), and the unused local is the error it makes it.</summary>
+    [AvaloniaFact]
+    public void An_editorconfig_made_or_deleted_above_the_projects_reaches_the_language_servers_formatting_with_the_folder_closed_or_open()
+    {
+        const string sameLine = "static class Braces {\n    static int Count(int x) {\n        int unused = 1;\n        if (x > 0) {\n            return x;\n        }\n        return 0;\n    }\n}\n";
+        const string ownLine = "static class Braces\n{\n    static int Count(int x)\n    {\n        int unused = 1;\n        if (x > 0)\n        {\n            return x;\n        }\n        return 0;\n    }\n}\n";
+        const string config = "root = true\n\n[*.cs]\nindent_style = space\nindent_size = 4\ncsharp_new_line_before_open_brace = none\ndotnet_diagnostic.CS0219.severity = error\n";
+        string braces = Write(folder, "App/Braces.cs", sameLine);
+        MainWindow first = Keeping();
+        first.OpenFile(braces);
+        WaitForUnused(first, braces, Passenger.Lsp.DiagnosticSeverity.Warning, "the server's warning on the unused local, which no .editorconfig makes an error yet");
+        first.Close();
+
+        string made = Write(folder, ".editorconfig", config);
+        MainWindow second = Keeping();
+        second.OpenFile(braces);
+        WaitForUnused(second, braces, Passenger.Lsp.DiagnosticSeverity.Error,
+            "the error the .editorconfig made beside the solution while the folder was closed makes of the unused local, reaching the server's builds rather than the builds kept");
+        Reformat(second, sameLine, "Already formatted", "with the .editorconfig made while the folder was closed");
+
+        File.Delete(made);
+        WaitForUnused(second, braces, Passenger.Lsp.DiagnosticSeverity.Warning, "the unused local a warning again, the .editorconfig deleted while the folder is open");
+        Reformat(second, ownLine, "Reformatted", "with the .editorconfig deleted while the folder is open");
+
+        Write(folder, ".editorconfig", config);
+        WaitForUnused(second, braces, Passenger.Lsp.DiagnosticSeverity.Error, "the unused local an error again, the .editorconfig made while the folder is open reaching the server");
+        Reformat(second, sameLine, "Reformatted", "with the .editorconfig made while the folder is open");
+        second.Close();
+
+        static void WaitForUnused(MainWindow window, string path, Passenger.Lsp.DiagnosticSeverity severity, string what) =>
+            Ui.WaitFor(() => window.EditorArea.Documents.FirstOrDefault(d => d.Path == path) is { } open
+                && window.CSharpService?.For(open)?.Diagnostics.FirstOrDefault(d => d.Code?.ToString() == "CS0219") is { } unused && unused.Severity == severity,
+                what, TimeSpan.FromMinutes(2));
+
+        static void Reformat(MainWindow window, string expected, string status, string what)
+        {
+            Ui.Run(window, AppActions.Reformat);
+            string text = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
+            Assert.True(window.Status == status && text == expected, $"Reformat Code {what} ({window.Status}) laid the braces out otherwise:\n{text}");
+        }
+    }
+
     /// <summary>A caller of Lib's method comes into App, which references Lib, while App's design-time build is held, so the
     /// language server cannot take it in: Find Usages on the method answers at once, the Find window and the status bar
     /// saying it went without the caller, where it waited for App and refused; a rename of the method waits for App, which

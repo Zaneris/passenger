@@ -5,7 +5,8 @@ namespace Passenger.UnitTests.Workspace;
 
 /// <summary>A folder's stamp changes only with what a project's wildcards take in or enter, its folders found as a project's
 /// own are (<see cref="ProjectFolders.Enters"/>): build output, dependencies, hidden folders and the system's files passed
-/// over, a build folder's name in another letter case as its folder compares names, a file of any other name counted.</summary>
+/// over, a build folder's name in another letter case as its folder compares names, a file of any other name counted. A
+/// file stamped by its presence changes as it comes or goes, never with an edit.</summary>
 public sealed class StampsTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -41,6 +42,24 @@ public sealed class StampsTests : IDisposable
         File.WriteAllText(Path.Join(project, "obj"), string.Empty);
 
         Assert.False(Stamps.Holds(stamp), "A file named obj, which the project's wildcards take in, changed no stamp, so the project shows without it");
+    }
+
+    [Fact]
+    public void A_presence_stamp_holds_through_an_edit_and_changes_as_its_file_comes_or_goes()
+    {
+        string config = Path.Join(root, ".editorconfig");
+        Stamp absent = Stamps.Presence(config, there: false);
+        Assert.True(Stamps.Holds(absent), "An .editorconfig looked for and still not there changed its stamp, so every project under it is built again");
+
+        File.WriteAllText(config, "root = true\n");
+        Assert.False(Stamps.Holds(absent), "An .editorconfig come where none was changed no stamp, so the projects under it are loaded without it");
+
+        Stamp there = Stamps.Presence(config, there: true);
+        File.WriteAllText(config, "root = true\n\n[*.cs]\nindent_size = 2\n");
+        Assert.True(Stamps.Holds(there), "An edit of an .editorconfig, which its readers read again themselves, changed its stamp, so every project under it is built again");
+
+        File.Delete(config);
+        Assert.False(Stamps.Holds(there), "An .editorconfig gone changed no stamp, so the projects under it are loaded with it still");
     }
 
     [Fact]

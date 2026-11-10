@@ -19,7 +19,11 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeted, ForgetAll, ForgetUncarried, ForgetUnpublishable, ForgetAll,
         ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved, ForgetUncentral, ForgetGodotless,
-        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered];
+        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered, ForgetUnconfigured];
+
+    /// <summary>Every evaluation, kept before they stamped the .editorconfig and .globalconfig files looked for over a
+    /// project's sources, whose coming or going since would leave the language server loading the project as it was.</summary>
+    private static void ForgetUnconfigured(JsonObject document) => document.Remove("projects");
 
     /// <summary>The evaluations of projects naming a Godot folder, kept before they carried whether Godot.NET.Sdk builds a
     /// project, by which Godot runs only its game and a plain .NET project naming one runs as itself, are evaluated again.</summary>

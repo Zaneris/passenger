@@ -205,6 +205,7 @@ internal static class DesignTimeBuilds
             IReadOnlyList<string> frameworks = Evaluation.FrameworksOf(outer);
             List<Project> each = frameworks.Count == 0 ? [outer] : [.. frameworks.Select(f => Evaluation.Load(path, collection, context, global, f))];
             loaded.AddRange(each.Where(p => p != outer));
+            looked.AddRange(Evaluation.ConfigsLookedFor(each));
             FileGlobs[] globs = [.. outer.GetAllGlobs().Select(g => new FileGlobs([.. g.IncludeGlobs.Select(Full)], [.. g.Excludes.Select(Full)], [.. g.Removes.Select(Full)]))];
             List<RoslynProjectFileInfo> infos = [];
             List<BuildDiagnostic> said = [];

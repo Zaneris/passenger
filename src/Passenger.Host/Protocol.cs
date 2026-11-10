@@ -366,8 +366,9 @@ public sealed record HoldState(IReadOnlyList<string> Running, bool Held);
 
 /// <summary>A file's last write (UTC ticks) and length, 0 and -1 for one not there; for a folder, the hash of its names and
 /// how many (<see cref="Stamps.Folder"/>); for a program's C# file, the hash of its head's directives and how many
-/// (<see cref="Stamps.Head"/>).</summary>
-public sealed record Stamp(string Path, long Ticks, long Length, bool Folder = false, bool Head = false);
+/// (<see cref="Stamps.Head"/>); for a file that counts only by being there or not, 0 and 0, or 0 and -1
+/// (<see cref="Stamps.Presence"/>).</summary>
+public sealed record Stamp(string Path, long Ticks, long Length, bool Folder = false, bool Head = false, bool Presence = false);
 
 /// <summary>A project to evaluate for code help, with the global properties (the solution's) and the text of the open
 /// MSBuild files that differ from what is on disk, by path, which its evaluation reads instead.</summary>

@@ -31,6 +31,10 @@ public static class Stamps
         return new Stamp(path, Hash(head), head.Count, Head: true);
     }
 
+    /// <summary>A file that counts only by being there or not, as its reader found it (<paramref name="there"/>): an edit of it
+    /// is no change, its coming or going is.</summary>
+    public static Stamp Presence(string path, bool there) => new(path, 0, there ? 0 : -1, Presence: true);
+
     /// <summary>A project's own file as its evaluation reads it: a program's by its head, any other whole.</summary>
     public static Stamp Project(string path) => ProgramFiles.IsProgram(path) ? Head(path) : File(path);
 
@@ -73,5 +77,6 @@ public static class Stamps
     }
 
     /// <summary>Whether what was stamped is as it was.</summary>
-    public static bool Holds(Stamp stamp) => (stamp.Folder ? Folder(stamp.Path) : stamp.Head ? Head(stamp.Path) : File(stamp.Path)) == stamp;
+    public static bool Holds(Stamp stamp) =>
+        (stamp.Folder ? Folder(stamp.Path) : stamp.Head ? Head(stamp.Path) : stamp.Presence ? Presence(stamp.Path, System.IO.File.Exists(stamp.Path)) : File(stamp.Path)) == stamp;
 }

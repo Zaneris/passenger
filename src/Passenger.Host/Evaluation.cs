@@ -137,7 +137,7 @@ internal static class Evaluation
             Symbols = [.. each.Select(DefinedSymbols.Of).OfType<FrameworkSymbols>()],
             Items = items,
             Properties = Carried(first, excluded),
-            Inputs = Inputs(file, each, excluded, [.. LookedFor(path, first), .. IncludedHeads(path, items)]),
+            Inputs = Inputs(file, each, excluded, [.. LookedFor(path, first), .. ConfigsLookedFor(each), .. IncludedHeads(path, items)]),
             Folders = Folders(path, folders, items.Select(i => i.Path)),
         };
     }
@@ -334,6 +334,21 @@ internal static class Evaluation
         string file = evaluated?.GetPropertyValue("MSBuildProjectFile") is { Length: > 0 } projectFile ? projectFile : Path.GetFileName(path);
         yield return Stamps.File(Path.Combine(restored, file + ".nuget.g.props"));
         yield return Stamps.File(Path.Combine(restored, file + ".nuget.g.targets"));
+    }
+
+    /// <summary>The .editorconfig and .globalconfig files the evaluations looked for from the folder of each source up, each
+    /// stamped by whether it found one there, whose EditorConfigFiles the compiler and the language server are given: one
+    /// coming or going changes those, where an edit of one is read by whoever reads it.</summary>
+    internal static IEnumerable<Stamp> ConfigsLookedFor(IEnumerable<Project> evaluations)
+    {
+        foreach (Project project in evaluations)
+        {
+            HashSet<string> found = new(project.GetItems("EditorConfigFiles").Select(i => i.EvaluatedInclude), PathNames.Comparer);
+            foreach (ProjectItem looked in project.GetItems("PotentialEditorConfigFiles").Concat(project.GetItems("GlobalAnalyzerConfigFiles")))
+            {
+                yield return Stamps.Presence(looked.EvaluatedInclude, found.Contains(looked.EvaluatedInclude));
+            }
+        }
     }
 
     /// <summary>What an evaluation that failed read, so a fix to it has the project evaluated again: the project file, the
