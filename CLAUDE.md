@@ -576,6 +576,10 @@ a new name, and `just site-shots` retakes its images.
   start or stop and gives no heap, so the profiler refuses it (`Refusals.PausedInDebugger`). A session enabling a managed
   EventSource as a program before .NET 11 RC starts hangs it for good (dotnet/runtime#119014): every live session starts
   through `SessionStarts`, which waits out `ProgramStarts`.
+- **A runtime's events heard in-process**: an `EventListener`'s session holds 10 MB and drops what overflows unsaid, and
+  the GC keyword at Verbose bursts at every collection, so a test that must hear every event opens a session of its own,
+  sized and filtered by event id, and fails on TraceEvent's `EventsLost` (`FlingTests`). TraceEvent holds a thread's last
+  events of a flush until a later one the runtime marks oldest comes: a wait on the last event makes one on a new thread.
 
 ## Tests
 
