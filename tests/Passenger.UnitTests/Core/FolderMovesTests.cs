@@ -4,7 +4,7 @@ namespace Passenger.UnitTests.Core;
 
 /// <summary>A folder carried as from one volume to another (an Undo setting a made project aside under the state, Redo
 /// bringing it back) arrives as it was: its folder and file links still links to where they led, what builds wrote under
-/// bin and obj, hidden files, and each file's last write time.</summary>
+/// bin and obj, hidden files, and each file's last write time. A rename refused on one volume is no move between volumes.</summary>
 public sealed class FolderMovesTests : IDisposable
 {
     private static readonly DateTime Written = new(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
@@ -55,6 +55,32 @@ public sealed class FolderMovesTests : IDisposable
         Assert.Equal(before, Listed(made));
         Assert.Equal(["Shop"], Directory.EnumerateFileSystemEntries(Path.Join(root, "volume-a")).Select(Path.GetFileName));
         Assert.Equal("a file where the folder would go\n", File.ReadAllText(taken));
+    }
+
+    /// <summary>Windows refuses a folder's rename while a file under it is open, however its reader shares it, as a virus
+    /// scanner reading what was just written holds it: a copy of the folder beside it would meet the scanner again, so the
+    /// refusal is the caller's to wait out or work around, never a move between volumes.</summary>
+    [Fact]
+    public void A_rename_refused_for_a_file_held_under_the_folder_is_thrown_never_taken_for_another_volume()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses a folder's rename for a file open under it");
+        string unpacked = Path.Join(root, "unpacked", "shared");
+        string file = Write(Path.Join(unpacked, "Microsoft.NETCore.App", "System.Private.CoreLib.dll"), "runtime\n");
+        string target = Path.Join(root, "dotnet", "shared");
+
+        using (FileStream held = new(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        {
+            bool renamed = false;
+            Exception? refused = Record.Exception(() => renamed = FolderMoves.Renamed(unpacked, target));
+            Assert.True(refused is IOException, refused is null
+                ? $"A rename on one volume refused for a held file was taken for a move between volumes, to be carried (renamed: {renamed})"
+                : $"The refusal came as {refused.GetType().Name}: {refused.Message}");
+        }
+
+        Assert.Equal(["shared"], Directory.EnumerateFileSystemEntries(Path.Join(root, "unpacked")).Select(Path.GetFileName));
+        Assert.False(Directory.Exists(target), "The refused rename left something where the folder goes");
+        Assert.True(FolderMoves.Renamed(unpacked, target), "Once let go, the folder was not renamed where it goes");
+        Assert.Equal("runtime\n", File.ReadAllText(Path.Join(target, "Microsoft.NETCore.App", "System.Private.CoreLib.dll")));
     }
 
     /// <summary>Every entry under a folder, by its path from there: a link with where it leads, a file with its text and

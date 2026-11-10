@@ -18,7 +18,8 @@ public static class FolderMoves
     }
 
     /// <summary>Moves a folder to a path not there yet by renaming it, at once, where it lies on the volume it goes to: false,
-    /// nothing moved, where it must be carried (<see cref="Carry"/>).</summary>
+    /// nothing moved, where it must be carried (<see cref="Carry"/>). A rename refused for any other reason is thrown, nothing
+    /// moved: Windows refuses one while a file under the folder is open, which a copy beside it would meet again.</summary>
     public static bool Renamed(string from, string to)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(to)!);
@@ -27,12 +28,25 @@ public static class FolderMoves
             Directory.Move(from, to);
             return true;
         }
-        catch (IOException) when (Directory.Exists(from) && !Directory.Exists(to))
+        catch (IOException refused) when (Apart(refused, from, to) && Directory.Exists(from) && !Directory.Exists(to))
         {
             // A rename moves nothing when it fails, so the folder is carried, as it must be from one volume to another.
             return false;
         }
     }
+
+    /// <summary>Whether a rename was refused for its two ends lying on different volumes: Windows' ERROR_NOT_SAME_DEVICE or
+    /// two drives' roots, EXDEV elsewhere. Directory.Move throws an access denied as an IOException too, so the
+    /// exception's type alone does not tell.</summary>
+    private static bool Apart(IOException refused, string from, string to) => OperatingSystem.IsWindows()
+        ? refused.HResult == NotSameDevice || !PathNames.Same(Path.GetPathRoot(Path.GetFullPath(from))!, Path.GetPathRoot(Path.GetFullPath(to))!)
+        : refused.HResult == CrossDevice;
+
+    /// <summary>Windows' ERROR_NOT_SAME_DEVICE as an IOException's HResult.</summary>
+    private const int NotSameDevice = unchecked((int)0x80070011);
+
+    /// <summary>EXDEV, an IOException's HResult on macOS and Linux alike.</summary>
+    private const int CrossDevice = 18;
 
     /// <summary>Moves a folder by copy, as from one volume to another: renamed beside itself first, which a folder a process
     /// holds a file in or works in refuses with nothing changed, then copied whole, then deleted. A copy or delete refused

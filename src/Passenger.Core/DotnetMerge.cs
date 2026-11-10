@@ -72,41 +72,53 @@ internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan
     private static bool IsFolder(string path) =>
         Directory.Exists(path) && new DirectoryInfo(path).ResolveLinkTarget(returnFinalTarget: true) is not { Exists: false };
 
-    /// <summary>A folder put where it goes whole (<see cref="Land"/>); on Windows, where that is refused while a file under it
-    /// is open, made there and filled entry by entry instead (<see cref="PiecesAsync"/>), but for host/fxr's folder, which
-    /// waits to come whole.</summary>
+    /// <summary>A folder put where it goes whole (<see cref="Land"/>), one from another volume carried beside it first and then
+    /// put there as a folder of that volume is; on Windows, where a rename is refused while a file under the folder is open,
+    /// made there and filled entry by entry instead (<see cref="PiecesAsync"/>), but for host/fxr's folder, which waits to
+    /// come whole.</summary>
     private async Task LandAsync(string folder, string target, CancellationToken cancel)
     {
+        string? coming;
         if (!OperatingSystem.IsWindows() || File.Exists(Path.Combine(folder, Resolver)))
         {
-            await WhileHeldAsync(() => Land(folder, target), folder, cancel).ConfigureAwait(false);
-            return;
+            coming = await WhileHeldAsync(() => Land(folder, target), folder, Path.GetFileName(target), cancel).ConfigureAwait(false);
         }
-        try
+        else
         {
-            Land(folder, target);
-            return;
-        }
-        catch (Exception refused) when ((refused is IOException or UnauthorizedAccessException) && Directory.Exists(folder) && !Directory.Exists(target))
-        {
-            // The first is said with what held it; the rest are counted in the install's last line.
-            if (Piecemeal++ == 0)
+            try
             {
-                PassengerLog.Write($"Install .NET SDK {version}: {folder} could not be moved whole ({refused.Message}): {Holding(Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories), "hold")} a file under it, so it comes in entry by entry");
+                coming = Land(folder, target);
+            }
+            catch (Exception refused) when ((refused is IOException or UnauthorizedAccessException) && Directory.Exists(folder) && !Directory.Exists(target))
+            {
+                // The first is said with what held it; the rest are counted in the install's last line.
+                if (Piecemeal++ == 0)
+                {
+                    PassengerLog.Write($"Install .NET SDK {version}: {folder} could not be moved whole ({refused.Message}): {Holding(Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories), "hold")} a file under it, so it comes in entry by entry");
+                }
+                Directory.CreateDirectory(target);
+                await PiecesAsync(folder, target, cancel).ConfigureAwait(false);
+                return;
             }
         }
-        Directory.CreateDirectory(target);
-        await PiecesAsync(folder, target, cancel).ConfigureAwait(false);
-    }
-
-    /// <summary>A folder renamed to where it goes, else, on another volume, carried (<see cref="Carried"/>).</summary>
-    private void Land(string folder, string target)
-    {
-        if (!FolderMoves.Renamed(folder, target))
+        if (coming is not null)
         {
-            Carried(folder, target, placed.Add);
+            await LandAsync(coming, target, cancel).ConfigureAwait(false);
+            // Brought in entry by entry, it leaves its emptied folders behind.
+            if (Directory.Exists(coming))
+            {
+                await WhileHeldAsync(() =>
+                {
+                    Directory.Delete(coming, recursive: true);
+                    return true;
+                }, coming, Path.GetFileName(target), cancel).ConfigureAwait(false);
+            }
         }
     }
+
+    /// <summary>A folder renamed to where it goes: null. Else, from another volume, carried beside it under a name of its own
+    /// (<see cref="Carried"/>): that name, still to be put where it goes.</summary>
+    private string? Land(string folder, string target) => FolderMoves.Renamed(folder, target) ? null : Carried(folder, target, placed.Add);
 
     /// <summary>What a folder holds moved into the one made for it, each folder whole where it can be (<see cref="LandAsync"/>)
     /// and each file renamed in, which a reader sharing the file's deletion never refuses. A file held otherwise is passed
@@ -150,14 +162,15 @@ internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan
         }
     }
 
-    /// <summary>A folder brought over from another volume under a name of its own beside where it goes, then renamed there,
-    /// so no part of it ever stands at <paramref name="target"/>; the name beside it given to <paramref name="beside"/> first.</summary>
-    internal static void Carried(string folder, string target, Action<string> beside)
+    /// <summary>A folder brought over from another volume under a name of its own beside where it goes, so no part of it
+    /// stands at <paramref name="target"/> until all of it is on that volume: that name, given to <paramref name="beside"/>
+    /// first.</summary>
+    internal static string Carried(string folder, string target, Action<string> beside)
     {
         string coming = Path.Combine(Path.GetDirectoryName(target)!, $".passenger-install-{Guid.NewGuid():N}");
         beside(coming);
         FolderMoves.Carry(folder, coming);
-        Directory.Move(coming, target);
+        return coming;
     }
 
     /// <summary>What <see cref="IntoAsync"/> placed taken out again, the last first, whatever has been asked of the install
@@ -219,7 +232,15 @@ internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan
 
     /// <summary>A step, tried again on Windows while it is refused for a while, another program holding a file it reaches:
     /// the stage names that program as Windows does while it waits, and the log counts the wait.</summary>
-    private async Task WhileHeldAsync(Action step, string reaching, CancellationToken cancel)
+    private Task WhileHeldAsync(Action step, string reaching, CancellationToken cancel) => WhileHeldAsync(() =>
+    {
+        step();
+        return true;
+    }, reaching, Path.GetFileName(reaching), cancel);
+
+    /// <summary>A step giving what it came to, tried again as <see cref="WhileHeldAsync(Action, string, CancellationToken)"/>
+    /// is, what it reaches named in the stage as <paramref name="named"/>.</summary>
+    private async Task<T> WhileHeldAsync<T>(Func<T> step, string reaching, string named, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
         bool said = false;
@@ -227,13 +248,13 @@ internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan
         {
             try
             {
-                step();
+                T done = step();
                 if (said)
                 {
                     Held += Stopwatch.GetElapsedTime(began);
                     HeldSteps++;
                 }
-                return;
+                return done;
             }
             catch (Exception held) when (OperatingSystem.IsWindows() && (held is IOException or UnauthorizedAccessException) && Stopwatch.GetElapsedTime(began) < limit)
             {
@@ -241,7 +262,7 @@ internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan
                 {
                     said = true;
                     string holding = Holding(Directory.Exists(reaching) ? Directory.EnumerateFiles(reaching, "*", SearchOption.AllDirectories) : [reaching], "hold");
-                    stage($"Waiting for Windows to let go of the .NET SDK's {Path.GetFileName(reaching)}, which {holding}");
+                    stage($"Waiting for Windows to let go of the .NET SDK's {named}, which {holding}");
                     PassengerLog.Write($"Install .NET SDK {version}: {reaching} is held ({held.Message}): {holding} it; waiting for it");
                 }
                 await Task.Delay(TimeSpan.FromMilliseconds(250), cancel).ConfigureAwait(false);

@@ -103,7 +103,7 @@ public sealed class DotnetMergeTests : IDisposable
     }
 
     [Fact]
-    public void A_folder_from_another_volume_comes_under_a_name_of_its_own_and_lands_whole_its_programs_still_programs()
+    public void A_folder_from_another_volume_comes_beside_where_it_goes_under_a_name_of_its_own_its_programs_still_programs()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -116,15 +116,16 @@ public sealed class DotnetMergeTests : IDisposable
         File.SetUnixFileMode(program, mode);
         string target = Path.Join(root, "another-disk", Runtime);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        string? coming = null;
+        string? named = null;
 
-        DotnetMerge.Carried(from, target, beside => coming = beside);
+        string coming = DotnetMerge.Carried(from, target, beside => named = beside);
 
-        Assert.NotEqual(target, coming);
-        Assert.False(Directory.Exists(coming), $"What came over is still under its own name, {coming}");
+        Assert.Equal(named, coming);
+        Assert.Equal(Path.GetDirectoryName(target), Path.GetDirectoryName(coming));
+        Assert.False(Directory.Exists(target), "Part of the folder stands where it goes before all of it came over");
         Assert.False(Directory.Exists(from), "The folder brought over is still where it was");
-        Assert.Equal(mode, File.GetUnixFileMode(Path.Join(target, "createdump")));
-        Assert.Equal("runtime\n", File.ReadAllText(Path.Join(target, "System.Private.CoreLib.dll")));
+        Assert.Equal(mode, File.GetUnixFileMode(Path.Join(coming, "createdump")));
+        Assert.Equal("runtime\n", File.ReadAllText(Path.Join(coming, "System.Private.CoreLib.dll")));
     }
 
     [Fact]
