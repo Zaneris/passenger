@@ -296,7 +296,8 @@ jobs:
               cp "artifacts/package/Passenger-macos-${RID#osx-}.dmg" artifacts/release/
               ;;
             win-*)
-              cp "artifacts/package/Passenger-windows-${RID#win-}.exe" "artifacts/package/$RID/velopack/releases.$RID.json" \
+              cp "artifacts/package/Passenger-windows-${RID#win-}.exe" "artifacts/package/Passenger-windows-${RID#win-}.zip" \
+                "artifacts/package/$RID/velopack/releases.$RID.json" \
                 "artifacts/package/$RID/velopack/PassengerIDE-$VERSION-$RID-full.nupkg" artifacts/release/
               ;;
             linux-*)
@@ -415,7 +416,9 @@ jobs:
           Passenger-linux-x64.tar.gz
           Passenger-macos-arm64.dmg
           Passenger-windows-arm64.exe
+          Passenger-windows-arm64.zip
           Passenger-windows-x64.exe
+          Passenger-windows-x64.zip
           PassengerIDE-$VERSION-win-arm64-full.nupkg
           PassengerIDE-$VERSION-win-x64-full.nupkg
           releases.win-arm64.json

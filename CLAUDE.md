@@ -27,7 +27,8 @@ just test-times RUN...     # rewrite tests/Passenger.Tests/TestTimes.json from C
 just publish RID           # self-contained Release build: osx-arm64, win-x64, win-arm64, linux-x64, linux-arm64
 just package-mac [RID]     # the .dmg (Apple Silicon), signed by PASSENGER_SIGN_IDENTITY and notarized by
                            # PASSENGER_NOTARY_PROFILE when set, else ad hoc (--dry-run needs an identity)
-just package-win [RID]     # Velopack's per-user installer; just package-linux [RID]: the .tar.gz with install.sh
+just package-win [RID]     # Velopack's per-user installer and the zip; just package-linux [RID]: the .tar.gz with install.sh
+just package-choco [V] [SUMS]  # Chocolatey's package of release V's zips (Windows, choco); its push is the owner's
 just container-tools [RID] [--archive]  # the in-container tools (linux[-musl]-x64/arm64) into artifacts/container-tools
 just notices               # fail naming any carried package the notices miss
 just mcp [FOLDER]          # Passenger as an MCP server over a folder, from a clone of the last build

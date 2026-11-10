@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Passenger's Chocolatey package, made by tools/package-choco.sh, which fills in the version. -->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>passenger-ide</id>
+    <version>@VERSION@</version>
+    <title>Passenger</title>
+    <authors>Passenger</authors>
+    <projectUrl>https://passenger-ide.net</projectUrl>
+    <iconUrl>https://passenger-ide.net/apple-touch-icon.png</iconUrl>
+    <licenseUrl>https://github.com/Zaneris/passenger/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/Zaneris/passenger</projectSourceUrl>
+    <packageSourceUrl>https://github.com/Zaneris/passenger/tree/main/tools/chocolatey</packageSourceUrl>
+    <docsUrl>https://github.com/Zaneris/passenger#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/Zaneris/passenger/issues</bugTrackerUrl>
+    <releaseNotes>https://github.com/Zaneris/passenger/releases/tag/v@VERSION@</releaseNotes>
+    <tags>passenger ide csharp dotnet godot gdscript avalonia blazor debugger profiler foss</tags>
+    <summary>The free IDE for C# and .NET, and for Godot 4 games in C# and GDScript.</summary>
+    <description>Passenger is a free and open-source IDE for C# and modern .NET, written in C# with an Avalonia UI.
+
+- Run, debug, profile and Hot Reload .NET programs and Godot 4 games, in C# and GDScript.
+- Blazor WebAssembly debugs in the browser; Avalonia and WPF take XAML Hot Reload.
+- Git, NuGet, tests, containers and Aspire, in one window.
+- Your coding agent can drive it all through Passenger's MCP server.
+
+This package installs the self-contained build for x64 or Arm64 Windows, adds a Start menu entry for everyone and the
+`passenger-ide` command. Chocolatey updates it (`choco upgrade passenger-ide`); Passenger itself only says when a newer
+release is out. Opening a project needs a .NET SDK (8 or later), which Passenger offers to install when none is found.
+</description>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

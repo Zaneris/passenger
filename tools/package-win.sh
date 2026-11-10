@@ -4,7 +4,8 @@
 # Velopack's vpk into a Setup.exe that installs for the person alone, with no administrator, into
 # %LocalAppData%\PassengerIDE, adds a Start menu entry and an uninstall entry in Settings > Apps, and runs
 # Passenger.exe's install hook. Velopack's release (the full package and its channel's feed) stays in
-# artifacts/package/<rid>/velopack.
+# artifacts/package/<rid>/velopack. Beside the installer, Passenger-windows-x64.zip (or -arm64): the same publish for a
+# package manager to unpack.
 #
 # Signed only on Windows, by signtool, when one is set: PASSENGER_SIGNTOOL_PARAMS, signtool sign's parameters (/f or
 # /sha1, /fd sha256, /tr and /td sha256), or PASSENGER_ARTIFACT_SIGNING_METADATA, an Azure Artifact Signing account's
@@ -27,6 +28,7 @@ work="$out/$rid"
 publish="$work/publish"
 release="$work/velopack"
 installer="$out/Passenger-windows-${rid#win-}.exe"
+portable="$out/Passenger-windows-${rid#win-}.zip"
 
 signtool_params=${PASSENGER_SIGNTOOL_PARAMS:-}
 signing_metadata=${PASSENGER_ARTIFACT_SIGNING_METADATA:-}
@@ -46,7 +48,7 @@ fi
 
 version=$(release_version "$root")
 
-rm -rf "$work" "$installer"
+rm -rf "$work" "$installer" "$portable"
 publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
 
 # The pack id is not Passenger: the uninstaller empties its folder, and %LocalAppData%\Passenger is the person's state.
@@ -66,4 +68,14 @@ dotnet vpk '[win]' pack --skip-updates "$@"
 setup=$(find "$release" -maxdepth 1 -name '*-Setup.exe')
 [ "$(echo "$setup" | grep -c .)" = 1 ] || fail "vpk was to write one Setup.exe in $release, and wrote: ${setup:-none}"
 cp "$setup" "$installer"
+
+# The same publish as a plain zip, Passenger.exe at its root, for a package manager to unpack (tools/chocolatey): no
+# Velopack manifest, so the copy never takes itself for the installer's. bsdtar writes zips; Git's GNU tar does not.
+case $(uname -s) in
+    MINGW* | MSYS* | CYGWIN*) bsdtar="$(cygpath -u "$SYSTEMROOT")/System32/tar.exe" ;;
+    *) bsdtar=tar ;;
+esac
+[ ! -e "$publish/sq.version" ] || fail "$publish holds Velopack's sq.version, which the zip's copy would take for an installer's"
+(cd "$publish" && "$bsdtar" -a -cf "$portable" -- *)
+echo "package: $portable"
 echo "package: $installer ($( [ -n "$signtool_params$signing_metadata" ] && echo "signed" || echo "unsigned: SmartScreen asks once, More info > Run anyway"))"

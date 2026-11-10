@@ -102,6 +102,12 @@ package-win rid="win-x64":
 package-win rid="win-x64":
     $sh = (Get-Command sh -ErrorAction SilentlyContinue).Source; if (-not $sh) { $sh = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'bin\sh.exe' }; & $sh tools/package-win.sh {{rid}}
 
+# Passenger's Chocolatey package, artifacts/package/passenger-ide.<version>.nupkg, for a published release (its zips'
+# SHA-256s from its SHA256SUMS, or the file given): just package-choco [VERSION] [SHA256SUMS] (tools/package-choco.sh)
+[windows]
+package-choco *args:
+    $sh = (Get-Command sh -ErrorAction SilentlyContinue).Source; if (-not $sh) { $sh = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'bin\sh.exe' }; & $sh tools/package-choco.sh {{args}}
+
 # Passenger for Linux: one passenger/ folder (the app, its launcher, install.sh and the desktop entry with its icon) in
 # artifacts/package/Passenger-linux-x64.tar.gz or -arm64.tar.gz, unpacked and checked.
 # On Linux or macOS: just package-linux [linux-x64|linux-arm64]
