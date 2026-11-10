@@ -87,15 +87,19 @@ internal sealed class RefreshClient : IAsyncDisposable
     }
 
     /// <summary>The configuration module the app serves its pages: a server-rendered app's own, else (a Blazor Web App with
-    /// WebAssembly components) its client's, which the page's WebAssembly runtime loads.</summary>
+    /// WebAssembly components) its client's, which the page's WebAssembly runtime loads; named HotReload by .NET 11's SDK
+    /// as released, DotNetWatch by its release candidates.</summary>
     private static async Task<string> ConfigurationAsync(HttpClient http, string origin)
     {
-        foreach (string sdk in (string[])["BlazorWeb", "WebAssembly"])
+        foreach (string named in (string[])["HotReload", "DotNetWatch"])
         {
-            using HttpResponseMessage module = await http.GetAsync(new Uri($"{origin}/_framework/Microsoft.NET.Sdk.{sdk}.DotNetWatch.BrowserTools.Config.js"));
-            if (module.IsSuccessStatusCode)
+            foreach (string sdk in (string[])["BlazorWeb", "WebAssembly"])
             {
-                return await module.Content.ReadAsStringAsync();
+                using HttpResponseMessage module = await http.GetAsync(new Uri($"{origin}/_framework/Microsoft.NET.Sdk.{sdk}.{named}.BrowserTools.Config.js"));
+                if (module.IsSuccessStatusCode)
+                {
+                    return await module.Content.ReadAsStringAsync();
+                }
             }
         }
         Assert.Fail("The app serves no browser tools configuration module, so no page connects");
