@@ -76,7 +76,19 @@ public sealed partial class SilentPort : IDisposable
         {
             lock (taken)
             {
-                return taken.Count(connection => connection.From is null || connection.From == Environment.ProcessId);
+                return taken.Count(Here);
+            }
+        }
+    }
+
+    /// <summary>What those connections asked, in the order they came, each once it has been read.</summary>
+    public IReadOnlyList<string> AskedHere
+    {
+        get
+        {
+            lock (taken)
+            {
+                return [.. taken.Where(Here).Select(connection => connection.Asked).OfType<string>()];
             }
         }
     }
@@ -123,6 +135,8 @@ public sealed partial class SilentPort : IDisposable
         Ui.Pumped(() => reads.All(read => read.IsCompleted), TimeSpan.FromSeconds(10), scaled: false);
         end.Dispose();
     }
+
+    private static bool Here(Connection connection) => connection.From is null || connection.From == Environment.ProcessId;
 
     private void Take(Stream stream, int? from)
     {

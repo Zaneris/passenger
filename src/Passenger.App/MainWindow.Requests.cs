@@ -25,6 +25,9 @@ public partial class MainWindow
     private bool followingRequests;
     private bool followRequestsAgain;
 
+    /// <summary>The program a pass is starting to follow, with what its start asks with, canceled once it is no longer due.</summary>
+    private (RequestTarget Target, CancellationTokenSource Asked)? startingRequests;
+
     /// <summary>Whether an agent has asked for the requests: from then on they are followed as while the window shows, which a
     /// windowless IDE's never does.</summary>
     private bool requestsAsked;
@@ -159,6 +162,11 @@ public partial class MainWindow
         if (followingRequests)
         {
             followRequestsAgain = true;
+            if (startingRequests is { } starting && !MayBeDue(starting.Target))
+            {
+                startingRequests = null;
+                starting.Asked.Cancel();
+            }
             return;
         }
         followingRequests = true;
@@ -192,43 +200,65 @@ public partial class MainWindow
     }
 
     /// <summary>One program followed; a start that failed said at once, and asked again, saying so, only while its runtime has
-    /// yet to open its port (<see cref="SessionStarts.AskAgain"/>).</summary>
+    /// yet to open its port (<see cref="SessionStarts.AskAgain"/>). One no longer due as it starts asks nothing more.</summary>
     private async Task FollowAsync(RequestTarget target)
     {
         RequestLog log = RequestLog;
         DateTime first = DateTime.UtcNow;
-        while (true)
+        using CancellationTokenSource asked = new();
+        startingRequests = (target, asked);
+        try
         {
-            try
+            while (true)
             {
-                LiveRequests live = target.Place is { } place
-                    ? await LiveRequests.AttachAsync(target.Process, place, told => log.Hear(told, target.Name, target.Project))
-                    : await LiveRequests.AttachAsync(target.Process, told => log.Hear(told, target.Name, target.Project),
-                        _ => RequestLog.Following = ProgramStarts.Waiting(target.Name, "following its requests"));
-                followedRequests[target.Key] = (target, live);
-                IdeErrors.Observe(live.Ended.ContinueWith(_ => UiThread.Post(() =>
+                try
                 {
-                    if (followedRequests.TryGetValue(target.Key, out (RequestTarget Target, LiveRequests Live) now) && now.Live == live)
+                    LiveRequests live = target.Place is { } place
+                        ? await LiveRequests.AttachAsync(target.Process, place, told => log.Hear(told, target.Name, target.Project), asked.Token)
+                        : await LiveRequests.AttachAsync(target.Process, told => log.Hear(told, target.Name, target.Project),
+                            _ => RequestLog.Following = ProgramStarts.Waiting(target.Name, "following its requests"), asked.Token);
+                    followedRequests[target.Key] = (target, live);
+                    IdeErrors.Observe(live.Ended.ContinueWith(_ => UiThread.Post(() =>
                     {
-                        followedRequests.Remove(target.Key);
-                        SayFollowed($"{target.Name} ended");
-                    }
-                }), TaskScheduler.Default));
-                return;
-            }
-            catch (ProfilingException failed)
-            {
-                // Tools in a container that answered have said why: asking again would only say it again.
-                if (target.Place is not null || !SessionStarts.AskAgain(failed, DateTime.UtcNow - first, HeldStart.PortLimit))
-                {
-                    RequestLog.Following = failed.Message;
+                        if (followedRequests.TryGetValue(target.Key, out (RequestTarget Target, LiveRequests Live) now) && now.Live == live)
+                        {
+                            followedRequests.Remove(target.Key);
+                            SayFollowed($"{target.Name} ended");
+                        }
+                    }), TaskScheduler.Default));
                     return;
                 }
-                RequestLog.Following = $"Waiting for {target.Name}'s runtime to open its diagnostic port…";
-                await Task.Delay(TimeSpan.FromMilliseconds(200));
+                catch (ProfilingException failed)
+                {
+                    // Tools in a container that answered have said why: asking again would only say it again.
+                    if (target.Place is not null || !SessionStarts.AskAgain(failed, DateTime.UtcNow - first, HeldStart.PortLimit))
+                    {
+                        RequestLog.Following = failed.Message;
+                        return;
+                    }
+                    RequestLog.Following = $"Waiting for {target.Name}'s runtime to open its diagnostic port…";
+                    await Task.Delay(TimeSpan.FromMilliseconds(200), asked.Token);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (asked.IsCancellationRequested)
+        {
+            // No longer due: the pass after this one says what is followed.
+        }
+        finally
+        {
+            if (startingRequests is { } starting && starting.Asked == asked)
+            {
+                startingRequests = null;
             }
         }
     }
+
+    /// <summary>Whether a program whose start is under way may still be due: someone looks, and the folder still runs it
+    /// (a service's process in its run is the pass's to find again).</summary>
+    private bool MayBeDue(RequestTarget target) => RequestsLooked && session.Running.Any(program => program.Kind == RunningKind.Service
+        ? $"{program.Services!.Name}:{program.Service!.Name}" == target.Key
+        : program.Process == target.Process);
 
     /// <summary>The requests heard, for an agent: the window shown first (which follows the running apps), the last ones
     /// as lines, each request's method, path, status, time, route and handler, then its commands, repeated and slow ones
@@ -308,6 +338,11 @@ public partial class MainWindow
 
     private async Task LetGoOfRequestsAsync()
     {
+        if (startingRequests is { } starting)
+        {
+            startingRequests = null;
+            starting.Asked.Cancel();
+        }
         foreach ((RequestTarget _, LiveRequests live) in followedRequests.Values.ToArray())
         {
             await live.DisposeAsync();

@@ -283,22 +283,10 @@ public sealed class LiveRequestsTests
     [AvaloniaFact]
     public void A_program_whose_runtime_takes_no_session_is_said_to_and_asked_no_more()
     {
-        string folder = TestFolders.Create("requests-silent-");
-        TestFolders.Write(folder, "Quiet.csproj", TestProjects.Console());
-        TestFolders.Write(folder, "Properties/launchSettings.json", "{\n  \"profiles\": {\n    \"quiet\": { \"commandName\": \"Project\" }\n  }\n}\n");
-        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(\"The quiet program is up\");\nSystem.Threading.Thread.Sleep(System.Threading.Timeout.Infinite);\n");
-        Restore.Run(folder);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        MainWindow window = Ui.OpenFolder(QuietFolder("requests-silent-"), languageServer: false);
         try
         {
-            Assert.True(window.SelectConfiguration("Quiet: quiet"), $"No configuration Quiet: quiet among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
-            Ui.Launched(window, window.RunAsync(), "the program to start", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("The quiet program is up", StringComparison.Ordinal), "the program to say it is up",
-                TimeSpan.FromMinutes(2));
-            int program = window.Runner.ProcessId ?? throw new Xunit.Sdk.XunitException("Run's program has no process");
-            // Its own port first: a router's is taken over it only when made after it.
-            Ui.WaitFor(() => Microsoft.Diagnostics.NETCore.Client.DiagnosticsClient.GetPublishedProcesses().Contains(program), "the program's diagnostic port to open",
-                TimeSpan.FromSeconds(30));
+            int program = RunQuiet(window);
             using SilentPort port = new(program);
             window.ShowToolWindow(ToolWindowIds.Requests);
             string began = $"began at {port.Time} saying \"{window.RequestLog.Following}\"";
@@ -320,6 +308,58 @@ public sealed class LiveRequestsTests
             Ui.WaitFor(() => !window.Runner.IsRunning, "the program to stop");
             window.Close();
         }
+    }
+
+    /// <summary>A program's start that the window stops looking at as it waits at a runtime that takes no session is given up
+    /// at once: the window asks the program no account of its port and says nothing of it.</summary>
+    [AvaloniaFact]
+    public void A_start_the_window_stops_looking_at_asks_the_program_nothing_more()
+    {
+        MainWindow window = Ui.OpenFolder(QuietFolder("requests-dropped-"), languageServer: false);
+        try
+        {
+            int program = RunQuiet(window);
+            using SilentPort port = new(program);
+            window.ShowToolWindow(ToolWindowIds.Requests);
+            Ui.PumpUntil(() => port.AskedHere.Count > 0, "the window's start to reach the silent port", TimeSpan.FromSeconds(30));
+            window.DockHost.Hide(ToolWindowIds.Requests);
+            string hidden = $"hidden at {port.Time}";
+            Ui.Settle();
+            Assert.Equal(string.Empty, window.RequestLog.Following);
+            Assert.True(port.TakenHere == 1, $"The window's start was to be all this process asked of the port, where it made {port.TakenHere} connections. "
+                + $"The window was {hidden} and quiet by {port.Time}; the port took {port.Account()}");
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the program to stop");
+            window.Close();
+        }
+    }
+
+    /// <summary>A console program's folder, restored, whose program says it is up and runs on.</summary>
+    private static string QuietFolder(string prefix)
+    {
+        string folder = TestFolders.Create(prefix);
+        TestFolders.Write(folder, "Quiet.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "Properties/launchSettings.json", "{\n  \"profiles\": {\n    \"quiet\": { \"commandName\": \"Project\" }\n  }\n}\n");
+        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(\"The quiet program is up\");\nSystem.Threading.Thread.Sleep(System.Threading.Timeout.Infinite);\n");
+        Restore.Run(folder);
+        return folder;
+    }
+
+    /// <summary>Runs the quiet program, giving its process once it is up and its own diagnostic port is open: a router's port
+    /// is taken over it only when made after it.</summary>
+    private static int RunQuiet(MainWindow window)
+    {
+        Assert.True(window.SelectConfiguration("Quiet: quiet"), $"No configuration Quiet: quiet among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+        Ui.Launched(window, window.RunAsync(), "the program to start", TimeSpan.FromMinutes(2));
+        Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("The quiet program is up", StringComparison.Ordinal), "the program to say it is up",
+            TimeSpan.FromMinutes(2));
+        int program = window.Runner.ProcessId ?? throw new Xunit.Sdk.XunitException("Run's program has no process");
+        Ui.WaitFor(() => Microsoft.Diagnostics.NETCore.Client.DiagnosticsClient.GetPublishedProcesses().Contains(program), "the program's diagnostic port to open",
+            TimeSpan.FromSeconds(30));
+        return program;
     }
 
     /// <summary>A web app whose configuration runs it in the terminal has its requests followed as one in the Run console

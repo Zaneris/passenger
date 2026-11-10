@@ -186,66 +186,87 @@ public sealed class MetricsPane : DockPanel
     /// <summary>Begins reading, in place of the session before (<paramref name="again"/>, with the meters published since).
     /// A start that failed is said at once: asked again, saying so, only while the runtime has yet to open its port (in a
     /// container, a few times, its tools saying no more); left to <see cref="DebuggerChanged"/> once the debugger pauses the
-    /// program; else said and left.</summary>
+    /// program; else said and left. Let go of (<see cref="Stop"/>, a follow after it), it asks nothing more and says nothing.</summary>
     private async Task FollowAsync(int follow, bool again)
     {
         using IDisposable working = BackgroundWork.Scope();
-        if (again && live is { } before)
+        using CancellationTokenSource asked = new();
+        CancellationTokenSource? dropped = asking;
+        asking = asked;
+        dropped?.Cancel();
+        try
         {
-            live = null;
-            await before.DisposeAsync();
-        }
-        DateTime first = DateTime.UtcNow;
-        bool waited = false;
-        for (int attempt = 1; follow == follows; attempt++)
-        {
-            try
+            if (again && live is { } before)
             {
-                LiveMetrics started = place is { } there ? await LiveMetrics.AttachAsync(process, there, Heard(follow))
-                    : await LiveMetrics.AttachAsync(process, [.. meters], Heard(follow), _ =>
-                    {
-                        if (follow == follows)
-                        {
-                            waited = true;
-                            Say(ProgramStarts.Waiting(name, "reading its metrics"));
-                        }
-                    });
-                if (follow != follows)
-                {
-                    await started.DisposeAsync();
-                    return;
-                }
-                live = started;
-                if (waited && charts.Count == 0)
-                {
-                    Say($"Waiting for {name}'s first metrics…");
-                }
-                IdeErrors.Observe(EndedAsync(started, follow));
-                return;
+                live = null;
+                await before.DisposeAsync();
             }
-            catch (ProfilingException error)
+            DateTime first = DateTime.UtcNow;
+            bool waited = false;
+            for (int attempt = 1; follow == follows; attempt++)
             {
-                if (follow != follows)
+                try
                 {
+                    LiveMetrics started = place is { } there ? await LiveMetrics.AttachAsync(process, there, Heard(follow), asked.Token)
+                        : await LiveMetrics.AttachAsync(process, [.. meters], Heard(follow), _ =>
+                        {
+                            if (follow == follows)
+                            {
+                                waited = true;
+                                Say(ProgramStarts.Waiting(name, "reading its metrics"));
+                            }
+                        }, asked.Token);
+                    if (follow != follows)
+                    {
+                        await started.DisposeAsync();
+                        return;
+                    }
+                    live = started;
+                    if (waited && charts.Count == 0)
+                    {
+                        Say($"Waiting for {name}'s first metrics…");
+                    }
+                    IdeErrors.Observe(EndedAsync(started, follow));
                     return;
                 }
-                if (Paused?.Invoke(process, place) == true)
+                catch (ProfilingException error)
                 {
-                    held = true;
-                    Say(Refusals.MetricsWhilePaused(name));
-                    return;
+                    if (follow != follows)
+                    {
+                        return;
+                    }
+                    if (Paused?.Invoke(process, place) == true)
+                    {
+                        held = true;
+                        Say(Refusals.MetricsWhilePaused(name));
+                        return;
+                    }
+                    bool askAgain = place is null ? SessionStarts.AskAgain(error, DateTime.UtcNow - first, HeldStart.PortLimit) : attempt < ContainerAttempts;
+                    if (!askAgain)
+                    {
+                        Say($"{name}: {error.Message}");
+                        return;
+                    }
+                    Say(place is null ? $"Waiting for {name}'s runtime to open its diagnostic port…" : $"{name}: {error.Message}; asking again…");
+                    await Task.Delay(TimeSpan.FromMilliseconds(200), asked.Token);
                 }
-                bool askAgain = place is null ? SessionStarts.AskAgain(error, DateTime.UtcNow - first, HeldStart.PortLimit) : attempt < ContainerAttempts;
-                if (!askAgain)
-                {
-                    Say($"{name}: {error.Message}");
-                    return;
-                }
-                Say(place is null ? $"Waiting for {name}'s runtime to open its diagnostic port…" : $"{name}: {error.Message}; asking again…");
-                await Task.Delay(TimeSpan.FromMilliseconds(200));
+            }
+        }
+        catch (OperationCanceledException) when (asked.IsCancellationRequested)
+        {
+            // Let go of as it asked: the pane follows another program, or none.
+        }
+        finally
+        {
+            if (asking == asked)
+            {
+                asking = null;
             }
         }
     }
+
+    /// <summary>What the follow under way asks with, canceled as the pane lets go of it.</summary>
+    private CancellationTokenSource? asking;
 
     /// <summary>How many times a program in a container is asked for its metrics, whose tools say only that they failed.</summary>
     private const int ContainerAttempts = 15;
@@ -292,6 +313,9 @@ public sealed class MetricsPane : DockPanel
     {
         UiThread.Check();
         follows++;
+        CancellationTokenSource? dropped = asking;
+        asking = null;
+        dropped?.Cancel();
         widen.Stop();
         if (live is { } session)
         {
