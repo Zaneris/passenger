@@ -391,7 +391,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
         found = [.. kept.Select(i => found[i])];
         placed = null;
         Marker?[] made = Making(found.Length);
-        for (int i = 0; i < made.Length; i++)
+        for (int i = 0; i < found.Length; i++)
         {
             made[i] = marker(found[i], ranges[i].Range);
         }
