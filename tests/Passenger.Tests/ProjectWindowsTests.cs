@@ -170,6 +170,56 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         return new WeakReference<MainWindow>(second);
     }
 
+    /// <summary>A second window on a solution of two C# projects whose language server ends as it loads the project of the
+    /// file shown (its design-time build held off), before the other is opened, then closed with the server started again in
+    /// its place: the window goes at once, held by nothing the wait for that first load leaves (#1445).</summary>
+    [AvaloniaFact]
+    public void A_window_whose_first_projects_load_never_ended_is_let_go_once_closed()
+    {
+        string shop = TestFolders.Create("shop-");
+        TestFolders.Write(shop, "Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Other/Other.csproj\" />\n</Solution>\n");
+        TestFolders.Write(shop, "App/App.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(shop, "App/Program.cs", "Console.WriteLine(\"app\");\n");
+        TestFolders.Write(shop, "Other/Other.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n</Project>\n");
+        TestFolders.Write(shop, "Other/OtherCode.cs", "class OtherCode\n{\n}\n");
+        string gamma = TestFolders.Create("gamma-");
+        MainWindow first = Started(LaunchOptions.Empty with { Folder = gamma });
+        try
+        {
+            Ui.Collected(Unloaded(shop), "the window closed after its first projects' load never ended to be let go well before the five minutes that load is waited for: "
+                + "held by the wait, each such window would be kept five minutes after it closed", TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            first.Close();
+        }
+    }
+
+    /// <summary>A second window opened on a solution, its projects' design-time builds held off so the language server's load
+    /// of the file shown's project waits, that server ended, then the window closed: held only weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private WeakReference<MainWindow> Unloaded(string folder)
+    {
+        string canonical = PathNames.Canonical(folder);
+        MainWindow second = new() { Width = 1200, Height = 800, StateFolder = settings };
+        second.Show();
+        second.OpenFolder(Path.Combine(canonical, "Shop.slnx"));
+        IDisposable held = second.Session.DesignTimeBuilds.HoldOff([canonical]).Held;
+        second.OpenFile(Path.Combine(canonical, "App", "Program.cs"));
+        // Not settled: the server's load waits for the build held off.
+        Ui.PumpUntil(() => second.CSharpService?.Session is not null, $"the C# language server to start on {folder}", TimeSpan.FromMinutes(2));
+        Passenger.Lsp.RoslynSession loading = second.CSharpService!.Session!;
+        Assert.False(loading.IsLoaded, "The server loaded the project whose build was held off");
+        // Ended as it loads, it never says the first projects loaded.
+        System.Diagnostics.Process.GetProcessById(loading.Server.ProcessId).Kill();
+        Ui.PumpUntil(() => loading.Server.HasExited && second.CSharpService?.Session is { } again && again != loading, "the server ended and another started in its place",
+            TimeSpan.FromMinutes(2));
+        second.Close();
+        held.Dispose();
+        Ui.Settle();
+        return new WeakReference<MainWindow>(second);
+    }
+
     /// <summary>A folder opened over another in its window: every session the window had before it (the empty one it began
     /// with, the first folder's) goes, held by nothing the window keeps for the sessions after them.</summary>
     [AvaloniaFact]

@@ -34,6 +34,8 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             }
             Loaded?.Invoke(this, EventArgs.Empty);
         };
+        // A server that ended by itself opens nothing more (OpenRestAsync).
+        server.Exited += (_, _) => ending.Cancel();
         // Builds given as what they read changed (a restore landing) load again: the server never reloads for that itself.
         server.ProjectGiven += (_, built) =>
         {
@@ -61,6 +63,10 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
 
     /// <summary>Done once the projects opened first have loaded, after which the rest are opened.</summary>
     private readonly TaskCompletionSource firstLoaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Cancelled as the session is disposed or its server ends by itself, which ends the wait for the projects
+    /// opened first: its clock would keep the session, its server and what feeds the server (a window's) until it ran out.</summary>
+    private readonly CancellationTokenSource ending = new();
 
     /// <summary>The projects have loaded, so answers now know the whole solution. Raised on any
     /// thread.</summary>
@@ -192,11 +198,15 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     {
         try
         {
-            await firstLoaded.Task.WaitAsync(TimeSpan.FromMinutes(5)).ConfigureAwait(false);
+            await firstLoaded.Task.WaitAsync(TimeSpan.FromMinutes(5), ending.Token).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
             // Never said: the rest are opened anyway, the server taking them in turn.
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         try
         {
@@ -410,6 +420,7 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     /// <summary>Closes the documents, on the caller's thread as they are its, then ends the server without holding it.</summary>
     public async ValueTask DisposeAsync()
     {
+        ending.Cancel();
         foreach (LspDocument document in documents.Values.ToList())
         {
             document.Dispose();
