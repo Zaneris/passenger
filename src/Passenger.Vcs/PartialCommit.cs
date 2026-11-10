@@ -36,5 +36,40 @@ public sealed record PartialCommit(FileDiff Diff, IReadOnlyList<DiffHunk> Hunks,
         return content.ToString();
     }
 
+    /// <summary>The changes of <paramref name="next"/>, another text of the file against the same last commit, that the
+    /// chosen ones still make: each touching a chosen change's lines of the last commit and no change left out. None
+    /// where the last commit's text is another.</summary>
+    public IReadOnlyList<DiffHunk> Following(FileDiff next)
+    {
+        if (!ReferenceEquals(next.Head, Diff.Head) && next.Head != Diff.Head)
+        {
+            return [];
+        }
+        HashSet<DiffHunk> chosen = [.. Hunks];
+        List<DiffHunk> kept = [];
+        int at = 0;
+        foreach (DiffHunk hunk in next.Hunks)
+        {
+            while (at < Diff.Hunks.Count && End(Diff.Hunks[at]) < hunk.OldStart)
+            {
+                at++;
+            }
+            bool taken = false;
+            bool left = false;
+            for (int i = at; i < Diff.Hunks.Count && Diff.Hunks[i].OldStart <= End(hunk); i++)
+            {
+                taken |= chosen.Contains(Diff.Hunks[i]);
+                left |= !chosen.Contains(Diff.Hunks[i]);
+            }
+            if (taken && !left)
+            {
+                kept.Add(hunk);
+            }
+        }
+        return kept;
+    }
+
+    private static int End(DiffHunk hunk) => hunk.OldStart + hunk.OldCount;
+
     private static int Offset(LineStarts starts, int length, int line) => line < starts.Count ? starts[line] : length;
 }

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -53,6 +54,101 @@ public sealed class PartialCommitTests : IDisposable
             Assert.Equal(After, File.ReadAllText(PathOf("Notes.txt")));
             Assert.Contains("Other.txt", TestGit.Run(folder, "diff", "--cached", "--name-only"), StringComparison.Ordinal);
             Assert.Contains("Notes.txt", TestGit.Run(folder, "diff", "--name-only"), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static CheckBox[] Boxes(DiffView view) =>
+        [.. view.GetVisualDescendants().OfType<CheckBox>().Where(b => ToolTip.GetTip(b) as string == "Include this change in commit")];
+
+    [AvaloniaFact]
+    public void Edits_in_the_diff_keep_the_changes_chosen_and_leave_a_new_change_out()
+    {
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.Perform(AppActions.ShowCommit);
+            Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 2, "the changed files");
+            CommitRow row = window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Notes.txt");
+            window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Other.txt").IsChosen = false;
+            window.OpenFile(PathOf("Notes.txt"));
+            Ui.Settle();
+            IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
+            DiffView view = host.View!;
+            Assert.True(view.IsEditable, "The diff of the open file is read-only");
+            Ui.Click(Boxes(view)[1]);
+            Assert.Null(row.CheckState);
+
+            foreach ((int line, string typed) in (ReadOnlySpan<(int, string)>)[(4, "X"), (0, "Y"), (2, "Z")])
+            {
+                Ui.Click(view.Right);
+                view.Right.GoTo(new TextPosition(line, 0));
+                window.KeyTextInput(typed);
+                Ui.Settle();
+            }
+            Assert.Equal("YONE\ntwo\nZthree\nfour\nXFIVE\n", view.Right.Document.Snapshot.ToString());
+            Assert.Equal([true, false, false], Boxes(view).Select(b => b.IsChecked == true));
+            Assert.Null(row.CheckState);
+
+            Ui.Run(window, AppActions.Save);
+            host.Close();
+            window.CommitView.Message = "The first change, edited";
+            Assert.True(Ui.Landed(window.CommitView.CommitAsync(false), "the partial commit"), window.Status);
+            Assert.Equal("YONE\ntwo\nthree\nfour\nfive\n", TestGit.Run(folder, "show", "HEAD:Notes.txt"));
+            Assert.Equal("YONE\ntwo\nZthree\nfour\nXFIVE\n", File.ReadAllText(PathOf("Notes.txt")));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Rollback_of_the_chosen_files_is_refused_while_a_file_goes_in_only_in_part()
+    {
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.Perform(AppActions.ShowCommit);
+            Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 2, "the changed files");
+            IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
+            Ui.Click(Boxes(host.View!)[1]);
+            host.Close();
+            window.Perform(AppActions.ShowCommit);
+            Ui.Settle();
+            Button rollback = window.CommitView.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Rollback");
+            Ui.Click(rollback);
+            Assert.StartsWith("Rollback puts back whole files", window.Status, StringComparison.Ordinal);
+            Assert.Equal(After, File.ReadAllText(PathOf("Notes.txt")));
+            Assert.Equal("new\n", File.ReadAllText(PathOf("Other.txt")));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_merge_under_way_offers_no_boxes_for_changes()
+    {
+        TestGit.Run(folder, "reset", "-q", "Other.txt");
+        TestGit.Run(folder, "switch", "-q", "-c", "feature");
+        File.WriteAllText(PathOf("Third.txt"), "third\n");
+        TestGit.Run(folder, "add", "Third.txt");
+        TestGit.Run(folder, "commit", "-q", "-m", "Third");
+        TestGit.Run(folder, "switch", "-q", "main");
+        TestGit.Run(folder, "merge", "-q", "--no-commit", "--no-ff", "feature");
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.Perform(AppActions.ShowCommit);
+            Ui.Landed(() => window.Vcs.Merge.CommitsWhole && window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Notes.txt"), "the merge and its changes");
+            IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
+            Assert.Empty(Boxes(host.View!));
+            host.Close();
         }
         finally
         {

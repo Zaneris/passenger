@@ -23,7 +23,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
 
     private readonly DiffStrip bands;
     private readonly Canvas hunkBoxes = new() { Width = 28, ClipToBounds = true, IsVisible = false };
-    private Func<FileDiff, int, bool>? hunkChosen;
+    private Func<FileDiff, bool[]>? hunksChosen;
     private Action<FileDiff, int, bool>? chooseHunk;
     private bool settingHunkBoxes;
 
@@ -139,25 +139,27 @@ public sealed class DiffView : DockPanel, IOwnKeys
         IdeErrors.Observe(CompareAsync());
     }
 
-    public void ChooseForCommit(Func<FileDiff, int, bool> chosen, Action<FileDiff, int, bool> choose)
+    /// <summary>A box beside each change for whether it goes into the next commit: <paramref name="chosen"/> asked once for
+    /// each diff shown and each change of the choice, <paramref name="choose"/> told of a box the person turns.</summary>
+    public void ChooseForCommit(Func<FileDiff, bool[]> chosen, Action<FileDiff, int, bool> choose)
     {
-        hunkChosen = chosen;
+        hunksChosen = chosen;
         chooseHunk = choose;
         hunkBoxes.IsVisible = true;
-        ShowHunkBoxes();
+        RefreshCommitChoices();
     }
 
-    public void RefreshCommitChoices() => ShowHunkBoxes();
-
-    private void ShowHunkBoxes()
+    /// <summary>The boxes set again from the choice, after it changed.</summary>
+    public void RefreshCommitChoices()
     {
-        if (hunkChosen is null || chooseHunk is null || settingHunkBoxes)
+        if (hunksChosen is null || chooseHunk is null || settingHunkBoxes)
         {
             return;
         }
         settingHunkBoxes = true;
         try
         {
+            bool[] chosen = hunksChosen(shown);
             while (hunkBoxes.Children.Count > Hunks.Count)
             {
                 hunkBoxes.Children.RemoveAt(hunkBoxes.Children.Count - 1);
@@ -174,19 +176,31 @@ public sealed class DiffView : DockPanel, IOwnKeys
                     {
                         if (!settingHunkBoxes)
                         {
-                            chooseHunk(shown, index, added.IsChecked == true);
+                            chooseHunk?.Invoke(shown, index, added.IsChecked == true);
                         }
                     };
                     hunkBoxes.Children.Add(added);
                 }
-                CheckBox box = (CheckBox)hunkBoxes.Children[i];
-                box.IsChecked = hunkChosen(shown, i);
-                Canvas.SetTop(box, (Hunks[i].NewStart * Right.LineHeight) - Right.ScrollOffset.Y);
+                ((CheckBox)hunkBoxes.Children[i]).IsChecked = chosen[i];
             }
         }
         finally
         {
             settingHunkBoxes = false;
+        }
+        PlaceHunkBoxes();
+    }
+
+    /// <summary>Each box beside its change's first line, as the file's side scrolls.</summary>
+    private void PlaceHunkBoxes()
+    {
+        if (!hunkBoxes.IsVisible)
+        {
+            return;
+        }
+        for (int i = 0; i < hunkBoxes.Children.Count && i < Hunks.Count; i++)
+        {
+            Canvas.SetTop(hunkBoxes.Children[i], (Hunks[i].NewStart * Right.LineHeight) - Right.ScrollOffset.Y);
         }
     }
 
@@ -317,7 +331,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private void Show(FileDiff diff)
     {
         shown = diff;
-        ShowHunkBoxes();
+        RefreshCommitChoices();
         bool off = highlighting == DiffHighlighting.None;
         Left.SetChangeMarks(off ? [] : [.. Hunks.Select(h => h.OldCount == 0 ? new ChangeMark(h.OldStart, 0, ChangeMarkKind.Added)
             : h.NewCount == 0 ? new ChangeMark(h.OldStart, h.OldCount, ChangeMarkKind.Deleted)
@@ -420,7 +434,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private void Follow(CodeEditor from, CodeEditor to, bool toLeft)
     {
         bands.InvalidateVisual();
-        ShowHunkBoxes();
+        PlaceHunkBoxes();
         if (following)
         {
             return;

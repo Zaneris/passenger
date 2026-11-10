@@ -1430,7 +1430,8 @@ public sealed partial class Git
     {
         if (partial is { Count: > 0 })
         {
-            return await CommitPartialAsync(paths, message, amend, merging, excluded, signing ?? CommitSigning.AsConfigured, asker, partial);
+            return merging ? new GitResult(1, string.Empty, "A merge commits whole files: choose whole files while it is under way")
+                : await CommitPartialAsync(paths, message, amend, signing ?? CommitSigning.AsConfigured, asker, partial);
         }
         signing ??= CommitSigning.AsConfigured;
         string[] relative = [.. paths.Select(Relative).Distinct()];
@@ -1469,8 +1470,8 @@ public sealed partial class Git
     }
 
     /// <summary>A private index keeps excluded changes out of the commit and leaves the real index untouched on failure.</summary>
-    private async Task<GitResult> CommitPartialAsync(IReadOnlyList<string> paths, string message, bool amend, bool merging,
-        IReadOnlyList<string>? excluded, CommitSigning signing, GitAsker? asker, IReadOnlyDictionary<string, PartialCommit> partial)
+    private async Task<GitResult> CommitPartialAsync(IReadOnlyList<string> paths, string message, bool amend, CommitSigning signing, GitAsker? asker,
+        IReadOnlyDictionary<string, PartialCommit> partial)
     {
         Dictionary<string, byte[]> contents = new(PathNames.Comparer);
         foreach ((string path, PartialCommit selection) in partial)
@@ -1490,31 +1491,16 @@ public sealed partial class Git
         Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index };
         try
         {
-            if (merging)
+            GitResult read = await RunAsync(Root, ["read-tree", "HEAD"], environment: environment);
+            if (!read.Succeeded)
             {
-                File.Copy(System.IO.Path.Combine(GitDir, "index"), index);
-            }
-            else
-            {
-                GitResult read = await RunAsync(Root, ["read-tree", "HEAD"], environment: environment);
-                if (!read.Succeeded)
-                {
-                    return read;
-                }
+                return read;
             }
             string[] relative = [.. paths.Select(Relative).Distinct()];
             GitResult added = await OnFilesAsync(["add", "-A"], relative, environment: environment);
             if (!added.Succeeded)
             {
                 return added;
-            }
-            if (merging && excluded is { Count: > 0 })
-            {
-                GitResult reset = await OnFilesAsync(["reset", "-q"], excluded.Select(Relative).ToArray(), environment: environment);
-                if (!reset.Succeeded)
-                {
-                    return reset;
-                }
             }
             GitResult entries = await RunAsync(Root, ["ls-files", "--stage", "-z"], environment: environment);
             if (!entries.Succeeded)
@@ -1530,7 +1516,7 @@ public sealed partial class Git
                 {
                     return new GitResult(1, string.Empty, "Only regular text files support partial commits");
                 }
-                // --path gives hash-object the attributes and clean filters of the file whose bytes arrive on stdin.
+                // A path on git's command line, as hash-object takes none on stdin beside the bytes: --path picks their filters.
                 (GitResult Ran, string? Read) blob = await RunAsync(Root, ["hash-object", "-w", "--stdin", $"--path={name}"], TextAsync, bytes);
                 if (!blob.Ran.Succeeded)
                 {

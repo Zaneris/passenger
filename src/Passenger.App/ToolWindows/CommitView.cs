@@ -26,27 +26,37 @@ public sealed class CommitRow(FileChange change, bool chosen) : Observable
 
     private static bool IsChoosable(FileChange change) => change.Kind is not ChangeKind.Conflicted && change.Uncommittable is null;
 
+    /// <summary>The changes that go in where only some of the file's do; null where all or none do.</summary>
     public PartialCommit? Partial { get; private set; }
 
+    /// <summary>The file's box: chosen, not, or null where only some of its changes go in.</summary>
     public bool? CheckState => Partial is null ? IsChosen : null;
 
-    public bool HunkChosen(FileDiff diff, int index)
+    /// <summary>Whether each change of <paramref name="diff"/> goes in, asked as a diff of the file is shown: a choice of
+    /// some changes made on another text of the file moves onto the changes it still makes (<see cref="PartialCommit.Following"/>).</summary>
+    public bool[] ChosenIn(FileDiff diff)
     {
-        if (Partial is { } partial && (partial.Diff.Head != diff.Head || !ReferenceEquals(partial.Diff.Text, diff.Text) && partial.Diff.Text.ToString() != diff.Text.ToString()))
+        if (Partial is { } partial && !ReferenceEquals(partial.Diff, diff))
         {
-            IsChosen = false;
+            Choose(diff, partial.Following(diff));
         }
-        return Partial is { } selected ? selected.Hunks.Contains(diff.Hunks[index]) : IsChosen;
+        if (Partial is { } chosen)
+        {
+            HashSet<DiffHunk> taken = [.. chosen.Hunks];
+            return [.. diff.Hunks.Select(taken.Contains)];
+        }
+        return [.. diff.Hunks.Select(_ => IsChosen)];
     }
 
     public void ChooseHunk(FileDiff diff, int index, bool take)
     {
-        List<DiffHunk> hunks = [.. diff.Hunks.Where((_, i) => HunkChosen(diff, i))];
-        hunks.Remove(diff.Hunks[index]);
-        if (take)
-        {
-            hunks.Add(diff.Hunks[index]);
-        }
+        bool[] chosen = ChosenIn(diff);
+        chosen[index] = take;
+        Choose(diff, [.. diff.Hunks.Where((_, i) => chosen[i])]);
+    }
+
+    private void Choose(FileDiff diff, IReadOnlyList<DiffHunk> hunks)
+    {
         IsChosen = hunks.Count > 0;
         if (hunks.Count > 0 && hunks.Count < diff.Hunks.Count)
         {
@@ -289,7 +299,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             Children =
             {
                 ToolButtons.Of(AppActions.CommitRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action)),
-                ToolButtons.Of(IconKeys.Rollback, "Rollback", () => RollbackRequested?.Invoke(this, ChosenOrSelected())),
+                ToolButtons.Of(IconKeys.Rollback, "Rollback", RollbackChosenOrSelected),
                 ToolButtons.Of(AppActions.ShowDiff, IconKeys.Diff, "Show Diff", _ =>
                 {
                     if (list.SelectedItem is CommitRow row)
@@ -482,20 +492,25 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>Rollback pressed: the files to put back, once the person has said so.</summary>
     public event EventHandler<IReadOnlyList<FileChange>>? RollbackRequested;
 
+    /// <summary>Rollback pressed where it puts nothing back: why.</summary>
+    public event EventHandler<string>? RollbackRefused;
+
     /// <summary>The files and the groups over them, as the window lists them.</summary>
     public IReadOnlyList<object> Rows => rows;
 
     /// <summary>The files that go into the next commit.</summary>
     public IReadOnlyList<FileChange> Chosen => [.. rows.OfType<CommitRow>().Where(r => r.IsChosen).Select(r => r.Change)];
 
+    /// <summary>Gives a diff of a changed file against the last commit a box beside each change, for whether it goes in;
+    /// none while a merge's commit, which takes files whole, is under way.</summary>
     public void ConfigureDiff(string path, DiffView view)
     {
-        if (rows.OfType<CommitRow>().FirstOrDefault(r => PathNames.Same(r.Change.Path, path)) is not { CanChoose: true } row
+        if (vcs.Merge.CommitsWhole || rows.OfType<CommitRow>().FirstOrDefault(r => PathNames.Same(r.Change.Path, path)) is not { CanChoose: true } row
             || row.Change.Kind is not (ChangeKind.Modified or ChangeKind.Renamed) || row.Change.Mode is not null || row.Change.Submodule != SubmoduleChange.None)
         {
             return;
         }
-        view.ChooseForCommit((diff, index) => row.HunkChosen(diff, index), (diff, index, take) => row.ChooseHunk(diff, index, take));
+        view.ChooseForCommit(row.ChosenIn, row.ChooseHunk);
         row.FollowWhileShown(view, (_, _) => view.RefreshCommitChoices());
     }
 
@@ -549,10 +564,17 @@ public sealed class CommitView : DockPanel, IOwnKeys
         return true;
     }
 
-    private IReadOnlyList<FileChange> ChosenOrSelected()
+    /// <summary>Rollback of the files selected, else of those chosen: refused where a chosen file goes in only in part, as
+    /// a rollback puts back whole files.</summary>
+    private void RollbackChosenOrSelected()
     {
         CommitRow[] selected = [.. list.SelectedItems?.OfType<CommitRow>() ?? []];
-        return selected.Length > 0 ? [.. selected.Select(r => r.Change)] : Chosen;
+        if (selected.Length == 0 && rows.OfType<CommitRow>().FirstOrDefault(r => r.Partial is not null) is { } part)
+        {
+            RollbackRefused?.Invoke(this, $"Rollback puts back whole files, and only some changes to {part.Change.Name} are chosen: select the files to roll back");
+            return;
+        }
+        RollbackRequested?.Invoke(this, selected.Length > 0 ? [.. selected.Select(r => r.Change)] : Chosen);
     }
 
     /// <summary>Lists the status again in place: a file still changed as it was keeps its row, its box and whether it is
