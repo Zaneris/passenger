@@ -140,22 +140,33 @@ public partial class MainWindow
     }
 
     /// <summary>A .NET service of the folder's container run, by its Compose project and service: its program in its
-    /// container and where Passenger's tools reach it, as the Requests window finds it; null for any other, or one not up.</summary>
-    private async Task<(int Process, Profiler.ProfilePlace Place)?> DotnetInContainerAsync(string project, string service)
+    /// container and where Passenger's tools reach it, as the Requests window finds it, or why it is not reached yet; null
+    /// for any other service, or once the run has ended.</summary>
+    private async Task<DotnetLookup?> DotnetInContainerAsync(string project, string service)
     {
-        if (session.ContainerRun is not { } run || run.Plan.ProjectName != project
-            || session.Running.FirstOrDefault(p => p.Kind == RunningKind.Service && p.Services == run && p.Service?.Name == service)?.Service is not { } running)
+        if (session.ContainerRun is not { IsStopped: false } run || run.Plan.ProjectName != project || run.ServiceNamed(service) is null)
         {
             return null;
         }
+        if (session.Running.FirstOrDefault(p => p.Kind == RunningKind.Service && p.Services == run && p.Service?.Name == service)?.Service is not { } running)
+        {
+            return DotnetLookup.Missing(Refusals.NotRunning(service, run.Name));
+        }
+        ServiceProgram? found;
         try
         {
-            return await run.ProgramAsync(running, Task.CompletedTask, CancellationToken.None) is { WhyNot: null, Recorded: { } place } found ? (found.Id, place) : null;
+            found = await run.ProgramAsync(running, Task.CompletedTask, CancellationToken.None);
         }
         catch (Exception error) when (error is ServiceUnreachedException || run.Refused(error))
         {
+            return DotnetLookup.Missing($"{service}: {error.Message}");
+        }
+        if (session.ContainerRun != run || run.IsStopped)
+        {
             return null;
         }
+        return found is { WhyNot: null, Recorded: { } place } ? DotnetLookup.Found(found.Id, place)
+            : DotnetLookup.Missing(found?.WhyNot is { } why ? $"{service}: {why}" : Refusals.NotRunning(service, run.Name));
     }
 
     /// <summary>The window's folder opened: when it holds a Compose file or a Dockerfile, the engine is asked once, off the
@@ -266,6 +277,13 @@ public partial class MainWindow
             return state.Status is EngineStatus.Ready or EngineStatus.NoCompose ? (null, state.Endpoint) : (state.Problem, null);
         };
         CheckEngineFor(next.Folder);
+        buildRun.RunningChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                containersView?.ProgramsChanged();
+            }
+        };
     }
 
     /// <summary>Prune, asked first: what the chosen heading (or the chosen object's kind) gathers that nothing uses.</summary>

@@ -606,10 +606,10 @@ public sealed class ContainersTests
         try
         {
             ContainersView view = Shown(window);
-            Queue<TaskCompletionSource<(int Process, Passenger.Profiler.ProfilePlace Place)?>> lookups = [];
+            Queue<TaskCompletionSource<DotnetLookup?>> lookups = [];
             view.DotnetOf = (_, _) =>
             {
-                TaskCompletionSource<(int Process, Passenger.Profiler.ProfilePlace Place)?> lookup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                TaskCompletionSource<DotnetLookup?> lookup = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 lookups.Enqueue(lookup);
                 return lookup.Task;
             };
@@ -619,7 +619,7 @@ public sealed class ContainersTests
             Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "web"), "web's row");
             view.ShowTab(RunWindows.StatsTab);
             Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for");
-            lookups.Dequeue().SetResult((1, place));
+            lookups.Dequeue().SetResult(DotnetLookup.Found(1, place));
             Ui.WaitFor(() => view.Metrics.Said == paused, () => $"web's metrics to be followed, not \"{view.Metrics.Said}\"");
             Assert.True(view.Metrics.IsVisible, "web's metrics had no room under its Stats");
 
@@ -629,12 +629,70 @@ public sealed class ContainersTests
 
             window.ShowToolWindow(ToolWindowIds.Containers);
             Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for again as its Stats show once more");
-            TaskCompletionSource<(int Process, Passenger.Profiler.ProfilePlace Place)?> underWay = lookups.Dequeue();
+            TaskCompletionSource<DotnetLookup?> underWay = lookups.Dequeue();
             window.DockHost.Hide(ToolWindowIds.Containers);
             Ui.Settle();
-            underWay.SetResult((1, place));
+            underWay.SetResult(DotnetLookup.Found(1, place));
             Ui.Settle();
             Assert.True(view.Metrics.Said.Length == 0 && !view.Metrics.IsVisible, $"A lookup that ended with the window hidden began a reading: \"{view.Metrics.Said}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A .NET service chosen before its program can be reached has its metrics say so in their place, looking for it
+    /// meanwhile, then why it was not reached, and look again by themselves, nothing else changing, until it is found; and
+    /// once its run has ended they let go and look no more. The stand-in's program is held paused, so the pane says what it
+    /// follows without a session.</summary>
+    [AvaloniaFact]
+    public void A_services_metrics_say_why_its_program_is_not_reached_and_look_again_until_found_or_its_run_ends()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        string folder = TestFolders.Create("ctr-metrics-unreached-");
+        (string cli, _) = StandInEngine(folder, up: true);
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
+        window.Show();
+        window.OpenFolder(TestFolders.Create("ctr-metrics-unreached-window-"));
+        Ui.Settle();
+        try
+        {
+            ContainersView view = Shown(window);
+            Queue<TaskCompletionSource<DotnetLookup?>> lookups = [];
+            view.DotnetOf = (_, _) =>
+            {
+                TaskCompletionSource<DotnetLookup?> lookup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                lookups.Enqueue(lookup);
+                return lookup.Task;
+            };
+            view.Metrics.Paused = (_, _) => true;
+            Passenger.Profiler.ProfilePlace place = new(_ => throw new InvalidOperationException("The stand-in's metrics were read"), "a stand-in", path => path);
+            const string Unreached = "web: its runtime has yet to open its diagnostic port";
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "web"), "web's row");
+            view.ShowTab(RunWindows.StatsTab);
+            Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for");
+            Assert.True(view.Metrics.IsVisible && view.Metrics.Said == ContainersView.Looking("web"),
+                $"While web's program was looked for, its metrics said nothing of it: \"{view.Metrics.Said}\"");
+
+            lookups.Dequeue().SetResult(DotnetLookup.Missing(Unreached));
+            Ui.WaitFor(() => view.Metrics.Said == ContainersView.LookingAgain(Unreached), () => $"web's metrics to say why its program was not reached, not \"{view.Metrics.Said}\"");
+            Assert.True(view.Metrics.IsVisible, "web's metrics said why its program was not reached where nobody sees it");
+            Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for again, nothing else having changed");
+            lookups.Dequeue().SetResult(DotnetLookup.Found(1, place));
+            Ui.WaitFor(() => view.Metrics.Said == Refusals.MetricsWhilePaused("web"), () => $"web's metrics to be followed once its program was found, not \"{view.Metrics.Said}\"");
+
+            Assert.True(view.Choose(r => r.Kind == ContainerRowKind.Project), "the project's row");
+            Ui.Settle();
+            Assert.True(view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "web"), "web's row again");
+            Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for as its row is chosen again");
+            lookups.Dequeue().SetResult(DotnetLookup.Missing(Unreached));
+            Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for again");
+            // Its run ended: none to look for.
+            lookups.Dequeue().SetResult(null);
+            Ui.WaitFor(() => view.Metrics.Said.Length == 0 && !view.Metrics.IsVisible, () => $"web's metrics to be let go once its run ended, not \"{view.Metrics.Said}\"");
+            Ui.Hold(TimeSpan.FromSeconds(3), "longer than the first wait between lookups");
+            Assert.True(lookups.Count == 0, "web's program was looked for again after its run had ended");
         }
         finally
         {

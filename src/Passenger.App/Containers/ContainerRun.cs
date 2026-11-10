@@ -1073,6 +1073,10 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     /// <summary>The run's .NET service by its name in the run.</summary>
     private DotnetService Dotnet(IRunService service) => Plan.Dotnet.First(d => d.Service == service.Name);
 
+    /// <summary>Why each service's program was not reached, by service, as last said in the run's console with its container
+    /// and that container's start: a lookup made again in the same start says it no more.</summary>
+    private readonly Dictionary<string, string> unreachedSaid = new(StringComparer.Ordinal);
+
     /// <summary>A service's program in its container once Compose has started it, reached through Passenger's tools there:
     /// the adapter run there over docker exec, its console the container's log since its start, its paths mapped back in
     /// images mode; the profiler's tools there too.</summary>
@@ -1094,8 +1098,13 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         }
         if (there.Program.WhyNot is { } unreached)
         {
-            // In the run's console, which still says it once a later word has taken the status bar's place.
-            Say(service, unreached, error: false);
+            // In the run's console, which still says it once a later word has taken the status bar's place; once a start.
+            string said = $"{there.Reach.Container}\n{there.Started}\n{unreached}";
+            if (unreachedSaid.GetValueOrDefault(service.Name) != said)
+            {
+                unreachedSaid[service.Name] = said;
+                Say(service, unreached, error: false);
+            }
         }
         ContainerPaths paths = Plan.Mode == ContainerMode.Images ? dotnet.Paths : ContainerPaths.None;
         AdapterPlace place = there.Reach.Adapter(there.Program.Program, paths) with

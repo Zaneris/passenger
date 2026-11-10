@@ -162,7 +162,7 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
             {
                 ContainerRunsTests.Answer(port);
                 return metrics.Charted.GetValueOrDefault("http.server.request.duration") >= 2;
-            }, () => $"web's request duration charted (the pane says {metrics.Said}, charting {string.Join(", ", metrics.Charted.Select(c => $"{c.Key} {c.Value}"))})", TimeSpan.FromMinutes(2));
+            }, () => $"web's request duration charted ({MetricsOfWeb(window, view)})", TimeSpan.FromMinutes(2));
             Assert.Matches(@"^[0-9.,]+/s, median ", metrics.ValueOf("http.server.request.duration") ?? string.Empty);
             Assert.EndsWith("in its container: read every second", metrics.Said, StringComparison.Ordinal);
 
@@ -175,6 +175,19 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
             Docker.Stopped(window, project, "Stop to take every container down");
         }
         window.Close();
+    }
+
+    /// <summary>What tells apart why web's metrics are not charted, for a failure to say: whether the Containers window is
+    /// shown (hidden, it reads none), what its metrics say and chart, what the lookup of web's program came to, and the run's
+    /// last lines of web.</summary>
+    private static string MetricsOfWeb(MainWindow window, ContainersView view)
+    {
+        Passenger.App.Telemetry.MetricsPane metrics = view.Metrics;
+        bool shown = window.DockHost.IsShown(ToolWindowIds.Containers) && TopLevel.GetTopLevel(view) is not null;
+        string[] lines = [.. ContainerRunsTests.Run(window).Split('\n').Where(line => line.StartsWith("web", StringComparison.Ordinal)).TakeLast(20)];
+        return $"the Containers window {(shown ? "shown" : "hidden")} on its {view.ShownTab} tab, {view.Chosen?.Label ?? "nothing"} chosen; "
+            + $"its metrics {(metrics.IsVisible ? "shown" : "hidden")}, saying \"{metrics.Said}\", charting [{string.Join(", ", metrics.Charted.Select(c => $"{c.Key} {c.Value}"))}]; "
+            + $"web's program lookup: {(view.ProgramLookup.Length > 0 ? view.ProgramLookup : "none made")}; the run's last lines of web:\n{string.Join('\n', lines)}";
     }
 
     /// <summary>What the container's tools answer for a method's source, asked by hand, for a failure to say.</summary>

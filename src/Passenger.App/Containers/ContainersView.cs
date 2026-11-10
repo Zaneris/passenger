@@ -19,6 +19,15 @@ namespace Passenger.App.Containers;
 public sealed record ContainersParts(Func<ContainerEngine> Engine, ActionWork Work, StatusSay Say, Action<Uri> Browse, Func<string> StateFolder, Func<string, string> Title,
     Func<string, MenuItem> Item);
 
+/// <summary>What a lookup of a .NET service's program in its container came to: its process there and the place Passenger's
+/// tools reach it by (<see cref="Found"/>), or why it was not reached (<see cref="Missing"/>).</summary>
+public sealed record DotnetLookup(int Process, Profiler.ProfilePlace? Place, string? WhyNot)
+{
+    public static DotnetLookup Found(int process, Profiler.ProfilePlace place) => new(process, place, null);
+
+    public static DotnetLookup Missing(string why) => new(0, null, why);
+}
+
 /// <summary>The Containers window: the engine's Compose projects with their services and containers (stopped ones still
 /// listed), then every other container (Testcontainers' apart), images, volumes and networks, each row with its state,
 /// health, ports (links) and image; and the chosen container's Log, Stats, Files and Details (a service's its container's),
@@ -179,16 +188,36 @@ public sealed class ContainersView : DockPanel
     /// <summary>A .NET service's metrics under its Stats, read in its container while the tab is shown.</summary>
     public MetricsPane Metrics { get; } = new();
 
-    /// <summary>A .NET service's program in its container, by its Compose project and service: its process there and the
-    /// place Passenger's tools reach it by; null for one that is no .NET service of the folder's run, or not running.</summary>
-    public Func<string, string, Task<(int Process, Profiler.ProfilePlace Place)?>>? DotnetOf { get; set; }
+    /// <summary>A .NET service's program in its container, by its Compose project and service: found, or why it is not
+    /// reached yet; null for one that is no .NET service of the folder's run, or once that run has ended.</summary>
+    public Func<string, string, Task<DotnetLookup?>>? DotnetOf { get; set; }
 
     /// <summary>The Stats tab: the engine's stats, a .NET service's metrics under them.</summary>
     private readonly Grid statsPage;
 
-    /// <summary>The service whose program the metrics were last found for, and each search counted, so a late one is let go.</summary>
+    /// <summary>The service whose metrics are shown, each lookup of its program counted so a late one is let go; whether one
+    /// is under way; why the last found none, while it is looked for again; and how long the next waits, and its wait.</summary>
     private string? metricsOf;
     private int metricsAsked;
+    private bool metricsLooking;
+    private string? metricsMissing;
+    private TimeSpan metricsWait;
+    private CancellationTokenSource? metricsLater;
+
+    /// <summary>The wait before a program not reached is looked for again, doubled after each lookup that finds none, up to
+    /// <see cref="LongestLookWait"/>.</summary>
+    private static readonly TimeSpan FirstLookWait = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan LongestLookWait = TimeSpan.FromSeconds(15);
+
+    /// <summary>What the last lookup of the chosen service's program came to, for a failure to say: under way, found, why
+    /// not, or none to look for; empty where none was made.</summary>
+    public string ProgramLookup { get; private set; } = string.Empty;
+
+    /// <summary>What a .NET service's metrics say while its program is looked for.</summary>
+    public static string Looking(string service) => $"Looking for {service}'s program in its container…";
+
+    /// <summary>What a .NET service's metrics say once a lookup found no program, <paramref name="why"/>, until the next.</summary>
+    public static string LookingAgain(string why) => $"{why}; looking again…";
 
     /// <summary>The Telemetry tab's logs and traces, a log's trace and a span's logs the window's actions.</summary>
     public TelemetryView Telemetry { get; }
@@ -667,34 +696,111 @@ public sealed class ContainersView : DockPanel
         Telemetry.Watch(streams && shownTab == TelemetryTab ? telemetry : null, Telemetry.Shown, service == ContainerTelemetry.Service ? null : service);
     }
 
-    /// <summary>A .NET service's metrics under its Stats while they are shown, its program found once as it is chosen (the
-    /// engine asked for it), none for any other row.</summary>
+    /// <summary>A .NET service's metrics under its Stats while they are shown, its program looked for as it is chosen (the
+    /// engine asked for it), none for any other row. One not reached yet is looked for again as what the window shows
+    /// changes (the engine's events, the folder's runs), else after a wait.</summary>
     private void ShowMetrics(ContainerRow? row)
     {
         string? key = row is { Kind: ContainerRowKind.Service, Project: { } project, Service: { } service } && DotnetOf is not null ? $"{project.Name}/{service}" : null;
         if (key == metricsOf)
         {
+            if (key is not null && metricsMissing is not null && !metricsLooking)
+            {
+                LookForProgram(row!.Project!.Name, row.Service!);
+            }
             return;
         }
         metricsOf = key;
-        int asked = ++metricsAsked;
+        metricsAsked++;
+        metricsLooking = false;
+        metricsMissing = null;
+        metricsWait = FirstLookWait;
+        metricsLater?.Cancel();
+        metricsLater = null;
+        ProgramLookup = string.Empty;
         Metrics.Show(null, null);
         Metered(false);
-        if (key is null)
+        if (key is not null)
         {
-            return;
+            LookForProgram(row!.Project!.Name, row.Service!);
         }
-        IdeErrors.Observe(FindAsync(row!.Project!.Name, row.Service!));
+    }
 
-        async Task FindAsync(string project, string service)
+    /// <summary>Looks for a service's program once: found, its metrics are read; not reached, why is said in their place
+    /// until the next lookup; none to look for, the pane is let go.</summary>
+    private void LookForProgram(string project, string service)
+    {
+        int asked = ++metricsAsked;
+        metricsLooking = true;
+        metricsLater?.Cancel();
+        metricsLater = null;
+        ProgramLookup = "under way";
+        Task<DotnetLookup?> lookup = DotnetOf!(project, service);
+        // A lookup that asks the engine says so; one answered at once (no .NET service of a run) shows nothing meanwhile.
+        if (!lookup.IsCompleted && metricsMissing is null)
         {
-            (int Process, Profiler.ProfilePlace Place)? found = await DotnetOf!(project, service);
-            if (asked != metricsAsked || found is not { } program)
+            Metered(true);
+            Metrics.Show(null, null, Looking(service));
+        }
+        IdeErrors.Observe(LandAsync());
+
+        async Task LandAsync()
+        {
+            DotnetLookup? found = await lookup;
+            if (asked != metricsAsked)
             {
                 return;
             }
+            metricsLooking = false;
+            metricsMissing = found?.WhyNot;
+            if (found is null)
+            {
+                ProgramLookup = "none to look for: no .NET service of the folder's run, or its run ended";
+                Metrics.Show(null, null);
+                Metered(false);
+                return;
+            }
             Metered(true);
-            Metrics.Show(service, program.Process, null, program.Place);
+            if (found.WhyNot is { } why)
+            {
+                ProgramLookup = $"not reached: {why}";
+                Metrics.Show(null, null, LookingAgain(why));
+                LookLater(project, service);
+                return;
+            }
+            ProgramLookup = $"found, process {found.Process.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            Metrics.Show(service, found.Process, null, found.Place);
+        }
+    }
+
+    /// <summary>Looks for the service's program again after the wait, which doubles for the one after, unless another lookup
+    /// or another row came first.</summary>
+    private void LookLater(string project, string service)
+    {
+        CancellationTokenSource later = metricsLater = new();
+        TimeSpan wait = metricsWait;
+        metricsWait = TimeSpan.FromTicks(Math.Min(wait.Ticks * 2, LongestLookWait.Ticks));
+        IdeErrors.Observe(WaitAsync());
+
+        async Task WaitAsync()
+        {
+            // Not background work: it lasts until the program can be reached, which no screenshot or settling test waits for.
+            await Task.Delay(wait, later.Token).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+            if (!later.IsCancellationRequested && metricsLater == later)
+            {
+                metricsLater = null;
+                LookForProgram(project, service);
+            }
+        }
+    }
+
+    /// <summary>The folder's runs started or ended programs: a .NET service's program not reached yet is looked for again.</summary>
+    public void ProgramsChanged()
+    {
+        UiThread.Check();
+        if (metricsMissing is not null)
+        {
+            ShowChosen();
         }
     }
 
