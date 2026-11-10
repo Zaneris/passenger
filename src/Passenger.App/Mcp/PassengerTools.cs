@@ -2998,7 +2998,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// worked out as it opened (the C# server's diagnostics, a linter's findings, a compose file's names).</summary>
     public const int FilesKept = 4;
 
-    private readonly KeptFiles kept = KeptFiles.For(connection);
+    private readonly KeptFiles kept = KeptFiles.For(window, connection);
 
     /// <summary>The files an agent's session asked about last, held open after their calls: at most <see cref="FilesKept"/>,
     /// the least recently asked let go first, every one once its calls pause for <see cref="Idle"/> or the agent goes. Its
@@ -3015,32 +3015,40 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             later?.Cancel();
             CancellationTokenSource waiting = later = new();
-            // Unheld: what settles on an agent's call waits for what the call did, never for files kept for its next one.
-            IdeErrors.Observe(BackgroundWork.Unheld(async () =>
+            Task idle;
+            // Started apart from the call that kept the files, whose flow would carry its files, editors and window along.
+            using (ExecutionContext.SuppressFlow())
             {
-                try
+                // Unheld: what settles on an agent's call waits for what the call did, never for files kept for its next one.
+                idle = BackgroundWork.Unheld(async () =>
                 {
-                    await Task.Delay(Idle, waiting.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                UiThread.Post(() =>
-                {
-                    if (later == waiting)
+                    try
                     {
-                        LetGo();
+                        await Task.Delay(Idle, waiting.Token);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                    UiThread.Post(() =>
+                    {
+                        if (later == waiting)
+                        {
+                            LetGo();
+                        }
+                    });
                 });
-            }));
+            }
+            IdeErrors.Observe(idle);
         }
 
-        /// <summary>The kept files of an agent's session, let go when its agent goes.</summary>
-        public static KeptFiles For(AgentConnection? connection)
+        /// <summary>The kept files of an agent's session in a window, let go when its agent goes or its window closes.</summary>
+        public static KeptFiles For(MainWindow window, AgentConnection? connection)
         {
             KeptFiles files = new();
             connection?.WhenLeft(files.LetGo);
+            // Its files and its idle wait are the window's: a closed window's would be kept until the wait ended.
+            window.Closed += (_, _) => files.LetGo();
             return files;
         }
 

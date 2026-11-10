@@ -107,6 +107,36 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         return (new WeakReference<MainWindow>(second), session);
     }
 
+    /// <summary>A second window closed just after an agent's edit in it, which keeps the file for the agent's next call: the
+    /// window goes at once, held by nothing the kept file's idle wait carries (#1445).</summary>
+    [AvaloniaFact]
+    public void A_window_closed_after_an_agents_call_kept_its_file_is_let_go()
+    {
+        File.WriteAllText(Path.Combine(beta, "One.cs"), "class One { }\n");
+        MainWindow first = Started(LaunchOptions.Empty with { Folder = alpha }, languageServer: false);
+        try
+        {
+            Ui.Collected(AgentKept(first, beta), "the window closed after an agent's call to be let go well before the two minutes its kept file waits: "
+                + "held by that wait, each window an agent worked in would be kept two minutes after it closed", TimeSpan.FromSeconds(20));
+        }
+        finally
+        {
+            first.Close();
+        }
+    }
+
+    /// <summary>A second window on a folder, an agent's edit made in it, then closed: held only weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference<MainWindow> AgentKept(MainWindow first, string folder)
+    {
+        MainWindow second = InNewWindow(first, folder);
+        Passenger.App.Mcp.PassengerTools agent = new(second);
+        Ui.Await(agent.Edit("One.cs", "class One { }", "class One { int count; }"), "the agent's edit, which keeps One.cs for its next call");
+        second.Close();
+        Ui.Settle();
+        return new WeakReference<MainWindow>(second);
+    }
+
     /// <summary>A folder opened over another in its window: every session the window had before it (the empty one it began
     /// with, the first folder's) goes, held by nothing the window keeps for the sessions after them.</summary>
     [AvaloniaFact]
