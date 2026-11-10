@@ -1081,7 +1081,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                     started.Server.Feed = Feed;
                 }
                 IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) started ahead taken up for {opening.Folder}, {loading} {(started.IsLoaded ? "loaded" : "loading")}");
-                IdeErrors.Observe(TimeFirstColoursAsync(started, began));
+                IdeErrors.Observe(TimeFirstColoursAsync(started, began, cancel));
                 IdeErrors.Observe(TimeActiveFileAsync(started, began));
             }
             else if (warm?.Take(opening.Folder, solution, projects, Feed) is { } taken)
@@ -1124,7 +1124,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                     await started.DisposeAsync();
                     return;
                 }
-                IdeErrors.Observe(TimeFirstColoursAsync(started, began));
+                IdeErrors.Observe(TimeFirstColoursAsync(started, began, cancel));
                 IdeErrors.Observe(TimeActiveFileAsync(started, began));
             }
             TaskCompletionSource loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1564,11 +1564,12 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>The file names of the folder's projects, against which a project the server names is told from its own.</summary>
     private IEnumerable<string> ProjectNames => workspace?.Projects.Select(p => Path.GetFileName(p.Path)) ?? [];
 
-    /// <summary>The last phase of a start the log times: the first colours the server gives an open file.</summary>
-    private async Task TimeFirstColoursAsync(RoslynSession started, long began)
+    /// <summary>The last phase of a start the log times: the first colours the server gives an open file, waited for with no
+    /// fault to leave behind and never holding a screenshot, as a folder may have no C# file open for a long while.</summary>
+    private async Task TimeFirstColoursAsync(RoslynSession started, long began, CancellationToken ended)
     {
-        // A wait with no fault to leave behind, never holding a screenshot: a folder may have no C# file open for a long while.
-        await Task.WhenAny(started.FirstColours, Task.Delay(TimeSpan.FromMinutes(10)));
+        // Ended with its start (the service disposed, or started again), or the service and its window would wait out 10 minutes.
+        await Task.WhenAny(started.FirstColours, Task.Delay(TimeSpan.FromMinutes(10), ended));
         if (started.FirstColours.IsCompleted && !disposed && session == started)
         {
             IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) gave an open file its colours {Since(began)} after it was started");

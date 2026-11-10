@@ -137,6 +137,39 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         return new WeakReference<MainWindow>(second);
     }
 
+    /// <summary>A second window on a C# project closed once its language server has loaded and before any file is coloured,
+    /// none being open: the window goes at once, held by nothing the wait for the server's first colours leaves (#1445).</summary>
+    [AvaloniaFact]
+    public void A_window_closed_before_its_csharp_servers_first_colours_is_let_go()
+    {
+        Project(beta, "Beta");
+        Restore.Run(beta);
+        string gamma = TestFolders.Create("gamma-");
+        MainWindow first = Started(LaunchOptions.Empty with { Folder = gamma });
+        try
+        {
+            Ui.Collected(Uncoloured(first, beta), "the window closed before its C# server coloured a file to be let go well before the ten minutes that wait gives it: "
+                + "held by the wait, each such window would be kept ten minutes after it closed", TimeSpan.FromSeconds(20));
+        }
+        finally
+        {
+            first.Close();
+        }
+    }
+
+    /// <summary>A second window on a C# project, its language server loaded with no file open, then closed: held only weakly
+    /// here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference<MainWindow> Uncoloured(MainWindow first, string folder)
+    {
+        MainWindow second = InNewWindow(first, folder);
+        Ui.WaitFor(() => second.CSharpService is { IsReady: true }, () => $"the C# language server to load {folder} ({second.CSharpService?.State})", TimeSpan.FromMinutes(2));
+        Assert.Empty(second.EditorArea.Documents);
+        second.Close();
+        Ui.Settle();
+        return new WeakReference<MainWindow>(second);
+    }
+
     /// <summary>A folder opened over another in its window: every session the window had before it (the empty one it began
     /// with, the first folder's) goes, held by nothing the window keeps for the sessions after them.</summary>
     [AvaloniaFact]
