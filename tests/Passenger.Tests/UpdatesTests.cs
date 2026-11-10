@@ -936,6 +936,35 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.True(copy.InstalledVersion == Product.Version, $"A package manager's copy was changed, to {copy.InstalledVersion}");
     }
 
+    [AvaloniaFact]
+    public void A_copy_Chocolatey_installed_says_choco_updates_it_and_downloads_nothing()
+    {
+        using IDisposable theme = TestsTheme();
+        string folder = TestFolders.Create("chocolatey-");
+        // As tools/chocolatey's install script writes it beside Passenger.exe.
+        File.WriteAllText(Path.Combine(folder, Updater.PackageMarker), "Chocolatey\nchoco upgrade passenger-ide\n");
+        string newer = Bumped(1, 0);
+        Dictionary<string, byte[]> files = new()
+        {
+            [ThisSystemsDownload()] = [1, 2, 3],
+            ["SHA256SUMS"] = Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(SHA256.HashData((byte[])[1, 2, 3]))}  {ThisSystemsDownload()}\n"),
+        };
+        github.Answer = Release($"v{newer}", files: files);
+        MainWindow window = Started(new PackagedCopy(folder));
+        window.WatchForUpdates();
+        Ui.Settle();
+
+        Assert.True(Notice(window) == $"Passenger {newer} available", $"Chocolatey's copy does not say v{newer} is out: {UpdatesSaid(window)}");
+        string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
+        Assert.True(tip.Contains("This copy of Passenger is a package Chocolatey installed: Chocolatey updates it (choco upgrade passenger-ide).", StringComparison.Ordinal),
+            $"The notice does not say Chocolatey updates this copy: '{tip}'");
+        string page = $"https://github.com/Zaneris/passenger/releases/tag/v{newer}";
+        Assert.True(window.UpdateShown?.Link.AbsoluteUri == page, $"Chocolatey's copy links {window.UpdateShown?.Link}, not only the release's page, so a person would install a second copy");
+        Assert.True(files.Keys.All(name => github.RequestsFor(name).Length == 0), "Chocolatey's copy downloaded the release, which only choco may install");
+        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+        window.Close();
+    }
+
     private static void Detach(string volume) => TestVolumes.Detach(volume, (tool, arguments) => Ran(tool, arguments, TimeSpan.FromMinutes(1).Scaled()));
 
     /// <summary>The person's window as the app makes it, its settings kept in the test's state folder, asking the stand-in

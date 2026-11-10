@@ -29,6 +29,24 @@ public abstract class Updater
     /// caller's thread before anything is downloaded: null when it installs the release itself.</summary>
     public virtual Task<UpdatedElsewhere?> ElsewhereAsync(CancellationToken cancel) => Task.FromResult<UpdatedElsewhere?>(null);
 
+    /// <summary>The file a package puts beside the app's executable to say a package manager installed it: its first line
+    /// names that manager, its second, where given, the command that updates the package.</summary>
+    public const string PackageMarker = "package-manager";
+
+    /// <summary>What the marker in <paramref name="folder"/> says, or null where there is none.</summary>
+    protected static async Task<PackageMarked?> MarkedAsync(string folder, CancellationToken cancel)
+    {
+        string marker = Path.Combine(folder, PackageMarker);
+        if (!File.Exists(marker))
+        {
+            return null;
+        }
+        string[] lines = (await File.ReadAllTextAsync(marker, cancel).ConfigureAwait(false)).Split('\n');
+        string manager = lines[0].Trim();
+        string? command = lines.Length > 1 && lines[1].Trim() is { Length: > 0 } given ? given : null;
+        return new PackageMarked(manager.Length > 0 ? manager : "a package manager", command);
+    }
+
     /// <summary>Removes what an earlier update left beside this copy (the release it replaced), as the copy starts.</summary>
     public virtual Task TidyAsync() => Task.CompletedTask;
 
@@ -416,6 +434,11 @@ public abstract class Updater
         }
         if (OperatingSystem.IsWindows())
         {
+            if (File.Exists(Path.Combine(AppContext.BaseDirectory, PackageMarker)))
+            {
+                why = string.Empty;
+                return new PackagedCopy(AppContext.BaseDirectory);
+            }
             if (!Installation.Installed || !VelopackLocator.IsCurrentSet || VelopackLocator.Current.CurrentlyInstalledVersion is null)
             {
                 why = $"{AppContext.BaseDirectory} is not where Passenger's installer put it";
@@ -432,6 +455,9 @@ public abstract class Updater
         return null;
     }
 }
+
+/// <summary>What a package's marker says: the package manager that installed the copy, and the command that updates it.</summary>
+public sealed record PackageMarked(string Manager, string? Command);
 
 /// <summary>A release's package for this system, and the SHA256SUMS that gives its SHA-256.</summary>
 public sealed record ReleasePackage(ReleaseFile Download, ReleaseFile Sums);
