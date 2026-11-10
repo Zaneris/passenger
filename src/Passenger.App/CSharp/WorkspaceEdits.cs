@@ -50,6 +50,15 @@ public static class WorkspaceEdits
         IReadOnlyCollection<string>? made = null, Written? elsewhere = null, IReadOnlyCollection<string>? read = null)
     {
         HashSet<string> edited = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri))];
+        // Gone, however long ago, and neither made nor moved there by the edit: the server holds it as it was.
+        HashSet<string> coming = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is not null).Select(c => Resource.Read(c.Operation!.Value)).Select(r => r.To ?? r.Path)];
+        List<string> gone = [.. edited.Where(p => !coming.Contains(p) && made?.Contains(p) != true && editors.Documents.All(d => d.Path != p) && !File.Exists(p))];
+        if (gone.Count > 0)
+        {
+            string deleted = $"{Path.GetFileName(gone[0])} was deleted, which the language server still held";
+            return patience?.Behind(gone, held, $"{deleted} as it was asked", $"{deleted} after {Patience.Limit.TotalSeconds:0} s, so what it worked out may be from "
+                + "the files as they were: nothing was changed") ?? $"{deleted}, so what it worked out may be from the files as they were: nothing was changed; try again in a moment";
+        }
         // With the files written for the command to wait for, which the server must have read as they are, in the edit or not.
         List<string> closed = [.. edited.Concat(patience?.Awaited ?? []).Distinct()
             .Where(p => editors.Documents.All(d => d.Path != p) && File.Exists(p) && made?.Contains(p) != true)
