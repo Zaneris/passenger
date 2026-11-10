@@ -2182,6 +2182,31 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
     }
 
     [Gate]
+    /// <summary>A window closed just after its XAML preview was sent its file, whose answer it waits for a minute at most: the
+    /// window goes at once, held by nothing that wait leaves (#1445).</summary>
+    [AvaloniaFact]
+    public void A_window_closed_as_its_preview_waits_for_the_previewer_is_let_go()
+    {
+        Ui.Collected(Previewed(), "the window closed with its XAML preview to be let go well before the minute the preview waits for its previewer: "
+            + "held by that wait, each previewing window would be kept a minute after it closed", TimeSpan.FromSeconds(15));
+    }
+
+    /// <summary>The gallery's window shown with its preview, the previewer sent the file, then closed: held only weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private WeakReference<MainWindow> Previewed()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+        Ui.WaitFor(() => preview.Frame is not null, "the previewer's first frame", TimeSpan.FromSeconds(60));
+        window.Close();
+        Ui.Settle();
+        return new WeakReference<MainWindow>(window);
+    }
+
     [AvaloniaFact]
     public void The_preview_draws_a_window_from_the_last_build_follows_its_text_as_it_is_typed_and_draws_styles_as_their_PreviewWith()
     {

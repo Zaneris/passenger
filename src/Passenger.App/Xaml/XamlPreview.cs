@@ -22,6 +22,9 @@ public sealed class XamlPreview : IDisposable
     private readonly XamlDocument document;
     private IPreviewHost? host;
     private IDisposable? waiting;
+
+    /// <summary>Ends the wait of the hold under way (<see cref="Hold"/>) as it is let go.</summary>
+    private CancellationTokenSource? answered;
     private bool disposed;
 
     /// <summary>Counts starts, so one overtaken by another (a build finishing while it copied) lets its previewer go.</summary>
@@ -382,7 +385,8 @@ public sealed class XamlPreview : IDisposable
         }
         IDisposable held = BackgroundWork.Scope();
         waiting = held;
-        IdeErrors.Observe(Task.Delay(Answer).ContinueWith(_ => UiThread.Post(() =>
+        answered = new CancellationTokenSource();
+        IdeErrors.Observe(Task.Delay(Answer, answered.Token).ContinueWith(_ => UiThread.Post(() =>
         {
             if (waiting == held)
             {
@@ -393,6 +397,10 @@ public sealed class XamlPreview : IDisposable
 
     internal void Let()
     {
+        // The hold's clock goes with it: its callback would keep the preview, its document and its window until it fired.
+        answered?.Cancel();
+        answered?.Dispose();
+        answered = null;
         waiting?.Dispose();
         waiting = null;
     }

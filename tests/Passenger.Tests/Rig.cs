@@ -953,14 +953,15 @@ public static class Ui
 
     /// <summary>Waits until nothing holds what <paramref name="weak"/> names, collecting fully at each of the window's
     /// frames, so work its close left on the window's loop ends first; fails saying what then stays alive and why it
-    /// matters. Takes no strong reference itself: the caller makes the object in a method of its own, not inlined.</summary>
-    public static void Collected<T>(WeakReference<T> weak, string what) where T : class => WaitFor(() =>
+    /// matters, past <paramref name="limit"/> (scaled) where one is given. Takes no strong reference itself: the caller makes
+    /// the object in a method of its own, not inlined.</summary>
+    public static void Collected<T>(WeakReference<T> weak, string what, TimeSpan? limit = null) where T : class => WaitFor(() =>
     {
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
         return !weak.TryGetTarget(out _);
-    }, what);
+    }, what, limit);
 
     /// <summary>What a blink of the caret allocates on the UI thread with the IDE at rest, the least of three: its frame of
     /// the editor, about 25 KB, which a wait draws whatever the IDE did whenever it outlasts the blink's 530 ms, so a measure
