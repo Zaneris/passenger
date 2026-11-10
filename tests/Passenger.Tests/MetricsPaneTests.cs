@@ -41,7 +41,8 @@ public sealed class MetricsPaneTests
     }
 
     /// <summary>A program whose runtime takes no session (a silent port in front of it) is said to, with what its port showed,
-    /// once its start's time has run out, and asked no more: never left saying it waits while it asks again for minutes.</summary>
+    /// once its start's time has run out, and asked no more: never left saying it waits while it asks again for minutes.
+    /// What asks is counted in this test's process: another process of the machine may reach the port too.</summary>
     [AvaloniaFact]
     public void A_runtime_that_takes_no_session_is_said_to_and_asked_no_more()
     {
@@ -50,11 +51,18 @@ public sealed class MetricsPaneTests
         try
         {
             pane.Show("api", Environment.ProcessId);
+            string began = $"began at {Seconds(port.Now)} s saying \"{pane.Said}\"";
             Ui.WaitFor(() => pane.Said.StartsWith("api: Its metrics could not be read: its runtime took no session in ", StringComparison.Ordinal),
-                () => $"the pane to say api's runtime took no session (it says {pane.Said}, the port took {port.Taken} connections)", TimeSpan.FromMinutes(1));
+                () => $"the pane to say api's runtime took no session (it says {pane.Said}; the port took {port.Account()})", TimeSpan.FromMinutes(1));
+            string said = $"said so by {Seconds(port.Now)} s";
             Ui.Settle();
             Assert.Contains("answered no other request either", pane.Said, StringComparison.Ordinal);
-            Assert.True(port.Taken == 2, $"The pane's start and its account of the port were to be all it asked, where the port took {port.Taken} connections: it asked again");
+            if (port.TakenFromElsewhere)
+            {
+                TestContext.Current.TestOutputHelper?.WriteLine($"Other processes reached the silent port too: {port.Account()}");
+            }
+            Assert.True(port.TakenHere == 2, $"The pane's start and its account of the port were to be the two connections this process made to it, where it made "
+                + $"{port.TakenHere}. The pane {began}, {said} and was quiet by {Seconds(port.Now)} s; the port took {port.Account()}");
             Assert.Empty(pane.Charted);
         }
         finally
@@ -62,4 +70,6 @@ public sealed class MetricsPaneTests
             pane.Stop();
         }
     }
+
+    private static string Seconds(TimeSpan time) => time.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
 }
