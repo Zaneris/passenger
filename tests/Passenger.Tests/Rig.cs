@@ -947,7 +947,7 @@ public static class Ui
         TimeSpan limit = SettleLimit.Scaled();
         if (!Settled(Deadline.In(limit)))
         {
-            throw new TimeoutException($"The IDE was not quiet within {limit.TotalSeconds} s. Still busy:\n{Busy()}{ServerConversations()}{IdeLogTail()}{ServerLogTail()}");
+            throw new TimeoutException($"The IDE was not quiet within {limit.TotalSeconds} s. Still busy:\n{Busy()}{ServerConversations()}{ProgramsRunning()}{IdeLogTail()}{ServerLogTail()}");
         }
     }
 
@@ -1046,6 +1046,18 @@ public static class Ui
     {
         string conversations = Passenger.Lsp.LanguageServer.Conversations();
         return conversations.Length == 0 ? string.Empty : $"\nThe language servers' conversations:\n{conversations}";
+    }
+
+    /// <summary>The programs still running under the tests' process, with their command lines, which say where work waiting
+    /// on a program stopped: a git, a helper it started, or a stand-in's server.</summary>
+    private static string ProgramsRunning()
+    {
+        IReadOnlyList<int> running = Processes.Descendants(Environment.ProcessId);
+        return running.Count == 0
+            ? string.Empty
+            : $"\nPrograms running under the tests:\n{string.Join('\n', running.Take(40).Select(id => $"  {Cut(Processes.Describe(id))}"))}";
+
+        static string Cut(string line) => line.Length <= 300 ? line : $"{line[..300]}…";
     }
 
     /// <summary>The end of the IDE's own log, which names an exception that left background work waiting for good.</summary>
