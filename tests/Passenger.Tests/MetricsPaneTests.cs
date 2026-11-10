@@ -51,10 +51,10 @@ public sealed class MetricsPaneTests
         try
         {
             pane.Show("api", Environment.ProcessId);
-            string began = $"began at {Seconds(port.Now)} s saying \"{pane.Said}\"";
+            string began = $"began at {port.Time} saying \"{pane.Said}\"";
             Ui.WaitFor(() => pane.Said.StartsWith("api: Its metrics could not be read: its runtime took no session in ", StringComparison.Ordinal),
                 () => $"the pane to say api's runtime took no session (it says {pane.Said}; the port took {port.Account()})", TimeSpan.FromMinutes(1));
-            string said = $"said so by {Seconds(port.Now)} s";
+            string said = $"said so by {port.Time}";
             Ui.Settle();
             Assert.Contains("answered no other request either", pane.Said, StringComparison.Ordinal);
             if (port.TakenFromElsewhere)
@@ -62,7 +62,7 @@ public sealed class MetricsPaneTests
                 TestContext.Current.TestOutputHelper?.WriteLine($"Other processes reached the silent port too: {port.Account()}");
             }
             Assert.True(port.TakenHere == 2, $"The pane's start and its account of the port were to be the two connections this process made to it, where it made "
-                + $"{port.TakenHere}. The pane {began}, {said} and was quiet by {Seconds(port.Now)} s; the port took {port.Account()}");
+                + $"{port.TakenHere}. The pane {began}, {said} and was quiet by {port.Time}; the port took {port.Account()}");
             Assert.Empty(pane.Charted);
         }
         finally
@@ -70,6 +70,4 @@ public sealed class MetricsPaneTests
             pane.Stop();
         }
     }
-
-    private static string Seconds(TimeSpan time) => time.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
 }

@@ -54,6 +54,9 @@ public sealed partial class SilentPort : IDisposable
     /// <summary>How long it has listened, the clock its connections' times are on.</summary>
     public TimeSpan Now => clock.Elapsed;
 
+    /// <summary>Its clock now as its account says a time: seconds, to a tenth.</summary>
+    public string Time => Seconds(Now);
+
     /// <summary>The connections it has taken.</summary>
     public int Taken
     {
@@ -263,6 +266,8 @@ public sealed partial class SilentPort : IDisposable
         return Encoding.Unicode.GetString(text).TrimEnd('\0');
     }
 
+    private static string Seconds(TimeSpan time) => $"{time.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)} s";
+
     /// <summary>A process by its id and command line, or as this test's own.</summary>
     private static string Named(int id) => id == Environment.ProcessId ? "this test's process"
         : DotnetProcesses.Describe(id) is { } process ? $"process {id.ToString(CultureInfo.InvariantCulture)} ({process.CommandLine})"
@@ -318,6 +323,6 @@ public sealed partial class SilentPort : IDisposable
         }
 
         public override string ToString() =>
-            $"at {at.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)} s from {who ?? "a process the system did not name"}: {Asked ?? "nothing read"}";
+            $"at {Seconds(at)} from {who ?? "a process the system did not name"}: {Asked ?? "nothing read"}";
     }
 }

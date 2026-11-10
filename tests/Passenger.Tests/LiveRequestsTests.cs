@@ -278,7 +278,8 @@ public sealed class LiveRequestsTests
         """;
 
     /// <summary>A program whose runtime takes no session (a silent port in front of it) is said to by the window once its
-    /// start's time runs out, with what its port showed, and asked no more, where the window waited on it for good.</summary>
+    /// start's time runs out, with what its port showed, and asked no more, where the window waited on it for good. What
+    /// asks is counted in this test's process: another process of the machine may reach the port too.</summary>
     [AvaloniaFact]
     public void A_program_whose_runtime_takes_no_session_is_said_to_and_asked_no_more()
     {
@@ -300,11 +301,18 @@ public sealed class LiveRequestsTests
                 TimeSpan.FromSeconds(30));
             using SilentPort port = new(program);
             window.ShowToolWindow(ToolWindowIds.Requests);
+            string began = $"began at {port.Time} saying \"{window.RequestLog.Following}\"";
             Ui.WaitFor(() => window.RequestLog.Following.StartsWith("Its requests could not be followed: its runtime took no session in ", StringComparison.Ordinal),
-                () => $"the window to say the program's runtime took no session (it says {window.RequestLog.Following}, the port took {port.Taken} connections)",
+                () => $"the window to say the program's runtime took no session (it says {window.RequestLog.Following}; the port took {port.Account()})",
                 TimeSpan.FromMinutes(1));
+            string said = $"said so by {port.Time}";
             Ui.Settle();
-            Assert.True(port.Taken == 2, $"The window's start and its account of the port were to be all it asked, where the port took {port.Taken} connections: it asked again");
+            if (port.TakenFromElsewhere)
+            {
+                TestContext.Current.TestOutputHelper?.WriteLine($"Other processes reached the silent port too: {port.Account()}");
+            }
+            Assert.True(port.TakenHere == 2, $"The window's start and its account of the port were to be the two connections this process made to it, where it made "
+                + $"{port.TakenHere}. The window {began}, {said} and was quiet by {port.Time}; the port took {port.Account()}");
         }
         finally
         {
