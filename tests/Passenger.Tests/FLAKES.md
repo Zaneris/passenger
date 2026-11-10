@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-10
 
+- `NoDotnetTests`' `Install_dotnet_SDK_asks_then_installs_the_SDK_from_the_feed_…`, CI's Windows runner at 52ee34043 (run
+  42904209048): "Access to the path '…\user-dotnet\.passenger-install-…' is denied", move 9.0 s. **A race in the IDE**: a
+  reader of the unpacked SDK (a scanner, or the IDE's own walks, the install folder lying inside the open one) refused a
+  folder's rename, which Directory.Move throws as an IOException, and `FolderMoves.Renamed` took that for a move between
+  volumes, so the folder was copied beside its place and the copy's own rename was refused in turn, with nothing to wait
+  it out; only another volume's refusal is carried now, the rest coming in entry by entry (a09975fa2, held by
+  `FolderMovesTests`, #1470).
 - `WelcomeTests`' `Clone_Repository_asks_for_the_login_…` (run 42835557169) and `VcsTests`' `Push_to_a_remote_that_asks_for_a_login_…`
   (run 42884859818), CI's Windows runner: "The IDE was not quiet within 225 s", git's askpass helper still running with its
   password prompt. **A gap in the IDE**: the IDE read a question to the helper's close of its side of the Unix socket,
