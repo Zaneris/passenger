@@ -269,6 +269,9 @@ internal static class Docker
         return (PathNames.Canonical(folder), project);
     }
 
+    /// <summary>Takes down what <see cref="ComposeUp"/> brought up in a folder, so no later test of the run lists it.</summary>
+    public static void ComposeDown(string folder) => Run("compose", "-f", Path.Combine(folder, "compose.yaml"), "down", "--timeout", "0");
+
     /// <summary>A container of busybox running <paramref name="command"/>, named and labelled as the test's, with more labels.</summary>
     public static string Container(string name, string command, params string[] labels)
     {
@@ -405,50 +408,57 @@ public sealed class ContainersTests
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Docker.ComposeUp("list", Shop);
-        MainWindow window = Ui.OpenFolder(folder);
-        ContainersView view = Shown(window);
-        Ui.WaitFor(() => view.Rows.Any(r => r.Kind == ContainerRowKind.Project && r.Label == project), $"{project} listed under Compose");
+        try
+        {
+            MainWindow window = Ui.OpenFolder(folder);
+            ContainersView view = Shown(window);
+            Ui.WaitFor(() => view.Rows.Any(r => r.Kind == ContainerRowKind.Project && r.Label == project), $"{project} listed under Compose");
 
-        ContainerRow web = Service(view, project, "web");
-        Assert.Equal("healthy", web.Container!.Health);
-        Assert.True(web.Container.IsRunning, $"web is {web.Container.State}");
-        ContainerPort port = Assert.Single(web.Container.Ports);
-        Assert.Equal("8080", port.Inside);
-        Assert.Equal(Docker.Image, Docker.Short(Service(view, project, "worker").Container!.Image));
-        // Scrolled into view: an engine holding many projects lists web below the rows the list makes.
-        Button? link = null;
-        Ui.WaitFor(() => view.Choose(r => r.Key == web.Key)
-            && (link = view.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Name == "containerPort" && Equals(b.Content, port.ToString()))) is not null,
-            "web's port link");
-        Ui.Click(link!);
-        Assert.Contains(new Uri($"http://localhost:{port.HostPort}/"), window.Browsed);
+            ContainerRow web = Service(view, project, "web");
+            Assert.Equal("healthy", web.Container!.Health);
+            Assert.True(web.Container.IsRunning, $"web is {web.Container.State}");
+            ContainerPort port = Assert.Single(web.Container.Ports);
+            Assert.Equal("8080", port.Inside);
+            Assert.Equal(Docker.Image, Docker.Short(Service(view, project, "worker").Container!.Image));
+            // Scrolled into view: an engine holding many projects lists web below the rows the list makes.
+            Button? link = null;
+            Ui.WaitFor(() => view.Choose(r => r.Key == web.Key)
+                && (link = view.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Name == "containerPort" && Equals(b.Content, port.ToString()))) is not null,
+                "web's port link");
+            Ui.Click(link!);
+            Assert.Contains(new Uri($"http://localhost:{port.HostPort}/"), window.Browsed);
 
-        OutputView console = view.Log.Console;
-        Ui.WaitFor(() => Text(console).Contains("web listening on http://localhost:8080/", StringComparison.Ordinal), "web's first line in its log");
-        string line = Text(console).Split('\n').First(l => l.Contains("web listening", StringComparison.Ordinal));
-        Assert.Contains(console.Links.In(line), l => l.Target is WebLink { Address.Port: 8080 });
+            OutputView console = view.Log.Console;
+            Ui.WaitFor(() => Text(console).Contains("web listening on http://localhost:8080/", StringComparison.Ordinal), "web's first line in its log");
+            string line = Text(console).Split('\n').First(l => l.Contains("web listening", StringComparison.Ordinal));
+            Assert.Contains(console.Links.In(line), l => l.Target is WebLink { Address.Port: 8080 });
 
-        Assert.True(view.Choose(r => r.Kind == ContainerRowKind.Project && r.Label == project), "The project's row was not listed");
-        Ui.WaitFor(() => Text(console).Contains("worker tick", StringComparison.Ordinal) && Text(console).Contains("web listening", StringComparison.Ordinal),
-            "both services' lines in the project's log");
-        Assert.Equal(["web", "worker"], view.Log.ServiceToggles.Select(t => (string)t.Content!));
-        int ticks = Ticks(console);
-        Ui.WaitFor(() => Ticks(console) > ticks, "the worker's next tick, streamed");
+            Assert.True(view.Choose(r => r.Kind == ContainerRowKind.Project && r.Label == project), "The project's row was not listed");
+            Ui.WaitFor(() => Text(console).Contains("worker tick", StringComparison.Ordinal) && Text(console).Contains("web listening", StringComparison.Ordinal),
+                "both services' lines in the project's log");
+            Assert.Equal(["web", "worker"], view.Log.ServiceToggles.Select(t => (string)t.Content!));
+            int ticks = Ticks(console);
+            Ui.WaitFor(() => Ticks(console) > ticks, "the worker's next tick, streamed");
 
-        view.Log.OpenFind();
-        Ui.Settle();
-        view.Log.Find.FindControl<Avalonia.Controls.Primitives.ToggleButton>("UseRegex")!.IsChecked = true;
-        view.Log.Find.FindControl<TextBox>("Query")!.Text = @"worker tick \d+$";
-        Ui.Settle();
-        Assert.Matches(@"^\d+/([2-9]|\d\d+)$", view.Log.Find.CountText);
-        // Find Next's keys in the log step its own matches, never the editor's Find.
-        view.Log.Find.FindControl<TextBox>("Query")!.Focus();
-        Ui.Settle();
-        Passenger.Text.Selection matched = console.Editor.Selections.Primary;
-        Ui.Press(window, Ui.Shortcut(AppActions.FindNext));
-        Assert.True(console.Editor.Selections.Primary != matched, "Find Next's keys in the Containers log left its match where it was");
-        Assert.False(window.EditorArea.FindBar.IsVisible, "Find Next's keys in the Containers log went to the editor's Find");
-        window.Close();
+            view.Log.OpenFind();
+            Ui.Settle();
+            view.Log.Find.FindControl<Avalonia.Controls.Primitives.ToggleButton>("UseRegex")!.IsChecked = true;
+            view.Log.Find.FindControl<TextBox>("Query")!.Text = @"worker tick \d+$";
+            Ui.Settle();
+            Assert.Matches(@"^\d+/([2-9]|\d\d+)$", view.Log.Find.CountText);
+            // Find Next's keys in the log step its own matches, never the editor's Find.
+            view.Log.Find.FindControl<TextBox>("Query")!.Focus();
+            Ui.Settle();
+            Passenger.Text.Selection matched = console.Editor.Selections.Primary;
+            Ui.Press(window, Ui.Shortcut(AppActions.FindNext));
+            Assert.True(console.Editor.Selections.Primary != matched, "Find Next's keys in the Containers log left its match where it was");
+            Assert.False(window.EditorArea.FindBar.IsVisible, "Find Next's keys in the Containers log went to the editor's Find");
+            window.Close();
+        }
+        finally
+        {
+            Docker.ComposeDown(folder);
+        }
 
         static int Ticks(OutputView console) => Text(console).Split('\n').Count(l => l.Contains("worker tick", StringComparison.Ordinal));
     }

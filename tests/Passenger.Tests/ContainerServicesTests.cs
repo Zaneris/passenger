@@ -264,9 +264,9 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             ContainersView view = Shown(window);
             foreach (string service in (string[])["web", "api"])
             {
-                Ui.WaitFor(() => view.Rows.Any(r => r.Service == service && r.LeftUnstarted && r.Detail == "Not started"), $"{service}'s row, not started");
+                Ui.WaitFor(() => view.Rows.Any(r => r.Project?.Name == project && r.Service == service && r.LeftUnstarted && r.Detail == "Not started"), $"{service}'s row, not started");
             }
-            Assert.True(view.Choose(r => r.Service == "web" && r.LeftUnstarted), "web's row could not be chosen");
+            Assert.True(view.Choose(r => r.Project?.Name == project && r.Service == "web" && r.LeftUnstarted), "web's row could not be chosen");
             Ui.Settle();
             Assert.Equal(Refusals.NotStarted("web of Later", ContainerRun.StartsService), window.Actions.WhyNot(AppActions.ServiceAttach, window.Actions.Context()));
             Assert.Equal(Refusals.NotStarted($"{project}/web", ContainerRun.StartsService), window.Actions.WhyNot(AppActions.ContainerStop, window.Actions.Context()));
@@ -276,7 +276,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             Assert.Contains("web of Later started, without the debugger", window.Status, StringComparison.Ordinal);
             Assert.DoesNotContain(window.Debugger.Tabs, t => t.Name == "web" && t.IsLive);
             Assert.Equal("web 1", Answered(Request(project, "web"), project, "web"));
-            Ui.WaitFor(() => view.Rows.Any(r => r.Service == "web" && !r.LeftUnstarted && r.Containers.Any(c => c.IsRunning)), "web's row to be its running container's");
+            Ui.WaitFor(() => view.Rows.Any(r => r.Project?.Name == project && r.Service == "web" && !r.LeftUnstarted && r.Containers.Any(c => c.IsRunning)), "web's row to be its running container's");
 
             TestFolders.Write(folder, "Web/Message.cs", "public static class Message\n{\n    public const string Text = \"web 2\";\n}\n");
             Assert.True(window.Perform(AppActions.Rerun), "Rerun did not run");

@@ -155,7 +155,8 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
             int port = ContainerRunsTests.Published(project, "web");
             window.ShowToolWindow(ToolWindowIds.Containers);
             ContainersView view = window.ContainersWindow;
-            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "web"), "web's row", TimeSpan.FromMinutes(1));
+            // Its own project's: an engine holding another project of a web service lists that one too.
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Project?.Name == project && r.Service == "web"), "web's row", TimeSpan.FromMinutes(1));
             view.ShowTab(RunWindows.StatsTab);
             Passenger.App.Telemetry.MetricsPane metrics = view.Metrics;
             Ui.WaitFor(() =>
@@ -166,7 +167,7 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
             Assert.Matches(@"^[0-9.,]+/s, median ", metrics.ValueOf("http.server.request.duration") ?? string.Empty);
             Assert.EndsWith("in its container: read every second", metrics.Said, StringComparison.Ordinal);
 
-            Assert.True(view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "cache"), "cache's row");
+            Assert.True(view.Choose(r => r.Kind == ContainerRowKind.Service && r.Project?.Name == project && r.Service == "cache"), "cache's row");
             Ui.Settle();
             Assert.True(metrics.Charted.Count == 0 && !metrics.IsVisible, $"cache chosen, web's metrics were still read: {metrics.Said}");
         }
@@ -185,7 +186,8 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
         Passenger.App.Telemetry.MetricsPane metrics = view.Metrics;
         bool shown = window.DockHost.IsShown(ToolWindowIds.Containers) && TopLevel.GetTopLevel(view) is not null;
         string[] lines = [.. ContainerRunsTests.Run(window).Split('\n').Where(line => line.StartsWith("web", StringComparison.Ordinal)).TakeLast(20)];
-        return $"the Containers window {(shown ? "shown" : "hidden")} on its {view.ShownTab} tab, {view.Chosen?.Label ?? "nothing"} chosen; "
+        string chosen = view.Chosen is { } row ? $"{row.Label} of {row.Project?.Name ?? "no project"}" : "nothing";
+        return $"the Containers window {(shown ? "shown" : "hidden")} on its {view.ShownTab} tab, {chosen} chosen; "
             + $"its metrics {(metrics.IsVisible ? "shown" : "hidden")}, saying \"{metrics.Said}\", charting [{string.Join(", ", metrics.Charted.Select(c => $"{c.Key} {c.Value}"))}]; "
             + $"web's program lookup: {(view.ProgramLookup.Length > 0 ? view.ProgramLookup : "none made")}; the run's last lines of web:\n{string.Join('\n', lines)}";
     }
