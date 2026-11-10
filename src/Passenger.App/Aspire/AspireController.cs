@@ -1290,6 +1290,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             foreach (AspireResourceRun resource in resources)
             {
                 resource.Inspection?.Dispose();
+                // A hook no debugger took waits for its program, held or ended, until it is let go; one a debugger took goes with it too.
+                resource.Handlers?.Dispose();
+                resource.Browser?.Dispose();
             }
             captured.Add((app, resources, debuggers));
             app.Resources.Clear();

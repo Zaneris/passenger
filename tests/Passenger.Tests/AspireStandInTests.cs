@@ -1882,6 +1882,63 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A service held at its start for the debugger, its update handlers' hook made, and the window closed before any
+    /// debugger took the hook: the hook lets go of its socket, which its program, held, never reached (#1450).</summary>
+    [AvaloniaFact]
+    public void A_held_services_update_handlers_hook_no_debugger_took_lets_go_of_its_socket_as_the_window_closes()
+    {
+        project.Reset();
+        project.BuildApi();
+        File.Delete(project.KeyFile);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        project.Serve(backend);
+        string sockets = SocketFolders.Own(Passenger.App.State.StateStore.DefaultRoot);
+        string[] before = Hooks(sockets);
+        MainWindow window = project.Open(project.Program, languageServer: false);
+        TaskCompletionSource<string?> given = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<(System.Net.WebSockets.ClientWebSocket Notified, HttpStatusCode Answer)>? asked = null;
+        string? hook = null;
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
+            Ui.Launched(window, window.DebugAsync(), "the stand-in AppHost to come up debugged");
+            TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            // No debugger takes the start: its attach waits until the start is given up, or the test lets it go.
+            window.AspireRuntime.AttachStart = async (_, _, _, stop) =>
+            {
+                reached.TrySetResult();
+                return await given.Task.WaitAsync(stop);
+            };
+            asked = Waiting.Apart(() => project.StartApiAsync("apiservice", "Debug"));
+            // Not settled: the start under way holds the window's background work while its attach waits.
+            Ui.PumpUntil(() => reached.Task.IsCompleted, "the held API's start to come to its attach", TimeSpan.FromMinutes(2));
+            hook = Hooks(sockets).Except(before).SingleOrDefault();
+            Assert.True(hook is not null, $"The held API's start made no update handlers' hook in {sockets}");
+        }
+        finally
+        {
+            window.Close();
+            given.TrySetResult("the test let the start go");
+        }
+        try
+        {
+            Ui.WaitFor(() => !File.Exists(hook), $"the update handlers' hook no debugger took to let go of its socket {hook} once the window closed: "
+                + "it would wait for its program for good, listening there");
+        }
+        finally
+        {
+            if (asked is not null)
+            {
+                Ui.Await(asked, "the IDE's answer to the run session").Notified.Dispose();
+            }
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>The update handlers' hooks' sockets this process has made and not let go.</summary>
+    private static string[] Hooks(string folder) => Directory.Exists(folder) ? Directory.GetFiles(folder, "*.handlers") : [];
+
     /// <summary>A service held at its start for a debugger its runtime keeps out (the debugger off, its diagnostic port on) runs
     /// on undebugged, and a .NET program it starts runs too, held for no one: debugged, the stand-in's API runs a child of its
     /// own as it starts, and says what the child wrote.</summary>
