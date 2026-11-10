@@ -81,8 +81,8 @@ public sealed class GDScriptUsagesTests
             Ui.PlaceAfter(editor, "func hi");
             Renamed(window, "strike");
             bool renamed = Ui.Pumped(() => document.Text.Snapshot.ToString().Contains("func strike(target", StringComparison.Ordinal)
-                && File.ReadAllText(enemy).Contains("\tplayer.strike(\"enemy\", 5)\n\tplayer.call(\"strike\", \"far\")\n", StringComparison.Ordinal)
-                && File.ReadAllText(scene).Contains("method=\"strike\"", StringComparison.Ordinal), TimeSpan.FromSeconds(60));
+                && Settled(enemy).Contains("\tplayer.strike(\"enemy\", 5)\n\tplayer.call(\"strike\", \"far\")\n", StringComparison.Ordinal)
+                && Settled(scene).Contains("method=\"strike\"", StringComparison.Ordinal), TimeSpan.FromSeconds(60));
             Assert.True(renamed, $"hit renamed strike in both scripts, the string and the scene ({window.Status}):\n{document.Text.Snapshot}\n{File.ReadAllText(enemy)}\n{File.ReadAllText(scene)}");
             Assert.Contains("\tstrike(\"self\")\n", document.Text.Snapshot.ToString(), StringComparison.Ordinal);
 
@@ -94,7 +94,7 @@ public sealed class GDScriptUsagesTests
             };
             editor.Focus();
             Ui.Run(window, EditorActions.Undo, settle: false);
-            bool undone = Ui.Pumped(() => document.Text.Snapshot.ToString() == Player && File.ReadAllText(enemy) == Enemy && File.ReadAllText(scene) == Scene, TimeSpan.FromSeconds(30));
+            bool undone = Ui.Pumped(() => document.Text.Snapshot.ToString() == Player && Settled(enemy) == Enemy && Settled(scene) == Scene, TimeSpan.FromSeconds(30));
             Assert.True(undone, $"One Undo did not take the rename back from both scripts and the scene ({window.Status})");
             Assert.Contains("Rename hit to strike", Assert.Single(asked), StringComparison.Ordinal);
 
@@ -161,7 +161,7 @@ public sealed class GDScriptUsagesTests
             Assert.True(refused, $"Safe Delete named no resource's key: {window.Status}");
 
             Renamed(window, "rate");
-            bool renamed = Ui.Pumped(() => File.ReadAllText(Path.Combine(folder, "stats.tres")).Contains("rate = 42", StringComparison.Ordinal), TimeSpan.FromSeconds(60));
+            bool renamed = Ui.Pumped(() => Settled(Path.Combine(folder, "stats.tres")).Contains("rate = 42", StringComparison.Ordinal), TimeSpan.FromSeconds(60));
             Assert.True(renamed, $"The resource's key did not follow its variable: {window.Status}");
             Assert.Contains("rate = 7", File.ReadAllText(Path.Combine(folder, "main.tscn")), StringComparison.Ordinal);
         }
@@ -187,7 +187,7 @@ public sealed class GDScriptUsagesTests
             Renamed(window, "strike");
             bool renamed = Ui.Pumped(() => document.Text.Snapshot.ToString().Contains("func strike(", StringComparison.Ordinal), TimeSpan.FromSeconds(60));
             Assert.True(renamed, $"The rename right after enemy.gd changed on disk was not made: {window.Status}");
-            Ui.PumpUntil(() => File.ReadAllText(Path.Combine(folder, "enemy.gd")).Contains("strike(\"again\")", StringComparison.Ordinal), "the rename in enemy.gd as the disk has it",
+            Ui.PumpUntil(() => Settled(Path.Combine(folder, "enemy.gd")).Contains("strike(\"again\")", StringComparison.Ordinal), "the rename in enemy.gd as the disk has it",
                 TimeSpan.FromSeconds(30));
             Assert.Equal(changed.Replace("hit(", "strike(", StringComparison.Ordinal).Replace("\"hit\"", "\"strike\"", StringComparison.Ordinal),
                 File.ReadAllText(Path.Combine(folder, "enemy.gd")));
@@ -200,6 +200,20 @@ public sealed class GDScriptUsagesTests
     }
 
     private static IReadOnlyList<string> Usages(FindView find) => [.. find.Rows.Where(r => r.Usage is not null).Select(r => r.Label)];
+
+    /// <summary>A file's text as a poll reads it: nothing while another process holds it unshared on Windows (Godot's editor
+    /// reading it, a write landing over it), so the poll looks again.</summary>
+    private static string Settled(string path)
+    {
+        try
+        {
+            return Ui.Shared(path);
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+    }
 
     /// <summary>Rename at the caret, the new name typed in its box and Enter pressed.</summary>
     private static void Renamed(MainWindow window, string name)
