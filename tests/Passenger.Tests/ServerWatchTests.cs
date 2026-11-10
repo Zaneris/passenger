@@ -174,10 +174,11 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
     }
 
     /// <summary>A folder outside the project watched for the server, its watcher started again with its first walk held, as a
-    /// large folder's (the references' packs) goes on a while on a busy machine: a source written in the project meanwhile
-    /// still reaches the server, never waiting behind that walk.</summary>
+    /// large folder's (the references' packs) went on for minutes on CI's cold Windows disk: a source written in the project
+    /// and one written into obj, which a watcher of Passenger's own hears, still reach the server meanwhile, never waiting
+    /// behind that walk, and the window goes quiet without it.</summary>
     [AvaloniaFact]
-    public void A_source_written_in_the_project_reaches_the_server_while_an_outside_folders_watcher_makes_its_first_walk()
+    public void While_an_outside_folders_watcher_makes_its_first_walk_sources_written_in_the_project_and_in_obj_reach_the_server_and_the_window_goes_quiet()
     {
         MainWindow window = project.Open("Program.cs");
         WatchedFiles watched = Watched(window);
@@ -188,22 +189,29 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         string walked = outside[0].Folder;
         TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task holding = watches.HoldNextWalk(folder => PathNames.Same(folder, walked), released.Task);
-        using Told told = new(watched, name => name == "Meanwhile.cs", gone: false);
+        using Told told = new(watched, name => name is "Meanwhile.cs" or "Beside.cs", gone: false);
         bool heard;
+        bool quiet;
+        string busy;
         try
         {
             watches.LetGo([walked]).Dispose();
             Assert.True(Ui.Pumped(() => holding.IsCompleted, TimeSpan.FromSeconds(30)), $"The watcher of {walked}, started again, never came to its first walk: {WatchLog(window)}");
             File.WriteAllText(project.PathOf("Meanwhile.cs"), "static class Meanwhile\n{\n}\n");
-            // Pumped, not settled: the held walk is background work, which a settle waits out.
-            heard = Ui.Pumped(() => told.Count == 1, TimeSpan.FromSeconds(30));
+            File.WriteAllText(project.PathOf(Path.Combine("obj", "Beside.cs")), "static class Beside\n{\n}\n");
+            // Pumped, not settled, so a walk that held the IDE's quiet fails here on what it held back, not on the settle.
+            heard = Ui.Pumped(() => told.Count == 2, TimeSpan.FromSeconds(30));
+            quiet = Ui.Quiet(TimeSpan.FromSeconds(30));
+            busy = quiet ? string.Empty : Ui.Busy();
         }
         finally
         {
             released.TrySetResult();
         }
-        Assert.True(heard, $"A source written in the project was not told the language server while the watcher of {walked} made its first walk, so whatever is "
-            + $"written in the folder (a file a rename wrote) waits until a walk of a folder outside it ends: {WatchLog(window)}");
+        Assert.True(heard, $"Of Meanwhile.cs written in the project and Beside.cs written into obj, the language server was told only of [{string.Join(", ", told.Names)}] "
+            + $"while the watcher of {walked} made its first walk, so what a rename or a build writes waits until a walk of a folder outside the project ends: {WatchLog(window)}");
+        Assert.True(quiet, $"The window never went quiet while the watcher of {walked} made its first walk, so every settle, screenshot and test waits out a walk "
+            + $"of a folder outside the project, minutes long on a cold disk. Still busy:\n{busy}");
         window.Close();
     }
 

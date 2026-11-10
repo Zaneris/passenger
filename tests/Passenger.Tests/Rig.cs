@@ -951,6 +951,10 @@ public static class Ui
         }
     }
 
+    /// <summary>Whether the IDE went quiet within the limit (scaled), as <see cref="Settle"/> waits for it, for a test that
+    /// holds back work the IDE is never to wait for.</summary>
+    public static bool Quiet(TimeSpan limit) => Settled(Deadline.In(limit.Scaled()));
+
     /// <summary>Waits until nothing holds what <paramref name="weak"/> names, collecting fully at each of the window's
     /// frames, so work its close left on the window's loop ends first; fails saying what then stays alive and why it
     /// matters, past <paramref name="limit"/> (scaled) where one is given. Takes no strong reference itself: the caller makes
