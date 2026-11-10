@@ -20,15 +20,15 @@
     <AspireTemplatesVersion>13.6.4</AspireTemplatesVersion>
     <!-- WPF's reference pack at the version global.json's SDK gives its own WPF (its TargetingPackVersion), downloaded
          for the tests' local feed so the WPF app they make restores off Windows; another SDK's fails WpfXamlTests naming
-         the version to pin. A release candidate until .NET 11 ships (then 11.0.0, with the SDK at 11.0.100). -->
-    <WindowsDesktopRefVersion>11.0.0-rc.3.26522.148</WindowsDesktopRefVersion>
+         the version to pin. -->
+    <WindowsDesktopRefVersion>11.0.0</WindowsDesktopRefVersion>
     <!-- EF Core and the dotnet-ef tool for the Migrations window's tests, downloaded for the tests' local feed: at its
          version, and at the one before for a tool that does not match and a stand-in provider that trails it. -->
     <EfCoreVersion>10.0.14</EfCoreVersion>
     <EfCoreOlderVersion>10.0.13</EfCoreOlderVersion>
     <!-- EF Core 11 and its dotnet-ef, whose options' defaults .config/dotnet-ef.json gives, for the Migrations window's
-         test of them, downloaded for the tests' local feed: a release candidate until EF Core 11 ships. -->
-    <EfCore11Version>11.0.0-rc.3.26522.148</EfCore11Version>
+         test of them, downloaded for the tests' local feed. -->
+    <EfCore11Version>11.0.0</EfCore11Version>
     <!-- Npgsql's provider of EF Core, at a version whose range holds EfCoreVersion, for the test of a compose run's
          Postgres. -->
     <NpgsqlEfVersion>10.0.3</NpgsqlEfVersion>

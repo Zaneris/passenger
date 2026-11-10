@@ -79,7 +79,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The SDK global.json names exactly (a release candidate), and .NET 10 for the debuggees and the tests' projects.
+      # The SDK global.json names exactly, and .NET 10 for the debuggees and the tests' projects.
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json

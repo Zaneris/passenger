@@ -9,7 +9,7 @@ MIT, for Windows, macOS and Linux ([installing](#installing)).
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
   <a href="https://passenger-ide.net/#download">Download</a> •
-  <a href="docs/release-notes/0.3.1.md">What's new in 0.3.1</a> •
+  <a href="docs/release-notes/0.3.2.md">What's new in 0.3.2</a> •
   <a href="#what-it-does">What it does</a> •
   <a href="#installing">Installing</a> •
   <a href="#your-coding-agent-using-the-ide-as-you-do">Your coding agent</a> •
@@ -347,8 +347,8 @@ files under the agent's IDE.
 
 ## Building
 
-Building needs the .NET 11 SDK (11.0.100-rc.3 or later, as [`global.json`](global.json) asks, until .NET 11 ships in
-November 2026) and [just](https://github.com/casey/just). The tests need more:
+Building needs the .NET 11 SDK (11.0.100 or a later 11.0 SDK, as [`global.json`](global.json) asks) and
+[just](https://github.com/casey/just). The tests need more:
 
 - **the .NET 10 SDK** beside it, since the programs the debugger's tests debug ([`tests/Debuggees`](tests/Debuggees))
   and most projects the tests write run on .NET 10;
