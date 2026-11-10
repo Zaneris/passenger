@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App.Debugging;
 using Passenger.App;
+using Passenger.App.CSharp;
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Vcs;
@@ -280,6 +281,39 @@ public sealed class ExplorerFilesTests : IDisposable
             File.WriteAllText(release, "go");
             window.Close();
         }
+    }
+
+    /// <summary>A loaded project's folder let go of for a move stays unwatched by the watches of a C# language server started
+    /// meanwhile, until the move is done: a move can begin while a server starts (its start waits for the design-time builds
+    /// the move waits out), and on Windows a move with the project's build output watched inside it is refused.</summary>
+    [AvaloniaFact]
+    public void A_folder_let_go_of_stays_unwatched_by_the_watches_of_a_language_server_started_meanwhile_until_done()
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        Restore.Run(Path.Combine(folder, "Shop.csproj"));
+        MainWindow window = Ui.OpenFolder(folder);
+        CSharpService csharp = window.CSharpService ?? throw new InvalidOperationException("The folder opened with no C# service");
+        string lib = PathNames.Canonical(library);
+        string shopOutput = PathNames.Canonical(Path.Combine(folder, "obj"));
+        Ui.WaitFor(() => csharp.Watching?.Watching.Any(w => PathNames.Within(w.Folder, lib)) == true,
+            () => $"Lib's build output to be watched for the C# language server, where {Folders()} are", TimeSpan.FromMinutes(2));
+        ServerWatches first = csharp.Watching!;
+        IDisposable letting = csharp.LetGoOf([lib]);
+        Assert.DoesNotContain(first.Watching, w => PathNames.Within(w.Folder, lib));
+
+        csharp.Restart();
+        Ui.WaitFor(() => csharp.Watching is { } now && now != first && now.Watching.Any(w => PathNames.Same(w.Folder, shopOutput)),
+            () => $"Shop's build output to be watched for the server started again, where {Folders()} are", TimeSpan.FromMinutes(2));
+        Assert.DoesNotContain(csharp.Watching!.Watching, w => PathNames.Within(w.Folder, lib));
+        letting.Dispose();
+        Ui.WaitFor(() => csharp.Watching?.Watching.Any(w => PathNames.Within(w.Folder, lib)) == true,
+            () => $"Lib's build output to be watched again once the move is done, where {Folders()} are", TimeSpan.FromMinutes(2));
+        window.Close();
+
+        string Folders() => string.Join(", ", (csharp.Watching?.Watching ?? []).Select(w => w.Folder));
     }
 
     /// <summary>Where no folder a process works in can go (Windows), a project's folder deleted while its design-time build

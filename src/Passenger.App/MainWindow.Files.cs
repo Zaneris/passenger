@@ -562,7 +562,7 @@ public partial class MainWindow
     private async Task<IDisposable> LetGoAsync(IReadOnlyList<string> paths, string waiting)
     {
         (IDisposable held, Task built) = session.DesignTimeBuilds.HoldOff(paths);
-        IDisposable? unwatched = session.CSharp?.Watching?.LetGo(paths);
+        IDisposable? unwatched = session.CSharp?.LetGoOf(paths);
         if (!built.IsCompleted)
         {
             status.Text = waiting;
