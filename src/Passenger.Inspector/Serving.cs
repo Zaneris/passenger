@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Passenger.Core;
 
 namespace Passenger.Inspector;
 
@@ -51,8 +52,7 @@ internal static class Serving
             InspectorTrace.Step($"{problem}: {error}");
             connection.Send(new Reply { Event = Wire.BindingFailed, Error = problem });
         }
-        Thread thread = new(() => Serve(connection, app)) { IsBackground = true, Name = "Passenger inspector" };
-        thread.Start();
+        ApartThreads.Start("Passenger inspector", () => Serve(connection, app));
     }
 
     private static void Serve(Connection connection, IAppUi app)

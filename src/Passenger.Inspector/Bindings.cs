@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Logging;
+using Passenger.Core;
 
 namespace Passenger.Inspector;
 
@@ -30,8 +31,7 @@ internal static partial class Bindings
         connection = to;
         BindingFailures.Start(to);
         Take();
-        Thread watch = new(Watch) { IsBackground = true, Name = "Passenger inspector's binding log" };
-        watch.Start();
+        ApartThreads.Start("Passenger inspector's binding log", Watch);
     }
 
     /// <summary>Passenger has gone: the app's own sink is Avalonia's again.</summary>

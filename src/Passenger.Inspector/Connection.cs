@@ -49,8 +49,7 @@ internal sealed class Connection : IDisposable
         stream = new NetworkStream(socket, ownsSocket: true);
         reader = new StreamReader(stream, new UTF8Encoding(false));
         Configure();
-        writer = new Thread(Write) { IsBackground = true, Name = "Passenger inspector writer" };
-        writer.Start();
+        writer = ApartThreads.Start("Passenger inspector writer", Write);
     }
 
     /// <summary>Has System.Text.Json make every type the wire carries ready now, before the app's Main, rather than on

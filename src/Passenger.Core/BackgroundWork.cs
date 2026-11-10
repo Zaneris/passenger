@@ -181,13 +181,24 @@ public static class BackgroundWork
     /// <inheritdoc cref="Unheld{T}(Func{T}, CancellationToken)"/>
     public static Task Unheld(Func<Task> work, CancellationToken cancel = default) => Task.Run(work, cancel);
 
-    /// <summary>Unheld work on a thread of its own, for work that blocks its thread for long (a trace read to its end).</summary>
-    public static Task<T> UnheldThread<T>(Func<T> work) =>
-        Task.Factory.StartNew(work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    /// <summary>Unheld work on a thread of its own, for work that blocks its thread for long (a trace read to its end), in no
+    /// caller's context, which would be held for as long as the work lasts (<see cref="ApartThreads"/>).</summary>
+    public static Task<T> UnheldThread<T>(Func<T> work)
+    {
+        using (ExecutionContext.SuppressFlow())
+        {
+            return Task.Factory.StartNew(work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        }
+    }
 
     /// <inheritdoc cref="UnheldThread{T}(Func{T})"/>
-    public static Task UnheldThread(Action work) =>
-        Task.Factory.StartNew(work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    public static Task UnheldThread(Action work)
+    {
+        using (ExecutionContext.SuppressFlow())
+        {
+            return Task.Factory.StartNew(work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        }
+    }
 
     /// <summary>Takes one hold off the count, if there is one and, for a scope's, the count is still of its generation.</summary>
     private static void Release(long? generation)

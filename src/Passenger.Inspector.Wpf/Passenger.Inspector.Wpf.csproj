@@ -29,6 +29,7 @@
     <Compile Include="../Passenger.Inspector/Protocol.cs" Link="Protocol.cs" />
     <Compile Include="../Passenger.Inspector/Connection.cs" Link="Connection.cs" />
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <Compile Include="../Passenger.Core/ApartThreads.cs" Link="ApartThreads.cs" />
     <!-- The serve loop, the request switch and the words both inspectors answer in, and where the debugger stops them. -->
     <Compile Include="../Passenger.Inspector/Serving.cs" Link="Serving.cs" />
     <!-- The app's tree made into the wire's and walked, with stacks of their own, as both inspectors walk it. -->

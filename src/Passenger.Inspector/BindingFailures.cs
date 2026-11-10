@@ -30,7 +30,7 @@ internal static class BindingFailures
     public static void Start(Connection to)
     {
         connection = to;
-        timer = new Timer(_ => Flush());
+        timer = ApartThreads.Timer(_ => Flush());
     }
 
     /// <summary>A failure as it happened, known by <paramref name="key"/>: one seen before counted again; a new one made by

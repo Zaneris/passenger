@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -239,10 +240,26 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     }
 
     /// <summary>On the person's window an agent asks before its first click or key in their app or in Passenger itself, and
-    /// once allowed both still never answers the questions Passenger asks the person for it, nor reaches Settings. Passenger's
-    /// own windows are inspected once a process, so this is the run's one test of them in the test process itself.</summary>
+    /// once allowed both still never answers the questions Passenger asks the person for it, nor reaches Settings; the window,
+    /// closed, goes at once, held by nothing the inspector of Passenger's own windows started in the agent's call (#1445).
+    /// Passenger's own windows are inspected once a process, so this is the run's one test of them in the test process itself.</summary>
     [AvaloniaFact]
     public void An_agent_on_the_persons_window_is_asked_before_it_first_clicks_or_presses_keys_in_their_avalonia_app_or_in_passenger()
+    {
+        WeakReference<MainWindow> weak = AskedAndAnswered();
+        // Avalonia's tooltip service keeps the last control it showed a tip over (the agent clicked one) until the pointer moves on.
+        Window elsewhere = new() { Width = 200, Height = 100 };
+        elsewhere.Show();
+        elsewhere.MouseMove(new Avalonia.Point(50, 50));
+        Ui.Settle();
+        elsewhere.Close();
+        Ui.Collected(weak, "the window an agent inspected Passenger's own windows in to be let go once closed: held by the inspection the agent's call "
+            + "started, which lasts the process, that window would be kept for as long as the process ran", TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>The test's window, an agent's clicks and keys asked of the person and answered, then closed: held only weakly here.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private WeakReference<MainWindow> AskedAndAnswered()
     {
         MainWindow window = AgentsWindow(appFolder, languageServer: false);
         McpClient? client = null;
@@ -308,6 +325,8 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
             WaitFor(() => !window.Runner.IsRunning, "the app stopped");
             window.Close();
         }
+        Ui.Settle();
+        return new WeakReference<MainWindow>(window);
     }
 
     /// <summary>Where some text begins in the app's window XAML as a tool names a place: "MainWindow.axaml:line:column", from

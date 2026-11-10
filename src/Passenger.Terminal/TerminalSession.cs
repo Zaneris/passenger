@@ -150,8 +150,8 @@ public sealed class TerminalSession : IAsyncDisposable
         }
         Stream reader = pty.ReaderStream;
         Stream writer = pty.WriterStream;
-        new Thread(() => Read(reader)) { IsBackground = true, Name = "Terminal output" }.Start();
-        new Thread(() => Send(writer)) { IsBackground = true, Name = "Terminal input" }.Start();
+        ApartThreads.Start("Terminal output", () => Read(reader));
+        ApartThreads.Start("Terminal input", () => Send(writer));
     }
 
     /// <summary>Puts the IDE's own words on the screen, as if the shell had written them: why a program did not start, or

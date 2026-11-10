@@ -165,23 +165,27 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         {
             throw new LiveAppException(problem ?? "Passenger could not listen for its own inspector");
         }
-        LiveApp app = new("Passenger", socket, listener, plan: null, []);
-        try
+        // Kept for the process, it starts in no call's context, whose window would ride along in its reads and threads for good.
+        using (ExecutionContext.SuppressFlow())
         {
-            Assembly inspector = AssemblyLoadContext.Default.LoadFromAssemblyPath(InspectorPath);
-            Type agent = inspector.GetType("Passenger.Inspector.Agent", throwOnError: true)!;
-            // Only the person answers Passenger's questions for agents and changes its Settings: no agent's input reaches them.
-            agent.GetMethod("Guard", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [(Func<object, string?>)MainWindow.KeptFromAgents]);
-            agent.GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!
-                .Invoke(null, [socket, Thread.CurrentThread, typeof(Avalonia.AvaloniaObject).Assembly.GetName().Version!.ToString(), null, false, false]);
+            LiveApp app = new("Passenger", socket, listener, plan: null, []);
+            try
+            {
+                Assembly inspector = AssemblyLoadContext.Default.LoadFromAssemblyPath(InspectorPath);
+                Type agent = inspector.GetType("Passenger.Inspector.Agent", throwOnError: true)!;
+                // Only the person answers Passenger's questions for agents and changes its Settings: no agent's input reaches them.
+                agent.GetMethod("Guard", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [(Func<object, string?>)MainWindow.KeptFromAgents]);
+                agent.GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!
+                    .Invoke(null, [socket, Thread.CurrentThread, typeof(Avalonia.AvaloniaObject).Assembly.GetName().Version!.ToString(), null, false, false]);
+            }
+            catch (Exception error) when (error is IOException or BadImageFormatException or TypeLoadException or MissingMethodException or TargetInvocationException)
+            {
+                app.Dispose();
+                throw new LiveAppException($"Passenger's inspector could not start in Passenger: {error.GetBaseException().Message}");
+            }
+            own = app;
+            return app;
         }
-        catch (Exception error) when (error is IOException or BadImageFormatException or TypeLoadException or MissingMethodException or TargetInvocationException)
-        {
-            app.Dispose();
-            throw new LiveAppException($"Passenger's inspector could not start in Passenger: {error.GetBaseException().Message}");
-        }
-        own = app;
-        return app;
     }
 
     /// <summary>The run configuration's name, as the window says it.</summary>

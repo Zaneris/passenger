@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Lsp;
 
@@ -163,8 +164,7 @@ public static partial class IdeLog
             if (writer is null)
             {
                 AppDomain.CurrentDomain.ProcessExit += (_, _) => Flush();
-                writer = new Thread(WriteQueued) { IsBackground = true, Name = "Passenger log" };
-                writer.Start();
+                writer = ApartThreads.Start("Passenger log", WriteQueued);
             }
             Monitor.Pulse(Queued);
         }
