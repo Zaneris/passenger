@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-10
 
+- `WelcomeTests`' `Clone_Repository_asks_for_the_login_…` (run 42835557169) and `VcsTests`' `Push_to_a_remote_that_asks_for_a_login_…`
+  (run 42884859818), CI's Windows runner: "The IDE was not quiet within 225 s", git's askpass helper still running with its
+  password prompt. **A gap in the IDE**: the IDE read a question to the helper's close of its side of the Unix socket,
+  and Windows can leave that close unheard (the socket readable to select, no byte left, its pending read never ending),
+  while the helper waited for the answer; a loop of clones on the Windows VM stopped so at the 20th, 49th and 94th. Each
+  end now reads the other's words to an end byte (8a490c35d, held by `AskPassHelperTests`, #1455).
 - `McpRefactorTests`' `An_agent_refactoring_right_after_git_changed_and_deleted_files_…`, CI's Windows runner at 2b79cb29e
   (run 42767140366): "Rename failed: Circle.cs could not be written: Could not find file". **A gap in the IDE**, read from
   the code (the run kept no log): a deleted file was found only by its folder written within 2 s of the request or the
