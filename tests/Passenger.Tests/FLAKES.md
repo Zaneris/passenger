@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-10
 
+- `ProblemsTests`' `A_pull_of_thousands_of_warnings_decodes_each_at_a_small_cost_and_never_copies_a_files_text`, CI's macOS
+  runner at 970d75b30 (run 42948909557): "allocated 10,267 KB for 2001 warnings, 2,754 KB for 201 in the same files: 4,274
+  bytes for each warning more". **The test counted other tests' allocations**: it counts every thread's, and its dense
+  pulls ran beside DebuggerRulesTests and AgreeingWordsTests reading the repository's sources. Alone on the Mac a warning
+  cost 2,750 to 2,877 bytes over seven runs; in one process with those classes it failed 2 of 2 at 4,545 and 5,012. It
+  runs alone now, in `SolutionAnalysisBytesTests`, its bounds as they were (3d5867b18, #1474).
 - `McpIdeTests`' `An_agent_finds_text_in_the_windows_scopes_reverts_a_file_through_local_history_…`, CI's macOS runner at
   eafb1315c (run 42934072614): "Helper.cs's history after two saves": Change, External change, External change, Change.
   **A race in the IDE**: the watcher's word of the first save, read on Local History's queue as the second save wrote,
