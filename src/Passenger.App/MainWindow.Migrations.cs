@@ -22,7 +22,7 @@ public partial class MainWindow
     {
         MigrationsController controller = migrations = new MigrationsController(new MigrationsParts(Editors, Bottom, Dock, work, Say, () => session, () => buildRun,
             ChooseAsync, (project, id, version, recording) => session.Packages.InstallAsync(project, id, version, recording),
-            (project, packages, recording) => session.Packages.InstallSetAsync(project, packages, recording),
+            (project, packages, recording, alongside) => session.Packages.InstallSetAsync(project, packages, recording, alongside),
             () => session.Packages.FeedAsync(null), FollowWritten, OpenFile, () => StateFolder, ShowPendingModelChanges)
         {
             AsksNoOne = () => AgentsOwn,

@@ -467,6 +467,39 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>Under central package management, Update the Set moves the central versions of EF Core's packages another
+    /// project references (Reports' relational package) with the shop's, never leaving the folder's set half at the new
+    /// version.</summary>
+    [AvaloniaFact]
+    public void Under_central_package_management_updating_the_set_moves_the_set_other_projects_reference_too()
+    {
+        string folder = ShopApp.Make(design: true, tool: null, provider: "1.0.0", ef: ShopApp.Older,
+            providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")], central: true);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }, { IsEvaluated: true }], "the shop's and the reports' projects read");
+            window.ShowToolWindow(ToolWindowIds.NuGet);
+            Passenger.App.ToolWindows.NuGetView nuget = window.NuGet;
+            nuget.Query = "Microsoft.EntityFrameworkCore.Sqlite";
+            Task searched = nuget.RefreshAsync();
+            Ui.Landed(() => searched.IsCompleted && nuget.Selected?.Id == "Microsoft.EntityFrameworkCore.Sqlite", "the SQLite provider found and chosen");
+            nuget.ChosenVersion = ShopApp.Version;
+            Task<bool> update = nuget.InstallAsync(window.Projects.Single(p => p.Name == "Shop"));
+            Ui.ClickButton(Asked<ChoiceDialog>(window, "the update's warning"), $"Update the Set to {ShopApp.Version}");
+            Ui.Landed(() => update.IsCompleted && !nuget.IsBusy, "the set's update");
+            string[] versions = [.. System.Xml.Linq.XDocument.Load(Path.Combine(folder, "Directory.Packages.props")).Descendants("PackageVersion")
+                .Select(v => $"{(string?)v.Attribute("Include")} {(string?)v.Attribute("Version")}")];
+            string[] expected = [$"Microsoft.EntityFrameworkCore.Sqlite {ShopApp.Version}", $"Microsoft.EntityFrameworkCore.Design {ShopApp.Version}",
+                $"Microsoft.EntityFrameworkCore.Relational {ShopApp.Version}", $"{ShopApp.Provider} 2.0.0"];
+            Assert.True(versions.SequenceEqual(expected), $"Update the Set left the central versions [{string.Join(", ", versions)}]: {nuget.Log}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Undo from the Solution view, a row chosen there, its question answered yes: the last command taken back;
     /// <paramref name="opened"/> says where the files open in editors were opened from.</summary>
     internal static void UndoFromExplorer(MainWindow window, string path, Func<string>? opened = null)
@@ -645,11 +678,12 @@ internal static class ShopApp
     /// <summary>The app in a folder of its own: the Design package or not, the local tool at a version or none, the stand-in
     /// provider at a version (its versions in a feed of the test's own, each with the range of EF Core it supports, the
     /// <paramref name="unrestorable"/> one needing a package no feed holds), and a Program.cs of the test's in place of the
-    /// shop's; restored from the UI thread (a window test's body), the window's loop running meanwhile.</summary>
+    /// shop's; restored from the UI thread (a window test's body), the window's loop running meanwhile. <paramref name="central"/>
+    /// keeps the versions in a Directory.Packages.props, with EF Core's relational package for a Reports library beside.</summary>
     public static string Make(bool design, string? tool, string? provider = null, IReadOnlyList<(string Version, string Range)>? providers = null, string? program = null,
-        string? ef = null, string? unrestorable = null)
+        string? ef = null, string? unrestorable = null, bool central = false)
     {
-        string folder = Write(design, tool, provider, providers, program, ef, unrestorable);
+        string folder = Write(design, tool, provider, providers, program, ef, unrestorable, central);
         Restore.Run(Path.Combine(folder, "Shop.csproj"));
         return folder;
     }
@@ -657,13 +691,13 @@ internal static class ShopApp
     /// <inheritdoc cref="Make"/>
     public static async Task<string> MakeAsync(bool design, string? tool)
     {
-        string folder = Write(design, tool, null, null, null, null, null);
+        string folder = Write(design, tool, null, null, null, null, null, false);
         await Restore.RunAsync(Path.Combine(folder, "Shop.csproj"));
         return folder;
     }
 
     private static string Write(bool design, string? tool, string? provider, IReadOnlyList<(string Version, string Range)>? providers, string? program, string? ef,
-        string? unrestorable)
+        string? unrestorable, bool central)
     {
         ef ??= Version;
         string folder = TestFolders.Create("shop");
@@ -683,9 +717,19 @@ internal static class ShopApp
               </packageSources>
             </configuration>
             """);
-        string packages = $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"{ef}\" />\n"
-            + (design ? $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Design\" Version=\"{ef}\" PrivateAssets=\"all\" />\n" : string.Empty)
-            + (provider is null ? string.Empty : $"    <PackageReference Include=\"{Provider}\" Version=\"{provider}\" />\n");
+        string Versioned(string version) => central ? string.Empty : $" Version=\"{version}\"";
+        string packages = $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Sqlite\"{Versioned(ef)} />\n"
+            + (design ? $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Design\"{Versioned(ef)} PrivateAssets=\"all\" />\n" : string.Empty)
+            + (provider is null ? string.Empty : $"    <PackageReference Include=\"{Provider}\"{Versioned(provider)} />\n");
+        if (central)
+        {
+            TestFolders.Write(folder, "Directory.Packages.props", "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n"
+                + $"  <ItemGroup>\n    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"{ef}\" />\n"
+                + $"    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.Design\" Version=\"{ef}\" />\n"
+                + $"    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.Relational\" Version=\"{ef}\" />\n"
+                + (provider is null ? string.Empty : $"    <PackageVersion Include=\"{Provider}\" Version=\"{provider}\" />\n") + "  </ItemGroup>\n</Project>\n");
+            TestFolders.Write(folder, "Reports/Reports.csproj", TestProjects.Library().With("  <ItemGroup>\n    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Relational\" />\n  </ItemGroup>\n"));
+        }
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Console("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>")
             .With($"  <ItemGroup>\n{packages}  </ItemGroup>\n"));
         TestFolders.Write(folder, "Program.cs", program ?? """

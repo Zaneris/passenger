@@ -25,7 +25,7 @@ public sealed record MigrationsParts(
     Func<BuildRunController> Builds,
     Func<string, string, IReadOnlyList<string>, string?, Task<string?>> Choose,
     Func<ProjectModel, string, string, CommandHistory.Recording, Task<PackageOutcome>> Install,
-    Func<ProjectModel, IReadOnlyList<(string Id, string Version)>, CommandHistory.Recording, Task<PackageOutcome>> InstallSet,
+    Func<ProjectModel, IReadOnlyList<(string Id, string Version)>, CommandHistory.Recording, IReadOnlyList<(string Id, string Version)>?, Task<PackageOutcome>> InstallSet,
     Func<Task<IPackageFeed>> Feed,
     Action<IReadOnlyList<string>> FollowWritten,
     Func<string, string?> OpenFile,
@@ -976,7 +976,10 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             moved.Add((id, version));
         }
         moved.Add((left.Id, up!));
-        PackageOutcome outcome = await parts.InstallSet(project, moved, recording);
+        // Under central package management the set's versions are the folder's: those other projects reference move too.
+        IReadOnlyList<(string Id, string Version)> alongside = [.. owning.Projects.SelectMany(p => p.Packages).Select(p => p.Name).Where(EfProviders.InSet)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Where(n => !moved.Any(m => m.Item1.Equals(n, StringComparison.OrdinalIgnoreCase))).Select(n => (n, version))];
+        PackageOutcome outcome = await parts.InstallSet(project, moved, recording, alongside);
         parts.Say(outcome.Done ? $"{together}: {left.Id} {up} with it"
             : (outcome.Refused ?? $"{together} failed: the NuGet window's log says why") + (outcome.Left is { } kept ? $"; {kept}" : string.Empty));
         return false;
@@ -1171,7 +1174,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         foreach (EfMove move in alignment.Moves)
         {
             IReadOnlyList<string> moved = Touched;
-            PackageOutcome outcome = await parts.InstallSet(move.Project, move.Packages, recording);
+            PackageOutcome outcome = await parts.InstallSet(move.Project, move.Packages, recording, null);
             Touched = [.. Touched, .. outcome.Changed];
             if (outcome.Failure($"{alignment.Title} failed in {move.Project.Name}") is { } failed)
             {
