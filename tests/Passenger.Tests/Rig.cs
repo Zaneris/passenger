@@ -1624,6 +1624,18 @@ public static class Ui
         TypeLine(window.BottomPanel.Debug.Console, line);
     }
 
+    /// <summary>Find in Files searching for some text now, waited for until its matches are shown, failing saying what the
+    /// popup says. The box tells of its new text after the frame, which puts a search begun before it off until a pause
+    /// and drops its matches, even those shown: told first.</summary>
+    public static void Search(Passenger.App.Navigation.FindInFilesPopup popup, string text)
+    {
+        popup.Text = text;
+        Dispatcher.UIThread.RunJobs();
+        Task searching = popup.SearchAsync();
+        WaitFor(() => searching.IsCompleted && popup.Searching.IsCompleted && popup.Status != "Searching…",
+            () => $"the search for {text}; the popup says '{popup.Status}'");
+    }
+
     /// <summary>A control as a failure message names it: by its name, words or tip.</summary>
     public static string Named(Control control) => control switch
     {

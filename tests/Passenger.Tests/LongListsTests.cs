@@ -44,11 +44,7 @@ public sealed class LongListsTests : IDisposable
             Holds("Find in Files", "matches", 100, FileSearch.MostMatches, matches =>
             {
                 string word = matches == 100 ? "total" : "count";
-                popup.Text = word;
-                // The box tells of its new text after the frame, which puts a search begun before it off until a pause.
-                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-                Task searching = popup.SearchAsync();
-                Ui.WaitFor(() => searching.IsCompleted && popup.Searching.IsCompleted && popup.Status != "Searching…", $"the search for {word}");
+                Ui.Search(popup, word);
                 Assert.Equal(matches, popup.Matches.Count);
                 Ui.Settle();
                 return (popup.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<SearchLine>), () => { });

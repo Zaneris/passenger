@@ -43,10 +43,7 @@ public sealed class GodotFolderTests
         Ui.Press(window, "ESCAPE");
 
         FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-        popup.Text = "needle";
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Task searching = popup.SearchAsync();
-        Ui.WaitFor(() => searching.IsCompleted && popup.Searching.IsCompleted && popup.Status != "Searching…", "the search for needle");
+        Ui.Search(popup, "needle");
         string[] found = [.. popup.Matches.Select(m => Path.GetRelativePath(root, m.Path)).Distinct()];
         Assert.True(found.SequenceEqual([expected]), $"Find in Files found needle in [{string.Join(", ", found)}], where only {expected} is the person's");
         Ui.Press(window, "ESCAPE");

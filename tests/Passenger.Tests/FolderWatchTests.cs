@@ -160,11 +160,9 @@ public sealed class FolderWatchTests : IDisposable
         Ui.Press(window, "ESCAPE");
 
         Passenger.App.Navigation.FindInFilesPopup find = window.ShowFindInFiles(replace: false)!;
-        find.Text = "class Shop";
-        Task searching = find.SearchAsync();
-        Ui.WaitFor(() => searching.IsCompleted, "the search");
+        Ui.Search(find, "class Shop");
         string[] found = [.. find.Matches.Select(m => Path.GetFileName(m.Path))];
-        Assert.True(found.SequenceEqual(["Shop.cs"]), $"Find in Files finds class Shop in [{string.Join(", ", found)}], a save's temporary file among them");
+        Assert.True(found.SequenceEqual(["Shop.cs"]), $"Find in Files finds class Shop in [{string.Join(", ", found)}], a save's temporary file among them; the popup says '{find.Status}'");
         window.Close();
     }
 

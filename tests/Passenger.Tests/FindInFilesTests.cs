@@ -42,20 +42,20 @@ public sealed class FindInFilesTests : IDisposable
         window.OpenFile(Path.Combine(folder, "Beta.cs"));
         window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, "// one more count\n")]);
         FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-        Search(popup, "count");
+        Ui.Search(popup, "count");
         Assert.Equal(4, popup.Matches.Count);
         Assert.DoesNotContain(popup.Matches, m => m.Path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
         Assert.Contains(popup.Matches, m => m.LineText == "// one more count");
         Assert.Equal("4 matches in 2 files", popup.Status);
 
         popup.MatchCase = true;
-        Search(popup, "Count");
+        Ui.Search(popup, "Count");
         Assert.Equal(["    void Count() { }"], popup.Matches.Select(m => m.LineText));
         popup.MatchCase = false;
         popup.Regex = true;
-        Search(popup, @"c\w+t\(");
+        Ui.Search(popup, @"c\w+t\(");
         Assert.Single(popup.Matches);
-        Search(popup, "count(");
+        Ui.Search(popup, "count(");
         Assert.Empty(popup.Matches);
         string? why = FileSearch.Problem(popup.Query);
         Assert.True(why is { Length: > 0 }, "A regex that does not read is not said to be wrong");
@@ -72,7 +72,7 @@ public sealed class FindInFilesTests : IDisposable
         Ui.Settle();
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Words = true;
-        Search(popup, "count");
+        Ui.Search(popup, "count");
         Assert.Equal(3, popup.Matches.Count);
 
         window.Confirm = (_, _, _) => Task.FromResult(true);
@@ -88,7 +88,7 @@ public sealed class FindInFilesTests : IDisposable
         Assert.Contains("// the count of things", beta.Text.Snapshot.ToString(), StringComparison.Ordinal);
 
         popup = window.ShowFindInFiles(replace: false)!;
-        Search(popup, "int total");
+        Ui.Search(popup, "int total");
         Assert.Single(popup.Matches);
         Ui.Press(window, "ENTER");
         Assert.Equal("Alpha.cs", window.EditorArea.Active?.Name);
@@ -106,7 +106,7 @@ public sealed class FindInFilesTests : IDisposable
         File.WriteAllText(gamma, "class Gamma\n{\n    int tally = tally + tally;\n    int other = tally;\n}\n");
         MainWindow window = Open();
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
-        Search(popup, "tally");
+        Ui.Search(popup, "tally");
         Ui.Settle();
         Assert.Equal("4 matches in 1 file", popup.Status);
         Assert.True(popup.Lines.Select(l => (l.Line, l.Matches.Count)).SequenceEqual([(2, 3), (3, 1)]),
@@ -133,7 +133,7 @@ public sealed class FindInFilesTests : IDisposable
         Ui.Press(window, "ESCAPE");
 
         popup = window.ShowFindInFiles(replace: false)!;
-        Search(popup, "total");
+        Ui.Search(popup, "total");
         Ui.Settle();
         Ui.Press(window, "ENTER");
         Assert.Equal("Gamma.cs", window.EditorArea.Active?.Name);
@@ -154,7 +154,7 @@ public sealed class FindInFilesTests : IDisposable
         File.WriteAllBytes(path, System.Text.Encoding.Latin1.GetBytes("// Prix: 5 francs, déjà payés\nclass Gamma { }\n"));
         MainWindow window = Open();
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
-        Search(popup, "francs");
+        Ui.Search(popup, "francs");
         Assert.Single(popup.Matches);
 
         window.Confirm = (_, _, _) => Task.FromResult(true);
@@ -178,7 +178,7 @@ public sealed class FindInFilesTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         Ui.WaitFor(() => window.FileIndex.Count >= 112 && !window.FileIndex.IsWalking, "the folder's files indexed");
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
-        Search(popup, "tally");
+        Ui.Search(popup, "tally");
         Assert.Equal(FileSearch.MostMatches, popup.Matches.Count);
 
         List<string> asked = [];
@@ -215,7 +215,7 @@ public sealed class FindInFilesTests : IDisposable
         {
             Ui.WaitFor(() => window.FileIndex.Count >= 112 && !window.FileIndex.IsWalking, "the folder's files indexed");
             FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
-            Search(popup, "tally");
+            Ui.Search(popup, "tally");
             Assert.Equal(FileSearch.MostMatches, popup.Matches.Count);
             List<string> asked = [];
             window.Confirm = (_, question, _) =>
@@ -260,7 +260,7 @@ public sealed class FindInFilesTests : IDisposable
         MainWindow window = Open();
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Words = true;
-        Search(popup, "count");
+        Ui.Search(popup, "count");
         Assert.True(popup.Matches.Any(m => m.Name == "Wide.cs" && m.Line == 2 && m.Column == 8 && m.LineText == "    int count;"),
             $"Find in Files passed over a UTF-16 file the editor opens, or placed its match wrong: {string.Join("; ", popup.Matches.Select(m => $"{m.Name}:{m.Line + 1}:{m.Column + 1} {m.LineText}"))}");
         Assert.Contains(popup.Matches, m => m.Name == "WideBig.cs" && m.LineText == "// a count kept big-endian");
@@ -377,7 +377,7 @@ public sealed class FindInFilesTests : IDisposable
         Ui.Settle();
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Words = true;
-        Search(popup, "count");
+        Ui.Search(popup, "count");
         Assert.Equal(4, popup.Matches.Count);
 
         window.Confirm = (_, _, _) => Task.FromResult(true);
@@ -421,7 +421,7 @@ public sealed class FindInFilesTests : IDisposable
         };
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Words = true;
-        Search(popup, "count");
+        Ui.Search(popup, "count");
         popup.Replacement = "total";
         popup.RequestReplace();
         Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
@@ -471,7 +471,7 @@ public sealed class FindInFilesTests : IDisposable
         Passenger.App.History.HistoryTab history = window.LocalHistoryWindow.Shown!;
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Words = true;
-        Search(popup, "count");
+        Ui.Search(popup, "count");
         popup.Replacement = "total";
         popup.RequestReplace();
         Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
@@ -829,7 +829,7 @@ public sealed class FindInFilesTests : IDisposable
         MainWindow window = Open();
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Regex = true;
-        Search(popup, "(a+)+b|count");
+        Ui.Search(popup, "(a+)+b|count");
         Assert.True(popup.Status == "4 matches in 3 files; the regex took too long and stopped in Runs.txt", $"The popup says '{popup.Status}' of a regex that never ends in Runs.txt");
         Assert.Contains(popup.Matches, m => m is { Name: "Runs.txt", Line: 0, Column: 0, Length: 2 });
 
@@ -862,7 +862,7 @@ public sealed class FindInFilesTests : IDisposable
             MainWindow window = Open();
             FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
             popup.Words = true;
-            Search(popup, "count");
+            Ui.Search(popup, "count");
             Assert.True(popup.Matches.Any(m => PathNames.Same(m.Path, target)), $"Find in Files did not list the match in profile.txt, through notes.txt: {string.Join(", ", popup.Matches.Select(m => m.Path))}");
 
             window.Confirm = (_, _, _) => Task.FromResult(true);
@@ -898,7 +898,7 @@ public sealed class FindInFilesTests : IDisposable
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Regex = true;
         popup.FileMask = "*.txt";
-        Search(popup, @"\b");
+        Ui.Search(popup, @"\b");
         window.Confirm = (_, _, _) => Task.FromResult(true);
         popup.Replacement = "$_";
         popup.RequestReplace();
@@ -934,7 +934,7 @@ public sealed class FindInFilesTests : IDisposable
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.MatchCase = true;
         popup.Words = true;
-        Search(popup, "count");
+        Ui.Search(popup, "count");
         window.Confirm = (_, _, _) => Task.FromResult(true);
         popup.Replacement = "amount";
         popup.RequestReplace();
@@ -968,7 +968,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Confirm = (_, _, _) => Task.FromResult(true);
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Regex = true;
-        Search(popup, @"(\w+)(?=\()");
+        Ui.Search(popup, @"(\w+)(?=\()");
         Assert.Equal(2, popup.Matches.Count);
 
         popup.Replacement = "$1_";
@@ -978,7 +978,7 @@ public sealed class FindInFilesTests : IDisposable
         Assert.Contains("    void Count_() { }", beta.Text.Snapshot.ToString(), StringComparison.Ordinal);
 
         popup.Words = true;
-        Search(popup, "cat|dog");
+        Ui.Search(popup, "cat|dog");
         Assert.True(popup.Matches.Count == 2, $"cat|dog with Words found {popup.Matches.Count}: a word's part (catalog, hotdog) was taken for a whole word");
         popup.Replacement = "pet";
         popup.RequestReplace();
@@ -1000,7 +1000,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Confirm = (_, _, _) => Task.FromResult(true);
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Regex = true;
-        Search(popup, "^");
+        Ui.Search(popup, "^");
         // Every line's start, an empty line's too, but not the end after a file's last break.
         Assert.Equal((4, 5, 4), (popup.Matches.Count(m => m.Name == "Alpha.cs"), popup.Matches.Count(m => m.Name == "Beta.cs"), popup.Matches.Count(m => m.Name == "Gamma.cs")));
 
@@ -1178,7 +1178,7 @@ public sealed class FindInFilesTests : IDisposable
         {
             window.ApplySettings(window.Settings with { Ligatures = ligatures });
             FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-            Search(popup, "Twice");
+            Ui.Search(popup, "Twice");
             Ui.Settle();
             TextBlock line = popup.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Inlines is { Count: > 0 } runs && runs.Text?.Contains("=>", StringComparison.Ordinal) == true);
             Assert.True(PlainArrow(line) != ligatures,
@@ -1230,7 +1230,7 @@ public sealed class FindInFilesTests : IDisposable
             Assert.True(!code.IsDimmed && dimmed.Length == 0, $"The Explorer dims [{string.Join(", ", dimmed)}] of a monorepo's packages, which are its source");
 
             FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-            Search(popup, "needle");
+            Ui.Search(popup, "needle");
             string[] found = [.. popup.Matches.Select(m => Path.GetRelativePath(root, m.Path)).Distinct()];
             Assert.True(found.SequenceEqual([source]), $"Find in Files found needle in [{string.Join(", ", found)}], where the monorepo's packages alone are the person's code");
             Ui.Press(window, "ESCAPE");
@@ -1270,7 +1270,7 @@ public sealed class FindInFilesTests : IDisposable
         try
         {
             FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-            Search(popup, "needle");
+            Ui.Search(popup, "needle");
             string[] found = Found(popup, root);
             Assert.True(found.SequenceEqual(expected), $"Find in Files found needle in [{string.Join(", ", found)}], where {(caseIgnored ? "Bin, Obj and Node_Modules are the build's own" : "Bin, Obj and Node_Modules are the person's folders")}");
             Ui.Press(window, "ESCAPE");
@@ -1304,7 +1304,7 @@ public sealed class FindInFilesTests : IDisposable
         try
         {
             FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-            Search(popup, "needle");
+            Ui.Search(popup, "needle");
             Assert.Equal([Path.Combine("src", "a.js")], Found(popup, root));
             Ui.Press(window, "ESCAPE");
 
@@ -1315,7 +1315,7 @@ public sealed class FindInFilesTests : IDisposable
             Ui.ChooseFromRowMenu(window, row, "Edit", "Find in Files…");
             popup = Assert.IsType<FindInFilesPopup>(window.Popup);
             Assert.Equal((SearchScopeKind.Directory, package), (popup.ScopeKind, popup.Directory));
-            Search(popup, "needle");
+            Ui.Search(popup, "needle");
             string[] found = Found(popup, root);
             Assert.True(found.SequenceEqual([Path.Combine("node_modules", "pkg", "index.js")]),
                 $"Find in Files on node_modules/pkg found [{string.Join(", ", found)}], where its index.js holds needle");
@@ -1325,7 +1325,7 @@ public sealed class FindInFilesTests : IDisposable
             popup = window.ShowFindInFiles(replace: true)!;
             popup.ScopeKind = SearchScopeKind.Directory;
             popup.Directory = output;
-            Search(popup, "needle");
+            Ui.Search(popup, "needle");
             found = Found(popup, root);
             Assert.True(found.SequenceEqual([Path.Combine("bin", "Debug", "out.txt")]),
                 $"Find in Files on bin/Debug found [{string.Join(", ", found)}], where its out.txt holds needle");
@@ -1373,7 +1373,7 @@ public sealed class FindInFilesTests : IDisposable
     private static WeakReference<FindInFilesPopup> SearchAndClose(MainWindow window)
     {
         FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-        Search(popup, "count");
+        Ui.Search(popup, "count");
         Ui.Settle();
         CodeEditor preview = popup.GetVisualDescendants().OfType<CodeEditor>().Single();
         Assert.True(preview.Document.Snapshot.ToString().Contains("count", StringComparison.Ordinal), "The preview shows no file with a match");
@@ -1384,13 +1384,5 @@ public sealed class FindInFilesTests : IDisposable
 
     /// <summary>Searches for a text and waits for the search in force to show its matches: the box tells of its new text
     /// after the frame, before the search begins; another change that lands meanwhile searches again, cancelling this one.</summary>
-    private static void Search(FindInFilesPopup popup, string text)
-    {
-        popup.Text = text;
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Task searching = popup.SearchAsync();
-        Ui.WaitFor(() => searching.IsCompleted && popup.Searching.IsCompleted && popup.Status != "Searching…", $"the search for {text}");
-    }
-
     private MainWindow Open() => Ui.OpenFolder(folder);
 }
