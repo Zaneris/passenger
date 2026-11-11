@@ -38,9 +38,9 @@ public sealed class WarmServer : IAsyncDisposable
         (RoslynSession, IReadOnlyList<ProjectLoadProblem>, bool, ServerWatches?) taken;
         lock (gate)
         {
-            // One that loads its projects itself cannot be had to load them again: it is no use once files came.
+            // Not one whose solution's projects changed since it loaded them, nor one loading its own projects once files came.
             if (kept is not { IsLoaded: true } session || session.Server.HasExited || session.Folder != folder || session.Solution != solution
-                || (solution is null && !session.Projects.SequenceEqual(projects, StringComparer.Ordinal)) || (unloaded && !session.Fed))
+                || !session.Projects.SequenceEqual(projects, StringComparer.Ordinal) || (unloaded && !session.Fed))
             {
                 return null;
             }

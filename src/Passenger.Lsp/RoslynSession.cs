@@ -19,7 +19,7 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         Server = server;
         Folder = folder;
         Solution = solution;
-        Projects = solution is null ? projects : [];
+        Projects = projects;
         server.ProjectsLoaded += (_, _) =>
         {
             // The server says so after each open it was sent: the projects opened first, the rest, and each reload meanwhile.
@@ -76,7 +76,8 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     public string Folder { get; }
     public string? Solution { get; }
 
-    /// <summary>The projects it opened, with no solution to open.</summary>
+    /// <summary>The projects it was started on: those it opened with no solution to open, else those the solution listed
+    /// then (with the programs beside it).</summary>
     public IReadOnlyList<string> Projects { get; }
 
     public bool IsLoaded { get; private set; }

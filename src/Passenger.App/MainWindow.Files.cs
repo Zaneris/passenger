@@ -573,6 +573,7 @@ public partial class MainWindow
             catch (TimeoutException)
             {
                 // Gone or moved anyway: what the build writes after makes only build output there again.
+                IdeErrors.Write($"Waited {BuildsGoing.TotalSeconds:0} s for the design-time builds in {string.Join(", ", paths)} to end, and went on without them");
             }
         }
         return new LetGo(held, unwatched);
