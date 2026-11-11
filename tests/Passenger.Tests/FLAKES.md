@@ -40,6 +40,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   2,253,880 bytes let go of elsewhere between its readings. Not met beside those classes on this Mac, where
   `ListedNamesTests` ends before the readings. The test walks the command (`HeldBytes`), which fails at 9,790,288 bytes
   on a command made to keep the folder's bytes, and `GC.GetTotalMemory` is banned in the window tests (ef07a7feb, #1489).
+- `AspireOrchestrationTests`' `A_hosting_package_is_added_beside_one_the_AppHost_has_commented_out_…` and
+  `Orchestration_added_under_an_open_solution_filter_…`, CI's Windows runner at 09b6aa8de (run 43005926642): "The process
+  cannot access the file '…\Shop.ServiceDefaults' because it is being used by another process" in the class's constructor,
+  right after `Adding_orchestration_creates_the_missing_projects_and_one_global_undo_and_redo_…` passed; the next test's
+  reset, 40 ms later, removed it. **The test removed too soon**: the language server a closed window leaves for the class's
+  next test (`WarmServer`, the tests' alone) restores the solution once Redo brings the projects back, and its `dotnet
+  restore Shop.slnx` works in each project's folder as it reads it, while the reset removed what the test added before it
+  ended that server. On the Windows VM, the folders sampled through that test showed the restore from half a second before
+  the window closed to two seconds after, in Shop.ServiceDefaults at its end. The reset now ends the server first where a
+  test added files or folders, and waits out what it had started as they go;
+  `The_next_tests_reset_removes_the_projects_orchestration_made_while_…` holds the restore in ServiceDefaults and fails on
+  the old reset with CI's words (030d74ca8, #1488).
 - `LongFileAssistTests`' `Typing_with_pauses_in_a_file_of_twenty_thousand_lines_asks_for_the_screens_colours_and_the_…`,
   CI's Windows runner at 4499c3ecc (run 42854165103): "The whole file's colours were asked for 1 times while typing went
   on with pauses", its one `semanticTokens/full` 11 ms in, before the first statement's range at 322 ms. **The test
