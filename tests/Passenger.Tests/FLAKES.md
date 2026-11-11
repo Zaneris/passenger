@@ -41,6 +41,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   asked for the screen alone. Typing never asks for the whole file: a word between a key and its frame asked for the
   key's lines (6 to 8). The test types a key and takes it back, then waits until the colours ask nothing more, before
   counting (5c4d87b11, #1463).
+- `TerminalResponsivenessTests`' `A_paste_into_a_program_that_reads_nothing_leaves_the_window_taking_keys`, CI's macOS
+  runner at 52ee34043 (run 42904209048): "Waited 20 s for the start of the paste echoed", the loop let go before the
+  wait. **The test waited wrong**, but that does not explain it all: it pasted once the loop's command stood above the
+  cursor, and bash's line editor writes the line's end before it gives the terminal its echo back, so a paste between
+  the two lands unechoed, the pseudo-terminal holding it (its write waiting in the kernel, the command's 135 bytes alone
+  out) until a program reads it. On this Mac under 16 busy loops, 52 of 530 rounds of the test's steps had no echo while
+  the loop ran, 8 of 100 for a full 10 s, as `A_terminal_whose_program_read_none_of_a_paste_…` waits with its loop
+  running; none of 150 with the wait for the shell's own word that the loop runs. But every round met echoed once its
+  loop was let go (and 150 of 150 with the loop let go at once, as this test does, and 10 runs of the class), so CI's
+  20 s after the loop's end are not reproduced; one round of 60 waited 90 s for a new shell's prompt, not met again in
+  340. Both paste tests wait for that word, and their wait for the echo now says what the screen shows (1f9ba893a,
+  #1471).
 - `ProjectEvaluationTests`' `The_project_of_the_file_shown_and_those_it_references_load_in_the_language_server_before_…`,
   CI's Windows runner at 9431c8f49 (run 42986237634): "Sequence contains more than one element" in its `ServerLog`.
   **The test found its log by name**: it looked in the run's shared log folder for `server-*-{process id}.log`, and
