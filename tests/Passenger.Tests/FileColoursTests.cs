@@ -737,8 +737,8 @@ public sealed class FileColoursTests : FileColoursFolder
     }
 
     /// <summary>The files a solution keeps beside its code edit as their kinds: a .gitignore and an .editorconfig comment
-    /// a line with '#', the .editorconfig coloured as INI is; a solution filter is the JSON it is, coloured and folded;
-    /// and the status bar names a XAML file XAML and a project file MSBuild, not XML.</summary>
+    /// a line with '#', the .editorconfig coloured as INI is; a solution filter and a solution's launch profiles are the JSON
+    /// they are, coloured and folded; and the status bar names a XAML file XAML and a project file MSBuild, not XML.</summary>
     [AvaloniaFact]
     public void An_ignore_file_an_editorconfig_and_a_solution_filter_edit_as_their_kinds_and_the_status_bar_names_XAML()
     {
@@ -775,6 +775,12 @@ public sealed class FileColoursTests : FileColoursFolder
         Assert.Equal(TokenKind.JsonKey, KindOf(editor, "\"solution\""));
         Assert.Equal(TokenKind.String, KindOf(editor, "\"Shop.slnx\""));
         Assert.True(editor.FoldRegions.Count >= 3, $"The solution filter has {editor.FoldRegions.Count} folds, where its object, its solution and its projects each fold");
+        foreach (string launches in (string[])["Shop.slnLaunch", "Shop.slnLaunch.user"])
+        {
+            editor = Open(window, launches, "[\n  {\n    \"Name\": \"Both\",\n    \"Projects\": []\n  }\n]");
+            Assert.True(window.LanguageShown == "JSON" && KindOf(editor, "\"Name\"") == TokenKind.JsonKey,
+                $"{launches}, Visual Studio's launch profiles, edits as {window.LanguageShown} rather than the JSON it is");
+        }
 
         Open(window, "Views/MainView.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\" />\n");
         Assert.Equal("XAML", window.LanguageShown);

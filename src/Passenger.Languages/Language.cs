@@ -176,13 +176,15 @@ public sealed class Language
 
     /// <summary>JSON, told to its server as JSON with comments where the file's reader takes them: the files VS Code reads
     /// so (its json, configuration-editing and typescript-basics extensions' jsonc names, and every JSON file under
-    /// .vscode), and .NET's (ASP.NET Core's settings and launch profiles, the SDK's global.json, a solution filter).</summary>
+    /// .vscode), and .NET's (ASP.NET Core's settings and launch profiles, the SDK's global.json, a solution filter, a solution's
+/// multi-project launch profiles).</summary>
     public static readonly Language Json = new("json", "JSON",
         [.. ((string[])["*.jsonc", "*.eslintrc", "*.eslintrc.json", "*.jsfmtrc", "*.jshintrc", "*.swcrc", "*.hintrc", "*.babelrc", "*.toolset.jsonc",
             "babel.config.json", "bun.lock", ".babelrc.json", ".ember-cli", "typedoc.json", ".github/hooks/*.json",
             "*.code-workspace", "*language-configuration.json", "*icon-theme.json", "*color-theme.json", "settings.json", "launch.json", "tasks.json",
             "mcp.json", "keybindings.json", "extensions.json", "argv.json", "profiles.json", "devcontainer.json", ".devcontainer.json", ".vscode/*.json",
-            "tsconfig*.json", "jsconfig*.json", "appsettings*.json", "launchSettings.json", "global.json", "*.slnf"]).Select(glob => new FilePattern(glob, "jsonc")),
+            "tsconfig*.json", "jsconfig*.json", "appsettings*.json", "launchSettings.json", "global.json", "*.slnf", "*.slnLaunch", "*.slnLaunch.user"])
+            .Select(glob => new FilePattern(glob, "jsonc")),
             "*.json"],
         line: "//", block: ("/*", "*/"), indent: 2, grammar: new("source.json", "JSON.tmLanguage.json"), folds: FoldScan.Json, service: LanguageService.Json);
 
