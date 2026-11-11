@@ -17,7 +17,7 @@
     <CommunityToolkitMvvmVersion>8.4.2</CommunityToolkitMvvmVersion>
     <!-- Aspire's templates, AppHost SDK and package, dashboard, orchestrator and CLI at one version, downloaded for the
          tests' local feed. -->
-    <AspireTemplatesVersion>13.6.4</AspireTemplatesVersion>
+    <AspireTemplatesVersion>13.6.5</AspireTemplatesVersion>
     <!-- WPF's reference pack at the version global.json's SDK gives its own WPF (its TargetingPackVersion), downloaded
          for the tests' local feed so the WPF app they make restores off Windows; another SDK's fails WpfXamlTests naming
          the version to pin. -->
@@ -155,12 +155,12 @@
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="$(AspireTemplatesVersion)" />
     <!-- At the versions Aspire's templates at AspireTemplatesVersion write, not their newest, so the test folders made
          from those templates restore from the package cache tests/AspireGraphs fills. -->
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
     <!-- What writes a build's OpenAPI document, restored for the test of a document Passenger reads from the build: at
          Microsoft.AspNetCore.OpenApi's version above, not its newest, as its dotnet-getdocument loads the Microsoft.OpenApi
-         it is built against beside the app's own and fails where the app's is older (10.0.14's takes 2.12.2, where
-         OpenApi 10.0.12 brings 2.12.0). -->
-    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.12" />
+         it is built against beside the app's own and fails where the app's is older (10.0.15's takes 2.13.0, where
+         OpenApi 10.0.14 brings 2.12.2). -->
+    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.10.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
