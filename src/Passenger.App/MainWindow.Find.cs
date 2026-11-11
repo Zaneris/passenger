@@ -13,8 +13,9 @@ using Passenger.Text;
 namespace Passenger.App;
 
 /// <summary>Find Usages in the Find window: the language server's usages told apart by what each does there (read from
-/// the file's syntax), put under their projects and files, each search kept as a tab; Show Usages' the same usages in a
-/// popup under the caret, which hands them to the Find window on asking.</summary>
+/// the file's syntax) and by whether they are in generated code (as Roslyn tells it), put under their projects and files,
+/// each search kept as a tab; Show Usages' the same usages in a popup under the caret, which hands them to the Find window
+/// on asking.</summary>
 public partial class MainWindow
 {
     private FindView? find;
@@ -26,8 +27,14 @@ public partial class MainWindow
     {
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Find, "Find", IconKeys.Search, () =>
         {
-            find = new FindView(path => Editors.TextOf(path)?.ToString(), path => Editors.ParseOptions(path));
+            find = new FindView(path => Editors.TextOf(path)?.ToString(), path => Editors.ParseOptions(path)) { Alone = findSettings.UsagesAlone };
             find.GoToRequested += (_, usage) => NavigateTo(usage.Path, new TextPosition(usage.Line, usage.Column));
+            // Kept for every later search: one who sets generated code aside wants it aside each time.
+            find.AloneChanged += (_, _) =>
+            {
+                findSettings = findSettings with { UsagesAlone = find.Alone };
+                state?.Find.Set(findSettings);
+            };
             return find;
         }, Docking.ToolAnchor.BottomLeft)
         {
@@ -67,15 +74,16 @@ public partial class MainWindow
 
     /// <summary>The usages under what each does there, read from each file's syntax off the UI thread: an open file's
     /// shared parse as it stands, a file not open read from disk and parsed there, a source generator's code in its copy
-    /// (<see cref="GeneratedCode"/>); with what the search went without. Show Usages' go to its popup while the person
-    /// still waits where they asked, else to the Find window.</summary>
+    /// (<see cref="GeneratedCode"/>), each marked where it is in generated code; with what the search went without. Show
+    /// Usages' go to its popup while the person still waits where they asked, else to the Find window.</summary>
     private async Task ShowUsagesAsync(UsagesFound found)
     {
         (string title, IReadOnlyList<LspLocation> locations, string? note) = (found.Title, found.Usages, found.Note);
         int search = ++usageSearches;
+        IReadOnlySet<string> generated = new HashSet<string>();
         if (session.CSharp is { } csharp)
         {
-            locations = await csharp.Generated.CopiedAsync(locations);
+            (locations, generated) = await csharp.Generated.SetApartAsync(locations);
         }
         // Each file's path made canonical once, not once a usage: that asks the disk.
         Dictionary<string, string> paths = locations.Select(l => l.Uri).Distinct(StringComparer.Ordinal).ToDictionary(u => u, DocumentUris.ToPath, StringComparer.Ordinal);
@@ -94,7 +102,10 @@ public partial class MainWindow
                 {
                     // A file that cannot be read keeps the server's places, the best there is to say of them.
                     found.AddRange(here.Select(l => new Usage(path, l.Range.Start.Line, l.Range.Start.Character,
-                        l.Range.End.Line == l.Range.Start.Line ? Math.Max(0, l.Range.End.Character - l.Range.Start.Character) : 0, string.Empty, UsageKind.Other, project)));
+                        l.Range.End.Line == l.Range.Start.Line ? Math.Max(0, l.Range.End.Character - l.Range.Start.Character) : 0, string.Empty, UsageKind.Other, project)
+                    {
+                        Generated = generated.Contains(l.Uri),
+                    }));
                     continue;
                 }
                 ServerLines lines = ServerLines.Of(snapshot);
@@ -107,7 +118,10 @@ public partial class MainWindow
                     LspRange range = here[i].Range;
                     TextPosition start = snapshot.GetPosition(offsets[i]);
                     int length = range.End.Line == range.Start.Line ? range.End.Character - range.Start.Character : 0;
-                    found.Add(new Usage(path, start.Line, start.Column, Math.Max(0, length), snapshot.GetLineText(start.Line), kinds[i], project));
+                    found.Add(new Usage(path, start.Line, start.Column, Math.Max(0, length), snapshot.GetLineText(start.Line), kinds[i], project)
+                    {
+                        Generated = generated.Contains(here[i].Uri),
+                    });
                 }
             }
             return found;
@@ -142,7 +156,7 @@ public partial class MainWindow
                 NavigateTo(usage.Path, new TextPosition(usage.Line, usage.Column));
             }
         }, popups.PointIn(editor, under));
-        status.Text = $"{title}: {usages.Count} found{(note is null ? string.Empty : $"; {char.ToLowerInvariant(note[0])}{note[1..]}")}";
+        status.Text = Found(title, usages, note);
     }
 
     /// <summary>Usages in a tab of the Find window, which takes the keys where the person still waits for them.</summary>
@@ -156,6 +170,15 @@ public partial class MainWindow
             Dock.UpdateLayout();
             Find.FocusRows();
         }
-        status.Text = $"{title}: {usages.Count} found{(note is null ? string.Empty : $"; {char.ToLowerInvariant(note[0])}{note[1..]}")}";
+        status.Text = Found(title, usages, note);
+    }
+
+    /// <summary>What the status bar says of a search: how many usages it found, how many of them are in generated code,
+    /// and what it went without.</summary>
+    private static string Found(string title, IReadOnlyList<Usage> usages, string? note)
+    {
+        int generated = usages.Count(u => u.Generated);
+        return $"{title}: {usages.Count} found{(generated > 0 ? $", {generated} in generated code" : string.Empty)}"
+            + (note is null ? string.Empty : $"; {char.ToLowerInvariant(note[0])}{note[1..]}");
     }
 }

@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.Web;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Extensions;
+using Microsoft.CodeAnalysis.GeneratedCodeRecognition;
 using Microsoft.CodeAnalysis.LanguageServer;
 using Roslyn.LanguageServer.Protocol;
 
@@ -74,5 +75,42 @@ public sealed class GeneratedNamed : IExtensionWorkspaceMessageHandler<Generated
             }
         }
         return new GeneratedFound(found);
+    }
+}
+
+/// <summary>Which of the documents named are generated code, as Roslyn's own check tells it for its analyzers and code
+/// fixes: a source generator's document, and a C# file an .editorconfig's <c>generated_code</c> marks, else one whose name
+/// (<c>.g.cs</c>, <c>.designer.cs</c>, <c>.generated.cs</c>) or opening comment (<c>&lt;auto-generated&gt;</c>) says a tool
+/// wrote it. A URI of no C# document, a Razor or XAML file's, is not.</summary>
+public sealed class GeneratedDocuments : IExtensionWorkspaceMessageHandler<GeneratedDocumentsAsked, GeneratedDocumentsFound>
+{
+    public async Task<GeneratedDocumentsFound> ExecuteAsync(GeneratedDocumentsAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
+    {
+        List<bool> generated = [];
+        foreach (string uri in message.Uris)
+        {
+            generated.Add(await IsGeneratedAsync(context.Solution, uri, cancellationToken).ConfigureAwait(false));
+        }
+        return new GeneratedDocumentsFound(generated);
+    }
+
+    /// <summary>Whether any document of a URI is generated: a file linked into several projects is one in each, and an
+    /// .editorconfig may mark it in one of them.</summary>
+    private static async Task<bool> IsGeneratedAsync(Solution solution, string uri, CancellationToken cancel)
+    {
+        if (!System.Uri.TryCreate(uri, UriKind.Absolute, out _))
+        {
+            return false;
+        }
+        foreach (TextDocument document in await solution.GetTextDocumentsAsync(new DocumentUri(uri), cancel).ConfigureAwait(false))
+        {
+            if (document is SourceGeneratedDocument
+                || document is Document code && code.Project.Services.GetService<IGeneratedCodeRecognitionService>() is { } recognition
+                && await recognition.IsGeneratedCodeAsync(code, cancel).ConfigureAwait(false))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }

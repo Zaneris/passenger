@@ -92,6 +92,60 @@ public sealed class GeneratedCode
         return [.. places.Select(p => copies.TryGetValue(p.Uri, out string? copy) ? p with { Uri = copy } : p)];
     }
 
+    /// <summary>Places the server named as <see cref="CopiedAsync"/> gives them, with the URIs among them of generated code
+    /// as Roslyn tells it: a source generator's documents, and the C# files the server's own check takes for generated (an
+    /// .editorconfig's generated_code, else a name such as .g.cs or .designer.cs, or an &lt;auto-generated&gt; comment at
+    /// the top); only the generators' where the server can't be asked.</summary>
+    public async Task<(IReadOnlyList<LspLocation> Places, IReadOnlySet<string> Generated)> SetApartAsync(IReadOnlyList<LspLocation> places, CancellationToken cancel = default)
+    {
+        UiThread.Check();
+        IReadOnlySet<string> generated = await GeneratedAsync(places, cancel);
+        IReadOnlyList<LspLocation> copied = await CopiedAsync(places, cancel);
+        HashSet<string> marked = new(StringComparer.Ordinal);
+        for (int i = 0; i < places.Count; i++)
+        {
+            if (generated.Contains(places[i].Uri))
+            {
+                marked.Add(copied[i].Uri);
+            }
+        }
+        return (copied, marked);
+    }
+
+    /// <summary>The URIs of the places' documents that are generated code (<see cref="SetApartAsync"/>), the server asked
+    /// once about every C# file among them.</summary>
+    private async Task<IReadOnlySet<string>> GeneratedAsync(IReadOnlyList<LspLocation> places, CancellationToken cancel)
+    {
+        string[] uris = [.. places.Select(p => p.Uri).Distinct(StringComparer.Ordinal)];
+        HashSet<string> generated = new(uris.Where(u => DocumentUris.GeneratedName(u) is not null), StringComparer.Ordinal);
+        string[] asked = [.. uris.Where(u => !generated.Contains(u) && IsCode(u))];
+        if (asked.Length == 0 || server() is not { } session)
+        {
+            return generated;
+        }
+        IReadOnlyList<bool>? told;
+        try
+        {
+            told = await session.GeneratedCodeAsync(asked, cancel);
+        }
+        catch (LanguageServerFailed)
+        {
+            // A server that ended has nothing to say of the files; their places are still places.
+            return generated;
+        }
+        for (int i = 0; told is not null && i < Math.Min(asked.Length, told.Count); i++)
+        {
+            if (told[i])
+            {
+                generated.Add(asked[i]);
+            }
+        }
+        return generated;
+
+        static bool IsCode(string uri) => Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) && parsed.IsFile
+            && Languages.Language.ForPath(parsed.LocalPath) == Languages.Language.CSharp;
+    }
+
     /// <summary>A copy as the document the server has now, to ask about (<see cref="RoslynSession.Unopened"/>), else why it
     /// can't be asked. The copy takes the server's text first, so a place in it is a place in that document.</summary>
     public async Task<(LspDocument? Lsp, string? Why)> AskableAsync(OpenDocument copy, CancellationToken cancel = default)

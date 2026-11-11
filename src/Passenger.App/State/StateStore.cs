@@ -108,8 +108,8 @@ public sealed class StateStore
     /// <summary>The newest release the window has said is out, which it says once.</summary>
     public StateDocument<UpdatesState> Updates { get; }
 
-    /// <summary>Find in Files' file mask, the masks used lately and whether directories are searched recursively, which
-    /// every folder shares.</summary>
+    /// <summary>Find in Files' file mask, the masks used lately and whether directories are searched recursively, and the
+    /// side of a search's usages the Find window shows alone, which every folder shares.</summary>
     public StateDocument<FindSettingsState> Find { get; }
 
     /// <summary>Rename's options as they were left, which every folder shares.</summary>

@@ -700,6 +700,10 @@ public partial class MainWindow : IdeWindow
         }
         Dock.LayoutChanged += (_, _) => KeepDock();
         findSettings = store.Find.Value;
+        if (find is not null)
+        {
+            find.Alone = findSettings.UsagesAlone;
+        }
         Editors.ShowsMarkdownPreview = store.Previews.Value.Markdown;
         Editors.ShowsSvgPreview = store.Previews.Value.Svg;
         Editors.ShowsHtmlPreview = store.Previews.Value.Html;

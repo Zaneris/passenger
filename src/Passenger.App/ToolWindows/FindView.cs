@@ -13,7 +13,19 @@ namespace Passenger.App.ToolWindows;
 
 /// <summary>One usage as the Find window lists it: where it is (lines and columns from 0), its line's text, what it
 /// does there, and the project it is in.</summary>
-public sealed record Usage(string Path, int Line, int Column, int Length, string LineText, UsageKind Kind, string Project);
+public sealed record Usage(string Path, int Line, int Column, int Length, string LineText, UsageKind Kind, string Project)
+{
+    /// <summary>Whether it is in generated code: a source generator's, or a file Roslyn takes for one a tool wrote.</summary>
+    public bool Generated { get; init; }
+}
+
+/// <summary>The usages of a search the Find window shows alone, where the search has both: those in the person's own
+/// code, or those in generated code.</summary>
+public enum UsageSide
+{
+    Yours,
+    Generated,
+}
 
 /// <summary>A row of the Find window's tree: a kind of usage, a project, a file, or a usage, at its depth.</summary>
 public sealed class FindRow(string label, string? detail, int depth, Usage? usage, IReadOnlyList<FindRow> children) : Observable, ITreeRow
@@ -39,12 +51,17 @@ public sealed class FindRow(string label, string? detail, int depth, Usage? usag
 }
 
 /// <summary>The Find window: a search's usages grouped by what they do (declaration, write, read, invocation,
-/// import), then project, then file, with the chosen usage's code beside the tree. Each search is a tab to come back
-/// to. Enter, F4, a double-click or a usage's menu goes to a usage; Right and Left open and close a group.</summary>
+/// import), then project, then file, those in generated code grouped so under a group of their own after them, with the
+/// chosen usage's code beside the tree. Each search is a tab to come back to; where it has usages in generated code, a
+/// filter for each side with its count shows one side alone. Enter, F4, a double-click or a usage's menu goes to a usage;
+/// Right and Left open and close a group.</summary>
 public sealed class FindView : DockPanel
 {
     /// <summary>The most searches kept as tabs; the oldest goes when another comes.</summary>
     private const int TabLimit = 10;
+
+    /// <summary>The group the usages in generated code are under.</summary>
+    public const string GeneratedGroup = "Generated code";
 
     private static readonly (UsageKind Kind, string Name)[] Groups =
     [
@@ -71,7 +88,16 @@ public sealed class FindView : DockPanel
     /// <summary>The searches' tabs, shown only while there is one: an empty row with a rule under it says nothing.</summary>
     private readonly Border tabBar;
 
+    /// <summary>The filters for each side, shown while the search shown has usages in generated code.</summary>
+    private readonly StackPanel sides;
+    private readonly TextBlock yoursCount;
+    private readonly TextBlock generatedCount;
+
+    /// <summary>What the list says while the side shown alone has no usages.</summary>
+    private readonly TextBlock noneShown;
+
     private Search? current;
+    private UsageSide? alone;
 
     /// <param name="textOf">A file's text as it is now: the open editor's, else the disk's.</param>
     /// <param name="parseOptions">What a C# file's preview is parsed with: its project's symbols.</param>
@@ -79,7 +105,18 @@ public sealed class FindView : DockPanel
     {
         this.textOf = textOf;
         this.parseOptions = parseOptions;
-        tabBar = ToolBars.Top(new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = tabs, Margin = new Thickness(8, 0) });
+        YourCode = ToolButtons.Counted(IconKeys.Edit, TokenKeys.Icon, "Show only usages in your code", out yoursCount);
+        GeneratedCode = ToolButtons.Counted(IconKeys.Wand, TokenKeys.Icon, "Show only usages in generated code", out generatedCount);
+        YourCode.Click += (_, _) => Choose(UsageSide.Yours);
+        GeneratedCode.Click += (_, _) => Choose(UsageSide.Generated);
+        sides = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), IsVisible = false };
+        sides.Children.AddRange([YourCode, GeneratedCode]);
+        DockPanel.SetDock(sides, Dock.Right);
+        tabBar = ToolBars.Top(new DockPanel
+        {
+            Margin = new Thickness(8, 0),
+            Children = { sides, new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = tabs } },
+        });
         tabBar.IsVisible = false;
         Children.Add(tabBar);
         list = new ListBox
@@ -106,7 +143,8 @@ public sealed class FindView : DockPanel
             ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
         ]);
         preview = new CodeEditor { IsReadOnly = true, ShowErrorStripe = false, LineCommentPrefix = null, FontSize = 12.5, Document = new TextDocument() };
-        PaneSplit body = new(list, preview, "*,1,*");
+        noneShown = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "No usages in your code", IsVisible = false };
+        PaneSplit body = new(new Panel { Children = { list, noneShown } }, preview, "*,1,*");
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.FindUsages, keys => $"{ActionTips.Named("Find Usages", keys)} lists a symbol's usages here");
         note = MutedText.Wrapped(string.Empty);
@@ -120,6 +158,29 @@ public sealed class FindView : DockPanel
 
     /// <summary>A usage to go to.</summary>
     public event EventHandler<Usage>? GoToRequested;
+
+    /// <summary>A side was chosen to show alone, or both again, by its filter (<see cref="Alone"/>).</summary>
+    public event EventHandler? AloneChanged;
+
+    /// <summary>The filter showing only the usages in the person's own code, with how many the search has.</summary>
+    public ToggleButton YourCode { get; }
+
+    /// <summary>The filter showing only the usages in generated code, with how many the search has.</summary>
+    public ToggleButton GeneratedCode { get; }
+
+    /// <summary>The side shown alone in a search that has both, null for both; the rows follow at once.</summary>
+    public UsageSide? Alone
+    {
+        get => alone;
+        set
+        {
+            if (alone != value)
+            {
+                alone = value;
+                Filter();
+            }
+        }
+    }
 
     /// <summary>The visible rows of the search shown.</summary>
     public IReadOnlyList<FindRow> Rows => rows;
@@ -155,8 +216,24 @@ public sealed class FindView : DockPanel
     }
 
     /// <summary>A new search's usages in a tab of their own, every group open and the first usage chosen, with what the
-    /// search went without above them (<paramref name="without"/>), when it went without anything.</summary>
+    /// search went without above them (<paramref name="without"/>), when it went without anything. Those in generated
+    /// code are grouped alike under <see cref="GeneratedGroup"/>, after the rest.</summary>
     public void Show(string title, IReadOnlyList<Usage> usages, string? without = null)
+    {
+        List<Usage> yours = [.. usages.Where(u => !u.Generated)];
+        List<Usage> generated = [.. usages.Where(u => u.Generated)];
+        FindRow? made = generated.Count == 0 ? null : new FindRow(GeneratedGroup, Core.Plural.Of(generated.Count, "usage"), 0, null, Kinds(generated, 1));
+        Search search = new(title, Kinds(yours, 0), yours.Count, made, generated.Count, without);
+        searches.Add(search);
+        if (searches.Count > TabLimit)
+        {
+            searches.RemoveAt(0);
+        }
+        ShowSearch(search);
+    }
+
+    /// <summary>Usages grouped by what they do, then project, then file, the groups of what they do at a depth.</summary>
+    private static List<FindRow> Kinds(IReadOnlyList<Usage> usages, int depth)
     {
         List<FindRow> roots = [];
         foreach ((UsageKind kind, string name) in Groups)
@@ -167,19 +244,12 @@ public sealed class FindView : DockPanel
                 continue;
             }
             List<FindRow> projects = [.. ofKind.GroupBy(u => u.Project).OrderBy(g => g.Key, StringComparer.Ordinal).Select(project =>
-                new FindRow(project.Key, Core.Plural.Of(project.Count(), "usage"), 1, null, [.. project.GroupBy(u => u.Path).OrderBy(g => g.Key, StringComparer.Ordinal).Select(file =>
-                    new FindRow(Path.GetFileName(file.Key), Core.Plural.Of(file.Count(), "usage"), 2, null, [.. file.OrderBy(u => u.Line).ThenBy(u => u.Column).Select(u =>
-                        new FindRow(u.LineText.Trim(), (u.Line + 1).ToString(), 3, u, []))]))]))];
-            roots.Add(new FindRow(name, Core.Plural.Of(ofKind.Count, "usage"), 0, null, projects));
+                new FindRow(project.Key, Core.Plural.Of(project.Count(), "usage"), depth + 1, null, [.. project.GroupBy(u => u.Path).OrderBy(g => g.Key, StringComparer.Ordinal).Select(file =>
+                    new FindRow(Path.GetFileName(file.Key), Core.Plural.Of(file.Count(), "usage"), depth + 2, null, [.. file.OrderBy(u => u.Line).ThenBy(u => u.Column).Select(u =>
+                        new FindRow(u.LineText.Trim(), (u.Line + 1).ToString(), depth + 3, u, []))]))]))];
+            roots.Add(new FindRow(name, Core.Plural.Of(ofKind.Count, "usage"), depth, null, projects));
         }
-        Search search = new(title, roots, without);
-        searches.Add(search);
-        if (searches.Count > TabLimit)
-        {
-            searches.RemoveAt(0);
-        }
-        ShowSearch(search);
-
+        return roots;
     }
 
     /// <summary>Shows a kept search again, as a click on its tab does.</summary>
@@ -216,7 +286,7 @@ public sealed class FindView : DockPanel
     /// <summary>Opens every group of the search shown, the chosen row kept chosen.</summary>
     public void ExpandAll() => ShowAll(expanded: true);
 
-    /// <summary>Closes every group of the search shown down to the kinds of usage, the first chosen where the chosen row
+    /// <summary>Closes every group of the search shown down to those at the top, the first chosen where the chosen row
     /// is under one.</summary>
     public void CollapseAll() => ShowAll(expanded: false);
 
@@ -231,7 +301,7 @@ public sealed class FindView : DockPanel
         {
             row.IsExpanded = expanded && row.Expands;
         }
-        rows.Show([.. TreeRows<FindRow>.Shown(current.Roots, r => r.Children)]);
+        rows.Show([.. TreeRows<FindRow>.Shown(ShownGroups(current), r => r.Children)]);
         list.SelectedItem = chosen is not null && rows.Contains(chosen) ? chosen : rows.FirstOrDefault();
 
         static IEnumerable<FindRow> Every(IEnumerable<FindRow> level) => level.SelectMany(row => Every(row.Children).Prepend(row));
@@ -253,13 +323,51 @@ public sealed class FindView : DockPanel
     private void ShowSearch(Search search)
     {
         current = search;
-        rows.Show([.. TreeRows<FindRow>.Shown(search.Roots, r => r.Children)]);
+        rows.Show([.. TreeRows<FindRow>.Shown(ShownGroups(search), r => r.Children)]);
         note.Text = search.Without;
         note.IsVisible = search.Without is not null;
         Body.IsVisible = true;
         placeholder.IsVisible = false;
         DrawTabs();
+        DrawSides();
         list.SelectedItem = rows.FirstOrDefault(r => r.Usage is not null);
+    }
+
+    /// <summary>The groups of a search the rows show: both sides, else the side shown alone where it has both.</summary>
+    private IReadOnlyList<FindRow> ShownGroups(Search search) => search.Generated is not { } made ? search.Yours
+        : alone == UsageSide.Yours ? search.Yours
+        : alone == UsageSide.Generated ? [made]
+        : [.. search.Yours, made];
+
+    /// <summary>A side's filter clicked: that side alone, or both again where it was alone already.</summary>
+    private void Choose(UsageSide side)
+    {
+        Alone = alone == side ? null : side;
+        AloneChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The rows of the side or sides shown now, the chosen row kept where it still shows, else the first usage.</summary>
+    private void Filter()
+    {
+        if (current is null)
+        {
+            return;
+        }
+        FindRow? chosen = Selected;
+        rows.Show([.. TreeRows<FindRow>.Shown(ShownGroups(current), r => r.Children)]);
+        list.SelectedItem = chosen is not null && rows.Contains(chosen) ? chosen : rows.FirstOrDefault(r => r.Usage is not null) ?? rows.FirstOrDefault();
+        DrawSides();
+    }
+
+    /// <summary>The filters with each side's count, pressed for the side shown alone, while the search shown has both.</summary>
+    private void DrawSides()
+    {
+        sides.IsVisible = current?.Generated is not null;
+        yoursCount.Text = (current?.YoursCount ?? 0).ToString(System.Globalization.CultureInfo.CurrentCulture);
+        generatedCount.Text = (current?.GeneratedCount ?? 0).ToString(System.Globalization.CultureInfo.CurrentCulture);
+        YourCode.IsChecked = sides.IsVisible && alone == UsageSide.Yours;
+        GeneratedCode.IsChecked = sides.IsVisible && alone == UsageSide.Generated;
+        noneShown.IsVisible = rows.Count == 0 && current is { Generated: not null } && alone == UsageSide.Yours;
     }
 
     private void DrawTabs()
@@ -290,6 +398,7 @@ public sealed class FindView : DockPanel
         }
         current = null;
         rows.Clear();
+        DrawSides();
         tabs.Children.Clear();
         tabBar.IsVisible = false;
         Body.IsVisible = false;
@@ -360,7 +469,7 @@ public sealed class FindView : DockPanel
             number.Text = usage ? row.Detail : null;
             chevron.IsVisible = !usage;
             chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
-            FindRow? file = !usage && row.Depth == 2 && row.Children.FirstOrDefault()?.Usage is not null ? row.Children[0] : null;
+            FindRow? file = !usage && row.Children.FirstOrDefault()?.Usage is not null ? row.Children[0] : null;
             icon.IsVisible = file is not null;
             icon.Data = file is { Usage: { } first } ? Explorer.FileIcons.ForFile(first.Path) : null;
             icon.Foreground = file is { Usage: { } at } ? Explorer.FileIcons.BrushForFile(at.Path) : null;
@@ -380,5 +489,11 @@ public sealed class FindView : DockPanel
         });
     }
 
-    private sealed record Search(string Title, IReadOnlyList<FindRow> Roots, string? Without);
+    /// <summary>A search: its usages in the person's own code grouped, and those in generated code under one group of their
+    /// own where it has any, with how many each side has.</summary>
+    private sealed record Search(string Title, IReadOnlyList<FindRow> Yours, int YoursCount, FindRow? Generated, int GeneratedCount, string? Without)
+    {
+        /// <summary>Every group at the top, whether shown or not.</summary>
+        public IReadOnlyList<FindRow> Roots => Generated is { } made ? [.. Yours, made] : Yours;
+    }
 }

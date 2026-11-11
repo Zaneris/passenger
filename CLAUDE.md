@@ -263,7 +263,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   server's edit to a file written moments before waits for the server to read it (`WorkspaceEdits`); one written as it
   worked is refused. A generated document is never opened in the server (it would freeze its text into the compilation):
   its file (`RoslynSession.WrittenAsync`) or a read-only copy (`GeneratedCode`), asked about through
-  `RoslynSession.Unopened`. The server finds a partial member's callers only at its declaring half and callees only at
+  `RoslynSession.Unopened`. Whether a place is in generated code is Roslyn's own check, asked through the extension
+  (`GeneratedCode.SetApartAsync`), never a file-name or comment rule of Passenger's. The server finds a partial member's callers only at its declaring half and callees only at
   its body half (`PartialHalf`). Its Go to Declaration leaves out a type's generated parts once the person wrote one
   (`GeneratedParts`); an extension's document handler refuses a file that's no C# document, a `.razor`, so a handler
   asked of any file is a workspace one. C# in XAML has one finder (`XamlService.UsesAsync`). A multi-targeted project's

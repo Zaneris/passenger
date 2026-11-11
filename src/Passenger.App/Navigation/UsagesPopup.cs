@@ -10,19 +10,20 @@ using Passenger.Languages.CSharp;
 
 namespace Passenger.App.Navigation;
 
-/// <summary>Show Usages: a symbol's usages under the caret, its declaration first, each its file and line with its line
-/// of code (the usage in bold) and what it does there, narrowed as a file's name or code is typed, with what the search
-/// went without above them; Up and Down move, Enter or a double-click goes to one, Escape leaves, and Open in Find Window
-/// (or Find Usages' keys) lists them in the Find window instead.</summary>
+/// <summary>Show Usages: a symbol's usages under the caret, its declaration first and those in generated code last, each
+/// its file and line with its line of code (the usage in bold) and what it does there, narrowed as a file's name or code
+/// is typed, with what the search went without above them; Up and Down move, Enter or a double-click goes to one, Escape
+/// leaves, and Open in Find Window (or Find Usages' keys) lists them in the Find window instead.</summary>
 public sealed class UsagesPopup : SearchPopup<Usage>
 {
     private readonly IReadOnlyList<Usage> all;
     private readonly string? note;
 
     public UsagesPopup(string title, IReadOnlyList<Usage> usages, string? note)
-        : base($"{title}  {Core.Plural.Of(usages.Count, "usage")}", "A file's name or code", PopupFrame.Wide)
+        : base($"{title}  {Core.Plural.Of(usages.Count, "usage")}{(usages.Count(u => u.Generated) is > 0 and int made ? $", {made} in generated code" : string.Empty)}",
+            "A file's name or code", PopupFrame.Wide)
     {
-        all = [.. usages.OrderBy(u => u.Kind == UsageKind.Declaration ? 0 : 1).ThenBy(u => u.Path, StringComparer.Ordinal).ThenBy(u => u.Line).ThenBy(u => u.Column)];
+        all = [.. usages.OrderBy(u => u.Generated).ThenBy(u => u.Kind == UsageKind.Declaration ? 0 : 1).ThenBy(u => u.Path, StringComparer.Ordinal).ThenBy(u => u.Line).ThenBy(u => u.Column)];
         this.note = note;
         FindWindow = new Button { Classes = { StyleClasses.Link }, Content = "Open in Find Window", Focusable = false, VerticalAlignment = VerticalAlignment.Center };
         FindWindow.Click += (_, _) => FindWindowRequested?.Invoke(this, EventArgs.Empty);
@@ -79,7 +80,7 @@ public sealed class UsagesPopup : SearchPopup<Usage>
             icon.Data = Explorer.FileIcons.ForFile(usage.Path);
             icon.Foreground = Explorer.FileIcons.BrushForFile(usage.Path);
             place.Text = $"{Path.GetFileName(usage.Path)}:{usage.Line + 1}";
-            kind.Text = KindOf(usage.Kind);
+            kind.Text = !usage.Generated ? KindOf(usage.Kind) : KindOf(usage.Kind) is { Length: > 0 } does ? $"{does} in generated code" : "In generated code";
             ToolTip.SetTip(row, usage.Path);
             code.Inlines = Code(usage);
         });

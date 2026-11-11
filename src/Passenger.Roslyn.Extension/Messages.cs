@@ -38,6 +38,7 @@ public static class Handlers
     public const string GeneratedNamed = "Passenger.Roslyn.Extension.GeneratedNamed";
     public const string PartialHalf = "Passenger.Roslyn.Extension.PartialHalf";
     public const string GeneratedParts = "Passenger.Roslyn.Extension.GeneratedParts";
+    public const string GeneratedDocuments = "Passenger.Roslyn.Extension.GeneratedDocuments";
     public const string JsInteropCalls = "Passenger.Roslyn.Extension.JsInteropCalls";
     public const string GodotCode = "Passenger.Roslyn.Extension.GodotCode";
     public const string GodotNames = "Passenger.Roslyn.Extension.GodotNames";
@@ -52,7 +53,7 @@ public static class Handlers
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
+        ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
     ];
 }
 
@@ -185,6 +186,13 @@ public sealed record GeneratedText(
     [property: JsonPropertyName("projectPath")] string ProjectPath,
     [property: JsonPropertyName("projectName")] string ProjectName,
     [property: JsonPropertyName("generator")] string Generator);
+
+/// <summary>Documents by the URIs the server names them by (a source generator's its own), asked whether each is generated
+/// code.</summary>
+public sealed record GeneratedDocumentsAsked([property: JsonPropertyName("uris")] IReadOnlyList<string> Uris);
+
+/// <summary>Whether each document asked about is generated code, in order: false for a URI of no C# document.</summary>
+public sealed record GeneratedDocumentsFound([property: JsonPropertyName("generated")] IReadOnlyList<bool> Generated);
 
 /// <summary>A Razor component's file, whose class is asked for.</summary>
 public sealed record ComponentAsked([property: JsonPropertyName("path")] string Path);

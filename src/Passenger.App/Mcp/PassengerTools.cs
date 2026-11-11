@@ -410,13 +410,31 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         IReadOnlyList<(string Path, string Project)> untaken = server.Web is null && Session.CSharp is { } csharp ? await csharp.UntakenAsync(served.Document, offset, cancel) : [];
         // A project whose scripts no scene reaches lists none of its scenes, and says why.
         string[] notes = [.. new[] { untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Relative(u.Path))]) : null, Session.ProjectOf(served.Document.Path)?.GodotLayoutProblem }.OfType<string>()];
-        return ByFile(taken, await Places(found, cancel)) with { Note = notes.Length > 0 ? string.Join(". ", notes) : null };
+        (IReadOnlyList<Place> places, IReadOnlySet<string> generated) = await SetApart(found, cancel);
+        return ByFile(taken, places, generated) with { Note = notes.Length > 0 ? string.Join(". ", notes) : null };
     });
 
-    /// <summary>usages' answer: its places in order (<see cref="Sorted"/>), each file named once.</summary>
-    private static UsagesFound ByFile(string? symbol, IReadOnlyList<Place> places) =>
-        new(symbol, places.Count, [.. Sorted(places).GroupBy(p => p.Path, StringComparer.Ordinal)
-            .Select(file => new FilePlaces(file.Key, [.. file.Select(p => p.Text.Length == 0 ? $"{p.Line}:{p.Column}" : $"{p.Line}:{p.Column} {p.Text}")]))]);
+    /// <summary>usages' answer: its places in order (<see cref="Sorted"/>), each file named once, those of <paramref name="generated"/>
+    /// said to be generated code.</summary>
+    private static UsagesFound ByFile(string? symbol, IReadOnlyList<Place> places, IReadOnlySet<string>? generated = null) =>
+        new(symbol, places.Count, [.. Sorted(places, generated).GroupBy(p => p.Path, StringComparer.Ordinal)
+            .Select(file => new FilePlaces(file.Key, [.. file.Select(p => p.Text.Length == 0 ? $"{p.Line}:{p.Column}" : $"{p.Line}:{p.Column} {p.Text}")])
+            {
+                Generated = generated?.Contains(file.Key) == true ? true : null,
+            })]);
+
+    /// <summary>The places the language server names as <see cref="Places"/> reads them, with the paths among them that are
+    /// generated code as Roslyn tells it (<see cref="GeneratedCode.SetApartAsync"/>).</summary>
+    private async Task<(IReadOnlyList<Place> Places, IReadOnlySet<string> Generated)> SetApart(IReadOnlyList<LspLocation> locations, CancellationToken cancel)
+    {
+        if (Session.CSharp is not { } csharp)
+        {
+            return (await Places(locations, cancel), new HashSet<string>());
+        }
+        (IReadOnlyList<LspLocation> copied, IReadOnlySet<string> generated) = await csharp.Generated.SetApartAsync(locations, cancel);
+        IReadOnlyList<Place> places = await Lines([.. copied.Select(l => (l.Uri, l.Range.Start, true))], cancel);
+        return (places, new HashSet<string>(places.Where((_, i) => generated.Contains(copied[i].Uri)).Select(p => p.Path), StringComparer.Ordinal));
+    }
 
     /// <summary>A Godot node renamed for an agent (<see cref="CSharpAssist.RenameNodesAsync"/>), its files saved; refused where no
     /// node's name is at the place.</summary>
@@ -1070,11 +1088,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return text.ToString().TrimEnd();
     }
 
-    /// <summary>Usages in the order an agent reads them: by file, then line and column, a source generator's files (their
-    /// copies, <see cref="GeneratedCode"/>) last.</summary>
-    private static IReadOnlyList<Place> Sorted(IReadOnlyList<Place> places) =>
-        [.. places.OrderBy(p => (p.Text.Length == 0 && p.Path.EndsWith(" (generated)", StringComparison.Ordinal)) || GeneratedCode.IsCopy(p.Path)).ThenBy(p => p.Path, StringComparer.Ordinal)
-            .ThenBy(p => p.Line).ThenBy(p => p.Column)];
+    /// <summary>Usages in the order an agent reads them: by file, then line and column, generated code's files last: a
+    /// source generator's (their copies, <see cref="GeneratedCode"/>) and those of <paramref name="generated"/>.</summary>
+    private static IReadOnlyList<Place> Sorted(IReadOnlyList<Place> places, IReadOnlySet<string>? generated) =>
+        [.. places.OrderBy(p => (p.Text.Length == 0 && p.Path.EndsWith(" (generated)", StringComparison.Ordinal)) || GeneratedCode.IsCopy(p.Path) || generated?.Contains(p.Path) == true)
+            .ThenBy(p => p.Path, StringComparer.Ordinal).ThenBy(p => p.Line).ThenBy(p => p.Column)];
 
     /// <summary>The offset a C# code tool asks about: the place given when a symbol is there (its hover says what one), else
     /// the one its line declares (<see cref="DeclaredOn"/>).</summary>
@@ -3425,7 +3443,13 @@ public sealed record Place(string Path, int Line, int Column, string Text);
 /// its build doesn't reach), when it did.</summary>
 public sealed record UsagesFound(string? Symbol, int Count, IReadOnlyList<FilePlaces> Files, string? Note = null);
 
-public sealed record FilePlaces(string Path, IReadOnlyList<string> Places);
+public sealed record FilePlaces(string Path, IReadOnlyList<string> Places)
+{
+    /// <summary>True for a file of generated code, as Roslyn tells it (a source generator's, or one a tool wrote: a .g.cs,
+    /// a .designer.cs, one marked &lt;auto-generated&gt;), listed after the rest; null for one a person wrote, which the
+    /// answer leaves unsaid.</summary>
+    public bool? Generated { get; init; }
+}
 
 public sealed record HierarchyEntry(string? Name, string? Detail, string Path, int Line, int Column, string Text);
 
