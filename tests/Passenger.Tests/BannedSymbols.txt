@@ -29,3 +29,4 @@ M:Passenger.App.Aspire.AspireTelemetry.ReadLogsAsync(System.Uri,System.String,Sy
 M:Passenger.App.Aspire.AspireTelemetry.ReadTracesAsync(System.Uri,System.String,System.String,System.String,System.Int32,System.Threading.CancellationToken);A dashboard's traces are read by an agent's telemetry or the Telemetry view, on a run the IDE runs (McpAspireStandInTests)
 M:System.Diagnostics.Process.BeginOutputReadLine;A child's output is heard through ChildProcesses.Hear, as the IDE hears it, whose reads neither the child's end nor its process's disposal closes under them
 M:System.Diagnostics.Process.BeginErrorReadLine;A child's errors are heard through ChildProcesses.Hear, as the IDE hears them, whose reads neither the child's end nor its process's disposal closes under them
+M:System.GC.GetTotalMemory(System.Boolean);What an object keeps is counted by walking it (HeldBytes): the process's total also counts what the classes run beside a test let go of meanwhile

@@ -597,12 +597,13 @@ all three systems, no measured time or allocation bound and no container, real-A
 flow; one that fails there for a test's reason leaves it until rewritten. Every other test is in the report lane, whose
 failures never fail a run but each become a `ci-report` issue. `BannedSymbols.txt` bans driving internals directly (the
 terminal's emulator, a hand-started Roslyn or profiling session, a lone `TextDocument`, `LineDiff`, `CommitGraph`,
-`Snippet.Parse`; `Rig.cs` excepted), raising Click events (`Ui.Click` instead) and fixed sleeps (`Thread.Sleep`,
-`Task.Delay`, `Screenshot.Pump`) outside `Waiting` and `Ui`. The long random editing session checks every key against a
-string model, soft wrap too: keep it passing, never narrow it. Performance is held by what the UI thread allocates in a
-small case against a large one, never by a time (attach the profiler to the test process to see its time,
-`ProfilingSession.AttachAsync(Environment.ProcessId, …)`). Tests that press thousands of keys draw a small window (a
-headless frame is GC pressure); a measure of a key's bytes collects first (LongTextTests).
+`Snippet.Parse`; `Rig.cs` excepted), raising Click events (`Ui.Click` instead), fixed sleeps (`Thread.Sleep`,
+`Task.Delay`, `Screenshot.Pump`) outside `Waiting` and `Ui`, and the process's heap total (`GC.GetTotalMemory`, which
+counts what classes beside let go of: what an object keeps is `HeldBytes.Of` it). The long random editing session checks
+every key against a string model, soft wrap too: keep it passing, never narrow it. Performance is held by what the UI
+thread allocates in a small case against a large one, never by a time (attach the profiler to the test process to see
+its time, `ProfilingSession.AttachAsync(Environment.ProcessId, …)`). Tests that press thousands of keys draw a small
+window (a headless frame is GC pressure); a measure of a key's bytes collects first (LongTextTests).
 
 **Waits (#237).** A test waits for what it checks, however slow the machine. `Ui.Settle` (and `Press`, `Landed`,
 `WaitFor` on it) waits until the IDE is quiet: `BackgroundWork` landed, nothing in `InFlight` but Roslyn's held

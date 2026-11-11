@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -7,6 +8,7 @@ using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Run;
 using Passenger.App.Templates;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 
@@ -244,8 +246,8 @@ public sealed class NewServiceSetupTests : IDisposable
     }
 
     /// <summary>New Project of an MVC app, a folder of megabytes (its scripts and styles): its Undo keeps the folder as each
-    /// file's length and time, not its bytes, so the undo history grows by a small part of the folder; Undo takes the folder
-    /// away and Redo puts every file back as it was.</summary>
+    /// file's length and time, not its bytes, so its command holds a small part of the folder; Undo takes the folder away
+    /// and Redo puts every file back as it was.</summary>
     [AvaloniaFact]
     public void New_Project_of_an_MVC_app_keeps_its_folder_for_Undo_without_its_bytes()
     {
@@ -282,11 +284,10 @@ public sealed class NewServiceSetupTests : IDisposable
                 $"Redo did not put the folder back as it was: {window.Status}");
 
             Ui.Settle();
-            long held = GC.GetTotalMemory(forceFullCollection: true);
-            Assert.True(Undoes(window), "New Project left no command for Undo to take back");
-            window.EditorArea.Commands.Clear();
-            long growth = held - GC.GetTotalMemory(forceFullCollection: true);
-            Assert.True(growth < bytes / 10, $"New Project's Undo held {growth} bytes of the history for a folder of {bytes} bytes in {made.Count} files");
+            CommandHistory.Command? command = window.EditorArea.Commands.ToUndo(null);
+            Assert.True(command is not null, "New Project left no command for Undo to take back");
+            (long held, string most) = HeldBytes.Of(command, o => o is AvaloniaObject || (o is OpenDocument open && window.EditorArea.Documents.Contains(open)));
+            Assert.True(held < bytes / 10, $"New Project's Undo held {held} bytes for a folder of {bytes} bytes in {made.Count} files, the most in {most}");
         }
         finally
         {
@@ -686,9 +687,7 @@ public sealed class NewServiceSetupTests : IDisposable
         return dialog;
     }
 
-    /// <summary>Whether Undo in the Solution view has a command to take back, asked apart so no reference to it outlives the
-    /// question in the test's frame.</summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    /// <summary>Whether Undo in the Solution view has a command to take back.</summary>
     private static bool Undoes(MainWindow window) => window.EditorArea.Commands.ToUndo(null) is not null;
 
     /// <summary>Every file the template and set-up made in a project's folder, but what builds write, with its bytes.</summary>
