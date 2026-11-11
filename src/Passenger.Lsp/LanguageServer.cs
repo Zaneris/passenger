@@ -282,6 +282,9 @@ public sealed class LanguageServer : IAsyncDisposable
 
     public string LogFolder { get; }
 
+    /// <summary>The file this server's log is written to, in <see cref="LogFolder"/>.</summary>
+    public string LogPath => log.FilePath;
+
     /// <summary>The files the server asked the client to watch for it, rather than watch them itself.</summary>
     public WatchedFiles WatchedFiles { get; }
 
@@ -1321,6 +1324,8 @@ public sealed class LanguageServer : IAsyncDisposable
 
         private readonly StreamWriter writer = new(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { AutoFlush = true };
         private bool closed;
+
+        public string FilePath { get; } = path;
 
         /// <summary>A new server's log, named by when it began, so the names sort oldest first, and by its process, the id
         /// the IDE's log names when it ends; the oldest logs past <see cref="Kept"/> are deleted, but those of servers

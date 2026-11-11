@@ -455,18 +455,13 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Contains("System.Console.WriteLine", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
 
         // Razor's start is where the server first loads Visual Studio's assemblies; a failed load logs the name.
-        int server = window.CSharpService!.Session!.Server.ProcessId;
+        string path = window.CSharpService!.Session!.Server.LogPath;
         string log = string.Empty;
-        Ui.WaitFor(() => (log = ServerLog(server)).Contains("Razor extension startup finished.", StringComparison.Ordinal), "the language server's Razor support to start");
+        Ui.WaitFor(() => (log = Ui.Shared(path)).Contains("Razor extension startup finished.", StringComparison.Ordinal), "the language server's Razor support to start");
         string[] looked = [.. log.Split('\n').Where(line => LeftOut.Any(name => line.Contains(name, StringComparison.Ordinal)))];
         Assert.True(looked.Length == 0, $"The language server looked for an assembly Passenger leaves out, so something it does needs it:\n{string.Join('\n', looked)}");
         window.Close();
     }
-
-    /// <summary>The log of the language server with this process, as a person opening the logs folder would find it.</summary>
-    private static string ServerLog(int process) =>
-        Directory.EnumerateFiles(Passenger.App.CSharp.CSharpService.LogFolder, $"server-*-{process}.log").FirstOrDefault() is { } path
-            ? Ui.Shared(path) : string.Empty;
 
     /// <summary>Find Usages says so with no search yet and shows nothing else; it groups usages by what they do,
     /// project and file, previews the chosen one beside a divider that drags, keeps each search, goes to a usage on

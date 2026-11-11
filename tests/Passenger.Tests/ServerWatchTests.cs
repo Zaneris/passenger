@@ -267,8 +267,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
     private static string WatchLog(MainWindow window)
     {
         LanguageServer server = window.CSharpService!.Session!.Server;
-        string? log = Directory.EnumerateFiles(server.LogFolder, $"server-*-{server.ProcessId}.log").FirstOrDefault();
-        IEnumerable<string> lines = (log is null ? [] : Ui.Shared(log).Split('\n').Where(l => l.Contains("watched for the server", StringComparison.Ordinal) || l.Contains("Told the server", StringComparison.Ordinal)))
+        IEnumerable<string> lines = Ui.Shared(server.LogPath).Split('\n').Where(l => l.Contains("watched for the server", StringComparison.Ordinal) || l.Contains("Told the server", StringComparison.Ordinal))
             .Concat(Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Split('\n').Where(l => l.Contains($"(process {server.ProcessId})", StringComparison.Ordinal)));
         return string.Join(" | ", lines.TakeLast(12));
     }

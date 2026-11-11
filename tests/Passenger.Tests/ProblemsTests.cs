@@ -854,8 +854,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// <summary>What the server's log says of its files watched and told, and the IDE's of the folders watched for it, last.</summary>
     private static string WatchLog(Passenger.Lsp.LanguageServer server)
     {
-        string? log = Directory.EnumerateFiles(server.LogFolder, $"server-*-{server.ProcessId}.log").FirstOrDefault();
-        IEnumerable<string> lines = (log is null ? [] : Ui.Shared(log).Split('\n').Where(l => l.Contains("watched for the server", StringComparison.Ordinal) || l.Contains("Told the server", StringComparison.Ordinal)))
+        IEnumerable<string> lines = Ui.Shared(server.LogPath).Split('\n').Where(l => l.Contains("watched for the server", StringComparison.Ordinal) || l.Contains("Told the server", StringComparison.Ordinal))
             .Concat(Ui.Shared(Passenger.App.IdeLog.PathOf(Passenger.App.IdeLog.Ide)).Split('\n').Where(l => l.Contains($"(process {server.ProcessId})", StringComparison.Ordinal) && l.Contains("watch", StringComparison.Ordinal)));
         return string.Join(" | ", lines.TakeLast(12));
     }
