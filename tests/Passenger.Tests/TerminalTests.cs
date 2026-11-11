@@ -1,11 +1,13 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Docking;
 using Passenger.App.Run;
@@ -19,10 +21,11 @@ namespace Passenger.Tests;
 /// <summary>The Terminal window as programs use it: a real shell in a pseudo-terminal, read as xterm is (scroll regions, the
 /// alternate screen, colours, wide characters, answers to a program's questions, the scrollback), keys sent as xterm sends
 /// them, typed commands and keys taken ahead of the IDE; floods of output and stuck pastes never hold the window, pastes
-/// stay text, accents and emoji take the columns the shell counts, lines reflow as it resizes, and a place or a selection
-/// holds as output streams. A run configuration that uses the terminal runs its program in a tab of its own, which reads
-/// what is typed there and draws as it likes, and which Stop ends with all it started. What a program writes or reads
-/// comes from the TerminalCases debuggee, the same bytes on every system, so Windows checks what ConPTY makes of them.</summary>
+/// stay text, accents and emoji take the columns the shell counts, lines reflow as it resizes, a place or a selection
+/// holds as output streams, and no program but a terminal's own holds its pseudo-terminal. A run configuration that uses
+/// the terminal runs its program in a tab of its own, which reads what is typed there and draws as it likes, and which
+/// Stop ends with all it started. What a program writes or reads comes from the TerminalCases debuggee, the same bytes on
+/// every system, so Windows checks what ConPTY makes of them.</summary>
 public sealed class TerminalTests
 {
     [AvaloniaFact]
@@ -622,6 +625,63 @@ public sealed class TerminalTests
             TestFolders.Delete(folder);
         }
     }
+
+    /// <summary>A terminal's pseudo-terminal is its own: neither the shell of a terminal opened after it nor a program the
+    /// IDE starts after it holds it, so nothing run there can type a command into it. Each writes a command into every
+    /// descriptor it holds that is a terminal (through bash, which takes a descriptor above 9 where dash takes none); a
+    /// command typed into each terminal afterwards, which its shell reads after all written to it before, shows that
+    /// neither ran.</summary>
+    [AvaloniaFact]
+    public void Nothing_run_in_one_terminal_or_started_by_the_IDE_can_type_into_another_terminal()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "What types into the descriptors it holds is bash, writing to Unix ones");
+        string folder = TestFolders.Create("terminal-own-");
+        MainWindow? window = null;
+        try
+        {
+            (window, TerminalSession first) = Open(folder, "/bin/bash", "--norc", "--noprofile");
+            window.Perform(AppActions.NewTerminalSession);
+            Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true } active && active != first, "the second terminal's shell to start");
+            TerminalSession second = window.TerminalPanel.Active!;
+            Ui.WaitFor(() => window.TerminalPanel.View.IsFocused && second.Screen.CursorColumn > 0, "the second terminal's prompt");
+
+            Run(window, TypingIntoHeld("typed-from-the-second-terminal"));
+            long said = WaitForLine(second, line => line.StartsWith(HeldWord, StringComparison.Ordinal), "the second terminal's shell to type into what it holds");
+            string heldBySecond = second.Screen.LineAt(said).Text().Trim();
+            ChildResult started = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(
+                ChildProcesses.Command("/bin/bash", ["-c", TypingIntoHeld("typed-from-a-program-the-IDE-started")], folder), limit: TimeSpan.FromSeconds(30))),
+                "a program the IDE starts to type into what it holds", TimeSpan.FromSeconds(40));
+            Assert.True(started.Succeeded, $"The program the IDE started failed: {started.Output}{started.Error}");
+
+            foreach ((TerminalSession shell, string which) in new[] { (first, "first"), (second, "second") })
+            {
+                Passenger.App.ToolWindows.TerminalTab tab = window.TerminalPanel.Tabs.Single(t => t.Session == shell);
+                Ui.Click(window.GetVisualDescendants().OfType<ToggleButton>().Single(b => b.DataContext == tab));
+                Ui.WaitFor(() => window.TerminalPanel.Active == shell && window.TerminalPanel.View.IsFocused, $"the keys to go to the {which} terminal");
+                Run(window, $"touch sentinel-{which}");
+                Ui.WaitFor(() => File.Exists(Path.Combine(folder, $"sentinel-{which}")), $"the {which} terminal to run what was typed into it");
+            }
+            Assert.False(File.Exists(Path.Combine(folder, "typed-from-the-second-terminal")),
+                $"The second terminal's shell held the first's pseudo-terminal, and what it wrote there ran in the first ({heldBySecond}):\n{Screen(first)}");
+            Assert.False(File.Exists(Path.Combine(folder, "typed-from-a-program-the-IDE-started")),
+                $"A program the IDE started held a terminal's pseudo-terminal, and what it wrote there ran in that terminal ({started.Output.Trim()}):\n"
+                + $"{Screen(first)}\n---\n{Screen(second)}");
+        }
+        finally
+        {
+            window?.Close();
+            TestFolders.Delete(folder);
+        }
+
+        // Builtins alone, opening nothing: a terminal above 2 is the shell's own (an interactive bash's 255) or another's.
+        static string TypingIntoHeld(string file) =>
+            $"n=3; held=; while [ $n -lt 1024 ]; do if [ -t $n ]; then held=\"$held $n\"; printf 'touch {file}\\r' >&$n; fi; n=$((n+1)); done; "
+            + $"echo; echo \"{HeldWord[..9]}\"\"{HeldWord[9..]}$held\"";
+    }
+
+    /// <summary>What a shell typing into the terminals it holds says before their descriptors: split in two where it is typed,
+    /// so the typed line never reads as what it says, and on a line of its own, past what it wrote to its own terminal.</summary>
+    private const string HeldWord = "terminals-held:";
 
     [AvaloniaFact]
     public void A_decomposed_accent_shows_on_its_letter_in_one_cell_and_copies_with_it()

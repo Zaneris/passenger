@@ -545,7 +545,7 @@
         "dependencies": {
           "Avalonia": "[12.1.5, )",
           "Passenger.Editor": "[0.3.1, )",
-          "Porta.Pty": "[2.2.3, )"
+          "Porta.Pty": "[2.2.4, )"
         }
       },
       "passenger.text": {
@@ -683,9 +683,9 @@
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
-        "requested": "[2.2.3, )",
-        "resolved": "2.2.3",
-        "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
+        "requested": "[2.2.4, )",
+        "resolved": "2.2.4",
+        "contentHash": "9oXgJBgdSZU2gEmxyyR4rLvWG16jR+WWeg9bQvwm32TxGYbaD/80UIH4Uc3fY8xCjR9ApKKZ0CKghg88XvulOA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -765,9 +765,9 @@
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
-        "requested": "[2.2.3, )",
-        "resolved": "2.2.3",
-        "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
+        "requested": "[2.2.4, )",
+        "resolved": "2.2.4",
+        "contentHash": "9oXgJBgdSZU2gEmxyyR4rLvWG16jR+WWeg9bQvwm32TxGYbaD/80UIH4Uc3fY8xCjR9ApKKZ0CKghg88XvulOA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -841,9 +841,9 @@
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
-        "requested": "[2.2.3, )",
-        "resolved": "2.2.3",
-        "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
+        "requested": "[2.2.4, )",
+        "resolved": "2.2.4",
+        "contentHash": "9oXgJBgdSZU2gEmxyyR4rLvWG16jR+WWeg9bQvwm32TxGYbaD/80UIH4Uc3fY8xCjR9ApKKZ0CKghg88XvulOA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -917,9 +917,9 @@
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
-        "requested": "[2.2.3, )",
-        "resolved": "2.2.3",
-        "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
+        "requested": "[2.2.4, )",
+        "resolved": "2.2.4",
+        "contentHash": "9oXgJBgdSZU2gEmxyyR4rLvWG16jR+WWeg9bQvwm32TxGYbaD/80UIH4Uc3fY8xCjR9ApKKZ0CKghg88XvulOA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -993,9 +993,9 @@
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
-        "requested": "[2.2.3, )",
-        "resolved": "2.2.3",
-        "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
+        "requested": "[2.2.4, )",
+        "resolved": "2.2.4",
+        "contentHash": "9oXgJBgdSZU2gEmxyyR4rLvWG16jR+WWeg9bQvwm32TxGYbaD/80UIH4Uc3fY8xCjR9ApKKZ0CKghg88XvulOA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -1069,9 +1069,9 @@
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
-        "requested": "[2.2.3, )",
-        "resolved": "2.2.3",
-        "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
+        "requested": "[2.2.4, )",
+        "resolved": "2.2.4",
+        "contentHash": "9oXgJBgdSZU2gEmxyyR4rLvWG16jR+WWeg9bQvwm32TxGYbaD/80UIH4Uc3fY8xCjR9ApKKZ0CKghg88XvulOA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -1145,9 +1145,9 @@
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
-        "requested": "[2.2.3, )",
-        "resolved": "2.2.3",
-        "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
+        "requested": "[2.2.4, )",
+        "resolved": "2.2.4",
+        "contentHash": "9oXgJBgdSZU2gEmxyyR4rLvWG16jR+WWeg9bQvwm32TxGYbaD/80UIH4Uc3fY8xCjR9ApKKZ0CKghg88XvulOA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -1221,9 +1221,9 @@
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
-        "requested": "[2.2.3, )",
-        "resolved": "2.2.3",
-        "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
+        "requested": "[2.2.4, )",
+        "resolved": "2.2.4",
+        "contentHash": "9oXgJBgdSZU2gEmxyyR4rLvWG16jR+WWeg9bQvwm32TxGYbaD/80UIH4Uc3fY8xCjR9ApKKZ0CKghg88XvulOA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -1297,9 +1297,9 @@
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
-        "requested": "[2.2.3, )",
-        "resolved": "2.2.3",
-        "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
+        "requested": "[2.2.4, )",
+        "resolved": "2.2.4",
+        "contentHash": "9oXgJBgdSZU2gEmxyyR4rLvWG16jR+WWeg9bQvwm32TxGYbaD/80UIH4Uc3fY8xCjR9ApKKZ0CKghg88XvulOA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }

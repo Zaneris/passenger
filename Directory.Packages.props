@@ -111,7 +111,7 @@
     <PackageVersion Include="StreamJsonRpc" Version="2.26.150" />
     <!-- The app's JoinableTaskFactory (Synchronously.cs), at the version StreamJsonRpc takes. -->
     <PackageVersion Include="Microsoft.VisualStudio.Threading.Only" Version="18.7.23" />
-    <PackageVersion Include="Porta.Pty" Version="2.2.3" />
+    <PackageVersion Include="Porta.Pty" Version="2.2.4" />
     <!-- A Godot game's Ogg Vorbis and MP3 sounds decoded to WAV for the system's player; NVorbis's 0.10 line, as 1.0 is
          still a pre-release. -->
     <PackageVersion Include="NVorbis" Version="0.10.5" />
