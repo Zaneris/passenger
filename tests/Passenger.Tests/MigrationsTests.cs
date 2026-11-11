@@ -575,7 +575,8 @@ public sealed class MigrationsTests
             Ui.Click(Offered(nuget, "Update"), settle: false);
             ChoiceDialog asked = Asked<ChoiceDialog>(window, "the update's warning", Slow);
             string words = string.Join(' ', asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
-            Assert.Contains($"Update Anyway moves EF Core's packages to {ShopApp.Version} and leaves {ShopApp.Provider} as it is", words, StringComparison.Ordinal);
+            Assert.True(words.Contains($"Update Anyway moves EF Core's packages to {ShopApp.Version} and leaves {ShopApp.Provider} as it is", StringComparison.Ordinal),
+                $"The question does not tell the person that Update Anyway moves EF Core's set and leaves the provider behind: {words}");
             Ui.ClickButton(asked, "Update Anyway");
             Ui.WaitFor(() => !nuget.IsBusy && new[] { Sqlite, Design, Relational }.All(id => Has(project, id, ShopApp.Version)),
                 () => $"EF Core's set moved to {ShopApp.Version} ({window.Status}):\n{File.ReadAllText(project)}\n{nuget.Log}", Slow);
