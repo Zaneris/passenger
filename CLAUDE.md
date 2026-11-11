@@ -374,7 +374,8 @@ a new name, and `just site-shots` retakes its images.
 - **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself. A deleted file reaches
   it only once its projects loaded again without it (`ProjectMethods.Deleted`): told first, it reads the missing file, a
   second each, before any answer needing the compilation (dotnet/roslyn#86236). A reload adds new files before it drops
-  those gone, comparing paths ignoring case, so a file renamed in letter case alone loads first without it (`Recased`).
+  those gone, and the solution finds a path's documents ignoring case: a file renamed in letter case alone loads first
+  without it (`Recased`), and a document found by path is checked with `PathNames.Same`.
 - **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
   references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`, which moves
   `LanguageServer.Changes` itself (`AnswersMoved`).
