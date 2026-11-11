@@ -30,6 +30,11 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `ProjectEvaluationTests`' `The_project_of_the_file_shown_and_those_it_references_load_in_the_language_server_before_…`,
+  CI's Windows runner at 9431c8f49 (run 42986237634): "Sequence contains more than one element" in its `ServerLog`.
+  **The test found its log by name**: it looked in the run's shared log folder for `server-*-{process id}.log`, and
+  Windows had reused an earlier window's server's id, so two logs answered. Every test now reads the server's own
+  `LogPath` (9dd051f15, #1485).
 - `GDScriptRefactorCommandsTests`' `Each_refactoring_changes_every_script_…`, CI's Windows runner at 61d99a589 (run
   42966878050): main.tscn "being used by another process" to a read sharing everything, in the wait after Undo. **A gap in
   the IDE, and the test reading during the writes**: ReplaceFile refuses even such a read for a moment while it puts a
