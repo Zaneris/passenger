@@ -310,7 +310,8 @@ public sealed class NuGetTests : IDisposable
     /// <summary>Update All over a folder whose examples keep a Directory.Packages.props of their own importing the root's
     /// (<see cref="Nested"/>): a project under the examples' file moves versions the root's holds, which never stops the run
     /// as an edit of the person's; a version kept in a property moves the property, so the packages sharing it move with
-    /// it; and each file is as it was but for the versions moved, its blank lines and final newline kept.</summary>
+    /// it; each file is as it was but for the versions moved, its blank lines and final newline kept; and Lib, whose
+    /// versions App's change moved, is restored with them as the run reaches it.</summary>
     [AvaloniaFact]
     public void Update_all_over_nested_central_files_moves_every_package_through_its_property_and_keeps_the_files_text()
     {
@@ -327,6 +328,9 @@ public sealed class NuGetTests : IDisposable
             $"The root's Directory.Packages.props is not as it was but for its versions moved:\n{File.ReadAllText(root)}");
         Assert.True(File.ReadAllText(examples) == Moved(examplesBefore, (">1.0.0<", ">1.1.0<"), ("\"Passenger.Other\" Version=\"1.0.0\"", "\"Passenger.Other\" Version=\"1.2.0\"")),
             $"The examples' Directory.Packages.props is not as it was but for Linq2DbVersion and Passenger.Other moved:\n{File.ReadAllText(examples)}");
+        string assets = Path.Combine(folder, "Lib", "obj", "project.assets.json");
+        Assert.True(File.Exists(assets) && File.ReadAllText(assets).Contains("Microsoft.EntityFrameworkCore.Relational/11.0.0", StringComparison.Ordinal),
+            $"Lib, whose EF Core packages App's change moved, was {(File.Exists(assets) ? "restored, but not with them" : "never restored")}, so a break would show only at the next build:\n{nuget.Log}");
         MigrationsTests.UndoFromExplorer(window, lib);
         Assert.True(File.ReadAllText(root) == rootBefore && File.ReadAllText(examples) == examplesBefore,
             $"One Undo of Update All left the central files as:\n{File.ReadAllText(root)}\n{File.ReadAllText(examples)}");
@@ -383,6 +387,51 @@ public sealed class NuGetTests : IDisposable
         Assert.True(File.ReadAllText(examples) == Moved(examplesBefore, (">1.0.0<", ">1.1.0<")),
             $"The update did not move Linq2DbVersion alone, leaving the examples' Directory.Packages.props as:\n{File.ReadAllText(examples)}");
         Assert.Equal(rootBefore, File.ReadAllText(root));
+        window.Close();
+    }
+
+    /// <summary>Update All moving Linq2DbVersion, which examples/Three's only package shares at a version no feed holds,
+    /// restores Three at the run's end though no update names it, and says it does not restore, rather than leave that
+    /// for the next build.</summary>
+    [AvaloniaFact]
+    public void Update_all_restores_a_project_whose_versions_it_moved_and_says_when_it_does_not_restore()
+    {
+        (_, string examples) = Nested();
+        feed.Add("Passenger.Linq2Db.SqlServer", "1.0.0");
+        File.WriteAllText(examples, File.ReadAllText(examples).Replace("    <PackageVersion Include=\"Passenger.Other\"",
+            "    <PackageVersion Include=\"Passenger.Linq2Db.SqlServer\" Version=\"$(Linq2DbVersion)\" />\r\n    <PackageVersion Include=\"Passenger.Other\"", StringComparison.Ordinal));
+        Project(Path.Combine("examples", "Three"), "net11.0", "  <ItemGroup>\n    <PackageReference Include=\"Passenger.Linq2Db.SqlServer\" />\n  </ItemGroup>\n");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Assert.True(nuget.Status.Contains("Three does not restore with the versions the run moved", StringComparison.Ordinal),
+            $"Update All, having moved Linq2DbVersion to a version Passenger.Linq2Db.SqlServer lacks, says \"{nuget.Status}\", not that Three does not restore:\n{nuget.Log}");
+        window.Close();
+    }
+
+    /// <summary>Without central package management, an update of a package whose reference's version is a property of
+    /// Directory.Build.props moves the property where it is set, never writing a version into the project, so the other
+    /// project's package sharing it moves too; every other character of both files is as it was.</summary>
+    [AvaloniaFact]
+    public void Updating_a_reference_whose_version_is_a_property_moves_the_property_and_leaves_the_project_as_it_was()
+    {
+        const string Other = "Passenger.Other";
+        feed.Add(Other, "1.0.0");
+        feed.Add(Other, "1.1.0");
+        string build = Path.Combine(folder, "Directory.Build.props");
+        File.WriteAllText(build, "<Project>\r\n\r\n  <PropertyGroup>\r\n    <SharedVersion>1.0.0</SharedVersion>\r\n  </PropertyGroup>\r\n\r\n</Project>\r\n");
+        Project("Lib", "net11.0", $"\n  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"$(SharedVersion)\" />\n  </ItemGroup>\n\n");
+        Project("App", "net11.0", $"  <ItemGroup>\n    <PackageReference Include=\"{Other}\" Version=\"$(SharedVersion)\" />\n  </ItemGroup>\n");
+        string buildBefore = File.ReadAllText(build);
+        string libBefore = File.ReadAllText(lib);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        PackageOutcome outcome = Ui.Landed(nuget.Packages.InstallAsync(Named(window, "Lib"), Id, "1.1.0"), $"Lib's update of {Id}");
+        Assert.True(outcome.Done, $"The update failed: {outcome.Failure("failed")}\n{nuget.Log}");
+        Assert.True(File.ReadAllText(lib) == libBefore, $"The update wrote into Lib.csproj, where its version is $(SharedVersion):\n{File.ReadAllText(lib)}");
+        Assert.True(File.ReadAllText(build) == Moved(buildBefore, (">1.0.0<", ">1.1.0<")),
+            $"The update did not move SharedVersion alone, leaving Directory.Build.props as:\n{File.ReadAllText(build)}");
         window.Close();
     }
 

@@ -24,6 +24,9 @@ public sealed partial class FolderPackages
     private PackageOutcome? bulkLastChange;
     private readonly Dictionary<string, byte[]?> bulkSnapshots = new(PathNames.Comparer);
 
+    /// <summary>The projects whose versions a change of the run moved since they were last restored.</summary>
+    private readonly HashSet<string> bulkStale = new(PathNames.Comparer);
+
     /// <summary>Fresh evaluations use the same solution properties as the session's project model.</summary>
     public Func<ProjectModel, IReadOnlyDictionary<string, string>>? EvaluationProperties { get; set; }
 
@@ -139,6 +142,11 @@ public sealed partial class FolderPackages
                     }
                     if (eligible.Count == 0)
                     {
+                        if (await RestoredAsync(project, recording, written) is { } broke)
+                        {
+                            failure = broke;
+                            break;
+                        }
                         continue;
                     }
                     PackageOutcome outcome = await InstallSetAsync(project, eligible, recording, Alongside(project, eligible, updates));
@@ -150,6 +158,21 @@ public sealed partial class FolderPackages
                     }
                     updated += eligible.Count;
                     remaining -= eligible.Count;
+                }
+                foreach (string path in bulkStale.Order(PathNames.Comparer).ToList())
+                {
+                    if (failure is not null || stopping.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    if (Projects.FirstOrDefault(p => PathNames.Same(p.Path, path) && p.Exists) is { } reached)
+                    {
+                        failure = await RestoredAsync(reached, recording, written);
+                    }
+                }
+                if (failure is not null && bulkStale.Count > 0)
+                {
+                    failure += $"; {Plural.Listed([.. bulkStale.Order(PathNames.Comparer).Select(Path.GetFileNameWithoutExtension).OfType<string>()])} not restored since the run moved their versions";
                 }
             }
         }
@@ -166,6 +189,7 @@ public sealed partial class FolderPackages
             bulkRecording = null;
             bulkLastChange = null;
             bulkSnapshots.Clear();
+            bulkStale.Clear();
             bulkStopping = null;
             IsBusy = false;
             changing = null;
@@ -183,6 +207,41 @@ public sealed partial class FolderPackages
 
     private string? ChangedBulkFile() => bulkSnapshots.FirstOrDefault(file => !Same(Bytes(file.Key), file.Value)).Key is { } changed
         ? $"{PathNames.Shown(changed, root())} changed during Update All; stopped to preserve that edit" : null;
+
+    /// <summary>A project whose versions an earlier change of the run moved, restored as one change of the run's, so what
+    /// does not restore with them is found now, not by the next build: null once restored, or where none moved, else why
+    /// not.</summary>
+    private async Task<string?> RestoredAsync(ProjectModel project, CommandHistory.Recording recording, List<string> written)
+    {
+        if (!bulkStale.Contains(project.Path))
+        {
+            return null;
+        }
+        PackageOutcome outcome = await ChangeAsync($"Restoring {project.Name}…", $"Restore {project.Name}", project, recording, () => manager.RestoreAsync(project.Path));
+        written.AddRange(outcome.Written);
+        if (outcome.Done)
+        {
+            return null;
+        }
+        bulkStale.Remove(project.Path);
+        return $"{project.Name} does not restore with the versions the run moved: {outcome.Failure("its restore failed")}";
+    }
+
+    /// <summary>Marks the projects a change of the run moved versions of, but the one it restored, to be restored as the run
+    /// reaches them or at its end: those under central package management referencing a package <paramref name="moved"/>,
+    /// or, where who shares what it moved is not known (null), every project importing a file it <paramref name="written"/>.</summary>
+    private void Reached(ProjectModel changed, IReadOnlyCollection<string>? moved, IReadOnlyList<string> written)
+    {
+        foreach (ProjectModel other in Projects.Where(p => p.Exists && !PathNames.Same(p.Path, changed.Path)))
+        {
+            if (moved is null
+                ? other.Evaluated?.Inputs.Any(i => written.Any(w => PathNames.Same(PathNames.Canonical(i.Path), w))) == true
+                : CentralPackages.PropsOf(other) is not null && References(other).Any(r => moved.Contains(r.Id, StringComparer.OrdinalIgnoreCase)))
+            {
+                bulkStale.Add(other.Path);
+            }
+        }
+    }
 
     /// <summary>Under central package management, the rest of EF Core's set among the updates, moved with a project's moves
     /// of it in one change, so a stop between projects never leaves the set half moved (its central versions are the

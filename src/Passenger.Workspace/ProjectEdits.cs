@@ -104,7 +104,7 @@ public static class ProjectEdits
     /// XML. The PackageVersion at <paramref name="line"/> (MSBuild's, from 1) where one is, else its first.</summary>
     public static string? WithPackageVersion(string text, string id, string version, int line = 0)
     {
-        if (Read(text) is not { } xml || PackageVersion(xml, id, line) is not { } held)
+        if (Read(text) is not { } xml || Item(xml, "PackageVersion", id, line) is not { } held)
         {
             return null;
         }
@@ -119,12 +119,13 @@ public static class ProjectEdits
         return xml.Text;
     }
 
-    /// <summary>A package's central version as a Directory.Packages.props' text writes it, XML's entities read: its
-    /// PackageVersion's Version attribute, else element; null where it holds none for the package or does not read as XML.
-    /// The PackageVersion at <paramref name="line"/> (MSBuild's, from 1) where one is, else its first.</summary>
-    public static string? PackageVersionWritten(string text, string id, int line = 0)
+    /// <summary>A package's version as a file's item of it writes it, XML's entities read: a PackageVersion's in a
+    /// Directory.Packages.props, a PackageReference's in a project or what it imports (<paramref name="item"/>), its Version
+    /// attribute, else element; null where the text has no such item with a version or does not read as XML. The item at
+    /// <paramref name="line"/> (MSBuild's, from 1) where one is, else its first.</summary>
+    public static string? VersionWritten(string text, string item, string id, int line = 0)
     {
-        if (Read(text) is not { } xml || PackageVersion(xml, id, line) is not { } held)
+        if (Read(text) is not { } xml || Item(xml, item, id, line) is not { } held)
         {
             return null;
         }
@@ -165,10 +166,10 @@ public static class ProjectEdits
         return (xml.Text, null);
     }
 
-    /// <summary>The PackageVersion naming a package at a line where one is, else its first.</summary>
-    private static XElement? PackageVersion(XmlText xml, string id, int line)
+    /// <summary>The item of a type naming a package at a line where one is, else its first.</summary>
+    private static XElement? Item(XmlText xml, string item, string id, int line)
     {
-        XElement[] held = [.. xml.Root.Descendants().Where(e => e.Name.LocalName == "PackageVersion" && Names(e, id))];
+        XElement[] held = [.. xml.Root.Descendants().Where(e => e.Name.LocalName == item && Names(e, id))];
         return held.FirstOrDefault(e => ((IXmlLineInfo)e).LineNumber == line) ?? held.FirstOrDefault();
     }
 

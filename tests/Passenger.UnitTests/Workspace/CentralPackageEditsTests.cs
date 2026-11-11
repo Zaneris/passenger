@@ -58,7 +58,10 @@ public class CentralPackageEditsTests
     [Fact]
     public void A_version_kept_in_a_property_names_it_and_the_property_is_set_where_its_line_sets_it_every_other_character_kept()
     {
-        Assert.Equal("$(Linq2DbVersion)", ProjectEdits.PackageVersionWritten(Shared, "LINQ2DB.PostgreSQL"));
+        Assert.Equal("$(Linq2DbVersion)", ProjectEdits.VersionWritten(Shared, "PackageVersion", "LINQ2DB.PostgreSQL"));
+        Assert.Equal("$(AvaloniaVersion)", ProjectEdits.VersionWritten(
+            "<Project>\n  <ItemGroup>\n    <PackageReference Include=\"Avalonia\">\n      <Version>$(AvaloniaVersion)</Version>\n    </PackageReference>\n  </ItemGroup>\n</Project>\n",
+            "PackageReference", "avalonia"));
         Assert.Equal("Linq2DbVersion", ProjectEdits.PropertyNamed(" $(Linq2DbVersion) "));
         Assert.Null(ProjectEdits.PropertyNamed("[$(Linq2DbVersion)]"));
         Assert.Null(ProjectEdits.PropertyNamed("$(A).$(B)"));
@@ -76,8 +79,8 @@ public class CentralPackageEditsTests
     [Fact]
     public void Of_two_central_versions_of_a_package_the_one_at_the_line_given_is_read_and_set()
     {
-        Assert.Equal("2.1.89", ProjectEdits.PackageVersionWritten(Shared, "Dapper", 17));
-        Assert.Equal("2.1.86", ProjectEdits.PackageVersionWritten(Shared, "Dapper"));
+        Assert.Equal("2.1.89", ProjectEdits.VersionWritten(Shared, "PackageVersion", "Dapper", 17));
+        Assert.Equal("2.1.86", ProjectEdits.VersionWritten(Shared, "PackageVersion", "Dapper"));
         Assert.Equal(Shared.Replace("2.1.89", "2.2.0", StringComparison.Ordinal), ProjectEdits.WithPackageVersion(Shared, "Dapper", "2.2.0", 17));
     }
 }
