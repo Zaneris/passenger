@@ -66,6 +66,44 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         window.Close();
     }
 
+    /// <summary>The language server a closed window leaves for the next test may still be restoring the projects
+    /// orchestration made, made again by Redo, its restore working in their folders, which Windows will not remove
+    /// meanwhile (#1488): the next test's reset removes them all the same. Here the restore holds where it works in
+    /// ServiceDefaults until let go.</summary>
+    [AvaloniaFact]
+    public void The_next_tests_reset_removes_the_projects_orchestration_made_while_the_language_server_left_for_it_restores_them()
+    {
+        string held = project.PathOf("restore-held");
+        string release = project.PathOf("restore-released");
+        project.Write("Directory.Build.targets", $$"""
+            <Project>
+              <Target Name="HoldRestore" BeforeTargets="_GenerateRestoreGraphProjectEntry" Condition="'$(MSBuildProjectName)' == 'Shop.ServiceDefaults' And !Exists('{{release}}')">
+                <Exec Condition="'$(OS)' == 'Windows_NT'" Timeout="120000" Command="powershell -NoProfile -Command &quot;Set-Content -Path '{{held}}' -Value held; while (-not (Test-Path '{{release}}')) { Start-Sleep -Milliseconds 100 }&quot;" />
+                <Exec Condition="'$(OS)' != 'Windows_NT'" Timeout="120000" Command="echo held &gt; '{{held}}'; while [ ! -f '{{release}}' ]; do sleep 0.1; done" />
+              </Target>
+            </Project>
+            """);
+        MainWindow window = Open();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        try
+        {
+            Assert.Equal("Added Aspire orchestration", Add(window, "Api", existing: false));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.Run(window, EditorActions.Redo);
+            // Pumped, not settled: the restore holds.
+            Ui.PumpUntil(() => File.Exists(held), "the language server's restore to work in the ServiceDefaults orchestration made", TimeSpan.FromMinutes(2));
+            window.Close();
+            Ui.PumpUntil(() => window.Ended is { IsCompleted: true }, "the window's end");
+            project.Reset();
+            Assert.False(Directory.Exists(project.PathOf("Shop.ServiceDefaults")), "The reset left the ServiceDefaults orchestration made, which the next test's orchestration refuses to make again");
+            Assert.False(Directory.Exists(project.PathOf("Shop.AppHost")), "The reset left the AppHost orchestration made, which the next test's orchestration refuses to make again");
+        }
+        finally
+        {
+            File.WriteAllText(release, "go");
+        }
+    }
+
     /// <summary>The backing services a service's packages point to join the AppHost with it: a Postgres server and the
     /// database its connection string names, a Redis by its connection string's name, each referenced and waited for by
     /// the service under the name it reads, Aspire's hosting integrations referenced at the AppHost's own version; one

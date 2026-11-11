@@ -193,13 +193,18 @@ public abstract class SharedProject : IAsyncLifetime
     }
 
     /// <summary>The project as written for the test about to run (<see cref="Restored"/>): the shared server is ended if a
-    /// file came or went, or one it holds no document of changed (a project file); one whose documents a test only rewrote
-    /// is kept once it holds them as written again, read as it is told of them (<see cref="WarmServer.HoldsAsync"/>), and
-    /// ended if it does not within <see cref="Rereading"/>. From the UI thread (a window test's constructor), the window's
-    /// loop running as it waits for the server; elsewhere a test awaits <see cref="ResetAsync"/>.</summary>
+    /// file came or went, before what a test added goes (<see cref="Added"/>), or if one it holds no document of changed (a
+    /// project file); one whose documents a test only rewrote is kept once it holds them as written again, read as it is told
+    /// of them (<see cref="WarmServer.HoldsAsync"/>), and ended if it does not within <see cref="Rereading"/>. From the UI
+    /// thread (a window test's constructor), its loop running as it waits; elsewhere a test awaits <see cref="ResetAsync"/>.</summary>
     public void Reset()
     {
-        if (Restored() is not { } rewritten || (rewritten.Count > 0 && !Holds(rewritten)))
+        Additions added = Added();
+        if (added.Any)
+        {
+            Drop();
+        }
+        if (Restored(added) is not { } rewritten || (rewritten.Count > 0 && !Holds(rewritten)))
         {
             Drop();
         }
@@ -210,7 +215,12 @@ public abstract class SharedProject : IAsyncLifetime
     /// <inheritdoc cref="Reset"/>
     public async Task ResetAsync()
     {
-        if (Restored() is not { } rewritten || (rewritten.Count > 0 && !await Server.HoldsAsync(rewritten, Rereading.Scaled())))
+        Additions added = Added();
+        if (added.Any)
+        {
+            await Server.Drop();
+        }
+        if (Restored(added) is not { } rewritten || (rewritten.Count > 0 && !await Server.HoldsAsync(rewritten, Rereading.Scaled())))
         {
             await Server.Drop();
         }
@@ -221,25 +231,18 @@ public abstract class SharedProject : IAsyncLifetime
     /// <summary>The project written back as it was: what a test before it changed on disk written back with the time it was
     /// written at (a moment after a build since, which the next build then compiles again), what it added removed. What of
     /// it the kept server must read again, by path; null when a file came or went, or one it holds no document of changed.</summary>
-    private Dictionary<string, string>? Restored()
+    private Dictionary<string, string>? Restored(Additions added)
     {
-        bool structure = changed;
+        bool structure = changed || added.Any;
         HashSet<string> rewritten = new(StringComparer.Ordinal);
-        foreach (string file in Directory.EnumerateFiles(Folder, "*", SearchOption.AllDirectories).Where(Own).ToList())
+        foreach (string file in added.Files)
         {
-            if (!written.ContainsKey(file))
-            {
-                File.Delete(file);
-                structure = true;
-            }
+            File.Delete(file);
         }
-        foreach (string folder in Directory.EnumerateDirectories(Folder, "*", SearchOption.AllDirectories).Where(Own).OrderByDescending(f => f.Length).ToList())
+        foreach (string folder in added.Folders)
         {
-            if (!folders.Contains(folder))
-            {
-                Directory.Delete(folder, recursive: true);
-                structure = true;
-            }
+            // Waited out: what the server ended had started ends a moment after it.
+            TestFolders.Delete(folder);
         }
         foreach ((string file, byte[] content) in written)
         {
@@ -280,6 +283,18 @@ public abstract class SharedProject : IAsyncLifetime
         // A folder's time is a file that came or went there, but for a save's temporary file renamed over one rewritten.
         structure |= retimed.Any(folder => !rewritten.Any(file => PathNames.Same(Path.GetDirectoryName(file)!, folder)));
         return structure ? null : rewritten.ToDictionary(file => file, File.ReadAllText, StringComparer.Ordinal);
+    }
+
+    /// <summary>The files and folders a test added to the project's own, which the reset removes, the deepest folders first:
+    /// a kept server that loaded them may be restoring them still, its restore working in their folders, which Windows will
+    /// not remove meanwhile, and writing their obj/ again once removed.</summary>
+    private Additions Added() => new(
+        [.. Directory.EnumerateFiles(Folder, "*", SearchOption.AllDirectories).Where(Own).Where(file => !written.ContainsKey(file))],
+        [.. Directory.EnumerateDirectories(Folder, "*", SearchOption.AllDirectories).Where(Own).Where(folder => !folders.Contains(folder)).OrderByDescending(f => f.Length)]);
+
+    private sealed record Additions(IReadOnlyList<string> Files, IReadOnlyList<string> Folders)
+    {
+        public bool Any => Files.Count > 0 || Folders.Count > 0;
     }
 
     /// <summary>How long a kept server has to read again the files a test rewrote, as it is told of them.</summary>
