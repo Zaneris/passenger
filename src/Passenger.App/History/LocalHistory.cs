@@ -723,6 +723,10 @@ public sealed class LocalHistory
         return logged;
     }
 
+    /// <summary>Keeps a save: its change, after an external change where the disk held what the history did not know. A
+    /// save whose bytes a notice read before this record came (the watcher's word of an earlier change, read as this save
+    /// wrote) is held already as an external change from the same bytes to the same, whose place it takes (<see cref="TakeIn"/>),
+    /// so it is kept once, with no external change back to what it wrote over.</summary>
     private void RecordWrite(string path, byte[]? before, byte[] after, long set, string? name, DateTimeOffset time)
     {
         if (!IsText(after))
@@ -737,14 +741,18 @@ public sealed class LocalHistory
             return;
         }
         string? beforeHash = before is null ? null : Hash(before);
+        HistoryEvent? change = beforeHash == afterHash ? null
+            : new HistoryEvent(set, time, before is null ? HistoryKind.Created : HistoryKind.Changed, path, null, beforeHash, afterHash, name);
         List<HistoryEvent> made = [];
         bool isKnown;
         string? was;
+        bool heard;
         lock (gate)
         {
             isKnown = known.TryGetValue(path, out was);
+            heard = change is not null && Twice(change) is { Name: ExternalChange };
         }
-        if (isKnown && was != beforeHash)
+        if (isKnown && was != beforeHash && !heard)
         {
             // The disk held something else than the history knew: changed elsewhere, and not seen yet.
             if (before is not null)
@@ -757,10 +765,10 @@ public sealed class LocalHistory
         {
             Store(before);
         }
-        if (beforeHash != afterHash)
+        if (change is not null)
         {
             Store(after);
-            made.Add(new HistoryEvent(set, time, before is null ? HistoryKind.Created : HistoryKind.Changed, path, null, beforeHash, afterHash, name));
+            made.Add(change);
         }
         Append(made);
     }

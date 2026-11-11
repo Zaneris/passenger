@@ -321,6 +321,55 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A save written while Local History reads its file for a change the watcher heard before it (the last save's,
+    /// heard late) is kept once, as the save: the history reads the save's bytes before the save's own record comes, as an
+    /// external change, and that record takes its place, never kept beside it with an external change back to what the
+    /// save wrote over.</summary>
+    [AvaloniaFact]
+    public void A_save_written_as_the_history_reads_its_file_for_a_change_heard_before_is_kept_once_as_the_save()
+    {
+        string shop = Write("Shop.cs", Original);
+        MainWindow window = Open("Shop.cs");
+        LocalHistory history = window.LocalHistory!;
+        Save(window, 2, 4, "long ");
+        using ManualResetEventSlim release = new();
+        int reads = 0;
+        void Held(string path)
+        {
+            if (PathNames.Same(path, shop) && Interlocked.Increment(ref reads) == 1)
+            {
+                release.Wait(TimeSpan.FromSeconds(30).Scaled());
+            }
+        }
+        history.Reading += Held;
+        try
+        {
+            // The watcher's word of the first save, read only once the second is written.
+            history.Noticed([shop]);
+            Ui.PumpUntil(() => Volatile.Read(ref reads) > 0, "Local History reading Shop.cs for the change heard");
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(6, 8));
+            window.KeyTextInput("count++; ");
+            Ui.Run(window, AppActions.Save, settle: false);
+            Ui.PumpUntil(() => window.EditorArea.Active?.IsModified == false, "Shop.cs saved again");
+            Assert.Equal(Saved2, File.ReadAllText(shop));
+            release.Set();
+            Ui.Settle();
+        }
+        finally
+        {
+            release.Set();
+            history.Reading -= Held;
+        }
+
+        (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();
+        IReadOnlyList<HistoryRow> rows = HistoryRows.OfFile(events, known, shop);
+        Assert.True(rows.Count == 2 && rows.All(r => r.Title == "Change"),
+            $"Two saves, the second written as the first's change heard was read, were kept as {string.Join(", ", rows.Select(r => r.Title))}, not two changes");
+        Assert.Equal(Saved1, Encoding.UTF8.GetString(history.Content(rows[0].Version!)!));
+        Assert.Equal(Original, Encoding.UTF8.GetString(history.Content(rows[1].Version!)!));
+        window.Close();
+    }
+
     /// <summary>A tree another program brings into the open folder at once (a library copied in, an SDK unpacked) is a bulk
     /// arrival: none of its files is read, nor listed in the folder's history, while a file the history knew that another
     /// program changed meanwhile is kept as an external change; a file of the tree is read once it is opened, so a change
