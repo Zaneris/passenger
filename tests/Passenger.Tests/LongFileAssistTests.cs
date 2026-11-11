@@ -282,8 +282,17 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
                 .Where(s => s.Start == offset).Select(s => (TokenKind?)s.Kind).FirstOrDefault();
             int far = source.LastIndexOf("value98 * 3", StringComparison.Ordinal);
             Ui.WaitFor(() => KindAt(far) == TokenKind.Local, "the server's colours on the file's last local");
-            Ui.Settle();
             Passenger.Languages.CSharp.SemanticHighlighter colours = Assert.IsType<Passenger.Languages.CSharp.SemanticHighlighter>(document.Highlighter);
+            // That read counts as drawn down to the file's end, so the server's word would ask for the whole file: a key taken back ends it.
+            int at = source.IndexOf("seed + 0;", StringComparison.Ordinal) + "seed + 0;".Length;
+            editor.Selections = SelectionSet.Single(at);
+            editor.Focus();
+            window.KeyTextInput(" ");
+            Ui.Press(window, "BACK_SPACE");
+            // The opening's last ask answered before counting begins, the whole file's after an idle that no settle waits for.
+            Ui.PumpUntil(() => !colours.Asking, "the colours' last ask before typing answered, the whole file's after the idle included");
+            Ui.Settle();
+            Assert.True(document.Text.Snapshot.ToString() == source, "The key typed and taken back left Long.cs otherwise than it was written");
             // Every colour request and refresh as the wire had them, for a failure to say.
             System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
             System.Collections.Concurrent.ConcurrentQueue<string> wire = new();
@@ -311,9 +320,6 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             };
 
             // Statements typed one by one, a pause after each long enough for the screen's colours and short of the idle.
-            int at = source.IndexOf("seed + 0;", StringComparison.Ordinal) + "seed + 0;".Length;
-            editor.Selections = SelectionSet.Single(at);
-            editor.Focus();
             for (int i = 0; i < 4; i++)
             {
                 window.KeyTextInput($" int fresh{i} = value0;");
