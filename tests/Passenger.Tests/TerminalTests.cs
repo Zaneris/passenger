@@ -321,6 +321,62 @@ public sealed class TerminalTests
         window.Close();
     }
 
+    /// <summary>Enter held with each modifier, Enter alone and Ctrl+J reach a program in every keymap, no IDE shortcut
+    /// taking one from the terminal: as xterm sends them (Ctrl+J a line feed) until the program asks for the kitty
+    /// keyboard protocol, then each as that protocol's own key, Enter alone still a carriage return. The program asks for
+    /// disambiguation and alternate keys, as OpenCode's library does, and is told disambiguation alone is in force; its
+    /// flags go when it pops them.</summary>
+    [AvaloniaTheory]
+    [InlineData(KeymapPreset.VisualStudio)]
+    [InlineData(KeymapPreset.VSCode)]
+    [InlineData(KeymapPreset.IntelliJ)]
+    public void Enter_with_each_modifier_and_Ctrl_J_reach_a_program_as_it_asked_for_them_in_every_keymap(KeymapPreset keymap)
+    {
+        (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
+        try
+        {
+            window.ApplySettings(window.Settings with { Keymap = keymap });
+            Ui.Settle();
+            Assert.True(window.TerminalPanel.View.IsFocused, $"Choosing the {keymap} keymap took the keys from the terminal");
+            string[] keys = ["shift ENTER", "control ENTER", "alt ENTER", "control shift ENTER", "alt shift ENTER", "control J", "ENTER"];
+            // Option on the Mac types rather than sends ESC, so xterm's Alt+Enter is Enter there.
+            string alt = OperatingSystem.IsMacOS() ? "" : "^[";
+
+            RunCase(window, "keyboard");
+            WaitForLine(shell, "keyboard?", "the program to wait for its keys");
+            Press(window, keys);
+            string legacy = $"^M^M{alt}^M^M{alt}^M^J^M";
+            WaitForScreen(window, shell, s => Lines(s).Contains(legacy), $"the keys as xterm sends them, {legacy}, read by a program that never asked for more");
+            WaitForScreen(window, shell, s => s.CursorColumn > 0, "the prompt after the program");
+
+            RunCase(window, "keyboard", "5");
+            WaitForLine(shell, "flags 1", "the program told disambiguation alone is in force");
+            WaitForScreen(window, shell, s => s.KeyboardFlags == TerminalKeys.Disambiguate && Lines(s).Count(l => l == "keyboard?") == 2,
+                "the program to wait for its keys under the kitty keyboard protocol");
+            Press(window, keys);
+            string kitty = "^[[13;2u^[[13;5u^[[13;3u^[[13;6u^[[13;4u^[[106;5u^M";
+            WaitForScreen(window, shell, s => Lines(s).Contains(kitty), $"the keys as the kitty keyboard protocol sends them, {kitty}");
+            WaitForScreen(window, shell, s => s.KeyboardFlags == 0, "the program's flags to go as it pops them");
+            Run(window, "echo after");
+            WaitForLine(shell, "after", "a command Enter runs once the program has ended");
+        }
+        finally
+        {
+            // The keymap in force is the process's; the next test starts on the platform's own.
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VisualStudio });
+            window.Close();
+        }
+
+        static void Press(MainWindow window, string[] keys)
+        {
+            foreach (string key in keys)
+            {
+                Ui.Press(window, key);
+            }
+            window.KeyTextInput("q");
+        }
+    }
+
     /// <summary>A program that asks for the mouse's moves reads each move into another cell as xterm reports it: under 1002
     /// (drags) a drag's press, its moves with the button held and its release, and nothing of a move with no button; under
     /// 1003 (every move) a move with no button too.</summary>

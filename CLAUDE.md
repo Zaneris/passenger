@@ -557,6 +557,9 @@ a new name, and `just site-shots` retakes its images.
   a write in flight, and an exiting session leader waits for its output to be read: `TerminalSession` reads to the end
   and closes off the window's thread. macOS's bash 3.2 sometimes prints "child setpgid (N to N): Operation not
   permitted", so a test reading a shell's lines allows others between them.
+- **ConPTY** (Porta.Pty's OpenConsole and Windows' own) passes a program's kitty keyboard requests out and CSI u keys in
+  as written, but gives a VT-input program a win32-input-mode key (`?9001h`) as xterm's bytes, Shift+Enter a bare `\r`:
+  a key's modifiers reach a program by the kitty protocol (`TerminalKeys`).
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
   content: rows go through `ReusedRows`, made once with their containers (UiRulesTests).
 - **Avalonia 12.1 counts a run of clicks per button**: a press of another button starts a new run (`ClickCount` 1); a

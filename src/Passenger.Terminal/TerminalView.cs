@@ -11,12 +11,13 @@ using Passenger.Editor;
 namespace Passenger.Terminal;
 
 /// <summary>Draws a <see cref="TerminalSession"/>'s screen in the editor's font and sends it the keys: xterm's
-/// encodings for every key (the arrows' application forms when a program asks), the clipboard on Cmd+C and Cmd+V
-/// (Ctrl+Shift+C and V, or Ctrl+C with a selection, elsewhere), a drag to select and a double-click for a word, the
-/// wheel through the scrollback (or to the program, when it asked for the mouse). The size follows the control's, in
-/// whole cells. Web addresses and stack frames are drawn as links, opened by a click (one that drags selects instead);
-/// file paths are drawn as text, underlined faintly under the pointer and as links while Cmd (Ctrl elsewhere) is held.
-/// Cmd+click (Ctrl+click) opens either.</summary>
+/// encodings for every key (the arrows' application forms when a program asks), or the kitty keyboard protocol's once a
+/// program asks for it (<see cref="TerminalKeys"/>), the clipboard on Cmd+C and Cmd+V (Ctrl+Shift+C and V, or Ctrl+C
+/// with a selection, elsewhere), a drag to select and a double-click for a word, the wheel through the scrollback (or to
+/// the program, when it asked for the mouse). The size follows the control's, in whole cells. Web addresses and stack
+/// frames are drawn as links, opened by a click (one that drags selects instead); file paths are drawn as text,
+/// underlined faintly under the pointer and as links while Cmd (Ctrl elsewhere) is held. Cmd+click (Ctrl+click) opens
+/// either.</summary>
 public sealed partial class TerminalView : Control
 {
     public static readonly StyledProperty<double> FontSizeProperty =
@@ -747,7 +748,7 @@ public sealed partial class TerminalView : Control
             // Its character comes as text input, which handling the key here would keep from coming.
             return;
         }
-        if (Encode(e.Key, mods, session.Screen.ApplicationCursorKeys) is { } sequence)
+        if (TerminalKeys.Of(e.Key, mods, e.PhysicalKey, session.Screen.ApplicationCursorKeys, session.Screen.KeyboardFlags, altSendsEscape: !mac) is { } sequence)
         {
             Typed();
             session.Write(sequence);
@@ -770,78 +771,6 @@ public sealed partial class TerminalView : Control
     private static bool IsAltGrTyping(KeyEventArgs e) => OperatingSystem.IsWindows()
         && (e.KeyModifiers & ~KeyModifiers.Shift) == (KeyModifiers.Control | KeyModifiers.Alt)
         && e.KeySymbol is { Length: > 0 } symbol && !char.IsControl(symbol[0]) && !char.IsWhiteSpace(symbol[0]);
-
-    /// <summary>xterm's bytes for a key that is not plain text: Enter, the arrows and the keypad's keys, the
-    /// function keys, and Ctrl (or Alt, as a leading ESC) with a letter. Null for keys whose text input carries them.</summary>
-    private static string? Encode(Key key, KeyModifiers mods, bool applicationCursor)
-    {
-        bool ctrl = mods.HasFlag(KeyModifiers.Control);
-        bool alt = mods.HasFlag(KeyModifiers.Alt) && !OperatingSystem.IsMacOS();
-        string? plain = key switch
-        {
-            Key.Enter => "\r",
-            Key.Back => ctrl ? "\x08" : "\x7f",
-            Key.Tab => mods.HasFlag(KeyModifiers.Shift) ? "\x1b[Z" : "\t",
-            Key.Escape => "\x1b",
-            Key.Up => Cursor('A'),
-            Key.Down => Cursor('B'),
-            Key.Right => Cursor('C'),
-            Key.Left => Cursor('D'),
-            Key.Home => Cursor('H'),
-            Key.End => Cursor('F'),
-            Key.Insert => Tilde(2),
-            Key.Delete => Tilde(3),
-            Key.PageUp => Tilde(5),
-            Key.PageDown => Tilde(6),
-            Key.F1 => Function('P'),
-            Key.F2 => Function('Q'),
-            Key.F3 => Function('R'),
-            Key.F4 => Function('S'),
-            Key.F5 => Tilde(15),
-            Key.F6 => Tilde(17),
-            Key.F7 => Tilde(18),
-            Key.F8 => Tilde(19),
-            Key.F9 => Tilde(20),
-            Key.F10 => Tilde(21),
-            Key.F11 => Tilde(23),
-            Key.F12 => Tilde(24),
-            _ => null,
-        };
-        if (plain is not null)
-        {
-            return alt && key is Key.Enter or Key.Back ? "\x1b" + plain : plain;
-        }
-        if (ctrl && Control(key) is { } control)
-        {
-            return alt ? "\x1b" + control : control;
-        }
-        if (alt && key is >= Key.A and <= Key.Z)
-        {
-            char letter = (char)('a' + (key - Key.A));
-            return "\x1b" + (mods.HasFlag(KeyModifiers.Shift) ? char.ToUpperInvariant(letter) : letter);
-        }
-        return null;
-
-        int Modifier() => 1 + (mods.HasFlag(KeyModifiers.Shift) ? 1 : 0) + (mods.HasFlag(KeyModifiers.Alt) ? 2 : 0) + (ctrl ? 4 : 0);
-        string Cursor(char final) => Modifier() > 1 ? $"\x1b[1;{Modifier()}{final}" : applicationCursor ? $"\x1bO{final}" : $"\x1b[{final}";
-        string Tilde(int code) => Modifier() > 1 ? $"\x1b[{code};{Modifier()}~" : $"\x1b[{code}~";
-        string Function(char final) => Modifier() > 1 ? $"\x1b[1;{Modifier()}{final}" : $"\x1bO{final}";
-    }
-
-    /// <summary>The control character Ctrl makes of a key: Ctrl+A is 1 through Ctrl+Z 26, and the few punctuation keys
-    /// terminals give the rest of C0 to.</summary>
-    private static string? Control(Key key) => key switch
-    {
-        >= Key.A and <= Key.Z => ((char)(key - Key.A + 1)).ToString(),
-        Key.Space or Key.D2 => "\0",
-        Key.OemOpenBrackets or Key.D3 => "\x1b",
-        Key.OemPipe or Key.D4 => "\x1c",
-        Key.OemCloseBrackets or Key.D5 => "\x1d",
-        Key.D6 => "\x1e",
-        Key.OemMinus or Key.D7 or Key.OemQuestion => "\x1f",
-        Key.D8 => "\x7f",
-        _ => null,
-    };
 
     /// <summary>Copies the selection to the clipboard.</summary>
     public async Task CopyAsync()

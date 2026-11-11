@@ -24,8 +24,9 @@ public enum MouseTracking
 /// program sets. Bytes from the program go in through <see cref="Feed"/> and are read as xterm reads them: UTF-8 text,
 /// C0 controls, and ESC, CSI, OSC and DCS sequences after the state machine in vt100.net's DEC parser, covering what
 /// shells, editors and full-screen programs use (cursor movement, erasing, scroll regions, the alternate screen, 16,
-/// 256 and 24-bit colours, the line-drawing set, bracketed paste and mouse reports). Answers to a program's questions
-/// (where the cursor is, what the terminal is) come out of <see cref="Reply"/>. No UI: the view draws it.</summary>
+/// 256 and 24-bit colours, the line-drawing set, bracketed paste, mouse reports, the kitty keyboard protocol's flags).
+/// Answers to a program's questions (where the cursor is, what the terminal is, the keyboard flags in force) come out of
+/// <see cref="Reply"/>. No UI: the view draws it.</summary>
 public sealed class TerminalScreen
 {
     /// <summary>The most lines kept above the screen.</summary>
@@ -69,6 +70,10 @@ public sealed class TerminalScreen
     private int lastRune = ' ';
     private Saved saved;
     private Saved savedMain;
+
+    /// <summary>The kitty keyboard protocol's flags each screen's programs pushed, kept apart as the protocol asks.</summary>
+    private readonly KeyboardStack mainKeyboard = new();
+    private readonly KeyboardStack alternateKeyboard = new();
 
     public TerminalScreen(int columns = 80, int rows = 24)
     {
@@ -124,6 +129,12 @@ public sealed class TerminalScreen
 
     /// <summary>Whether the alternate screen is up (a full-screen program's), which has no scrollback.</summary>
     public bool IsAlternate => alternate is not null && ReferenceEquals(Lines, alternate);
+
+    /// <summary>The kitty keyboard protocol's enhancements in force on the screen shown, as a program set them (CSI &gt;
+    /// flags u, CSI &lt; n u, CSI = flags ; mode u), only those <see cref="TerminalKeys.Followed"/> kept: 0 until one asks.</summary>
+    public int KeyboardFlags => Keyboard.Current;
+
+    private KeyboardStack Keyboard => IsAlternate ? alternateKeyboard : mainKeyboard;
 
     /// <summary>The window title the program set (OSC 0 or 2).</summary>
     public string Title { get; private set; } = string.Empty;
@@ -1046,6 +1057,9 @@ public sealed class TerminalScreen
                 case 'n' when Raw(0) == 6:
                     Reply?.Invoke($"\x1b[?{CursorRow + 1};{CursorColumn + 1}R");
                     break;
+                case 'u' when intermediates == 0:
+                    Reply?.Invoke($"\x1b[?{KeyboardFlags}u");
+                    break;
                 case 'J':
                     EraseDisplay(Raw(0));
                     break;
@@ -1062,6 +1076,20 @@ public sealed class TerminalScreen
                 // A VT220-like terminal, as xterm answers the secondary attributes.
                 Reply?.Invoke("\x1b[>1;10;0c");
             }
+            else if (final == 'u' && intermediates == 0)
+            {
+                Keyboard.Push(Raw(0) & TerminalKeys.Followed);
+            }
+            return;
+        }
+        if (privateMarker == '<' && final == 'u' && intermediates == 0)
+        {
+            Keyboard.Pop(Get(0, 1));
+            return;
+        }
+        if (privateMarker == '=' && final == 'u' && intermediates == 0)
+        {
+            Keyboard.Set(Raw(0) & TerminalKeys.Followed, Get(1, 1));
             return;
         }
         if (privateMarker != '\0')
@@ -1279,6 +1307,11 @@ public sealed class TerminalScreen
     {
         if (on)
         {
+            if (!IsAlternate)
+            {
+                // A program coming to the alternate screen asks for its keys afresh, whatever one left there asked.
+                alternateKeyboard.Clear();
+            }
             alternate ??= NewLines(Rows);
             if (clear)
             {
@@ -1633,6 +1666,8 @@ public sealed class TerminalScreen
         BracketedPaste = false;
         MouseTracking = MouseTracking.None;
         SgrMouse = false;
+        mainKeyboard.Clear();
+        alternateKeyboard.Clear();
         tabStops = Stops(Columns);
         Title = string.Empty;
     }
@@ -1687,6 +1722,62 @@ public sealed class TerminalScreen
     ];
 
     private readonly record struct Saved(int Row, int Column, CellStyle Style, bool Origin, bool WrapPending, bool LineDrawing);
+
+    /// <summary>A screen's kitty keyboard flags: those set with nothing pushed, under at most <see cref="Most"/> pushed
+    /// over them, a push past which drops the oldest; a pop that empties the stack resets every flag.</summary>
+    private sealed class KeyboardStack
+    {
+        private const int Most = 16;
+
+        /// <summary>The flags with nothing pushed, then each push's, the last in force.</summary>
+        private readonly int[] entries = new int[Most + 1];
+        private int depth;
+
+        public int Current => entries[depth];
+
+        public void Push(int flags)
+        {
+            if (depth == Most)
+            {
+                Array.Copy(entries, 1, entries, 0, Most);
+            }
+            else
+            {
+                depth++;
+            }
+            entries[depth] = flags;
+        }
+
+        public void Pop(int count)
+        {
+            if (count >= depth)
+            {
+                Clear();
+            }
+            else
+            {
+                depth -= count;
+            }
+        }
+
+        /// <summary>The flags in force set (mode 1), added to (2) or taken from (3); another mode changes nothing.</summary>
+        public void Set(int flags, int mode)
+        {
+            entries[depth] = mode switch
+            {
+                1 => flags,
+                2 => entries[depth] | flags,
+                3 => entries[depth] & ~flags,
+                _ => entries[depth],
+            };
+        }
+
+        public void Clear()
+        {
+            depth = 0;
+            entries[0] = 0;
+        }
+    }
 
     /// <summary>A CSI's parameters, read as their bytes arrive: groups apart at semicolons, each group's parts apart at
     /// colons (SGR's 38:2:R:G:B), each part a number up to 65535, or -1 when it is empty, holds a byte other than a digit

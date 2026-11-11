@@ -63,6 +63,30 @@ switch (args)
             Write("\e[?1l");
         }
         break;
+    case ["keyboard", .. string[] asked]:
+        // The keys as read, as cat -v shows them, on one line once q comes; with flags, first pushed as the kitty
+        // keyboard protocol asks and the flags the terminal says are in force told, then popped at the end.
+        using (Terminal.Raw())
+        {
+            if (asked is [string flags])
+            {
+                Write($"\e[>{flags}u\e[?u");
+                string answer = ReadTo('u');
+                Write($"flags {answer[3..^1]}\r\n");
+            }
+            Write("keyboard?\r\n");
+            StringBuilder read = new();
+            for (int b = input.ReadByte(); b is >= 0 and not 'q'; b = input.ReadByte())
+            {
+                read.Append(b < 32 ? $"^{(char)(b + 64)}" : ((char)b).ToString());
+            }
+            Write($"{read}\r\n");
+            if (asked.Length > 0)
+            {
+                Write("\e[<u");
+            }
+        }
+        break;
     case ["mouse", .. string[] modes]:
         // The mouse reports as read, in SGR's form (1006) after the modes asked for (1002, 1003), each on a line of its
         // own as cat -v shows it, until Ctrl+C; the modes put back after.
