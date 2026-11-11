@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
@@ -18,6 +19,127 @@ namespace Passenger.Tests;
 /// settings opens on them again, and another Passenger's change to them is followed even where the watcher lost it.</summary>
 public sealed class SettingsTests : IDisposable
 {
+    [AvaloniaFact]
+    public void Display_scale_applies_to_open_windows_and_popups_and_is_kept()
+    {
+        string file = Path.Combine(folder, "Scale.cs");
+        File.WriteAllText(file, "class Scale { }\n");
+        MainWindow window = Open();
+        try
+        {
+            window.KeepSettings();
+            window.OpenFile(file);
+            SettingsDialog dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.Appearance;
+            Ui.Settle();
+            NumericUpDown factor = Editor<NumericUpDown>(dialog, "Display scale");
+            Assert.Equal(1m, factor.Value);
+            factor.Value = 1.5m;
+            Assert.Equal(1, window.Settings.DisplayScale);
+            dialog.Apply();
+            Ui.Settle();
+            Assert.Equal(1.5, window.Settings.DisplayScale);
+            Assert.Equal(1.5, Scale(factor));
+            Assert.Equal(1.5, Scale(window.EditorArea.CodeEditor));
+            Assert.Equal(13, window.EditorArea.CodeEditor.FontSize);
+            dialog.Close();
+
+            Button target = window.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible);
+            Panel host = window.GetVisualDescendants().OfType<Panel>().First();
+            foreach (bool overlay in new[] { false, true })
+            {
+                int clicked = 0;
+                Button choice = new() { Content = "Scaled popup choice" };
+                choice.Click += (_, _) => clicked++;
+                Panel choices = new() { Children = { choice } };
+                Popup popup = new() { PlacementTarget = target, Child = choices, ShouldUseOverlayLayer = overlay };
+                host.Children.Add(popup);
+                try
+                {
+                    popup.Open();
+                    Ui.Settle();
+                    Assert.Equal(1.5, Scale(choice));
+                    Ui.Click(choice);
+                    Assert.Equal(1, clicked);
+                    Button nestedChoice = new() { Content = "Nested choice" };
+                    Popup nested = new() { PlacementTarget = choice, Child = nestedChoice, ShouldUseOverlayLayer = overlay };
+                    choices.Children.Add(nested);
+                    try
+                    {
+                        nested.Open();
+                        Ui.Settle();
+                        Assert.Equal(1.5, Scale(nestedChoice));
+                    }
+                    finally
+                    {
+                        nested.Close();
+                        choices.Children.Remove(nested);
+                    }
+                }
+                finally
+                {
+                    popup.Close();
+                    host.Children.Remove(popup);
+                }
+            }
+
+            window.Close();
+            window = Open();
+            window.KeepSettings();
+            window.OpenFile(file);
+            Ui.Settle();
+            Assert.Equal(1.5, window.Settings.DisplayScale);
+            dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.Appearance;
+            Ui.Settle();
+            factor = Editor<NumericUpDown>(dialog, "Display scale");
+            Assert.Equal(1.5m, factor.Value);
+            Assert.Equal(1.5, Scale(factor));
+            factor.Value = 1.2m;
+            dialog.Apply();
+            Ui.Settle();
+            Assert.Equal(1.2, Scale(factor));
+            Assert.Equal(1.2, Scale(window.EditorArea.CodeEditor));
+            factor.Value = 1m;
+            dialog.Ok();
+            Ui.Settle();
+            Assert.Equal(1, Scale(window.EditorArea.CodeEditor));
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { DisplayScale = 1 });
+            window.Close();
+        }
+
+        static double Scale(Control control) => control.TransformToVisual(TopLevel.GetTopLevel(control)!)!.Value.M11;
+    }
+
+    [AvaloniaTheory]
+    [InlineData(0, 1)]
+    [InlineData(10, 3)]
+    [InlineData(1, 1)]
+    [InlineData(1.2, 1.2)]
+    [InlineData(1.5, 1.5)]
+    public void Display_scale_outside_its_range_still_opens_usable_settings(double given, double expected)
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(window.Settings with { DisplayScale = given });
+            SettingsDialog dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.Appearance;
+            Ui.Settle();
+            Assert.Equal(expected, window.Settings.DisplayScale);
+            Assert.Equal((decimal)expected, Editor<NumericUpDown>(dialog, "Display scale").Value);
+            dialog.Close();
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { DisplayScale = 1 });
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Terminal_preferences_apply_to_the_view_and_are_kept_for_the_next_window()
     {
@@ -156,7 +278,7 @@ public sealed class SettingsTests : IDisposable
         // The Keymap page has Increase, Decrease and Reset Font Size.
         Assert.Equal([SettingsDialog.Appearance, SettingsDialog.EditorPage, SettingsDialog.TerminalPage, SettingsDialog.KeymapPage], dialog.Pages);
         Assert.Equal(SettingsDialog.Appearance, dialog.Page);
-        Assert.Equal(["Font family"], dialog.Shown);
+        Assert.Equal(["Font family", "Display scale"], dialog.Shown);
         dialog.Page = SettingsDialog.EditorPage;
         Ui.Settle();
         Assert.Contains("Font size", dialog.Shown);

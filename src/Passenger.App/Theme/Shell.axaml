@@ -149,6 +149,10 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="16,10" />
     </Style>
+    <!-- Popups follow their target's display scale, including nested menus and overlay popups. -->
+    <Style Selector="Popup">
+        <Setter Property="InheritsTransform" Value="True" />
+    </Style>
     <!-- Every window's ground is a tool window's: a dialog is its page, never an editor's background. A window that shows
          an editor (a diff, a merge) says so itself. A greyed control still shows its tooltip, which says what it is or why
          it is greyed: inherited by all a window holds, its menus and popups too. Every window wears the one icon. -->

@@ -217,6 +217,10 @@ public sealed class SettingsStore : IDisposable
         {
             WindowFonts.Use(framed, WindowFonts.Named(after.WindowFontFamily) ?? WindowFonts.Carried);
         }
+        if (Avalonia.Application.Current is { } scaled && (before is null || before.DisplayScale != after.DisplayScale))
+        {
+            InterfaceScale.Use(scaled, after.DisplayScale);
+        }
         if (before is null || before.Keymap != after.Keymap || !SameShortcuts(before.OwnShortcuts(), after.OwnShortcuts()))
         {
             AppActions.Choose(after.Keymap, after.OwnShortcuts());

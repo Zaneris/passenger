@@ -28,11 +28,13 @@ public partial class App : Application
         Passenger.Editor.CodeFonts.Install(PlatformWidths.Monospaced);
         Passenger.Editor.CodeFonts.Use(this, Passenger.Editor.CodeEditor.CodeFont);
         WindowFonts.Use(this, WindowFonts.Carried);
+        InterfaceScale.Use(this, 1);
         if (classHandlersAdded)
         {
             return;
         }
         classHandlersAdded = true;
+        InterfaceScale.Install();
         MenuShadow.Install();
         AgentAsks.Install();
         // In-window menus write keys as the keymap does (⇧⌘R), not as Fluent writes a KeyGesture (Shift+Cmd+R).
