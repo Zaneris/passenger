@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `DebuggerTests`' `After_a_watch_runs_with_every_thread_let_go_threads_and_call_stack_show_where_the_threads_are_now`, CI's
+  Linux runner at 61d99a589 (run 42966878050): "Waited 180 s for Holder's frame in the lock in Call Stack", Holder's
+  frames ending in `ManualResetEventSlim.Set` at line 176. **The test's debuggee raced**: Holder's `Set` woke the main
+  thread before it returned, and the main thread reached its breakpoint while Holder was still in `Set`, a line short of
+  the sleep the test looks for, where the stopped program held it; Call Stack showed where it was. The main thread now
+  goes on only once Holder is on its sleep's line, and the test passed on the Windows VM with Holder made to wait 700 ms
+  before that line (50b591863, #1480).
 - `FolderWatchTests`' `A_saves_temporary_file_there_as_the_folder_is_read_is_never_offered_by_go_to_file_find_in_files_…`,
   CI's macOS runner at 76cfe6054 (run 42957469387): "Find in Files finds class Shop in [], a save's temporary file among
   them". **The test waited wrong**: it set the search box's text and searched at once, but the box tells of a new text
