@@ -515,6 +515,89 @@ public sealed class IdeErrorsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The check that a language server still answers asks of a document the server takes for no file, on any
+    /// system: it answers that it found none and logs nothing of it. A file's URI had it make a loose file of the check's
+    /// each time, and on Windows, where that URI names no drive, log an error.</summary>
+    [AvaloniaFact]
+    public void The_check_that_a_language_server_still_answers_asks_of_no_file_it_would_load()
+    {
+        MainWindow window = OpenProgram();
+        Passenger.Lsp.RoslynSession session = window.CSharpService!.Session!;
+        Passenger.Lsp.LanguageServer server = session.Server;
+        int process = server.ProcessId;
+        // Checked once a request has waited a second, on this server alone.
+        server.SlowRequest = TimeSpan.FromSeconds(1);
+        Lock reading = new();
+        List<string> failures = [];
+        string? asked = null;
+        string? answer = null;
+        server.Logged += (_, said) =>
+        {
+            if (said.Type is Passenger.Lsp.MessageType.Error or Passenger.Lsp.MessageType.Warning)
+            {
+                lock (reading)
+                {
+                    failures.Add(said.Message);
+                }
+            }
+        };
+        Passenger.Lsp.LanguageServer.Trace = (from, message) =>
+        {
+            lock (reading)
+            {
+                if (from != process || answer is not null)
+                {
+                    return;
+                }
+                if (asked is null && message.StartsWith("-->", StringComparison.Ordinal)
+                    && message.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.FoldingRange}\"", StringComparison.Ordinal))
+                {
+                    asked = Regex.Match(message, "\"id\":(\\d+)").Groups[1].Value;
+                }
+                else if (asked is not null && message.StartsWith($"<-- {{\"jsonrpc\":\"2.0\",\"id\":{asked},", StringComparison.Ordinal)
+                    && !message.Contains("\"method\"", StringComparison.Ordinal))
+                {
+                    answer = message;
+                }
+            }
+        };
+        TaskCompletionSource checkedOnce = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<IReadOnlyList<Passenger.Lsp.SymbolInformation>> held;
+        try
+        {
+            // Held unsent, as by a server slow to answer it, until a check has been answered.
+            Task holding = server.HoldNext(Passenger.Lsp.LspMethods.WorkspaceSymbol, _ => true, checkedOnce.Task);
+            held = session.SymbolsAsync("Main");
+            Ui.PumpUntil(() => holding.IsCompleted, "the request for symbols to be held");
+            Ui.PumpUntil(() =>
+            {
+                lock (reading)
+                {
+                    return answer is not null;
+                }
+            }, "the server to answer Passenger's check while a request waited on it");
+        }
+        finally
+        {
+            Passenger.Lsp.LanguageServer.Trace = null;
+            checkedOnce.TrySetResult();
+        }
+        Ui.AwaitPumped(held, "the request held to be answered once let go");
+        lock (reading)
+        {
+            Assert.True(answer is { } said && said.EndsWith("\"result\":null}", StringComparison.Ordinal),
+                $"The server made a document of Passenger's check, as of a file to load, to answer it: {answer}");
+        }
+        string log = Assert.Single(ServerLogs(), l => ServerOf(l) == process);
+        window.Close();
+        // Its log closed, the server has ended, and nothing more of what it logged is to come.
+        Ui.WaitFor(() => LetGo(log), $"the server's log {Path.GetFileName(log)} to be closed with the server");
+        lock (reading)
+        {
+            Assert.True(failures.Count == 0, $"The server logged a failure while Passenger checked it: {string.Join(" | ", failures)}");
+        }
+    }
+
     /// <summary>A request cancelled as its language server's connection goes is said to no one: the word of the
     /// cancellation finds no server to tell, which is no error, and the request's caller alone hears how it ended. A
     /// failure nothing observed shows once its task is collected.</summary>

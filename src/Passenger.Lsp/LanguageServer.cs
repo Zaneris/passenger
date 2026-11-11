@@ -35,8 +35,9 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Servers running in this process, for a test's words on what each was doing as a wait gave up.</summary>
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<LanguageServer, byte> Live = new();
 
-    /// <summary>The check: the folding ranges of a document never opened, which Roslyn answers with none.</summary>
-    private static readonly FoldingRangeParams Check = new(new TextDocumentIdentifier("file:///passenger-is-the-server-answering.cs"));
+    /// <summary>The check: the folding ranges of a document never opened, which Roslyn answers with none, finding no
+    /// document. Its URI is no file's, so no server takes it in as a loose file to load, on any system.</summary>
+    private static readonly FoldingRangeParams Check = new(new TextDocumentIdentifier("passenger:is-the-server-answering.cs"));
 
     /// <summary>Servers started in this IDE, for the handshake salt of each one's MSBuild nodes.</summary>
     private static int started;
