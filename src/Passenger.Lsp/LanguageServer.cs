@@ -746,8 +746,8 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>A request someone waits for the answer to: one still waiting after <see cref="SlowRequest"/> has the
     /// server checked, and raises <see cref="NotResponding"/> if that goes unanswered too; <paramref name="about"/> names
-    /// what it asks where the method alone does not (an extension handler's). A <see cref="LanguageServerFailed"/> when the
-    /// server does not answer it.</summary>
+    /// what it asks where the method alone does not (an extension handler's, a diagnostic pull's source). A
+    /// <see cref="LanguageServerFailed"/> when the server does not answer it.</summary>
     public async Task<T?> RequestAsync<T>(string method, object parameters, CancellationToken cancel = default, string? about = null)
     {
         long id = Interlocked.Increment(ref requests);

@@ -422,6 +422,21 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// waits for it, as the Problems window fills once it has.</summary>
     public bool IsAnalysing => unanswered > 0;
 
+    /// <summary><see cref="IsAnalysing"/> changed: the analysis began its first round, or that round ended; raised on the
+    /// UI thread.</summary>
+    public event EventHandler? AnalysingChanged;
+
+    /// <summary>One more source's first pull to answer, or one fewer, said as the first round begins or ends.</summary>
+    private void Unanswered(int change)
+    {
+        bool was = IsAnalysing;
+        unanswered += change;
+        if (IsAnalysing != was)
+        {
+            AnalysingChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     /// <summary>How long after a pull the server refused it is asked again, doubled while the server keeps refusing, up
     /// to <see cref="RefusedPullsAtMost"/>.</summary>
     private static readonly TimeSpan RefusedPull = TimeSpan.FromSeconds(1);
@@ -691,7 +706,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         // Held from a wait for the open files' pulls until the pull asked after them: the wait ends by way of the thread pool.
         IDisposable? waiting = null;
         BackgroundWork.Begin();
-        unanswered++;
+        Unanswered(1);
         try
         {
             while (!cancel.IsCancellationRequested)
@@ -773,7 +788,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                     }
                     first = false;
                     BackgroundWork.End();
-                    unanswered--;
+                    Unanswered(-1);
                 }
                 // A source with nothing to hold a pull open on answers at once: it is asked again only now and then.
                 if (changed == 0 && DateTime.UtcNow - asked < TimeSpan.FromSeconds(1))
@@ -796,7 +811,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             if (first)
             {
                 BackgroundWork.End();
-                unanswered--;
+                Unanswered(-1);
             }
         }
 

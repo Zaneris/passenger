@@ -145,6 +145,7 @@
                     <Button Name="AnalysisButton" Classes="statusItem" Click="OnAnalysisClicked">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <PathIcon Name="AnalysisIcon" Width="14" Height="14" />
+                            <app:WorkingRing Name="AnalysisWorking" Width="14" Height="14" IsVisible="False" VerticalAlignment="Center" />
                             <TextBlock Name="AnalysisText" Classes="status" />
                         </StackPanel>
                     </Button>

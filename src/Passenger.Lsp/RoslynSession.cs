@@ -1055,8 +1055,9 @@ public sealed class LspDocument : IDisposable
         // Gathered on the thread pool, so a file's thousands of warnings reach the caller as one list.
         foreach (string? source in sources)
         {
+            // Named by its source, so a long wait says which: the project-wide one is a whole project's analysis.
             DocumentDiagnosticReport? report = await Read(Server.RequestAsync<DocumentDiagnosticReport>(LspMethods.DocumentDiagnostic,
-                new DocumentDiagnosticParams(identifier, source), cancel));
+                new DocumentDiagnosticParams(identifier, source), cancel, about: source));
             all.AddRange(report?.Items ?? []);
         }
         if (IsRazor && Server.HtmlServer is not null && part != DiagnosticPull.ProjectWide)

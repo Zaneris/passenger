@@ -90,6 +90,68 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             $"The Solution tab's rows {when} are not those it lists afresh:\n{string.Join('\n', kept)}\n\nAfresh:\n{string.Join('\n', afresh)}");
     }
 
+    /// <summary>The status bar says solution-wide analysis is under way while its first round is, a turning ring in place
+    /// of its icon: a tick there would say the solution has no errors before any file nobody opened was analysed. Once the
+    /// round answers, it says what the round found (here Bad.cs's error).</summary>
+    [AvaloniaFact]
+    public void The_status_bar_says_solution_wide_analysis_is_under_way_until_its_first_round_answers()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        Avalonia.Controls.Button analysis = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.Button>(window, "AnalysisButton")!;
+        WorkingRing? ring = Avalonia.Controls.ControlExtensions.FindControl<WorkingRing>(window, "AnalysisWorking");
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            // A first pull of the solution's diagnostics held unanswered, as by a server still analysing a large solution.
+            Task holding = server.HoldNextAnswer(Passenger.Lsp.LspMethods.WorkspaceDiagnostic, _ => true, answered.Task);
+            window.Perform(AppActions.ToggleSolutionAnalysis);
+            // Pumped, not settled: the round is background work until it answers.
+            Ui.PumpUntil(() => holding.IsCompleted, "the first pull of the solution's diagnostics to be answered, and held");
+            Assert.True(window.CSharpService.IsAnalysing, "Solution-wide analysis ended its first round with a pull of it unanswered");
+            string? said = Avalonia.Controls.ToolTip.GetTip(analysis) as string;
+            Assert.True(said?.StartsWith("Solution-wide analysis is under way", StringComparison.Ordinal) == true && ring?.IsVisible == true,
+                $"While solution-wide analysis had yet to answer its first round, the status bar said \"{said}\" with {(ring?.IsVisible == true ? "a turning ring" : "no ring")}");
+        }
+        finally
+        {
+            answered.TrySetResult();
+        }
+        Ui.WaitFor(() => window.CSharpService is { IsAnalysing: false }, "the first round to answer once its pull was let go");
+        string? after = Avalonia.Controls.ToolTip.GetTip(analysis) as string;
+        Assert.True(after?.StartsWith("Solution-wide analysis: ", StringComparison.Ordinal) == true && ring?.IsVisible == false,
+            $"Once the first round answered, finding Bad.cs's error, the status bar said \"{after}\" with {(ring?.IsVisible == true ? "a ring still turning" : "no ring")}");
+        window.Close();
+    }
+
+    /// <summary>A file's pull of what its project's whole analysis reports in it, which solution-wide analysis adds, is named
+    /// by its source while it waits on the server, so a long wait (a large project's) says which pull it is.</summary>
+    [AvaloniaFact]
+    public void A_files_project_wide_pull_waiting_on_the_server_is_named_by_its_source()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        Ui.WaitFor(() => server.DiagnosticSources.Contains(Passenger.Lsp.LspDocument.ProjectWideSource),
+            "the server to give files a project-wide source of diagnostics, as it does analysing the whole solution");
+        TaskCompletionSource asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Task holding = server.HoldNext(Passenger.Lsp.LspMethods.DocumentDiagnostic,
+                p => p is Passenger.Lsp.DocumentDiagnosticParams { Identifier: Passenger.Lsp.LspDocument.ProjectWideSource }, asked.Task);
+            window.KeyTextInput(" ");
+            Ui.PumpUntil(() => holding.IsCompleted, "the file's project-wide pull to be asked, and held");
+            string conversation = server.Conversation();
+            Assert.True(conversation.Contains($"{Passenger.Lsp.LspMethods.DocumentDiagnostic} ({Passenger.Lsp.LspDocument.ProjectWideSource})", StringComparison.Ordinal),
+                $"The file's project-wide pull waiting on the server was not named by its source: {conversation}");
+        }
+        finally
+        {
+            asked.TrySetResult();
+        }
+        window.Close();
+    }
+
     /// <summary>Solution-wide analysis turned on as the folder opens, while its language server starts and before the
     /// window has a session of it, reaches the server once it has: the Solution tab lists the error of a file nobody
     /// opened, which a server left analysing the open files alone never reports.</summary>

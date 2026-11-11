@@ -59,6 +59,13 @@ public partial class MainWindow
     /// <summary>A new C# service follows the window's analysis setting and reports to Problems.</summary>
     private void WatchProblems(CSharpService service)
     {
+        service.AnalysingChanged += (_, _) =>
+        {
+            if (session.CSharp == service)
+            {
+                ShowAnalysis();
+            }
+        };
         service.SolutionWide = settings.SolutionWideAnalysis;
         service.SolutionProblemsChanged += (_, files) =>
         {
@@ -227,17 +234,25 @@ public partial class MainWindow
         problem.At,
         project);
 
-    /// <summary>The status bar's analysis icon: grey and off, a green tick, or the solution's error count in red.</summary>
+    /// <summary>The status bar's analysis icon: grey and off, a turning ring while its first round is under way, with the
+    /// errors found so far, then a green tick or the solution's error count in red.</summary>
     private void ShowAnalysis()
     {
-        int errors = Bottom.Problems.SolutionErrors;
+        int errors = Bottom.Problems.ListsSolution ? Bottom.Problems.SolutionErrors : 0;
+        bool analysing = settings.SolutionWideAnalysis && session.CSharp is { IsAnalysing: true };
         (string icon, string brush, string text, string tip) = !settings.SolutionWideAnalysis
             ? (IconKeys.Problems, TokenKeys.TextMuted, string.Empty, "Solution-wide analysis is off: click to analyse every file of the solution")
-            : !Bottom.Problems.ListsSolution || errors == 0
+            : analysing
+                ? (IconKeys.Check, TokenKeys.Test_Passed, errors > 0 ? errors.ToString() : string.Empty, errors > 0
+                    ? $"Solution-wide analysis is under way, {Plural.Of(errors, "error")} so far: Problems lists them as it finds them. Click to turn it off"
+                    : "Solution-wide analysis is under way: Problems lists what it finds as it goes. Click to turn it off")
+            : errors == 0
                 ? (IconKeys.Check, TokenKeys.Test_Passed, string.Empty, "Solution-wide analysis: no errors. Click to turn it off")
                 : (IconKeys.Error, TokenKeys.Error, errors.ToString(), $"Solution-wide analysis: {Plural.Of(errors, "error")}; Problems lists them. Click to turn it off");
         AnalysisIcon.Bind(PathIcon.DataProperty, AnalysisIcon.GetResourceObservable(icon));
         AnalysisIcon.Bind(PathIcon.ForegroundProperty, AnalysisIcon.GetResourceObservable(brush));
+        AnalysisIcon.IsVisible = !analysing;
+        AnalysisWorking.IsVisible = analysing;
         AnalysisText.Text = text;
         AnalysisText.IsVisible = text.Length > 0;
         ToolButtons.Tip(AnalysisButton, tip);
