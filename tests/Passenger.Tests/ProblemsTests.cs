@@ -511,68 +511,6 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         return (window, typed, listed);
     }
 
-    /// <summary>Solution-wide analysis places each file's warnings without a copy of the file's text, and decodes each
-    /// warning at a small cost: over a thousand files nobody has open with no break only Roslyn counts, a pull of their
-    /// warnings allocates (on every thread, the least of three) under 8 KB a file more when each is 17 KB long than when it
-    /// is a few lines, where a copy of its text costs three times its size, and twenty warnings a file under 4 KB for each
-    /// warning more than two.</summary>
-    [AvaloniaFact]
-    public void A_pull_of_thousands_of_warnings_decodes_each_at_a_small_cost_and_never_copies_a_files_text()
-    {
-        (long dense, int denseListed) = PullBytes(files: 100, warnings: 20, lines: 2);
-        (long few, int fewListed) = PullBytes(files: 100, warnings: 2, lines: 2);
-        (long shortFiles, int listed) = PullBytes(files: 1000, warnings: 2, lines: 2);
-        (long longFiles, _) = PullBytes(files: 1000, warnings: 2, lines: 210);
-        long perText = (longFiles - shortFiles) / 1000;
-        long perWarning = (dense - few) / (denseListed - fewListed);
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A pull of {listed} problems allocated {longFiles / 1024:N0} KB over 1,000 files of 17 KB, {shortFiles / 1024:N0} KB over 1,000 of a few lines: {perText:N0} bytes a file more; "
-            + $"{dense / 1024:N0} KB for {denseListed} problems in 100 files, {few / 1024:N0} KB for {fewListed}: {perWarning:N0} bytes a warning more");
-        Assert.True(perText < 8 * 1024,
-            $"A pull of solution-wide analysis allocated {longFiles / 1024:N0} KB over 1,000 files of 17 KB, {shortFiles / 1024:N0} KB over 1,000 of a few lines: {perText:N0} bytes for each file's 17 KB, as if its text were read to place its warnings");
-        Assert.True(perWarning < 4 * 1024,
-            $"A pull of solution-wide analysis allocated {dense / 1024:N0} KB for {denseListed} warnings, {few / 1024:N0} KB for {fewListed} in the same files: {perWarning:N0} bytes for each warning more");
-    }
-
-    /// <summary>What turning solution-wide analysis on allocates on every thread until Problems counts every warning, the
-    /// least of three, over <paramref name="files"/> files of a comment of <paramref name="lines"/> lines and
-    /// <paramref name="warnings"/> unused variables each; and how many problems it listed.</summary>
-    private (long Bytes, int Listed) PullBytes(int files, int warnings, int lines)
-    {
-        string comment = string.Concat(Enumerable.Repeat("// A line of a long comment the compiler passes over, as long as a line of code.\n", lines));
-        List<(string, string)> written = [];
-        for (int i = 0; i < files; i++)
-        {
-            System.Text.StringBuilder text = new(comment);
-            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"static class Long{i}\n{{\n    static void All()\n    {{\n");
-            for (int j = 0; j < warnings; j++)
-            {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{j};\n");
-            }
-            written.Add(($"Long{i}.cs", text.Append("    }\n}\n").ToString()));
-        }
-        project.Write(written);
-        MainWindow window = project.Open("Program.cs");
-        ProblemsModel problems = window.BottomPanel.Problems;
-        // Each file's warnings and Bad.cs's error.
-        int listed = (files * warnings) + 1;
-        long least = long.MaxValue;
-        for (int time = 0; time < 3; time++)
-        {
-            Ui.Settle();
-            long before = GC.GetTotalAllocatedBytes(precise: true);
-            window.Perform(AppActions.ToggleSolutionAnalysis);
-            // Counted rather than quiet: a source's first pull may stay open, and the whole list sorts again at each look.
-            Ui.PumpUntil(() => problems.SolutionCount == listed, $"the solution's {listed} problems", TimeSpan.FromMinutes(3));
-            least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
-            Assert.Equal(new TextPosition(lines + 4, 12), problems.SolutionProblems!.First(p => p.Path!.EndsWith("Long0.cs", StringComparison.Ordinal)).Position);
-            window.Perform(AppActions.ToggleSolutionAnalysis);
-            Assert.Null(problems.SolutionProblems);
-        }
-        window.Close();
-        return (least, listed);
-    }
-
     /// <summary>A key's problems never wait for what the whole project's analysis reports in the open file, which with
     /// solution-wide analysis on and 4,000 warnings in files nobody has open answers a change seconds after the file's own:
     /// with that held unanswered, the error a key makes is listed in the File and Solution tabs and marked in the editor.</summary>
@@ -929,5 +867,81 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             // The server's first load makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
         }
+    }
+}
+
+/// <summary>What a pull of solution-wide analysis costs the IDE to read, counted across the process, so the class runs
+/// alone: on the class's own copy of <see cref="ProblemsTests"/>' project.</summary>
+[Collection(Alone.Name)]
+public sealed class SolutionAnalysisBytesTests : IClassFixture<ProblemsTests.Project>
+{
+    private readonly ProblemsTests.Project project;
+
+    public SolutionAnalysisBytesTests(ProblemsTests.Project project)
+    {
+        this.project = project;
+        project.Reset();
+    }
+
+    /// <summary>Solution-wide analysis places each file's warnings without a copy of the file's text, and decodes each
+    /// warning at a small cost: over a thousand files nobody has open with no break only Roslyn counts, a pull of their
+    /// warnings allocates (on every thread, the least of three) under 8 KB a file more when each is 17 KB long than when it
+    /// is a few lines, where a copy of its text costs three times its size, and twenty warnings a file under 4 KB for each
+    /// warning more than two.</summary>
+    [AvaloniaFact]
+    public void A_pull_of_thousands_of_warnings_decodes_each_at_a_small_cost_and_never_copies_a_files_text()
+    {
+        (long dense, int denseListed) = PullBytes(files: 100, warnings: 20, lines: 2);
+        (long few, int fewListed) = PullBytes(files: 100, warnings: 2, lines: 2);
+        (long shortFiles, int listed) = PullBytes(files: 1000, warnings: 2, lines: 2);
+        (long longFiles, _) = PullBytes(files: 1000, warnings: 2, lines: 210);
+        long perText = (longFiles - shortFiles) / 1000;
+        long perWarning = (dense - few) / (denseListed - fewListed);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"A pull of {listed} problems allocated {longFiles / 1024:N0} KB over 1,000 files of 17 KB, {shortFiles / 1024:N0} KB over 1,000 of a few lines: {perText:N0} bytes a file more; "
+            + $"{dense / 1024:N0} KB for {denseListed} problems in 100 files, {few / 1024:N0} KB for {fewListed}: {perWarning:N0} bytes a warning more");
+        Assert.True(perText < 8 * 1024,
+            $"A pull of solution-wide analysis allocated {longFiles / 1024:N0} KB over 1,000 files of 17 KB, {shortFiles / 1024:N0} KB over 1,000 of a few lines: {perText:N0} bytes for each file's 17 KB, as if its text were read to place its warnings");
+        Assert.True(perWarning < 4 * 1024,
+            $"A pull of solution-wide analysis allocated {dense / 1024:N0} KB for {denseListed} warnings, {few / 1024:N0} KB for {fewListed} in the same files: {perWarning:N0} bytes for each warning more");
+    }
+
+    /// <summary>What turning solution-wide analysis on allocates on every thread until Problems counts every warning, the
+    /// least of three, over <paramref name="files"/> files of a comment of <paramref name="lines"/> lines and
+    /// <paramref name="warnings"/> unused variables each; and how many problems it listed.</summary>
+    private (long Bytes, int Listed) PullBytes(int files, int warnings, int lines)
+    {
+        string comment = string.Concat(Enumerable.Repeat("// A line of a long comment the compiler passes over, as long as a line of code.\n", lines));
+        List<(string, string)> written = [];
+        for (int i = 0; i < files; i++)
+        {
+            System.Text.StringBuilder text = new(comment);
+            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"static class Long{i}\n{{\n    static void All()\n    {{\n");
+            for (int j = 0; j < warnings; j++)
+            {
+                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{j};\n");
+            }
+            written.Add(($"Long{i}.cs", text.Append("    }\n}\n").ToString()));
+        }
+        project.Write(written);
+        MainWindow window = project.Open("Program.cs");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        // Each file's warnings and Bad.cs's error.
+        int listed = (files * warnings) + 1;
+        long least = long.MaxValue;
+        for (int time = 0; time < 3; time++)
+        {
+            Ui.Settle();
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            window.Perform(AppActions.ToggleSolutionAnalysis);
+            // Counted rather than quiet: a source's first pull may stay open, and the whole list sorts again at each look.
+            Ui.PumpUntil(() => problems.SolutionCount == listed, $"the solution's {listed} problems", TimeSpan.FromMinutes(3));
+            least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+            Assert.Equal(new TextPosition(lines + 4, 12), problems.SolutionProblems!.First(p => p.Path!.EndsWith("Long0.cs", StringComparison.Ordinal)).Position);
+            window.Perform(AppActions.ToggleSolutionAnalysis);
+            Assert.Null(problems.SolutionProblems);
+        }
+        window.Close();
+        return (least, listed);
     }
 }
