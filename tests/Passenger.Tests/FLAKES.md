@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `NewServiceSetupTests`' `New_Project_of_an_MVC_app_keeps_its_folder_for_Undo_without_its_bytes`, CI's macOS runner at
+  09b6aa8de (run 43005926642): "New Project's Undo held 2253880 bytes of the history for a folder of 9798159 bytes in 78
+  files". **The test measured the process, not the command**: it read `GC.GetTotalMemory` before and after clearing the
+  Undo history, so what anything else let go of between the two readings counted as the command's; `ListedNamesTests`,
+  run beside it, parsed every source file of src for 14 s around it, and `Debugging.ReckoningTests` ended a test 0.4 s
+  before. The command holds the solution's 160 characters before and after and the folder as its 78 files' lengths and
+  times: 15,240 bytes walked, 13,936, 6,656 and 4,952 by the old measure on this Mac, and 2,254,632 by it with
+  2,253,880 bytes let go of elsewhere between its readings. Not met beside those classes on this Mac, where
+  `ListedNamesTests` ends before the readings. The test walks the command (`HeldBytes`), which fails at 9,790,288 bytes
+  on a command made to keep the folder's bytes, and `GC.GetTotalMemory` is banned in the window tests (ef07a7feb, #1489).
 - `LongFileAssistTests`' `Typing_with_pauses_in_a_file_of_twenty_thousand_lines_asks_for_the_screens_colours_and_the_…`,
   CI's Windows runner at 4499c3ecc (run 42854165103): "The whole file's colours were asked for 1 times while typing went
   on with pauses", its one `semanticTokens/full` 11 ms in, before the first statement's range at 322 ms. **The test
