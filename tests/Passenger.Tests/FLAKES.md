@@ -30,6 +30,20 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `NuGetTests`' `Update_all_stops_when_a_provider_check_handles_an_update_that_fails`, CI's macOS report lane at
+  7f6f7db47 (run 43037078657): "Assert.Contains() Failure: Sub-string not found / String: "Updated 0 package references;
+  App: /private/var/fo"··· / Not found: "failed"". **The IDE left dotnet's last lines out of a change's words**:
+  `PackageManager` raised each line it heard through a post to the window at Default priority and returned once the
+  reading had ended, while its await of dotnet's exit came back at its own context's priority (Send in a window test).
+  With the window behind as dotnet ended, the exit's continuation ran before the queued lines, found the reading over,
+  and the change stopped hearing `Line` before they ran: App's "Failed to restore ..." reached the log alone, and Update
+  All's status gave the restore's NU1101 line as dotnet's last words. On this Mac a probe of the run showed the lines
+  run at Default and the exit's continuation at Send, dotnet restore ending some 30 ms after its last line; with the
+  window stalled at the NU1101 line, "Failed to restore" came during the stall and both runs failed with CI's message,
+  the status "...; App: .../App.csproj : error NU1101: Unable to find package Passenger.Missing. ...; App.csproj put
+  back as before". The lines heard now go through a queue the posts drain, and the run drains what is left before it
+  returns; `A_failed_changes_words_are_dotnets_last_line_even_where_the_window_fell_behind_as_dotnet_ended` stalls the
+  window in a job of its own at that line and fails on the old code with it as the change's words (020acfd6a, #1492).
 - `PauseTests`' `Pause_stops_a_looping_program_in_its_loop_and_a_second_pause_after_continuing_does_too`, CI's macOS
   gate at c599ba911 (run 43015461601): "Assert.EndsWith() Failure: String end does not match / String: null", the first
   pause's top frame with no source. **The test waited wrong**: it paused once LoopingConsoleApp said "looping", which the
