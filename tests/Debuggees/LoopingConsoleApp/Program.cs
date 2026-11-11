@@ -149,6 +149,9 @@ internal sealed class Locked
     // Set once the holder has let go of the lock, read with no code run.
     public static bool LetGo;
 
+    // Set by the holder on its sleep's line, so the program goes on to its stop only once the holder is there.
+    private static volatile bool Holding;
+
     // Set by the holder in its wait once it has let go, and by the thread it starts then once that runs.
     public static volatile bool Waiting;
     public static volatile bool Started;
@@ -168,13 +171,11 @@ internal sealed class Locked
 
     public static void Hold()
     {
-        using ManualResetEventSlim held = new();
         Thread holder = new(() =>
         {
             lock (Gate)
             {
-                held.Set();
-                Thread.Sleep(1000); // the holder sleeps holding the lock
+                Holding = true; Thread.Sleep(1000); // the holder sleeps holding the lock
             }
             LetGo = true;
             new Thread(() =>
@@ -188,7 +189,7 @@ internal sealed class Locked
             }
         }) { IsBackground = true, Name = "Holder" };
         holder.Start();
-        held.Wait();
+        SpinWait.SpinUntil(() => Holding);
     }
 }
 
