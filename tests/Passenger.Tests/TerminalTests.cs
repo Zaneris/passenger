@@ -1239,11 +1239,11 @@ public sealed class TerminalTests
 
     /// <summary>Waits for the terminal's screen to show something, failing with what it shows instead, its size, its
     /// cursor and what has the keys.</summary>
-    internal static void WaitForScreen(MainWindow window, TerminalSession shell, Func<TerminalScreen, bool> shows, string what)
+    internal static void WaitForScreen(MainWindow window, TerminalSession shell, Func<TerminalScreen, bool> shows, string what, TimeSpan? limit = null)
     {
         try
         {
-            Ui.WaitFor(() => shows(shell.Screen), what);
+            Ui.WaitFor(() => shows(shell.Screen), what, limit);
         }
         catch (TimeoutException waited)
         {
@@ -1498,10 +1498,7 @@ public sealed class TerminalResponsivenessTests
             (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, "/bin/sh");
             // A loop that reads none of its input until the test lets it end.
             string go = Path.Combine(folder, "go");
-            window.KeyTextInput($"while [ ! -e '{go}' ]; do sleep 0.1; done");
-            Ui.Press(window, "ENTER");
-            // The cursor past the command: macOS's bash may write a line of its own after it (child setpgid … not permitted).
-            TerminalTests.WaitForScreen(window, shell, s => AboveCursor(s, "sleep 0.1"), "the loop to start");
+            RunReadingNone(window, shell, $"while [ ! -e '{go}' ]; do sleep 0.1; done");
 
             // Far more than the pseudo-terminal holds, while the loop reads none of it.
             TerminalTests.Copy(window, string.Concat(Enumerable.Range(0, 2000).Select(i => $"echo pasted {i}\n")));
@@ -1522,7 +1519,7 @@ public sealed class TerminalResponsivenessTests
             File.WriteAllText(go, string.Empty);
             Ui.Await(giveUp, "the paste's give-up to stand down");
             // What the pseudo-terminal took it echoes, so the paste did go.
-            Ui.WaitFor(() => TerminalTests.Screen(shell).Contains("echo pasted 0", StringComparison.Ordinal), "the start of the paste echoed", TimeSpan.FromSeconds(10));
+            TerminalTests.WaitForScreen(window, shell, _ => PasteEchoed(shell), "the start of the paste echoed", TimeSpan.FromSeconds(10));
 
             Ui.Press(window, "shift ESCAPE");
             Assert.False(window.DockHost.IsShown(ToolWindowIds.Terminal), "the terminal is still shown after Shift+Escape");
@@ -1548,12 +1545,10 @@ public sealed class TerminalResponsivenessTests
             int shellId = shell.ProcessId!.Value;
             // A loop that reads none of its input until the test lets it go, then yes, which reads none either and writes on.
             string go = Path.Combine(folder, "go");
-            window.KeyTextInput($"while [ ! -e '{go}' ]; do sleep 0.1; done; yes tick");
-            Ui.Press(window, "ENTER");
-            TerminalTests.WaitForScreen(window, shell, s => AboveCursor(s, "yes tick"), "the loop to start");
+            RunReadingNone(window, shell, $"while [ ! -e '{go}' ]; do sleep 0.1; done; yes tick");
             TerminalTests.Copy(window, string.Concat(Enumerable.Range(0, 2000).Select(i => $"echo pasted {i}\n")));
             Ui.Press(window, TerminalTests.PasteKey);
-            Ui.WaitFor(() => TerminalTests.Screen(shell).Contains("echo pasted 0", StringComparison.Ordinal), "the start of the paste echoed", TimeSpan.FromSeconds(10));
+            TerminalTests.WaitForScreen(window, shell, _ => PasteEchoed(shell), "the start of the paste echoed", TimeSpan.FromSeconds(10));
             File.WriteAllText(go, string.Empty);
             int[] started = [];
             Ui.WaitFor(() => (started = [.. Processes.Descendants(shellId)]).Length > 0 && shell.Screen.Lines.Count(l => l.Text() == "tick") > 2,
@@ -1570,18 +1565,17 @@ public sealed class TerminalResponsivenessTests
         }
     }
 
-    /// <summary>Whether a line above the cursor, on the screen or in the scrollback, holds the text.</summary>
-    private static bool AboveCursor(TerminalScreen screen, string text)
+    /// <summary>Types a command line that reads none of its input and waits for the shell's word that it runs, written only
+    /// once its line editor has given the terminal back with echo on: the editor writes the line's end before that, and a
+    /// paste then lands unechoed, held by the pseudo-terminal until a program reads it.</summary>
+    private static void RunReadingNone(MainWindow window, TerminalSession shell, string command)
     {
-        for (long line = screen.FirstLine; line < screen.ScreenTop + screen.CursorRow; line++)
-        {
-            if (screen.LineAt(line).Text().Contains(text, StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-        return false;
+        window.KeyTextInput($"echo started-$((6*7)); {command}");
+        Ui.Press(window, "ENTER");
+        TerminalTests.WaitForScreen(window, shell, _ => TerminalTests.Screen(shell).Contains("started-42", StringComparison.Ordinal), "the loop to start");
     }
+
+    private static bool PasteEchoed(TerminalSession shell) => TerminalTests.Screen(shell).Contains("echo pasted 0", StringComparison.Ordinal);
 
     [AvaloniaFact]
     public void The_shell_echoes_what_is_typed_while_every_thread_of_the_pool_is_busy()
