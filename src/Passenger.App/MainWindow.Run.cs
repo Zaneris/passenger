@@ -123,7 +123,7 @@ public partial class MainWindow
         RunConfigurations configurations = session.Configurations;
         if (configurations.Solution is not { } solution)
         {
-            return (null, "No solution is open: a launch profile of several projects is kept beside one");
+            return (null, Refusals.NoSolutionForProfiles);
         }
         IReadOnlyList<RunConfiguration> before = configurations.Profiles;
         string folder = Path.GetDirectoryName(solution)!;

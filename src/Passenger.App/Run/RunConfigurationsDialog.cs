@@ -644,8 +644,6 @@ public sealed class RunConfigurationsDialog : IdeWindow
     /// <summary>What a configuration of several projects together is called, as Add New Configuration offers it.</summary>
     private const string MultipleProjects = "Multiple Projects";
 
-    private const string NoSolution = "No solution is open: a launch profile of several projects is kept beside one, where Visual Studio reads it too";
-
     /// <summary>The files beside the solution a multi-project configuration is kept in, by their names.</summary>
     private (string Shared, string Own) LaunchFiles => solution is { } open
         ? (Path.GetFileName(SolutionLaunch.SharedFile(open)), Path.GetFileName(SolutionLaunch.UserFile(open)))
@@ -971,7 +969,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             {
                 // Its projects' launch profile is kept beside a solution, where Visual Studio reads it too.
                 item.IsEnabled = false;
-                ToolTip.SetTip(item, NoSolution);
+                ToolTip.SetTip(item, Refusals.NoSolutionForProfiles);
                 ToolTip.SetShowOnDisabled(item, true);
             }
             item.Click += (_, _) =>
