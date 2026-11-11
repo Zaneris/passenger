@@ -246,7 +246,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             {
                 offered = [.. (await Call(client, McpTools.CodeActions, new() { ["path"] = file, ["line"] = 3, ["column"] = 14 })).EnumerateArray().Select(a => a.GetString()!)];
                 return !offered.Any(a => a.StartsWith("Rename file", StringComparison.Ordinal));
-            }, TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), $"The language server still holds {file} by its old name, offering: {string.Join("; ", offered)}");
+            }, TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), $"The language server still holds {file} by its old name, offering: {string.Join("; ", offered)}{Said()}");
         }
     }
 

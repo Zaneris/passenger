@@ -28,8 +28,8 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
     private readonly IClientLanguageServerManager client;
     private readonly LspServices services;
 
-    /// <summary>The projects loading again for files renamed only in letter case, once loaded without them (<see cref="Recased"/>).</summary>
-    private readonly ConcurrentDictionary<string, bool> recasing = new(StringComparer.Ordinal);
+    /// <summary>The files each project's last load left out as renamed only in letter case (<see cref="Recased"/>).</summary>
+    private readonly ConcurrentDictionary<string, HashSet<string>> recased = new(global::Roslyn.Utilities.PathUtilities.Comparer);
 
     public PassengerProjectLoader(LspServices services, IGlobalOptionService options, ILoggerFactory loggers, IAsynchronousOperationListenerProvider listeners,
         ServerConfigurationFactory configuration, IBinLogPathProvider binaryLogs, DotnetCliHelper dotnet)
@@ -182,29 +182,31 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
         return Made(projectPath, Recased(projectPath, read), said);
     }
 
-    /// <summary>A project's builds without the files it holds under another letter case, the project loading again with
-    /// them once it has loaded without them: the server adds a load's new files before it lets go of those gone, and its
-    /// files' paths compare ignoring case, so a file renamed only in letter case (myClass.cs to MyClass.cs) fails the load.</summary>
+    /// <summary>A project's builds without each file renamed only in letter case from one the project holds that they no
+    /// longer name, the project loading again once it has let go of the old name: the server adds a load's new files before
+    /// it lets go of those gone, and its files' paths compare ignoring case, so such a rename (myClass.cs to MyClass.cs)
+    /// would fail the load for good. Each load judges what the project holds as it runs, whichever loads went before; a
+    /// file the load before left out, its old name still held, is the server's to take.</summary>
     private ProjectFileInfo[] Recased(string projectPath, ProjectFileInfo[] infos)
     {
-        if (recasing.TryRemove(projectPath, out _))
-        {
-            return infos;
-        }
+        HashSet<string> left = recased.TryRemove(projectPath, out HashSet<string>? before) ? before : [];
         HashSet<string> held = new(StringComparer.Ordinal);
         foreach (Project project in _workspaceFactory.HostWorkspace.CurrentSolution.Projects.Where(p => global::Roslyn.Utilities.PathUtilities.Comparer.Equals(p.FilePath, projectPath)))
         {
             held.UnionWith(project.Documents.Concat<TextDocument>(project.AdditionalDocuments).Select(d => d.FilePath).OfType<string>());
         }
-        HashSet<string> heldAnyCase = new(held, StringComparer.OrdinalIgnoreCase);
-        bool Renamed(DocumentFileInfo file) => !held.Contains(file.FilePath) && heldAnyCase.Contains(file.FilePath);
-        if (!infos.Any(i => i.Documents.Any(Renamed) || i.AdditionalDocuments.Any(Renamed)))
+        HashSet<string> named = new(infos.SelectMany(i => i.Documents.Concat(i.AdditionalDocuments)).Select(d => d.FilePath), StringComparer.Ordinal);
+        ILookup<string, string> heldAnyCase = held.ToLookup(path => path, StringComparer.OrdinalIgnoreCase);
+        HashSet<string> leaving = new(named.Where(path => !held.Contains(path) && !left.Contains(path) && heldAnyCase[path].Any(old => !named.Contains(old))), StringComparer.Ordinal);
+        if (leaving.Count == 0)
         {
             return infos;
         }
-        recasing[projectPath] = true;
+        recased[projectPath] = leaving;
+        _logger.LogInformation("{Project} loads without {Files}, renamed in letter case alone from a file it holds, then again with them",
+            Path.GetFileName(projectPath), string.Join(", ", leaving.Select(Path.GetFileName)));
         _projectsToReload.AddWork(projectPath, (int)ProjectReloadPriority.Medium);
-        return [.. infos.Select(i => i with { Documents = [.. i.Documents.Where(d => !Renamed(d))], AdditionalDocuments = [.. i.AdditionalDocuments.Where(d => !Renamed(d))] })];
+        return [.. infos.Select(i => i with { Documents = [.. i.Documents.Where(d => !leaving.Contains(d.FilePath))], AdditionalDocuments = [.. i.AdditionalDocuments.Where(d => !leaving.Contains(d.FilePath))] })];
     }
 
     /// <summary>Whether a C# file goes past the brackets a parser is given, which ends the server where it goes deeper than
