@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using Passenger.App.Editors;
 using Passenger.App.MSBuild;
+using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Host;
 using Passenger.Packages;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -11,7 +13,8 @@ namespace Passenger.App.Packages;
 /// <summary>The folder's NuGet, whoever asks of it (the NuGet window, MSBuild files' code help, Migrations, an agent): the
 /// package sources its nuget.config files give, read when first asked for and again after one changes, their feeds, the
 /// audit's known vulnerabilities, and the one way a package goes in, moves or comes out of a project, through the .NET
-/// command line, one change at a time, each one command of Undo. A session's own, ended with it; a UI-thread object.</summary>
+/// command line (under central package management written by Passenger, then restored), one change at a time, each one
+/// command of Undo. A session's own, ended with it; a UI-thread object.</summary>
 public sealed partial class FolderPackages
 {
     /// <summary>What a package change's work is held under in the window, which no action names.</summary>
@@ -239,15 +242,14 @@ public sealed partial class FolderPackages
         InstalledVersion.Written(version, [.. References(project).Where(r => r.Id.Equals(id, StringComparison.OrdinalIgnoreCase)).Select(r => r.Version)]);
 
     /// <summary>Adds a package to a project at a version, or moves it to that version, a pin kept a pin: the one way a
-    /// package goes in (<see cref="ChangeAsync"/>). Where dotnet add package cannot change its Directory.Packages.props
-    /// (<see cref="CentralPackages.UnchangedByDotnet"/>), the files are written as it would write them, then restored.</summary>
+    /// package goes in (<see cref="ChangeAsync"/>). Under central package management Passenger writes the files
+    /// (<see cref="CentralChangeAsync"/>), then restores.</summary>
     public Task<PackageOutcome> InstallAsync(ProjectModel project, string id, string version, CommandHistory.Recording? within = null)
     {
         string stage = $"Installing {id} {version} in {project.Name}…";
         string name = $"Install {id} {version} in {project.Name}";
-        return CentralPackages.UnchangedByDotnet(project) is { } props
-            ? ChangeAsync(stage, name, project, within, () => manager.RestoreAsync(project.Path), () => manager.RestoreAsync(project.Path),
-                () => WrittenCentrallyAsync(project, props, [(id, Written(project, id, version))]))
+        return CentralPackages.PropsOf(project) is { } props
+            ? CentralChangeAsync(stage, name, project, within, props, () => [(id, Written(project, id, version))])
             : ChangeAsync(stage, name, project, within, () => manager.InstallAsync(project.Path, id, Written(project, id, version)));
     }
 
@@ -259,43 +261,59 @@ public sealed partial class FolderPackages
         string stage = $"Moving {Moves(packages)} in {project.Name}…";
         string name = $"Move {Moves(packages)} in {project.Name}";
         Func<IReadOnlyList<(string Id, string Version)>> written = () => [.. packages.Select(p => (p.Id, Written(project, p.Id, p.Version)))];
-        return CentralPackages.UnchangedByDotnet(project) is { } props
-            ? ChangeAsync(stage, name, project, within, () => manager.RestoreAsync(project.Path), () => manager.RestoreAsync(project.Path),
-                () => WrittenCentrallyAsync(project, props, written()))
+        return CentralPackages.PropsOf(project) is { } props
+            ? CentralChangeAsync(stage, name, project, within, props, written)
             : ChangeAsync(stage, name, project, within, () => manager.InstallSetAsync(project.Path, written(), bulkStopping?.Token ?? CancellationToken.None), () => manager.RestoreAsync(project.Path));
     }
 
-    /// <summary>Packages at their versions written into a project and the Directory.Packages.props that holds its versions,
-    /// as dotnet add package would write them (<see cref="ProjectEdits.WithCentralPackage"/>, <see cref="ProjectEdits.WithPackageVersion"/>,
-    /// <see cref="CentralPackages.Pinned"/>), off the window's thread, their saves waited for: null once written, else why
-    /// not. The log says why Passenger wrote them.</summary>
-    private async Task<string?> WrittenCentrallyAsync(ProjectModel project, string props, IReadOnlyList<(string Id, string Version)> packages)
+    /// <summary>A change under central package management, its files written by Passenger as dotnet add package would
+    /// write them but each version where the project's evaluation keeps it (<see cref="CentralWrites"/>), every other
+    /// character as it was; then the project restored, and again once put back.</summary>
+    private Task<PackageOutcome> CentralChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, string props,
+        Func<IReadOnlyList<(string Id, string Version)>> packages)
     {
-        Line?.Invoke(this, $"dotnet add package cannot change {Path.GetFileName(props)} as DirectoryPackagesPropsPath spells it "
-            + $"({project.Property(Passenger.Host.CarriedProperties.DirectoryPackagesPropsPath)}), so Passenger writes {Path.GetFileName(project.Path)} and it, then restores");
-        string? refused = await BackgroundWork.Run(() =>
+        CentralWrites writes = CentralWrites.None;
+        return ChangeAsync(stage, name, project, within, () => manager.RestoreAsync(project.Path), () => manager.RestoreAsync(project.Path),
+            () => WrittenCentrallyAsync(project, writes),
+            async () => (writes = await CentralWritesAsync(project, props, packages())).Texts.Keys);
+    }
+
+    /// <summary>Where a project's evaluation keeps each version a change moves, read once the open files are saved, and the
+    /// files' texts with them moved: a refusal saying why where one cannot be.</summary>
+    private async Task<CentralWrites> CentralWritesAsync(ProjectModel project, string props, IReadOnlyList<(string Id, string Version)> packages)
+    {
+        IReadOnlyDictionary<string, string> properties = EvaluationProperties?.Invoke(project) ?? ProjectModels.Properties(null, project);
+        MSBuildInsight insight;
+        try
+        {
+            ProjectHost host = await ProjectHosts.ForAsync(project.Folder, CancellationToken.None);
+            insight = await BackgroundWork.Run(async () => new MSBuildInsight(await host.InspectAsync(project.Path, properties, new Dictionary<string, string>())));
+        }
+        catch (ProjectHostFailed failed)
+        {
+            return CentralWrites.Refusing($"Where {project.Name} keeps its package versions could not be read: {failed.Reason}");
+        }
+        return insight.Evaluated
+            ? await BackgroundWork.Run(() => CentralWrites.Of(insight, project.Path, props, packages))
+            : CentralWrites.Refusing($"{project.Name} does not evaluate, so where it keeps its package versions is not known");
+    }
+
+    /// <summary>A central change's texts written (<see cref="CentralWrites"/>), off the window's thread, their saves waited
+    /// for: null once written, else why not. The log says what Passenger wrote.</summary>
+    private async Task<string?> WrittenCentrallyAsync(ProjectModel project, CentralWrites writes)
+    {
+        if (writes.Refused is { } refused)
+        {
+            return refused;
+        }
+        Line?.Invoke(this, $"Passenger writes {PackageOutcome.Named([.. writes.Texts.Keys])} where {project.Name}'s evaluation keeps its package versions, then restores");
+        string? unwritten = await BackgroundWork.Run(() =>
         {
             try
             {
-                FileText projectFile = FileText.Load(project.Path) ?? throw new IOException($"{Path.GetFileName(project.Path)} is not a text file");
-                FileText propsFile = FileText.Load(props) ?? throw new IOException($"{Path.GetFileName(props)} is not a text file");
-                string projectText = projectFile.Text;
-                string propsText = propsFile.Text;
-                foreach ((string id, string version) in packages)
+                foreach ((string path, (FileText had, string text)) in writes.Texts)
                 {
-                    (projectText, bool overridden) = ProjectEdits.WithCentralPackage(projectText, id, version);
-                    if (!overridden)
-                    {
-                        propsText = ProjectEdits.WithPackageVersion(propsText, id, version) ?? CentralPackages.Pinned(propsText, [(id, version)]);
-                    }
-                }
-                if (projectText != projectFile.Text)
-                {
-                    FileText.SaveOver(project.Path, projectFile, projectText);
-                }
-                if (propsText != propsFile.Text)
-                {
-                    FileText.SaveOver(props, propsFile, propsText);
+                    FileText.SaveOver(path, had, text);
                 }
                 return null;
             }
@@ -304,11 +322,11 @@ public sealed partial class FolderPackages
                 return error.Message;
             }
         });
-        if (refused is null && await EditorArea.LandedAsync([project.Path, props], null) is [(string path, Exception unlanded), ..])
+        if (unwritten is null && await EditorArea.LandedAsync(writes.Texts.Keys, null) is [(string path, Exception unlanded), ..])
         {
-            refused = $"{Path.GetFileName(path)} could not be written: {unlanded.Message}";
+            unwritten = $"{Path.GetFileName(path)} could not be written: {unlanded.Message}";
         }
-        return refused;
+        return unwritten;
     }
 
     /// <summary>Takes a package out of a project.</summary>
@@ -338,12 +356,12 @@ public sealed partial class FolderPackages
     }
 
     /// <summary>A package change, whoever asks for it: one at a time (another refused meanwhile, saying what is under way),
-    /// the open files saved first (refused, saying why, when one is not), shown as the window's work under <see cref="Changing"/>,
-    /// its files (<see cref="PackageFiles"/>) recorded <paramref name="within"/> the caller's command, else as its own named
-    /// <paramref name="name"/>, its <paramref name="own"/> writes (null, else why not) made before its command. One that fails
-    /// puts back what it wrote but a file saved meanwhile, then, unless stopped, runs <paramref name="again"/>; its end is told.</summary>
+    /// the open files saved first, shown as the window's work under <see cref="Changing"/>, its files (<see cref="PackageFiles"/>,
+    /// and those <paramref name="reaching"/> finds once saved) recorded <paramref name="within"/> the caller's command, else
+    /// as its own named <paramref name="name"/>, its <paramref name="own"/> writes (null, else why not) made before its command.
+    /// One that fails puts back what it wrote but a file saved meanwhile, then, unless stopped, runs <paramref name="again"/>.</summary>
     private async Task<PackageOutcome> ChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, Func<Task<bool>> change,
-        Func<Task<bool>>? again = null, Func<Task<string?>>? own = null)
+        Func<Task<bool>>? again = null, Func<Task<string?>>? own = null, Func<Task<IEnumerable<string>>>? reaching = null)
     {
         if (IsBusy && (within is null || !ReferenceEquals(within, bulkRecording)))
         {
@@ -382,6 +400,11 @@ public sealed partial class FolderPackages
                 }
                 else
                 {
+                    if (reaching is not null)
+                    {
+                        IReadOnlyList<string> listed = files;
+                        files = [.. listed, .. (await reaching()).Where(f => !listed.Contains(f, PathNames.Comparer))];
+                    }
                     // Read once the open files are saved: what the save wrote is not the change's.
                     byte[]?[] before = [.. files.Select(Bytes)];
                     // The change writes through dotnet alone, so a save of one of its files from here is an edit of the person's.

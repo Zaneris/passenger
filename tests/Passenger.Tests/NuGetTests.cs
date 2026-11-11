@@ -307,6 +307,50 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Update All over a folder whose examples keep a Directory.Packages.props of their own importing the root's
+    /// (<see cref="Nested"/>): a project under the examples' file moves versions the root's holds, which never stops the run
+    /// as an edit of the person's; a version kept in a property moves the property, so the packages sharing it move with
+    /// it; and each file is as it was but for the versions moved, its blank lines and final newline kept.</summary>
+    [AvaloniaFact]
+    public void Update_all_over_nested_central_files_moves_every_package_through_its_property_and_keeps_the_files_text()
+    {
+        (string root, string examples) = Nested();
+        string rootBefore = File.ReadAllText(root);
+        string examplesBefore = File.ReadAllText(examples);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Assert.True(!nuget.Status.Contains("changed during Update All", StringComparison.Ordinal) && nuget.Rows.Count == 0,
+            $"Update All stopped on a file it wrote itself, or left updates behind ({nuget.Rows.Count} listed): {nuget.Status}\n{nuget.Log}");
+        Assert.True(File.ReadAllText(root) == Moved(rootBefore, ($"\"{Id}\" Version=\"1.0.0\"", $"\"{Id}\" Version=\"1.1.0\""), ("10.0.0", "11.0.0")),
+            $"The root's Directory.Packages.props is not as it was but for its versions moved:\n{File.ReadAllText(root)}");
+        Assert.True(File.ReadAllText(examples) == Moved(examplesBefore, (">1.0.0<", ">1.1.0<"), ("\"Passenger.Other\" Version=\"1.0.0\"", "\"Passenger.Other\" Version=\"1.2.0\"")),
+            $"The examples' Directory.Packages.props is not as it was but for Linq2DbVersion and Passenger.Other moved:\n{File.ReadAllText(examples)}");
+        MigrationsTests.UndoFromExplorer(window, lib);
+        Assert.True(File.ReadAllText(root) == rootBefore && File.ReadAllText(examples) == examplesBefore,
+            $"One Undo of Update All left the central files as:\n{File.ReadAllText(root)}\n{File.ReadAllText(examples)}");
+        window.Close();
+    }
+
+    /// <summary>A single package's update, of one whose version the examples' file keeps in a property, moves the property,
+    /// so the package sharing it moves too, and leaves every other byte of the file as it was.</summary>
+    [AvaloniaFact]
+    public void Updating_a_package_whose_central_version_is_a_property_moves_the_property_and_keeps_the_files_text()
+    {
+        (string root, string examples) = Nested();
+        string rootBefore = File.ReadAllText(root);
+        string examplesBefore = File.ReadAllText(examples);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        PackageOutcome outcome = Ui.Landed(nuget.Packages.InstallAsync(Named(window, "One"), "Passenger.Linq2Db.ClickHouse", "1.1.0"), "One's update of Passenger.Linq2Db.ClickHouse");
+        Assert.True(outcome.Done, $"The update failed: {outcome.Failure("failed")}\n{nuget.Log}");
+        Assert.True(File.ReadAllText(examples) == Moved(examplesBefore, (">1.0.0<", ">1.1.0<")),
+            $"The update did not move Linq2DbVersion alone, leaving the examples' Directory.Packages.props as:\n{File.ReadAllText(examples)}");
+        Assert.Equal(rootBefore, File.ReadAllText(root));
+        window.Close();
+    }
+
     /// <summary>A project pinning the vulnerable 1.0.0 ("[1.0.0]") has it shown as 1.0.0 and marked, is offered the fix as
     /// an Update and nothing for 1.0.0 itself, and the Update pins 1.0.1, never turning the pin into a minimum.</summary>
     [AvaloniaFact]
@@ -550,15 +594,59 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A project of the folder's own for its frameworks, with the item groups given.</summary>
+    /// <summary>A project of the folder's own for its frameworks, with the item groups given, in the folder of its path from
+    /// the folder's, named as that folder is.</summary>
     private string Project(string name, string frameworks, string items)
     {
         Directory.CreateDirectory(Path.Combine(folder, name));
-        string path = Path.Combine(folder, name, $"{name}.csproj");
+        string path = Path.Combine(folder, name, $"{Path.GetFileName(name)}.csproj");
         string property = frameworks.Contains(';', StringComparison.Ordinal) ? "TargetFrameworks" : "TargetFramework";
         File.WriteAllText(path, $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <{property}>{frameworks}</{property}>\n  </PropertyGroup>\n{items}</Project>\n");
         return path;
     }
+
+    /// <summary>Central package management in two files, as a repository whose examples keep their own: the root's holds
+    /// the stand-in and EF Core's four packages; the examples', importing it, a property two packages share and
+    /// Passenger.Other, its lines ending in CRLF. App takes two of EF Core's packages, examples/One a package of the property
+    /// and the root's stand-in, examples/Two Passenger.Other and the property's other package, Lib the other two of EF
+    /// Core's, in that order of their paths. Each file has blank lines and a final newline. The two files.</summary>
+    private (string Root, string Examples) Nested()
+    {
+        (string Id, string From, string To)[] versions = [.. new[] { "InMemory", "Relational", "Sqlite", "SqlServer" }.Select(e => ($"Microsoft.EntityFrameworkCore.{e}", "10.0.0", "11.0.0")),
+            ("Passenger.Linq2Db.ClickHouse", "1.0.0", "1.1.0"), ("Passenger.Linq2Db.PostgreSQL", "1.0.0", "1.1.0"), ("Passenger.Other", "1.0.0", "1.2.0")];
+        foreach ((string id, string from, string to) in versions)
+        {
+            feed.Add(id, from);
+            feed.Add(id, to);
+        }
+        // The framework of the SDK the build runs on, whose targeting pack is there to restore with, which the feed lacks.
+        const string Built = "net11.0";
+        string root = Path.Combine(folder, "Directory.Packages.props");
+        File.WriteAllText(root, "<Project>\n\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n\n"
+            + $"  <ItemGroup>\n    <PackageVersion Include=\"{Id}\" Version=\"1.0.0\" />\n\n"
+            + "    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.InMemory\" Version=\"10.0.0\" />\n"
+            + "    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.Relational\" Version=\"10.0.0\" />\n"
+            + "    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"10.0.0\" />\n"
+            + "    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.SqlServer\" Version=\"10.0.0\" />\n  </ItemGroup>\n\n</Project>\n");
+        string examples = Path.Combine(Directory.CreateDirectory(Path.Combine(folder, "examples")).FullName, "Directory.Packages.props");
+        File.WriteAllText(examples, "<Project>\r\n\r\n"
+            + "  <Import Project=\"$([MSBuild]::GetPathOfFileAbove(Directory.Packages.props, $(MSBuildThisFileDirectory)..))\" />\r\n\r\n"
+            + "  <PropertyGroup>\r\n    <Linq2DbVersion>1.0.0</Linq2DbVersion>\r\n  </PropertyGroup>\r\n\r\n"
+            + "  <ItemGroup>\r\n    <PackageVersion Include=\"Passenger.Linq2Db.ClickHouse\" Version=\"$(Linq2DbVersion)\" />\r\n"
+            + "    <PackageVersion Include=\"Passenger.Linq2Db.PostgreSQL\" Version=\"$(Linq2DbVersion)\" />\r\n\r\n"
+            + "    <PackageVersion Include=\"Passenger.Other\" Version=\"1.0.0\" />\r\n  </ItemGroup>\r\n\r\n</Project>\r\n");
+        Project("App", Built, References("Microsoft.EntityFrameworkCore.InMemory", "Microsoft.EntityFrameworkCore.Sqlite"));
+        Project(Path.Combine("examples", "One"), Built, References("Passenger.Linq2Db.ClickHouse", Id));
+        Project(Path.Combine("examples", "Two"), Built, References("Passenger.Other", "Passenger.Linq2Db.PostgreSQL"));
+        Project("Lib", Built, References("Microsoft.EntityFrameworkCore.Relational", "Microsoft.EntityFrameworkCore.SqlServer"));
+        return (root, examples);
+
+        static string References(params string[] ids) => $"  <ItemGroup>\n{string.Concat(ids.Select(id => $"    <PackageReference Include=\"{id}\" />\n"))}  </ItemGroup>\n";
+    }
+
+    /// <summary>A file's text with each of its versions moved, every other character as it was.</summary>
+    private static string Moved(string text, params (string From, string To)[] moves) =>
+        moves.Aggregate(text, (moved, move) => moved.Replace(move.From, move.To, StringComparison.Ordinal));
 
     /// <summary>A window on the folder with the NuGet window shown; without the C# language server, which nothing here asks
     /// of, so none starts and restores the projects.</summary>

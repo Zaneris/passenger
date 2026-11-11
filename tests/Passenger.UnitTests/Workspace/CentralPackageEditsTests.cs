@@ -47,4 +47,37 @@ public class CentralPackageEditsTests
         Assert.Null(ProjectEdits.WithPackageVersion(Props, "Dapper", "2.1.0"));
         Assert.Null(ProjectEdits.WithPackageVersion("<Project><ItemGroup", "xunit", "3.0.0"));
     }
+
+    private const string Shared = "<Project>\r\n\r\n  <PropertyGroup>\r\n    <Linq2DbVersion> 6.5.0 </Linq2DbVersion>\r\n  </PropertyGroup>\r\n\r\n"
+        + "  <PropertyGroup Condition=\"'$(Ci)' == 'true'\">\r\n    <EfVersion>10.0.12</EfVersion>\r\n  </PropertyGroup>\r\n"
+        + "  <PropertyGroup>\r\n    <Derived>$(Linq2DbVersion)</Derived>\r\n  </PropertyGroup>\r\n\r\n"
+        + "  <ItemGroup>\r\n    <PackageVersion Include=\"linq2db.PostgreSQL\" Version=\"$(Linq2DbVersion)\" />\r\n"
+        + "    <PackageVersion Include=\"Dapper\" Version=\"2.1.86\" Condition=\"'$(A)' == ''\" />\r\n"
+        + "    <PackageVersion Include=\"Dapper\" Version=\"2.1.89\" Condition=\"'$(A)' != ''\" />\r\n  </ItemGroup>\r\n\r\n</Project>\r\n";
+
+    [Fact]
+    public void A_version_kept_in_a_property_names_it_and_the_property_is_set_where_its_line_sets_it_every_other_character_kept()
+    {
+        Assert.Equal("$(Linq2DbVersion)", ProjectEdits.PackageVersionWritten(Shared, "LINQ2DB.PostgreSQL"));
+        Assert.Equal("Linq2DbVersion", ProjectEdits.PropertyNamed(" $(Linq2DbVersion) "));
+        Assert.Null(ProjectEdits.PropertyNamed("[$(Linq2DbVersion)]"));
+        Assert.Null(ProjectEdits.PropertyNamed("$(A).$(B)"));
+        Assert.Equal((Shared.Replace("> 6.5.0 <", "> 6.5.1 <", StringComparison.Ordinal), null), ProjectEdits.WithPropertyAt(Shared, "Linq2DbVersion", 4, "6.5.1"));
+    }
+
+    [Fact]
+    public void A_property_set_under_a_condition_as_another_property_or_not_at_the_line_is_refused_saying_why()
+    {
+        Assert.Equal((null, "it is set under a condition"), ProjectEdits.WithPropertyAt(Shared, "EfVersion", 8, "11.0.0"));
+        Assert.Equal((null, "it is set as $(Linq2DbVersion), not a version"), ProjectEdits.WithPropertyAt(Shared, "Derived", 11, "6.5.1"));
+        Assert.Equal((null, "no property group sets it at line 5"), ProjectEdits.WithPropertyAt(Shared, "Linq2DbVersion", 5, "6.5.1"));
+    }
+
+    [Fact]
+    public void Of_two_central_versions_of_a_package_the_one_at_the_line_given_is_read_and_set()
+    {
+        Assert.Equal("2.1.89", ProjectEdits.PackageVersionWritten(Shared, "Dapper", 17));
+        Assert.Equal("2.1.86", ProjectEdits.PackageVersionWritten(Shared, "Dapper"));
+        Assert.Equal(Shared.Replace("2.1.89", "2.2.0", StringComparison.Ordinal), ProjectEdits.WithPackageVersion(Shared, "Dapper", "2.2.0", 17));
+    }
 }

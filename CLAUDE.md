@@ -333,7 +333,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   bridge says no file or line unless run settings ask (`TestingPlatformRunner.SourcesAsked`); run settings reach a
   Testing Platform host through `PlatformRunSettings`, never `--settings`.
 - **The rest.** `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
-  only to their feed's host); `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
+  only to their feed's host); under central package management Passenger writes each version where the evaluation keeps
+  it (`CentralWrites`), never dotnet add package, which drops a props file's blank lines and turns a property to a literal;
+  `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
   templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); only an installed copy
   updates itself, a package manager's left to it; What's New from `docs/release-notes/X.Y.Z.md`.
 - **MCP.** `PassengerTools` (every tool on the UI thread), `McpHost`, `McpProxy`, `AgentConnection`. A relay follows an

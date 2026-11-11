@@ -101,10 +101,10 @@ public static class ProjectEdits
 
     /// <summary>A Directory.Packages.props' text with its PackageVersion of a package set to a version, as dotnet add
     /// package sets it (its Version attribute, else element); null where it has none for the package or does not read as
-    /// XML.</summary>
-    public static string? WithPackageVersion(string text, string id, string version)
+    /// XML. The PackageVersion at <paramref name="line"/> (MSBuild's, from 1) where one is, else its first.</summary>
+    public static string? WithPackageVersion(string text, string id, string version, int line = 0)
     {
-        if (Read(text) is not { } xml || xml.Root.Descendants().FirstOrDefault(e => e.Name.LocalName == "PackageVersion" && Names(e, id)) is not { } held)
+        if (Read(text) is not { } xml || PackageVersion(xml, id, line) is not { } held)
         {
             return null;
         }
@@ -117,6 +117,59 @@ public static class ProjectEdits
             xml.SetAttribute(held, "Version", version);
         }
         return xml.Text;
+    }
+
+    /// <summary>A package's central version as a Directory.Packages.props' text writes it, XML's entities read: its
+    /// PackageVersion's Version attribute, else element; null where it holds none for the package or does not read as XML.
+    /// The PackageVersion at <paramref name="line"/> (MSBuild's, from 1) where one is, else its first.</summary>
+    public static string? PackageVersionWritten(string text, string id, int line = 0)
+    {
+        if (Read(text) is not { } xml || PackageVersion(xml, id, line) is not { } held)
+        {
+            return null;
+        }
+        return (string?)held.Attribute("Version") ?? held.Elements().FirstOrDefault(e => e.Name.LocalName == "Version" && !e.HasElements)?.Value;
+    }
+
+    /// <summary>The property a version written as one names alone ("$(Linq2DbVersion)", spaces aside); else null.</summary>
+    public static string? PropertyNamed(string written) =>
+        written.Trim() is ['$', '(', .. string inside, ')'] && inside.Trim() is { Length: > 0 } name && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-')
+            ? name : null;
+
+    /// <summary>A file's text with a property's value set where its element at <paramref name="line"/> (MSBuild's, from 1)
+    /// sets it, every other character as it was; else why not: no element there sets it, it is set under a condition, or
+    /// its value is written as more than a value (another property, an item, a function).</summary>
+    public static (string? Text, string? Why) WithPropertyAt(string text, string name, int line, string value)
+    {
+        if (Read(text) is not { } xml)
+        {
+            return (null, "the file does not read as XML");
+        }
+        if (xml.Root.Descendants().FirstOrDefault(e => e.Name.LocalName == name && ((IXmlLineInfo)e).LineNumber == line && e.Parent?.Name.LocalName == "PropertyGroup")
+            is not { HasElements: false, Parent: { } group } set || xml.InnerOf(set) is not { } inner)
+        {
+            return (null, $"no property group sets it at line {line}");
+        }
+        if (Conditioned(set) || Conditioned(group) || group.Parent != xml.Root)
+        {
+            return (null, "it is set under a condition");
+        }
+        string written = xml.Written(inner);
+        string held = XmlEntities.DecodeText(written).Trim();
+        if (held.Length == 0 || held.Contains("$(", StringComparison.Ordinal) || held.Contains("@(", StringComparison.Ordinal) || held.Contains("%(", StringComparison.Ordinal))
+        {
+            return (null, $"it is set as {(held.Length == 0 ? "nothing" : held)}, not a version");
+        }
+        int start = inner.Start + (written.Length - written.TrimStart().Length);
+        xml.Apply([(start, written.Trim().Length, XmlEntities.Encode(value))]);
+        return (xml.Text, null);
+    }
+
+    /// <summary>The PackageVersion naming a package at a line where one is, else its first.</summary>
+    private static XElement? PackageVersion(XmlText xml, string id, int line)
+    {
+        XElement[] held = [.. xml.Root.Descendants().Where(e => e.Name.LocalName == "PackageVersion" && Names(e, id))];
+        return held.FirstOrDefault(e => ((IXmlLineInfo)e).LineNumber == line) ?? held.FirstOrDefault();
     }
 
     /// <summary>Whether a project file's text references a package; false for text that does not read as XML.</summary>
