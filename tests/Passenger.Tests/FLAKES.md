@@ -30,6 +30,19 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `PauseTests`' `Pause_stops_a_looping_program_in_its_loop_and_a_second_pause_after_continuing_does_too`, CI's macOS
+  gate at c599ba911 (run 43015461601): "Assert.EndsWith() Failure: String end does not match / String: null", the first
+  pause's top frame with no source. **The test waited wrong**: it paused once LoopingConsoleApp said "looping", which the
+  looping thread wrote itself just before its loop, so a pause sent as the line arrived could find that thread still in
+  the write. On this Mac, of 427 launches on .NET 10.0.14 paused as the line arrived, under several loads, one (40
+  lanes of fresh 30 ms busy processes) found it in `Interop.Sys.Write` < ... < `Console.WriteLine` < `<Main>$` at line
+  123, 3 ms after the line reached the adapter; 3,900 pause-and-continue rounds of the loop itself all stopped on its
+  lines, and 343 runs of the test on .NET 11 under load passed. With the write held 300 ms after its bytes went (a
+  `write$NOCANCEL` interposed into the debuggee alone), 10 of 10 launches stopped there and the test failed with CI's
+  message, as did the sleep tests' steps back to the loop; the IDE and MCP show such a stop at the first frame with
+  source, Main's. Another thread says "looping" once the loop has turned, seeing a field the loop sets (the loop still
+  calls nothing); with the write held, every test waiting for the line passes. The Debug console's pause test said it
+  the same way and says it so now, and `AssertInLoop` names the frames a failure stood in (7463124f0, #1490).
 - `NewServiceSetupTests`' `New_Project_of_an_MVC_app_keeps_its_folder_for_Undo_without_its_bytes`, CI's macOS runner at
   09b6aa8de (run 43005926642): "New Project's Undo held 2253880 bytes of the history for a folder of 9798159 bytes in 78
   files". **The test measured the process, not the command**: it read `GC.GetTotalMemory` before and after clearing the
