@@ -35,6 +35,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   **The test found its log by name**: it looked in the run's shared log folder for `server-*-{process id}.log`, and
   Windows had reused an earlier window's server's id, so two logs answered. Every test now reads the server's own
   `LogPath` (9dd051f15, #1485).
+- `NuGetTests`' `Update_all_stopped_by_an_edit_to_a_central_file_names_it_and_leaves_ef_cores_set_whole`, CI's Linux
+  runner at 9431c8f49 (run 42986237634): the status said "Updated 5 package references", not that
+  examples/Directory.Packages.props changed. **The test edited at the wrong moment**: Update All takes projects in the
+  order of their paths by `PathNames.Comparer`, ordinal on Linux, where Lib sorts before examples/One; the hook edited
+  at the fourth save, so there One's, before One wrote the file, and the run rightly took the edit as the file it
+  started from, keeping it and Undo keeping it too. Met every time on the Mac with the folder named to sort after Lib
+  (the run's log: App, Lib, One, Two); the hook edits once the file's text shows the run wrote it, and the folder is
+  Examples, so every system takes Lib last, which the test checks (8aff4b180, #1486).
 - `GDScriptRefactorCommandsTests`' `Each_refactoring_changes_every_script_…`, CI's Windows runner at 61d99a589 (run
   42966878050): main.tscn "being used by another process" to a read sharing everything, in the wait after Undo. **A gap in
   the IDE, and the test reading during the writes**: ReplaceFile refuses even such a read for a moment while it puts a
