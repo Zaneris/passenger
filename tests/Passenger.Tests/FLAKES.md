@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-10
 
+- `XamlTests`' `An_elements_field_renamed_from_the_code_behind_a_moment_after_its_xaml_was_written_…`, CI's Linux runner at
+  c1cbb2f26 (run 42884859818) and 65208647c (run 42914645058): "did not say it waits … (the XAML's change was held unsent
+  to the server): the status says Renamed in 2 files". **The test held too little**: Roslyn's server takes a closed
+  file's change as a text it reads only when next asked, and the warm server the test took up had been told of
+  MainWindow.axaml (saved by the test before, put back by this one's reset) after its last read, so it read the test's
+  write unheld and knew the new field; the rename rightly renamed at once. Read from the code (the runs kept no log) and
+  met on the Mac by a word of the XAML told just before the write; the test and the three others holding the XAML's word
+  start on a server of their own that holds it as on disk and was told of no change of it (fdc728b10, #1468).
 - `NoDotnetTests`' `Install_dotnet_SDK_asks_then_installs_the_SDK_from_the_feed_…`, CI's Windows runner at 52ee34043 (run
   42904209048): "Access to the path '…\user-dotnet\.passenger-install-…' is denied", move 9.0 s. **A race in the IDE**: a
   reader of the unpacked SDK (a scanner, or the IDE's own walks, the install folder lying inside the open one) refused a
