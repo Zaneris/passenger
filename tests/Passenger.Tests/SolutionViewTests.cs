@@ -1207,6 +1207,71 @@ public sealed class SolutionViewTests : IDisposable
             string.Join(", ", shown.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project).Select(r => $"{r.Name} {(r.IsDimmed ? "unloaded" : "loaded")}"));
     }
 
+    /// <summary>A project renamed or moved takes the solution's launch profiles with it, Visual Studio's .slnLaunch and the
+    /// person's .slnLaunch.user, each path from the solution's folder in the separator it was written with and the rest of
+    /// each file as it was, in the command of Undo that renames or moves it: Undo puts both files back, and Run's profile
+    /// names the project where it is.</summary>
+    [AvaloniaFact]
+    public void A_project_renamed_or_moved_takes_the_solutions_launch_profiles_with_it_in_the_same_command_of_Undo()
+    {
+        const string Shared = "[\n  {\n    \"Name\": \"Both\",\n    \"Projects\": [\n      {\n        \"Path\": \"Shop.App\\\\Shop.App.csproj\",\n"
+            + "        \"Action\": \"Start\"\n      },\n      {\n        \"Path\": \"Shop.Core\\\\Shop.Core.csproj\",\n        \"Action\": \"None\",\n"
+            + "        \"Kept\": 1\n      }\n    ]\n  }\n]";
+        const string Own = "// mine\n[ { \"Name\": \"Mine\", \"Projects\": [ { \"Path\": \"Shop.Core/Shop.Core.csproj\", \"Action\": \"Start\" } ] } ]\n";
+        Write("Shop.slnLaunch", Shared);
+        Write("Shop.slnLaunch.user", Own);
+        string shared = Path.Combine(folder, "Shop.slnLaunch");
+        string own = Path.Combine(folder, "Shop.slnLaunch.user");
+        string renamedShared = Shared.Replace("Shop.Core\\\\Shop.Core.csproj", "Shop.Core\\\\Shop.Domain.csproj", StringComparison.Ordinal);
+        string renamedOwn = Own.Replace("Shop.Core/Shop.Core.csproj", "Shop.Core/Shop.Domain.csproj", StringComparison.Ordinal);
+        string src = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "src")).FullName);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            List<string> asked = [];
+            window.Confirm = (title, _, _) =>
+            {
+                asked.Add(title);
+                return Task.FromResult(true);
+            };
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Both"), () => $"the solution's launch profile to be listed ({string.Join(", ", window.Configurations.Select(c => c.Name))})");
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.Core"));
+            Ui.Run(window, AppActions.Rename);
+            NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+            popup.Text = string.Empty;
+            window.KeyTextInput("Shop.Domain");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.Exists(Path.Combine(folder, "Shop.Core", "Shop.Domain.csproj")), () => $"Shop.Core to be renamed Shop.Domain: {window.Status}");
+            Assert.True((File.ReadAllText(shared), File.ReadAllText(own)) == (renamedShared, renamedOwn),
+                $"The launch profiles still name Shop.Core, so Visual Studio and Run start a project that is gone:\n{File.ReadAllText(shared)}\n{File.ReadAllText(own)}");
+            string domain = PathNames.Canonical(Path.Combine(folder, "Shop.Core", "Shop.Domain.csproj"));
+            Ui.WaitFor(() => window.Configurations.FirstOrDefault(c => c.Name == "Mine")?.Starts.Select(s => s.Project).SequenceEqual([domain]) == true,
+                () => $"Run's profile to name Shop.Domain ({string.Join(", ", window.Configurations.Where(c => c.IsMultiple).SelectMany(c => c.Starts).Select(s => s.Project))})");
+
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.App"));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => File.Exists(Path.Combine(folder, "Shop.Core", "Shop.Core.csproj")), () => $"Undo to rename Shop.Domain back: {window.Status}");
+            Assert.True((File.ReadAllText(shared), File.ReadAllText(own)) == (Shared, Own),
+                $"Undo of the rename left the launch profiles naming Shop.Domain:\n{File.ReadAllText(shared)}\n{File.ReadAllText(own)}");
+
+            Button views = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is string tip && tip.StartsWith("Switch between the solution", StringComparison.Ordinal));
+            Ui.Click(views);
+            Ui.ClickRow(window, Show(window, Path.Combine(folder, "Shop.App")));
+            Ui.Run(window, EditorActions.Cut);
+            Ui.ClickRow(window, Show(window, src));
+            Ui.Run(window, EditorActions.Paste);
+            Assert.Equal("Moved Shop.App to src", window.Status);
+            Assert.True(File.ReadAllText(shared) == Shared.Replace("\"Shop.App\\\\Shop.App.csproj\"", "\"src\\\\Shop.App\\\\Shop.App.csproj\"", StringComparison.Ordinal)
+                && File.ReadAllText(own) == Own, $"The launch profiles do not follow Shop.App into src:\n{File.ReadAllText(shared)}\n{File.ReadAllText(own)}");
+            Ui.Click(views);
+            Assert.Equal(["Undo"], asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Projects renamed, moved and removed while a solution filter is open take the filter's list with them, each
     /// in the command of Undo that changes the solution (Undo of a move and of the removal putting it back, Redo of the
     /// removal taking it out again): opened again, the filter loads the project renamed under its new name and the one

@@ -214,6 +214,73 @@ public static class SolutionLaunch
         return (written, null);
     }
 
+    /// <summary>A file of profiles following files and folders moved or renamed, as a save writes it: each project it names
+    /// that moved, or every one where the solution's folder moved, named where it is now (<see cref="Moved"/>). Whether it
+    /// changed; a file that does not read as a list of profiles is left as it is.</summary>
+    public static bool Move(string file, string before, string after, IReadOnlyList<(string From, string To)> moves)
+    {
+        FileText read = FileText.Load(file) ?? throw new IOException($"{Path.GetFileName(file)} is not a text file");
+        if (Moved(read.Text, before, after, moves) is not { } text || text == read.Text)
+        {
+            return false;
+        }
+        FileText.SaveOver(file, read, text);
+        return true;
+    }
+
+    /// <summary>The text with each project path its profiles name (a <c>Path</c>, or an early file's <c>Name</c>) that names a
+    /// project moved, read from the solution's folder <paramref name="before"/> the moves, written from its folder
+    /// <paramref name="after"/>, in the separator it was written with; every other character as it was. Null for a text that
+    /// does not read as a list of profiles.</summary>
+    public static string? Moved(string text, string before, string after, IReadOnlyList<(string From, string To)> moves)
+    {
+        string Now(string path) => moves.FirstOrDefault(m => PathNames.Within(path, m.From)) is { From: not null } move ? PathNames.Moved(path, move.From, move.To) : path;
+        JsonText.Node root;
+        try
+        {
+            root = new JsonText.Reader(text).Document();
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+        if (root.Kind != JsonText.Kind.Array)
+        {
+            return null;
+        }
+        List<(int Start, int End, string Written)> changes = [];
+        foreach (JsonText.Node profile in root.Items.Where(i => i.Kind == JsonText.Kind.Object))
+        {
+            foreach (JsonText.Node project in MemberOf(profile, ProjectsKey) is { Kind: JsonText.Kind.Array } projects ? projects.Items : [])
+            {
+                if (project.Kind != JsonText.Kind.Object || (MemberOf(project, PathKey) ?? MemberOf(project, NameKey)) is not { } value
+                    || ItemOf(text[value.Start..value.End]) is not JsonValue literal || !literal.TryGetValue(out string? written) || written.Length == 0)
+                {
+                    continue;
+                }
+                string was = SolutionFilter.Named(written, before);
+                string now = Now(was);
+                if (PathNames.Same(now, was) && PathNames.Same(before, after))
+                {
+                    continue;
+                }
+                string relative = Path.GetRelativePath(after, now);
+                // As written: a slash where it has slashes and no backslash, else a backslash, as Visual Studio writes it.
+                relative = written.Contains('/') && !written.Contains('\\') ? relative.Replace('\\', '/') : relative.Replace('/', '\\');
+                changes.Add((value.Start, value.End, JsonSerializer.Serialize(relative, JsonText.Written)));
+            }
+        }
+        foreach ((int start, int end, string value) in changes.OrderByDescending(c => c.Start))
+        {
+            text = string.Concat(text.AsSpan(0, start), value, text.AsSpan(end));
+        }
+        return text;
+    }
+
+    /// <summary>An object's member as Visual Studio's reader takes it, its letter case aside: the last of the name.</summary>
+    private static JsonText.Node? MemberOf(JsonText.Node holder, string name) =>
+        holder.Members.LastOrDefault(m => string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase))?.Value;
+
     /// <summary>One level of indentation of a file written anew, as Visual Studio writes it.</summary>
     private const string Unit = "  ";
 

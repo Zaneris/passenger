@@ -146,5 +146,28 @@ public sealed class SolutionLaunchTests : IDisposable
             $"The profile moved to the team's file lost what it held or changed the others: {text}");
     }
 
+    [Fact]
+    public void A_project_renamed_or_moved_is_named_where_it_went_in_the_separator_it_was_written_with_every_other_character_kept()
+    {
+        const string Written = "// ours\n[\n  {\n    \"Name\": \"Both\",\n    \"Projects\": [\n      { \"Path\": \"src\\\\Api\\\\Api.csproj\", \"Action\": \"Start\", \"Kept\": 1 },\n"
+            + "      { \"Name\": \"Worker/Worker.csproj\", \"Action\": \"None\" },\n      { \"Path\": \"Tool\\\\Tool.csproj\", \"Action\": \"Start\" },\n    ],\n  },\n  42\n]";
+        IReadOnlyList<(string From, string To)> moves = [(At("src", "Api", "Api.csproj"), At("src", "Api", "Gateway.csproj")), (At("Worker"), At("apps", "Worker"))];
+        string? moved = SolutionLaunch.Moved(Written, root, root, moves);
+        string expected = Written.Replace("src\\\\Api\\\\Api.csproj", "src\\\\Api\\\\Gateway.csproj", StringComparison.Ordinal)
+            .Replace("Worker/Worker.csproj", "apps/Worker/Worker.csproj", StringComparison.Ordinal);
+        Assert.True(moved == expected, $"The profiles did not follow the projects moved as written, so Visual Studio and Run start what is gone:\n{moved}");
+        Assert.Equal(Written, SolutionLaunch.Moved(Written, root, root, [(At("docs"), At("notes"))]));
+    }
+
+    [Fact]
+    public void The_solution_moved_names_each_project_from_its_new_folder_and_a_file_that_does_not_read_is_left_alone()
+    {
+        const string Written = "[ { \"Name\": \"Both\", \"Projects\": [ { \"Path\": \"Api\\\\Api.csproj\", \"Action\": \"Start\" } ] } ]";
+        string? moved = SolutionLaunch.Moved(Written, root, At("solution"), []);
+        Assert.Equal(Written.Replace("Api\\\\Api.csproj", "..\\\\Api\\\\Api.csproj", StringComparison.Ordinal), moved);
+        Assert.Null(SolutionLaunch.Moved("[ { \"Name\": ", root, root, [(At("Api"), At("Gateway"))]));
+        Assert.Null(SolutionLaunch.Moved("{ \"Name\": \"x\" }", root, root, [(At("Api"), At("Gateway"))]));
+    }
+
     private string At(params string[] parts) => PathNames.Canonical(Path.GetFullPath(Path.Combine([root, .. parts])));
 }
