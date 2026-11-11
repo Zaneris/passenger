@@ -9,7 +9,19 @@ public static class DocumentUris
 {
     public static string FromPath(string path) => new Uri(PathNames.Canonical(path)).AbsoluteUri;
 
-    public static string ToPath(string uri)
+    public static string ToPath(string uri) => PathNames.Canonical(LocalPath(uri));
+
+    /// <summary>The path a file is to take, as a rename's newUri names it: its folder's canonical path, and its own name as
+    /// the URI spells it, where <see cref="ToPath"/> gives the name of the file there as the disk spells it, so a new name
+    /// differing only in letter case (myClass.cs to MyClass.cs, one file on macOS and Windows) is kept.</summary>
+    public static string ToNewPath(string uri)
+    {
+        string local = Path.TrimEndingDirectorySeparator(Path.GetFullPath(LocalPath(uri)));
+        return Path.GetDirectoryName(local) is { } folder ? Path.Join(PathNames.Canonical(folder), Path.GetFileName(local)) : PathNames.Canonical(local);
+    }
+
+    /// <summary>A file URI's local path as given.</summary>
+    private static string LocalPath(string uri)
     {
         string local = new Uri(uri).LocalPath;
         // A Windows drive as vscode-uri writes it, file:///c%3A/..., which System.Uri leaves as /c:/...
@@ -17,7 +29,7 @@ public static class DocumentUris
         {
             local = local[1..];
         }
-        return PathNames.Canonical(local);
+        return local;
     }
 
     /// <summary>Whether two URIs name one document: the same text, or two files whose paths (<see cref="ToPath"/>) name one

@@ -28,6 +28,9 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
     private readonly IClientLanguageServerManager client;
     private readonly LspServices services;
 
+    /// <summary>The projects loading again for files renamed only in letter case, once loaded without them (<see cref="Recased"/>).</summary>
+    private readonly ConcurrentDictionary<string, bool> recasing = new(StringComparer.Ordinal);
+
     public PassengerProjectLoader(LspServices services, IGlobalOptionService options, ILoggerFactory loggers, IAsynchronousOperationListenerProvider listeners,
         ServerConfigurationFactory configuration, IBinLogPathProvider binaryLogs, DotnetCliHelper dotnet)
         : base(services, options, loggers, listeners, configuration, binaryLogs, dotnet)
@@ -176,7 +179,32 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
             : info)];
         DiagnosticLogItem[] said = [.. problems, .. deep.Where(d => d.Value).Select(d => new DiagnosticLogItem(DiagnosticLogItemKind.Warning,
             $"{Path.GetFileName(d.Key)} is nested too deeply for the C# language server to read, so it is left out and what it declares reads as missing", projectPath))];
-        return Made(projectPath, read, said);
+        return Made(projectPath, Recased(projectPath, read), said);
+    }
+
+    /// <summary>A project's builds without the files it holds under another letter case, the project loading again with
+    /// them once it has loaded without them: the server adds a load's new files before it lets go of those gone, and its
+    /// files' paths compare ignoring case, so a file renamed only in letter case (myClass.cs to MyClass.cs) fails the load.</summary>
+    private ProjectFileInfo[] Recased(string projectPath, ProjectFileInfo[] infos)
+    {
+        if (recasing.TryRemove(projectPath, out _))
+        {
+            return infos;
+        }
+        HashSet<string> held = new(StringComparer.Ordinal);
+        foreach (Project project in _workspaceFactory.HostWorkspace.CurrentSolution.Projects.Where(p => global::Roslyn.Utilities.PathUtilities.Comparer.Equals(p.FilePath, projectPath)))
+        {
+            held.UnionWith(project.Documents.Concat<TextDocument>(project.AdditionalDocuments).Select(d => d.FilePath).OfType<string>());
+        }
+        HashSet<string> heldAnyCase = new(held, StringComparer.OrdinalIgnoreCase);
+        bool Renamed(DocumentFileInfo file) => !held.Contains(file.FilePath) && heldAnyCase.Contains(file.FilePath);
+        if (!infos.Any(i => i.Documents.Any(Renamed) || i.AdditionalDocuments.Any(Renamed)))
+        {
+            return infos;
+        }
+        recasing[projectPath] = true;
+        _projectsToReload.AddWork(projectPath, (int)ProjectReloadPriority.Medium);
+        return [.. infos.Select(i => i with { Documents = [.. i.Documents.Where(d => !Renamed(d))], AdditionalDocuments = [.. i.AdditionalDocuments.Where(d => !Renamed(d))] })];
     }
 
     /// <summary>Whether a C# file goes past the brackets a parser is given, which ends the server where it goes deeper than

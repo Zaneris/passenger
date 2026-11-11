@@ -625,7 +625,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return await SymbolRenamed(renaming, cancel);
     }, AgentCall.Say, cancel));
 
-    /// <summary>A symbol's rename's answer, its files saved: the files it changed and moved, and those left as edited meanwhile.</summary>
+    /// <summary>A symbol's rename's answer, its files saved: the files it changed and moved, those left as edited meanwhile,
+    /// and a file that could not follow its type.</summary>
     private async Task<string> SymbolRenamed(RefactorOutcome renaming, CancellationToken cancel)
     {
         if (renaming.Problem is { } notRenamed)
@@ -641,7 +642,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<string> moved = [.. renaming.Files.Where(f => f.Change == "moved").Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
         string renamed = moved.Count > 0 ? $"; renamed {string.Join(", ", moved)}" : string.Empty;
         string unrenamed = renaming.Left.Count > 0 ? $"; not in {string.Join(", ", renaming.Left)}, edited meanwhile" : string.Empty;
-        return $"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}{unrenamed}";
+        return $"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}{unrenamed}{(renaming.Unmoved is { } unmoved ? $"; but {unmoved}" : string.Empty)}";
     }
 
     [McpServerTool(Name = McpTools.CodeActions, Title = "Fixes and refactorings", ReadOnly = true), Description(
@@ -792,23 +793,28 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException($"{what} was not applied: {stale}");
         }
-        List<string> dropped = [];
-        int files;
-        using (Passenger.App.Editors.CommandHistory.Recording recording = Editors.Commands.Record(title))
+        // Made as the window makes it, under the action's title in Undo, a type it renames taking its files along.
+        RefactorOutcome made = await window.Assist.Actions.ApplyEditAsync(edit, asked, title, what, patience);
+        if (made.Problem is { } problem)
         {
-            try
-            {
-                files = WorkspaceEdits.ApplyAsCommand(Editors, edit, recording, asked, dropped);
-                await WorkspaceEdits.LandedAsync(recording, null);
-            }
-            catch (WorkspaceEditFailed failed)
-            {
-                throw new InvalidOperationException($"{what} was not applied: {failed.Message}");
-            }
+            throw new InvalidOperationException(problem);
         }
         await SaveLandedAsync(cancel);
-        return $"Applied {what} to {Plural.Of(files, "file")}{unrun}{(dropped.Count > 0 ? $", but not to {string.Join(", ", dropped)}, edited meanwhile" : string.Empty)}";
+        return ActionApplied(what, made, unrun);
     }, AgentCall.Say, cancel));
+
+    /// <summary>What an agent hears of a code action's edit made: the files it changed, made or deleted, counted, those it
+    /// renamed, a command it carries that Passenger cannot run, those left as edited meanwhile, and a file that could not
+    /// follow its type.</summary>
+    private string ActionApplied(string what, RefactorOutcome made, string unrun)
+    {
+        int changed = made.Files.Count(f => f.Change != "moved") - made.Left.Count;
+        List<string> moved = [.. made.Files.Where(f => f.Change == "moved").Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
+        string to = changed > 0 || moved.Count == 0 ? $" to {Plural.Of(changed, "file")}" : string.Empty;
+        string renaming = moved.Count > 0 ? $", renaming {string.Join(", ", moved)}" : string.Empty;
+        string left = made.Left.Count > 0 ? $", but not to {string.Join(", ", made.Left)}, edited meanwhile" : string.Empty;
+        return $"Applied {what}{to}{renaming}{unrun}{left}{(made.Unmoved is { } unmoved ? $"; but {unmoved}" : string.Empty)}";
+    }
 
     /// <summary>A code action whose change its server makes by its own command, made as the window makes it
     /// (<see cref="ServerCommands"/>), the files saved: which files it changed and made, and where it put a name to rename.</summary>

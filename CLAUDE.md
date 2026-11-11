@@ -272,7 +272,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   Roslyn's own `workspace/diagnostic`, pulled only without the extension, analyses every framework and names no
   project. A C# file no tab shows is pulled when shown or asked, never at a refresh. Edits added to a server's edit join
   that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command runs through
-  `ServerCommands`, its `workspace/applyEdit` one command of Undo.
+  `ServerCommands`, its `workspace/applyEdit` one command of Undo; a code action's edit through
+  `CodeActions.ApplyEditAsync`, so a type it renames takes its files along as Rename's (`TypeRename.RenamedByAsync`).
 - **Godot code.** `GodotScenes`, `GodotSceneIndex` (never a walk of every file on the window's thread; an autoload by
   uid, never project.godot's text), the extension's `GodotChecks` and `GodotKinds` (the projects' strings only through
   `GodotKinds.WritesAsync`). GDScript is Godot's parser and analyzer, ported (`GDScriptTree`, `GDScriptAnalyzer`); a
@@ -372,7 +373,8 @@ a new name, and `just site-shots` retakes its images.
   its start is started again, and StreamJsonRpc drops a faulted answer (`LanguageServer.IsDroppedAnswer`).
 - **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself. A deleted file reaches
   it only once its projects loaded again without it (`ProjectMethods.Deleted`): told first, it reads the missing file, a
-  second each, before any answer needing the compilation (dotnet/roslyn#86236).
+  second each, before any answer needing the compilation (dotnet/roslyn#86236). A reload adds new files before it drops
+  those gone, comparing paths ignoring case, so a file renamed in letter case alone loads first without it (`Recased`).
 - **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
   references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`, which moves
   `LanguageServer.Changes` itself (`AnswersMoved`).

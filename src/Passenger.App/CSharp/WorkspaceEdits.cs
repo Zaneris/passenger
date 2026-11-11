@@ -310,8 +310,9 @@ public static class WorkspaceEdits
         return files;
     }
 
-    /// <summary>A file not open's text with a server's edits made in it, in its own line breaks and indentation.</summary>
-    private static string Edited(string path, string text, IReadOnlyList<LspTextEdit> edits)
+    /// <summary>A file not open's text with a server's edits made in it, in its own line breaks and indentation. Safe from
+    /// any thread.</summary>
+    internal static string Edited(string path, string text, IReadOnlyList<LspTextEdit> edits)
     {
         TextSnapshot snapshot = TextSnapshot.From(text);
         return snapshot.Apply([.. Convert(snapshot, edits, TextDocument.DetectLineEnding(text), FileIndent.Of(path, text)).OrderBy(e => e.Start)]).ToString();
@@ -580,14 +581,23 @@ public static class WorkspaceEdits
         return paths;
     }
 
-    /// <summary>One of an edit's file operations (create, rename or delete): its paths and its options.</summary>
+    /// <summary>The files and folders an edit's renames move, each where it was.</summary>
+    public static IReadOnlyList<string> Moved(JsonElement edit) =>
+        [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is not null).Select(c => Resource.Read(c.Operation!.Value)).Where(r => r.To is not null).Select(r => r.Path)];
+
+    /// <summary>Whether an edit changes a range of a file already.</summary>
+    public static bool Changes(JsonElement edit, string path, LspRange range) =>
+        Shapes.WorkspaceEdit(edit).Any(c => c.Operation is null && c.Edits.Any(e => e.Range == range) && PathNames.Same(DocumentUris.ToPath(c.Uri), path));
+
+    /// <summary>One of an edit's file operations (create, rename or delete): its paths and its options. A rename's new
+    /// name is the server's own spelling (<see cref="DocumentUris.ToNewPath"/>), so one changing only letter case moves.</summary>
     private sealed record Resource(string Kind, string Path, string? To, JsonElement Options)
     {
         public static Resource Read(JsonElement operation)
         {
             string kind = JsonMembers.Text(operation, "kind") ?? string.Empty;
             string path = DocumentUris.ToPath(Named(operation, kind == "rename" ? "oldUri" : "uri"));
-            string? to = kind == "rename" ? DocumentUris.ToPath(Named(operation, "newUri")) : null;
+            string? to = kind == "rename" ? DocumentUris.ToNewPath(Named(operation, "newUri")) : null;
             return new Resource(kind, path, to, JsonMembers.Value(operation, "options") ?? default);
         }
 
@@ -605,6 +615,9 @@ public static class WorkspaceEdits
 public sealed record RefactorOutcome(string Said, string? Problem, IReadOnlyList<RefactoredFile> Files, IReadOnlyList<string> Left)
 {
     public IReadOnlyList<UnchangedUse> Unchanged { get; init; } = [];
+
+    /// <summary>Why a file the change takes along could not be moved, the change made all the same; null once each was.</summary>
+    public string? Unmoved { get; init; }
 
     /// <summary>Where the server that made it asked a name it wrote be renamed at once (TypeScript's Extract to function's
     /// new function), in the text as it left it; null where it asked none.</summary>

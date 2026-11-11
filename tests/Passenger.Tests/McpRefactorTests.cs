@@ -218,6 +218,38 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(Till, File.ReadAllText(Path.Combine(Folder, "Till.cs")));
     }
 
+    /// <summary>An agent's Fix name violation on a class named like its file renames the file with it, in letter case alone,
+    /// as Rename does, and Rename file to Crate.cs renames a file in letter case, each answer naming the rename, where the file
+    /// kept its name under an answer saying it was applied; the language server takes each file under its new name, offering
+    /// to rename it no more, where its project's load failed for good on the name it held already.</summary>
+    [Fact]
+    public async Task An_agents_code_action_renaming_a_class_takes_its_file_along_and_one_renaming_a_file_in_letter_case_renames_it()
+    {
+        await TakeFolderAsync();
+        Shop(("shelf.cs", "namespace Shop;\n\npublic class shelf\n{\n}\n"), ("Stock.cs", "namespace Shop;\n\npublic static class Stock\n{\n    public static shelf Open() => new shelf();\n}\n"),
+            ("crate.cs", "namespace Shop;\n\npublic class Crate\n{\n}\n"));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        string named = (await Call(client, McpTools.ApplyCodeAction, new() { ["path"] = "shelf.cs", ["line"] = 3, ["column"] = 14, ["title"] = "Fix name violation: Shelf" })).GetString()!;
+        Assert.Equal("Applied 'Fix name violation: Shelf' to 2 files, renaming shelf.cs to Shelf.cs", named);
+        string moved = (await Call(client, McpTools.ApplyCodeAction, new() { ["path"] = "crate.cs", ["line"] = 3, ["column"] = 14, ["title"] = "Rename file to Crate.cs" })).GetString()!;
+        Assert.Equal("Applied 'Rename file to Crate.cs', renaming crate.cs to Crate.cs", moved);
+
+        Assert.Equal(["Crate.cs", "Shelf.cs"], Directory.GetFiles(Folder, "*.cs").Select(Path.GetFileName).OfType<string>()
+            .Where(n => n.Equals("shelf.cs", StringComparison.OrdinalIgnoreCase) || n.Equals("crate.cs", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal));
+        Assert.Equal("namespace Shop;\n\npublic class Shelf\n{\n}\n", File.ReadAllText(PathOf("Shelf.cs")));
+        Assert.Contains("public static Shelf Open() => new Shelf();", File.ReadAllText(PathOf("Stock.cs")), StringComparison.Ordinal);
+        foreach (string file in new[] { "Shelf.cs", "Crate.cs" })
+        {
+            List<string> offered = [];
+            Assert.True(await Waiting.UntilAsync(async () =>
+            {
+                offered = [.. (await Call(client, McpTools.CodeActions, new() { ["path"] = file, ["line"] = 3, ["column"] = 14 })).EnumerateArray().Select(a => a.GetString()!)];
+                return !offered.Any(a => a.StartsWith("Rename file", StringComparison.Ordinal));
+            }, TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), $"The language server still holds {file} by its old name, offering: {string.Join("; ", offered)}");
+        }
+    }
+
     [Fact]
     public async Task An_agent_that_writes_a_file_and_at_once_changes_a_signature_or_renames_what_it_calls_has_the_change_made_in_what_it_wrote()
     {

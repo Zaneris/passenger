@@ -27,6 +27,12 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
     private const string Shapes = "namespace Shop;\n\npublic class Circle\n{\n}\n\npublic class Square\n{\n    public Circle Inside() => new Circle();\n}\n";
 
+    private const string Shelf = "namespace Shop;\n\npublic class shelf\n{\n    public int Width;\n}\n";
+
+    private const string Stock = "namespace Shop;\n\npublic static class Stock\n{\n    public static shelf Open() => new shelf();\n}\n";
+
+    private const string Crate = "namespace Shop;\n\npublic class Crate\n{\n}\n";
+
     private readonly string folder;
 
     public TypeRenameTests(RestoredFolders folders) => folder = PathNames.Canonical(folders.Take("type-rename-", made =>
@@ -44,6 +50,9 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         TestFolders.Write(project, "Basket.cs", "namespace Shop;\n\npublic partial class Basket\n{\n    public int Count;\n}\n");
         TestFolders.Write(project, "Basket.Lines.cs", "namespace Shop;\n\npublic partial class Basket\n{\n    public int Lines;\n}\n");
         TestFolders.Write(project, "BasketExtras.cs", "namespace Shop;\n\npublic partial class Basket\n{\n    public int Extras;\n}\n");
+        TestFolders.Write(project, "shelf.cs", Shelf);
+        TestFolders.Write(project, "Stock.cs", Stock);
+        TestFolders.Write(project, "crate.cs", Crate);
         TestGit.Init(project);
         return project;
     }));
@@ -594,6 +603,95 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Assert.Equal(Written + Order.Replace("Order", "Purchase", StringComparison.Ordinal), document.Text.Snapshot.ToString());
         Assert.Equal(Till.Replace("Order", "Purchase", StringComparison.Ordinal), File.ReadAllText(Path.Combine(folder, "Till.cs")));
         window.Close();
+    }
+
+    /// <summary>Show Context Actions' Fix name violation on a class named like its file renames the file with it, in letter
+    /// case alone, as Rename does: the tab follows, the language server takes the file under its new name, and one Undo takes
+    /// the class, its use and the file's name back, asked first. With Also rename files to reflect this change turned off,
+    /// the fix leaves the file's name as Rename does. Where the file kept its name, the server went on offering to rename it.</summary>
+    [AvaloniaFact]
+    public void Fix_name_violation_on_a_class_named_like_its_file_renames_the_file_in_letter_case_and_undo_takes_both_back()
+    {
+        string lower = Path.Combine(folder, "shelf.cs");
+        string upper = Path.Combine(folder, "Shelf.cs");
+        string stock = Path.Combine(folder, "Stock.cs");
+        MainWindow window = Open("shelf.cs");
+        List<(string Title, string Text)> asked = Answer(window);
+        OpenDocument document = window.EditorArea.Active!;
+
+        ContextAction(window, "class she", "Fix name violation: Shelf");
+        Ui.WaitFor(() => Names().Contains("Shelf.cs"), () => $"shelf.cs to be renamed Shelf.cs with its class: {window.Status}; the folder holds {string.Join(", ", Names())}");
+
+        Assert.DoesNotContain("shelf.cs", Names());
+        Assert.True(ReferenceEquals(document, Assert.Single(window.EditorArea.Documents)), "The renamed file's tab was closed and opened again");
+        Assert.Equal(upper, document.Path);
+        Assert.Equal("Shelf.cs", window.EditorArea.Active?.Name);
+        Assert.Equal(Shelf.Replace("shelf", "Shelf", StringComparison.Ordinal), document.Text.Snapshot.ToString());
+        Assert.Equal(Stock.Replace("shelf", "Shelf", StringComparison.Ordinal), File.ReadAllText(stock));
+        Ui.WaitFor(() => window.CSharpService?.For(document)?.Lsp?.Uri.EndsWith("/Shelf.cs", StringComparison.Ordinal) == true, "the language server to take the file as Shelf.cs");
+        Passenger.App.Mcp.PassengerTools tools = new(window);
+        Ui.WaitFor(() => !Ui.Await(tools.CodeActions("Shelf.cs", 3, 14), "the actions at Shelf").Any(a => a.StartsWith("Rename file", StringComparison.Ordinal)),
+            "the language server to hold the file as Shelf.cs, offering to rename it no more");
+
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal([("Undo", "Undo Fix name violation: Shelf? It changes Shelf.cs and Stock.cs.")], asked);
+        Assert.Contains("shelf.cs", Names());
+        Assert.DoesNotContain("Shelf.cs", Names());
+        Assert.Equal(lower, document.Path);
+        Assert.Equal(Shelf, document.Text.Snapshot.ToString());
+        Assert.Equal(Stock, File.ReadAllText(stock));
+
+        window.Assist.RenameSettings = window.Assist.RenameSettings with { RenameFiles = false };
+        ContextAction(window, "class she", "Fix name violation: Shelf");
+        Ui.WaitFor(() => document.Text.Snapshot.ToString().Contains("class Shelf", StringComparison.Ordinal), () => $"the fix with the file option off: {window.Status}");
+        Assert.Contains("shelf.cs", Names());
+        Assert.Equal(lower, document.Path);
+        window.Close();
+    }
+
+    /// <summary>Show Context Actions' Rename file to Crate.cs on a file named like its class in another letter case renames
+    /// the file, where it said nothing and left the name, and Undo in the Solution view names it back, as it does a file
+    /// renamed there.</summary>
+    [AvaloniaFact]
+    public void Rename_file_to_its_class_in_another_letter_case_renames_the_file_and_undo_names_it_back()
+    {
+        MainWindow window = Open("crate.cs");
+        Answer(window);
+        OpenDocument document = window.EditorArea.Active!;
+
+        ContextAction(window, "class Cra", "Rename file to Crate.cs");
+        Ui.WaitFor(() => Names().Contains("Crate.cs"), () => $"crate.cs to be renamed Crate.cs: {window.Status}; the folder holds {string.Join(", ", Names())}");
+
+        Assert.DoesNotContain("crate.cs", Names());
+        Assert.Equal(Path.Combine(folder, "Crate.cs"), document.Path);
+        Assert.Equal("Crate.cs", window.EditorArea.Active?.Name);
+        Assert.Equal(Crate, File.ReadAllText(Path.Combine(folder, "Crate.cs")));
+
+        Choose(window, Path.Combine(folder, "Crate.cs"));
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Contains("crate.cs", Names());
+        Assert.DoesNotContain("Crate.cs", Names());
+        Assert.Equal(Path.Combine(folder, "crate.cs"), document.Path);
+        window.Close();
+    }
+
+    /// <summary>The C# files in the folder by their names as the disk spells them.</summary>
+    private IReadOnlyList<string> Names() => [.. Directory.GetFiles(folder, "*.cs").Select(Path.GetFileName).OfType<string>().Order(StringComparer.Ordinal)];
+
+    /// <summary>Show Context Actions by its key at the end of a piece of the active file, and the action of that title
+    /// chosen once offered.</summary>
+    private static void ContextAction(MainWindow window, string after, string title)
+    {
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Press(window, "alt ENTER");
+        Ui.WaitFor(() => window.Assist.Offered.Contains(title), () => $"Show Context Actions to offer {title}: [{string.Join("; ", window.Assist.Offered)}]");
+        for (int i = window.Assist.Offered.ToList().IndexOf(title); i > 0; i--)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.Press(window, "ENTER");
     }
 
     private MainWindow Open(string file)

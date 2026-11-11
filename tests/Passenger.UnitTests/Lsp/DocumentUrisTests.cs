@@ -54,6 +54,21 @@ public sealed class DocumentUrisTests : IDisposable
         Assert.True(kept.SequenceEqual(own), $"Usages the server did not name were dropped, so Find Usages would miss them: kept {string.Join(", ", kept)}");
     }
 
+    /// <summary>A rename's new name differing only in letter case from the file there keeps its own spelling, its folder
+    /// spelled as the disk spells it, where the file's path as the disk names it would make the rename one of the file onto
+    /// itself, which moved nothing.</summary>
+    [Fact]
+    public void A_new_name_differing_from_the_file_there_only_in_letter_case_keeps_its_own_spelling()
+    {
+        string game = Directory.CreateDirectory(Path.Combine(root, "Game")).FullName;
+        File.WriteAllText(Path.Combine(game, "player.cs"), "class Player;\n");
+        string folder = PathNames.CaseIgnoredIn(game) ? Path.Combine(root, "game") : game;
+
+        string renamed = DocumentUris.ToNewPath(new Uri(Path.Combine(folder, "Player.cs")).AbsoluteUri);
+        Assert.True(renamed == Path.Combine(game, "Player.cs"), $"player.cs renamed to Player.cs goes to {renamed}, so the rename would move {(renamed == Path.Combine(game, "player.cs") ? "nothing" : "it elsewhere")}");
+        Assert.Equal(Path.Combine(game, "Enemy.cs"), DocumentUris.ToNewPath(DocumentUris.FromPath(Path.Combine(game, "Enemy.cs"))));
+    }
+
     [Fact]
     public void Documents_of_no_file_are_the_same_only_by_their_whole_uri()
     {

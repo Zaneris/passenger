@@ -315,6 +315,103 @@ public static class TypeRename
         return new Applied(files, made, unmoved);
     }
 
+    /// <summary>The types an edit renames, whatever made it, each named as <see cref="NamedAsync"/> names one (its files
+    /// those named after it whose declarations the edit renames) with its new name: a C# file's type declarations before and
+    /// after the edit, in order, one whose name alone changed renamed, none in a file whose declarations it adds, takes or
+    /// changes the kind of. Each file as the edit was made for it (<see cref="WorkspaceEdits.Answered"/>), parsed off the
+    /// window's thread; one it changes in more than one step is passed over.</summary>
+    public static async Task<IReadOnlyList<(Named Type, string Name)>> RenamedByAsync(EditorArea editors, JsonElement edit, Asked? asked)
+    {
+        Func<string, TextSnapshot?> answered = WorkspaceEdits.Answered(editors, asked);
+        List<(string Path, TextSnapshot? Open, IReadOnlyList<LspTextEdit> Edits, CSharpParseOptions Options)> files = [];
+        foreach (IGrouping<string, FileEdits> file in Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null && c.Edits.Count > 0)
+            .GroupBy(c => DocumentUris.ToPath(c.Uri), PathNames.Comparer).Where(f => IsCSharp(f.Key) && f.Count() == 1))
+        {
+            bool open = editors.Find(file.Key) is not null || asked?.Trackers.Keys.Any(d => d.Path == file.Key) == true;
+            files.Add((file.Key, open ? answered(file.Key) : null, file.First().Edits, editors.ParseOptions(file.Key)));
+        }
+        return files.Count == 0 ? [] : await BackgroundWork.Run(() => RenamedIn(files));
+    }
+
+    /// <summary>The types renamed in files read before an edit (an open one's text given) and after it, a type whose
+    /// parts take two new names renaming none.</summary>
+    private static List<(Named Type, string Name)> RenamedIn(IReadOnlyList<(string Path, TextSnapshot? Open, IReadOnlyList<LspTextEdit> Edits, CSharpParseOptions Options)> files)
+    {
+        Dictionary<string, (Named Type, string? Name)> renamed = new(StringComparer.Ordinal);
+        foreach ((string path, TextSnapshot? open, IReadOnlyList<LspTextEdit> edits, CSharpParseOptions options) in files)
+        {
+            if ((open ?? EditorArea.Read(path)) is not { } snapshot)
+            {
+                continue;
+            }
+            string text = snapshot.ToString();
+            List<SyntaxNode> before = TypeDeclarations(CSharpParsing.Parse(text, options).GetRoot());
+            // Only an edit reaching a type's name renames it: a file whose edits reach none is not parsed again.
+            ServerLines lines = ServerLines.Of(snapshot);
+            List<TextRange> reached = [.. edits.Select(e => TextRange.FromBounds(lines.OffsetOf(e.Range.Start), lines.OffsetOf(e.Range.End)))];
+            if (!before.Any(d => Identifier(d)!.Value.Span is var name && reached.Any(r => r.Start <= name.End && r.End >= name.Start)))
+            {
+                continue;
+            }
+            List<SyntaxNode> after = TypeDeclarations(CSharpParsing.Parse(WorkspaceEdits.Edited(path, text, edits), options).GetRoot());
+            if (before.Count != after.Count || before.Zip(after).Any(d => d.First.RawKind != d.Second.RawKind))
+            {
+                continue;
+            }
+            foreach ((SyntaxNode was, SyntaxNode now) in before.Zip(after))
+            {
+                string old = Identifier(was)!.Value.ValueText;
+                string name = Identifier(now)!.Value.ValueText;
+                if (old == name)
+                {
+                    continue;
+                }
+                string key = Qualified(was);
+                (Named type, string? taking) = renamed.TryGetValue(key, out (Named, string?) known) ? known : (new Named(old, FullName(was, old), path, []), name);
+                List<string> named = [.. type.Files];
+                if (IsNamedAfter(path, old) && !named.Contains(path))
+                {
+                    named.Add(path);
+                }
+                renamed[key] = (type with { Files = named }, taking == name ? name : null);
+            }
+        }
+        return [.. renamed.Values.Where(r => r.Name is not null).Select(r => (r.Type, r.Name!))];
+    }
+
+    /// <summary>A C# file's type and delegate declarations, nested ones too, in their order.</summary>
+    private static List<SyntaxNode> TypeDeclarations(SyntaxNode root) =>
+        [.. root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax or TypeDeclarationSyntax).Where(n => Identifier(n) is not null)];
+
+    /// <summary>A type declaration's name with its namespaces and the types it is nested in, and its type parameters' count:
+    /// the same for each part of a partial type.</summary>
+    private static string Qualified(SyntaxNode declaration)
+    {
+        List<string> names = [];
+        for (SyntaxNode? at = declaration; at is not null; at = at.Parent)
+        {
+            switch (at)
+            {
+                case TypeDeclarationSyntax { TypeParameterList: { } parameters } type:
+                    names.Insert(0, $"{type.Identifier.ValueText}`{parameters.Parameters.Count}");
+                    break;
+                case DelegateDeclarationSyntax { TypeParameterList: { } parameters } type:
+                    names.Insert(0, $"{type.Identifier.ValueText}`{parameters.Parameters.Count}");
+                    break;
+                case BaseNamespaceDeclarationSyntax space:
+                    names.Insert(0, space.Name.ToString());
+                    break;
+                default:
+                    if (Identifier(at) is { } name)
+                    {
+                        names.Insert(0, name.ValueText);
+                    }
+                    break;
+            }
+        }
+        return string.Join('.', names);
+    }
+
     /// <summary>The type whose name is at an offset of a file's syntax: a class, struct, interface, record, enum or
     /// delegate declared there, or the type a constructor or finalizer named there makes.</summary>
     private static SyntaxNode? DeclarationAt(SyntaxNode root, int offset)
