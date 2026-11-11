@@ -1,5 +1,6 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Containers;
 using Passenger.App.Debugging;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
@@ -12,7 +13,8 @@ namespace Passenger.Tests;
 /// <summary>A solution's multi-project launch profile, as Visual Studio writes it beside the solution, run and debugged from
 /// Passenger's toolbar: listed among the run configurations; Run builds its projects once and runs each in the launch profile
 /// it names, each in a tab of the Terminal window; Debug debugs the one set to Start, stopping at its breakpoint, and runs the
-/// one set to Start without debugging; Stop ends them all. It debugs through the window, so run alone.</summary>
+/// one set to Start without debugging; Stop ends them all; a project whose own configuration collects its logs and traces
+/// collects them started by the profile too. It debugs through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -80,10 +82,67 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
     }
 
     /// <summary>The window on the test's restored Shop, its profile chosen in the toolbar, listed after the projects' own.</summary>
-    private MainWindow Open()
+    /// <summary>With no container engine, Api, whose own configuration collects its logs and traces, says so as the profile
+    /// starts it, run or debugged, as it does started alone, and runs as it would; Worker, which collects none, says nothing.</summary>
+    [AvaloniaFact]
+    public void A_project_that_collects_its_logs_and_traces_says_why_none_come_with_no_engine_as_the_profile_starts_it()
+    {
+        MainWindow window = Open(new ContainerEngine(cli: null, search: false));
+        const string Without = "Api: second runs without its logs and traces collected: No docker command was found";
+        try
+        {
+            Assert.True(window.Session.Configurations.Collect("Api: second", on: true) && window.SelectConfiguration(Both), "Api's configuration could not collect its logs and traces");
+            Ui.Launched(window, window.RunAsync(), "the profile's projects to start", TimeSpan.FromMinutes(3));
+            Assert.True(window.Status?.Split(Without).Length == 2 && !window.Status.Contains("Worker runs without", StringComparison.Ordinal),
+                $"Run of the profile did not say once that Api's logs and traces are not collected, as Api's own run does: {window.Status}");
+            Ui.WaitFor(() => window.RunCopies.Count == 2 && Terminal(window.RunCopies[0]).Contains("Api says second", StringComparison.Ordinal),
+                () => $"Api to run as it would ({Runs(window)})", TimeSpan.FromMinutes(1));
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.RunCopies.Count == 0 && !window.IsRunning, () => $"Stop to end both projects ({Runs(window)})", TimeSpan.FromMinutes(1));
+
+            Ui.Launched(window, window.DebugAsync(), "the profile's projects to start under the debugger", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => Console(window, "Api: second").Contains(Without, StringComparison.Ordinal),
+                () => $"Api's Debug tab to say why its logs and traces are not collected ({Sessions(window)}: {Console(window, "Api: second")})", TimeSpan.FromMinutes(1));
+            Assert.Empty(window.Session.Dashboards);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Against a Linux engine that holds the dashboard's image (no test pulls it), Api, whose own configuration
+    /// collects its logs and traces, has Aspire's dashboard brought up for it as the profile runs it, its run saying where they
+    /// go, and none for Worker; Stop takes the dashboard down with the programs.</summary>
+    [AvaloniaFact]
+    public void A_project_that_collects_its_logs_and_traces_has_its_dashboard_as_the_profile_runs_it_and_Stop_takes_it_down()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image], TimeSpan.FromSeconds(30).Scaled())),
+            $"docker image inspect {ContainerTelemetry.Image}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded,
+            $"The engine lacks the dashboard's image, which no test pulls: pull {ContainerTelemetry.Image} to run it");
+        MainWindow window = Open(ContainerEngine.Shared);
+        try
+        {
+            Assert.True(window.Session.Configurations.Collect("Api: second", on: true) && window.SelectConfiguration(Both), "Api's configuration could not collect its logs and traces");
+            Ui.Launched(window, window.RunAsync(), "the profile's projects to start with Api's dashboard", TimeSpan.FromMinutes(5));
+            Passenger.App.Telemetry.RunDashboard dashboard = Assert.Single(window.Session.Dashboards);
+            Assert.True(dashboard.Name == "Api: second" && window.Status?.Contains($"Api: second's logs and traces go to Aspire's dashboard ({dashboard.ProjectName})", StringComparison.Ordinal) == true,
+                $"Run of the profile did not bring up Api's dashboard as Api's own run does: {dashboard.Name}; {window.Status}");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.RunCopies.Count == 0 && !window.IsRunning && window.Session.Dashboards.Count == 0,
+                () => $"Stop to end both projects and Api's dashboard ({Runs(window)}; {window.Session.Dashboards.Count} dashboards)", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    private MainWindow Open(ContainerEngine? engine = null)
     {
         folder = folders.Take("launch-", root => Shop(root, waits: true));
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, Engine = engine ?? ContainerEngine.Shared };
         window.Show();
         window.OpenFolder(folder);
         // Listed as the solution is read, it follows its projects' own once they load.

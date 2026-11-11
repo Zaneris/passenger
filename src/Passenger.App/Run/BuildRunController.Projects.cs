@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Passenger.App.Debugging;
+using Passenger.App.Telemetry;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -18,8 +19,9 @@ public sealed partial class BuildRunController
     private readonly Dictionary<string, (RunConfiguration Profile, RunConfiguration Project, int Place)> profileTabs = new(StringComparer.Ordinal);
 
     /// <summary>What each multi-project configuration's last start started, by its name: its programs debugged, by their tabs'
-    /// names, and those run, each in its tab of the Terminal window, in the order they started.</summary>
-    private readonly Dictionary<string, (IReadOnlyList<string> Debugged, IReadOnlyList<TerminalRun> Ran)> profileStarts = new(StringComparer.Ordinal);
+    /// names, and those run, each in its tab of the Terminal window, in the order they started, with what those said of
+    /// their start.</summary>
+    private readonly Dictionary<string, (IReadOnlyList<string> Debugged, IReadOnlyList<TerminalRun> Ran, IReadOnlyList<string> Notes)> profileStarts = new(StringComparer.Ordinal);
 
     /// <summary>The programs a multi-project configuration runs in tabs of the Terminal window, while each runs: the
     /// configuration, the project's own configuration and its place, which a restart for Hot Reload starts again.</summary>
@@ -89,9 +91,13 @@ public sealed partial class BuildRunController
             named.Add(name);
             starts.Add((configuration, plan with { Name = name, Copy = new GameCopy(chosen.Name, starts.Count + 1) }, debug && start.Action == ProjectLaunchAction.Start));
         }
-        // One build of every project, each as its start alone would build it.
+        // One build of every project, as each alone would build, the dashboards of those that collect coming up meanwhile.
         BuiltEdits? edits = null;
         bool followsEdits = starts.Any(s => s.Debugged) || hotReload;
+        using CancellationTokenSource collecting = CancellationTokenSource.CreateLinkedTokenSource(work.Stopping);
+        Task<LaunchPlan>?[] told = [.. starts.Select(s => Collects(s.Configuration, s.Plan) ? CollectAsync(s.Plan, collecting.Token) : null)];
+        // The dashboards come up for each start, its program's once it has started.
+        RunDashboard?[] dashboards = new RunDashboard?[starts.Count];
         try
         {
             foreach (IGrouping<(string? Framework, string? Output), BuildStep> together in starts.Select(s => s.Plan.Build).OfType<BuildStep>()
@@ -108,13 +114,34 @@ public sealed partial class BuildRunController
                     return Checkpoint(work, chosen.Name) ?? built.Message;
                 }
             }
+            for (int i = 0; i < starts.Count; i++)
+            {
+                if (told[i] is not { } collected)
+                {
+                    continue;
+                }
+                if (!collected.IsCompleted)
+                {
+                    work.Say($"Starting Aspire's dashboard for {starts[i].Plan.Name}'s logs and traces…");
+                }
+                try
+                {
+                    starts[i] = starts[i] with { Plan = await collected };
+                }
+                catch (OperationCanceledException) when (work.Stopping.IsCancellationRequested)
+                {
+                    return Checkpoint(work, chosen.Name) ?? StoppedStarting(chosen.Name);
+                }
+                told[i] = null;
+                dashboards[i] = starts[i].Plan.Dashboard;
+            }
             if (Checkpoint(work, chosen.Name) is { } left)
             {
                 return left;
             }
             List<string> inTabs = [];
             List<TerminalRun> ran = [];
-            profileStarts[chosen.Name] = (inTabs, ran);
+            profileStarts[chosen.Name] = (inTabs, ran, []);
             for (int i = 0; i < starts.Count; i++)
             {
                 (RunConfiguration configuration, LaunchPlan plan, bool underDebugger) = starts[i];
@@ -128,10 +155,20 @@ public sealed partial class BuildRunController
                     debugged.Remove(plan.Name);
                     inTabs.Add(plan.Name);
                     notStarted = await LaunchDebuggedAsync(configuration, plan, work, its, copies: chosen.Name);
+                    if (notStarted is null && session.Debug.Tabs.FirstOrDefault(t => t.Name == plan.Name && t.Plan?.Dashboard == dashboards[i]) is { } tab)
+                    {
+                        // Debug's own Stop of the session takes it down (DebugController.StopAsync).
+                        Keep(Take(ref dashboards[i]), DebugEnded(session.Debug.SessionNamed(plan.Name)), () => false, said => tab.Console.Append($"{said}\n"));
+                    }
                 }
                 else
                 {
                     notStarted = await RunProjectAsync(chosen, configuration, plan, i + 1, hotReload && configuration.NamesNoOtherProgram(session.Projects), work, its, ran);
+                    if (notStarted is null && ran.Count > 0 && ran[^1].Name == plan.Name)
+                    {
+                        TerminalRun run = ran[^1];
+                        Keep(Take(ref dashboards[i]), run.Ended, () => run.WasStopped, said => parts.Say(said));
+                    }
                 }
                 if (notStarted is not null)
                 {
@@ -140,12 +177,29 @@ public sealed partial class BuildRunController
                 }
             }
             RunningChanged?.Invoke(this, EventArgs.Empty);
-            parts.Say(ProjectsStarted(chosen.Name, inTabs, [.. ran.Select(r => r.Name)]), ran.Count > 0 && inTabs.Count == 0 ? StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal) : null);
+            // What a program run in the terminal says of its start goes with the status, its tab being the program's own.
+            List<string> notes = [.. starts.Where(s => !s.Debugged).SelectMany(s => s.Plan.Notes)];
+            profileStarts[chosen.Name] = (inTabs, ran, notes);
+            parts.Say(string.Join("; ", [ProjectsStarted(chosen.Name, inTabs, [.. ran.Select(r => r.Name)]), .. notes]),
+                ran.Count > 0 && inTabs.Count == 0 ? StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal) : null);
             return null;
         }
         finally
         {
             edits?.Dispose();
+            // What came up for a start that went no further, or for a program that did not start, is taken down.
+            if (told.Any(t => t is not null))
+            {
+                await collecting.CancelAsync();
+                foreach (Task<LaunchPlan>? left in told)
+                {
+                    await AbandonAsync(left);
+                }
+            }
+            foreach (RunDashboard? unused in dashboards)
+            {
+                unused?.Dispose();
+            }
         }
     }
 
@@ -231,7 +285,7 @@ public sealed partial class BuildRunController
             {
                 edits?.Dispose();
                 edits = session.Debug.Building(hotReload: true);
-            });
+            }, collects: true);
             if (plan is null)
             {
                 edits?.Dispose();
@@ -241,18 +295,29 @@ public sealed partial class BuildRunController
             List<TerminalRun> again = [];
             bool restarted = await RunProjectAsync(its.Profile, its.Project, plan with { Name = running.Name, Copy = new GameCopy(its.Profile.Name, its.Place) }, its.Place, reloaded: true,
                 work, Take(ref edits), again) is null;
-            if (restarted && profileStarts.TryGetValue(its.Profile.Name, out (IReadOnlyList<string> Debugged, IReadOnlyList<TerminalRun> Ran) last))
+            if (restarted)
             {
-                profileStarts[its.Profile.Name] = (last.Debugged, [.. last.Ran.Select(r => r == running ? again[0] : r)]);
+                TerminalRun run = again[0];
+                Keep(plan.Dashboard, run.Ended, () => run.WasStopped, said => parts.Say(said));
+            }
+            else
+            {
+                plan.Dashboard?.Dispose();
+            }
+            if (restarted && profileStarts.TryGetValue(its.Profile.Name, out (IReadOnlyList<string> Debugged, IReadOnlyList<TerminalRun> Ran, IReadOnlyList<string> Notes) last))
+            {
+                profileStarts[its.Profile.Name] = (last.Debugged, [.. last.Ran.Select(r => r == running ? again[0] : r)], last.Notes);
             }
             return restarted;
         }
     }
 
     /// <summary>What a multi-project configuration's last start started: its programs debugged, by their Debug tabs' names,
-    /// and those run, each in its tab of the Terminal window (ended since or not), in the order they started.</summary>
-    public (IReadOnlyList<string> Debugged, IReadOnlyList<TerminalRun> Ran) ProjectsOf(string name) =>
-        profileStarts.TryGetValue(name, out (IReadOnlyList<string> Debugged, IReadOnlyList<TerminalRun> Ran) started) ? ([.. started.Debugged], [.. started.Ran]) : ([], []);
+    /// those run, each in its tab of the Terminal window (ended since or not), in the order they started, and what those
+    /// run said of their start.</summary>
+    public (IReadOnlyList<string> Debugged, IReadOnlyList<TerminalRun> Ran, IReadOnlyList<string> Notes) ProjectsOf(string name) =>
+        profileStarts.TryGetValue(name, out (IReadOnlyList<string> Debugged, IReadOnlyList<TerminalRun> Ran, IReadOnlyList<string> Notes) started)
+            ? ([.. started.Debugged], [.. started.Ran], [.. started.Notes]) : ([], [], []);
 
     /// <summary>Ends what a multi-project configuration's last start runs and debugs, done once each has ended.</summary>
     private Task EndProjectsAsync(string name) =>
@@ -278,13 +343,22 @@ public sealed partial class BuildRunController
                 {
                     edits?.Dispose();
                     edits = session.Debug.Building(session.Debug.HotReloadOn());
-                });
+                }, collects: true);
                 if (plan is null)
                 {
                     return problem;
                 }
                 profileTabs[name] = (profile, configuration, place);
-                return await LaunchDebuggedAsync(configuration, plan with { Name = name, Copy = new GameCopy(profile.Name, place) }, work, Take(ref edits), copies: profile.Name);
+                string? refused = await LaunchDebuggedAsync(configuration, plan with { Name = name, Copy = new GameCopy(profile.Name, place) }, work, Take(ref edits), copies: profile.Name);
+                if (refused is null && session.Debug.Tabs.FirstOrDefault(t => t.Name == name && t.Plan?.Dashboard == plan.Dashboard) is { } tab)
+                {
+                    Keep(plan.Dashboard, DebugEnded(session.Debug.SessionNamed(name)), () => false, said => tab.Console.Append($"{said}\n"));
+                }
+                else
+                {
+                    plan.Dashboard?.Dispose();
+                }
+                return refused;
             }
             finally
             {

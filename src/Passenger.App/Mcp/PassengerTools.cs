@@ -1380,7 +1380,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw new InvalidOperationException(WithBuildErrors(refused, built.Ended));
             }
         }
-        (IReadOnlyList<string> debugged, IReadOnlyList<TerminalRun> ran) = builds.ProjectsOf(name);
+        (IReadOnlyList<string> debugged, IReadOnlyList<TerminalRun> ran, IReadOnlyList<string> notes) = builds.ProjectsOf(name);
         List<(TerminalRun Run, HeardServing Serving)> each = [.. ran.Select(r => (r, new HeardServing(() => r, () => r.Session, () => TextSnapshot.Empty)))];
         AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for each of its programs to end or its host to start");
         // A terminal's screen raises nothing an agent's wait can hear: looked at every 50 ms.
@@ -1388,7 +1388,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         IEnumerable<string> stands = each.Select(e => Stands(e.Run, e.Serving));
         string output = string.Join("\n", each.Select(e => $"{e.Run.Name}:\n{Tail(e.Run.Session, 40)}"));
         return new RunResult(each.Any(e => !e.Run.Ended.IsCompleted), null,
-            $"{BuildRunController.ProjectsStarted(name, debugged, [.. ran.Select(r => r.Name)])}. {string.Join("; ", stands)}", output);
+            $"{BuildRunController.ProjectsStarted(name, debugged, [.. ran.Select(r => r.Name)])}. {string.Join("; ", stands)}{string.Concat(notes.Select(n => $"\nNote: {n}"))}", output);
 
         static string Stands(TerminalRun run, HeardServing serving)
         {
@@ -1890,7 +1890,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             // What a multi-project start started, the answer's own being the program the debugger shows.
             if (several && Session.Configurations.Chosen is { } chosen)
             {
-                (IReadOnlyList<string> debugged, IReadOnlyList<TerminalRun> ran) = Builds.ProjectsOf(chosen.Name);
+                (IReadOnlyList<string> debugged, IReadOnlyList<TerminalRun> ran, _) = Builds.ProjectsOf(chosen.Name);
                 started = BuildRunController.ProjectsStarted(chosen.Name, debugged, [.. ran.Select(r => r.Name)]);
             }
         }
