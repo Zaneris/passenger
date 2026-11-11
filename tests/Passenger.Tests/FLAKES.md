@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `GDScriptRefactorCommandsTests`' `Each_refactoring_changes_every_script_…`, CI's Windows runner at 61d99a589 (run
+  42966878050): main.tscn "being used by another process" to a read sharing everything, in the wait after Undo. **A gap in
+  the IDE, and the test reading during the writes**: ReplaceFile refuses even such a read for a moment while it puts a
+  file in place, and a save took it for files with nothing a move loses, as `WindowsFileMetadata.MoveKeeps` read a list
+  of unmarked entries (what a folder whose list is not marked auto-inherited gives a new file, as the VM's temporary
+  folder does) as one of their own. On the Windows VM every read refused while polling through the test's writes began
+  inside ReplaceFile (16 and 19 a run; none once such a file moves, 121,526 opened), and a move refused none while
+  44,242 opened; no holder was named, the Restart Manager finding none by the time it looked, and CI's folder was not
+  seen. A list a new file there is given counts as the folder's (be1efd499), and the test reads once Undo says it is
+  done (e630387ec, #1481; #1434 met the same hold, read then as its own read's sharing).
 - `DebuggerTests`' `After_a_watch_runs_with_every_thread_let_go_threads_and_call_stack_show_where_the_threads_are_now`, CI's
   Linux runner at 61d99a589 (run 42966878050): "Waited 180 s for Holder's frame in the lock in Call Stack", Holder's
   frames ending in `ManualResetEventSlim.Set` at line 176. **The test's debuggee raced**: Holder's `Set` woke the main
