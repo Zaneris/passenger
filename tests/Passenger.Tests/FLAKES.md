@@ -28,6 +28,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-11
+
+- `FolderWatchTests`' `A_saves_temporary_file_there_as_the_folder_is_read_is_never_offered_by_go_to_file_find_in_files_…`,
+  CI's macOS runner at 76cfe6054 (run 42957469387): "Find in Files finds class Shop in [], a save's temporary file among
+  them". **The test waited wrong**: it set the search box's text and searched at once, but the box tells of a new text
+  after the frame, which put that search off until a pause and dropped its matches; the test passed on the search the
+  pause brought, which its wait settled on, except where its own search had ended on the thread pool before the
+  window's thread awaited it, so the wait ended at once and its closing draw ran the box's word. Read from the code (the
+  run kept no log, nor the popup's status) and met every time with the search made to end before the window's thread
+  looks, the popup saying "Searching…"; the test tells the box first and waits for the matches shown, through
+  `Ui.Search`, which the other tests' copies share now (943044337, #1476).
+
 ## 2026-11-10
 
 - `ProblemsTests`' `A_pull_of_thousands_of_warnings_decodes_each_at_a_small_cost_and_never_copies_a_files_text`, CI's macOS
