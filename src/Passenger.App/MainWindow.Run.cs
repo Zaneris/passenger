@@ -6,6 +6,7 @@ using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App;
@@ -48,9 +49,11 @@ public partial class MainWindow
     {
         RunConfigurations configurations = session.Configurations;
         RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], configurations.Own, [.. session.RunProjects.Where(p => p.Exists && (p.IsRunnable || p.GodotFolder is not null))],
-            configurations.Chosen?.Name, (mine, generated, chosen) => configurations.Set(mine, generated, chosen, Projects), buildRun.IsRunningConfiguration)
+            configurations.Chosen?.Name, (mine, generated, chosen) => configurations.Set(mine, generated, chosen, Projects), buildRun.IsRunningConfiguration,
+            configurations.Profiles, configurations.Solution, configurations.ProfileProblems)
         {
             Folder = Folder,
+            WriteProfiles = WriteLaunchProfilesAsync,
             GodotSetting = settings.GodotExecutable,
             ReadServices = ReadServices(Projects, Engine),
             WriteToProfile = WriteToLaunchProfileAsync,
@@ -110,6 +113,92 @@ public partial class MainWindow
         return (now, null);
     }
 
+    /// <summary>Edit Configurations' multi-project configurations as it leaves them written into the solution's launch profile
+    /// files (the team's <c>.slnLaunch</c> and the person's <c>.slnLaunch.user</c>, saved first if open, taken in after), in
+    /// Visual Studio's format: each profile unchanged kept as written, one changed written in its place, one removed taken out,
+    /// one new put last, what Passenger does not model kept; one command Undo takes back whole. The configurations as read
+    /// again once the files have landed, or why not.</summary>
+    public async Task<(IReadOnlyList<RunConfiguration>? Profiles, string? Problem)> WriteLaunchProfilesAsync(IReadOnlyList<RunConfiguration> profiles)
+    {
+        RunConfigurations configurations = session.Configurations;
+        if (configurations.Solution is not { } solution)
+        {
+            return (null, "No solution is open: a launch profile of several projects is kept beside one");
+        }
+        IReadOnlyList<RunConfiguration> before = configurations.Profiles;
+        string folder = Path.GetDirectoryName(solution)!;
+        string[] files = [SolutionLaunch.SharedFile(solution), SolutionLaunch.UserFile(solution)];
+        // Each file's text as written now, or why it cannot be; null for one left as it is.
+        (string? Text, string? Problem) Written(string file, bool shared)
+        {
+            List<SolutionLaunchProfile> kept = [.. profiles.Where(p => p.Shared == shared)
+                .Select(p => RunConfigurations.ToProfile(p, before.FirstOrDefault(b => b.Launch is not null && ReferenceEquals(b.Launch, p.Launch))?.Name))];
+            FileText? had = File.Exists(file) ? FileText.Load(file) ?? throw new IOException($"{Path.GetFileName(file)} is not a text file") : null;
+            if (had is null && kept.Count == 0)
+            {
+                return (null, null);
+            }
+            (string? text, string? problem) = SolutionLaunch.Written(had?.Text, kept, folder);
+            return problem is not null ? (null, $"{Path.GetFileName(file)} {problem}") : (text == had?.Text ? null : text, null);
+        }
+        List<string> changing = [];
+        try
+        {
+            for (int i = 0; i < files.Length; i++)
+            {
+                (string? text, string? problem) = Written(files[i], i == 0);
+                if (problem is not null)
+                {
+                    return (null, problem);
+                }
+                if (text is not null)
+                {
+                    changing.Add(files[i]);
+                }
+            }
+        }
+        catch (IOException unread)
+        {
+            return (null, unread.Message);
+        }
+        if (changing.Count == 0)
+        {
+            return (configurations.Profiles, null);
+        }
+        using CommandHistory.Recording made = Editors.Commands.Record("Change Launch Profiles");
+        string? refused = await ChangeFileAsync(changing, () =>
+        {
+            // Read again as the change writes: what was open was saved first.
+            foreach (string file in changing)
+            {
+                (string? text, string? problem) = Written(file, file == files[0]);
+                if (problem is not null)
+                {
+                    return problem;
+                }
+                if (text is null)
+                {
+                    continue;
+                }
+                if (File.Exists(file))
+                {
+                    FileText.SaveOver(file, FileText.Load(file) ?? throw new IOException($"{Path.GetFileName(file)} is not a text file"), text);
+                }
+                else
+                {
+                    FileText.SaveNew(file, text);
+                }
+            }
+            return null;
+        }, made);
+        if (refused is not null)
+        {
+            return (null, $"The launch profiles could not be written: {await made.TakenBackAsync(refused)}");
+        }
+        configurations.Configure(Projects);
+        return (configurations.Profiles, null);
+    }
+
     /// <summary>Why Save as Launch Profile cannot save the configuration it would (the one chosen in Edit Configurations
     /// while it is open, else the toolbar's), among those listed there; null when it can.</summary>
     private string? WhyNotShare() => RunConfigurationsDialog is { } dialog
@@ -138,6 +227,10 @@ public partial class MainWindow
         if (shared.IsContainer)
         {
             return $"{shared.Name} runs containers: a launch profile saved here runs a project on this machine";
+        }
+        if (shared.IsMultiple)
+        {
+            return $"{shared.Name} is a launch profile of the solution's already, kept beside it where Visual Studio reads it too";
         }
         if (Projects.FirstOrDefault(p => p.Exists && p.IsRunnable && PathNames.Same(p.Path, shared.Project)) is not { } project)
         {

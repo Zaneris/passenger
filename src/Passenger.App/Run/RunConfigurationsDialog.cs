@@ -13,11 +13,22 @@ namespace Passenger.App.Run;
 /// but for what makes it the one it is (its name, project and launch profile): each field changed from what its source gives
 /// is marked, and kept with the folder over that source, or written to its launch profile; Reset puts it back as its source
 /// makes it. One of the folder's own is saved as a new launch profile of its project (the window's Save as Launch Profile),
-/// and is generated from it from then on. It edits copies, which Apply and OK hand back with the one chosen.</summary>
+/// and is generated from it from then on. The solution's multi-project launch profiles are listed between, each its
+/// projects' actions and launch profiles in a table, made, changed and removed here and written to the files beside the
+/// solution once applied (<see cref="WriteProfiles"/>). It edits copies, which Apply and OK hand back with the one chosen.</summary>
 public sealed class RunConfigurationsDialog : IdeWindow
 {
     private IReadOnlyList<Entry> generated;
     private readonly List<Entry> mine;
+
+    /// <summary>The solution's multi-project launch profiles as they stand in the dialog, and each as it was read (by its row),
+    /// which tells what Apply writes.</summary>
+    private readonly List<Entry> launches;
+    private Dictionary<Entry, RunConfiguration> launchedAs;
+    private bool writingLaunches;
+
+    /// <summary>The solution the launch profiles are kept beside, or null with none open, when none can be made.</summary>
+    private readonly string? solution;
     private readonly IReadOnlyList<ProjectModel> projects;
     private readonly Action<IReadOnlyList<RunConfiguration>, IReadOnlyList<RunConfiguration>, string?> apply;
     private readonly IReadOnlyList<string> singleFileAppHosts;
@@ -67,12 +78,15 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     public RunConfigurationsDialog(IReadOnlyList<RunConfiguration> generated, IReadOnlyList<RunConfiguration> own,
         IReadOnlyList<ProjectModel> projects, string? chosen, Action<IReadOnlyList<RunConfiguration>, IReadOnlyList<RunConfiguration>, string?> apply,
-        Func<string, bool>? isRunning = null)
+        Func<string, bool>? isRunning = null, IReadOnlyList<RunConfiguration>? profiles = null, string? solution = null, IReadOnlyList<string>? unread = null)
     {
         FormRows.Scope(this);
         IsRunning = isRunning ?? (_ => false);
         this.generated = [.. generated.Select(Made)];
         mine = [.. own.Select(c => new Entry(c))];
+        launches = [.. (profiles ?? []).Select(c => new Entry(c))];
+        launchedAs = launches.ToDictionary(e => e, e => e.Configuration);
+        this.solution = solution;
         this.projects = projects;
         singleFileAppHosts = [.. generated.Concat(own).Where(c => c.Aspire && Path.GetExtension(c.Project).Equals(".cs", StringComparison.OrdinalIgnoreCase))
             .Select(c => c.Project).Distinct(StringComparer.Ordinal)];
@@ -199,6 +213,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
         ModeBox.SelectionChanged += (_, _) => Edit(c => c with { Mode = ModeBox.SelectedIndex == 1 ? ContainerMode.Images : ContainerMode.Fast });
         KeepBackingBox.IsCheckedChanged += (_, _) => Edit(c => c with { KeepBackingServices = KeepBackingBox.IsChecked == true });
         TelemetryBox.IsCheckedChanged += (_, _) => Edit(c => c with { Telemetry = TelemetryBox.IsChecked == true });
+        TextBlock sharedWords = new() { Text = "Share profile" };
+        SharedBox = new CheckBox { Content = sharedWords, Name = "SharedBox" };
+        SharedBox.IsCheckedChanged += (_, _) => Edit(c => c with { Shared = SharedBox.IsChecked == true }, reshow: true);
+        StartsTable.Changed += (_, _) => Edit(c => c with { Starts = StartsTable.Starts() });
         DockerfileBox.TextChanged += (_, _) => Edit(c => c with { Dockerfile = Full(DockerfileBox.Text) });
         ContextBox.TextChanged += (_, _) => Edit(c => c with { Context = Full(ContextBox.Text) });
         BuildArgumentsBox.TextChanged += (_, _) => Edit(c => c with { BuildArguments = BuildArgumentsBox.Text ?? string.Empty });
@@ -207,8 +225,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
         OkButton = DialogFooter.Default();
         Button applyButton = new() { Content = "Apply" };
         OkButton.Click += (_, _) => Ok();
-        applyButton.Click += (_, _) => Apply();
+        applyButton.Click += (_, _) => IdeErrors.Observe(ApplyAsync());
         problem.Classes.Add(StyleClasses.Error);
+        // A file of launch profiles that does not read lists none of its own, and is never written over.
+        problem.Text = string.Join(" ", unread ?? []);
 
         StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 6), Children = { AddButton, RemoveButton, CopyButton } };
         DockPanel left = new() { Width = 270 };
@@ -264,6 +284,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (browserRows[1], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Launched service", LaunchServiceBox, fields: ["launchService"]), [RunKind.Compose]),
             (builtRows[2] = Row("Before launch", BuildBox, fields: ["buildBeforeLaunch"]), [RunKind.Project]),
+            (Row("Projects", StartsTable, top: true), [RunKind.Projects]),
+            (Row(string.Empty, SharedBox), [RunKind.Projects]),
         ];
 
         WriteButton = new Button { Content = "Write to Launch Profile", Name = "WriteButton" };
@@ -338,6 +360,16 @@ public sealed class RunConfigurationsDialog : IdeWindow
     public IReadOnlyList<string> Marked => [.. marks.Where(m => m.Label.Classes.Contains(StyleClasses.Changed) && m.Label.IsEffectivelyVisible).Select(m => m.Title)];
 
     public Button AddVariableButton { get; }
+
+    /// <summary>A multi-project configuration's projects: what each does, its launch profile, and their order.</summary>
+    public ProjectStartsTable StartsTable { get; } = new();
+
+    /// <summary>Whether a multi-project configuration is kept in the team's <c>.slnLaunch</c> rather than the person's own file.</summary>
+    public CheckBox SharedBox { get; }
+
+    /// <summary>Writes the multi-project configurations as the dialog leaves them (those gone taken out) into the files beside
+    /// the solution, as one command Undo takes back: the configurations as read again once written, or why not.</summary>
+    public Func<IReadOnlyList<RunConfiguration>, Task<(IReadOnlyList<RunConfiguration>? Profiles, string? Problem)>>? WriteProfiles { get; init; }
 
     public TextBox NameBox { get; }
 
@@ -602,11 +634,36 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     private static string KindName(RunKind kind) => kind switch
     {
+        RunKind.Projects => MultipleProjects,
         RunKind.Compose => "Docker Compose",
         RunKind.Dockerfile => "Dockerfile",
         RunKind.SdkContainer => "SDK Container",
         _ => ".NET Project",
     };
+
+    /// <summary>What a configuration of several projects together is called, as Add New Configuration offers it.</summary>
+    private const string MultipleProjects = "Multiple Projects";
+
+    private const string NoSolution = "No solution is open: a launch profile of several projects is kept beside one, where Visual Studio reads it too";
+
+    /// <summary>The files beside the solution a multi-project configuration is kept in, by their names.</summary>
+    private (string Shared, string Own) LaunchFiles => solution is { } open
+        ? (Path.GetFileName(SolutionLaunch.SharedFile(open)), Path.GetFileName(SolutionLaunch.UserFile(open)))
+        : (SolutionLaunch.Extension, SolutionLaunch.UserExtension);
+
+    private string SharedTip() =>
+        $"Kept in {LaunchFiles.Shared} beside the solution, which the team shares, rather than in {LaunchFiles.Own}, which is yours alone";
+
+    /// <summary>What the fields cannot say of a multi-project configuration: the file it is kept in, which Visual Studio reads
+    /// too, and why it cannot start here.</summary>
+    private string LaunchNote(RunConfiguration shown, string? whyNot)
+    {
+        string file = shown.Shared ? LaunchFiles.Shared : LaunchFiles.Own;
+        string kept = shown.Launch is null ? $"Written to {file} beside the solution once applied" : $"Kept in {file} beside the solution";
+        string note = $"{kept}, where Visual Studio reads it too. Run runs each project set to start; Debug debugs those set to Start and runs the rest. "
+            + "Each starts as its own configuration does, in the launch profile chosen.";
+        return whyNot is { } why ? $"{note} It cannot start here: {why}." : note;
+    }
 
     /// <summary>A path as the form shows it: relative to the open folder when inside it.</summary>
     private string Shown(string path) => Folder is { } folder && path.Length > 0 && Core.PathNames.IsUnder(path, folder)
@@ -665,15 +722,80 @@ public sealed class RunConfigurationsDialog : IdeWindow
         return true;
     }
 
-    /// <summary>OK: the configurations applied, and the dialog closed; one that cannot be kept (a name missing or taken)
-    /// is said at the bottom and the dialog stays.</summary>
-    public void Ok()
+    /// <summary>OK: the configurations applied, and the dialog closed once the launch profiles changed are written; one that
+    /// cannot be kept (a name missing or taken), or a file that could not be written, is said at the bottom and the dialog stays.</summary>
+    public void Ok() => IdeErrors.Observe(OkAsync());
+
+    private async Task OkAsync()
     {
-        if (Apply())
+        if (Apply() && await WriteLaunchesAsync())
         {
             Close(true);
         }
     }
+
+    /// <summary>Apply: the configurations applied, then the launch profiles changed written.</summary>
+    private async Task ApplyAsync()
+    {
+        if (Apply())
+        {
+            await WriteLaunchesAsync();
+        }
+    }
+
+    /// <summary>The multi-project configurations written where any was made, changed or removed here, then listed as read
+    /// again, the one chosen kept by its name; true once written or with nothing to write, false with why said below.</summary>
+    private async Task<bool> WriteLaunchesAsync()
+    {
+        if (WriteProfiles is not { } write || !LaunchesChanged())
+        {
+            return true;
+        }
+        if (writingLaunches)
+        {
+            // A second OK or Apply while the first writes: the first's answer is the dialog's.
+            return false;
+        }
+        string? keep = Chosen?.Name;
+        writingLaunches = true;
+        (IReadOnlyList<RunConfiguration>? Profiles, string? Problem) written;
+        try
+        {
+            written = await write([.. launches.Select(e => e.Configuration)]);
+        }
+        finally
+        {
+            writingLaunches = false;
+        }
+        (IReadOnlyList<RunConfiguration>? now, string? failed) = written;
+        if (now is null)
+        {
+            problem.Text = failed ?? "The launch profiles could not be written";
+            return false;
+        }
+        launches.Clear();
+        launches.AddRange(now.Select(c => new Entry(c)));
+        launchedAs = launches.ToDictionary(e => e, e => e.Configuration);
+        showing = true;
+        try
+        {
+            List();
+            if (keep is not null && Entries.FirstOrDefault(e => e.Configuration.Name == keep) is { } kept)
+            {
+                list.SelectedItem = kept;
+            }
+        }
+        finally
+        {
+            showing = false;
+        }
+        ShowChosen();
+        return true;
+    }
+
+    /// <summary>Whether a launch profile was made, changed or removed since read.</summary>
+    private bool LaunchesChanged() => launches.Count != launchedAs.Count
+        || launches.Any(e => !launchedAs.TryGetValue(e, out RunConfiguration? was) || !ConfigurationEdit.Same(was, e.Configuration) || was.Name != e.Configuration.Name);
 
     /// <summary>The dialog applied, as Apply does before an action changes the configurations it hands back; false, with
     /// why said below, when one cannot be kept.</summary>
@@ -799,6 +921,17 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private (Entry Row, string Problem)? Unkeepable()
     {
         HashSet<string> names = new(generated.Select(g => g.Configuration.Name), StringComparer.OrdinalIgnoreCase);
+        foreach (Entry row in launches)
+        {
+            if (row.Configuration.Name.Length == 0)
+            {
+                return (row, "A configuration needs a name");
+            }
+            if (!names.Add(row.Configuration.Name))
+            {
+                return (row, $"Two configurations are named {row.Configuration.Name}");
+            }
+        }
         foreach (Entry row in mine)
         {
             RunConfiguration configuration = row.Configuration;
@@ -830,10 +963,17 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private void ChooseKind()
     {
         ContextMenu menu = new();
-        foreach ((RunKind kind, string title) in (ReadOnlySpan<(RunKind, string)>)[(RunKind.Project, ".NET Project"), (RunKind.Compose, "Docker Compose"),
-            (RunKind.Dockerfile, "Dockerfile"), (RunKind.SdkContainer, "SDK Container")])
+        foreach ((RunKind kind, string title) in (ReadOnlySpan<(RunKind, string)>)[(RunKind.Project, ".NET Project"), (RunKind.Projects, MultipleProjects),
+            (RunKind.Compose, "Docker Compose"), (RunKind.Dockerfile, "Dockerfile"), (RunKind.SdkContainer, "SDK Container")])
         {
             MenuItem item = new() { Header = title };
+            if (kind == RunKind.Projects && solution is null)
+            {
+                // Its projects' launch profile is kept beside a solution, where Visual Studio reads it too.
+                item.IsEnabled = false;
+                ToolTip.SetTip(item, NoSolution);
+                ToolTip.SetShowOnDisabled(item, true);
+            }
             item.Click += (_, _) =>
             {
                 menu.Close();
@@ -856,6 +996,15 @@ public sealed class RunConfigurationsDialog : IdeWindow
     /// Compose one of the folder's first compose file).</summary>
     private void Add(RunKind kind)
     {
+        if (kind == RunKind.Projects)
+        {
+            Entry made = new(new RunConfiguration { Name = RunConfiguration.UniqueName("Unnamed", Rows.Select(r => r.Name)), Kind = RunKind.Projects });
+            launches.Add(made);
+            List();
+            list.SelectedItem = made;
+            Dispatcher.UIThread.Post(() => NameBox.Focus(), DispatcherPriority.Loaded);
+            return;
+        }
         Entry added = new(new RunConfiguration
         {
             Name = RunConfiguration.UniqueName("Unnamed", Rows.Select(r => r.Name)),
@@ -887,8 +1036,11 @@ public sealed class RunConfigurationsDialog : IdeWindow
             Unsupported = null,
             Origin = null,
             Source = null,
+            Launch = null,
         });
-        mine.Insert(mine.IndexOf(source) is >= 0 and var at ? at + 1 : mine.Count, copy);
+        // A launch profile's copy is another launch profile, written beside the solution with the rest.
+        List<Entry> into = source.Configuration.IsMultiple ? launches : mine;
+        into.Insert(into.IndexOf(source) is >= 0 and var at ? at + 1 : into.Count, copy);
         List();
         list.SelectedItem = copy;
     }
@@ -896,20 +1048,25 @@ public sealed class RunConfigurationsDialog : IdeWindow
     /// <summary>Removes the chosen one of the folder's own; a generated one stays while its source makes it.</summary>
     private void Remove()
     {
-        if (list.SelectedItem is not Entry removed || mine.IndexOf(removed) is not (>= 0 and var at))
+        if (list.SelectedItem is not Entry removed)
         {
             return;
         }
-        mine.RemoveAt(at);
+        List<Entry> from = removed.Configuration.IsMultiple ? launches : mine;
+        if (from.IndexOf(removed) is not (>= 0 and var at))
+        {
+            return;
+        }
+        from.RemoveAt(at);
         List();
-        list.SelectedItem = mine.Count > 0 ? mine[Math.Min(at, mine.Count - 1)] : generated.LastOrDefault();
+        list.SelectedItem = from.Count > 0 ? from[Math.Min(at, from.Count - 1)] : launches.LastOrDefault() ?? generated.LastOrDefault();
     }
 
     /// <summary>Lists the configurations again, after one is added, copied, removed or renamed.</summary>
     private void List()
     {
         object? keep = list.SelectedItem;
-        list.ItemsSource = (Entry[])[.. generated, .. mine];
+        list.ItemsSource = (Entry[])[.. generated, .. launches, .. mine];
         list.SelectedItem = keep;
     }
 
@@ -1048,6 +1205,12 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ModeBox.SelectedIndex = shown.Mode == ContainerMode.Images ? 1 : 0;
             KeepBackingBox.IsChecked = shown.KeepBackingServices;
             TelemetryBox.IsChecked = shown.Telemetry;
+            SharedBox.IsChecked = shown.Shared;
+            ToolTip.SetTip(SharedBox, SharedTip());
+            if (shown.IsMultiple)
+            {
+                StartsTable.Set(shown.Starts, [.. projects.Where(p => p.IsRunnable && p.GodotFolder is null)], p => [.. LaunchProfile.Read(p).Select(l => l.Name)]);
+            }
             DockerfileBox.Text = Shown(shown.Dockerfile);
             ContextBox.Text = Shown(shown.Context);
             BuildArgumentsBox.Text = shown.BuildArguments;
@@ -1083,7 +1246,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             {
                 AddVariable(name, value, focus: false);
             }
-            note.Text = NoteOn(shown, project, shown.WhyNotHere(projects));
+            note.Text = shown.IsMultiple ? LaunchNote(shown, shown.WhyNotHere(projects)) : NoteOn(shown, project, shown.WhyNotHere(projects));
             note.IsVisible = note.Text.Length > 0;
             // What makes a generated one the one it is, its link to its source, changes only in a copy.
             string link = $"Its link to its {SourceName(shown)}, which a copy can change";
@@ -1262,8 +1425,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             name.Classes.Set(StyleClasses.Muted, whyNot is not null);
             name.Classes.Set(StyleClasses.Changed, changed);
             ToolTip.SetTip(line, whyNot is not null ? $"{row.Name} cannot run here: {whyNot}" : changed ? $"{row.Name} is changed here from what its {SourceName(row)} gives" : null);
-            from.IsVisible = row.Generated;
-            from.Text = !row.Generated ? null : row.Kind switch
+            from.IsVisible = row.Generated || row.IsMultiple;
+            from.Text = row.IsMultiple ? (row.Shared ? SolutionLaunch.Extension : SolutionLaunch.UserExtension) : !row.Generated ? null : row.Kind switch
             {
                 RunKind.Project when row.Aspire => "Aspire",
                 RunKind.Compose when Containers.ContainerConfigurations.IsComposeProject(row.Project) => row.LaunchProfile.Length > 0 ? LaunchProfile.SettingsFile : ".dcproj",
@@ -1292,7 +1455,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private Control Row(string label, Control editor, bool top = false, TextBlock? marked = null, string[]? fields = null)
     {
         Grid row = FormRows.Of(label, editor, out TextBlock name, top);
-        editor.HorizontalAlignment = editor is TextBox or StackPanel or ComposeServicesTable ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        editor.HorizontalAlignment = editor is TextBox or StackPanel or ComposeServicesTable or ProjectStartsTable ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         if (fields is not null)
         {
             TextBlock shown = marked ?? name;

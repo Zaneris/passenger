@@ -1237,6 +1237,78 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     }
 
     /// <summary>A window that keeps its state in the tests' own store, on the folder.</summary>
+    /// <summary>A solution's multi-project launch profile, as Visual Studio keeps it beside the solution, is listed and changed
+    /// in Edit Configurations: its projects' actions and launch profiles in a table, renamed; one made there kept in the
+    /// person's own file; one removed. OK writes them in Visual Studio's format, every character it did not change and a
+    /// member Passenger does not model kept, and Undo takes the change back whole.</summary>
+    [AvaloniaFact]
+    public void A_launch_profile_of_several_projects_is_changed_made_and_removed_in_the_dialog_and_written_as_Visual_Studio_writes_it()
+    {
+        Write("Tool/Tool.csproj", TestProjects.Console());
+        Write("Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
+        Write("Tool/Properties/launchSettings.json", "{ \"profiles\": { \"quiet\": { \"commandName\": \"Project\" } } }\n");
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Hello/Hello.csproj\" />\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        const string Launch = "[\n  {\n    \"Name\": \"Both\",\n    \"Projects\": [\n      {\n        \"Path\": \"Hello\\\\Hello.csproj\",\n        \"Action\": \"Start\"\n      },\n"
+            + "      {\n        \"Path\": \"Tool\\\\Tool.csproj\",\n        \"Action\": \"StartWithoutDebugging\",\n        \"Kept\": true\n      }\n    ]\n  },\n"
+            + "  {\n    \"Name\": \"Old\",\n    \"Projects\": []\n  }\n]";
+        Write("Shop.slnLaunch", Launch);
+        string shared = Path.Combine(folder, "Shop.slnLaunch");
+        string own = Path.Combine(folder, "Shop.slnLaunch.user");
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => Names(window).Contains("Both"), () => $"the solution's launch profiles to be listed ({string.Join(", ", Names(window))})");
+            Assert.Equal(["Hello", "Tool: quiet", "Both", "Old"], Names(window));
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose("Both"));
+            Assert.Equal("Multiple Projects", dialog.KindText.Text);
+            Assert.True(dialog.SharedBox.IsChecked == true && dialog.SharedBox.IsEffectivelyVisible, "A profile of the team's file is not shown as shared");
+            Assert.Equal([("Hello", 0, 0), ("Tool", 1, 0)], dialog.StartsTable.Rows.Select(r => (Path.GetFileNameWithoutExtension(r.Project), r.Action.SelectedIndex, r.Profile.SelectedIndex)));
+
+            dialog.StartsTable.Rows[0].Action.SelectedIndex = (int)Passenger.Workspace.ProjectLaunchAction.None;
+            dialog.StartsTable.Rows[1].Profile.SelectedIndex = 1;
+            Type(dialog.NameBox, "Tool alone");
+            Ui.Click(dialog.AddButton);
+            Ui.Click(Assert.IsType<ContextMenu>(dialog.AddMenu).Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Multiple Projects"));
+            Type(dialog.NameBox, "Mine");
+            Assert.Equal([0, 0], dialog.StartsTable.Rows.Select(r => r.Profile.SelectedIndex));
+            Assert.True(dialog.StartsTable.Rows.All(r => r.Action.SelectedIndex == (int)Passenger.Workspace.ProjectLaunchAction.None), "A new profile starts a project nobody chose");
+            dialog.StartsTable.Rows[0].Action.SelectedIndex = (int)Passenger.Workspace.ProjectLaunchAction.Start;
+            dialog.SharedBox.IsChecked = false;
+            Ui.Settle();
+            Assert.True(dialog.Choose("Old"));
+            Ui.Click(dialog.RemoveButton);
+            Ui.Click(dialog.OkButton);
+            Ui.WaitFor(() => window.RunConfigurationsDialog is null, () => $"the dialog to close once the profiles are written ({dialog.Problem})");
+
+            Assert.Equal("[\n  {\n    \"Name\": \"Tool alone\",\n    \"Projects\": [\n      {\n        \"Path\": \"Hello\\\\Hello.csproj\",\n        \"Action\": \"None\"\n      },\n"
+                + "      {\n        \"Path\": \"Tool\\\\Tool.csproj\",\n        \"Action\": \"StartWithoutDebugging\",\n        \"Kept\": true,\n        \"DebugTarget\": \"quiet\"\n      }\n    ]\n  }\n]",
+                File.ReadAllText(shared));
+            Assert.Equal("[\n  {\n    \"Name\": \"Mine\",\n    \"Projects\": [\n      {\n        \"Path\": \"Hello\\\\Hello.csproj\",\n        \"Action\": \"Start\"\n      }\n    ]\n  }\n]",
+                File.ReadAllText(own));
+            Assert.Equal(["Hello", "Tool: quiet", "Tool alone", "Mine"], Names(window));
+            Assert.Equal("Mine", window.Configuration?.Name);
+
+            List<string> asked = [];
+            window.Confirm = (_, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+            window.ExplorerView.Reveal(Path.Combine(project, "Hello.csproj"));
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
+            Heard(window, shared, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
+            Assert.Equal(["Undo Change Launch Profiles? It changes Shop.slnLaunch and Shop.slnLaunch.user."], asked);
+            Assert.True(File.ReadAllText(shared) == Launch && !File.Exists(own), "Undo did not put the launch profiles back as they were");
+            Ui.WaitFor(() => Names(window).SequenceEqual(["Hello", "Tool: quiet", "Both", "Old"]), () => $"the configurations to follow the files taken back ({string.Join(", ", Names(window))})");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private MainWindow Keeping()
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
@@ -1261,7 +1333,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     {
         Ui.Click(dialog.AddButton);
         ContextMenu kinds = Assert.IsType<ContextMenu>(dialog.AddMenu);
-        Assert.Equal([".NET Project", "Docker Compose", "Dockerfile", "SDK Container"], kinds.Items.OfType<MenuItem>().Select(i => (string?)i.Header));
+        Assert.Equal([".NET Project", "Multiple Projects", "Docker Compose", "Dockerfile", "SDK Container"], kinds.Items.OfType<MenuItem>().Select(i => (string?)i.Header));
         Ui.Click(kinds.Items.OfType<MenuItem>().First());
     }
 
