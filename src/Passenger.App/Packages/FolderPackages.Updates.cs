@@ -172,7 +172,7 @@ public sealed partial class FolderPackages
                 }
                 if (failure is not null && bulkStale.Count > 0)
                 {
-                    failure += $"; {Plural.Listed([.. bulkStale.Order(PathNames.Comparer).Select(Path.GetFileNameWithoutExtension).OfType<string>()])} not restored since the run moved their versions";
+                    failure += $"; {Plural.Listed([.. bulkStale.Order(PathNames.Comparer).Select(Path.GetFileNameWithoutExtension).OfType<string>()])} not restored since the run moved {Plural.Agreeing(bulkStale.Count, "its", "their")} versions";
                 }
             }
         }

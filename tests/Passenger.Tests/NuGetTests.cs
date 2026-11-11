@@ -395,7 +395,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Update All moving Linq2DbVersion, which examples/Three's only package shares at a version no feed holds,
+    /// <summary>Update All moving Linq2DbVersion, which Examples/Three's only package shares at a version no feed holds,
     /// restores Three at the run's end though no update names it, and says it does not restore, rather than leave that
     /// for the next build.</summary>
     [AvaloniaFact]
