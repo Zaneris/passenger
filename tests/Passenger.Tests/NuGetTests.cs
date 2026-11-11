@@ -344,26 +344,31 @@ public sealed class NuGetTests : IDisposable
     public void Update_all_stopped_by_an_edit_to_a_central_file_names_it_and_leaves_ef_cores_set_whole()
     {
         (string root, string examples) = Nested();
+        string unwritten = File.ReadAllText(examples);
         const string Edit = "  <!-- the person's -->\r\n</Project>";
         MainWindow window = Open();
         NuGetView nuget = window.NuGet;
         Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
-        int saves = 0;
+        bool edited = false;
         Func<Passenger.App.Working?, CancellationToken, Task<string?>>? save = nuget.Packages.SaveFirst;
         nuget.Packages.SaveFirst = (working, cancel) =>
         {
-            // The run's first save, then App's, One's and, after One wrote the examples' file, Two's.
-            if (++saves == 4)
+            // The next project's save once the run wrote the examples' file: an edit before that is the file it starts from.
+            string now = File.ReadAllText(examples);
+            if (!edited && now != unwritten)
             {
-                File.WriteAllText(examples, File.ReadAllText(examples).Replace("</Project>", Edit, StringComparison.Ordinal));
+                edited = true;
+                File.WriteAllText(examples, now.Replace("</Project>", Edit, StringComparison.Ordinal));
             }
             return save!(working, cancel);
         };
         Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
-        string named = Path.Combine("examples", "Directory.Packages.props");
+        string named = Path.Combine("Examples", "Directory.Packages.props");
         Assert.True(nuget.Status.Contains($"{named} changed during Update All", StringComparison.Ordinal),
-            $"Update All, the examples' central file edited as it ran, says \"{nuget.Status}\", not that {named} changed");
+            $"Update All, the examples' central file edited as it ran, says \"{nuget.Status}\", not that {named} changed:\n{nuget.Log}");
         Assert.Contains(Edit, File.ReadAllText(examples), StringComparison.Ordinal);
+        Assert.True(nuget.Status.Contains("Lib not restored", StringComparison.Ordinal),
+            $"Update All reached Lib before the edit stopped it, so nothing shows EF Core's set moved whole for a project it never reached: {nuget.Status}\n{nuget.Log}");
         string[] ef = [.. System.Xml.Linq.XDocument.Load(root).Descendants("PackageVersion")
             .Where(v => ((string?)v.Attribute("Include"))!.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal))
             .Select(v => $"{(string?)v.Attribute("Include")} {(string?)v.Attribute("Version")}")];
@@ -400,7 +405,7 @@ public sealed class NuGetTests : IDisposable
         feed.Add("Passenger.Linq2Db.SqlServer", "1.0.0");
         File.WriteAllText(examples, File.ReadAllText(examples).Replace("    <PackageVersion Include=\"Passenger.Other\"",
             "    <PackageVersion Include=\"Passenger.Linq2Db.SqlServer\" Version=\"$(Linq2DbVersion)\" />\r\n    <PackageVersion Include=\"Passenger.Other\"", StringComparison.Ordinal));
-        Project(Path.Combine("examples", "Three"), "net11.0", "  <ItemGroup>\n    <PackageReference Include=\"Passenger.Linq2Db.SqlServer\" />\n  </ItemGroup>\n");
+        Project(Path.Combine("Examples", "Three"), "net11.0", "  <ItemGroup>\n    <PackageReference Include=\"Passenger.Linq2Db.SqlServer\" />\n  </ItemGroup>\n");
         MainWindow window = Open();
         NuGetView nuget = window.NuGet;
         Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
@@ -691,9 +696,9 @@ public sealed class NuGetTests : IDisposable
 
     /// <summary>Central package management in two files, as a repository whose examples keep their own: the root's holds
     /// the stand-in and EF Core's four packages; the examples', importing it, a property two packages share and
-    /// Passenger.Other, its lines ending in CRLF. App takes two of EF Core's packages, examples/One a package of the property
-    /// and the root's stand-in, examples/Two Passenger.Other and the property's other package, Lib the other two of EF
-    /// Core's, in that order of their paths. Each file has blank lines and a final newline. The two files.</summary>
+    /// Passenger.Other, its lines ending in CRLF, each file with blank lines and a final newline. App takes two of EF Core's
+    /// packages, Examples/One a package of the property and the root's stand-in, Examples/Two Passenger.Other and the
+    /// property's other package, Lib the other two, in that order of their paths whether case counts or not.</summary>
     private (string Root, string Examples) Nested()
     {
         (string Id, string From, string To)[] versions = [.. new[] { "InMemory", "Relational", "Sqlite", "SqlServer" }.Select(e => ($"Microsoft.EntityFrameworkCore.{e}", "10.0.0", "11.0.0")),
@@ -712,7 +717,7 @@ public sealed class NuGetTests : IDisposable
             + "    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.Relational\" Version=\"10.0.0\" />\n"
             + "    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"10.0.0\" />\n"
             + "    <PackageVersion Include=\"Microsoft.EntityFrameworkCore.SqlServer\" Version=\"10.0.0\" />\n  </ItemGroup>\n\n</Project>\n");
-        string examples = Path.Combine(Directory.CreateDirectory(Path.Combine(folder, "examples")).FullName, "Directory.Packages.props");
+        string examples = Path.Combine(Directory.CreateDirectory(Path.Combine(folder, "Examples")).FullName, "Directory.Packages.props");
         File.WriteAllText(examples, "<Project>\r\n\r\n"
             + "  <Import Project=\"$([MSBuild]::GetPathOfFileAbove(Directory.Packages.props, $(MSBuildThisFileDirectory)..))\" />\r\n\r\n"
             + "  <PropertyGroup>\r\n    <Linq2DbVersion>1.0.0</Linq2DbVersion>\r\n  </PropertyGroup>\r\n\r\n"
@@ -720,8 +725,8 @@ public sealed class NuGetTests : IDisposable
             + "    <PackageVersion Include=\"Passenger.Linq2Db.PostgreSQL\" Version=\"$(Linq2DbVersion)\" />\r\n\r\n"
             + "    <PackageVersion Include=\"Passenger.Other\" Version=\"1.0.0\" />\r\n  </ItemGroup>\r\n\r\n</Project>\r\n");
         Project("App", Built, References("Microsoft.EntityFrameworkCore.InMemory", "Microsoft.EntityFrameworkCore.Sqlite"));
-        Project(Path.Combine("examples", "One"), Built, References("Passenger.Linq2Db.ClickHouse", Id));
-        Project(Path.Combine("examples", "Two"), Built, References("Passenger.Other", "Passenger.Linq2Db.PostgreSQL"));
+        Project(Path.Combine("Examples", "One"), Built, References("Passenger.Linq2Db.ClickHouse", Id));
+        Project(Path.Combine("Examples", "Two"), Built, References("Passenger.Other", "Passenger.Linq2Db.PostgreSQL"));
         Project("Lib", Built, References("Microsoft.EntityFrameworkCore.Relational", "Microsoft.EntityFrameworkCore.SqlServer"));
         return (root, examples);
 
