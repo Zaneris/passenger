@@ -38,6 +38,7 @@ public sealed class StateStore
         this.key = key;
         Settings = SettingsStore.Kept(new StateDocument<AppSettings>(Path.Combine(root, SettingsFile)));
         Layout = new(Path.Combine(root, "layout.json"));
+        WindowPlacement = new(Path.Combine(root, "windowPlacement.json"));
         Recent = new(Path.Combine(root, "recentSolutions.json"));
         Updates = new(Path.Combine(root, "updates.json"));
         Find = new(Path.Combine(root, "find.json"));
@@ -102,6 +103,8 @@ public sealed class StateStore
     /// <summary>The tool windows' layout as it was changed last, which a folder with none of its own opens on.</summary>
     public StateDocument<DockLayout> Layout { get; }
 
+    public StateDocument<WindowPlacementState> WindowPlacement { get; }
+
     /// <summary>The folders and solutions opened lately, which a start reopens.</summary>
     public StateDocument<RecentSolutionsState> Recent { get; }
 
@@ -160,6 +163,7 @@ public sealed class StateStore
     {
         Settings.Flush();
         Layout.Flush();
+        WindowPlacement.Flush();
         Recent.Flush();
         Updates.Flush();
         Find.Flush();

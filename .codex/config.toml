@@ -1,0 +1,2 @@
+[mcp_servers.passenger]
+command = "tools/mcp.sh"

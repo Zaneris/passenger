@@ -61,8 +61,7 @@ public partial class App : Application
             window.KeepSettings();
             // A theme named on the command line is the run's, over the one kept.
             Program.ApplyTheme(this, Program.Options);
-            // Its default size is a large screen's: on a smaller one it opens inside the working area, centred.
-            window.FitToScreen(keepPlace: false);
+            window.RestoreWindowPlacement();
             window.Opened += (_, _) =>
             {
                 IdeErrors.Write($"Passenger {Product.Version} ({Product.Commit ?? "no commit"}) on {RuntimeInformation.OSDescription} "

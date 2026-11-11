@@ -228,6 +228,17 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         return value!;
     }
 
+    internal T ValueBeforeShowing()
+    {
+        UiThread.Check();
+        if (value is null)
+        {
+            // Startup must place the window before the desktop lifetime shows it, with no loop to await on yet.
+            Take(Synchronously.Run(() => BackgroundWork.Unheld(ReadNow)));
+        }
+        return value!;
+    }
+
     private void Load()
     {
         // The value and what was set last are the UI thread's; only the writing crosses to another.

@@ -708,6 +708,10 @@ public partial class MainWindow : IdeWindow
         assist.RenameSettings = store.Refactorings.Value;
         assist.RenameSettingsChanged += (_, _) => state?.Refactorings.Set(assist.RenameSettings);
         keepsWorkspace = true;
+        if (!Unseen)
+        {
+            FollowWindowPlacement();
+        }
         RestoreWorkspace();
         ShowRecent();
     }
@@ -758,6 +762,10 @@ public partial class MainWindow : IdeWindow
                 {
                     KeepDock();
                     KeepWorkspace();
+                    if (!Unseen)
+                    {
+                        KeepWindowPlacement();
+                    }
                 }
                 state.Flush();
             };
