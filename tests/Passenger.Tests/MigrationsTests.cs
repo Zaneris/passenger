@@ -500,6 +500,163 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>The NuGet window's Update of one of EF Core's packages moves the project's others with it, the status naming
+    /// them, and Undo takes them back together; an Install of one the project lacks adds that one alone.</summary>
+    [AvaloniaFact]
+    public void Updating_one_of_EF_Cores_packages_moves_the_projects_others_with_it_as_one_undo_step_and_an_install_adds_one_alone()
+    {
+        string folder = ShopApp.Make(design: true, tool: null, ef: ShopApp.Older);
+        string project = Path.Combine(folder, "Shop.csproj");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }], "the shop's project read");
+            Passenger.App.ToolWindows.NuGetView nuget = Chosen(window, Sqlite, ShopApp.Version);
+            Ui.Click(Offered(nuget, "Update"), settle: false);
+            Ui.WaitFor(() => !nuget.IsBusy && Has(project, Sqlite, ShopApp.Version) && Has(project, Design, ShopApp.Version),
+                () => $"the update of {Sqlite} to {ShopApp.Version} with {Design} ({window.Status}):\n{File.ReadAllText(project)}\n{nuget.Log}", Slow);
+            string said = $"Update {Sqlite} to {ShopApp.Version} in Shop: {Design} {ShopApp.Version} moved with it";
+            Assert.True(window.Status == said, $"The update moving the Design package with it said \"{window.Status}\", not \"{said}\"");
+
+            UndoFromExplorer(window, project);
+            Assert.True(Has(project, Sqlite, ShopApp.Older) && Has(project, Design, ShopApp.Older),
+                $"One Undo left EF Core's set at two versions, which does not build together:\n{File.ReadAllText(project)}");
+
+            nuget = Chosen(window, Relational, ShopApp.Version);
+            Ui.Click(Offered(nuget, "Install"), settle: false);
+            Ui.WaitFor(() => !nuget.IsBusy && Has(project, Relational, ShopApp.Version), () => $"{Relational} installed ({window.Status}):\n{File.ReadAllText(project)}\n{nuget.Log}", Slow);
+            Assert.True(Has(project, Sqlite, ShopApp.Older) && Has(project, Design, ShopApp.Older),
+                $"Installing {Relational}, which the project lacked, moved the project's other EF Core packages:\n{File.ReadAllText(project)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Under central package management, a Downgrade of one of EF Core's packages moves the folder's set down with it in
+    /// Directory.Packages.props: the shop's Design package and the relational package Reports references.</summary>
+    [AvaloniaFact]
+    public void Under_central_package_management_a_downgrade_of_one_of_EF_Cores_packages_moves_the_folders_set_down_with_it()
+    {
+        string folder = ShopApp.Make(design: true, tool: null, central: true);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }, { IsEvaluated: true }], "the shop's and the reports' projects read");
+            Passenger.App.ToolWindows.NuGetView nuget = Chosen(window, Sqlite, ShopApp.Older);
+            Ui.Click(Offered(nuget, "Downgrade"), settle: false);
+            string[] expected = [$"{Sqlite} {ShopApp.Older}", $"{Design} {ShopApp.Older}", $"{Relational} {ShopApp.Older}"];
+            Ui.WaitFor(() => !nuget.IsBusy && Central(folder).SequenceEqual(expected),
+                () => $"the folder's set moved down to {ShopApp.Older} ({window.Status}); its central versions are [{string.Join(", ", Central(folder))}]:\n{nuget.Log}", Slow);
+            string said = $"Downgrade {Sqlite} to {ShopApp.Older} in Shop: {Design} {ShopApp.Older} and {Relational} {ShopApp.Older} moved with it";
+            Assert.True(window.Status == said, $"The downgrade moving the folder's set said \"{window.Status}\", not \"{said}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Update Anyway, past the provider an update leaves behind, moves the project's EF Core packages together (its
+    /// relational package too, which then wins over the provider's own range as the restore resolves it) and leaves the
+    /// provider as it was, the status naming what moved and the provider's version that supports the EF Core asked.</summary>
+    [AvaloniaFact]
+    public void Update_Anyway_past_a_provider_moves_EF_Cores_set_without_the_provider_and_says_it_was_left_behind()
+    {
+        string folder = ShopApp.Make(design: true, tool: null, provider: "1.0.0", ef: ShopApp.Older,
+            providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")], relational: true);
+        string project = Path.Combine(folder, "Shop.csproj");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }], "the shop's project read");
+            Passenger.App.ToolWindows.NuGetView nuget = Chosen(window, Sqlite, ShopApp.Version);
+            Ui.Click(Offered(nuget, "Update"), settle: false);
+            ChoiceDialog asked = Asked<ChoiceDialog>(window, "the update's warning", Slow);
+            string words = string.Join(' ', asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            Assert.Contains($"Update Anyway moves EF Core's packages to {ShopApp.Version} and leaves {ShopApp.Provider} as it is", words, StringComparison.Ordinal);
+            Ui.ClickButton(asked, "Update Anyway");
+            Ui.WaitFor(() => !nuget.IsBusy && new[] { Sqlite, Design, Relational }.All(id => Has(project, id, ShopApp.Version)),
+                () => $"EF Core's set moved to {ShopApp.Version} ({window.Status}):\n{File.ReadAllText(project)}\n{nuget.Log}", Slow);
+            Assert.True(Has(project, ShopApp.Provider, "1.0.0"), $"Update Anyway moved the provider it was to leave as it was:\n{File.ReadAllText(project)}");
+            string status = window.Status ?? string.Empty;
+            Assert.True(status.StartsWith($"Update {Sqlite} to {ShopApp.Version} in Shop: ", StringComparison.Ordinal)
+                && status.Contains($"{Design} {ShopApp.Version}", StringComparison.Ordinal) && status.Contains($"{Relational} {ShopApp.Version}", StringComparison.Ordinal)
+                && status.Contains($"moved with it; {ShopApp.Provider} 1.0.0 left behind, supporting EF Core {ShopApp.Older}: {ShopApp.Provider} 2.0.0 supports EF Core {ShopApp.Version}",
+                    StringComparison.Ordinal),
+                $"Update Anyway said \"{status}\", which does not name what moved with it and the provider it left behind");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Where no version of the provider supports the EF Core asked, the update's question offers EF Core's newest
+    /// version above the project's that a version of the provider supports: taken, EF Core's packages and the provider move
+    /// there together.</summary>
+    [AvaloniaFact]
+    public void Past_a_provider_no_version_of_which_supports_the_EF_Core_asked_the_update_offers_EF_Cores_newest_it_supports()
+    {
+        string folder = ShopApp.Make(design: true, tool: null, provider: "1.0.0", ef: ShopApp.Older,
+            providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")], fed: [("microsoft.entityframeworkcore.sqlite", ShopApp.Ef11)]);
+        string project = Path.Combine(folder, "Shop.csproj");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }], "the shop's project read");
+            Passenger.App.ToolWindows.NuGetView nuget = Chosen(window, Sqlite, ShopApp.Ef11);
+            Ui.Click(Offered(nuget, "Update"), settle: false);
+            ChoiceDialog asked = Asked<ChoiceDialog>(window, "the update's warning", Slow);
+            string words = string.Join(' ', asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            string back = $"Update the Set to {ShopApp.Version}";
+            Assert.True(words.Contains($"No version of {ShopApp.Provider} in the feeds supports EF Core {ShopApp.Ef11} yet; {back} moves EF Core's packages to {ShopApp.Version}, "
+                + $"the newest it supports, and {ShopApp.Provider} to 2.0.0.", StringComparison.Ordinal),
+                $"The question past a provider none of whose versions supports EF Core {ShopApp.Ef11} offers no way to the EF Core it supports: {words}");
+            Ui.ClickButton(asked, back);
+            Ui.WaitFor(() => !nuget.IsBusy && Has(project, Sqlite, ShopApp.Version) && Has(project, Design, ShopApp.Version) && Has(project, ShopApp.Provider, "2.0.0"),
+                () => $"EF Core's set moved to {ShopApp.Version} with the provider at 2.0.0 ({window.Status}):\n{File.ReadAllText(project)}\n{nuget.Log}", Slow);
+            string said = $"{back}: {Design} {ShopApp.Version} and {ShopApp.Provider} 2.0.0 moved with it";
+            Assert.True(window.Status == said, $"Moving EF Core to what the provider supports said \"{window.Status}\", not \"{said}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private const string Sqlite = "Microsoft.EntityFrameworkCore.Sqlite";
+
+    private const string Design = "Microsoft.EntityFrameworkCore.Design";
+
+    private const string Relational = "Microsoft.EntityFrameworkCore.Relational";
+
+    /// <summary>The NuGet window shown, a package found and chosen, and a version picked in its picker as a person picks it.</summary>
+    private static Passenger.App.ToolWindows.NuGetView Chosen(MainWindow window, string id, string version)
+    {
+        window.ShowToolWindow(ToolWindowIds.NuGet);
+        Passenger.App.ToolWindows.NuGetView nuget = window.NuGet;
+        nuget.Query = id;
+        Task searched = nuget.RefreshAsync();
+        Ui.Landed(() => searched.IsCompleted && nuget.Selected?.Id == id && nuget.Versions.Contains(version),
+            $"{id} found and chosen, {version} among its versions [{string.Join(", ", nuget.Versions)}] ({nuget.Status})");
+        NuGetTests.Choose(nuget, version);
+        return nuget;
+    }
+
+    /// <summary>The button the NuGet window offers on the shop's line for the version chosen.</summary>
+    private static Button Offered(Passenger.App.ToolWindows.NuGetView nuget, string label) => NuGetTests.Action(nuget, "Shop", label)
+        ?? throw new Xunit.Sdk.XunitException($"The NuGet window offers no {label} on Shop's line for {nuget.ChosenVersion}");
+
+    /// <summary>Whether the project file references a package at a version.</summary>
+    private static bool Has(string project, string id, string version) =>
+        File.ReadAllText(project).Contains($"Include=\"{id}\" Version=\"{version}\"", StringComparison.Ordinal);
+
+    /// <summary>The folder's central versions, each "id version", as Directory.Packages.props lists them.</summary>
+    private static string[] Central(string folder) => [.. System.Xml.Linq.XDocument.Load(Path.Combine(folder, "Directory.Packages.props")).Descendants("PackageVersion")
+        .Select(v => $"{(string?)v.Attribute("Include")} {(string?)v.Attribute("Version")}")];
+
     /// <summary>Undo from the Solution view, a row chosen there, its question answered yes: the last command taken back;
     /// <paramref name="opened"/> says where the files open in editors were opened from.</summary>
     internal static void UndoFromExplorer(MainWindow window, string path, Func<string>? opened = null)
@@ -675,29 +832,30 @@ internal static class ShopApp
     /// the versions pinned before a move would be taken for it, its ranges naming those.</summary>
     public static string Provider { get; } = $"Passenger.EntityFrameworkCore.StandIn.Ef{Older.Replace('.', '_')}.Ef{Version.Replace('.', '_')}";
 
-    /// <summary>The app in a folder of its own: the Design package or not, the local tool at a version or none, the stand-in
-    /// provider at a version (its versions in a feed of the test's own, each with the range of EF Core it supports, the
-    /// <paramref name="unrestorable"/> one needing a package no feed holds), and a Program.cs of the test's in place of the
-    /// shop's; restored from the UI thread (a window test's body), the window's loop running meanwhile. <paramref name="central"/>
+    /// <summary>The app in a folder of its own: the Design package and the relational one or not, the local tool at a version or
+    /// none, the stand-in provider at a version (in a feed of the test's own, with the <paramref name="fed"/> packages of the
+    /// cache, each version with the range of EF Core it supports, the <paramref name="unrestorable"/> one needing a package no
+    /// feed holds), and the test's Program.cs; restored from the UI thread (a window test's body), its loop running. <paramref name="central"/>
     /// keeps the versions in a Directory.Packages.props, with EF Core's relational package for a Reports library beside.</summary>
     public static string Make(bool design, string? tool, string? provider = null, IReadOnlyList<(string Version, string Range)>? providers = null, string? program = null,
-        string? ef = null, string? unrestorable = null, bool central = false)
+        string? ef = null, string? unrestorable = null, bool central = false, bool relational = false, IReadOnlyList<(string Id, string Version)>? fed = null)
     {
-        string folder = Write(design, tool, provider, providers, program, ef, unrestorable, central);
+        string folder = Write(design, tool, provider, providers, program, ef, unrestorable, central, relational, fed);
         Restore.Run(Path.Combine(folder, "Shop.csproj"));
         return folder;
     }
 
     /// <inheritdoc cref="Make"/>
-    public static async Task<string> MakeAsync(bool design, string? tool)
+    public static async Task<string> MakeAsync(bool design, string? tool, string? provider = null, IReadOnlyList<(string Version, string Range)>? providers = null,
+        string? ef = null, bool relational = false)
     {
-        string folder = Write(design, tool, null, null, null, null, null, false);
+        string folder = Write(design, tool, provider, providers, null, ef, null, false, relational, null);
         await Restore.RunAsync(Path.Combine(folder, "Shop.csproj"));
         return folder;
     }
 
     private static string Write(bool design, string? tool, string? provider, IReadOnlyList<(string Version, string Range)>? providers, string? program, string? ef,
-        string? unrestorable, bool central)
+        string? unrestorable, bool central, bool relational, IReadOnlyList<(string Id, string Version)>? fed)
     {
         ef ??= Version;
         string folder = TestFolders.Create("shop");
@@ -707,6 +865,7 @@ internal static class ShopApp
         {
             StandIn(standIns, version, range, version == unrestorable);
         }
+        CopyInto(standIns, [.. fed ?? []]);
         File.WriteAllText(Path.Combine(folder, "nuget.config"), $"""
             <?xml version="1.0" encoding="utf-8"?>
             <configuration>
@@ -720,6 +879,7 @@ internal static class ShopApp
         string Versioned(string version) => central ? string.Empty : $" Version=\"{version}\"";
         string packages = $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Sqlite\"{Versioned(ef)} />\n"
             + (design ? $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Design\"{Versioned(ef)} PrivateAssets=\"all\" />\n" : string.Empty)
+            + (relational ? $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Relational\"{Versioned(ef)} />\n" : string.Empty)
             + (provider is null ? string.Empty : $"    <PackageReference Include=\"{Provider}\"{Versioned(provider)} />\n");
         if (central)
         {
@@ -877,22 +1037,27 @@ internal static class ShopApp
             """);
     }
 
-    /// <summary>The tool at both versions, the Design package and EF Core at both versions, copied from the package cache into
-    /// the run's local feed, whose metadata the window reads for the versions that fit.</summary>
+    /// <summary>The tool, the Design package, EF Core, its relational layer and SQLite's provider at both versions, copied from
+    /// the package cache into the run's local feed, whose metadata the window reads for the versions that fit, and whose
+    /// versions say which of EF Core's packages move with another.</summary>
     internal static void Feed() => Copy(
-        ("dotnet-ef", Version), ("dotnet-ef", Older), ("microsoft.entityframeworkcore.design", Version),
+        ("dotnet-ef", Version), ("dotnet-ef", Older), ("microsoft.entityframeworkcore.design", Version), ("microsoft.entityframeworkcore.design", Older),
         ("microsoft.entityframeworkcore", Version), ("microsoft.entityframeworkcore", Older),
+        ("microsoft.entityframeworkcore.relational", Version), ("microsoft.entityframeworkcore.relational", Older),
         ("microsoft.entityframeworkcore.sqlite", Version), ("microsoft.entityframeworkcore.sqlite", Older));
 
     /// <summary>Packages copied from the package cache into the run's local feed.</summary>
-    private static void Copy(params (string Id, string Version)[] packages)
+    private static void Copy(params (string Id, string Version)[] packages) => CopyInto(AvaloniaApp.Feed, packages);
+
+    /// <summary>Packages copied from the package cache into a feed's folder.</summary>
+    private static void CopyInto(string feed, IReadOnlyList<(string Id, string Version)> packages)
     {
         string cache = AvaloniaApp.Metadata("NuGetPackageRoot");
         foreach ((string id, string version) in packages)
         {
             string package = Path.Combine(cache, id, version, $"{id}.{version}.nupkg");
             Assert.True(File.Exists(package), $"{id} {version} is not in the package cache at {package}: restore the tests first");
-            string fed = Path.Combine(AvaloniaApp.Feed, Path.GetFileName(package));
+            string fed = Path.Combine(feed, Path.GetFileName(package));
             if (!File.Exists(fed))
             {
                 File.Copy(package, fed, overwrite: true);

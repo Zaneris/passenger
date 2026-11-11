@@ -782,7 +782,7 @@ public sealed class NuGetTests : IDisposable
     }
 
     /// <summary>A version chosen in the package's version picker, as a person picks it.</summary>
-    private static void Choose(NuGetView nuget, string version)
+    internal static void Choose(NuGetView nuget, string version)
     {
         ComboBox picker = nuget.GetLogicalDescendants().OfType<ComboBox>().Single(c => c.Name == "Versions");
         picker.SelectedItem = version;
@@ -792,11 +792,11 @@ public sealed class NuGetTests : IDisposable
     private static ProjectModel Named(MainWindow window, string name) => window.Projects.Single(p => p.Name == name);
 
     /// <summary>A project's line among the chosen package's projects.</summary>
-    private static Panel? Line(NuGetView nuget, string project) => nuget.GetLogicalDescendants().OfType<Panel>()
+    internal static Panel? Line(NuGetView nuget, string project) => nuget.GetLogicalDescendants().OfType<Panel>()
         .FirstOrDefault(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == project);
 
     /// <summary>The button of a label on a project's line.</summary>
-    private static Button? Action(NuGetView nuget, string project, string label) =>
+    internal static Button? Action(NuGetView nuget, string project, string label) =>
         Line(nuget, project)?.Children.OfType<Button>().FirstOrDefault(button => (string?)button.Content == label);
 
     /// <summary>The words on a project's line's buttons.</summary>

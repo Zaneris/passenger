@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using ModelContextProtocol.Server;
+using Passenger.App.Migrations;
 using Passenger.App.Packages;
 using Passenger.App.Profiling;
 using Passenger.App.Vcs;
@@ -295,7 +296,9 @@ public sealed partial class PassengerTools
         "Adds a package to a project (its name or .csproj) at a version (else the newest on the folder's enabled feeds), or " +
         "moves it to that version, through dotnet add package as the NuGet window does, restoring from the folder's " +
         "nuget.config feeds; with remove, takes it out through dotnet remove package. Answers the version installed and the " +
-        "files it changed (the project, its packages.lock.json, and Directory.Packages.props under central package management).")]
+        "files it changed (the project, its packages.lock.json, and Directory.Packages.props under central package management). " +
+        "Moving one of EF Core's packages moves the project's others with it (with); another maker's provider it leaves behind " +
+        "stays as it is, said with the version that fits.")]
     public Task<PackageChange> NuGetInstall(string project, string id, string? version = null, bool remove = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         ProjectModel chosen = Project(project);
@@ -310,7 +313,13 @@ public sealed partial class PassengerTools
             ?? throw new ArgumentException($"{feeds.Name} has no package {id}");
         AgentCall.Say(null);
         AgentCall.Follow(window.Actions.Work, FolderPackages.Changing);
-        return new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at)));
+        EfUpdate weighed = await window.Migrations.UpdateAsync(chosen, id, at, null, cancel);
+        if (!weighed.AsAsked)
+        {
+            return weighed.Outcome is { } made ? new PackageChange(id, at, chosen.Name, Changed(made)) { With = weighed.With.Count > 0 ? weighed.With : null, Said = weighed.Said }
+                : throw new InvalidOperationException(weighed.Said ?? Refusals.SolutionClosed);
+        }
+        return new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at))) { Said = weighed.Said };
     });
 
     /// <summary>The files a package change wrote, named as the answer names them (the window's change took them into the
@@ -820,7 +829,14 @@ public sealed record HeapTypeInfo(string Type, int Count, long Bytes);
 
 /// <summary>What nuget_install did: the package, the version installed (none for a removal), the project, and
 /// the files it changed.</summary>
-public sealed record PackageChange(string Package, string? Version, string Project, IReadOnlyList<string> Changed);
+public sealed record PackageChange(string Package, string? Version, string Project, IReadOnlyList<string> Changed)
+{
+    /// <summary>The packages that moved with it, each with its version: the rest of EF Core's set; null for none.</summary>
+    public IReadOnlyList<string>? With { get; init; }
+
+    /// <summary>What the change says beyond its files: what moved with it, and a provider of EF Core it left behind.</summary>
+    public string? Said { get; init; }
+}
 
 /// <summary>A stash as the vcs_stash tool lists it: its place, its commit (short), what it says and when it was made.</summary>
 public sealed record StashSummary(int Index, string Commit, string Message, DateTimeOffset Time);

@@ -11,6 +11,15 @@ public sealed record EfMove(ProjectModel Project, IReadOnlyList<(string Id, stri
 /// before anything changes: its title as its button says it, and the moves it makes.</summary>
 public sealed record EfAlignment(string Title, IReadOnlyList<EfMove> Moves);
 
+/// <summary>What the feeds offer a provider an update of EF Core would leave behind: the provider's newest version that
+/// supports the EF Core asked (<paramref name="Up"/>); else, where none does, EF Core's newest version between the project's
+/// and the one asked that a version of the provider at or above its own supports (<paramref name="Core"/>), with the
+/// lowest such version of the provider (<paramref name="Fits"/>, its own where it does); nulls where the feeds have neither.</summary>
+public sealed record EfOffer(string? Up, string? Core, string? Fits)
+{
+    public static readonly EfOffer None = new(null, null, null);
+}
+
 /// <summary>Keeps EF Core's packages (Core, Relational, Design, Tools, Microsoft's own providers) and a provider of another
 /// maker in step: a provider supports a range of EF Core, its own dependency's in the feed's metadata, and its releases
 /// trail EF Core's, so the version that fits is never EF Core's newest but what the provider supports.</summary>
@@ -27,6 +36,46 @@ public static class EfProviders
     {
         PackageDependencies? dependencies = await feed.DependenciesAsync(provider, version, cancel);
         return dependencies?.RangeOf(Relational, framework) ?? dependencies?.RangeOf(EfRestore.Core, framework);
+    }
+
+    /// <summary>What the feeds offer a provider that an update of the project's EF Core (<paramref name="runtime"/>) to
+    /// <paramref name="asked"/> leaves behind (<see cref="EfOffer"/>), from each version's range in their metadata.</summary>
+    public static async Task<EfOffer> OfferAsync(IPackageFeed feed, EfProvider behind, string asked, string runtime, string? framework, CancellationToken cancel)
+    {
+        bool prerelease = VersionOrder.IsPrerelease(asked);
+        List<(string Version, string Range)> held = [];
+        foreach (string version in await feed.VersionsAsync(behind.Id, prerelease, cancel))
+        {
+            if (await RangeAsync(feed, behind.Id, version, framework, cancel) is not { } range)
+            {
+                continue;
+            }
+            if (EfRestore.InRange(range, asked))
+            {
+                return new EfOffer(version, null, null);
+            }
+            if (VersionOrder.Instance.Compare(version, behind.Version) >= 0)
+            {
+                held.Add((version, range));
+            }
+        }
+        if (VersionOrder.Instance.Compare(asked, runtime) <= 0)
+        {
+            return EfOffer.None;
+        }
+        if (!held.Any(h => VersionOrder.Instance.Compare(h.Version, behind.Version) == 0))
+        {
+            held.Add((behind.Version, behind.Range));
+        }
+        foreach (string core in await feed.VersionsAsync(EfRestore.Core, prerelease, cancel))
+        {
+            if (VersionOrder.Instance.Compare(core, runtime) > 0 && VersionOrder.Instance.Compare(core, asked) < 0
+                && held.Where(h => EfRestore.InRange(h.Range, core)).Select(h => h.Version).Order(VersionOrder.Instance).FirstOrDefault() is { } fits)
+            {
+                return new EfOffer(null, core, fits);
+            }
+        }
+        return EfOffer.None;
     }
 
     /// <summary>The fix of a provider behind the projects' EF Core: the provider moved up to the newest version that supports

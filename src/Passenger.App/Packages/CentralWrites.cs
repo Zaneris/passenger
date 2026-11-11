@@ -28,12 +28,15 @@ internal sealed record CentralWrites(IReadOnlyDictionary<string, (FileText Had, 
 
     /// <summary>The packages moved in a project under central package management as its evaluation (<paramref name="insight"/>)
     /// has them, read off the window's thread; <paramref name="alongside"/>, which the project need not reference, move
-    /// only where a central version of theirs is below the one given.</summary>
+    /// only where a central version of theirs moves the way the packages' own do (up, unless they all go down).</summary>
     public static CentralWrites Of(MSBuildInsight insight, string project, string props, IReadOnlyList<(string Id, string Version)> packages,
         IReadOnlyList<(string Id, string Version)> alongside)
     {
         Writer writer = new(insight);
         IReadOnlyDictionary<string, (string Version, MSBuildPlace Place)> central = insight.CentralVersions();
+        PackageMove[] own = [.. packages.Select(p => central.TryGetValue(p.Id, out (string Version, MSBuildPlace) held) ? Move(p.Version, held.Version) : PackageMove.None)
+            .Where(m => m != PackageMove.None)];
+        PackageMove way = own.Length > 0 && own.All(m => m == PackageMove.Downgrade) ? PackageMove.Downgrade : PackageMove.Update;
         try
         {
             foreach ((string id, string version) in packages)
@@ -47,7 +50,7 @@ internal sealed record CentralWrites(IReadOnlyDictionary<string, (FileText Had, 
             }
             foreach ((string id, string version) in alongside)
             {
-                if (central.TryGetValue(id, out (string Version, MSBuildPlace) held) && InstalledVersion.Move(version, [new InstalledVersion(null, held.Version)]) == PackageMove.Update
+                if (central.TryGetValue(id, out (string Version, MSBuildPlace) held) && Move(version, held.Version) == way
                     && Central(id, InstalledVersion.Written(version, [new InstalledVersion(null, held.Version)])) is { } why)
                 {
                     return Refusing(why);
@@ -128,6 +131,9 @@ internal sealed record CentralWrites(IReadOnlyDictionary<string, (FileText Had, 
         }
         return writer.Written() with { Moved = left.Count == packages.Count ? None.Moved : null, Left = left };
     }
+
+    /// <summary>What moving a central version held to <paramref name="version"/> is.</summary>
+    private static PackageMove Move(string version, string held) => InstalledVersion.Move(version, [new InstalledVersion(null, held)]);
 
     private static bool Expression(string written) =>
         written.Contains("$(", StringComparison.Ordinal) || written.Contains("@(", StringComparison.Ordinal) || written.Contains("%(", StringComparison.Ordinal);

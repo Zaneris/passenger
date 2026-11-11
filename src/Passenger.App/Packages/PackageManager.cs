@@ -20,6 +20,10 @@ public sealed record PackageOutcome(bool Done, IReadOnlyList<string> Changed, IR
     /// <summary>The files of a change that failed that were saved while it ran, which it left as saved rather than put back.</summary>
     public IReadOnlyList<string> Meanwhile { get; init; } = [];
 
+    /// <summary>Under central package management, the packages whose central versions Passenger's own writes moved, those
+    /// sharing a property set among them; null without it.</summary>
+    public IReadOnlyCollection<string>? Moved { get; init; }
+
     /// <summary>For a change that failed having written files, what became of them: put back as before, those the disk
     /// would not take back left changed, and those saved meanwhile left as saved; else null.</summary>
     public string? Left

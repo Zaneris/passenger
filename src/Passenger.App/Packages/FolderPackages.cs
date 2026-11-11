@@ -232,7 +232,7 @@ public sealed partial class FolderPackages
     }
 
     /// <summary>A project's package references, each framework's as evaluated (but those the SDK adds of itself).</summary>
-    private static IEnumerable<(string Id, InstalledVersion Version)> References(ProjectModel project) =>
+    internal static IEnumerable<(string Id, InstalledVersion Version)> References(ProjectModel project) =>
         project.Evaluated is { Dependencies.Count: > 0 } evaluated
             ? evaluated.Dependencies.SelectMany(d => d.Packages.Where(p => !p.Implicit).Select(p => (p.Name, new InstalledVersion(d.Framework, p.Version))))
             : project.Packages.Select(p => (p.Name, new InstalledVersion(null, p.Version)));
@@ -292,7 +292,7 @@ public sealed partial class FolderPackages
         {
             Reached(project, writes.Moved, outcome.Written);
         }
-        return outcome;
+        return kept.Length > 0 ? outcome with { Moved = writes.Moved } : outcome;
     }
 
     /// <summary>Where a project's evaluation keeps each version a change moves, read once the open files are saved, and the

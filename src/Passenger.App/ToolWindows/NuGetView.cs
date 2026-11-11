@@ -535,8 +535,8 @@ public sealed partial class NuGetView : DockPanel
         && Said(await model.InstallAsync(project, row.Id, version));
 
     /// <summary>Asked before the window's own Install or Update of a package in a project, with its id and version: whether
-    /// it goes on as asked (false when the person cancelled, or had it made another way, as EF Core's packages moved with
-    /// their provider).</summary>
+    /// it goes on as asked (false when the person cancelled, or it was made another way, as EF Core's packages moved
+    /// together).</summary>
     public Func<ProjectModel, string, string, Passenger.App.Editors.CommandHistory.Recording?, CancellationToken, Task<bool>>? BeforeInstall { get; set; }
 
     /// <summary>Takes the chosen package out of a project (Remove).</summary>

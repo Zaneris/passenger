@@ -265,7 +265,8 @@ public sealed partial class FolderPackages
         return ProjectModel.From(project.Path, latest);
     }
 
-    private static async Task<InstalledVersion[]> VersionsInAsync(ProjectModel project, string id)
+    /// <summary>A project's references of a package, each framework's, a range as its restore resolved it.</summary>
+    internal static async Task<InstalledVersion[]> VersionsInAsync(ProjectModel project, string id)
     {
         RestoredVersions restored = await BackgroundWork.Run(() => Restored(project));
         return [.. References(project).Where(r => r.Id.Equals(id, StringComparison.OrdinalIgnoreCase))

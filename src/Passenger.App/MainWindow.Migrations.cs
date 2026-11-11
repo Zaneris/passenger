@@ -27,7 +27,7 @@ public partial class MainWindow
         {
             AsksNoOne = () => AgentsOwn,
         });
-        // The NuGet window's update of an EF Core package is weighed against the project's provider first.
+        // The NuGet window's update of an EF Core package moves its set, weighed against the project's provider first.
         if (nuget is { } built)
         {
             built.BeforeInstall = controller.WeighUpdateAsync;
