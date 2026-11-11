@@ -1,10 +1,10 @@
 # Passenger
 
-**Now for Godot 4 games.** The free IDE for C# and .NET: run, debug, profile and Hot Reload Godot games in C# and
-GDScript, their scenes and scripts checked as Godot reads them and the running game beside your code. Blazor WebAssembly
-now debugs in the browser, Avalonia and WPF take XAML Hot Reload, and your coding agent can drive it all. Built on
-.NET 11, it reads C# 15 and steps runtime async as written ([.NET 11](#net-11-and-c-15)). Free and open source under
-MIT, for Windows, macOS and Linux ([installing](#installing)).
+**Debugger, profiler and Hot Reload, built in.** The free IDE for C# and .NET: stop at a breakpoint and read every
+line's values, change the code while it runs, see where the time and memory go, watch your XAML take shape as you type,
+and debug every service of a compose file or an Aspire app. Your coding agent can use all of it too. Built on .NET 11,
+it reads C# 15 and steps runtime async as written ([.NET 11](#net-11-and-c-15)). Free and open source under MIT, for
+Windows, macOS and Linux ([installing](#installing)).
 
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
@@ -18,15 +18,13 @@ MIT, for Windows, macOS and Linux ([installing](#installing)).
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="site/images/godot-live-tree-light.webp">
-  <img src="site/images/godot-live-tree-dark.webp" alt="A running Godot game's Live Visual Tree in Passenger: its scene's nodes as they are, a plant chosen with its properties and values, beside the plant's GDScript with each member's value after its line">
+  <source media="(prefers-color-scheme: light)" srcset="site/images/debugger-light.webp">
+  <img src="site/images/debugger-dark.webp" alt="Passenger stopped at a breakpoint in a C# method: the values each line used after it, and the Debug window's frames and variables">
 </picture>
 
 Tools like these are usually found in paid IDEs or add-ons. In Passenger they are part of the IDE, free and open source
 under MIT, for work and personal projects alike, with no account, no licence key and no telemetry:
 
-- **Godot 4 games, in C# and GDScript:** the game run, debugged, profiled and Hot Reloaded, its C# checked against its
-  scenes, its GDScript and shaders read as Godot reads them, and the running game's tree and values beside the code.
 - **A debugger with Hot Reload:** your edits put in the running program, the values methods returned, Smart Step Into,
   decompiled libraries, and several programs debugged at once.
 - **CPU and memory profiling:** call trees, flame graphs, and heap snapshots compared.
@@ -34,14 +32,16 @@ under MIT, for work and personal projects alike, with no account, no licence key
   Live Visual Tree, and XAML Hot Reload.
 - **An IDE your agent can drive:** Claude Code, Codex, OpenCode or any MCP agent builds, tests, debugs and profiles
   through Passenger, and tries the app or game it builds.
+- **Live requests with their SQL,** N+1s marked, and **EF Core migrations** with what would stop `dotnet ef` fixed
+  first.
+- **Debugging in containers and under Aspire:** every .NET service of a compose file, a Dockerfile or an AppHost
+  debugged, reloaded and profiled where it runs, Aspire's metrics charted.
 - **Blazor WebAssembly, debugged in the browser,** beside the server's code, Hot Reload keeping the page up.
 - **Failed tests, pictured:** a failed Avalonia headless test (xUnit v3) carries a picture of each window as it was, in
   a Unit Tests window that runs xUnit, NUnit, MSTest and TUnit, and Godot's GdUnit4, GUT and GoDotTest.
 - **Local History and a three-way merge:** every version of your files Passenger has seen, and Git's conflicts merged.
-- **Debugging in containers and under Aspire:** every .NET service of a compose file, a Dockerfile or an AppHost
-  debugged, reloaded and profiled where it runs, Aspire's metrics charted.
-- **Live requests with their SQL,** N+1s marked, and **EF Core migrations** with what would stop `dotnet ef` fixed
-  first.
+- **Godot 4 games, in C# and GDScript:** the game run, debugged, profiled and Hot Reloaded, its C# checked against its
+  scenes, its GDScript and shaders read as Godot reads them, and the running game's tree and values beside the code.
 
 Coming from Visual Studio? Its keys are the default, and VS Code's and IntelliJ IDEA's are a setting away, each as
 Rider's keymaps have it. On a Mac, where Visual Studio for Mac was retired in August 2024, Passenger is a full .NET IDE
@@ -65,34 +65,6 @@ Reload a debugged web app's open pages follow your edits through the .NET 11 SDK
 window runs EF Core 11's `dotnet ef` with the defaults `.config/dotnet-ef.json` names, and a project built for .NET 10
 and .NET 11 runs its tests under each. Open a .NET 11 project without its SDK and Passenger offers to install it into
 your own folder.
-
-### Godot 4
-
-A Godot 4 game, in C# or in GDScript alone, runs, debugs, profiles and Hot Reloads on the Godot Settings › Godot names
-or the one found. A breakpoint in C# or GDScript stops the game and a saved script reloads in it; Run Current Scene
-plays the scene open, Run Another Copy plays up to 16 copies for multiplayer, and on Windows, macOS and Linux under X11
-the game can draw in a pane beside its code. New Project makes a game, Publish exports it through its presets, and
-`project.godot` opens as a page of its settings.
-
-The game's C# is read against its scenes: `GetNode<T>` paths and types, `res://` and `uid://` paths, `[Export]` values,
-signals and their handlers, and every string Godot takes (input actions, groups, animations, autoloads, shader
-parameters, translations, layers, theme items) complete, are checked and rename, and a scene is marked where Godot would
-not load it, with fixes. GDScript is read by Passenger's port of Godot's parser and analyzer: Godot's warnings and
-errors with their fixes, completion, the hover, Find Usages, refactorings that reach C# and the scenes, and Reformat
-Code by Godot's style guide, mostly without starting Godot. Shaders are checked as Godot's compiler checks them, every
-error and warning at once.
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="site/images/gdscript-light.webp">
-  <img src="site/images/gdscript-dark.webp" alt="A GDScript in Passenger with its code help open and a Godot warning marked in Godot's own words, no Godot editor running">
-</picture>
-
-While the game runs, the Live Visual Tree shows its scene tree and values, tuned while it plays and kept into the scene,
-a node picked by clicking in the game; its members' values show after their lines, and its errors stay pinned to them
-after the run. A profile holds GDScript's functions and Godot's frame times beside the C# in one call tree. GdUnit4, GUT
-and GoDotTest tests run and debug in the Unit Tests window, GdUnit4's engine tests on Godot 4.7 for now. Passenger's addon for Godot's editor debugs in Passenger the
-game Godot's own Play starts, and Passenger becomes Godot's script editor in one step. The website's
-[Godot page](https://passenger-ide.net/godot) has the rest.
 
 ### Debugging
 
@@ -203,6 +175,34 @@ logs and traces and a run's OpenTelemetry logs and traces show beside its consol
   <source media="(prefers-color-scheme: light)" srcset="site/images/requests-light.webp">
   <img src="site/images/requests-dark.webp" alt="Passenger's Requests window following an Aspire app's ASP.NET Core API as it runs, under the minimal API handler that loops over the plants: each GET /plants/thirsty request marked N+1, its repeated SQL query marked ×6 with its reads and times">
 </picture>
+
+### Godot 4
+
+A Godot 4 game, in C# or in GDScript alone, runs, debugs, profiles and Hot Reloads on the Godot Settings › Godot names
+or the one found. A breakpoint in C# or GDScript stops the game and a saved script reloads in it; Run Current Scene
+plays the scene open, Run Another Copy plays up to 16 copies for multiplayer, and on Windows, macOS and Linux under X11
+the game can draw in a pane beside its code. New Project makes a game, Publish exports it through its presets, and
+`project.godot` opens as a page of its settings.
+
+The game's C# is read against its scenes: `GetNode<T>` paths and types, `res://` and `uid://` paths, `[Export]` values,
+signals and their handlers, and every string Godot takes (input actions, groups, animations, autoloads, shader
+parameters, translations, layers, theme items) complete, are checked and rename, and a scene is marked where Godot would
+not load it, with fixes. GDScript is read by Passenger's port of Godot's parser and analyzer: Godot's warnings and
+errors with their fixes, completion, the hover, Find Usages, refactorings that reach C# and the scenes, and Reformat
+Code by Godot's style guide, mostly without starting Godot. Shaders are checked as Godot's compiler checks them, every
+error and warning at once.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="site/images/gdscript-light.webp">
+  <img src="site/images/gdscript-dark.webp" alt="A GDScript in Passenger with its code help open and a Godot warning marked in Godot's own words, no Godot editor running">
+</picture>
+
+While the game runs, the Live Visual Tree shows its scene tree and values, tuned while it plays and kept into the scene,
+a node picked by clicking in the game; its members' values show after their lines, and its errors stay pinned to them
+after the run. A profile holds GDScript's functions and Godot's frame times beside the C# in one call tree. GdUnit4, GUT
+and GoDotTest tests run and debug in the Unit Tests window, GdUnit4's engine tests on Godot 4.7 for now. Passenger's addon for Godot's editor debugs in Passenger the
+game Godot's own Play starts, and Passenger becomes Godot's script editor in one step. The website's
+[Godot page](https://passenger-ide.net/godot) has the rest.
 
 ### The editor and C#
 

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Passenger: free C# and .NET IDE for Windows, macOS and Linux</title>
-    <meta name="description" content="A free, open-source C# and .NET IDE, now for Godot 4 in C# and GDScript: a debugger with Hot Reload, profilers, XAML previews and an MCP server for agents.">
+    <meta name="description" content="A free, open-source C# and .NET IDE for Windows, macOS and Linux, with its own debugger, Hot Reload, a profiler, XAML previews and an MCP server for agents.">
     <link rel="canonical" href="https://passenger-ide.net/">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
@@ -14,7 +14,7 @@
     <meta property="og:locale" content="en_US">
     <meta property="og:url" content="https://passenger-ide.net/">
     <meta property="og:title" content="Passenger: free C# and .NET IDE for Windows, macOS and Linux">
-    <meta property="og:description" content="A free, open-source C# and .NET IDE, now for Godot 4 in C# and GDScript: a debugger with Hot Reload, profilers, XAML previews and an MCP server for agents.">
+    <meta property="og:description" content="A free, open-source C# and .NET IDE for Windows, macOS and Linux, with its own debugger, Hot Reload, a profiler, XAML previews and an MCP server for agents.">
     <meta property="og:image" content="https://passenger-ide.net/images/social-77a92101.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
@@ -24,7 +24,7 @@
     <meta name="twitter:site" content="@Zaneris">
     <meta name="twitter:creator" content="@Zaneris">
     <meta name="twitter:title" content="Passenger: free C# and .NET IDE for Windows, macOS and Linux">
-    <meta name="twitter:description" content="A free, open-source C# and .NET IDE, now for Godot 4 in C# and GDScript: a debugger with Hot Reload, profilers, XAML previews and an MCP server for agents.">
+    <meta name="twitter:description" content="A free, open-source C# and .NET IDE for Windows, macOS and Linux, with its own debugger, Hot Reload, a profiler, XAML previews and an MCP server for agents.">
     <meta name="twitter:image" content="https://passenger-ide.net/images/social-77a92101.png">
     <meta name="twitter:image:alt" content="C# code in Passenger's debugger, stopped at a breakpoint with each line's values beside it, beside the words: Built on .NET 11. The free IDE for C# and .NET.">
     <meta name="theme-color" content="#0F131C" media="(prefers-color-scheme: dark)">
@@ -35,7 +35,7 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Passenger",
-    "description": "A free, open-source C# and .NET IDE, now for Godot 4 in C# and GDScript: a debugger with Hot Reload, profilers, XAML previews and an MCP server for agents.",
+    "description": "A free, open-source C# and .NET IDE for Windows, macOS and Linux, with its own debugger, Hot Reload, a profiler, XAML previews and an MCP server for agents.",
     "url": "https://passenger-ide.net/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows, macOS, Linux",
@@ -49,20 +49,19 @@
     },
     "license": "https://opensource.org/licenses/MIT",
     "featureList": [
-        "Godot 4 games in C# and GDScript, run, debugged, profiled and Hot Reloaded",
-        "GDScript and Godot shaders checked as Godot checks them",
         "Debugger with Hot Reload",
-        "Blazor WebAssembly components debugged in the browser",
         "CPU and memory profiler",
         "XAML tooling for Avalonia and WPF, with previews, the Live Visual Tree and XAML Hot Reload",
-        "Debugging and profiling .NET services in Docker Compose and Dockerfile containers",
-        "Aspire AppHosts run, debugged and profiled, their metrics charted",
+        "MCP server for coding agents",
         "Live HTTP requests with their SQL and N+1 queries marked",
         "EF Core migrations window",
-        "MCP server for coding agents"
+        "Debugging and profiling .NET services in Docker Compose and Dockerfile containers",
+        "Aspire AppHosts run, debugged and profiled, their metrics charted",
+        "Blazor WebAssembly components debugged in the browser",
+        "Godot 4 games in C# and GDScript, run, debugged, profiled and Hot Reloaded"
     ],
     "image": "https://passenger-ide.net/images/social-77a92101.png",
-    "screenshot": "https://passenger-ide.net/images/godot-live-tree-dark.webp",
+    "screenshot": "https://passenger-ide.net/images/debugger-dark.webp",
     "author": {
         "@type": "Person",
         "name": "Zaneris",
@@ -86,13 +85,13 @@
     <div class="wrap">
         <a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28">Passenger</a>
         <nav aria-label="Sections">
-            <a class="wide" href="/godot">Godot</a>
-            <a class="wide" href="#dotnet11">.NET 11</a>
             <a class="wide" href="#debugging">Debugger</a>
+            <a class="wide" href="#profiling">Profiler</a>
             <a class="wide" href="#xaml">XAML</a>
             <a class="wide" href="#agents">Agents</a>
-            <a class="wide" href="#services">Containers</a>
             <a class="wide" href="#web">Web and data</a>
+            <a class="wide" href="#services">Containers</a>
+            <a class="wide" href="#dotnet11">.NET 11</a>
             <a href="#download">Download</a>
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
         </nav>
@@ -103,12 +102,12 @@
     <div class="hero">
         <div class="wrap">
             <a class="news" href="#dotnet11"><span class="tag">New in 0.3.2</span>
-                <span class="what">Built on .NET 11: C# 15 and runtime async, from the editor to the debugger</span><span class="short">What's
+                <span class="what">Ready for .NET 11: C# 15 and runtime async, from the editor to the debugger</span><span class="short">What's
                 new</span><span class="arrow" aria-hidden="true">&rarr;</span></a>
-            <h1><span class="lead">Now for Godot&nbsp;4&nbsp;games.</span> The free IDE for C# and .NET.</h1>
-            <p class="lede">Run, debug, profile and Hot Reload Godot games in C# and GDScript, their scenes and scripts
-                checked as Godot reads them and the running game beside your code. Blazor WebAssembly now debugs in the
-                browser, Avalonia and WPF take XAML Hot Reload, and your coding agent can drive it all.</p>
+            <h1><span class="lead">Debugger, profiler and Hot&nbsp;Reload, built&nbsp;in.</span> The free IDE for C# and .NET.</h1>
+            <p class="lede">Stop at a breakpoint and read every line's values, change the code while it runs, see where the
+                time and memory go, watch your XAML take shape as you type, and debug every service of a compose file or
+                an Aspire app. Your coding agent can use all of it too.</p>
             <div class="actions">
                 <a class="button primary" id="primary-download" href="#download">Download</a>
                 <a class="button" href="https://github.com/Zaneris/passenger">Source on GitHub</a>
@@ -117,9 +116,9 @@
             <p class="under">Free and open source under MIT: no account, no licence key, no telemetry.</p>
             <figure class="shot">
                 <picture>
-                    <source media="(prefers-color-scheme: light)" srcset="/images/godot-live-tree-light.webp" width="2400" height="1500">
-                    <img src="/images/godot-live-tree-dark.webp" width="2400" height="1500" fetchpriority="high"
-                         alt="A running Godot game's Live Visual Tree in Passenger: its scene's nodes as they are, a plant chosen with its properties and values, beside the plant's GDScript with each member's value after its line">
+                    <source media="(prefers-color-scheme: light)" srcset="/images/debugger-light.webp" width="2400" height="1500">
+                    <img src="/images/debugger-dark.webp" width="2400" height="1500" fetchpriority="high"
+                         alt="Passenger stopped at a breakpoint in a C# method: the values each line used after it, and the Debug window's frames and variables">
                 </picture>
             </figure>
         </div>
@@ -132,8 +131,6 @@
             <p class="intro">Tools like these are usually found in paid IDEs or add-ons. In Passenger they are part of the
                 IDE, free and open source under MIT, for work and personal projects alike.</p>
             <ul class="checks">
-                <li><a href="/godot"><strong>Godot 4 in C# and GDScript</strong>
-                    <span>Run, debug, profile and Hot Reload the game, its C# checked against its scenes.</span></a></li>
                 <li><a href="#debugging"><strong>A debugger with Hot Reload</strong>
                     <span>Edits put in the running program, the values methods returned, Smart Step Into.</span></a></li>
                 <li><a href="#profiling"><strong>CPU and memory profiling</strong>
@@ -142,20 +139,22 @@
                     <span>Avalonia and WPF drawn as you type, the running app's tree, XAML Hot Reload.</span></a></li>
                 <li><a href="#agents"><strong>An agent that drives the IDE</strong>
                     <span>Claude Code, Codex or OpenCode build, debug and try the running app through it.</span></a></li>
+                <li><a href="#web"><strong>Live requests with their SQL</strong>
+                    <span>Each request a running app serves, the queries it ran, N+1s marked.</span></a></li>
+                <li><a href="#migrations"><strong>EF Core migrations</strong>
+                    <span>Listed, added and applied, with what would stop <code>dotnet&nbsp;ef</code> fixed first.</span></a></li>
+                <li><a href="/containers"><strong>Debugging in containers</strong>
+                    <span>Every .NET service of a compose file or Dockerfile, inside its container.</span></a></li>
+                <li><a href="/containers#aspire"><strong>Aspire, as the AppHost's IDE</strong>
+                    <span>Each resource debugged, reloaded and profiled, its metrics charted.</span></a></li>
                 <li><a href="#blazor"><strong>Blazor WebAssembly, debugged</strong>
                     <span>Components stopped in the browser, beside the server's code.</span></a></li>
                 <li><a href="#tests"><strong>Failed tests, pictured</strong>
                     <span>A failed Avalonia headless test shows each of its windows as it was.</span></a></li>
                 <li><a href="#history"><strong>Local History and a three-way merge</strong>
                     <span>Every version of your files Passenger has seen, and Git's conflicts merged.</span></a></li>
-                <li><a href="/containers"><strong>Debugging in containers</strong>
-                    <span>Every .NET service of a compose file or Dockerfile, inside its container.</span></a></li>
-                <li><a href="/containers#aspire"><strong>Aspire, as the AppHost's IDE</strong>
-                    <span>Each resource debugged, reloaded and profiled, its metrics charted.</span></a></li>
-                <li><a href="#web"><strong>Live requests with their SQL</strong>
-                    <span>Each request a running app serves, the queries it ran, N+1s marked.</span></a></li>
-                <li><a href="#migrations"><strong>EF Core migrations</strong>
-                    <span>Listed, added and applied, with what would stop <code>dotnet&nbsp;ef</code> fixed first.</span></a></li>
+                <li><a href="/godot"><strong>Godot 4 games</strong>
+                    <span>C# and GDScript run, debugged, profiled and Hot Reloaded, checked against their scenes.</span></a></li>
             </ul>
         </div>
     </section>
@@ -205,81 +204,6 @@
         </div>
     </section>
 
-    <section id="godot">
-        <div class="wrap">
-            <p class="kicker">Godot</p>
-            <h2>Godot 4: your scenes and the running game, in your code</h2>
-            <p class="intro">For games in C#, in GDScript or in both. Passenger checks your code against your scenes, debugs
-                both languages at once, and works beside Godot's editor or as its script editor.</p>
-
-            <div class="feature">
-                <div class="text">
-                    <h3>C# that knows its scenes</h3>
-                    <p><code>GetNode&lt;T&gt;</code> paths and types, <code>res://</code> paths, <code>[Export]</code>
-                        values, signals and every string Godot takes (input actions, groups, animations, autoloads) complete
-                        and are checked against the scenes that run the script. A rename reaches the scenes, and a scene is
-                        marked where Godot would not load it, with fixes.</p>
-                    <a class="more" href="/godot">Godot in depth</a>
-                </div>
-                <figure class="shot">
-                    <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/godot-scene-light.webp" width="2400" height="1500">
-                        <img src="/images/godot-scene-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="A Godot game's C# script beside its scene, whose tree Structure shows: the greenhouse's benches, plants, sprinkler and tank, each with its type and script">
-                    </picture>
-                </figure>
-            </div>
-
-            <div class="feature flip">
-                <div class="text">
-                    <h3>GDScript and shaders, as Godot reads them</h3>
-                    <p>Passenger's port of Godot's parser and analyzer gives Godot's own warnings and errors with their
-                        fixes, completion, the hover, Find Usages and Rename, mostly without starting Godot. Shaders are
-                        checked as Godot's compiler checks them, every error and warning at once.</p>
-                </div>
-                <figure class="shot">
-                    <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/gdscript-light.webp" width="2400" height="1500">
-                        <img src="/images/gdscript-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="A GDScript in Passenger with its code help open and a Godot warning marked in Godot's own words, no Godot editor running">
-                    </picture>
-                </figure>
-            </div>
-
-            <div class="grid">
-                <div class="card">
-                    <h3>Both languages, one debugger</h3>
-                    <p>A breakpoint in C# or GDScript stops the game, a script you save reloads in it, and Godot's types
-                        read as you think of them in Variables.</p>
-                </div>
-                <div class="card">
-                    <h3>The running game, tuned</h3>
-                    <p>Its nodes and values in the Live Visual Tree, changed while it plays and kept into the scene, a node
-                        picked by clicking in the game.</p>
-                </div>
-                <div class="card">
-                    <h3>One profile, both languages</h3>
-                    <p>GDScript's functions and Godot's frame times beside the C# in one call tree, a slow frame opened on
-                        what it spent.</p>
-                </div>
-                <div class="card">
-                    <h3>Its tests</h3>
-                    <p>GdUnit4 (its engine tests on Godot 4.7), GUT and GoDotTest tests found, run and debugged in the Unit Tests window.</p>
-                </div>
-                <div class="card">
-                    <h3>Beside Godot's editor</h3>
-                    <p>Passenger becomes Godot's script editor in one step, and its addon has a game Godot's Play starts
-                        debugged in Passenger.</p>
-                </div>
-                <div class="card">
-                    <h3>The game in a pane</h3>
-                    <p>On Windows, macOS and Linux under X11, the game can draw beside its code, taking the keys when you
-                        click it.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
     <section id="debugging">
         <div class="wrap">
             <p class="kicker">Debugger</p>
@@ -287,26 +211,26 @@
             <p class="intro">Passenger's own debugger, over ICorDebug and .NET's browser debug proxy, works the same on your
                 machine, inside a container and in the browser.</p>
 
-            <div class="feature">
-                <div class="text">
-                    <h3>A debugger of its own</h3>
-                    <p>Breakpoints with conditions, hit counts and log messages, Smart Step Into, the values methods
-                        returned (an async method's too), Run to Cursor and Set Next Statement, and the values each line
-                        used drawn after it. Several programs debug at once, a tab each, and a library without symbols shows
-                        its code, decompiled.</p>
-                    <p>Attach to a .NET program already running, in a container too, and on a Mac with nothing to set
-                        up.</p>
+            <div class="grid two">
+                <div class="card">
+                    <h3>Values where you read them</h3>
+                    <p>The values each line used, drawn after it, and the values methods returned, an async method's too,
+                        without a watch to set up.</p>
+                </div>
+                <div class="card">
                     <h3>Hot Reload while debugging</h3>
                     <p>Edit the code, paused or running, and Hot Reload puts it in the program. An edit it can't apply is
                         listed with why, and by default the program restarts to take it.</p>
                 </div>
-                <figure class="shot">
-                    <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/debugger-light.webp" width="2400" height="1500">
-                        <img src="/images/debugger-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="Stopped at a breakpoint in a C# method: the values after the lines, and the Debug window's frames and variables">
-                    </picture>
-                </figure>
+                <div class="card">
+                    <h3>Breakpoints and steps that fit</h3>
+                    <p>Conditions, hit counts and log messages, Smart Step Into, Run to Cursor and Set Next Statement.</p>
+                </div>
+                <div class="card">
+                    <h3>Attach to anything running</h3>
+                    <p>A .NET program already running, in a container too, and on a Mac with nothing to set up. Several
+                        programs debug at once, a tab each, and a library without symbols shows its code, decompiled.</p>
+                </div>
             </div>
 
             <div class="feature flip" id="blazor">
@@ -435,6 +359,52 @@
         </div>
     </section>
 
+    <section id="web">
+        <div class="wrap">
+            <p class="kicker">Web apps and their data</p>
+            <h2>See every request your app serves, with its SQL</h2>
+            <p class="intro">For ASP.NET Core and EF Core: what your app serves and what it asks of the database, as it runs,
+                with no change to the app.</p>
+            <div class="feature">
+                <div class="text">
+                    <h3>Live requests and their queries</h3>
+                    <p>The Requests window lists each request a running app serves, and the database commands it ran, with
+                        their times and rows. A command run again for every row (an N+1) or a slow one is marked, and a
+                        request opens at its handler, or at the exception that ended it.</p>
+                    <p>It works for Run, Debug and Profile, and for the services of a compose run or an AppHost.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/requests-light.webp" width="2400" height="1500">
+                        <img src="/images/requests-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="Passenger's Requests window following an ASP.NET Core API as it runs: each GET /plants/thirsty request marked N+1, its repeated SQL query marked with its reads and times">
+                    </picture>
+                </figure>
+            </div>
+            <div class="grid">
+                <div class="card" id="migrations">
+                    <h3>EF Core migrations that run</h3>
+                    <p>The Migrations window lists each context's migrations and whether the database has them: add, remove,
+                        update, script and bundle. Before <code>dotnet&nbsp;ef</code> runs it finds what would stop it (the
+                        tool missing or of another version, the Design package, a provider behind) and offers the fix. During
+                        a compose run or an AppHost, it works on the database that run uses.</p>
+                </div>
+                <div class="card">
+                    <h3>Endpoints from your code</h3>
+                    <p>Minimal APIs, controllers, Razor Pages, Blazor, SignalR and gRPC routes read from the code with no
+                        build, each sent to the running app from its icon. An app's OpenAPI document becomes requests, each
+                        response checked against it.</p>
+                </div>
+                <div class="card">
+                    <h3>Logs, traces and settings</h3>
+                    <p>Turn on Collect logs and traces and a project's run shows its OpenTelemetry logs and traces beside its
+                        console. <code>appsettings.json</code> and user secrets complete the keys your code reads, and a
+                        stopped EF Core query shows its SQL in the debugger.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <section id="services">
         <div class="wrap">
             <p class="kicker">Containers and Aspire</p>
@@ -500,38 +470,26 @@
         </div>
     </section>
 
-    <section id="web">
+    <section id="godot">
         <div class="wrap">
-            <p class="kicker">Web apps and their data</p>
-            <h2>See every request your app serves, with its SQL</h2>
-            <p class="intro">For ASP.NET Core and EF Core: what your app serves and what it asks of the database, as it runs,
-                with no change to the app.</p>
-            <div class="grid two">
+            <p class="kicker">Games</p>
+            <h2>Godot 4 games, in C# and GDScript</h2>
+            <p class="intro">Passenger checks your C# against your scenes, reads GDScript and shaders as Godot does, and
+                debugs, profiles and Hot Reloads the running game, beside Godot's editor or as its script editor.
+                <a href="/godot">Godot in depth</a>.</p>
+            <div class="grid">
                 <div class="card">
-                    <h3>Live requests and their queries</h3>
-                    <p>The Requests window lists each request a running app serves, and the database commands it ran, with
-                        their times and rows. A command run again for every row (an N+1) or a slow one is marked; a request
-                        opens at its handler, or at the exception that ended it. It works for Run, Debug and Profile, and for
-                        the services of a compose run or an AppHost.</p>
-                </div>
-                <div class="card" id="migrations">
-                    <h3>EF Core migrations that run</h3>
-                    <p>The Migrations window lists each context's migrations and whether the database has them: add, remove,
-                        update, script and bundle. Before <code>dotnet&nbsp;ef</code> runs it finds what would stop it (the
-                        tool missing or of another version, the Design package, a provider behind) and offers the fix. During
-                        a compose run or an AppHost, it works on the database that run uses.</p>
+                    <h3>C# that knows its scenes</h3>
+                    <p>Node paths, <code>res://</code> paths, exports, signals and input actions complete and are checked
+                        against the scenes that run the script.</p>
                 </div>
                 <div class="card">
-                    <h3>Endpoints from your code</h3>
-                    <p>Minimal APIs, controllers, Razor Pages, Blazor, SignalR and gRPC routes read from the code with no
-                        build, each sent to the running app from its icon. An app's OpenAPI document becomes requests, each
-                        response checked against it.</p>
+                    <h3>Both languages, one debugger</h3>
+                    <p>A breakpoint in C# or GDScript stops the game, and a script you save reloads in it.</p>
                 </div>
                 <div class="card">
-                    <h3>Logs, traces and settings</h3>
-                    <p>Turn on Collect logs and traces and a project's run shows its OpenTelemetry logs and traces beside its
-                        console. <code>appsettings.json</code> and user secrets complete the keys your code reads, and a
-                        stopped EF Core query shows its SQL in the debugger.</p>
+                    <h3>The running game, tuned</h3>
+                    <p>Its nodes and values in the Live Visual Tree, changed while it plays and kept into the scene.</p>
                 </div>
             </div>
         </div>
@@ -822,8 +780,8 @@
                     <summary>Is it ready for daily work?</summary>
                     <p>Passenger is young (0.3.3), and its own development runs through it every day: the coding agents
                         that write much of it work through its MCP server. Its tests drive the whole IDE, a window with real
-                        keys and clicks, on macOS, Windows and Linux, and each release is tried on a standing set of real
-                        Godot projects. Each release's notes say what it does and its known limits, so you can judge for
+                        keys and clicks, on macOS, Windows and Linux, and a release ships only once its core tests pass
+                        on all three. Each release's notes say what it does and its known limits, so you can judge for
                         your own projects.</p>
                 </details>
                 <details>
@@ -832,12 +790,6 @@
                         It works with modern .NET (CoreCLR): console, ASP.NET Core, Blazor, Avalonia and WPF projects, Godot 4
                         games in C# and GDScript, and the services of a compose file or an Aspire AppHost. .NET Framework, Mono and Unity aren't
                         Passenger's.</p>
-                </details>
-                <details>
-                    <summary>Which Godot does it need?</summary>
-                    <p>Any Godot 4 for GDScript, and Godot's .NET build for C#, found from <code>GODOT</code>, the PATH or
-                        your applications, or named in Settings. The Game window takes Godot 4.4 or newer (4.5 or newer on
-                        macOS). The <a href="/godot#limits">Godot page</a> says the rest.</p>
                 </details>
                 <details>
                     <summary>Does it need an account or send data?</summary>
@@ -904,12 +856,12 @@
                     <li><strong><a href="https://nodejs.org/">Node.js</a></strong>, for JavaScript, TypeScript, HTML, CSS,
                         JSON, Dockerfiles and YAML: 22.22.2 or later for TypeScript. C#, XAML, GDScript and shaders do
                         without it.</li>
-                    <li><strong>Godot 4</strong>, for Godot games (its .NET build for C#), found from <code>GODOT</code>,
-                        the PATH or your applications, or named in Settings.</li>
                     <li><strong>Chrome, Edge or another Chromium browser</strong>, for debugging Blazor's WebAssembly.</li>
                     <li><strong>A container engine running Linux containers</strong> (Docker Desktop, Colima, OrbStack,
                         Rancher Desktop, Podman or a remote engine), only for compose files, Dockerfiles and an AppHost's
                         containers.</li>
+                    <li><strong>Godot 4</strong>, for Godot games (its .NET build for C#), found from <code>GODOT</code>,
+                        the PATH or your applications, or named in Settings.</li>
                 </ul>
                 <p>Every release, with its notes and its <code>SHA256SUMS</code>, is on
                     <a href="https://github.com/Zaneris/passenger/releases">GitHub</a>.</p>
