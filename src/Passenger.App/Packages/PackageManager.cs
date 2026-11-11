@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Passenger.Core;
 
@@ -66,7 +67,8 @@ public sealed class PackageManager
     private Process? running;
     private bool stopped;
 
-    /// <summary>A line the command printed, for the NuGet window's log; raised on the UI thread.</summary>
+    /// <summary>A line the command printed, for the NuGet window's log; raised on the UI thread in the order heard, each
+    /// before the command's run returns.</summary>
     public event EventHandler<string>? Line;
 
     /// <summary>Adds a package at a version, or moves it to that version when the project has it.</summary>
@@ -175,11 +177,14 @@ public sealed class PackageManager
             ChildProcesses.Kill(process);
         }
         bool fileInUse = false;
+        ConcurrentQueue<string> untold = new();
         try
         {
             Task heard = ChildProcesses.Hear(process, Heard, Heard);
             await process.WaitForExitAsync();
             await heard;
+            // Lines the window has yet to run are told now: the caller reads what the command said once this returns.
+            Tell();
             return (process.ExitCode == 0, fileInUse);
         }
         finally
@@ -194,7 +199,16 @@ public sealed class PackageManager
             {
                 fileInUse = true;
             }
-            UiThread.Post(() => Line?.Invoke(this, line));
+            untold.Enqueue(line);
+            UiThread.Post(Tell);
+        }
+
+        void Tell()
+        {
+            while (untold.TryDequeue(out string? line))
+            {
+                Line?.Invoke(this, line);
+            }
         }
     }
 }

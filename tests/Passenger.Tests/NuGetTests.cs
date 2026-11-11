@@ -665,6 +665,32 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A change whose restore fails says so in dotnet's last line even where the window fell behind as dotnet
+    /// ended, as a loaded machine's does: the lines dotnet printed meanwhile are the change's words before it is over,
+    /// however late the window runs them, never left to the log alone.</summary>
+    [AvaloniaFact]
+    public void A_failed_changes_words_are_dotnets_last_line_even_where_the_window_fell_behind_as_dotnet_ended()
+    {
+        Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"1.0.0\" />\n  </ItemGroup>\n");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        bool behind = false;
+        nuget.Packages.Line += (_, line) =>
+        {
+            if (!behind && line.Contains("error NU1101", StringComparison.Ordinal) && line.Contains("Passenger.Missing", StringComparison.Ordinal))
+            {
+                behind = true;
+                // A job of the window's own, as a heavy frame is, run after the lines already posted.
+                UiThread.Post(() => Ui.Stall(TimeSpan.FromSeconds(2), "the window behind as the restore says its last line and ends"));
+            }
+        };
+        PackageOutcome outcome = Ui.Landed(nuget.Packages.InstallSetAsync(Named(window, "Lib"), [(Id, "1.0.1"), ("Passenger.Missing", "1.0.0")]), "the moves whose restore fails");
+        Assert.True(behind, $"The restore never said it found no Passenger.Missing (NU1101), so the window never fell behind as it ended:\n{nuget.Log}");
+        Assert.True(outcome.Failure("failed")?.StartsWith("Failed to restore", StringComparison.Ordinal) == true,
+            $"The failed change said \"{outcome.Failure("failed")}\", not dotnet's last line that the restore failed: what dotnet printed as the window fell behind was left out of its words\n{nuget.Log}");
+        window.Close();
+    }
+
     /// <summary>A feed whose VulnerabilityInfo lists a page of advisories it answers 404 for has its audit read as failed,
     /// never as no advisories: the window's status says the vulnerabilities are unknown, naming the feed, rather than count
     /// the vulnerable 1.0.0 as safe.</summary>
