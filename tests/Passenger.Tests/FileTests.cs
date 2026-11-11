@@ -507,6 +507,37 @@ public sealed partial class FileTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file whose access control list is just what its folder gives a new file, its entries unmarked as a folder
+    /// whose own list is not marked auto-inherited gives them: a save moves the new file into place, never through
+    /// ReplaceFile, which holds the file from every other program's read while it replaces it.</summary>
+    [AvaloniaFact]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public void A_save_on_Windows_of_a_file_with_only_the_access_control_list_its_folder_gives_moves_it_into_place()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "ReplaceFile and an access control list's marks of inheritance are Windows'");
+        string plain = Path.Combine(folder, "Plain");
+        Directory.CreateDirectory(plain);
+        using (System.Security.Principal.WindowsIdentity me = System.Security.Principal.WindowsIdentity.GetCurrent())
+        {
+            // Not marked auto-inherited, as a list an older tool set is kept: a file made in the folder takes its entries unmarked.
+            System.Security.AccessControl.RawSecurityDescriptor unmarked = new($"D:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{me.User})");
+            byte[] given = new byte[unmarked.BinaryLength];
+            unmarked.GetBinaryForm(given, 0);
+            Assert.True(SetFileSecurity(plain, DaclSecurityInformation, given), $"The folder's list was refused: {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+        }
+        string path = Path.Combine(plain, "Plain.cs");
+        File.WriteAllText(path, "class Plain { }\n");
+        Assert.True(Unmarked(path), "The folder gave its new file a list marked inherited, so nothing here asks for a move");
+        MainWindow window = Open();
+        Edit(window, Path.Combine("Plain", "Plain.cs"), "public ");
+        Ui.Press(window, Ui.Shortcut(AppActions.Save));
+
+        Assert.Equal("public class Plain { }\n", File.ReadAllText(path));
+        Assert.False(window.EditorArea.Active!.IsModified, $"The file was not saved: {window.Status}");
+        Assert.True(Unmarked(path), "The save went through ReplaceFile (its list came back marked auto-inherited), which holds the file from every other program's read meanwhile, though a move loses nothing it has");
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_read_only_file_is_never_written_by_a_save_and_its_first_edit_and_each_save_ask_to_make_it_writable()
@@ -645,6 +676,30 @@ public sealed partial class FileTests : IDisposable
 
     [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "getxattr", StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf8)]
     private static partial nint GetXattr(string path, string name, byte[]? value, nuint size);
+
+    /// <summary>DACL_SECURITY_INFORMATION: a file's access control list alone.</summary>
+    private const uint DaclSecurityInformation = 0x4;
+
+    /// <summary>Whether a file's access control list, as stored, is neither marked auto-inherited nor holds an entry marked
+    /// inherited, as one ReplaceFile writes always is.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static bool Unmarked(string path)
+    {
+        byte[] descriptor = new byte[4096];
+        Assert.True(GetFileSecurity(path, DaclSecurityInformation, descriptor, (uint)descriptor.Length, out uint _),
+            $"{Path.GetFileName(path)}'s access control list could not be read: {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+        System.Security.AccessControl.RawSecurityDescriptor security = new(descriptor, 0);
+        return !security.ControlFlags.HasFlag(System.Security.AccessControl.ControlFlags.DiscretionaryAclAutoInherited)
+            && security.DiscretionaryAcl is { } list && list.Cast<System.Security.AccessControl.GenericAce>().All(e => !e.IsInherited);
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("advapi32.dll", EntryPoint = "GetFileSecurityW", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool GetFileSecurity(string path, uint asked, byte[] descriptor, uint length, out uint needed);
+
+    [System.Runtime.InteropServices.LibraryImport("advapi32.dll", EntryPoint = "SetFileSecurityW", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool SetFileSecurity(string path, uint given, byte[] descriptor);
 
     private static string? EncodingShown(MainWindow window) => Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.TextBlock>(window, "EncodingText")!.Text;
 
