@@ -11,7 +11,8 @@ internal static class PlatformWidths
     /// <summary>The 'post' table, whose isFixedPitch stands at byte 12.</summary>
     private const uint Post = 0x706F7374;
 
-    /// <summary>Whether a family of the name has every character given and draws them one width, or says it is fixed pitch.</summary>
+    /// <summary>Whether a family of the name has every character given and draws them one width, or says it is fixed pitch
+    /// in a post table it has.</summary>
     public static bool Monospaced(string family, string characters)
     {
         // Never disposed: Skia gives one object for a typeface, which the system's collection may hold for this face.
@@ -24,7 +25,8 @@ internal static class PlatformWidths
         {
             return false;
         }
-        if (face.GetTableData(Post) is { Length: >= 16 } post && (post[12] | post[13] | post[14] | post[15]) != 0)
+        // A Type1 face has no post table, which GetTableData throws for.
+        if (face.TryGetTableData(Post, out byte[] post) && post.Length >= 16 && (post[12] | post[13] | post[14] | post[15]) != 0)
         {
             return true;
         }
