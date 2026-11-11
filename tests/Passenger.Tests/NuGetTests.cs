@@ -333,6 +333,41 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The person's edit of a central file Update All wrote stops the run before the next project, naming that
+    /// file among the folder's two of the name; EF Core's packages moved before it are the whole set, those of a project the
+    /// run never reached among them, never half at the new version.</summary>
+    [AvaloniaFact]
+    public void Update_all_stopped_by_an_edit_to_a_central_file_names_it_and_leaves_ef_cores_set_whole()
+    {
+        (string root, string examples) = Nested();
+        const string Edit = "  <!-- the person's -->\r\n</Project>";
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        int saves = 0;
+        Func<Passenger.App.Working?, CancellationToken, Task<string?>>? save = nuget.Packages.SaveFirst;
+        nuget.Packages.SaveFirst = (working, cancel) =>
+        {
+            // The run's first save, then App's, One's and, after One wrote the examples' file, Two's.
+            if (++saves == 4)
+            {
+                File.WriteAllText(examples, File.ReadAllText(examples).Replace("</Project>", Edit, StringComparison.Ordinal));
+            }
+            return save!(working, cancel);
+        };
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        string named = Path.Combine("examples", "Directory.Packages.props");
+        Assert.True(nuget.Status.Contains($"{named} changed during Update All", StringComparison.Ordinal),
+            $"Update All, the examples' central file edited as it ran, says \"{nuget.Status}\", not that {named} changed");
+        Assert.Contains(Edit, File.ReadAllText(examples), StringComparison.Ordinal);
+        string[] ef = [.. System.Xml.Linq.XDocument.Load(root).Descendants("PackageVersion")
+            .Where(v => ((string?)v.Attribute("Include"))!.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal))
+            .Select(v => $"{(string?)v.Attribute("Include")} {(string?)v.Attribute("Version")}")];
+        Assert.True(ef.Length == 4 && ef.All(v => v.EndsWith(" 11.0.0", StringComparison.Ordinal)),
+            $"Stopped before Lib, EF Core's packages are [{string.Join(", ", ef)}], a set half moved that does not build: {nuget.Status}\n{nuget.Log}");
+        window.Close();
+    }
+
     /// <summary>A single package's update, of one whose version the examples' file keeps in a property, moves the property,
     /// so the package sharing it moves too, and leaves every other byte of the file as it was.</summary>
     [AvaloniaFact]

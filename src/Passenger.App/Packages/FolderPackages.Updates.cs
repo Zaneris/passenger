@@ -1,4 +1,6 @@
 using Passenger.App.Editors;
+using Passenger.App.Migrations;
+using Passenger.App.MSBuild;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Host;
@@ -139,7 +141,7 @@ public sealed partial class FolderPackages
                     {
                         continue;
                     }
-                    PackageOutcome outcome = await InstallSetAsync(project, eligible, recording);
+                    PackageOutcome outcome = await InstallSetAsync(project, eligible, recording, Alongside(project, eligible, updates));
                     written.AddRange(outcome.Written);
                     if (!outcome.Done)
                     {
@@ -180,7 +182,15 @@ public sealed partial class FolderPackages
     }
 
     private string? ChangedBulkFile() => bulkSnapshots.FirstOrDefault(file => !Same(Bytes(file.Key), file.Value)).Key is { } changed
-        ? $"{Path.GetFileName(changed)} changed during Update All; stopped to preserve that edit" : null;
+        ? $"{PathNames.Shown(changed, root())} changed during Update All; stopped to preserve that edit" : null;
+
+    /// <summary>Under central package management, the rest of EF Core's set among the updates, moved with a project's moves
+    /// of it in one change, so a stop between projects never leaves the set half moved (its central versions are the
+    /// folder's, whichever project references each); none otherwise.</summary>
+    private static IReadOnlyList<(string Id, string Version)> Alongside(ProjectModel project, IReadOnlyList<(string Id, string Version)> moves, IReadOnlyList<PackageUpdate> updates) =>
+        CentralPackages.PropsOf(project) is not null && moves.Any(m => EfProviders.InSet(m.Id))
+            ? [.. updates.Where(u => EfProviders.InSet(u.Id) && !moves.Any(m => m.Id.Equals(u.Id, StringComparison.OrdinalIgnoreCase))).Select(u => (u.Id, u.Version))]
+            : [];
 
     private async Task<ProjectModel> FreshAsync(ProjectModel project, CancellationToken cancel)
     {

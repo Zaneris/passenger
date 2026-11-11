@@ -249,20 +249,22 @@ public sealed partial class FolderPackages
         string stage = $"Installing {id} {version} in {project.Name}…";
         string name = $"Install {id} {version} in {project.Name}";
         return CentralPackages.PropsOf(project) is { } props
-            ? CentralChangeAsync(stage, name, project, within, props, () => [(id, Written(project, id, version))])
+            ? CentralChangeAsync(stage, name, project, within, props, () => [(id, Written(project, id, version))], [])
             : ChangeAsync(stage, name, project, within, () => manager.InstallAsync(project.Path, id, Written(project, id, version)));
     }
 
     /// <summary>Moves several packages of a project to their versions together, as one change (<see cref="ChangeAsync"/>):
     /// EF Core's packages with the provider that supports them, pins kept pins, written as <see cref="InstallAsync"/>
-    /// writes them. One that fails is restored again once put back.</summary>
-    public Task<PackageOutcome> InstallSetAsync(ProjectModel project, IReadOnlyList<(string Id, string Version)> packages, CommandHistory.Recording? within = null)
+    /// writes them, with the central versions <paramref name="alongside"/> that move with them though the project need not
+    /// reference them. One that fails is restored again once put back.</summary>
+    public Task<PackageOutcome> InstallSetAsync(ProjectModel project, IReadOnlyList<(string Id, string Version)> packages, CommandHistory.Recording? within = null,
+        IReadOnlyList<(string Id, string Version)>? alongside = null)
     {
         string stage = $"Moving {Moves(packages)} in {project.Name}…";
         string name = $"Move {Moves(packages)} in {project.Name}";
         Func<IReadOnlyList<(string Id, string Version)>> written = () => [.. packages.Select(p => (p.Id, Written(project, p.Id, p.Version)))];
         return CentralPackages.PropsOf(project) is { } props
-            ? CentralChangeAsync(stage, name, project, within, props, written)
+            ? CentralChangeAsync(stage, name, project, within, props, written, alongside ?? [])
             : ChangeAsync(stage, name, project, within, () => manager.InstallSetAsync(project.Path, written(), bulkStopping?.Token ?? CancellationToken.None), () => manager.RestoreAsync(project.Path));
     }
 
@@ -270,17 +272,18 @@ public sealed partial class FolderPackages
     /// write them but each version where the project's evaluation keeps it (<see cref="CentralWrites"/>), every other
     /// character as it was; then the project restored, and again once put back.</summary>
     private Task<PackageOutcome> CentralChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, string props,
-        Func<IReadOnlyList<(string Id, string Version)>> packages)
+        Func<IReadOnlyList<(string Id, string Version)>> packages, IReadOnlyList<(string Id, string Version)> alongside)
     {
         CentralWrites writes = CentralWrites.None;
         return ChangeAsync(stage, name, project, within, () => manager.RestoreAsync(project.Path), () => manager.RestoreAsync(project.Path),
             () => WrittenCentrallyAsync(project, writes),
-            async () => (writes = await CentralWritesAsync(project, props, packages())).Texts.Keys);
+            async () => (writes = await CentralWritesAsync(project, props, packages(), alongside)).Texts.Keys);
     }
 
     /// <summary>Where a project's evaluation keeps each version a change moves, read once the open files are saved, and the
     /// files' texts with them moved: a refusal saying why where one cannot be.</summary>
-    private async Task<CentralWrites> CentralWritesAsync(ProjectModel project, string props, IReadOnlyList<(string Id, string Version)> packages)
+    private async Task<CentralWrites> CentralWritesAsync(ProjectModel project, string props, IReadOnlyList<(string Id, string Version)> packages,
+        IReadOnlyList<(string Id, string Version)> alongside)
     {
         IReadOnlyDictionary<string, string> properties = EvaluationProperties?.Invoke(project) ?? ProjectModels.Properties(null, project);
         MSBuildInsight insight;
@@ -294,7 +297,7 @@ public sealed partial class FolderPackages
             return CentralWrites.Refusing($"Where {project.Name} keeps its package versions could not be read: {failed.Reason}");
         }
         return insight.Evaluated
-            ? await BackgroundWork.Run(() => CentralWrites.Of(insight, project.Path, props, packages))
+            ? await BackgroundWork.Run(() => CentralWrites.Of(insight, project.Path, props, packages, alongside))
             : CentralWrites.Refusing($"{project.Name} does not evaluate, so where it keeps its package versions is not known");
     }
 

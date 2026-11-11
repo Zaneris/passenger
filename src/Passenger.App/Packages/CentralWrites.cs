@@ -1,6 +1,7 @@
 using Passenger.App.MSBuild;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Packages;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -18,8 +19,10 @@ internal sealed record CentralWrites(IReadOnlyDictionary<string, (FileText Had, 
     public static CentralWrites Refusing(string why) => None with { Refused = why };
 
     /// <summary>The packages moved in a project as its evaluation (<paramref name="insight"/>) has them, read off the
-    /// window's thread.</summary>
-    public static CentralWrites Of(MSBuildInsight insight, string project, string props, IReadOnlyList<(string Id, string Version)> packages)
+    /// window's thread; <paramref name="alongside"/>, which the project need not reference, move only where a central
+    /// version of theirs is below the one given.</summary>
+    public static CentralWrites Of(MSBuildInsight insight, string project, string props, IReadOnlyList<(string Id, string Version)> packages,
+        IReadOnlyList<(string Id, string Version)> alongside)
     {
         Dictionary<string, (FileText Had, string Text)> texts = new(PathNames.Comparer);
         Dictionary<string, (string Id, string Version)> properties = new(StringComparer.OrdinalIgnoreCase);
@@ -31,6 +34,14 @@ internal sealed record CentralWrites(IReadOnlyDictionary<string, (FileText Had, 
                 (string text, bool overridden) = ProjectEdits.WithCentralPackage(Text(project), id, version);
                 Set(project, text);
                 if (!overridden && Central(id, version) is { } why)
+                {
+                    return Refusing(why);
+                }
+            }
+            foreach ((string id, string version) in alongside)
+            {
+                if (central.TryGetValue(id, out (string Version, MSBuildPlace) held) && InstalledVersion.Move(version, [new InstalledVersion(null, held.Version)]) == PackageMove.Update
+                    && Central(id, InstalledVersion.Written(version, [new InstalledVersion(null, held.Version)])) is { } why)
                 {
                     return Refusing(why);
                 }
