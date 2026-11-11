@@ -18,6 +18,10 @@ public partial class MainWindow
     private const string NoRow = "Nothing is chosen in the Explorer";
     private const string SelectOpenedFileTitle = "Select Opened File";
 
+    /// <summary>The Explorer's view the person last switched to in the open folder, which the folder keeps
+    /// (<see cref="Workspace.WorkspaceState.ExplorerView"/>) and the Explorer opens it in.</summary>
+    private ExplorerViewKind explorerView;
+
     private void AddExplorerActions()
     {
         Explorer.MenuFor = ExplorerMenu;
@@ -88,6 +92,12 @@ public partial class MainWindow
             WhyNot = c => c.File is null ? Refusals.NoFile : Explorer.Tree.Root is null ? Refusals.NoFolder : null,
             Words = ["Locate in Explorer", "Sync with Active Document", "Scroll from Source"],
         });
+        actions.Add(new IdeAction(A.SwitchExplorerView, "Switch Explorer View", ExplorerGroup, SwitchExplorerView)
+        {
+            WhyNot = _ => Explorer.Tree.Root is null ? Refusals.NoFolder : Explorer.HasSolutionView ? null : Refusals.NoSolutionView,
+            Words = ["Solution View", "Files View", "File System View", "Show Files on Disk"],
+        });
+        ActionButtons.Bind(Explorer.ViewSwitchButton, A.SwitchExplorerView, actions, id => Request(id));
 
         static string? Holds(ExplorerNode row) => NewGoesIn(row) is null ? $"Nothing new goes in {row.Name}" : null;
         static string? Referencing(ExplorerNode row) => row.Kind == NodeKind.Project && !row.IsProgram ? row.Path
@@ -122,6 +132,32 @@ public partial class MainWindow
         {
             Explorer.FocusRows();
         }
+    }
+
+    /// <summary>Switch Explorer View: the Explorer shows the solution's projects or the folder's files, whichever it did not,
+    /// shown where it was hidden (behind, for an agent). The person's switch is kept as the folder's view; an agent's shows
+    /// but is not theirs to keep.</summary>
+    private void SwitchExplorerView(ActionContext context)
+    {
+        ExplorerViewKind next = Explorer.ViewShown == ExplorerViewKind.Solution ? ExplorerViewKind.Files : ExplorerViewKind.Solution;
+        Explorer.ShowView(next);
+        if (!context.ByAgent)
+        {
+            explorerView = next;
+            KeepWorkspace();
+        }
+        if (!Dock.IsShown(ToolWindowIds.Explorer))
+        {
+            if (context.ByAgent)
+            {
+                Dock.ShowBehind(ToolWindowIds.Explorer);
+            }
+            else
+            {
+                Dock.Show(ToolWindowIds.Explorer);
+            }
+        }
+        ActionWork.Tell(true, next == ExplorerViewKind.Files ? "The Explorer shows the folder's files on disk" : "The Explorer shows the solution");
     }
 
     /// <summary>The Explorer's own items atop its header's options: whether it follows the file shown and opens a file on

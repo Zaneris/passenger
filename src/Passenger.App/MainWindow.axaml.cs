@@ -828,12 +828,13 @@ public partial class MainWindow : IdeWindow
         Folds = session.Folds.Capture(Editors.Documents),
         GodotEditorOffered = godotEditorOffered,
         GodotTemplatesStyle = godotTemplatesStyle,
+        ExplorerView = explorerView,
     });
 
     /// <summary>The open folder's state as the store kept it, once the window keeps state: its layout (else the one
     /// changed last in any window), breakpoints, bookmarks, the Unit Tests window's view and its tests' last results, the
-    /// log's favourite branches, the session's own (<see cref="ProjectSession.Keep"/>), and its editors, the one shown the
-    /// latest recent file.</summary>
+    /// log's favourite branches, the session's own (<see cref="ProjectSession.Keep"/>), the Explorer's view, and its editors,
+    /// the one shown the latest recent file.</summary>
     private void RestoreWorkspace()
     {
         if (!keepsWorkspace || session.Folder is not { } folder)
@@ -866,6 +867,9 @@ public partial class MainWindow : IdeWindow
         {
             Explorer.Refresh();
         }
+        // A folder open before the window kept state comes back to its view here; one just begun shows it already.
+        explorerView = kept.ExplorerView;
+        Explorer.ShowView(explorerView);
         Editors.Restore(kept.Editors, kept.EditorWindows);
         if (Editors.Active is { } shown)
         {

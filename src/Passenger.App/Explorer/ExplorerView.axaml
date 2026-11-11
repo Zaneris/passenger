@@ -4,7 +4,7 @@
     <DockPanel Background="{DynamicResource Passenger.Panel}">
         <DockPanel Name="OwnHeader" DockPanel.Dock="Top" Margin="12,6,8,2">
             <!-- The view switch: the solution's projects, or the folder as it is on disk. Narrowed, its name gives way. -->
-            <Button Name="ViewSwitch" DockPanel.Dock="Right" Classes="widget" IsVisible="False" Click="OnViewSwitchClicked"
+            <Button Name="ViewSwitch" DockPanel.Dock="Right" Classes="widget" IsVisible="False"
                     ToolTip.Tip="Switch between the solution and the files on disk">
                 <DockPanel>
                     <PathIcon DockPanel.Dock="Right" Margin="5,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />

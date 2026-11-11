@@ -221,6 +221,9 @@ public static class AppActions
     // Alt+Shift+L), SelectInProjectView in its VS Code keymaps (Ctrl+K, E; Cmd+K, E on macOS), no key in IntelliJ IDEA's.
     public const string SelectOpenedFile = "app.explorer.selectOpenedFile";
 
+    // The Explorer switched between the solution's projects and the folder's files on disk: no key of Rider's.
+    public const string SwitchExplorerView = "app.explorer.switchView";
+
     // The Explorer's own actions, on the row its menu opened on or the one chosen while it has the keys: NewFile, NewDir,
     // Class/Interface, the solution's own, Add Reference, Docker Support and Compose, Aspire Orchestration, NuGet, Manage
     // User Secrets (no keys of Rider's), Edit Project File, Unload and Reload Project, Compare Files (CompareTwoFiles, by

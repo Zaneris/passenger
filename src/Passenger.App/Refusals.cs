@@ -21,6 +21,9 @@ public static class Refusals
     /// <summary>The folder open has no solution (a project opened alone, or a folder of files).</summary>
     public const string NoSolution = "No solution is open";
 
+    /// <summary>The folder open has neither a solution nor a project, so the Explorer has only its files to show.</summary>
+    public const string NoSolutionView = "The open folder has no solution or project: the Explorer shows its files alone";
+
     /// <summary>The folder open is in no Git working tree.</summary>
     public const string NoRepository = "The folder is not in a Git repository";
 

@@ -16,6 +16,13 @@ namespace Passenger.App.Explorer;
 /// copy key held (Option on the Mac, Ctrl elsewhere).</summary>
 public sealed record ExplorerDrop(IReadOnlyList<ExplorerNode> Items, ExplorerNode Target, bool Copy);
 
+/// <summary>The Explorer's views: the solution's projects (or the project opened alone), or the folder as it is on disk.</summary>
+public enum ExplorerViewKind
+{
+    Solution,
+    Files,
+}
+
 public partial class ExplorerView : UserControl
 {
     private readonly DropOverlay drop = new();
@@ -220,13 +227,13 @@ public partial class ExplorerView : UserControl
     /// <summary>The project opened alone, which the Solution view shows at its top.</summary>
     private ProjectModel? project;
 
-    /// <summary>Shows a workspace: its solution's view if it has one (or the project it was opened as), its folder's files
-    /// otherwise.</summary>
-    public void Load(WorkspaceModel workspace)
+    /// <summary>Shows a workspace in the view asked for: its folder's files, or the Solution view where it has a solution
+    /// (or was opened as a project), else its files.</summary>
+    public void Load(WorkspaceModel workspace, ExplorerViewKind view)
     {
         folder = workspace.Folder;
         Take(workspace);
-        Show(solutionView: ViewSwitch.IsVisible);
+        Show(solutionView: view == ExplorerViewKind.Solution);
         Rows.IsVisible = true;
         filterBar.IsVisible = true;
         ShowHint();
@@ -307,7 +314,7 @@ public partial class ExplorerView : UserControl
         programs = [.. workspace.Programs];
         projects = workspace.Projects;
         project = workspace.ProjectFile is null ? null : workspace.Projects.FirstOrDefault();
-        ViewSwitch.IsVisible = solution is not null || project is not null;
+        ViewSwitch.IsVisible = HasSolutionView;
     }
 
     private void Show(bool solutionView)
@@ -338,10 +345,30 @@ public partial class ExplorerView : UserControl
         return ViewSwitch;
     }
 
-    private void OnViewSwitchClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    /// <summary>The view switch in its header, which the window binds to Switch Explorer View.</summary>
+    public Button ViewSwitchButton => ViewSwitch;
+
+    /// <summary>Whether a solution or project is open, so it has a Solution view to switch to.</summary>
+    public bool HasSolutionView => solution is not null || project is not null;
+
+    /// <summary>The view it shows; the Files view with nothing open.</summary>
+    public ExplorerViewKind ViewShown => Tree.IsSolutionView ? ExplorerViewKind.Solution : ExplorerViewKind.Files;
+
+    /// <summary>Shows a view, its rows made anew and narrowed to the filter's files, the keys kept on the rows if they had
+    /// them; nothing while it shows already, or with no Solution view to switch to.</summary>
+    public void ShowView(ExplorerViewKind view)
     {
-        Show(!Tree.IsSolutionView);
+        if (folder is null || !HasSolutionView || view == ViewShown)
+        {
+            return;
+        }
+        bool keys = Rows.IsKeyboardFocusWithin;
+        Show(solutionView: view == ExplorerViewKind.Solution);
         Narrow();
+        if (keys && !Rows.IsKeyboardFocusWithin)
+        {
+            FocusRows();
+        }
     }
 
     /// <summary>"Show files with the same names as nested": the Solution view nests by name as well as by

@@ -172,7 +172,7 @@ public partial class MainWindow
         }
         Autosave();
         session.Reopen(named, withSolution, unread);
-        Explorer.Load(session.Workspace!);
+        Explorer.Load(session.Workspace!, explorerView);
         ShowWorkspaceName();
         UpdateStatus();
         Remember();
@@ -199,8 +199,9 @@ public partial class MainWindow
         // Begun, the folder is the session's: kept as opening, a Close Solution after would leave the window holding it.
         opening = null;
         WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named, out UnreadSolution? unread);
+        State.ProjectState? kept = keepsWorkspace ? Hold(folder) : null;
         // The projects as MSBuild last evaluated them, from the folder's cache, before any is evaluated again.
-        ProjectSession opened = ProjectSession.Open(Setup(), folder, named, withSolution, unread, keepsWorkspace ? Hold(folder) : null);
+        ProjectSession opened = ProjectSession.Open(Setup(), folder, named, withSolution, unread, kept);
         // The head start is this first folder's: one opened later, this one again too, is read and evaluated afresh.
         headStart = null;
         // The consoles are another folder's: what it ran said its last there before its end landed.
@@ -209,7 +210,9 @@ public partial class MainWindow
         Bottom.Build.Clear();
         Bottom.Debug.Clear();
         Bind(opened);
-        Explorer.Load(opened.Workspace!);
+        // In the view the folder keeps from the start, so its rows are made once.
+        explorerView = kept?.Workspace.Value.ExplorerView ?? Passenger.App.Explorer.ExplorerViewKind.Solution;
+        Explorer.Load(opened.Workspace!, explorerView);
         opened.Start();
         FindTests();
         Editors.ShowFolderHint(folder);
