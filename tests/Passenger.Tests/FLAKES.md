@@ -30,6 +30,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `LongFileAssistTests`' `Typing_with_pauses_in_a_file_of_twenty_thousand_lines_asks_for_the_screens_colours_and_the_…`,
+  CI's Windows runner at 4499c3ecc (run 42854165103): "The whole file's colours were asked for 1 times while typing went
+  on with pauses", its one `semanticTokens/full` 11 ms in, before the first statement's range at 322 ms. **The test
+  counted the opening's ask**: it waited for the server's colours on the file's last local through the highlighter, which
+  takes every read for lines drawn, so the text as opened looked drawn from its top to its end, and a word that the
+  server's view moved, read as the test's settle ended and handled at the first key's turn, asked for the whole file at
+  once (an ask after the idle, which no settle waits for, would look the same). Met every time on this Mac with that
+  word posted just before the first key ("9 ms --> full, 332 ms --> range", CI's trace); after a key drawn, the same word
+  asked for the screen alone. Typing never asks for the whole file: a word between a key and its frame asked for the
+  key's lines (6 to 8). The test types a key and takes it back, then waits until the colours ask nothing more, before
+  counting (5c4d87b11, #1463).
 - `ProjectEvaluationTests`' `The_project_of_the_file_shown_and_those_it_references_load_in_the_language_server_before_…`,
   CI's Windows runner at 9431c8f49 (run 42986237634): "Sequence contains more than one element" in its `ServerLog`.
   **The test found its log by name**: it looked in the run's shared log folder for `server-*-{process id}.log`, and
