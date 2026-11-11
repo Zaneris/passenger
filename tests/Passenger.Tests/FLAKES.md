@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-10
 
+- `McpIdeTests`' `An_agent_finds_text_in_the_windows_scopes_reverts_a_file_through_local_history_…`, CI's macOS runner at
+  eafb1315c (run 42934072614): "Helper.cs's history after two saves": Change, External change, External change, Change.
+  **A race in the IDE**: the watcher's word of the first save, read on Local History's queue as the second save wrote,
+  found that save's bytes before its record came and kept them as an external change, and the save's record, finding the
+  history knowing what it wrote, kept an external change back to what it wrote over beside it. Read from the sets'
+  numbers and order (the run kept no log) and met every time with the read held until the next save is written; a save
+  the history holds already as an external change of its very bytes now takes its place (570069a9e, held by
+  `LocalHistoryTests`, #1472).
 - `XamlTests`' `An_elements_field_renamed_from_the_code_behind_a_moment_after_its_xaml_was_written_…`, CI's Linux runner at
   c1cbb2f26 (run 42884859818) and 65208647c (run 42914645058): "did not say it waits … (the XAML's change was held unsent
   to the server): the status says Renamed in 2 files". **The test held too little**: Roslyn's server takes a closed
