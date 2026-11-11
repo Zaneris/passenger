@@ -120,13 +120,37 @@ long turns = 0;
 bool sleeps = args is ["sleep", ..];
 // Shown by its own ToString, which a thread paused in the sleep cannot run.
 TimeSpan nap = TimeSpan.FromMilliseconds(20);
-Console.WriteLine("looping");
+// Said by another thread once this one has turned its loop: said by this one, a pause just after could find it still
+// in its write, on its way back from the system's call.
+Looping looping = Looping.SayOnceTurned();
 while (true)
 {
     turns++;
+    looping.Turned = true;
     if (sleeps)
     {
         Thread.Sleep(nap);
+    }
+}
+
+// Says "looping" on a thread of its own once the thread looping has turned its loop. The loop sets an instance's field,
+// never a static's, so its code calls nothing, not even for a class's statics.
+internal sealed class Looping
+{
+    public volatile bool Turned;
+
+    public static Looping SayOnceTurned()
+    {
+        Looping looping = new();
+        new Thread(() =>
+        {
+            while (!looping.Turned)
+            {
+                Thread.Sleep(1);
+            }
+            Console.WriteLine("looping");
+        }) { IsBackground = true, Name = "Says it loops" }.Start();
+        return looping;
     }
 }
 

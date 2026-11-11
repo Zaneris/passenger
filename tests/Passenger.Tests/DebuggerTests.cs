@@ -2014,8 +2014,10 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     [AvaloniaFact]
     public void What_is_typed_into_the_debug_console_is_the_programs_input_and_pause_stops_it_where_it_is_in_its_loop()
     {
+        // Said by another thread once the loop has turned: said before it, a pause could find the program in its write.
         Write("Program.cs", "Console.Write(\"Name? \");\nstring? name = Console.ReadLine();\nConsole.WriteLine($\"read: {name}\");\n"
-            + "long turns = 0;\nConsole.WriteLine(\"looping\");\nwhile (true)\n{\n    turns++;\n}\n");
+            + "long turns = 0;\nTurned turned = new();\nnew Thread(() => { while (!turned.Yes) { Thread.Sleep(1); } Console.WriteLine(\"looping\"); }).Start();\n"
+            + "while (true)\n{\n    turns++;\n    turned.Yes = true;\n}\n\nclass Turned\n{\n    public volatile bool Yes;\n}\n");
         MainWindow window = Open();
         try
         {
@@ -2028,8 +2030,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
             window.Perform(AppActions.Pause);
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames.Count > 0, "the pause to be shown");
-            Assert.InRange(window.BottomPanel.Debug.Frames[0].Line, 6, 9);
-            Assert.Contains(window.EditorArea.CodeEditor.LineMarks, m => m.Kind == LineMarkKind.ExecutionPoint && m.Line is >= 5 and <= 8);
+            Assert.InRange(window.BottomPanel.Debug.Frames[0].Line, 7, 11);
+            Assert.Contains(window.EditorArea.CodeEditor.LineMarks, m => m.Kind == LineMarkKind.ExecutionPoint && m.Line is >= 6 and <= 10);
         }
         finally
         {

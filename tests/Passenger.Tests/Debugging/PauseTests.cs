@@ -21,12 +21,12 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
 
         StoppedEvent stopped = await Pause(host);
         Assert.Equal(StopReasons.Pause, stopped.Reason);
-        AssertInLoop(await host.TopFrameAsync(stopped.ThreadId!.Value));
+        await AssertInLoop(host, stopped.ThreadId!.Value, "The pause");
 
         await host.StepOverAsync(stopped.ThreadId.Value);
         StoppedEvent stepped = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Step, stepped.Reason);
-        AssertInLoop(await host.TopFrameAsync(stepped.ThreadId!.Value));
+        await AssertInLoop(host, stepped.ThreadId!.Value, "The step over from the pause");
 
         await host.ContinueAsync();
         Assert.Equal(StopReasons.Pause, (await Pause(host)).Reason);
@@ -57,7 +57,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         await host.StepOverAsync(stopped.ThreadId!.Value);
         StoppedEvent stepped = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Step, stepped.Reason);
-        AssertInLoop(await host.TopFrameAsync(stepped.ThreadId!.Value));
+        await AssertInLoop(host, stepped.ThreadId!.Value, "The step over from the pause in the sleep");
     }
 
     /// <summary>A step from a pause in the sleep, the thread in the library's code calling native code, comes back as the
@@ -102,7 +102,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
             + $"code is compiled again meanwhile. The engine's log from the pause:\n{log[Math.Max(0, log.LastIndexOf("] Pause", StringComparison.Ordinal))..]}");
         if (InProgram(came))
         {
-            AssertInLoop(came);
+            await AssertInLoop(host, thread, $"The {step} from the pause in the sleep");
         }
 
         static bool InProgram(DapStackFrame frame) => frame.Source?.Path?.EndsWith("Program.cs", StringComparison.Ordinal) == true;
@@ -268,9 +268,15 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         return await host.WaitForStoppedEvent();
     }
 
-    private static void AssertInLoop(DapStackFrame top)
+    /// <summary>The thread stands in the loop, its top frame on one of the loop's lines; a failure names the frames it
+    /// stood in.</summary>
+    private static async Task AssertInLoop(DebugSession host, int thread, string stop)
     {
-        Assert.EndsWith("Program.cs", top.Source?.Path);
-        Assert.InRange(top.Line, Debuggees.Line(Looping, "turns++") - 2, Debuggees.Line(Looping, "Thread.Sleep(nap)") + 2);
+        IReadOnlyList<DapStackFrame> frames = (await host.StackTraceAsync(thread, levels: null)).StackFrames;
+        int from = Debuggees.Line(Looping, "turns++") - 2;
+        int to = Debuggees.Line(Looping, "Thread.Sleep(nap)") + 2;
+        Assert.True(frames is [{ Source.Path: { } path } top, ..] && path.EndsWith("Program.cs", StringComparison.Ordinal) && top.Line >= from && top.Line <= to,
+            $"{stop} stood outside the loop (Program.cs, lines {from} to {to}), in "
+            + (frames.Count == 0 ? "no frame" : string.Join(" < ", frames.Take(8).Select(f => $"{f.Name} {(f.Source?.Path is { } file ? $"at {Path.GetFileName(file)}:{f.Line}" : "(no source)")}"))));
     }
 }
