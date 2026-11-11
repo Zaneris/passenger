@@ -104,7 +104,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         try
         {
             // A first pull of the solution's diagnostics held unanswered, as by a server still analysing a large solution.
-            Task holding = server.HoldNextAnswer(Passenger.Lsp.LspMethods.WorkspaceDiagnostic, _ => true, answered.Task);
+            Task holding = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic, _ => true, answered.Task);
             window.Perform(AppActions.ToggleSolutionAnalysis);
             // Pumped, not settled: the round is background work until it answers.
             Ui.PumpUntil(() => holding.IsCompleted, "the first pull of the solution's diagnostics to be answered, and held");
@@ -192,7 +192,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
         window.Perform(AppActions.ToggleSolutionAnalysis);
         Assert.False(window.Settings.SolutionWideAnalysis);
-        (_, Passenger.Lsp.WorkspaceDocumentDiagnosticReport narrowed) = Reported(server, [source], [new Passenger.Lsp.PreviousResultId(analysed.Uri, analysed.ResultId)],
+        (_, Passenger.Lsp.WorkspaceDocumentDiagnosticReport narrowed) = Reported(server, [source], [new Passenger.Lsp.PreviousResultId(analysed.Uri, analysed.ResultId, analysed.ProjectContext)],
             r => r.Uri == analysed.Uri,
             () => $"the server to say Bad.cs's problems are gone once solution-wide analysis was turned off: it says nothing new of a file it goes on analysing{Ui.ServerLogTail()}");
         Assert.True(narrowed is { Kind: "full", ResultId: null, Items: null or [] },
@@ -202,7 +202,8 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     }
 
     /// <summary>The first report a pull of each source streams that <paramref name="wanted"/> takes, with its source, the
-    /// pulls let go once it has come, since Roslyn holds a workspace pull open until the next change.</summary>
+    /// pulls let go once it has come, since Roslyn holds a workspace pull open until the next change. Asked as solution-wide
+    /// analysis asks, of Passenger's extension.</summary>
     private static (string? Source, Passenger.Lsp.WorkspaceDocumentDiagnosticReport Report) Reported(Passenger.Lsp.LanguageServer server,
         IEnumerable<string?> sources, IReadOnlyList<Passenger.Lsp.PreviousResultId> previous, Func<Passenger.Lsp.WorkspaceDocumentDiagnosticReport, bool> wanted,
         Func<string> what)
@@ -215,7 +216,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             {
                 came.Enqueue((source, report));
             }
-        }, letGo.Token))];
+        }, letGo.Token, new Dictionary<string, string>()))];
         try
         {
             Ui.WaitFor(() => !came.IsEmpty, what, TimeSpan.FromSeconds(30));
@@ -244,7 +245,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
         // The pulls held open answer the edit, and the next pull of every source is refused.
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        Task refused = server.RefuseNext(Passenger.Lsp.LspMethods.WorkspaceDiagnostic, server.WorkspaceDiagnosticSources.Count);
+        Task refused = server.RefuseNext(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic, server.WorkspaceDiagnosticSources.Count);
         Rename(window, "Twice", "Thrice");
         bool CallerBroken() => problems.SolutionProblems?.Any(p => p.Path?.EndsWith("Caller.cs", StringComparison.Ordinal) == true) == true;
         Ui.WaitFor(CallerBroken, "the broken caller's error", TimeSpan.FromMinutes(1));

@@ -675,10 +675,14 @@ public sealed class DiagnosticConverter : JsonConverter<Diagnostic>
 public sealed record DocumentDiagnosticParams(TextDocumentIdentifier TextDocument, string? Identifier = null, string? PreviousResultId = null);
 
 /// <summary>A workspace diagnostics request for one source, with the result each document last had, so documents that
-/// have not changed come back as unchanged; its reports streamed as <c>$/progress</c> of the token as they are found.</summary>
-public sealed record WorkspaceDiagnosticParams(string? Identifier, IReadOnlyList<PreviousResultId> PreviousResultIds, string? PartialResultToken = null);
+/// have not changed come back as unchanged; its reports streamed as <c>$/progress</c> of the token as they are found. Asked
+/// of Passenger's extension (<see cref="Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic"/>), it names the framework
+/// solution-wide analysis takes each multi-targeted project in, by its project file.</summary>
+public sealed record WorkspaceDiagnosticParams(string? Identifier, IReadOnlyList<PreviousResultId> PreviousResultIds, string? PartialResultToken = null,
+    IReadOnlyDictionary<string, string>? Frameworks = null);
 
-public sealed record PreviousResultId(string Uri, string Value);
+/// <summary>The result a document last had, and the project it had it in where the report named one.</summary>
+public sealed record PreviousResultId(string Uri, string Value, [property: JsonPropertyName("_vs_projectContext")] ProjectContext? ProjectContext = null);
 
 public sealed class WorkspaceDiagnosticReport
 {
@@ -693,6 +697,10 @@ public sealed class WorkspaceDocumentDiagnosticReport
     public List<Diagnostic>? Items { get; init; }
     public string Uri { get; init; } = string.Empty;
     public int? Version { get; init; }
+
+    /// <summary>The project the document was analysed in, where the server names it.</summary>
+    [JsonPropertyName("_vs_projectContext")]
+    public ProjectContext? ProjectContext { get; init; }
 }
 
 public sealed class DocumentDiagnosticReport

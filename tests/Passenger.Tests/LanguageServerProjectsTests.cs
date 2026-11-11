@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Passenger.App;
+using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -541,6 +542,76 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         Choose(window, editor, $"Lib ({TestProjects.Framework})");
         Ui.WaitFor(() => ParsedDisabled(document, "Missing;"), $"Newer, which {TestProjects.Framework} never compiles, parsed as disabled text with {TestProjects.Framework} chosen");
         window.Close();
+    }
+
+    /// <summary>Solution-wide analysis lists a multi-targeted project's files nobody has open in the framework chosen for
+    /// it, as the editor answers for its open ones: Sides.cs's error of the framework not chosen is never listed, and
+    /// once the switcher of another of its files chooses the other framework, that framework's error is listed in its
+    /// place (#1475).</summary>
+    [AvaloniaFact]
+    public void Solution_wide_analysis_lists_a_multi_targeted_projects_closed_files_in_the_framework_chosen_and_follows_a_new_choice()
+    {
+        string sides = WriteSides();
+        MainWindow window = Keeping();
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        Assert.True(window.Settings.SolutionWideAnalysis);
+        window.OpenFile(Path.Combine(folder, "Lib", "Greeter.cs"));
+        OpenDocument greeter = window.EditorArea.Active!;
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => window.CSharpService?.IsReady == true && greeter.ProjectContexts.Count == 2,
+            "the server to say Greeter.cs is compiled for both of Lib's target frameworks", TimeSpan.FromMinutes(2));
+
+        ListsOnly(window, sides, "NotInTen", "NotInEleven", $"{TestProjects.Framework}, chosen first");
+        Choose(window, editor, "Lib (net11.0)");
+        ListsOnly(window, sides, "NotInEleven", "NotInTen", "net11.0, chosen in Greeter.cs's switcher");
+        Choose(window, editor, $"Lib ({TestProjects.Framework})");
+        ListsOnly(window, sides, "NotInTen", "NotInEleven", $"{TestProjects.Framework}, chosen again");
+        window.Close();
+    }
+
+    /// <summary>A multi-targeted project made to target one framework, the one not chosen, has solution-wide analysis let go
+    /// of what it found in the framework it no longer targets: Sides.cs's error of that framework goes, and the one of the
+    /// framework left is listed (#1475).</summary>
+    [AvaloniaFact]
+    public void Solution_wide_analysis_lets_go_of_a_frameworks_problems_once_its_project_no_longer_targets_it()
+    {
+        string sides = WriteSides();
+        MainWindow window = Keeping();
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        Ui.WaitFor(() => window.CSharpService?.IsReady == true, "the language server to load the projects", TimeSpan.FromMinutes(2));
+        ListsOnly(window, sides, "NotInTen", "NotInEleven", $"{TestProjects.Framework}, chosen first");
+
+        Write(folder, "Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+        ListsOnly(window, sides, "NotInEleven", "NotInTen", "net11.0, the one framework Lib.csproj targets now");
+        window.Close();
+    }
+
+    /// <summary>Lib's Sides.cs, with an error each framework alone compiles: NotInTen's in net10.0, NotInEleven's in net11.0.</summary>
+    private string WriteSides() => Write(folder, "Lib/Sides.cs", """
+        namespace Lib;
+
+        static class Sides
+        {
+        #if NET11_0_OR_GREATER
+            static int Eleven() => NotInEleven;
+        #else
+            static int Ten() => NotInTen;
+        #endif
+        }
+
+        """);
+
+    /// <summary>Waits for solution-wide analysis to list a closed file's error on <paramref name="listed"/> and none on
+    /// <paramref name="left"/>, which Lib does not compile in the framework it is analysed in.</summary>
+    private static void ListsOnly(MainWindow window, string path, string listed, string left, string chosen)
+    {
+        ProblemsModel problems = window.BottomPanel.Problems;
+        string[] Named(string name) => [.. Listed().Where(m => m.Contains(name, StringComparison.Ordinal))];
+        IEnumerable<string> Listed() => (problems.SolutionProblems ?? []).Where(p => p.Path is { } at && PathNames.Same(at, path)).Select(p => p.Message);
+        Ui.WaitFor(() => window.CSharpService is { IsAnalysing: false } && Named(listed).Length > 0 && Named(left).Length == 0,
+            () => $"Problems to list Sides.cs as Lib compiles it in {chosen}: the error on {listed}, and none on {left}, which Lib does not compile there, "
+                + $"or the list says what the editor never shows. It lists [{string.Join("; ", Listed())}]",
+            TimeSpan.FromMinutes(2));
     }
 
     /// <summary>Whether the file's own parse colours the code at <paramref name="code"/> as disabled, whatever the server's colours.</summary>

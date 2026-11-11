@@ -366,9 +366,11 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Every document's diagnostics from one source, as the solution-wide analysis has them, each report given to
     /// <paramref name="streamed"/> as the server sends it, since Roslyn holds the pull open until the source next changes.
-    /// The answer's own reports are given back; none is given to <paramref name="streamed"/> after it.</summary>
+    /// The answer's own reports are given back; none is given to <paramref name="streamed"/> after it. Given
+    /// <paramref name="frameworks"/>, Passenger's extension answers, each multi-targeted project named analysed in its
+    /// framework alone and every report naming its project.</summary>
     public async Task<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> WorkspaceDiagnosticsAsync(string? source, IReadOnlyList<PreviousResultId> previous,
-        Action<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> streamed, CancellationToken cancel = default)
+        Action<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> streamed, CancellationToken cancel = default, IReadOnlyDictionary<string, string>? frameworks = null)
     {
         string token = $"passenger-workspace-diagnostic-{Interlocked.Increment(ref partialResults)}";
         client.Partials[token] = report =>
@@ -381,7 +383,8 @@ public sealed class LanguageServer : IAsyncDisposable
         try
         {
             // How long it is held says nothing of the server, nor is it work in flight.
-            return (await InvokeAsync<WorkspaceDiagnosticReport>(LspMethods.WorkspaceDiagnostic, new WorkspaceDiagnosticParams(source, previous, token), cancel, inFlight: false))?.Items ?? [];
+            string method = frameworks is null ? LspMethods.WorkspaceDiagnostic : Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic;
+            return (await InvokeAsync<WorkspaceDiagnosticReport>(method, new WorkspaceDiagnosticParams(source, previous, token, frameworks), cancel, inFlight: false))?.Items ?? [];
         }
         finally
         {

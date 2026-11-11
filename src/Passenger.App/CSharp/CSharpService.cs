@@ -348,12 +348,13 @@ public sealed partial class CSharpService : IAsyncDisposable
         ["dotnet_compiler_diagnostics_scope"] = "openFiles",
     };
 
-    /// <summary>Each file's last report by source, its URI made a path and its errors and warnings placed on the editor's
-    /// lines off the UI thread as the report came (<see cref="Placed"/>).</summary>
-    private readonly Dictionary<(string? Source, string Uri), WorkspaceReport> solutionReports = [];
+    /// <summary>Each file's last report by source and by the project it was analysed in (none where the server names none),
+    /// its URI made a path and its errors and warnings placed on the editor's lines off the UI thread as the report came
+    /// (<see cref="Placed"/>).</summary>
+    private readonly Dictionary<ReportKey, WorkspaceReport> solutionReports = [];
 
     /// <summary>The keys of <see cref="solutionReports"/> by file, so a pull merges again only the files it changed.</summary>
-    private readonly Dictionary<string, List<(string? Source, string Uri)>> reportsOf = new(PathNames.Comparer);
+    private readonly Dictionary<string, List<ReportKey>> reportsOf = new(PathNames.Comparer);
 
     /// <summary>The errors and warnings of each file the reports have any in, every source's merged, each once.</summary>
     private readonly Dictionary<string, IReadOnlyList<SolutionProblem>> analysed = new(PathNames.Comparer);
@@ -645,9 +646,23 @@ public sealed partial class CSharpService : IAsyncDisposable
                 }
                 problems.Add(new SolutionProblem(path, diagnostic, ServerPlaces.PositionOf(counted, diagnostic.Range.Start)));
             }
-            placed.Add(new WorkspaceReport(report.Uri, path, report.ResultId is { } id ? new PreviousResultId(report.Uri, id) : null, problems));
+            placed.Add(new WorkspaceReport(report.Uri, path, report.ResultId is { } id ? new PreviousResultId(report.Uri, id, report.ProjectContext) : null, problems,
+                report.ProjectContext));
         }
         return placed;
+    }
+
+    /// <summary>A file's report let go of, its file's problems merged again by the caller.</summary>
+    private void Forget(ReportKey key, string path)
+    {
+        if (solutionReports.Remove(key) && reportsOf.TryGetValue(path, out List<ReportKey>? keys))
+        {
+            keys.Remove(key);
+            if (keys.Count == 0)
+            {
+                reportsOf.Remove(path);
+            }
+        }
     }
 
     /// <summary>A file's problems merged again from every source's report of it, each once.</summary>
@@ -655,7 +670,7 @@ public sealed partial class CSharpService : IAsyncDisposable
     {
         List<SolutionProblem> merged = [];
         HashSet<(LspRange, string)> seen = [];
-        foreach ((string? Source, string Uri) key in reportsOf.GetValueOrDefault(path) ?? [])
+        foreach (ReportKey key in reportsOf.GetValueOrDefault(path) ?? [])
         {
             foreach (SolutionProblem problem in solutionReports[key].Problems)
             {
@@ -720,6 +735,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 List<PreviousResultId> previous = [.. solutionReports
                     .Where(r => r.Key.Source == source && r.Value.Previous is not null)
                     .Select(r => r.Value.Previous!)];
+                IReadOnlyDictionary<string, string>? frameworks = running.Server.ExtensionProblem is null ? AnalysedFrameworks() : null;
                 DateTime asked = DateTime.UtcNow;
                 Channel<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> streamed = Channel.CreateUnbounded<IReadOnlyList<WorkspaceDocumentDiagnosticReport>>(
                     new UnboundedChannelOptions { SingleReader = true });
@@ -727,7 +743,8 @@ public sealed partial class CSharpService : IAsyncDisposable
                 // The first round is the analysis's start, never let go however long it takes.
                 askedPulls[round] = !first;
                 pullsAsked[source ?? string.Empty] = PullsAsked(source) + 1;
-                Task<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> pull = running.Server.WorkspaceDiagnosticsAsync(source, previous, reports => streamed.Writer.TryWrite(reports), round.Token);
+                Task<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> pull = running.Server.WorkspaceDiagnosticsAsync(source, previous, reports => streamed.Writer.TryWrite(reports),
+                    round.Token, frameworks);
                 waiting?.Dispose();
                 waiting = null;
                 IReadOnlyList<WorkspaceDocumentDiagnosticReport> answered = [];
@@ -828,16 +845,23 @@ public sealed partial class CSharpService : IAsyncDisposable
             HashSet<string> files = new(PathNames.Comparer);
             foreach (WorkspaceReport report in placed)
             {
-                if (!solutionReports.ContainsKey((source, report.Uri)))
+                ReportKey key = new(source, report.Uri, report.Context?.Id);
+                files.Add(report.Path);
+                // A report with no result says the document is gone from the source, or from the project it names.
+                if (report.Previous is null && report.Problems.Count == 0)
                 {
-                    if (!reportsOf.TryGetValue(report.Path, out List<(string? Source, string Uri)>? keys))
+                    Forget(key, report.Path);
+                    continue;
+                }
+                if (!solutionReports.ContainsKey(key))
+                {
+                    if (!reportsOf.TryGetValue(report.Path, out List<ReportKey>? keys))
                     {
                         reportsOf[report.Path] = keys = [];
                     }
-                    keys.Add((source, report.Uri));
+                    keys.Add(key);
                 }
-                solutionReports[(source, report.Uri)] = report;
-                files.Add(report.Path);
+                solutionReports[key] = report;
             }
             foreach (string path in files)
             {
@@ -1980,5 +2004,9 @@ public sealed partial class CSharpService : IAsyncDisposable
 public readonly record struct SolutionProblem(string Path, Diagnostic Diagnostic, TextPosition At);
 
 /// <summary>A file's last report from one source of the solution-wide analysis: its URI, made a path once, the result id
-/// to give back on the next pull, and its errors and warnings placed.</summary>
-internal sealed record WorkspaceReport(string Uri, string Path, PreviousResultId? Previous, IReadOnlyList<SolutionProblem> Problems);
+/// to give back on the next pull, its errors and warnings placed, and the project it was analysed in where the server
+/// names it.</summary>
+internal sealed record WorkspaceReport(string Uri, string Path, PreviousResultId? Previous, IReadOnlyList<SolutionProblem> Problems, ProjectContext? Context);
+
+/// <summary>What a file's report is kept by: its source, its URI, and the id of the project it was analysed in, if named.</summary>
+internal readonly record struct ReportKey(string? Source, string Uri, string? Project);

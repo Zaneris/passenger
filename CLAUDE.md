@@ -267,10 +267,12 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   its body half (`PartialHalf`). Its Go to Declaration leaves out a type's generated parts once the person wrote one
   (`GeneratedParts`); an extension's document handler refuses a file that's no C# document, a `.razor`, so a handler
   asked of any file is a workspace one. C# in XAML has one finder (`XamlService.UsesAsync`). A multi-targeted project's
-  framework is one choice (`TargetFrameworkChoices`), never a framework's output taken by its newest write. A C# file no
-  tab shows is pulled when shown or asked, never at a refresh. Edits added to a server's edit join that file's entry
-  (`TypeRename.With`): `documentChanges` apply in order. A server's own command runs through `ServerCommands`, its
-  `workspace/applyEdit` one command of Undo.
+  framework is one choice (`TargetFrameworkChoices`), never a framework's output taken by its newest write; the
+  solution-wide analysis pulls in it through the extension (`ChosenFrameworksHandler`), its reports kept by project:
+  Roslyn's own `workspace/diagnostic`, pulled only without the extension, analyses every framework and names no
+  project. A C# file no tab shows is pulled when shown or asked, never at a refresh. Edits added to a server's edit join
+  that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command runs through
+  `ServerCommands`, its `workspace/applyEdit` one command of Undo.
 - **Godot code.** `GodotScenes`, `GodotSceneIndex` (never a walk of every file on the window's thread; an autoload by
   uid, never project.godot's text), the extension's `GodotChecks` and `GodotKinds` (the projects' strings only through
   `GodotKinds.WritesAsync`). GDScript is Godot's parser and analyzer, ported (`GDScriptTree`, `GDScriptAnalyzer`); a

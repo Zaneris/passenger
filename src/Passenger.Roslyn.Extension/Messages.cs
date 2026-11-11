@@ -62,6 +62,10 @@ public static class ExtensionMethods
     /// <summary>A request about a file in no project, its <c>textDocument</c> and, for part of it, its <c>range</c>: its
     /// colours, as the server's semantic tokens encode them; null for a file a project holds.</summary>
     public const string LooseColours = "passenger/looseSemanticTokens";
+
+    /// <summary>workspace/diagnostic with a <c>frameworks</c> map from a multi-targeted project's file to the framework
+    /// solution-wide analysis takes it in, its reports and previous results each naming their project (<c>_vs_projectContext</c>).</summary>
+    public const string WorkspaceDiagnostic = "passenger/workspaceDiagnostic";
 }
 
 /// <summary>Files the solution has, by their paths, whose texts as the server holds them are asked for: an edit to a file

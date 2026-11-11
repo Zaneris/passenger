@@ -52,13 +52,69 @@ public sealed partial class CSharpService
         return true;
     }
 
-    /// <summary>A project's framework was chosen: each open file answered for in its project's choice from now on.</summary>
+    /// <summary>A project's framework was chosen: each open file answered for in its project's choice from now on, and
+    /// solution-wide analysis follows it.</summary>
     public void FrameworkChosen()
     {
         UiThread.Check();
         foreach (CSharpDocument document in documents.Values)
         {
             document.FollowFramework();
+        }
+        AnalyseChosenFrameworks();
+    }
+
+    /// <summary>The framework solution-wide analysis takes each multi-targeted project in, by its file: the one its files are
+    /// answered for in, so Problems lists what the editor shows and no other framework's build is analysed.</summary>
+    private Dictionary<string, string> AnalysedFrameworks()
+    {
+        Dictionary<string, string> chosen = new(StringComparer.Ordinal);
+        if (Frameworks is { } choices && workspace is { } opened)
+        {
+            foreach (ProjectModel project in ProjectsNow?.Invoke() ?? opened.Projects)
+            {
+                if (choices.Of(project) is { } framework)
+                {
+                    chosen[project.Path] = framework;
+                }
+            }
+        }
+        return chosen;
+    }
+
+    /// <summary>Solution-wide analysis made to follow the frameworks chosen: the reports of a framework no longer chosen let
+    /// go of at once, and the pulls asked again with the choices as they stand, the new framework's reports coming as the
+    /// server analyses it.</summary>
+    private void AnalyseChosenFrameworks()
+    {
+        if (!solutionWide || Frameworks is not { } choices || workspace is not { } opened)
+        {
+            return;
+        }
+        IReadOnlyList<ProjectModel> projects = ProjectsNow?.Invoke() ?? opened.Projects;
+        HashSet<string> files = new(PathNames.Comparer);
+        foreach ((ReportKey key, WorkspaceReport report) in solutionReports.ToList())
+        {
+            if (report.Context is { } context && ProjectContext.FrameworkOf(context.Label) is { } framework
+                && CompilationSymbols.Named(projects, report.Path, context.Label) is { } project && choices.Of(project) is { } chosen
+                && !string.Equals(framework, chosen, StringComparison.OrdinalIgnoreCase))
+            {
+                Forget(key, report.Path);
+                files.Add(report.Path);
+            }
+        }
+        foreach (string path in files)
+        {
+            Merge(path);
+        }
+        if (files.Count > 0)
+        {
+            SolutionProblemsChanged?.Invoke(this, files);
+        }
+        // Taken apart first: a pull let go may end at once, leaving the list as it does.
+        foreach (CancellationTokenSource asked in askedPulls.Keys.ToList())
+        {
+            asked.Cancel();
         }
     }
 }
