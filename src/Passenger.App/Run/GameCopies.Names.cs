@@ -1,6 +1,7 @@
 namespace Passenger.App.Run;
 
-/// <summary>A copy of a game: the configuration that starts it, by its name, and its place among the copies, from one.</summary>
+/// <summary>A copy of a game, or one project of a multi-project configuration: the configuration that starts it side by side
+/// with the others, by its name, and its place among them, from one.</summary>
 public sealed record GameCopy(string Configuration, int Place);
 
 /// <summary>The copies' names and own arguments, apart from the plans they make.</summary>

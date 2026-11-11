@@ -81,8 +81,8 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     /// changes go to each of them together.</summary>
     public string? Group { get; internal set; }
 
-    /// <summary>Whether it debugs one of the copies of a game its configuration (its <see cref="Group"/>) starts side by side
-    /// (<see cref="Run.GameCopies"/>): Stop on any of them ends them all.</summary>
+    /// <summary>Whether it debugs one of the programs its configuration (its <see cref="Group"/>) starts side by side, a game's
+    /// copies (<see cref="Run.GameCopies"/>) or a multi-project configuration's projects: Stop on any of them ends them all.</summary>
     public bool Copy { get; internal set; }
 
     /// <summary>Whether Stop lets its program go, running on, as another program started it and keeps it (a game Godot's

@@ -27,7 +27,8 @@ public sealed record FolderChanges(IReadOnlySet<string> Paths, bool Structure, b
     public bool Overflowed { get; init; }
 
     /// <summary>Whether a project's launch profiles (its <c>launchSettings.json</c>, a file-based program's <c>.run.json</c>)
-    /// were among the files: the run configurations are made of them, and nothing the solution or the Explorer shows is.</summary>
+    /// or the solution's (<c>.slnLaunch</c>, its <c>.user</c>) were among the files: the run configurations are made of them,
+    /// and nothing the solution or the Explorer shows is.</summary>
     public bool LaunchProfiles { get; init; }
 }
 
@@ -268,7 +269,7 @@ public sealed class FolderWatcher : WatchedTree
         }
         projects |= IsProjectFile(path);
         launchProfiles |= Path.GetFileName(path.AsSpan()).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".run.json", StringComparison.OrdinalIgnoreCase);
+            || path.EndsWith(".run.json", StringComparison.OrdinalIgnoreCase) || SolutionLaunch.IsFile(path);
     }
 
     /// <summary>A path's names but its last.</summary>

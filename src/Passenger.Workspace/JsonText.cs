@@ -217,6 +217,22 @@ public static class JsonText
         return "  ";
     }
 
+    /// <summary>One level of the indentation of a file whose root is an array: what its first item stands in from the
+    /// array's own line, else two spaces.</summary>
+    internal static string ItemUnit(string text, Node array)
+    {
+        if (array.Items.FirstOrDefault() is { } first && !Layout.SameLine(text, array.Start, first.Start))
+        {
+            string inner = Layout.IndentOf(text, first.Start);
+            string outer = Layout.IndentOf(text, array.Start);
+            if (inner.Length > outer.Length && inner.StartsWith(outer, StringComparison.Ordinal))
+            {
+                return inner[outer.Length..];
+            }
+        }
+        return "  ";
+    }
+
     /// <summary>The changes made in the text as it is laid out: its line break, its unit of indentation, and each object's
     /// own way of holding its members (each on a line of its own, or on the object's line).</summary>
     internal sealed class Layout
@@ -335,6 +351,30 @@ public static class JsonText
 
         /// <summary>An array's item written in its place.</summary>
         public string Rewrite(Node item, JsonNode value) => Replace(item.Start, item.End, value.ToJsonString(Written));
+
+        /// <summary>An array's item written in its place, laid out (<see cref="Laid"/>) from the line it stands on.</summary>
+        public string RewriteLaid(Node item, JsonNode value) => Replace(item.Start, item.End, Laid(value, unit, eol, IndentOf(text, item.Start)));
+
+        /// <summary>An item put after the array's last as <see cref="Append"/> puts one, laid out (<see cref="Laid"/>) from the
+        /// line it is put on where it has a line of its own.</summary>
+        public string AppendLaid(Node array, JsonNode item)
+        {
+            bool lined = array.Items.Count > 0 ? !SameLine(text, array.Start, array.Items[0].Start) : true;
+            string indent = array.Items.Count > 0 ? IndentOf(text, array.Items[^1].Start) : IndentOf(text, array.Start) + unit;
+            string written = lined ? Laid(item, unit, eol, indent) : item.ToJsonString(Written);
+            if (array.Items.Count == 0)
+            {
+                string outer = IndentOf(text, array.Start);
+                return SameLine(text, array.Start, array.Close)
+                    ? Replace(array.Start + 1, array.Close, $"{eol}{indent}{written}{eol}{outer}")
+                    : Replace(array.Start + 1, array.Start + 1, $"{eol}{indent}{written}");
+            }
+            Node last = array.Items[^1];
+            int after = last.Comma >= 0 ? last.Comma + 1 : last.End;
+            string comma = last.Comma >= 0 ? string.Empty : ",";
+            string trailing = last.Comma >= 0 ? "," : string.Empty;
+            return lined ? Replace(after, after, $"{comma}{eol}{indent}{written}{trailing}") : Replace(after, after, $"{comma} {written}{trailing}");
+        }
 
         /// <summary>An array's item taken out as <see cref="Cut"/> takes one.</summary>
         public string Remove(Node array, int index)

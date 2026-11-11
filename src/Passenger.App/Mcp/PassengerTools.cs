@@ -1279,6 +1279,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         Choose(configuration);
         string name = Session.Configurations.Chosen?.Name ?? string.Empty;
+        if (Session.Configurations.Chosen is { IsMultiple: true })
+        {
+            return arguments is null && telemetry is null ? await RunProjectsAsync(name, hotReload, waitSeconds, cancel)
+                : throw new ArgumentException($"{name} starts each of its projects as its own configuration does: omit arguments and telemetry, or run that configuration");
+        }
         if (telemetry is { } collect)
         {
             if (Session.Configurations.Chosen is { } collecting && Session.Aspire.IsAspire(collecting))
@@ -1343,6 +1348,37 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         return new RunResult(code is null, code, status, output);
     });
+
+    /// <summary>run of a multi-project configuration: its projects started, then each waited for until it ends or its host
+    /// starts, within the wait; how each stands, and each one's last lines under its name.</summary>
+    private async Task<RunResult> RunProjectsAsync(string name, bool? hotReload, int waitSeconds, CancellationToken cancel)
+    {
+        BuildRunController builds = Builds;
+        AgentCall.Follow(window.Actions.Work, AppActions.RunProgram, AppActions.Build);
+        using (LaunchBuild built = new(builds))
+        {
+            if (await Started(builds.RunAsync(null, hotReload), AppActions.RunProgram, cancel) is { } refused)
+            {
+                throw new InvalidOperationException(WithBuildErrors(refused, built.Ended));
+            }
+        }
+        (IReadOnlyList<string> debugged, IReadOnlyList<TerminalRun> ran) = builds.ProjectsOf(name);
+        List<(TerminalRun Run, HeardServing Serving)> each = [.. ran.Select(r => (r, new HeardServing(() => r, () => r.Session, () => TextSnapshot.Empty)))];
+        AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for each of its programs to end or its host to start");
+        // A terminal's screen raises nothing an agent's wait can hear: looked at every 50 ms.
+        await Until(() => each.All(e => e.Run.Ended.IsCompleted || e.Serving.Serves()), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
+        IEnumerable<string> stands = each.Select(e => Stands(e.Run, e.Serving));
+        string output = string.Join("\n", each.Select(e => $"{e.Run.Name}:\n{Tail(e.Run.Session, 40)}"));
+        return new RunResult(each.Any(e => !e.Run.Ended.IsCompleted), null,
+            $"{BuildRunController.ProjectsStarted(name, debugged, [.. ran.Select(r => r.Name)])}. {string.Join("; ", stands)}", output);
+
+        static string Stands(TerminalRun run, HeardServing serving)
+        {
+            Task<int> ended = run.Ended;
+            return ended.IsCompletedSuccessfully ? BuildRunController.RunEnded(run.Name, ended.Result)
+                : serving.Said is { } said ? $"{run.Name}, {said}" : $"{run.Name}, running";
+        }
+    }
 
     [McpServerTool(Name = McpTools.Output, Title = "A console's last lines", ReadOnly = true), Description(
         "The last lines of a console. of run (the default): what Run's program wrote (under Hot Reload, dotnet watch's words " +
@@ -1821,14 +1857,27 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         Choose(configuration);
         AgentCall.Follow(window.Actions.Work, AppActions.Debug, AppActions.Build);
+        bool several = Session.Configurations.Chosen is { IsMultiple: true };
+        if (several && arguments is not null)
+        {
+            throw new ArgumentException($"{Session.Configurations.Chosen!.Name} starts each of its projects as its own configuration does: omit arguments, or debug that configuration");
+        }
+        string? started = null;
         using (LaunchBuild built = new(Builds))
         {
             if (await Started(Builds.DebugAsync(arguments), AppActions.Debug, cancel) is { } problem)
             {
                 throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
             }
+            // What a multi-project start started, the answer's own being the program the debugger shows.
+            if (several && Session.Configurations.Chosen is { } chosen)
+            {
+                (IReadOnlyList<string> debugged, IReadOnlyList<TerminalRun> ran) = Builds.ProjectsOf(chosen.Name);
+                started = BuildRunController.ProjectsStarted(chosen.Name, debugged, [.. ran.Select(r => r.Name)]);
+            }
         }
-        return await AfterLaunch(TimeSpan.FromSeconds(waitSeconds), cancel);
+        DebugSnapshot snapshot = await AfterLaunch(TimeSpan.FromSeconds(waitSeconds), cancel);
+        return started is null ? snapshot : snapshot with { Status = $"{started}. The debugger shows {Session.Debug.Chosen?.Name ?? "none of them"}: {snapshot.Status}" };
     });
 
     /// <summary>A start an agent waits on (Run's, Debug's), ended as Stop ends one when the agent gives up on the call before
@@ -3197,6 +3246,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                     : $"{lacking}. Install .NET SDK installs it: the person's, from the banner over Passenger's window, or an agent's ide_action {AppActions.InstallDotnetSdk}, which asks them first"
                 : session.Models.MissingSdk is { } missing ? Refusals.NoSdk(missing, session.Folder) : null,
             UnreadSolution = session.Workspace?.Unread is { } unread ? UnreadSolutionSaid(unread) : null,
+            MultiProject = session.Configurations.Profiles.Count > 0 || session.Configurations.ProfileProblems.Count > 0
+                ? [.. session.Configurations.Profiles.Select(p => $"{p.Name}: {string.Join(", ", p.Starts.Select(s => $"{Path.GetFileNameWithoutExtension(s.Project)} {s.Action?.ToString() ?? "(unknown action)"}"
+                    + (s.LaunchProfile.Length > 0 ? $" in {s.LaunchProfile}" : string.Empty)))}"),
+                    .. session.Configurations.ProfileProblems]
+                : null,
         };
     }
 
@@ -3333,6 +3387,11 @@ public sealed record Workspace(
 
     /// <summary>The container run under way, beside the AppHosts, its services as their resources are; null with none.</summary>
     public ContainerRunInfo? ContainerRun { get; init; }
+
+    /// <summary>The run configurations that start several projects, the solution's launch profiles, each with what it does
+    /// with each project (Start debugs it when debugged) and its launch profile, then why a file of them did not read; null
+    /// with none.</summary>
+    public IReadOnlyList<string>? MultiProject { get; init; }
 
     /// <summary>The web projects' routes, when asked for.</summary>
     public IReadOnlyList<RouteInfo>? Routes { get; init; }

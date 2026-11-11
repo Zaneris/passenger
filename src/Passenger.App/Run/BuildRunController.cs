@@ -1071,6 +1071,10 @@ public sealed partial class BuildRunController
         {
             return Said(session.NothingTo("run"));
         }
+        if (chosen.IsMultiple)
+        {
+            return await StartProjectsAsync(chosen, debug: false, hotReload, cancellation);
+        }
         // Run Current Scene's, or a restart's or Rerun's of a run that began in a scene of its own: this start of a Godot game begins there.
         bool sceneOwn = scene is not null || chosen.GodotScene == RunConfiguration.CurrentScene;
         if (scene is not null)
@@ -1450,15 +1454,15 @@ public sealed partial class BuildRunController
         return Task.WhenAll(ending.Select(r => r.Ended));
     }
 
-    /// <summary>Whether Run runs the Godot game of configuration <paramref name="name"/>, or the copy of one so named, with Hot
-    /// Reload through the debugger.</summary>
+    /// <summary>Whether Run runs the Godot game of configuration <paramref name="name"/>, or the copy of one so named, or a
+    /// multi-project configuration's project of that name, with Hot Reload through the debugger.</summary>
     public bool RunsGameWithHotReload(string name) =>
         (RunsOwnProgram(name) && session.RunPlan is { Godot: not null, GodotEditor: false } || copyRuns.Any(c => c.Run.Name == name))
         && session.Debug.Running.Any(r => r.Name == name);
 
     /// <summary>Restarts the Godot game Run runs with Hot Reload so the edits Hot Reload could not apply run: built and started
-    /// again, held and attached to again, while its configuration is still the one chosen; a copy of it alone, the others
-    /// running on. True once it runs again.</summary>
+    /// again, held and attached to again, while its configuration is still the one chosen; a copy of it, or a multi-project
+    /// configuration's project, alone, the others running on. True once it runs again.</summary>
     public async Task<bool> RestartGameForEditAsync(string name)
     {
         if (!RunsGameWithHotReload(name))
@@ -1467,6 +1471,10 @@ public sealed partial class BuildRunController
         }
         if (copyRuns.FirstOrDefault(c => c.Run.Name == name) is { Run: { } copy } run)
         {
+            if (profileRuns.ContainsKey(copy))
+            {
+                return await RestartProfileRunAsync(copy);
+            }
             return session.Configurations.Chosen is { } chosen && chosen.Name == run.Configuration
                 && await RestartRunCopyAsync(SceneOf(chosen) is { } scene ? chosen with { GodotScene = scene } : chosen, copy, run.Copy);
         }
@@ -2009,6 +2017,11 @@ public sealed partial class BuildRunController
         {
             return Said(session.NothingTo("run"));
         }
+        if (chosen.IsMultiple)
+        {
+            // Its programs are its own, never the Run console's: Run ends its last start itself.
+            return await RunAsync();
+        }
         switch (RestartedInPlace(chosen))
         {
             case AspireAppRun app:
@@ -2120,6 +2133,11 @@ public sealed partial class BuildRunController
     /// could not.</summary>
     public async Task<string?> RestartDebugAsync(string name)
     {
+        if (profileTabs.TryGetValue(name, out (RunConfiguration Profile, RunConfiguration Project, int Place) member)
+            && session.Debug.CopiesOf(member.Profile.Name).Any(c => c.Tab.Name == name))
+        {
+            return await RestartProfileTabAsync(name, member.Profile, member.Project, member.Place);
+        }
         if (!debugged.TryGetValue(name, out (RunConfiguration Configuration, string? Arguments) last))
         {
             return "Nothing was launched under the debugger to restart";
@@ -2172,6 +2190,10 @@ public sealed partial class BuildRunController
 
     private async Task<string?> DebugAsync(RunConfiguration chosen, string? arguments, CancellationToken cancellation = default)
     {
+        if (chosen.IsMultiple)
+        {
+            return await StartProjectsAsync(chosen, debug: true, null, cancellation);
+        }
         if (session.Aspire.IsAspire(chosen))
         {
             return await RunAspireAsync(chosen, arguments, RunStart.Debug, cancellation);
@@ -2198,6 +2220,7 @@ public sealed partial class BuildRunController
             return await RunContainersAsync(chosen, work, RunStart.Debug);
         }
         debugged[chosen.Name] = (chosen, arguments);
+        profileTabs.Remove(chosen.Name);
         using IDisposable held = BackgroundWork.Scope();
         if (await EndOwnRunAsync(chosen, work, "debug") is { } left)
         {
@@ -2763,7 +2786,7 @@ public sealed partial class BuildRunController
     public bool IsRunningConfiguration(string name) =>
         RunsInConsole && (Containers?.Plan.Name ?? ran) == name
         || copyRuns.Any(c => c.Configuration == name && c.Run.IsRunning)
-        || session.Debug.CopiesOf(name).Any(c => debugged.ContainsKey(c.Tab.Name))
+        || session.Debug.CopiesOf(name).Any(c => debugged.ContainsKey(c.Tab.Name) || profileTabs.ContainsKey(c.Tab.Name))
         || session.Profiled is { Run.HasExited: false } profiled && profiled.Name == name;
 
     /// <summary>Why Stop cannot run now: nothing it stops is running.</summary>

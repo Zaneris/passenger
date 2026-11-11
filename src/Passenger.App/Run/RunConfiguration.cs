@@ -18,13 +18,26 @@ public enum ConsoleKind
 
 /// <summary>What a run configuration launches: a .NET project on this machine, a Compose application, one project's
 /// Dockerfile, or a project as the .NET SDK makes its container (<c>EnableSdkContainerSupport</c>), each container kind
-/// run by the person's engine from Passenger's own build of its .NET services (<see cref="Containers.ContainerRun"/>).</summary>
+/// run by the person's engine from Passenger's own build of its .NET services (<see cref="Containers.ContainerRun"/>); or
+/// several of the solution's projects on this machine together, as a multi-project launch profile beside the solution
+/// says (<see cref="SolutionLaunch"/>).</summary>
 public enum RunKind
 {
     Project,
     Compose,
     Dockerfile,
     SdkContainer,
+    Projects,
+}
+
+/// <summary>One project a multi-project configuration starts: its file (canonical), what Run and Debug do with it (null for
+/// an action Passenger does not know, which keeps the configuration from starting), and the launch profile of its own it
+/// starts in (empty for its default).</summary>
+public sealed record ProjectStart(string Project, ProjectLaunchAction? Action, string LaunchProfile)
+{
+    /// <summary>It as its file held it when read, which a change is written over; null for one not written yet.</summary>
+    [JsonIgnore]
+    public SolutionLaunchProject? Launch { get; init; }
 }
 
 /// <summary>What a Compose configuration does with one .NET service: run it, debug it, or leave it unstarted.</summary>
@@ -180,9 +193,26 @@ public sealed record RunConfiguration
     /// <c>-v</c>), as a launch profile's DockerfileRunArguments or containerRunArguments give them.</summary>
     public string RunArguments { get; init; } = string.Empty;
 
-    /// <summary>Whether it runs containers rather than a program on this machine.</summary>
+    /// <summary>A multi-project configuration's projects in the order they start, each with what Run and Debug do with it
+    /// and the launch profile it starts in.</summary>
+    public List<ProjectStart> Starts { get; init; } = [];
+
+    /// <summary>For a multi-project configuration, whether the team shares it in the solution's <c>.slnLaunch</c>, rather
+    /// than keeping it in the person's own <c>.slnLaunch.user</c>.</summary>
+    public bool Shared { get; init; } = true;
+
+    /// <summary>For a multi-project configuration, the profile as its file held it when read, which a change is written over;
+    /// null for one not written yet.</summary>
     [JsonIgnore]
-    public bool IsContainer => Kind != RunKind.Project;
+    public SolutionLaunchProfile? Launch { get; init; }
+
+    /// <summary>Whether it runs containers rather than programs on this machine.</summary>
+    [JsonIgnore]
+    public bool IsContainer => Kind is not (RunKind.Project or RunKind.Projects);
+
+    /// <summary>Whether it starts several of the solution's projects together, as a multi-project launch profile says.</summary>
+    [JsonIgnore]
+    public bool IsMultiple => Kind == RunKind.Projects;
 
     /// <summary>Made from the folder's projects and container files rather than by the person: changed in place, its
     /// changes kept with the folder over what its source makes (<see cref="Source"/>), or copied to be the person's own.</summary>
@@ -206,7 +236,7 @@ public sealed record RunConfiguration
     /// one of a project Godot.NET.Sdk builds that names no program of its own, or names Godot as a launch profile does
     /// (<see cref="NamesGodot"/>).</summary>
     public bool RunsGodot(IEnumerable<ProjectModel> projects) =>
-        !IsContainer && (Program.Length == 0 || NamesGodot) && (RunsScriptGame || projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.GodotFolder is not null);
+        Kind == RunKind.Project && (Program.Length == 0 || NamesGodot) && (RunsScriptGame || projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.GodotFolder is not null);
 
     /// <summary>Whether the program it names is Godot (%GODOT%, a path to a Godot executable: <see cref="GodotExecutables.NamesGodot"/>),
     /// which for a Godot project's runs its game as one naming no program does, on the Godot Settings names or the one found.</summary>
@@ -219,14 +249,44 @@ public sealed record RunConfiguration
     /// <summary>Whether it runs a Godot project of GDScript alone, its project.godot its project (<see cref="ProjectModel.IsScriptGame"/>):
     /// no C# project is built or debugged for it.</summary>
     [JsonIgnore]
-    public bool RunsScriptGame => !IsContainer && Path.GetFileName(Project) == GodotProject.FileName;
+    public bool RunsScriptGame => Kind == RunKind.Project && Path.GetFileName(Project) == GodotProject.FileName;
 
     /// <summary>Why it cannot launch here among these projects: its launch profile's kind, or, when it runs its project's
     /// own program, a project that runs only on Windows (WPF, Windows Forms) elsewhere; null when it can.</summary>
     public string? WhyNotHere(IEnumerable<ProjectModel> projects) => Unsupported
+        ?? (IsMultiple ? WhyNotStarted(projects) : null)
         ?? (!IsContainer && Aspire && Path.GetExtension(Project).Equals(".cs", StringComparison.OrdinalIgnoreCase)
             ? AspireAppHosts.SingleFileWhyNot(Project, projects.Select(project => project.Path)) : null)
         ?? (!IsContainer && Program.Length == 0 && projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project)) is { } project ? project.RunsOnlyOnWindows(Framework) : null);
+
+    /// <summary>Why a multi-project configuration cannot start here among these projects: it starts none, or one it starts is
+    /// not loaded, runs only on Windows, or takes an action Passenger does not know; null when it can.</summary>
+    private string? WhyNotStarted(IEnumerable<ProjectModel> projects)
+    {
+        List<ProjectStart> starting = [.. Starts.Where(s => s.Action != ProjectLaunchAction.None)];
+        if (starting.Count == 0)
+        {
+            return "it starts no project: each is set to None";
+        }
+        List<ProjectModel> loaded = [.. projects];
+        foreach (ProjectStart start in starting)
+        {
+            string name = Path.GetFileNameWithoutExtension(start.Project);
+            if (start.Action is null)
+            {
+                return $"its action for {name} is one Passenger does not know";
+            }
+            if (loaded.FirstOrDefault(p => p.Exists && Core.PathNames.Same(p.Path, start.Project)) is not { } project)
+            {
+                return $"{name} is not loaded";
+            }
+            if (project.RunsOnlyOnWindows(string.Empty) is { } windows)
+            {
+                return $"{name}: {windows}";
+            }
+        }
+        return null;
+    }
 
     /// <summary>The configurations the folder's executable projects make: one per launch profile, named "Project: profile",
     /// and the project itself when none of its profiles runs it here (a Godot project's game), with a Godot project's editor
@@ -377,11 +437,13 @@ public sealed record RunConfiguration
         Context = Context ?? string.Empty,
         BuildArguments = BuildArguments ?? string.Empty,
         RunArguments = RunArguments ?? string.Empty,
+        Starts = [.. (Starts ?? []).Where(s => s is not null && !string.IsNullOrWhiteSpace(s.Project)).Select(s => s with { LaunchProfile = s.LaunchProfile ?? string.Empty })],
     };
 
     /// <summary>A deep enough copy to edit in Edit Configurations without touching the one it came from.</summary>
     public RunConfiguration Copied() => this with
     {
+        Starts = [.. Starts],
         Environment = new Dictionary<string, string>(Environment),
         LinkedAppHosts = [.. LinkedAppHosts],
         ComposeFiles = [.. ComposeFiles],

@@ -32,7 +32,8 @@ public sealed partial record LaunchPlan
     /// <summary>The configuration's name, as the windows and the status bar say it.</summary>
     public required string Name { get; init; }
 
-    /// <summary>The copy of its configuration's game it starts, where it starts one of several (<see cref="GameCopies"/>).</summary>
+    /// <summary>The copy of its configuration's game it starts, where it starts one of several (<see cref="GameCopies"/>), or its
+    /// place among a multi-project configuration's projects.</summary>
     public GameCopy? Copy { get; init; }
 
     /// <summary>The program started: the project's apphost (<see cref="ByAppHost"/>), the <c>dotnet</c> host for an assembly,
@@ -239,6 +240,11 @@ public sealed partial record LaunchPlan
             // Run, Debug and Profile bring containers up themselves (BuildRunController.Containers.cs): no plan of this machine's runs them.
             throw new LaunchException(InContainers(configuration.Name));
         }
+        if (configuration.IsMultiple)
+        {
+            // Run and Debug start each of its projects as its own configuration does (BuildRunController.Projects.cs).
+            throw new LaunchException(SeveralProjects(configuration.Name));
+        }
         if (configuration.RunsScriptGame)
         {
             // Godot runs a game of GDScript alone as it is: no MSBuild to ask, nothing to build.
@@ -430,6 +436,11 @@ public sealed partial record LaunchPlan
     /// <summary>Why a container configuration has no plan of this machine's: Run, Debug and Profile bring its containers up.</summary>
     public static string InContainers(string name) =>
         $"{name} runs in containers, which Run, Debug and Profile bring up: it starts no program on this computer";
+
+    /// <summary>Why a multi-project configuration has no one plan: Run and Debug start each of its projects, and Profile records
+    /// one program, which a project's own configuration starts.</summary>
+    public static string SeveralProjects(string name) =>
+        $"{name} starts several projects, each as its own configuration starts it: Run and Debug start them together, and Profile records one program, which one of their configurations starts";
 
     /// <summary>The state folder a Passenger launched from this one is given: sandbox/ in this one's, so the two never share
     /// settings, recent solutions, a folder's editors and breakpoints, the log or agents' sockets, and the one debugged

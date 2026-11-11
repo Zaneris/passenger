@@ -87,7 +87,8 @@ public sealed class ProfilerCommands
         parts.Dock.Add(window);
         parts.Actions.Add(new IdeAction(AppActions.Profile, "Profile", "Run", context => IdeErrors.Observe(ProfileReportingAsync()))
         {
-            WhyNot = _ => WhyNotProfile(Session) ?? (Session.Configurations.Chosen is null ? Session.NothingTo("profile") : null),
+            WhyNot = _ => WhyNotProfile(Session) ?? (Session.Configurations.Chosen is null ? Session.NothingTo("profile")
+                : Session.Configurations.Chosen is { IsMultiple: true } several ? LaunchPlan.SeveralProjects(several.Name) : null),
             Menus = [new MenuPlace("Run", 0, 2)],
         });
         // Nothing of the folder's running, it offers the programs of the engine's running containers to choose from.

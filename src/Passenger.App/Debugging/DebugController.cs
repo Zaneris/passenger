@@ -807,7 +807,8 @@ public sealed class DebugController : IDisposable
             ColumnOf, starting), plan.Name, launched: true, inTerminal: inTerminal is not null, group: copies, plan: plan, copy: copies is not null);
     }
 
-    /// <summary>The live tabs of a configuration's game, one copy or several (<see cref="Run.GameCopies"/>), each by its place from one.</summary>
+    /// <summary>The live tabs of a configuration's game, one copy or several (<see cref="Run.GameCopies"/>), or of a multi-project
+    /// configuration's projects, each by its place from one.</summary>
     public IReadOnlyList<(DebugTab Tab, int Copy)> CopiesOf(string configuration) =>
         [.. view.Sessions.Where(t => t.IsLive && t.Companion is null).Select(t => (Tab: t, Of: Run.GameCopies.Of(t.Plan?.Copy, t.Name)))
             .Where(c => c.Of.Configuration == configuration).Select(c => (c.Tab, c.Of.Place))];
