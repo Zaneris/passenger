@@ -1717,9 +1717,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
     [AvaloniaFact]
     public void An_elements_field_renamed_from_the_code_behind_a_moment_after_its_xaml_was_written_waits_for_the_server_to_read_it()
     {
-        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        MainWindow window = OpenWithTheXamlRead();
         OpenDocument behind = window.EditorArea.Active!;
-        Ui.Settle();
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
         TaskCompletionSource told = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task held = server.HoldNext(Passenger.Lsp.LspMethods.DidChangeWatchedFiles,
@@ -1800,9 +1799,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
     [AvaloniaFact]
     public void A_fields_rename_in_the_code_behind_waits_for_a_server_holding_the_classs_xaml_otherwise_than_the_disk_and_renames_the_element()
     {
-        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        MainWindow window = OpenWithTheXamlRead();
         OpenDocument behind = window.EditorArea.Active!;
-        Ui.Settle();
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
         string xaml = app.PathOf("MainWindow.axaml");
         TaskCompletionSource told = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1844,9 +1842,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
     /// server held from reading it: Rename says it waits, and once the server has read it renames both files.</summary>
     private void RenamedOnceTheServerRead(Action<Passenger.Lsp.LanguageServer, Task, string> wrote)
     {
-        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        MainWindow window = OpenWithTheXamlRead();
         OpenDocument behind = window.EditorArea.Active!;
-        Ui.Settle();
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
         TaskCompletionSource told = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task held = server.HoldNext(Passenger.Lsp.LspMethods.DidChangeWatchedFiles,
@@ -1880,6 +1877,27 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             && view.Text.Snapshot.ToString() == Gallery.Window.Replace("Name=\"Go\"", "Name=\"Begin\"", StringComparison.Ordinal).Replace("#Go.", "#Begin.", StringComparison.Ordinal),
             $"The element's rename said {window.Status}, leaving the code-behind\n{behind.Text.Snapshot}\nand the XAML\n{view.Text.Snapshot}");
         window.Close();
+    }
+
+    /// <summary>A window on the code-behind with a language server of its own, started on the project as written, that holds
+    /// MainWindow.axaml as on disk and was told of no change of it: a server taken up warm may have been told of the XAML put
+    /// back for this test, and reads it only when next asked, so after the test's own write, knowing the new field though the
+    /// watcher's word of the write is held.</summary>
+    private MainWindow OpenWithTheXamlRead()
+    {
+        app.Drop();
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        Ui.Settle();
+        Passenger.Lsp.RoslynSession session = window.CSharpService!.Session!;
+        string xaml = PathNames.Canonical(app.PathOf("MainWindow.axaml"));
+        IReadOnlyList<Passenger.Roslyn.Extension.TextHeld> held = Ui.Await(session.HeldTextsAsync([xaml]), "the language server's text of MainWindow.axaml");
+        bool asOnDisk = held is [{ Hash: { } hash }] && Passenger.Lsp.HeldTexts.OnDisk(xaml, hash) == true;
+        DateTime? told = session.Server.WatchedFiles.ToldAt(xaml);
+        Assert.True(asOnDisk && told is null,
+            $"The language server started for the test {(asOnDisk ? "holds MainWindow.axaml as on disk" : "holds MainWindow.axaml otherwise than the disk, or no document of it")} "
+            + $"and {(told is { } at ? $"was told of a change of it {(DateTime.UtcNow - at).TotalSeconds:0.00} s ago" : "was told of no change of it")}, so it may read the XAML "
+            + "the test writes with no word of the write, leaving the rename nothing to wait for");
+        return window;
     }
 
     [AvaloniaFact]
