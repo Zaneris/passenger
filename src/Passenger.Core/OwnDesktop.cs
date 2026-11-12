@@ -122,6 +122,8 @@ public static partial class OwnDesktop
     private static OwnDesktopStart Taken(ProcessStartInfo start, ProcessInformation started, nint desktop, bool suspended, nint input, nint output, nint error)
     {
         Process process = Process.GetProcessById(started.ProcessId);
+        // Held by its handle, as a child .NET starts is, so its id stays its own and its kill finds it after it has ended.
+        _ = process.SafeHandle;
         Lifeline.HoldFamily(started.ProcessId, new SafeProcessHandle(started.Process, ownsHandle: false));
         // The desktop goes once the program has: closed before its first thread took it, the desktop would go under it.
         ProcessEnd ended = new(started.Process);

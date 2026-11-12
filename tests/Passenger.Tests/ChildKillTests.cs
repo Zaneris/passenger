@@ -9,7 +9,8 @@ namespace Passenger.Tests;
 public sealed class ChildKillTests
 {
     /// <summary>The child's process is disposed the moment the child has ended, while what it started is still being
-    /// ended; twenty rounds, so a kill that read the process as it went would have been cut short in one of them.</summary>
+    /// ended; twenty rounds, so a kill that read the process as it went would have been cut short in one of them. What
+    /// the test ends itself it ends through the processes it holds, never by an id another process may have been given.</summary>
     [Fact]
     public async Task A_child_disposed_on_another_thread_as_it_is_killed_has_what_it_started_ended_too()
     {
@@ -20,27 +21,12 @@ public sealed class ChildKillTests
             Process child = ChildProcesses.Start(OperatingSystem.IsWindows()
                 ? ChildProcesses.Command("cmd.exe", ["/c", "ping -n 120 127.0.0.1 >nul"])
                 : ChildProcesses.Command("/bin/sh", ["-c", "sleep 120; true"]));
-            int id = child.Id;
-            int[] started = [];
             List<Process> held = [];
             try
             {
-                Assert.True(await Waiting.UntilAsync(() => (started = [.. DotnetProcesses.StartedBy(id)]).Any(s => DotnetProcesses.Describe(s)?.Name == waiter),
+                DateTime began = child.StartTime;
+                Assert.True(await Waiting.UntilAsync(() => Hold(child.Id, began, held).Any(p => DotnetProcesses.Describe(p.Id)?.Name == waiter),
                     TimeSpan.FromSeconds(30), cancel), $"Round {round}: the child's {waiter} never started");
-                foreach (int startedId in started)
-                {
-                    try
-                    {
-                        // Each held by its handle, so another process given its id later is never taken for it.
-                        Process process = Process.GetProcessById(startedId);
-                        held.Add(process);
-                        _ = process.SafeHandle;
-                    }
-                    catch (Exception gone) when (gone is ArgumentException or InvalidOperationException)
-                    {
-                        // One that ended by itself has nothing left to end.
-                    }
-                }
                 TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 Task letGo = Waiting.Apart(() =>
                 {
@@ -60,15 +46,59 @@ public sealed class ChildKillTests
             }
             finally
             {
+                // Once the child's process is let go, this finds nothing to end.
+                ChildProcesses.Kill(child);
                 foreach (Process process in held)
                 {
+                    ChildProcesses.Kill(process);
                     process.Dispose();
                 }
-                foreach (int left in started.Append(id))
-                {
-                    Processes.Kill(left);
-                }
             }
+        }
+    }
+
+    /// <summary>The processes the child started, each held as it is found (by its handle on Windows, so its id stays its
+    /// own) and kept only where, so held, it still names the child as its parent and began no earlier than the child.</summary>
+    private static List<Process> Hold(int child, DateTime began, List<Process> held)
+    {
+        List<Process> found = [];
+        foreach (int id in DotnetProcesses.StartedBy(child).Where(id => held.TrueForAll(p => p.Id != id)))
+        {
+            try
+            {
+                Process process = Process.GetProcessById(id);
+                found.Add(process);
+                _ = process.SafeHandle;
+            }
+            catch (Exception gone) when (gone is ArgumentException or InvalidOperationException)
+            {
+                // One that ended by itself has nothing left to end.
+            }
+        }
+        IReadOnlyList<int> startedNow = DotnetProcesses.StartedBy(child);
+        foreach (Process process in found)
+        {
+            if (startedNow.Contains(process.Id) && Began(process) >= began)
+            {
+                held.Add(process);
+            }
+            else
+            {
+                process.Dispose();
+            }
+        }
+        return held;
+    }
+
+    private static DateTime Began(Process process)
+    {
+        try
+        {
+            return process.StartTime;
+        }
+        catch (Exception gone) when (gone is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return DateTime.MinValue;
         }
     }
 }

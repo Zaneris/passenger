@@ -849,36 +849,36 @@ public static class ChildProcesses
 
     /// <summary>A child's tree ended from a hold on its handle taken before anything ends, so a Dispose of the process on
     /// another thread as it goes (its reader's, once the child's output ends with it) leaves the walk whole; then its
-    /// family held.</summary>
+    /// family held, by an id the hold keeps the child's. A child let go before it is held has nothing left to end by.</summary>
     [SupportedOSPlatform("windows")]
     private static void KillTreeOnWindows(Process process)
     {
         int id = process.Id;
+        // Null, or closed (thrown as it is held), only as it is let go at this moment.
+        SafeProcessHandle? handle = process.SafeHandle;
+        if (handle is null)
+        {
+            return;
+        }
+        bool held = false;
         try
         {
-            // Null, or closed (thrown as it is held), only as it is let go at this moment.
-            SafeProcessHandle? handle = process.SafeHandle;
-            if (handle is null)
-            {
-                return;
-            }
-            bool held = false;
+            handle.DangerousAddRef(ref held);
             try
             {
-                handle.DangerousAddRef(ref held);
                 ProcessTree.End(id, handle);
             }
             finally
             {
-                if (held)
-                {
-                    handle.DangerousRelease();
-                }
+                Lifeline.KillGroup(id);
             }
         }
         finally
         {
-            Lifeline.KillGroup(id);
+            if (held)
+            {
+                handle.DangerousRelease();
+            }
         }
     }
 

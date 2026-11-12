@@ -41,8 +41,9 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   `cmd` with two `ping`s killed while a thread disposed it on its exit cut the walk short in 217 of 300 rounds, 434
   pings left running; with no dispose, beside four threads starting short-lived programs, 30 of 30 ended whole.
   `ChildProcesses.Kill` on Windows now holds the child's handle before anything ends and walks the tree itself
-  (`ProcessTree`), each process held by a handle of its own until the walk is done and checked by the parent it names
-  and its start, so nothing done to the `Process` meanwhile cuts it short;
+  (`ProcessTree`): each process held by a handle of its own until the walk is done, taken only where it names its
+  parent's id and began no earlier, each level waited out (2 s at most) before the next is listed, and one Passenger may
+  read but not end walked through, so nothing done to the `Process` meanwhile cuts it short;
   `A_child_disposed_on_another_thread_as_it_is_killed_has_what_it_started_ended_too` fails on the old code on the VM
   (#1504).
 - `TestingPlatformBytesTests`' `A_runs_results_cost_at_most_twice_their_JSON_to_read`, CI's macOS report lane at
