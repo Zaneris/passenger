@@ -393,12 +393,24 @@ public sealed class ProjectSession : IAsyncDisposable
     /// them all.</summary>
     public ProjectModel? ProjectOf(string path) => Workspace is null ? null : ProjectModel.Owning(Workspace.Projects.Where(p => !Unloaded.Contains(p.Path)), path);
 
-    /// <summary>The configuration of the project a file belongs to (<see cref="ConfigurationFiles"/>); null outside them all.</summary>
-    public ConfigurationProject? ConfigurationOf(string path) => ProjectOf(path) is { } project ? ConfigurationOf(project) : null;
+    /// <summary>The code of the project a file belongs to with the configurations of the programs that run it
+    /// (<see cref="ConfiguredCode"/>); null outside them all, or where no program of the folder runs it.</summary>
+    public ConfiguredCode? ConfiguredCodeOf(string path)
+    {
+        if (ProjectOf(path) is not { } project)
+        {
+            return null;
+        }
+        IReadOnlyList<ProjectModel> all = Projects;
+        IReadOnlyList<ProjectModel> programs = project.ProgramsRunning(all);
+        return programs.Count == 0 ? null
+            : new ConfiguredCode(project.Path, [.. programs.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).Select(p => ConfigurationOf(p, all))]);
+    }
 
-    /// <summary>A project's configuration: its evaluated UserSecretsId, the folders from its own up to the folder open whose
-    /// compose files may run it, and the folders of the AppHosts that reference it.</summary>
-    public ConfigurationProject ConfigurationOf(ProjectModel project)
+    /// <summary>A program's configuration: its evaluated UserSecretsId, the folders from its own up to the folder open whose
+    /// compose files may run it, the folders of the AppHosts among <paramref name="all"/> that reference it, and the projects
+    /// whose code it runs.</summary>
+    private ConfigurationProject ConfigurationOf(ProjectModel project, IReadOnlyList<ProjectModel> all)
     {
         List<string> composing = [];
         for (string? folder = Path.GetDirectoryName(project.Path); folder is not null; folder = Path.GetDirectoryName(folder))
@@ -409,24 +421,29 @@ public sealed class ProjectSession : IAsyncDisposable
                 break;
             }
         }
-        string[] hosts = [.. Projects.Where(p => p.IsAspireHost && p.ProjectReferences.Any(r => PathNames.Same(r, project.Path))).Select(p => Path.GetDirectoryName(p.Path)!)];
-        return new ConfigurationProject(project.Path, project.Property(Passenger.Host.CarriedProperties.UserSecretsId) is { Length: > 0 } id ? id : null, composing, hosts);
+        string[] hosts = [.. all.Where(p => p.IsAspireHost && p.ProjectReferences.Any(r => PathNames.Same(r, project.Path))).Select(p => Path.GetDirectoryName(p.Path)!)];
+        return new ConfigurationProject(project.Path, project.Property(Passenger.Host.CarriedProperties.UserSecretsId) is { Length: > 0 } id ? id : null, composing, hosts,
+            [.. project.CodeItRuns(all).Select(p => p.Path)]);
     }
 
-    /// <summary>The projects whose configuration a settings file gives: an appsettings*.json's, the project whose folder holds
-    /// it; a secrets.json under the user secrets' folder, those whose UserSecretsId names its folder.</summary>
+    /// <summary>The programs whose configuration a settings file gives, as <see cref="ConfiguredCodeOf"/> finds them for code:
+    /// an appsettings*.json's, the one whose folder holds it; a secrets.json under the user secrets' folder, those whose
+    /// UserSecretsId names its folder. A project that owns no configuration (<see cref="ProjectModel.OwnsConfiguration"/>) is
+    /// none, as nothing reads its files.</summary>
     public IReadOnlyList<ConfigurationProject> ConfiguredBy(string path)
     {
+        IReadOnlyList<ProjectModel> all = Projects;
         if (ConfigurationFiles.IsSettings(path))
         {
-            return ProjectOf(path) is { } project && PathNames.Same(Path.GetDirectoryName(project.Path)!, Path.GetDirectoryName(path)!) ? [ConfigurationOf(project)] : [];
+            return ProjectOf(path) is { OwnsConfiguration: true } project && PathNames.Same(Path.GetDirectoryName(project.Path)!, Path.GetDirectoryName(path)!)
+                ? [ConfigurationOf(project, all)] : [];
         }
         if (ConfigurationFiles.SecretsIdOf(path) is not { } id)
         {
             return [];
         }
         string secrets = PathNames.Canonical(UserSecrets.FileOf(id)!);
-        return [.. Projects.Select(ConfigurationOf).Where(c => c.SecretsIn(EditorArea.ReadText) is { } own && PathNames.Same(own, secrets))];
+        return [.. all.Where(p => p.OwnsConfiguration).Select(p => ConfigurationOf(p, all)).Where(c => c.SecretsIn(EditorArea.ReadText) is { } own && PathNames.Same(own, secrets))];
     }
 
     /// <summary>The name of the project a file belongs to, as Find and Problems group by it, a generator's code copied by
@@ -1418,7 +1435,7 @@ public sealed class ProjectSession : IAsyncDisposable
                     ? new AspireAppHostSettings(host, Projects.FirstOrDefault(p => PathNames.Same(p.Path, host))?.Property(Passenger.Host.CarriedProperties.UserSecretsId))
                     : null,
                 ComposeGaps = () => Web?.Checks.Gaps ?? [],
-                ConfigurationOf = ConfigurationOf,
+                ConfiguredCodeOf = ConfiguredCodeOf,
                 Texts = setup.Editors.Texts,
                 Unseen = document => !setup.Editors.HasTab(document),
                 GodotOf = BuiltGodotOf,

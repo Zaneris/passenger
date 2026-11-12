@@ -332,7 +332,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
   An app's OpenAPI document is asked only at its origin (`OpenApiAddresses`), and what's made from one with no app asked
   comes from `AppDocuments`, never a process-wide cache. `ResourceFiles` is the one reader and writer of `.resx` and
-  `xlf/*.xlf`, a table's change one edit of the open text.
+  `xlf/*.xlf`, a table's change one edit of the open text. A configuration read is checked against the programs running
+  its code (`ProjectSession.ConfiguredCodeOf`, `ProjectModel.ProgramsRunning`), never its own library's folder.
 - **Debugging.** `DebugController`, `DebugSession`; Variables and the hover card are one list, a hover evaluating only
   inside the stopped frame's method (`MethodBounds`). A row's expression is the debugger's `evaluateName`, never built
   in the window. A library's types are shown as the App tells the debugger at launch (`DapTypePresentation`), never by

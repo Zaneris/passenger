@@ -351,11 +351,11 @@ public sealed class CodeAssist
         set => context.Languages.Settings.ConfiguredBy = value;
     }
 
-    /// <summary>The configuration of the project a C# file is of (the session's <see cref="ProjectSession.ConfigurationOf(string)"/>).</summary>
-    public Func<string, ConfigurationProject?>? ConfigurationOf
+    /// <summary>A C# file's code with the configurations of the programs that run it (the session's <see cref="ProjectSession.ConfiguredCodeOf"/>).</summary>
+    public Func<string, ConfiguredCode?>? ConfiguredCodeOf
     {
-        get => context.Languages.CSharp.ConfigurationOf;
-        set => context.Languages.CSharp.ConfigurationOf = value;
+        get => context.Languages.CSharp.ConfiguredCodeOf;
+        set => context.Languages.CSharp.ConfiguredCodeOf = value;
     }
 
     /// <summary>The routes the request on a line (the editor's, from zero) of an .http file calls.</summary>

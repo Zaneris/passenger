@@ -20,4 +20,8 @@ public static class Plural
     /// <summary>Names as a sentence lists them: "Web", "Api and Web", "Api, Web and Worker"; nothing for none.</summary>
     public static string Listed(IReadOnlyList<string> names) =>
         names.Count <= 1 ? string.Concat(names) : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
+
+    /// <summary>Names as a sentence offers a choice of them: "Web", "Api or Web", "Api, Web or Worker"; nothing for none.</summary>
+    public static string Either(IReadOnlyList<string> names) =>
+        names.Count <= 1 ? string.Concat(names) : $"{string.Join(", ", names.Take(names.Count - 1))} or {names[^1]}";
 }

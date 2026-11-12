@@ -507,6 +507,70 @@ public sealed record ProjectModel(
         return found;
     }
 
+    /// <summary>Whether its code runs with a configuration of its own: a program Run starts (<see cref="IsRunnable"/>), or a
+    /// test project, whose tests build theirs.</summary>
+    public bool OwnsConfiguration => IsRunnable || IsTestProject;
+
+    /// <summary>The projects among <paramref name="projects"/> whose configuration its code runs with: itself where it owns
+    /// one (<see cref="OwnsConfiguration"/>), else each program referencing it, directly or through projects that own none,
+    /// in their order; none where no program runs it. A test's configuration is its own, so a test project runs none of it.</summary>
+    public IReadOnlyList<ProjectModel> ProgramsRunning(IReadOnlyList<ProjectModel> projects)
+    {
+        if (OwnsConfiguration)
+        {
+            return [this];
+        }
+        ILookup<string, ProjectModel> referrers = projects.SelectMany(p => p.ProjectReferences.Select(r => (Reference: r, Referrer: p)))
+            .ToLookup(r => r.Reference, r => r.Referrer, PathNames.Comparer);
+        HashSet<string> seen = new(PathNames.Comparer) { Path };
+        HashSet<string> running = new(PathNames.Comparer);
+        Queue<string> next = new([Path]);
+        while (next.TryDequeue(out string? at))
+        {
+            foreach (ProjectModel referrer in referrers[at].Where(p => seen.Add(p.Path)))
+            {
+                if (referrer.IsRunnable)
+                {
+                    running.Add(referrer.Path);
+                }
+                else if (!referrer.OwnsConfiguration)
+                {
+                    next.Enqueue(referrer.Path);
+                }
+            }
+        }
+        return [.. projects.Where(p => running.Contains(p.Path)).DistinctBy(p => p.Path, PathNames.Comparer)];
+    }
+
+    /// <summary>The projects among <paramref name="projects"/> whose code runs with its configuration, as
+    /// <see cref="ProgramsRunning"/> has it the other way: itself, then for a program those it references, directly or
+    /// through others, that own no configuration; none for a project that owns none.</summary>
+    public IReadOnlyList<ProjectModel> CodeItRuns(IReadOnlyList<ProjectModel> projects)
+    {
+        if (!OwnsConfiguration)
+        {
+            return [];
+        }
+        Dictionary<string, ProjectModel> byPath = new(PathNames.Comparer);
+        foreach (ProjectModel project in projects)
+        {
+            byPath.TryAdd(project.Path, project);
+        }
+        HashSet<string> seen = new(PathNames.Comparer) { Path };
+        List<ProjectModel> found = [this];
+        for (int i = 0; i < found.Count && IsRunnable; i++)
+        {
+            foreach (string reference in found[i].ProjectReferences)
+            {
+                if (byPath.TryGetValue(reference, out ProjectModel? referenced) && !referenced.OwnsConfiguration && seen.Add(referenced.Path))
+                {
+                    found.Add(referenced);
+                }
+            }
+        }
+        return found;
+    }
+
     /// <summary>Whether it is a file-based program, named by its C# file rather than a project file.</summary>
     public bool IsProgram => Host.ProgramFiles.IsProgram(Path);
 

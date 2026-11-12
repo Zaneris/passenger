@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Workspace;
@@ -14,8 +15,8 @@ namespace Passenger.Tests;
 
 /// <summary>Configuration known from what the app reads: appsettings.json and the project's secrets.json complete the
 /// keys its options classes and reads name, Go to Declaration goes from a key to what reads it and back, a read of a
-/// key nothing gives is warned of with its fixes, and Manage User Secrets gives a project its secrets in the run's own
-/// folder.</summary>
+/// key nothing gives is warned of with its fixes, a library's against the programs that run it, and Manage User Secrets
+/// gives a project its secrets in the run's own folder.</summary>
 public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Project>
 {
     private readonly Project project;
@@ -223,14 +224,21 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         }
     }
 
-    /// <summary>A key's fix chosen at the code after <paramref name="after"/>, first of those offered, its value typed into
-    /// the box it asks with (masked for a secret) and given; settled after, unless asked not to.</summary>
-    private static void Set(MainWindow window, string after, string fix, bool secret, string value, bool settle = true)
+    /// <summary>A key's fix chosen at the code after <paramref name="after"/>, first of those offered unless said otherwise,
+    /// its value typed into the box it asks with (masked for a secret) and given; settled after, unless asked not to.</summary>
+    private static void Set(MainWindow window, string after, string fix, bool secret, string value, bool settle = true, bool first = true)
     {
         Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
         Ui.Run(window, AppActions.QuickFix);
-        Ui.WaitFor(() => window.Assist.Offered.Contains(fix), $"{fix} to be offered");
-        Assert.Equal(fix, window.Assist.Offered[0]);
+        Ui.WaitFor(() => window.Assist.Offered.Contains(fix), () => $"{fix} to be offered: {string.Join("; ", window.Assist.Offered)}");
+        if (first)
+        {
+            Assert.Equal(fix, window.Assist.Offered[0]);
+        }
+        for (int down = window.Assist.Offered.ToList().IndexOf(fix); down > 0; down--)
+        {
+            Ui.Press(window, "DOWN");
+        }
         Ui.Press(window, "ENTER");
         Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), $"{fix} to ask for the value");
         ConfirmDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<ConfirmDialog>()));
@@ -240,9 +248,81 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         Ui.Press(dialog, "ENTER", settle);
     }
 
-    /// <summary>The keys the open file's reads are warned of as nothing giving them.</summary>
-    private static HashSet<string> Missing(MainWindow window) => [.. window.EditorArea.Active!.Markers
-        .Where(m => m.Message.StartsWith("Nothing Shop runs with gives the configuration key '", StringComparison.Ordinal)).Select(m => m.Message.Split('\'')[1])];
+    /// <summary>The keys the open file's reads are warned of as nothing the programs named running it giving them.</summary>
+    private static HashSet<string> Missing(MainWindow window, string programs = "Shop") => [.. window.EditorArea.Active!.Markers
+        .Where(m => m.Message.StartsWith($"Nothing {programs} runs with gives the configuration key '", StringComparison.Ordinal)).Select(m => m.Message.Split('\'')[1])];
+
+    /// <summary>The open file's markers, as a wait that gave up says them.</summary>
+    private static string Marked(MainWindow window) => string.Join(" | ", window.EditorArea.Active?.Markers.Select(m => m.Message) ?? []);
+
+    /// <summary>A library's read is checked against what runs it, Admin and Shop, which reference it, never the library's own
+    /// folder: a key Shop's appsettings.json gives is not warned of, one neither gives is, naming both. The given key's card
+    /// and Go to Declaration go to Shop's appsettings.json, which completes the library's keys; the missing key's fixes offer
+    /// each program's appsettings.json, and Shop's sets it there, after which the warning goes.</summary>
+    [AvaloniaFact]
+    public void A_library_s_read_is_checked_against_the_programs_that_reference_it()
+    {
+        string settings = project.PathOf("Shop/appsettings.json");
+        MainWindow window = project.Open(project.PathOf("Catalog/CatalogSettings.cs"));
+        try
+        {
+            Ui.WaitFor(() => Missing(window, "Admin or Shop").SetEquals(["Catalog:Sale"]),
+                () => $"Catalog:Sale, which neither program gives, and only it, to be warned of, naming both: {Marked(window)}");
+            string card = Hover(window, "Catalog:Title\"");
+            Assert.True(card.Contains("Shop's appsettings.json = Spring", StringComparison.Ordinal), $"Catalog:Title's card: {card}");
+
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "Catalog:Tit");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => window.EditorArea.Active is { } shown && PathNames.Same(shown.Path, PathNames.Canonical(settings)),
+                () => $"Go to Declaration on Catalog:Title to open Shop's appsettings.json ({window.EditorArea.Active?.Path}, {window.Status})");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Assert.Contains("\"Title\": \"Spring\"", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line), StringComparison.Ordinal);
+
+            Ui.PlaceAfter(editor, "\"Catalog\": {");
+            Ui.Run(window, AppActions.Complete);
+            Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Sale"), () => $"the library's Catalog:Sale to be offered in Shop's appsettings.json: {string.Join(", ", window.Assist.CompletionLabels)}");
+            Assert.DoesNotContain("Title", window.Assist.CompletionLabels);
+            Ui.Press(window, "ESCAPE");
+
+            window.OpenFile(project.PathOf("Catalog/CatalogSettings.cs"));
+            Ui.Settle();
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "Catalog:Sa");
+            Ui.Run(window, AppActions.QuickFix);
+            Ui.WaitFor(() => window.Assist.Offered.Contains("Add Catalog:Sale to Admin's appsettings.json…") && window.Assist.Offered.Contains("Add Catalog:Sale to Shop's appsettings.json…"),
+                () => $"each program's fix to be offered: {string.Join("; ", window.Assist.Offered)}");
+            Assert.DoesNotContain("Add Catalog:Sale to appsettings.json…", window.Assist.Offered);
+            Ui.Press(window, "ESCAPE");
+            Set(window, "Catalog:Sa", "Add Catalog:Sale to Shop's appsettings.json…", secret: false, "Summer", first: false);
+            // Go to Declaration left Shop's appsettings.json open, so the fix changes it as the editor has it.
+            OpenDocument shop = window.EditorArea.Documents.First(d => PathNames.Same(d.Path, PathNames.Canonical(settings)));
+            Ui.WaitFor(() => shop.Text.Snapshot.ToString().Contains("\"Sale\": \"Summer\"", StringComparison.Ordinal), "the key to be set in Shop's appsettings.json");
+            Assert.False(File.Exists(project.PathOf("Admin/appsettings.json")), "Admin was given an appsettings.json, though Shop's fix was chosen");
+            Ui.WaitFor(() => Missing(window, "Admin or Shop").Count == 0, () => $"the warning to go once Shop's appsettings.json gives the key: {Marked(window)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A library no program of the folder references runs with no configuration Passenger can know, so a read of a
+    /// key nothing gives is warned of nothing, its own folder never taken for a program's.</summary>
+    [AvaloniaFact]
+    public void A_library_no_program_references_is_warned_of_no_key()
+    {
+        MainWindow window = project.Open(project.PathOf("Tools/ToolSettings.cs"));
+        try
+        {
+            Ui.WaitFor(() => window.EditorArea.Active!.Markers.Any(m => m.Message.Contains("CS0219", StringComparison.Ordinal)),
+                () => $"the compiler's warning of the unused variable, pulled with Passenger's own: {Marked(window)}");
+            string[] warned = [.. window.EditorArea.Active!.Markers.Select(m => m.Message).Where(m => m.Contains("the configuration key", StringComparison.Ordinal))];
+            Assert.True(warned.Length == 0, $"A library no program runs was warned of a key, its own folder taken for a program's: {string.Join(" | ", warned)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 
     /// <summary>A read through a field another part of its partial class declares, in a file that never names configuration's
     /// API, is warned of as a read in the declaring file would be.</summary>
@@ -464,6 +544,9 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
                   { "Url": "https://pay.example" }
                 ]
               },
+              "Catalog": {
+                "Title": "Spring"
+              },
               "Mail": {
                 "Host": "smtp.example"
               }
@@ -473,8 +556,41 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
 
         public Project() : base("configuration-")
         {
-            TestFolders.Write(Folder, "Shop.slnx", "<Solution><Project Path=\"Shop/Shop.csproj\" /></Solution>");
-            TestFolders.Write(Folder, "Shop/Shop.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>"));
+            TestFolders.Write(Folder, "Shop.slnx", "<Solution><Project Path=\"Shop/Shop.csproj\" /><Project Path=\"Admin/Admin.csproj\" />"
+                + "<Project Path=\"Catalog/Catalog.csproj\" /><Project Path=\"Tools/Tools.csproj\" /></Solution>");
+            const string Catalog = "<ItemGroup><ProjectReference Include=\"../Catalog/Catalog.csproj\" /></ItemGroup>";
+            TestFolders.Write(Folder, "Shop/Shop.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>").With(Catalog));
+            // A library both programs run, reading a key Shop's appsettings.json gives and one nothing does.
+            const string Configured = "<ItemGroup><FrameworkReference Include=\"Microsoft.AspNetCore.App\" /></ItemGroup>";
+            TestFolders.Write(Folder, "Catalog/Catalog.csproj", TestProjects.Library("<Nullable>enable</Nullable>").With(Configured));
+            TestFolders.Write(Folder, "Catalog/CatalogSettings.cs", """
+                using Microsoft.Extensions.Configuration;
+
+                public sealed class CatalogSettings(IConfiguration configuration)
+                {
+                    public string? Title => configuration["Catalog:Title"];
+
+                    public string? Sale => configuration["Catalog:Sale"];
+                }
+
+                """);
+            TestFolders.Write(Folder, "Admin/Admin.csproj", TestProjects.Console().With(Catalog));
+            TestFolders.Write(Folder, "Admin/Program.cs", "System.Console.WriteLine(\"admin\");\n");
+            // A library no program references.
+            TestFolders.Write(Folder, "Tools/Tools.csproj", TestProjects.Library("<Nullable>enable</Nullable>").With(Configured));
+            TestFolders.Write(Folder, "Tools/ToolSettings.cs", """
+                using Microsoft.Extensions.Configuration;
+
+                public sealed class ToolSettings(IConfiguration configuration)
+                {
+                    public string? Motto()
+                    {
+                        int unused = 0;
+                        return configuration["Tools:Motto"];
+                    }
+                }
+
+                """);
             TestFolders.Write(Folder, "Shop/Program.cs", Program);
             TestFolders.Write(Folder, "Shop/Options.cs", Options);
             // A partial class whose configuration one file holds and the other reads, never naming it.
@@ -498,5 +614,9 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
 
                 """);
         }
+
+        /// <summary>Restored by the real path, by which Shop's and Admin's references reach Catalog and the solution's restore
+        /// would not, so Catalog is never restored by two spellings at once.</summary>
+        public override ValueTask InitializeAsync() => new(PrepareAsync(byRealPath: true));
     }
 }

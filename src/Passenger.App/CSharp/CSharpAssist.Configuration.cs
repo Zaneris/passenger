@@ -12,109 +12,108 @@ using Passenger.Xaml.Features;
 namespace Passenger.App.CSharp;
 
 /// <summary>Configuration known from what the app reads, in its C#: Go to Declaration from a read to where each file the
-/// project runs with gives its key, the hover card's values of it, and the fixes of a read's warning that nothing gives its
-/// key, which set it in appsettings.json, or in the user secrets for a secret's.</summary>
+/// programs running its code run with gives its key, the hover card's values of it, and the fixes of a read's warning that
+/// nothing gives its key, which set it in a program's appsettings.json, or in its user secrets for a secret's.</summary>
 internal sealed partial class CSharpAssist
 {
-    /// <summary>The configuration of the project a C# file is of (the session's <see cref="ProjectSession.ConfigurationOf(string)"/>).</summary>
-    public Func<string, ConfigurationProject?>? ConfigurationOf { get; set; }
+    /// <summary>A C# file's code with the configurations of the programs that run it (the session's <see cref="ProjectSession.ConfiguredCodeOf"/>).</summary>
+    public Func<string, ConfiguredCode?>? ConfiguredCodeOf { get; set; }
 
-    /// <summary>Where Go to Declaration goes from a read of a configuration key in C#: where each file the project runs with
-    /// gives it (its settings, a launch profile, its user secrets, a compose file, an AppHost), or saying none does; null
-    /// where the offset is on no read of the project's, for the server's own. Only a string's place asks.</summary>
+    /// <summary>Where Go to Declaration goes from a read of a configuration key in C#: where each file the programs running it
+    /// run with gives it (their settings, a launch profile, their user secrets, a compose file, an AppHost), or saying none
+    /// does; null where the offset is on no read of the project's, for the server's own. Only a string's place asks.</summary>
     private async Task<Declared?> ConfigurationDeclaredAsync(LspDocument lsp, OpenDocument document, int offset)
     {
-        if (await ReadAtAsync(lsp, document, offset) is not ({ } project, { } read))
+        if (await ReadAtAsync(lsp, document, offset) is not ({ } code, { } read))
         {
             return null;
         }
         Func<string, string?> text = context.Editors.Texts().Text;
-        IReadOnlyList<(GivenKey Given, LspLocation Place)> given = await BackgroundWork.Run(() =>
+        IReadOnlyList<(string Named, LspLocation Place)> given = await BackgroundWork.Run(() =>
         {
             Dictionary<string, ServerLines?> lines = new(StringComparer.Ordinal);
-            return (IReadOnlyList<(GivenKey, LspLocation)>)[.. ConfigurationFiles.Where(ConfigurationFiles.Given(project, text), read.Key, read.Kind != ConfigurationKinds.Read)
+            return (IReadOnlyList<(string, LspLocation)>)[.. code.Where(text, read.Key, read.Kind != ConfigurationKinds.Read)
                 .Select(g =>
                 {
-                    if (!lines.TryGetValue(g.File!, out ServerLines? counted))
+                    if (!lines.TryGetValue(g.Given.File!, out ServerLines? counted))
                     {
-                        lines[g.File!] = counted = text(g.File!) is { } written ? ServerLines.Of(TextSnapshot.From(written)) : null;
+                        lines[g.Given.File!] = counted = text(g.Given.File!) is { } written ? ServerLines.Of(TextSnapshot.From(written)) : null;
                     }
-                    LspPosition start = counted?.PositionOf(Math.Min(g.Start, counted.Text.Length)) ?? new LspPosition(0, 0);
-                    LspPosition end = counted?.PositionOf(Math.Min(g.End, counted.Text.Length)) ?? start;
-                    return (g, new LspLocation(DocumentUris.FromPath(g.File!), new LspRange(start, end)));
+                    LspPosition start = counted?.PositionOf(Math.Min(g.Given.Start, counted.Text.Length)) ?? new LspPosition(0, 0);
+                    LspPosition end = counted?.PositionOf(Math.Min(g.Given.End, counted.Text.Length)) ?? start;
+                    return ($"{code.Of(g.Program, Path.GetFileName(g.Given.File)!)}: {g.Given.Key} = {g.Given.Shown}",
+                        new LspLocation(DocumentUris.FromPath(g.Given.File!), new LspRange(start, end)));
                 })];
         });
-        return new Declared([.. given.Select(g => g.Place)], $"Nothing {project.Name} runs with gives {read.Key}")
+        return new Declared([.. given.Select(g => g.Place)], $"Nothing {code.Names} runs with gives {read.Key}")
         {
-            Names = [.. given.Select(g => (string?)$"{Path.GetFileName(g.Given.File)}: {g.Given.Key} = {g.Given.Shown}")],
+            Names = [.. given.Select(g => (string?)g.Named)],
         };
     }
 
-    /// <summary>The read of a configuration key whose string an offset of a C# file is in, with its project's configuration; null
-    /// elsewhere, and asking nothing where the offset is in no string.</summary>
-    private async Task<(ConfigurationProject Project, ConfigurationKey Read)?> ReadAtAsync(LspDocument lsp, OpenDocument document, int offset, CancellationToken cancel = default)
+    /// <summary>The read of a configuration key whose string an offset of a C# file is in, with the configurations its code runs
+    /// with; null elsewhere, and asking nothing where the offset is in no string.</summary>
+    private async Task<(ConfiguredCode Code, ConfigurationKey Read)?> ReadAtAsync(LspDocument lsp, OpenDocument document, int offset, CancellationToken cancel = default)
     {
         if ((document.Syntax is { } parsing ? await parsing.CurrentAsync() : null) is not { } parsed || !ReferenceEquals(parsed.Text, document.Text.Snapshot)
             || !parsed.Root.FindToken(Math.Max(0, offset - 1)).IsKind(SyntaxKind.StringLiteralToken) && !parsed.Root.FindToken(offset).IsKind(SyntaxKind.StringLiteralToken)
-            || ConfigurationOf?.Invoke(document.Path) is not { } project)
+            || ConfiguredCodeOf?.Invoke(document.Path) is not { } code)
         {
             return null;
         }
         LspPosition at = lsp.PositionOf(offset);
-        IReadOnlyList<ConfigurationKey> keys = await SettingsAssist.KeysOfAsync(context.CSharp, [project], cancel);
+        IReadOnlyList<ConfigurationKey> keys = await SettingsAssist.KeysOfAsync(context.CSharp, [code.Project], cancel);
         return keys.FirstOrDefault(k => k.Kind is ConfigurationKinds.Read or ConfigurationKinds.Section or ConfigurationKinds.Binding && k.Key.Length > 0
             && k.Path is { } path && Passenger.Core.PathNames.Same(path, document.Path) && k.At is { } start && k.End is { } end
-            && start.Line == at.Line && start.Character <= at.Character && at.Character <= end.Character) is { } read ? (project, read) : null;
+            && start.Line == at.Line && start.Character <= at.Character && at.Character <= end.Character) is { } read ? (code, read) : null;
     }
 
-    /// <summary>What the hover card says of a read of a configuration key in C#: the key and where each file the project runs
-    /// with gives it with its value (a user secret's always as dots, any other masked by Passenger's rule for secrets), or that
-    /// nothing does. None elsewhere.</summary>
+    /// <summary>What the hover card says of a read of a configuration key in C#: the key and where each file the programs
+    /// running it run with gives it with its value (a user secret's always as dots, any other masked by Passenger's rule for
+    /// secrets), or that nothing does. None elsewhere.</summary>
     private async Task<string?> ConfigurationHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
     {
         if (context.WebOf(document) is not null || context.CSharp?.For(document)?.Lsp is not { } lsp
-            || await ReadAtAsync(lsp, document, offset, cancel) is not ({ } project, { } found))
+            || await ReadAtAsync(lsp, document, offset, cancel) is not ({ } code, { } found))
         {
             return null;
         }
         Func<string, string?> text = context.Editors.Texts().Text;
-        IReadOnlyList<GivenKey> given = await BackgroundWork.Run(() => ConfigurationFiles.Where(ConfigurationFiles.Given(project, text), found.Key, found.Kind != ConfigurationKinds.Read));
-        return given.Count == 0 ? $"{found.Key}: given by nothing {project.Name} runs with"
-            : $"{found.Key}:\n" + string.Join('\n', given.Select(g => $"{(g.By == GivenBy.UserSecrets ? "user secrets" : Path.GetFileName(g.File))}"
-                + (g.Key.Equals(found.Key, StringComparison.OrdinalIgnoreCase) ? string.Empty : $" ({g.Key})") + (g.Value is null ? string.Empty : $" = {g.Shown}")));
+        IReadOnlyList<(ConfigurationProject Program, GivenKey Given)> given = await BackgroundWork.Run(() => code.Where(text, found.Key, found.Kind != ConfigurationKinds.Read));
+        return given.Count == 0 ? $"{found.Key}: given by nothing {code.Names} runs with"
+            : $"{found.Key}:\n" + string.Join('\n', given.Select(g => code.Of(g.Program, g.Given.By == GivenBy.UserSecrets ? "user secrets" : Path.GetFileName(g.Given.File)!)
+                + (g.Given.Key.Equals(found.Key, StringComparison.OrdinalIgnoreCase) ? string.Empty : $" ({g.Given.Key})") + (g.Given.Value is null ? string.Empty : $" = {g.Given.Shown}")));
     }
 
     /// <summary>The fixes of a C# file's warnings, on an offset's line, that nothing gives a configuration key it reads
-    /// (<see cref="CSharpDocument.ConfigurationMissingOn"/>), Passenger's own and listed first: its value asked for and set in the
-    /// project's appsettings.json, or for a secret's name in its user secrets (masked as it is typed), one command of global
-    /// undo each, worked out again as it is chosen and refused once something gives the key.</summary>
+    /// (<see cref="CSharpDocument.ConfigurationMissingOn"/>), Passenger's own and listed first: for each program running the
+    /// code, its value asked for and set in that program's appsettings.json, or for a secret's name in its user secrets (masked
+    /// as it is typed), one command of global undo each, worked out again as it is chosen and refused once something gives the key.</summary>
     public IReadOnlyList<EditorFix> ConfigurationFixes(OpenDocument file, int offset)
     {
-        if (context.CSharp?.For(file) is not { Lsp: { } lsp } features)
+        if (context.CSharp?.For(file) is not { Lsp: { } lsp } features
+            || features.ConfigurationMissingOn(lsp.PositionOf(offset).Line) is not { Count: > 0 } missing || ConfiguredCodeOf?.Invoke(file.Path) is not { } code)
         {
             return [];
         }
-        return [.. features.ConfigurationMissingOn(lsp.PositionOf(offset).Line).DistinctBy(m => m.Key).Select(m => KeyFix(file, m.Range, m.Key, m.Secret))];
+        return [.. missing.DistinctBy(m => m.Key).SelectMany(m => code.Programs.Select(p => KeyFix(file, code, p, m.Range, m.Key, m.Secret)))];
     }
 
-    private EditorFix KeyFix(OpenDocument file, TextRange range, string key, bool secret) =>
-        new(secret ? $"Add {key} to user secrets…" : $"Add {key} to appsettings.json…", "a configuration key nothing gives", range, string.Empty)
+    private EditorFix KeyFix(OpenDocument file, ConfiguredCode code, ConfigurationProject program, TextRange range, string key, bool secret) =>
+        new($"Add {key} to {code.Of(program, secret ? "user secrets" : "appsettings.json")}…", "a configuration key nothing gives", range, string.Empty)
         {
-            Again = _ => context.CSharp?.For(file)?.ConfigurationMissingOn(null).FirstOrDefault(m => m.Key == key) is { } now ? KeyFix(file, now.Range, key, secret) : null,
-            Asks = new ValueAsked(secret ? $"The value of {key}, kept in the project's user secrets, out of its files" : $"The value of {key}, kept in the project's appsettings.json",
-                secret, (value, _) => SetKeyAsync(file, key, secret, value)),
+            Again = _ => context.CSharp?.For(file)?.ConfigurationMissingOn(null).FirstOrDefault(m => m.Key == key) is { } now && ConfiguredCodeOf?.Invoke(file.Path) is { } still
+                && still.Programs.FirstOrDefault(p => PathNames.Same(p.Project, program.Project)) is { } again ? KeyFix(file, still, again, now.Range, key, secret) : null,
+            Asks = new ValueAsked($"The value of {key}, kept in {(code.Apart(program) ? $"{program.Name}'s" : "the project's")} {(secret ? "user secrets, out of its files" : "appsettings.json")}",
+                secret, (value, _) => SetKeyAsync(file, program, key, secret, value)),
         };
 
-    /// <summary>A configuration key set where its fix keeps it, as one command: the project's appsettings.json (made when it has
-    /// none), or its user secrets as <c>dotnet user-secrets set</c> keeps them, giving the project a UserSecretsId first where it
+    /// <summary>A configuration key set where its fix keeps it, as one command: the program's appsettings.json (made when it has
+    /// none), or its user secrets as <c>dotnet user-secrets set</c> keeps them, giving the program a UserSecretsId first where it
     /// has none; the file's text as the editor has it when open, said once a file not open has landed, the read's warning
     /// pulled again; what it says never holds the value.</summary>
-    private async Task<RefactorOutcome> SetKeyAsync(OpenDocument file, string key, bool secret, string value)
+    private async Task<RefactorOutcome> SetKeyAsync(OpenDocument file, ConfigurationProject project, string key, bool secret, string value)
     {
-        if (ConfigurationOf?.Invoke(file.Path) is not { } project)
-        {
-            return RefactorOutcome.Refused($"{key} was not set: {file.Name} is in no project");
-        }
         Func<string, string?> text = context.Editors.Texts().Text;
         if (ConfigurationFiles.Gives(ConfigurationFiles.Given(project, text), key, section: false))
         {

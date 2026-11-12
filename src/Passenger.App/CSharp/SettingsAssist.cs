@@ -13,9 +13,10 @@ using Passenger.Xaml.Features;
 namespace Passenger.App.CSharp;
 
 /// <summary>A settings file's configuration, known from what the app reads (the extension's one reading of a project's
-/// keys, through <see cref="Handlers.ConnectionReads"/>): completion of a section's keys and of a value's choices in
-/// appsettings*.json and the project's secrets.json, merged ahead of the JSON server's items; the hover card's type of a
-/// key; and Go to Declaration from a key there to the options property or the code that reads it.</summary>
+/// keys, through <see cref="Handlers.ConnectionReads"/>, of every project whose code the program runs): completion of a
+/// section's keys and of a value's choices in appsettings*.json and the program's secrets.json, merged ahead of the JSON
+/// server's items; the hover card's type of a key; and Go to Declaration from a key there to the options property or the
+/// code that reads it.</summary>
 internal sealed class SettingsAssist(AssistContext context, CodeCompletion completion, CodeNavigation navigation) : LanguageAssist
 {
     /// <summary>The projects a settings file or a secrets.json configures (the session's <see cref="ProjectSession.ConfiguredBy"/>).</summary>
@@ -79,7 +80,7 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
             return null;
         }
         return new Declared([.. declared.Select(k => new LspLocation(DocumentUris.FromPath(k.Path!), new LspRange(new LspPosition(k.At!.Line, k.At.Character), new LspPosition(k.End!.Line, k.End.Character))))],
-            $"No code of {string.Join(" or ", projects.Select(p => p.Name))} reads {key}") { Names = [.. declared.Select(k => (string?)(k.Owner ?? $"{k.Key} ({k.Kind})"))] };
+            $"No code {Plural.Either([.. projects.Select(p => p.Name)])} runs reads {key}") { Names = [.. declared.Select(k => (string?)(k.Owner ?? $"{k.Key} ({k.Kind})"))] };
     }
 
     /// <summary>What the hover card says of a key in a settings file: the type the code reads it as and what declares it.</summary>
@@ -90,18 +91,21 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
             return null;
         }
         string[] segments = key.Split(':');
-        ConfigurationKey? read = (await KeysOfAsync(context.CSharp, projects, cancel)).Where(k => k.Kind == ConfigurationKinds.Option ? ConfigurationFiles.Matches(k.Key, segments)
+        ConfigurationKey? read = (await KeysOfAsync(context.CSharp, CodeOf(projects), cancel)).Where(k => k.Kind == ConfigurationKinds.Option ? ConfigurationFiles.Matches(k.Key, segments)
             : k.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).OrderBy(k => k.Kind == ConfigurationKinds.Option ? 0 : 1).FirstOrDefault();
         return read is null ? null : $"{key}: {read.TypeName}" + (read.Owner is { } owner ? $" ({owner})" : read.Kind == ConfigurationKinds.Read ? " (read by the code)" : string.Empty)
             + (read.Values is { Count: > 0 } names ? $"\nOne of {string.Join(", ", names)}" : string.Empty);
     }
 
+    /// <summary>The projects whose code runs with the programs' configurations (<see cref="ConfigurationProject.Code"/>), each once.</summary>
+    private static IReadOnlyList<string> CodeOf(IReadOnlyList<ConfigurationProject> programs) => [.. programs.SelectMany(p => p.Code).Distinct(PathNames.Comparer)];
+
     /// <summary>The kind a configuration key is listed as: a property's.</summary>
     private const CompletionItemKind KeyItemKind = CompletionItemKind.Property;
 
-    /// <summary>Every configuration key the projects' code reads or binds, asked of Passenger's extension for the code as the server
-    /// holds it; none without the server.</summary>
-    internal static async Task<IReadOnlyList<ConfigurationKey>> KeysOfAsync(CSharpService? csharp, IReadOnlyList<ConfigurationProject> projects, CancellationToken cancel = default)
+    /// <summary>Every configuration key the code of the projects named reads or binds, asked of Passenger's extension for the
+    /// code as the server holds it; none without the server.</summary>
+    internal static async Task<IReadOnlyList<ConfigurationKey>> KeysOfAsync(CSharpService? csharp, IReadOnlyList<string> projects, CancellationToken cancel = default)
     {
         if (csharp?.Session is not { } roslyn || projects.Count == 0)
         {
@@ -109,8 +113,7 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
         }
         try
         {
-            return (await roslyn.ExtensionAsync<ConnectionReadsFound>(Handlers.ConnectionReads,
-                new ConnectionReadsRequest([.. projects.Select(p => p.Project)], Keys: true), cancel)).Keys ?? [];
+            return (await roslyn.ExtensionAsync<ConnectionReadsFound>(Handlers.ConnectionReads, new ConnectionReadsRequest(projects, Keys: true), cancel)).Keys ?? [];
         }
         catch (LanguageServerFailed)
         {
@@ -134,7 +137,7 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
         {
             return null;
         }
-        IReadOnlyList<ConfigurationKey> keys = await KeysOfAsync(context.CSharp, projects, cancel);
+        IReadOnlyList<ConfigurationKey> keys = await KeysOfAsync(context.CSharp, CodeOf(projects), cancel);
         string[] path = [.. spot.Path.SelectMany(name => name.Split(':'))];
         IReadOnlyList<CompletionItem> items = spot.AtName ? KeyItems(keys, path, spot, written) : ValueItems(keys, [.. path, .. (spot.Property ?? string.Empty).Split(':')]);
         return items.Count == 0 ? null : (spot.Start, items, caret < spot.End ? written[caret..spot.End] : string.Empty);
@@ -239,7 +242,7 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
         {
             return null;
         }
-        IReadOnlyList<ConfigurationKey> found = await KeysOfAsync(context.CSharp, projects);
+        IReadOnlyList<ConfigurationKey> found = await KeysOfAsync(context.CSharp, CodeOf(projects));
         string[] segments = key.Split(':');
         return (key, [.. found.Where(k => k.Path is not null && k.At is not null && k.End is not null && k.Key.Length > 0
                 && (k.Kind == ConfigurationKinds.Option ? ConfigurationFiles.Matches(k.Key, segments) : k.Key.Equals(key, StringComparison.OrdinalIgnoreCase)))

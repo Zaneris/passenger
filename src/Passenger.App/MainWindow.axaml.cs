@@ -302,7 +302,7 @@ public partial class MainWindow : IdeWindow
         assist.AskValue = AskValueAsync;
         assist.ConfirmFix = (title, text, yes) => Confirm(title, text, yes);
         // The session as each call finds it.
-        assist.ConfigurationOf = path => session.ConfigurationOf(path);
+        assist.ConfiguredCodeOf = path => session.ConfiguredCodeOf(path);
         assist.ConfiguredBy = path => session.ConfiguredBy(path);
         assist.AddActions(actions!);
         usages.AddActions(actions!);

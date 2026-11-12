@@ -1808,9 +1808,10 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// another thing to Aspire than its last pull asked as pulls again, no other file.</summary>
     internal void AspireRolesChanged() => Each(document => document.AspireRoleChanged());
 
-    /// <summary>The configuration of the project a C# file is of (the session's <see cref="ProjectSession.ConfigurationOf(string)"/>),
-    /// against which its reads of keys nothing gives are warned of; none without a session, which warns of none.</summary>
-    public Func<string, Workspace.ConfigurationProject?>? ConfigurationOf { get; init; }
+    /// <summary>A C# file's code with the configurations of the programs that run it (the session's
+    /// <see cref="ProjectSession.ConfiguredCodeOf"/>), against which its reads of keys nothing gives are warned of; none
+    /// without a session, which warns of none.</summary>
+    public Func<string, Workspace.ConfiguredCode?>? ConfiguredCodeOf { get; init; }
 
     /// <summary>Whether no tab shows an open file, which the server's refresh leaves to be pulled once shown or asked.</summary>
     public Func<OpenDocument, bool> Unseen { get; init; } = _ => false;
