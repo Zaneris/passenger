@@ -17,7 +17,8 @@ namespace Passenger.Tests;
 
 /// <summary>Debugging a .NET program in a container Passenger did not start, as a person does with Attach to Process: the
 /// program listed under its container, attached to by Passenger's own adapter inside the container (copied in first, over
-/// docker exec), stopping at a breakpoint, evaluating and stepping, and running on after Detach; on Alpine (musl) too; a
+/// docker exec), stopping at a breakpoint, evaluating and stepping, and running on after Detach, or after Stop where it is
+/// the container's first process, attached to again; on Alpine (musl) too; a
 /// build whose PDB names the container's paths, or a Windows machine's, stopping at its breakpoint by the document in the
 /// container, the path map at the protocol's edge, and case as Windows names files; and the tools downloaded from their
 /// release, checked against SHA256SUMS. Each skips, saying why, where no Linux engine runs. The program is built on this
@@ -71,6 +72,41 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
             Assert.Equal("running", Docker.State(container));
             seen = Turned(container);
             Ui.WaitFor(() => Turned(container) > seen, "the program to count on after its debugger went");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Stop on the program a container runs as its first process, which nothing inside the container can end: the
+    /// debugger lets go of it, saying why, the adapter there ends, and the same process is attached to again and let go
+    /// again, nothing of Passenger's left running in the container. Terminated, the program lived on held by an adapter
+    /// that never ended, and every attach after timed out (#1521).</summary>
+    [AvaloniaFact]
+    public void Stop_on_a_containers_first_process_lets_it_go_ends_the_adapter_there_and_it_is_attached_to_again()
+    {
+        Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
+        string container = Start("stop", turns.Glibc);
+        MainWindow window = Open(turns.Source("host"));
+        try
+        {
+            foreach (string what in (string[])["the program in the container", "the program attached to again after Stop"])
+            {
+                AttachToProcessDialog dialog = OpenAttachToProcess(window);
+                ChooseIn(dialog, container);
+                dialog.Attach();
+                StoppedAtBreakpoint(window, what);
+                ShownAt(window, Said);
+                Assert.Equal(1, Ui.Await(window.Debugger.Session!.ProcessStarted, $"the id of {what}"));
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Debugger.IsDebugging, $"Stop to end the session of {what}");
+                Assert.Contains("nothing inside the container can end: the debugger let go of it", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+                Ui.WaitFor(() => !Top(container).Contains(ContainerTools.Executable, StringComparison.Ordinal), $"the adapter in the container to end with Stop, debugging {what}");
+                Assert.Equal("running", Docker.State(container));
+                int seen = Turned(container);
+                Ui.WaitFor(() => Turned(container) > seen, $"{what} to count on once let go");
+            }
         }
         finally
         {

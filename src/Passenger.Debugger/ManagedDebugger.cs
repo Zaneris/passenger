@@ -49,6 +49,9 @@ public partial class ManagedDebugger
     private bool _isAttached;
     private int? _pendingAttachProcessId;
 
+    /// <summary>The process attached to, by its id where the adapter runs, while held; 0 for none.</summary>
+    private int _attachedId;
+
     /// <summary>The process an attach is to take hold of, from the attach request until its runtime has been let go (or was
     /// running already); 0 when there is none. One held at its start (DOTNET_DefaultDiagnosticPortSuspend) waits there for
     /// the debugger, so an attach that fails, or a session that ends first, lets it go (<see cref="ReleaseHeldTargetAsync"/>).</summary>
@@ -527,6 +530,7 @@ public partial class ManagedDebugger
             process.Dispose();
         }
         _isAttached = true;
+        _attachedId = processId;
         ConfigureExceptionCallbacks();
 
         _logger?.Invoke($"Attached to process: {processId}");
@@ -1433,6 +1437,7 @@ public partial class ManagedDebugger
         }
 
         _isAttached = false;
+        _attachedId = 0;
         _process = null;
         _corDebug = null;
 

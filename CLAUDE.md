@@ -321,6 +321,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   on localhost; a push takes the logins the SDK reads (`RegistryLogins`, server names only), refused only on the
   registry's own 401 (`AsksForLoginAsync`). Vulnerabilities only when
   asked: without the plugin docker answers `scout … --format` with "unknown flag", so find it by `docker scout version`.
+  docker exec's end ends nothing it started, only closing its standard input; a container's first process takes no
+  SIGKILL from inside it, so Stop lets one attached to go (`ManagedDebugger.Unending`).
 - **Aspire.** `AspireController` checks bearer tokens first; deploy logins are read from each tool's files, never by
   running a cloud CLI; metrics only while shown. MetricsEventSource's CollectionStart and Stop reach TraceEvent as
   `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
