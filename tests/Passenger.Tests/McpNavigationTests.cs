@@ -15,8 +15,8 @@ namespace Passenger.Tests;
 /// place (a usage, a declaration) in a copy of its code with its line's text, a place with no symbol said to be one, or
 /// the symbol its line declares taken; symbols named rather than placed, found exactly, each overload told apart by its
 /// documentation id, an indexer by this[] or Item; a hover card as plain text, and a fix's Suppress and Configure choices
-/// counted until asked for; and calls on many files leaving open, in the IDE and the language server, only the file the
-/// agent opened and the one it left unsaved.</summary>
+/// counted until asked for; calls on many files leaving open, in the IDE and the language server, only the file the agent
+/// opened and the one it left unsaved; and a type a code action has just moved known at once in its new file.</summary>
 public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpNavigationTests(RestoredFolders folders)
@@ -558,6 +558,54 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(Pulls(trace, "Helper.cs") == pulls,
             $"The second ask of Helper.cs, unchanged, sent the language server {Pulls(trace, "Helper.cs") - pulls} pulls of its diagnostics, where its last pull answered");
         Assert.Contains("Helper.cs", ServerOpen(trace));
+    }
+
+    /// <summary>A type a code action moved to a file of its own is known at once to what the agent asks next of a file using
+    /// it, each tool asked first after a move of its own: the language server takes the new file into the project a moment
+    /// later, and answered before then, diagnostics said the type could not be found and the other tools answered without
+    /// it, of another symbol or none.</summary>
+    [Fact]
+    public async Task What_an_agent_asks_at_once_after_a_code_action_moved_a_type_to_a_file_of_its_own_finds_the_type_there()
+    {
+        await TakeFolderAsync();
+        string[] kinds = ["Circle", "Oval", "Star", "Ring", "Kite"];
+        Write("Shapes.cs", "namespace Shop;\n\npublic class Square\n{\n    public int Side;\n}\n"
+            + string.Concat(kinds.Select(k => $"\npublic class {k}\n{{\n    public double Radius;\n}}\n")));
+        string garden = "namespace Shop;\n\npublic static class Garden\n{\n" + string.Concat(kinds.Select(k => $"    public static double Of{k}({k} shape) => shape.Radius;\n")) + "}\n";
+        Write("Garden.cs", garden);
+        await using McpClient client = await Start(["--mcp", Folder]);
+        Assert.Empty(Errors(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Garden.cs" })));
+
+        string[] errors = Errors(await MovedThenAsync("Circle", used => Call(client, McpTools.Diagnostics, new() { ["path"] = "Garden.cs" })));
+        Assert.True(errors.Length == 0, $"diagnostics of Garden.cs at once after Circle's move answered errors the language server has yet to clear, which an agent would fix: {string.Join("; ", errors)}");
+        JsonElement declared = Assert.Single((await MovedThenAsync("Oval", used => Call(client, McpTools.Definition, used))).EnumerateArray());
+        Assert.Equal(("Oval.cs", 3), (declared.GetProperty("path").GetString(), declared.GetProperty("line").GetInt32()));
+        string card = (await MovedThenAsync("Star", used => Call(client, McpTools.SymbolInfo, used))).GetString()!;
+        Assert.True(card.Contains("class Shop.Star", StringComparison.Ordinal), $"symbol_info of Star at once after its move answered of another symbol: {card}");
+        JsonElement usages = await MovedThenAsync("Ring", used => Call(client, McpTools.Usages, used));
+        Assert.Equal(("Ring (class)", "Garden.cs, Ring.cs"), (usages.GetProperty("symbol").GetString(), string.Join(", ", Used(usages).Select(u => u.Path).Distinct().Order(StringComparer.Ordinal))));
+        JsonElement[] found = [.. (await MovedThenAsync("Kite", _ => Call(client, McpTools.FindSymbol, new() { ["query"] = "Kite" }))).EnumerateArray()];
+        Assert.True(found.Any(f => f.GetProperty("kind").GetString() == "class" && f.GetProperty("path").GetString() == "Kite.cs"),
+            $"find_symbol Kite at once after its move found no class Kite in Kite.cs: {string.Join(", ", found.Select(f => f.GetRawText()))}");
+
+        // The light bulb's Move type to X.cs on the type's name, then at once the tool, at the type's use in Garden.cs.
+        async Task<JsonElement> MovedThenAsync(string kind, Func<Dictionary<string, object?>, Task<JsonElement>> ask)
+        {
+            (int line, int column) = At(File.ReadAllText(Path.Combine(Folder, "Shapes.cs")), $"class {kind}", "class ".Length);
+            Assert.Equal($"Applied 'Move type to {kind}.cs' to 2 files", (await Call(client, McpTools.ApplyCodeAction,
+                new() { ["path"] = "Shapes.cs", ["line"] = line, ["column"] = column, ["title"] = $"Move type to {kind}.cs" })).GetString());
+            (int usedLine, int usedColumn) = At(garden, $"({kind} shape", 1);
+            return await ask(new() { ["path"] = "Garden.cs", ["line"] = usedLine, ["column"] = usedColumn });
+        }
+
+        static string[] Errors(JsonElement found) =>
+            [.. found.EnumerateArray().Where(d => d.GetProperty("severity").GetString() == "error").Select(d => $"{d.GetProperty("code").GetString()} {d.GetProperty("message").GetString()}")];
+
+        static (int Line, int Column) At(string text, string what, int into)
+        {
+            int offset = text.IndexOf(what, StringComparison.Ordinal) + into;
+            return (text[..offset].Count(c => c == '\n') + 1, offset - text.LastIndexOf('\n', offset - 1));
+        }
     }
 
     /// <summary>How many pulls of a file's diagnostics lsp.log's trace says the language server was sent.</summary>

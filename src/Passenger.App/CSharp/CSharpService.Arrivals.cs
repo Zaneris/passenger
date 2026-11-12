@@ -12,7 +12,7 @@ namespace Passenger.App.CSharp;
 /// the solution leaves them out. Each is heard by the folder's watcher or found written a moment ago (<see
 /// cref="WrittenNow"/>), and let go of once the server holds it, or once a load of its project that read the disk after it
 /// came has ended without it (a file the project leaves out). An open one is opened in the server only then. What waits
-/// for them waits only for those that can change its answer (<see cref="ReachOfAsync"/>).</summary>
+/// for them waits only for those that can change its answer (<see cref="ReachOfAsync"/>, <see cref="SeenFrom"/>).</summary>
 public sealed partial class CSharpService
 {
     /// <summary>How long after a write a file may be on disk unheard by the folder's watcher.</summary>
@@ -143,6 +143,23 @@ public sealed partial class CSharpService
     /// Files, or from nothing. The file when it does not by then, else none.</summary>
     public Task<IReadOnlyList<(string Path, string Project)>> PlacedAsync(string path, TimeSpan within, bool looking, Action<string?>? waiting, CancellationToken cancel) =>
         UnplacedAsync(within, looking, (file, _) => PathNames.Same(file, path), waiting, cancel);
+
+    /// <summary>Which C# files come under the folder's projects can change what the server says of a file, by their paths and
+    /// projects: the file itself, and those of its project and of every project it references, through others too, whose
+    /// declarations its compilation reads.</summary>
+    public Func<string, string, bool> SeenFrom(string path)
+    {
+        UiThread.Check();
+        string file = PathNames.Canonical(path);
+        HashSet<string> seen = new(PathNames.Comparer);
+        if (workspace is { } opened && HolderOf(file) is { } project)
+        {
+            IReadOnlyList<ProjectModel> projects = ProjectsNow?.Invoke() ?? opened.Projects;
+            seen.Add(project);
+            seen.UnionWith(projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.WithReferenced(projects).Select(p => p.Path) ?? []);
+        }
+        return (arrived, holder) => PathNames.Same(arrived, file) || seen.Contains(holder);
+    }
 
     /// <summary>Waits, for a change at an offset of an open file, until the server holds in their projects the C# files come
     /// under the projects it reaches (<see cref="ReachOfAsync"/>), the file itself first, for up to <paramref name="within"/>

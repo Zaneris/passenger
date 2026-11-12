@@ -937,6 +937,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new ArgumentException($"No kind '{kind}'; Go to Symbol's kinds are {string.Join(", ", SymbolKinds.All)}", nameof(kind));
         }
+        // Found once the C# files come under the folder's projects are in them: a file just made may declare the name.
+        await Server(cancel);
+        await TakenInAsync(null, cancel);
         RoslynSession session = await Server(cancel);
         if (exact || indexer)
         {
@@ -2900,20 +2903,19 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
     }
 
-    /// <summary>Waits, once the language server has loaded the workspace, until it holds in its project the C# file asked
-    /// about, if it came under one of the folder's projects since (an agent's written a moment before looked for first),
-    /// else every such file, for up to <see cref="Patience.Limit"/>: of a file in none it answers from its Miscellaneous
-    /// Files, and a name declared there it does not find. Refused, naming the first, when the time is up; whether it was
-    /// waited for (false while the server still loads the workspace).</summary>
+    /// <summary>Waits, once the language server has loaded the workspace, until it holds in their projects the C# files come
+    /// under the folder's projects since (an agent's just written looked for first) that the file asked about sees (<see
+    /// cref="CSharpService.SeenFrom"/>), else every one, for up to <see cref="Patience.Limit"/>: it answers without a file in
+    /// none, finding no name declared there. Refused, naming the first, when the time is up; whether it was waited for (false
+    /// while the server still loads the workspace).</summary>
     private async Task<bool> TakenInAsync(string? path, CancellationToken cancel)
     {
         if (Session.CSharp is not { IsReady: true } csharp)
         {
             return false;
         }
-        IReadOnlyList<(string Path, string Project)> left = path is null
-            ? await csharp.UnplacedAsync(Patience.Limit, looking: true, null, SayTakingIn, cancel)
-            : await csharp.PlacedAsync(Resolve(path), Patience.Limit, looking: true, SayTakingIn, cancel);
+        IReadOnlyList<(string Path, string Project)> left = await csharp.UnplacedAsync(Patience.Limit, looking: true, path is null ? null : csharp.SeenFrom(Resolve(path)),
+            SayTakingIn, cancel);
         return left.Count == 0 ? true : throw new TimeoutException(NotTakenIn(left));
     }
 
