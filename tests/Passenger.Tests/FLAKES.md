@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `AspireExecutionServerTests`' `Malformed_or_ambiguous_wire_input_never_reaches_the_launch_callback(kind:
+  "duplicate-content-type")`, CI's Windows x64 report lane at fd37313ff (run 43162817058): "One or more Aspire project
+  sessions could not be stopped. (Object reference not set to an instance of an object.)" from
+  `AspireExecutionConnection.CloseAsync`. **A race in the IDE**: the server's dispose cancels `shutdown`, then aborts each
+  connection, disposing its `TcpClient`; a handler past `CloseAsync`'s check before the cancel then read `client.Client`,
+  null once the client is disposed, a null the handler never took for the connection's end as it does an
+  `ObjectDisposedException`. `CloseAsync` now reads the socket once and ends where there is none (#1509).
 - `AspireStandInTests`' `A_confirmation_cancelled_and_a_form_the_AppHost_updates_send_what_the_dialog_shows`, CI's
   Windows x64 report lane at 053101b37 (run 43132648654): "The IDE caught 1 error … NullReferenceException" at
   `Process.GetProcessHandlePairs` < `Process.Kill(entireProcessTree: true)` < `ChildProcesses.KillTree` <

@@ -523,13 +523,14 @@ internal sealed class AspireExecutionConnection : IAsyncDisposable
     /// request unread, the connection would be reset, and Windows then drops the answer the peer has not read yet.</summary>
     public async Task CloseAsync()
     {
-        if (!HasResponded || upgraded || RequestAborted.IsCancellationRequested)
+        // A client the server's shutdown disposed meanwhile has no socket: its connection has ended.
+        if (!HasResponded || upgraded || RequestAborted.IsCancellationRequested || client.Client is not { } socket)
         {
             return;
         }
         try
         {
-            client.Client.Shutdown(SocketShutdown.Send);
+            socket.Shutdown(SocketShutdown.Send);
             using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(RequestAborted);
             limit.CancelAfter(Lingering);
             int dropped = 0;
