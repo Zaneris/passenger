@@ -342,7 +342,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   inside `TestFinder.ReadFile`'s parse, never captured by a listing. A case named in place of its method is a row from
   its source (`TestItem.NamedCase`), never by `NUnit.ClassName`, the declaring type; the Testing Platform's VSTest
   bridge says no file or line unless run settings ask (`TestingPlatformRunner.SourcesAsked`); run settings reach a
-  Testing Platform host through `PlatformRunSettings`, never `--settings`.
+  Testing Platform host through `PlatformRunSettings`, never `--settings`. VSTest ends a discovery at the first assembly
+  whose test host cannot start, so each it did not look through whole is asked again alone; an assembly a runner could
+  not look through is an `UnfoundTests`, said wherever its tests are missed.
 - **The rest.** `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
   only to their feed's host); under central package management Passenger writes each version where the evaluation keeps
   it (`CentralWrites`), never dotnet add package, which drops a props file's blank lines and turns a property to a literal;

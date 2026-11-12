@@ -483,6 +483,62 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>A library of shared test helpers its project marks as a test project, with no test SDK for VSTest to start a
+    /// test host from, found before a test project referencing it, hides none of that project's tests: its test runs from
+    /// the caret. The library's own test run from the caret, and Run All's tally, say which assembly's tests could not be
+    /// found and what VSTest said of it.</summary>
+    [AvaloniaFact]
+    public void An_assembly_vstest_cannot_look_through_hides_no_other_projects_tests_and_a_run_of_its_own_says_why()
+    {
+        string solution = NewFolder();
+        Write(solution, "Helpers.Testing/Helpers.Testing.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <IsTestProject>true</IsTestProject>\n  </PropertyGroup>\n" +
+            $"  <ItemGroup>\n    <PackageReference Include=\"NUnit\" Version=\"{TestPackages.NUnit}\" />\n  </ItemGroup>\n</Project>\n");
+        string helpers = Write(solution, "Helpers.Testing/Checks.cs",
+            "using NUnit.Framework;\n\nnamespace Helpers.Testing;\n\npublic static class Checks\n{\n    public static void Four(int value) => Assert.That(value, Is.EqualTo(4));\n}\n\n" +
+            "public class CheckTests\n{\n    [Test]\n    public void Checks_four() => Checks.Four(4);\n}\n");
+        Write(solution, "Real.Tests/Real.Tests.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"NUnit\" Version=\"{TestPackages.NUnit}\" />\n" +
+            $"    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"{TestPackages.NUnitAdapter}\" />\n" +
+            "    <ProjectReference Include=\"../Helpers.Testing/Helpers.Testing.csproj\" />\n  </ItemGroup>\n</Project>\n");
+        string file = Write(solution, "Real.Tests/ExampleTests.cs",
+            "using NUnit.Framework;\n\nnamespace Real.Tests;\n\npublic class ExampleTests\n{\n    [Test]\n    public void Should_Do_Something() => Helpers.Testing.Checks.Four(2 + 2);\n}\n");
+        Write(solution, "Shared.slnx", "<Solution>\n  <Project Path=\"Helpers.Testing/Helpers.Testing.csproj\" />\n  <Project Path=\"Real.Tests/Real.Tests.csproj\" />\n</Solution>\n");
+        Restore.Run(Path.Combine(solution, "Shared.slnx"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        window.OpenFile(file);
+        Ui.Settle();
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Should_Do_Something") is not null && Method(window, "Checks_four") is not null, "both tests from their code");
+
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "public void Should_");
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy, () => $"the run of the test at the caret: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(180));
+        Assert.True(Method(window, "Should_Do_Something")?.State == TestState.Passed,
+            $"The test project's test did not run from the caret beside a library VSTest cannot look through: the Unit Tests window said '{window.BottomPanel.Tests.Status}'");
+
+        window.OpenFile(helpers);
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "public void Checks_");
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy && window.BottomPanel.Tests.Status.StartsWith("No test of Checks_four", StringComparison.Ordinal),
+            () => $"the run of the library's test at the caret to find none: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(180));
+        string said = window.BottomPanel.Tests.Status;
+        Assert.True(said.StartsWith("No test of Checks_four was found: the tests in Helpers.Testing.dll (net10.0) could not be found: ", StringComparison.Ordinal)
+            && said.Contains("Microsoft.NET.Test.Sdk", StringComparison.Ordinal),
+            $"A run of a test in an assembly VSTest could not look through did not say which and why, so nothing tells the person to give it a test SDK: '{said}'");
+
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && window.BottomPanel.Tests.Status.StartsWith("Tests passed", StringComparison.Ordinal),
+            () => $"the run of every test: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(180));
+        said = window.BottomPanel.Tests.Status;
+        Assert.True(said.StartsWith("Tests passed: 1, failed: 0 of 1", StringComparison.Ordinal)
+            && said.Contains("; the tests in Helpers.Testing.dll (net10.0) could not be found: ", StringComparison.Ordinal),
+            $"Run All's tally did not say which assembly's tests could not be found, so its tests' absence goes unseen: '{said}'");
+        window.Close();
+    }
+
     /// <summary>A test renamed on disk while its run is under way has its failure counted in the run's tally, though its
     /// row left the tree with its old name; and a test file deleted after a run takes the tests a runner found in it out of
     /// the Unit Tests window.</summary>

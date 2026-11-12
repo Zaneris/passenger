@@ -239,7 +239,8 @@ public partial class MainWindow
     private void RunProjectTests(IReadOnlyList<string> projects, string what, bool debug)
     {
         HashSet<string> chosen = new(projects, StringComparer.Ordinal);
-        RunTests(() => session.Tests.RunMatchingAsync(Folder!, m => m.ProjectPath is { } project && chosen.Contains(project), $"No tests were found in {what}", debug));
+        RunTests(() => session.Tests.RunMatchingAsync(Folder!, m => m.ProjectPath is { } project && chosen.Contains(project),
+            unfound => $"No tests were found in {what}" + (unfound is null ? string.Empty : $": {unfound}"), debug));
     }
 
     private static SolutionFolder? FindFolder(IEnumerable<SolutionEntry> entries, string path)

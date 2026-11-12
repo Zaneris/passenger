@@ -388,7 +388,7 @@ public sealed class TestingPlatformBytesTests(ITestOutputHelper testOutput) : ID
         TestAssembly assembly = new(new ProjectModel(project, "Sums.Tests", "Exe", [TestProjects.Framework], [], [], true), TestProjects.Framework,
             Path.Combine(folder, "bin", "Debug", TestProjects.Framework, "Sums.Tests.dll"));
         using TestingPlatformRunner runner = new();
-        IReadOnlyList<TestItem> tests = await runner.DiscoverAsync([assembly], cancel: cancel);
+        IReadOnlyList<TestItem> tests = (await runner.DiscoverAsync([assembly], cancel: cancel)).Tests;
         Assert.Equal(Rows, tests.Count);
         TestItem first = tests.Single(t => t.Row == "Adds_up(row: 9)");
         Assert.Equal(("Sums.Tests.RowTests.Adds_up", source, KeyValuePair.Create("Area", "Sums")), (first.FullyQualifiedName, first.Path, Assert.Single(first.Traits)));
@@ -457,7 +457,7 @@ public sealed class TestHostLastWordsTests
             for (int round = 1; round <= 20; round++)
             {
                 List<string> said = [];
-                IReadOnlyList<TestItem> found = await runner.DiscoverAsync([assembly], line =>
+                FoundTests found = await runner.DiscoverAsync([assembly], line =>
                 {
                     lock (said)
                     {
@@ -469,7 +469,7 @@ public sealed class TestHostLastWordsTests
                 {
                     failure = string.Join("\n", said);
                 }
-                Assert.True(found.Count == 0 && failure.Contains("(exit code 3)", StringComparison.Ordinal) && failure.EndsWith($"\n{LastWords}", StringComparison.Ordinal),
+                Assert.True(found.Tests.Count == 0 && failure.Contains("(exit code 3)", StringComparison.Ordinal) && failure.EndsWith($"\n{LastWords}", StringComparison.Ordinal),
                     $"Round {round}: the test host that wrote '{LastWords}' as it exited was said to fail with '{failure}'");
             }
         }

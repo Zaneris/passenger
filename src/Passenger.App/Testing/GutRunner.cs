@@ -20,8 +20,8 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
     public bool IsUsable => true;
 
     /// <summary>GUT's tests are found from the code, never from a build.</summary>
-    public Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default) =>
-        Task.FromResult<IReadOnlyList<TestItem>>([]);
+    public Task<FoundTests> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default) =>
+        Task.FromResult(FoundTests.All([]));
 
     /// <summary>Runs each project's tests in one run of GUT, a project at a time, outcomes told as each run ends.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,

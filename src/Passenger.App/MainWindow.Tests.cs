@@ -284,15 +284,14 @@ public partial class MainWindow
         }
         ProjectSession running = session;
         string workspace = Folder;
-        string none = $"No test of {method ?? type} was found; is the project a test project?";
         IReadOnlySet<string>? projects = null;
         RunTests(async () =>
         {
             if (!untilFailure)
             {
-                return await running.Tests.RunMatchingAsync(workspace, Matches, none, debug);
+                return await running.Tests.RunMatchingAsync(workspace, Matches, None, debug);
             }
-            string? stopped = await running.Tests.RunUntilFailureAsync(workspace, Matches, none);
+            string? stopped = await running.Tests.RunUntilFailureAsync(workspace, Matches, None);
             if (session == running && !running.IsEnded && running.Tests.FirstFailed(running.Tests.RunMethods) is { } failed)
             {
                 Bottom.Tests.Choose(failed);
@@ -304,6 +303,8 @@ public partial class MainWindow
             (test.FullName is { } name && Testing.TestsAtCaret.Matches(name, type, method)
                 && Testing.TestFinder.IsOf(test, projects ??= running.Tests.Finder.ProjectsOf(path)))
             || test.Items.Any(item => item is { Path: { } at, Line: > 0 } && PathNames.Same(at, path) && place.Holds(item.Line));
+
+        string None(string? unfound) => Refusals.NoTestOf(method ?? type, unfound);
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and

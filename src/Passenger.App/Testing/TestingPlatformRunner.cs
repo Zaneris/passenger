@@ -55,12 +55,13 @@ public sealed class TestingPlatformRunner : ITestRunner
     }
 
     /// <summary>The tests in built Testing Platform applications, each asked in its own process, all at once. One whose
-    /// program fails to start or answer is said in the log and has no tests; canceled, every one is ended.</summary>
-    public async Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
+    /// program fails to start or answer is said in the log and told unfound; canceled, every one is ended.</summary>
+    public async Task<FoundTests> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
     {
-        (TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes)[] asked = await Task.WhenAll(assemblies.Select(a => DiscoverIn(a, log, cancel)));
+        (TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes, string? Failed)[] asked = await Task.WhenAll(assemblies.Select(a => DiscoverIn(a, log, cancel)));
         cancel.ThrowIfCancellationRequested();
-        return await BackgroundWork.Run(() => Tell(asked));
+        IReadOnlyList<TestItem> tests = await BackgroundWork.Run(() => Tell([.. asked.Select(a => (a.Assembly, a.Nodes))]));
+        return new FoundTests(tests, [.. asked.Where(a => a.Failed is not null).Select(a => UnfoundTests.Of(a.Assembly, a.Failed!))]);
     }
 
     /// <summary>What a test host of an assembly starts with (<see cref="PlatformRunSettings.Given"/>), its project's run settings
@@ -68,7 +69,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     private static IReadOnlyDictionary<string, string>? HostEnvironment(TestAssembly assembly, bool looking, IReadOnlyDictionary<string, string>? environment, Action<string>? log) =>
         PlatformRunSettings.Given(assembly.RunSettings is { } file ? TestAssemblies.ReadRunSettings(file, log) : null, looking, environment, Environment.GetEnvironmentVariable);
 
-    private static async Task<(TestAssembly, IReadOnlyList<PlatformNode>)> DiscoverIn(TestAssembly assembly, Action<string>? log, CancellationToken cancel)
+    private static async Task<(TestAssembly, IReadOnlyList<PlatformNode>, string?)> DiscoverIn(TestAssembly assembly, Action<string>? log, CancellationToken cancel)
     {
         List<PlatformNode> nodes = [];
         try
@@ -91,13 +92,13 @@ public sealed class TestingPlatformRunner : ITestRunner
         {
             IdeLog.Write(IdeLog.Tests, $"Discovery failed: {failed.Message}");
             log?.Invoke(failed.Message);
-            return (assembly, []);
+            return (assembly, [], failed.Message);
         }
         lock (nodes)
         {
             int count = nodes.Count(n => n.IsTest);
             IdeLog.Write(IdeLog.Tests, $"Discovery complete in {Path.GetFileName(assembly.Path)} ({assembly.Framework}): {Plural.Of(count, "test")} found");
-            return (assembly, [.. nodes]);
+            return (assembly, [.. nodes], null);
         }
     }
 
