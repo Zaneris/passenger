@@ -5,8 +5,15 @@ namespace Passenger.Debugger;
 
 public partial class ManagedDebugger
 {
+    /// <summary>A static field's value, its class's static constructor run first where the class has one. A class with none
+    /// has nothing to run, so its field is read as it stands, which needs no evaluation the runtime may refuse at the stop
+    /// (on x64, in its own helpers), unless the runtime has made none of its fields yet.</summary>
     internal async ValueTask<ICorDebugValue> GetStaticFieldValueAsync(ICorDebugType type, mdFieldDef fieldDef, ThreadId threadId, FrameStackDepth stackDepth)
     {
+        if (!HasStaticConstructor(type) && type.TryGetStaticFieldValue(fieldDef, GetIlFrameForThreadIdAndStackDepth(threadId, stackDepth), out ICorDebugValue? standing) is Cor.S_OK)
+        {
+            return standing;
+        }
         await EnsureClassConstructorHasRun(type, threadId, stackDepth);
 
         ICorDebugILFrame currentFrame = GetIlFrameForThreadIdAndStackDepth(threadId, stackDepth);
@@ -14,6 +21,9 @@ public partial class ManagedDebugger
         Marshal.ThrowExceptionForHR(result);
         return value;
     }
+
+    private static bool HasStaticConstructor(ICorDebugType type) =>
+        type.Class.Module.GetMetaDataInterface<IMetaDataImport>().EnumMethodsWithName(type.Class.Token, ".cctor").Any();
 
     private async ValueTask EnsureClassConstructorHasRun(ICorDebugType type, ThreadId threadId, FrameStackDepth stackDepth)
     {
