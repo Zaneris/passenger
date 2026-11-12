@@ -1935,6 +1935,46 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         int Said(string word) => Ui.Shared(spins).Split('\n').Count(l => l.StartsWith(word, StringComparison.Ordinal));
     }
 
+    /// <summary>A program debugged with Hot Reload and stopped at once finds the thread of Passenger's hook in it in its call
+    /// of the system's receive, partway through nothing an evaluation there could need, and on macOS and Linux, where .NET's
+    /// sockets have a thread of their own, no such thread in a program that made no socket.</summary>
+    [AvaloniaFact]
+    public void A_program_stopped_at_once_finds_the_hooks_thread_waiting_in_its_read_with_no_thread_of_its_beside_it()
+    {
+        string hook = Passenger.UpdateHandlers.Wire.ThreadName;
+        Write("Program.cs", "Probe probe = new();\nConsole.WriteLine(probe);\nThread.Sleep(500);\nConsole.WriteLine(\"slept\");\n\n"
+            + "sealed class Probe\n{\n    public override string ToString() => $\"probe {DateTime.MinValue.Year}\";\n}\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(1, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        editor.GoTo(new TextPosition(3, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        Passenger.App.ToolWindows.DebugModel view = window.BottomPanel.Debug;
+        WaitDebugging(window, () => Value(window, "probe") == "probe 1", "the first stop's probe, its ToString evaluated there");
+        Ui.WaitFor(() => view.Threads.Any(t => t.Name == hook), () => $"the hook's thread among the program's: {string.Join(", ", view.Threads.Select(t => t.Name))}");
+        ComboBox threads = window.DebugWindow.GetVisualDescendants().OfType<ComboBox>().First(c => ReferenceEquals(c.ItemsSource, view.Threads));
+        threads.SelectedItem = view.Threads.First(t => t.Name == hook);
+        Ui.WaitFor(() => view.Frames.Any(f => f.Name.StartsWith("Passenger.UpdateHandlers.dll!", StringComparison.Ordinal)), () => $"the hook's thread's frames: {Frames()}");
+        // The topmost managed frame is the call into the system: what is above it, if shown, is the system's own.
+        string called = view.Frames.First(f => f.Name.Contains('!', StringComparison.Ordinal)).Name;
+        string method = called[called.IndexOf('!', StringComparison.Ordinal)..];
+        Assert.True(method.Contains("Receive", StringComparison.Ordinal) || method.Contains("recv", StringComparison.Ordinal),
+            $"At a stop as Main began the hook's thread was not in its call of the system's receive, so a stop there catches it partway through what an evaluation may need: {Frames()}");
+
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => editor.LineMarks.Contains(new LineMark(3, LineMarkKind.ExecutionPoint)), "the stop after the program slept");
+        Ui.WaitFor(() => view.Threads.Any(t => t.Name == hook), "the threads at the second stop");
+        Assert.False(!OperatingSystem.IsWindows() && view.Threads.Any(t => t.Name == ".NET Sockets"),
+            $".NET's socket thread runs in a program that made no socket, started by the hook, where a stop can catch it starting: {string.Join(", ", view.Threads.Select(t => t.Name))}");
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+
+        string Frames() => string.Join("; ", view.Frames.Select(f => f.Name));
+    }
+
     /// <summary>An exception whose own Message outlasts the debugger's wait for code it runs is still named where the
     /// program stopped, by its type and the message it was made with, beside the stop's frames and locals.</summary>
     [AvaloniaFact]

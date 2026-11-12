@@ -32,6 +32,8 @@
     <Compile Include="../../src/Passenger.Inspector/AvaloniaHooks.cs" Link="AvaloniaHooks.cs" />
     <!-- The inspector's frame events, which a test tells as an app's inspector does. -->
     <Compile Include="../../src/Passenger.Inspector/FrameWire.cs" Link="FrameWire.cs" />
+    <!-- What Passenger's Hot Reload hook says, and the name its thread goes by in a debugged program. -->
+    <Compile Include="../../src/Passenger.UpdateHandlers/Wire.cs" Link="UpdateHandlersWire.cs" />
   </ItemGroup>
 
   <!-- Avalonia's templates, restored from nuget.org as every package is and served to the tests from the package cache
