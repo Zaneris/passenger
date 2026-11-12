@@ -30,6 +30,19 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `SolutionViewTests`' `New_file_new_folder_and_paste_make_again_only_the_rows_of_what_they_make_or_move`, the gate on
+  the Windows 11 on Arm VM at a79ff0869, b5fef9c55 and 981a2042e (6 of 6 runs): "Cut and Paste made again rows other
+  than those of what it changed: [Archive] are new". **A race in the IDE**: the Solution view showed a folder the
+  project holds nothing in only while it was empty on disk, so Archive, just made by New Folder, stood by that alone.
+  Line.cs pasted into it, Windows' watcher named Archive and Lines too (a folder's entries changing writes the folder),
+  and its batch had the Explorer read again the folder above them, Models, by the project's evaluation from before the
+  move, which left Archive out as neither empty nor the project's; the evaluation landing made its row anew. On the VM
+  the batch came 218 ms into the step and the evaluation some 80 ms later; with the watcher's gather made 1 s, the old
+  code passed there, which is how CI's faster x64 runners pass it, their evaluation landing within the 150 ms gather. A
+  folder pasted into a folder just made failed so on this Mac too, the paste itself reading Models again. A folder shown
+  empty now shows until the project is evaluated again, and the watcher has the Explorer read again only the folders
+  holding what came or went; `A_folder_cut_and_pasted_into_a_folder_just_made_keeps_that_folders_row` fails on the old
+  code on this Mac (36be742c2, #1501).
 - `PauseTests`' `A_condition_that_calls_a_method_stops_a_parallel_loop_on_its_matching_iteration`, CI's Linux gate at
   b5fef9c55 (run 43112936183): "Sequence contains no elements" at `DebugSession.LocalsAsync`, the stop a breakpoint's
   and its thread's top frame of no scope. **The debugger let a thread run beside an evaluation**: a condition's
