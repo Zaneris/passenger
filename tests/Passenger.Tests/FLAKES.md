@@ -30,6 +30,23 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `TestingPlatformBytesTests`' `A_runs_results_cost_at_most_twice_their_JSON_to_read`, CI's macOS report lane at
+  053101b37 (run 43132648654): "Reading a run's 2,000 results of 1,179,955 bytes of JSON allocated 2,370,080 bytes (2.0×
+  its JSON)", 2.01 times, where CI's macOS runs had measured 1.44 to 1.46 (Linux 1.61 to 1.97, Windows 1.49 to 1.63).
+  **The IDE**: what a run cost hung on the shared pool. Its request of 2,000 tests (about 261 KB) went out through
+  StreamJsonRpc's header handler, which asks its writer for one span of a message's whole content, so the pipe
+  Nerdbank's UsePipeWriter made rented a 256 KB array from the shared pool for each run and gave it back on the thread
+  that copied it to the socket; a run whose writing thread found none in its own slot or the pool's stacks (one it never
+  gave one to, or after a gen-2 collection at a memory load past the pool's high mark, which clears every thread's slot)
+  allocated one anew, as the builder of the message's 4 to 32 KB pieces did its own. On this Mac main measured 1.42 to
+  1.77 times over 68 runs, 3 of the 4 high ones of 40 sampled taking a fresh 256 KB array, and with 3 processors and the
+  GC's high-memory mark at 16 %, as a 7 GB runner deep in a shard, 1.43 to 1.84 times, 9 of 30 taking one; CI's least of
+  three carried about 655 KB more than its usual run, as two such arrays and more of the pieces would (the run kept no
+  allocation trace). Beside that, every result read its uid only to look its test up, and its display name and traits
+  anew, 0.5 times the JSON in all. A conversation now writes through one buffer it keeps (ContiguousWriter), a run's
+  nodes read their uids and names as their tests' own strings and share their traits, and its tests are taken without a
+  grouping's arrays: 0.84 to 0.96 times on this Mac (0.85 to 0.97 so held, with no large array), 0.86 to 0.90 on the
+  Windows on Arm VM and 0.91 to 0.97 on the Ubuntu VM, where main measured 1.45 and 1.53 (53a971bf6, #1506).
 - `StylesheetClassesTests`' `A_cdns_class_completes_in_a_component_only_once_settings_allow_its_download_beside_a_packages_and_the_components_own`,
   CI's macOS report lane at 053101b37 (run 43132648654): "Expected: 1 Actual: 2", the stand-in CDN asked twice for
   bootstrap.min.css once Settings allowed downloads. **A race in the IDE**: an ask of a stylesheet that stopped waiting
