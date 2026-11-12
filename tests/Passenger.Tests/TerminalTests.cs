@@ -1632,10 +1632,10 @@ public sealed class TerminalResponsivenessTests
             Ui.Press(window, TerminalTests.PasteKey);
             Volatile.Write(ref pasted, true);
             Assert.False(Volatile.Read(ref letGo), "the paste held the window until the program that reads nothing was let go");
-            File.WriteAllText(go, string.Empty);
             Ui.Await(giveUp, "the paste's give-up to stand down");
-            // What the pseudo-terminal took it echoes, so the paste did go.
+            // What the pseudo-terminal took it echoes, so the paste did go: seen before the loop ends, whose shell then overruns the scrollback.
             TerminalTests.WaitForScreen(window, shell, _ => PasteEchoed(shell), "the start of the paste echoed", TimeSpan.FromSeconds(10));
+            File.WriteAllText(go, string.Empty);
 
             Ui.Press(window, "shift ESCAPE");
             Assert.False(window.DockHost.IsShown(ToolWindowIds.Terminal), "the terminal is still shown after Shift+Escape");
