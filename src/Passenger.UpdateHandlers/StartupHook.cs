@@ -78,16 +78,18 @@ internal static class StartupHook
         }
     }
 
-    /// <summary>Makes once every call that reading Passenger's lines and answering them makes but the program's handlers': a
-    /// receive that waits for nothing and takes nothing, a line matched, a failure's words encoded, a send of no bytes, and
-    /// the handlers looked for in this assembly alone, which declares none, so none is called.</summary>
+    /// <summary>Makes once each of the hook's own calls of reading Passenger's lines and answering them: a receive that waits
+    /// for nothing and takes nothing, a line matched, a failure's words encoded, a send of no bytes, an answer of nothing,
+    /// and the handlers looked for in this assembly alone, which declares none, what that finds said to no one. Finding,
+    /// reading and calling the program's own handlers is first done at the first update.</summary>
     private static void Ready(Connection open, byte[] buffer, byte[] updated)
     {
         open.Receive(buffer, 0, wait: false);
         Says(updated, 0, updated.Length, updated);
         Line(Wire.Failed + "a\nb");
         open.Send([]);
-        Answer(open, Handlers.Run([typeof(StartupHook).Assembly]), done: false);
+        Handlers.Run([typeof(StartupHook).Assembly]);
+        Answer(open, [], done: false);
         Array.Copy(buffer, 0, buffer, 0, 0);
     }
 

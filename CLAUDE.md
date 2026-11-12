@@ -406,9 +406,10 @@ a new name, and `just site-shots` retakes its images.
   long it ran.
 - **Hot Reload**: the server's `EditAndContinueService` from the extension; update handlers through Passenger's hook
   (`UpdateHandlerHook`), never the runtime's agent, which refuses under a debugger; the hook connects by the system's
-  socket calls, never .NET's Socket (whose first use starts a thread of .NET's on macOS and Linux), and makes its reads'
-  and answers' calls before Main, so a stop between updates finds its thread blocked in recv: a thread caught partway
-  through a first use may hold a stop's evaluations (#1495). CoreCLR lets no debugger go once
+  socket calls, never .NET's Socket (whose first use starts a thread of .NET's on macOS and Linux), and makes its own
+  calls of reading and answering before Main (the program's handlers are first found and called at the first update),
+  so a stop between updates finds its thread blocked in recv: a thread caught partway through a first use may hold a
+  stop's evaluations (#1495). CoreCLR lets no debugger go once
   Edit and Continue changed a program, so neither does Passenger (`DebugController.LetsNoDebuggerGo`: Detach refused, a
   service restarted, leaving the folder asks). A build's edits are kept for each program it starts later; a session
   takes edits only for its loaded modules' projects; `StaleCallers` blocks an update leaving loaded code calling a

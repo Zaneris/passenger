@@ -44,14 +44,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   finds its thread still at its start, its lambda under StartCallback. Not met again in 15 runs of the test and 100 of
   its program at stops aimed across the hook's setup on the Ubuntu VM beside 4 burners, nor on this Mac with a program's
   own thread held at each assembly load of its Socket's setup, so which lock the evaluation waited on is not pinned. The
-  hook now connects with the system's own socket calls (no .NET Socket, so no thread of .NET's) and makes every call its
-  reads and answers make but the program's handlers' before Main goes on, which it does once the hook's thread is about
-  to wait in recv or after 2 s of the clock, the time a debugger holds the program included; the handlers themselves
-  still first run at the first update.
+  hook now connects with the system's own socket calls (no .NET Socket, so no thread of .NET's) and makes each of its
+  own calls of reading and answering before Main goes on, which it does once the hook's thread is about to wait in recv
+  or after 2 s of the clock, the time a debugger holds the program included; finding, reading and calling the program's
+  handlers is still first done at the first update.
   `A_program_stopped_at_once_finds_the_hooks_thread_waiting_in_its_read_with_no_thread_of_its_beside_it` finds the
   thread in its call of the system's receive at a stop on Main's second line and fails at once on the old hook; on the
-  VM beside 4 burners it and the failing test each passed 10 of 10 ("Passenger's Hot Reload hook connects by the
-  system's own socket calls and makes every call of its own before the program's Main…", #1495).
+  VM beside 4 burners it and the failing test each passed 10 of 10 (d66095e9b, #1495).
 - `SolutionViewTests`' `New_file_new_folder_and_paste_make_again_only_the_rows_of_what_they_make_or_move`, the gate on
   the Windows 11 on Arm VM at a79ff0869, b5fef9c55 and 981a2042e (6 of 6 runs): "Cut and Paste made again rows other
   than those of what it changed: [Archive] are new". **A race in the IDE**: the Solution view showed a folder the
