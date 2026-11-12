@@ -727,7 +727,7 @@ to the window's tests.
   `Bar`, `Page`, `Default`, `Cancel`, `OkCancel`, `Headed`, `Popup`) in a `Border.footerBar`; `Border.framed`;
   `Passenger.Separator`, `Passenger.Divider`; `MenuChoice` (`Holding`); `ListMenus.PlaceForKeys`; `ToolTabs.Tab`;
   `PopupFrame` (`Framed`), `popupTitle`; `ListRow.Height` (24); `TextBlock.emptyText`, `EmptyState`;
-  `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
+  `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name), `Grey` (greyed, its tip saying why); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
   `MutedText`; `ListKeys.Move`; `Plural.Of`/`Listed`; `Border.kindBadge`/`tag`/`box` (never a literal radius);
   `RunRows`; `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
   `ToolWindows.FilterBox`; `ToolFlow`; `PaneSplit`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
