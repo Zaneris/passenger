@@ -462,6 +462,29 @@ public sealed class DockHost : Grid
 
     public bool IsShown([IdentifierOf(typeof(ToolWindowIds))] string id) => this[id].IsShown;
 
+    /// <summary>Shows or hides just a window's stripe icon, leaving its view and position alone.</summary>
+    public void SetIconVisible(ToolWindow window, bool visible)
+    {
+        if (window.IconVisible == visible)
+        {
+            return;
+        }
+        window.IconVisible = visible;
+        Layout();
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Recovers every stripe icon, including those in a group with none left showing.</summary>
+    public void ShowAllIcons()
+    {
+        foreach (ToolWindow window in windows)
+        {
+            window.IconVisible = true;
+        }
+        Layout();
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>Moves a window to another place (at an index among its buttons there), shown if it was.</summary>
     public void Move(ToolWindow window, ToolAnchor anchor, int? index = null)
     {
@@ -495,6 +518,7 @@ public sealed class DockHost : Grid
         Dictionary<string, DockedWindow> placed = windows.ToDictionary(w => w.Id, w => new DockedWindow(w.Anchor, w.Order, w.IsShown)
         {
             Mode = w.Mode,
+            IconVisible = w.IconVisible,
             Bounds = (floats.TryGetValue(w, out FloatWindow? open) ? open.Placement : w.WindowBounds) is { } at ? [at.X, at.Y, at.Width, at.Height] : null,
         });
         foreach ((string id, DockedWindow other) in others)
@@ -520,6 +544,7 @@ public sealed class DockHost : Grid
                 window.Order = placed.Order;
                 window.IsShown = placed.Shown;
                 window.Mode = placed.Mode;
+                window.IconVisible = placed.IconVisible;
                 window.WindowBounds = placed.Bounds is [int x, int y, int width, int height] ? new PixelRect(x, y, width, height) : null;
             }
         }

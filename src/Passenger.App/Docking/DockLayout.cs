@@ -42,6 +42,9 @@ public sealed record DockedWindow(ToolAnchor Anchor, int Order, bool Shown)
 {
     public ToolMode Mode { get; init; }
 
+    /// <summary>Old layouts carry every icon; hiding one keeps its place and its open state.</summary>
+    public bool IconVisible { get; init; } = true;
+
     /// <summary>A floating or windowed one's window, in screen pixels.</summary>
     public int[]? Bounds { get; init; }
 }

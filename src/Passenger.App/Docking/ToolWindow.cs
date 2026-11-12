@@ -220,6 +220,9 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>Docked, floating or windowed; its button stays on its anchor's stripe whatever the mode.</summary>
     public ToolMode Mode { get; internal set; }
 
+    /// <summary>Whether its stripe carries its icon, independently of whether its view is open.</summary>
+    public bool IconVisible { get; internal set; } = true;
+
     /// <summary>Where its own window last stood, floating or windowed, in screen pixels.</summary>
     public PixelRect? WindowBounds { get; internal set; }
 

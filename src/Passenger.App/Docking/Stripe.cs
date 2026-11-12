@@ -23,6 +23,7 @@ internal sealed class Stripe : Border
     private readonly ToolAnchor bottom;
     private readonly Rectangle gap;
     private readonly ToggleButton more;
+    private ToolAnchor menuAnchor;
 
     /// <summary>The buttons the stripe has no room for, hidden behind More.</summary>
     private readonly List<ToggleButton> cut = [];
@@ -57,6 +58,12 @@ internal sealed class Stripe : Border
         Child = new DockPanel { Margin = new Thickness(0, 6), Children = { sides, groups[bottom] } };
         SizeChanged += (_, _) => FitButtons();
         Classes.Add(StyleClasses.StripeBar);
+        menuAnchor = upper;
+        ContextMenu = IconMenu(() => menuAnchor);
+        AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            menuAnchor = NearestIcon(e.GetPosition(this));
+        }, RoutingStrategies.Tunnel);
     }
 
     /// <summary>Styled as a Border of its own class (Shell.axaml's stripeBar), its look the theme's.</summary>
@@ -70,7 +77,7 @@ internal sealed class Stripe : Border
         bool keysChanged = !ReferenceEquals(keymap, tipsFrom);
         tipsFrom = keymap;
         Dictionary<ToolAnchor, List<ToggleButton>> wanted = groups.Keys.ToDictionary(anchor => anchor, anchor =>
-            windows.Where(w => w.Anchor == anchor).OrderBy(w => w.Order).Select(w => Button(w, keymap, keysChanged)).ToList());
+            windows.Where(w => w.Anchor == anchor && w.IconVisible).OrderBy(w => w.Order).Select(w => Button(w, keymap, keysChanged)).ToList());
         // Every group out of order is emptied first, so a button that moved between two is in neither when it is added.
         foreach ((ToolAnchor anchor, StackPanel group) in groups)
         {
@@ -88,6 +95,26 @@ internal sealed class Stripe : Border
         }
         gap.IsVisible = groups[upper].Children.Count > 0 && groups[lower].Children.Count > 0;
         FitButtons();
+    }
+
+    /// <summary>An empty-space menu belongs to the nearest visible icon's group, halfway between neighbouring icons.</summary>
+    private ToolAnchor NearestIcon(Point at)
+    {
+        ToolAnchor nearest = upper;
+        double distance = double.PositiveInfinity;
+        foreach ((ToolAnchor anchor, StackPanel group) in groups)
+        {
+            foreach (Control button in group.Children.Where(b => b.IsEffectivelyVisible))
+            {
+                double away = Math.Abs(Placed(button).Center.Y - at.Y);
+                if (away < distance)
+                {
+                    nearest = anchor;
+                    distance = away;
+                }
+            }
+        }
+        return nearest;
     }
 
     /// <summary>The group a point (in the stripe's coordinates) is over: the bottom group's at or below it, the
@@ -115,10 +142,11 @@ internal sealed class Stripe : Border
         foreach (Control button in group.Children)
         {
             Point centre = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), this) ?? default;
-            if (at.Y > centre.Y)
+            if (at.Y <= centre.Y)
             {
-                index++;
+                return host[(string)button.Tag!].Order;
             }
+            index = host[(string)button.Tag!].Order + 1;
         }
         return index;
     }
@@ -161,12 +189,30 @@ internal sealed class Stripe : Border
                 e.Handled = true;
             }
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
+        button.ContextMenu = IconMenu(() => window.Anchor);
         button.Click += (_, _) =>
         {
             host.Toggle(window.Id);
             button.IsChecked = window.IsShown;
         };
         return button;
+    }
+
+    /// <summary>The clicked group's complete checklist, filled afresh so moved and hidden windows stay reachable.</summary>
+    private ContextMenu IconMenu(Func<ToolAnchor> anchor)
+    {
+        ContextMenu menu = new();
+        menu.Opening += (_, _) =>
+        {
+            menu.Items.Clear();
+            foreach (ToolWindow window in host.Windows.Where(w => w.Anchor == anchor()).OrderBy(w => w.Order))
+            {
+                MenuItem item = new() { Header = window.Title, ToggleType = MenuItemToggleType.CheckBox, IsChecked = window.IconVisible };
+                item.Click += (_, _) => host.SetIconVisible(window, !window.IconVisible);
+                menu.Items.Add(item);
+            }
+        };
+        return menu;
     }
 
     private static StackPanel Group() => new() { Spacing = 4, HorizontalAlignment = HorizontalAlignment.Center };

@@ -403,17 +403,35 @@ public partial class MainWindow
     private IReadOnlyList<ListedItem> Listed(string submenu) => submenu switch
     {
         MainMenu.ToolWindows => [.. Dock.Windows.OrderBy(w => w.Title, StringComparer.Ordinal).Select(w => new ListedItem(w.Title, () => ShowToolWindow(w.Id)))],
+        MainMenu.ToolWindowIcons => [.. Enum.GetValues<Docking.ToolAnchor>().Select(anchor => new ListedItem(Docking.ToolWindow.Name(anchor))
+        {
+            Items = [.. Dock.Windows.Where(w => w.Anchor == anchor).OrderBy(w => w.Order).Select(w =>
+                new ListedItem(w.Title, () => Dock.SetIconVisible(w, !w.IconVisible), w.IconVisible) { ToggleType = MenuItemToggleType.CheckBox })],
+        }), new ListedItem("Show All Icons", Dock.ShowAllIcons)],
         MainMenu.RecentSolutions => [.. RecentMenu().Select(r => new ListedItem(r.Title, r.Open))],
         MainMenu.OpenSolutionWindows => SolutionWindows(),
         _ => throw new InvalidOperationException($"No window lists a submenu called {submenu}"),
     };
 
-    private static NativeMenuItem NativeListed(ListedItem item) => new(NativeWords(item.Title))
+    private static NativeMenuItem NativeListed(ListedItem item)
     {
-        Command = new MenuCommand(item.Run),
-        ToggleType = item.Checked is null ? MenuItemToggleType.None : MenuItemToggleType.Radio,
-        IsChecked = item.Checked == true,
-    };
+        NativeMenuItem built = new(NativeWords(item.Title))
+        {
+            Command = item.Run is { } run ? new MenuCommand(run) : null,
+            ToggleType = item.Checked is null ? MenuItemToggleType.None : item.ToggleType,
+            IsChecked = item.Checked == true,
+        };
+        if (item.Items is { } children)
+        {
+            built.Menu = new NativeMenu();
+            foreach (ListedItem child in children)
+            {
+                built.Menu.Items.Add(NativeListed(child));
+            }
+            built.IsEnabled = children.Count > 0;
+        }
+        return built;
+    }
 
     /// <summary>Words as a native menu's item shows them: the platform's menu (macOS's bar, a Linux desktop's global menu)
     /// takes a lone underscore for an access key's mark, so each of a name's is doubled to be shown.</summary>
@@ -444,7 +462,11 @@ public partial class MainWindow
 
     /// <summary>A menu item a list gives: its title, what choosing it does, and whether it is the one checked (null for a
     /// list that checks none).</summary>
-    private sealed record ListedItem(string Title, Action Run, bool? Checked = null);
+    private sealed record ListedItem(string Title, Action? Run = null, bool? Checked = null)
+    {
+        public IReadOnlyList<ListedItem>? Items { get; init; }
+        public MenuItemToggleType ToggleType { get; init; } = MenuItemToggleType.Radio;
+    }
 
     /// <summary>Where an inline list's items stand in their native menu, and how many there are.</summary>
     private sealed class InlineList(string title, int start)
@@ -539,10 +561,21 @@ public partial class MainWindow
         MenuItem item = new()
         {
             Header = listed.Title,
-            ToggleType = listed.Checked is null ? MenuItemToggleType.None : MenuItemToggleType.Radio,
+            ToggleType = listed.Checked is null ? MenuItemToggleType.None : listed.ToggleType,
             IsChecked = listed.Checked == true,
         };
-        item.Click += (_, _) => listed.Run();
+        if (listed.Items is { } children)
+        {
+            foreach (ListedItem child in children)
+            {
+                item.Items.Add(FlyoutListed(child));
+            }
+            item.IsEnabled = children.Count > 0;
+        }
+        else
+        {
+            item.Click += (_, _) => listed.Run?.Invoke();
+        }
         return item;
     }
 

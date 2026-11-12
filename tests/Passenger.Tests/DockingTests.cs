@@ -15,6 +15,202 @@ namespace Passenger.Tests;
 /// window it opens in.</summary>
 public sealed class DockingTests
 {
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Empty_bar_space_chooses_the_nearest_visible_icons_group(bool right)
+    {
+        MainWindow window = Open();
+        try
+        {
+            DockHost dock = window.DockHost;
+            ToolAnchor upper = right ? ToolAnchor.RightTop : ToolAnchor.LeftTop;
+            ToolAnchor lower = right ? ToolAnchor.RightBottom : ToolAnchor.LeftBottom;
+            ToolAnchor bottom = right ? ToolAnchor.BottomRight : ToolAnchor.BottomLeft;
+            dock.Move(dock[ToolWindowIds.Explorer], upper);
+            dock.Move(dock[ToolWindowIds.Structure], lower);
+            dock.Move(dock[ToolWindowIds.Run], bottom);
+            foreach (ToolWindow tool in dock.Windows.Where(w => w.Anchor == upper || w.Anchor == lower || w.Anchor == bottom))
+            {
+                dock.SetIconVisible(tool, tool.Id is ToolWindowIds.Explorer or ToolWindowIds.Structure or ToolWindowIds.Run);
+            }
+            Ui.Settle();
+            Border stripe = Button(window, ToolWindowIds.Explorer).GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.StripeBar));
+            double top = Ui.Centre(Button(window, ToolWindowIds.Explorer), stripe).Y;
+            double middle = Ui.Centre(Button(window, ToolWindowIds.Structure), stripe).Y;
+            double foot = Ui.Centre(Button(window, ToolWindowIds.Run), stripe).Y;
+            foreach ((double y, ToolAnchor anchor) in new[]
+            {
+                (((top + middle) / 2) - 2, upper),
+                (((top + middle) / 2) + 2, lower),
+                (((middle + foot) / 2) - 2, lower),
+                (((middle + foot) / 2) + 2, bottom),
+            })
+            {
+                Ui.RightClick(stripe, new Point(2, y));
+                Assert.True(stripe.ContextMenu?.IsOpen);
+                Assert.Equal(dock.Windows.Where(w => w.Anchor == anchor).OrderBy(w => w.Order).Select(w => w.Title),
+                    stripe.ContextMenu!.Items.OfType<MenuItem>().Select(i => (string)i.Header!));
+                stripe.ContextMenu.Close();
+            }
+            dock.SetIconVisible(dock[ToolWindowIds.Run], false);
+            Ui.Settle();
+            Ui.RightClick(stripe, new Point(2, foot));
+            Assert.Equal(dock.Windows.Where(w => w.Anchor == lower).OrderBy(w => w.Order).Select(w => w.Title),
+                stripe.ContextMenu!.Items.OfType<MenuItem>().Select(i => (string)i.Header!));
+            stripe.ContextMenu.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Icon_checklists_follow_the_clicked_group_and_hidden_icons_can_be_restored_from_View()
+    {
+        MainWindow window = Open();
+        try
+        {
+            DockHost dock = window.DockHost;
+            dock.Move(dock[ToolWindowIds.Hierarchy], ToolAnchor.RightBottom);
+            Ui.Settle();
+            foreach (ToolAnchor anchor in Enum.GetValues<ToolAnchor>())
+            {
+                ToolWindow tool = dock.Windows.First(w => w.Anchor == anchor);
+                Ui.RightClick(Button(window, tool.Id));
+                ContextMenu menu = Button(window, tool.Id).ContextMenu
+                    ?? throw new Xunit.Sdk.XunitException("The icon has no group checklist");
+                Assert.True(menu.IsOpen);
+                Assert.Equal(dock.Windows.Where(w => w.Anchor == anchor).OrderBy(w => w.Order).Select(w => w.Title),
+                    menu.Items.OfType<MenuItem>().Select(i => (string)i.Header!));
+                Assert.All(menu.Items.OfType<MenuItem>(), i => Assert.True(i.IsChecked));
+                menu.Close();
+            }
+            dock.Show(ToolWindowIds.Structure);
+            ToolWindow structure = dock[ToolWindowIds.Structure];
+            Ui.ChooseFromMenu(Button(window, structure.Id), structure.Title);
+            Assert.True(structure.IsShown);
+            Assert.DoesNotContain(dock.GetVisualDescendants().OfType<ToggleButton>(), b => Equals(b.Tag, structure.Id) && b.IsEffectivelyVisible);
+            NativeMenu icons = Ui.Submenu(Ui.Submenu(window.MenuBar, "View"), "Tool Window Icons");
+            NativeMenu group = Ui.Submenu(icons, "Left Bottom");
+            NativeMenuItem restore = group.Items.OfType<NativeMenuItem>().Single(i => i.Header == "Structure");
+            Assert.False(restore.IsChecked);
+            restore.Command!.Execute(null);
+            Ui.Settle();
+            Assert.True(Button(window, structure.Id).IsEffectivelyVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Empty_stripe_space_uses_its_group_and_View_recovers_all_icons_when_none_remain()
+    {
+        MainWindow window = Open();
+        try
+        {
+            DockHost dock = window.DockHost;
+            Border stripe = dock.GetVisualDescendants().OfType<Border>().Last(b => b.Classes.Contains(StyleClasses.StripeBar));
+            Ui.RightClick(stripe, new Point(20, stripe.Bounds.Height - 4));
+            Assert.True(stripe.ContextMenu?.IsOpen);
+            Assert.Equal(dock.Windows.Where(w => w.Anchor == ToolAnchor.BottomRight).OrderBy(w => w.Order).Select(w => w.Title),
+                stripe.ContextMenu!.Items.OfType<MenuItem>().Select(i => (string)i.Header!));
+            stripe.ContextMenu.Close();
+            NativeMenu icons = Ui.Submenu(Ui.Submenu(window.MenuBar, "View"), "Tool Window Icons");
+            foreach (NativeMenuItem group in icons.Items.OfType<NativeMenuItem>().Where(i => i.Menu is not null))
+            {
+                foreach (NativeMenuItem item in group.Menu!.Items.OfType<NativeMenuItem>())
+                {
+                    item.Command!.Execute(null);
+                }
+            }
+            Ui.Settle();
+            Assert.DoesNotContain(dock.GetVisualDescendants().OfType<ToggleButton>(), b => b.Tag is string && b.IsEffectivelyVisible);
+            icons = Ui.Submenu(Ui.Submenu(window.MenuBar, "View"), "Tool Window Icons");
+            Assert.All(icons.Items.OfType<NativeMenuItem>().Where(i => i.Menu is not null)
+                .SelectMany(i => i.Menu!.Items.OfType<NativeMenuItem>()), i => Assert.False(i.IsChecked));
+            icons.Items.OfType<NativeMenuItem>().Single(i => i.Header == "Show All Icons").Command!.Execute(null);
+            Ui.Settle();
+            Assert.True(Button(window, ToolWindowIds.Explorer).IsEffectivelyVisible);
+            Assert.All(dock.Windows, w => Assert.True(w.IconVisible));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_View_flyout_lists_every_icon_group_and_can_hide_and_restore_an_icon()
+    {
+        bool systemMenu = MainWindow.SystemMenuBar;
+        MainWindow.SystemMenuBar = false;
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(window.Settings with { MainMenuBar = true });
+            Ui.Settle();
+            Button view = window.FindControl<MainMenuPlace>("MainMenuPlace")!.Children.OfType<Button>().Single(b => Equals(b.Tag, "View"));
+            Ui.Click(view);
+            MenuItem icons = window.GetVisualDescendants().OfType<MenuFlyoutPresenter>().Where(p => p.IsEffectivelyVisible)
+                .SelectMany(p => p.Items.OfType<MenuItem>()).Single(i => Equals(i.Header, "Tool Window Icons"));
+            Assert.Equal(["Left Top", "Left Bottom", "Right Top", "Right Bottom", "Bottom Left", "Bottom Right", "Show All Icons"],
+                icons.Items.OfType<MenuItem>().Select(i => (string)i.Header!));
+            Ui.Click(icons);
+            MenuItem group = icons.Items.OfType<MenuItem>().Single(i => Equals(i.Header, "Left Bottom"));
+            Ui.Click(group);
+            MenuItem structure = group.Items.OfType<MenuItem>().Single(i => Equals(i.Header, "Structure"));
+            Assert.Equal(MenuItemToggleType.CheckBox, structure.ToggleType);
+            Assert.True(structure.IsChecked);
+            Ui.Click(structure);
+            Assert.DoesNotContain(window.DockHost.GetVisualDescendants().OfType<ToggleButton>(), b => Equals(b.Tag, ToolWindowIds.Structure) && b.IsEffectivelyVisible);
+            Ui.Click(view);
+            icons = window.GetVisualDescendants().OfType<MenuFlyoutPresenter>().Where(p => p.IsEffectivelyVisible)
+                .SelectMany(p => p.Items.OfType<MenuItem>()).Single(i => Equals(i.Header, "Tool Window Icons"));
+            group = icons.Items.OfType<MenuItem>().Single(i => Equals(i.Header, "Left Bottom"));
+            Assert.False(group.Items.OfType<MenuItem>().Single(i => Equals(i.Header, "Structure")).IsChecked);
+            Ui.Click(icons);
+            Ui.Click(icons.Items.OfType<MenuItem>().Single(i => Equals(i.Header, "Show All Icons")));
+            Assert.True(Button(window, ToolWindowIds.Structure).IsEffectivelyVisible);
+        }
+        finally
+        {
+            window.Close();
+            MainWindow.SystemMenuBar = systemMenu;
+        }
+    }
+
+    [AvaloniaFact]
+    public void Icon_visibility_survives_a_layout_save_and_opening_the_tool_and_resets_with_the_layout()
+    {
+        string settings = TestFolders.Create("icon-layout-");
+        MainWindow window = Open(settings);
+        window.KeepLayout();
+        Ui.ChooseFromMenu(Button(window, ToolWindowIds.Structure), "Structure");
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.Settle();
+        Assert.DoesNotContain(window.DockHost.GetVisualDescendants().OfType<ToggleButton>(), b => Equals(b.Tag, ToolWindowIds.Structure) && b.IsEffectivelyVisible);
+        window.Close();
+        MainWindow next = Open(settings);
+        try
+        {
+            next.KeepLayout();
+            Assert.True(next.DockHost.IsShown(ToolWindowIds.Structure));
+            Assert.DoesNotContain(next.DockHost.GetVisualDescendants().OfType<ToggleButton>(), b => Equals(b.Tag, ToolWindowIds.Structure) && b.IsEffectivelyVisible);
+            next.DockHost.RestoreDefault();
+            Ui.Settle();
+            Assert.True(Button(next, ToolWindowIds.Structure).IsEffectivelyVisible);
+        }
+        finally
+        {
+            next.Close();
+            TestFolders.Delete(settings);
+        }
+    }
+
     [AvaloniaFact]
     public void A_stripe_button_shows_its_window_in_its_place_and_hides_the_one_there()
     {

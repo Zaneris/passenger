@@ -22,6 +22,7 @@ public sealed record MenuEntry(string? Action, string? Title = null, IReadOnlyLi
 public static class MainMenu
 {
     public const string ToolWindows = "Tool Windows";
+    public const string ToolWindowIcons = "Tool Window Icons";
     public const string RecentSolutions = "Recent Solutions";
 
     /// <summary>The Run menu's Avalonia renderer debug overlays, each a toggle.</summary>
@@ -34,7 +35,7 @@ public static class MainMenu
     public static IReadOnlyList<string> Titles { get; } = ["File", "Edit", "View", "Navigate", "Code", "Refactor", "Build", "Run", "Tests", "Tools", "Git", "Window", "Help"];
 
     /// <summary>The submenus the window lists as each opens.</summary>
-    private static readonly string[] Listed = [ToolWindows, RecentSolutions, OpenSolutionWindows];
+    private static readonly string[] Listed = [ToolWindows, ToolWindowIcons, RecentSolutions, OpenSolutionWindows];
 
     /// <summary>The lists whose items stand in their menu's own place.</summary>
     private static readonly string[] Inlined = [OpenSolutionWindows];
@@ -43,6 +44,7 @@ public static class MainMenu
     private static readonly MenuPlace[] Submenus =
     [
         new("View/" + ToolWindows, 0, 0),
+        new("View/" + ToolWindowIcons, 0, 1),
         new("View/Active Editor", 3, 0),
         new("File/" + RecentSolutions, 0, 3),
         new("File/Line Separators", 2, 1),
