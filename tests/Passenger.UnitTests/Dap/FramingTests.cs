@@ -118,7 +118,7 @@ public class FramingTests
         MemoryStream written = new();
         VariablesResponse read;
         using PoolRents rents = new(64 * 1024);
-        PoolRents.Counting = true;
+        rents.Counting = true;
         try
         {
             DapConnection adapter = new(new ChunkedStream(asked, 4_096), written);
@@ -135,7 +135,7 @@ public class FramingTests
         }
         finally
         {
-            PoolRents.Counting = false;
+            rents.Counting = false;
         }
 
         Assert.True(written.Length > 200_000, $"The answer came to {written.Length:N0} bytes, too few to need a large buffer");

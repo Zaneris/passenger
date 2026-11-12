@@ -2,18 +2,19 @@ using System.Diagnostics.Tracing;
 
 namespace Passenger.UnitTests;
 
-/// <summary>The shared pool's rents of <paramref name="least"/> bytes or more made while <see cref="Counting"/> is set, on
-/// whatever thread the work counted moves to, as the pool's own event source tells them.</summary>
+/// <summary>The shared pool's rents of <paramref name="least"/> bytes or more made while this listener's
+/// <see cref="Counting"/> is set, on whatever thread the work counted moves to, as the pool's own event source tells
+/// them: never those another test counts beside it in the same process.</summary>
 internal sealed class PoolRents(int least = 0) : EventListener
 {
-    private static readonly AsyncLocal<bool> counting = new();
+    private static readonly AsyncLocal<PoolRents?> counter = new();
     private int count;
 
-    /// <summary>Whether this flow of work, and the work it starts while set, is counted.</summary>
-    public static bool Counting
+    /// <summary>Whether this flow of work, and the work it starts while set, is counted by this listener.</summary>
+    public bool Counting
     {
-        get => counting.Value;
-        set => counting.Value = value;
+        get => ReferenceEquals(counter.Value, this);
+        set => counter.Value = value ? this : null;
     }
 
     public int Count => Volatile.Read(ref count);
@@ -28,7 +29,7 @@ internal sealed class PoolRents(int least = 0) : EventListener
 
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
     {
-        if (counting.Value && eventData.EventName == "BufferRented" && eventData.Payload is [_, int size, ..] && size >= least)
+        if (ReferenceEquals(counter.Value, this) && eventData.EventName == "BufferRented" && eventData.Payload is [_, int size, ..] && size >= least)
         {
             Interlocked.Increment(ref count);
         }

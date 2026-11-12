@@ -88,14 +88,14 @@ public class ContiguousWriterTests
         {
             foreach (JsonRpcMessage message in Conversation())
             {
-                PoolRents.Counting = true;
+                rents.Counting = true;
                 await handler.WriteAsync(message, cancel);
-                PoolRents.Counting = false;
+                rents.Counting = false;
             }
         }
         finally
         {
-            PoolRents.Counting = false;
+            rents.Counting = false;
             await handler.DisposeAsync();
         }
         return (stream.ToArray(), rents.Count);

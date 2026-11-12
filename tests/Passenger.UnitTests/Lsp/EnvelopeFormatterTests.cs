@@ -109,11 +109,11 @@ public class EnvelopeFormatterTests
         long read;
         using (PoolRents rents = new())
         {
-            PoolRents.Counting = true;
+            rents.Counting = true;
             before = GC.GetAllocatedBytesForCurrentThread();
             JsonRpcConversations.TokensResult? tokens = Answered(formatter, message);
             read = GC.GetAllocatedBytesForCurrentThread() - before;
-            PoolRents.Counting = false;
+            rents.Counting = false;
             rented = rents.Count;
             Assert.Equal(250_000, tokens?.Data.Length);
         }
