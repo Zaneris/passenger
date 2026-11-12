@@ -192,7 +192,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes `MSBuildNames`; another program's or a person's
   JSON `JsonMembers` (`Value` for a member of any kind), never a bare `TryGetProperty`/`GetProperty` (PSG0008); a search
   by halving `Sorted`, never a loop of your own; a primitive `PrimitiveTypes`; an SDK into an installation
-  `DotnetMerge`; a path in a project file `ItemPaths`; what a Mac program links `MachOFile`.
+  `DotnetMerge`; a path in a project file `ItemPaths`; what a Mac program links `MachOFile`; work any thread asks for by
+  key (a download), begun once however many ask, an ask that stops waiting never letting it go, `SharedWork`.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
   (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump.
