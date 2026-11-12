@@ -41,12 +41,34 @@ public partial class ModuleMetadataReader : IDisposable
     /// <summary>Whether a method is [DebuggerHidden], which no debugger stops in, Just My Code or not.</summary>
     internal bool IsHidden(int methodToken)
     {
-        _hidden ??= [.. _peMetadataReader.MethodDefinitions.Where(m => HasAttribute(_peMetadataReader, _peMetadataReader.GetMethodDefinition(m).GetCustomAttributes(), ["System.Diagnostics.DebuggerHiddenAttribute"])).Select(m => MetadataTokens.GetToken(m))];
+        _hidden ??= [.. _peMetadataReader.MethodDefinitions.Where(m => HasAttribute(_peMetadataReader, _peMetadataReader.GetMethodDefinition(m).GetCustomAttributes(), DebuggerHidden)).Select(m => MetadataTokens.GetToken(m))];
         return _hidden.Contains(methodToken);
     }
 
+    /// <summary>Whether a method's code hides it from debuggers and stack traces alike, [DebuggerHidden] with
+    /// [StackTraceHidden] on it or its type: the runtime's own code between the program's frames, never a frame shown.</summary>
+    internal bool IsHiddenFrame(int methodToken)
+    {
+        if (!_hiddenFrames.TryGetValue(methodToken, out bool hidden))
+        {
+            MethodDefinitionHandle handle = MetadataTokens.MethodDefinitionHandle(methodToken);
+            hidden = MetadataTokens.GetRowNumber(handle) <= _peMetadataReader.GetTableRowCount(TableIndex.MethodDef) && Hides(_peMetadataReader.GetMethodDefinition(handle));
+            _hiddenFrames[methodToken] = hidden;
+        }
+        return hidden;
+
+        bool Hides(MethodDefinition method) =>
+            HasAttribute(_peMetadataReader, method.GetCustomAttributes(), DebuggerHidden)
+            && (HasAttribute(_peMetadataReader, method.GetCustomAttributes(), StackTraceHidden)
+                || HasAttribute(_peMetadataReader, _peMetadataReader.GetTypeDefinition(method.GetDeclaringType()).GetCustomAttributes(), StackTraceHidden));
+    }
+
+    private static readonly string[] DebuggerHidden = ["System.Diagnostics.DebuggerHiddenAttribute"];
+    private static readonly string[] StackTraceHidden = ["System.Diagnostics.StackTraceHiddenAttribute"];
+
     private HashSet<int>? _nonUserCode;
     private HashSet<int>? _hidden;
+    private readonly Dictionary<int, bool> _hiddenFrames = [];
 
     private IEnumerable<int> FindNonUserCodeMethodTokens()
     {

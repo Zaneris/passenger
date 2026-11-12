@@ -90,7 +90,7 @@ internal sealed partial class AsyncStepper
             return false;
         }
         // A run not yet suspended has its caller on the stack; a resumed one, in the continuation its dispatcher goes on with.
-        if (ManagedDebugger.EnumerateFramesForThread(thread).Skip(1).FirstOrDefault() is ICorDebugILFrame caller && IsRuntimeAsync(caller)
+        if (_debugger.EnumerateFramesForThread(thread).Skip(1).FirstOrDefault() is ICorDebugILFrame caller && IsRuntimeAsync(caller)
             && AwaitOfCall(caller) is { } called && ResumeOf(caller, called) is int callerResumes and >= 0)
         {
             return Wait(thread, StepType.StepOut, caller, caller, called, callerResumes, frameAwaits: true, leaving: frame);
@@ -186,7 +186,7 @@ internal sealed partial class AsyncStepper
         try
         {
             ManagedDebugger.StackRange? range = ManagedDebugger.RangeOf(frame);
-            foreach (ICorDebugFrame below in ManagedDebugger.EnumerateFramesForThread(thread).SkipWhile(each => ManagedDebugger.RangeOf(each) != range).Skip(1))
+            foreach (ICorDebugFrame below in _debugger.EnumerateFramesForThread(thread).SkipWhile(each => ManagedDebugger.RangeOf(each) != range).Skip(1))
             {
                 if (below is ICorDebugILFrame il && IsRuntimeAsync(il))
                 {
@@ -283,7 +283,7 @@ internal sealed partial class AsyncStepper
         {
             return false;
         }
-        bool held = ManagedDebugger.EnumerateFramesForThread(thread).Any(step.IsFrame);
+        bool held = _debugger.EnumerateFramesForThread(thread).Any(step.IsFrame);
         if (step.Type is StepType.StepOut ? step.IsFrame(thread.ActiveFrame) : !held)
         {
             step.Left = !held;
@@ -305,7 +305,7 @@ internal sealed partial class AsyncStepper
         {
             return;
         }
-        List<ICorDebugFrame> frames = [.. ManagedDebugger.EnumerateFramesForThread(thread)];
+        List<ICorDebugFrame> frames = [.. _debugger.EnumerateFramesForThread(thread)];
         int awaiting = frames.FindIndex(step.IsFrame);
         if (awaiting >= 0 && frames.FindIndex(frame => ManagedDebugger.RangeOf(frame) == caught) > awaiting)
         {
@@ -321,7 +321,7 @@ internal sealed partial class AsyncStepper
     {
         try
         {
-            bool steppingFrame = thread.Id == step.Thread.Id && ManagedDebugger.EnumerateFramesForThread(thread).Take(2).Any(step.IsFrame);
+            bool steppingFrame = thread.Id == step.Thread.Id && _debugger.EnumerateFramesForThread(thread).Take(2).Any(step.IsFrame);
             if (!steppingFrame && ((!step.Left && Holds(step)) || !InChain(step, thread)))
             {
                 _debugger.Log($"Another run of the method stepped out of returns on thread {thread.Id}: it runs on");
@@ -342,11 +342,11 @@ internal sealed partial class AsyncStepper
     }
 
     /// <summary>Whether the stepping thread still holds the step's frame; false for a thread that has ended.</summary>
-    private static bool Holds(RuntimeAsyncStep step)
+    private bool Holds(RuntimeAsyncStep step)
     {
         try
         {
-            return ManagedDebugger.EnumerateFramesForThread(step.Thread).Any(step.IsFrame);
+            return _debugger.EnumerateFramesForThread(step.Thread).Any(step.IsFrame);
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {

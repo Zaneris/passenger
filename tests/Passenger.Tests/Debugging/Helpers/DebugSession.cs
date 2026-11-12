@@ -86,10 +86,12 @@ public sealed class DebugSession : IAsyncDisposable
     public DapConnection Connection { get; }
 
     /// <summary>The adapter with DebuggableConsoleApp started for it to attach to; suspended, the
-    /// program waits at startup until the attach lets it go, in configurationDone.</summary>
-    public static DebugSession ForAttach(ITestOutputHelper output, bool startSuspended, out Process debuggee, string? symbolCache = null)
+    /// program waits at startup until the attach lets it go, in configurationDone. The program has
+    /// <paramref name="programEnvironment"/> over the run's.</summary>
+    public static DebugSession ForAttach(ITestOutputHelper output, bool startSuspended, out Process debuggee, string? symbolCache = null,
+        IReadOnlyDictionary<string, string>? programEnvironment = null)
     {
-        debuggee = StartDebuggee(startSuspended);
+        debuggee = StartDebuggee(startSuspended, programEnvironment);
         return new DebugSession(output, debuggee, terminateDebuggee: false, symbolCache);
     }
 
@@ -616,10 +618,14 @@ public sealed class DebugSession : IAsyncDisposable
     }
 
 
-    private static Process StartDebuggee(bool startSuspended)
+    private static Process StartDebuggee(bool startSuspended, IReadOnlyDictionary<string, string>? environment)
     {
         string path = Debuggees.Apphost("DebuggableConsoleApp");
         ProcessStartInfo start = ChildProcesses.Command(path, []);
+        foreach ((string name, string value) in environment ?? new Dictionary<string, string>())
+        {
+            start.Environment[name] = value;
+        }
         if (startSuspended)
         {
             foreach ((string name, string value) in HeldStart.Variables(changeable: false))
@@ -685,6 +691,13 @@ public static class Debuggees
     public static string Source(params string[] path) => Path.Combine([Repository.Value, "tests", "Debuggees", .. path]);
 
     public static string Program(string name) => Path.Combine(Repository.Value, "artifacts", "bin", name, "debug", $"{name}.dll");
+
+    /// <summary>What runs a debuggee on the newest .NET installed rather than the one it targets: from .NET 11 on, the
+    /// runtime leaves its own exception dispatch among a stop's frames for the debugger to hide.</summary>
+    public static IReadOnlyDictionary<string, string> NewestRuntime { get; } = new Dictionary<string, string> { ["DOTNET_ROLL_FORWARD"] = "LatestMajor" };
+
+    /// <summary>What a debuggee asked to run on the newest .NET evaluates in a frame to show it does: true on .NET 11 or later.</summary>
+    public const string RunsOnNewestRuntime = "System.Environment.Version.Major >= 11";
 
     /// <summary>The line (from one) of a debuggee's Program.cs that holds some code, so a test names
     /// what it stops at rather than a number that moves when a case is added above it.</summary>

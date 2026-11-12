@@ -22,7 +22,7 @@ public partial class ManagedDebugger
     /// code an update changed that the frame, still in the method's code from before it, does not run.</summary>
     public (int Line, int Column, int ILOffset)? GotoTarget(int threadId, string filePath, int line, int? column = null)
     {
-        if (!_threads.TryGetValue(threadId, out ThreadInfo? info) || info.Thread.ActiveFrame is not ICorDebugILFrame frame)
+        if (!_threads.TryGetValue(threadId, out ThreadInfo? info) || TopFrame(info.Thread) is not ICorDebugILFrame frame)
         {
             return null;
         }
@@ -56,7 +56,7 @@ public partial class ManagedDebugger
     /// into a statement part way, out of a finally block, into a catch or finally block.</summary>
     public void SetNextStatement(int threadId, int ilOffset)
     {
-        if (!_threads.TryGetValue(threadId, out ThreadInfo? info) || info.Thread.ActiveFrame is not ICorDebugILFrame frame)
+        if (!_threads.TryGetValue(threadId, out ThreadInfo? info) || TopFrame(info.Thread) is not ICorDebugILFrame frame)
         {
             throw new InvalidOperationException("The thread is not stopped in managed code");
         }

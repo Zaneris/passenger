@@ -473,7 +473,7 @@ public partial class ManagedDebugger
             throw new InvalidOperationException("A step operation is already in progress");
         }
         ICorDebugThread thread = threadInfo.Thread;
-        if (EnumerateFramesForThread(thread).FirstOrDefault() is not ICorDebugILFrame frame || RangeOf(frame) != plan.Frame)
+        if (TopFrame(thread) is not ICorDebugILFrame frame || RangeOf(frame) != plan.Frame)
         {
             throw new InvalidOperationException("The thread is no longer in the frame the call was listed for");
         }
@@ -536,7 +536,7 @@ public partial class ManagedDebugger
             return;
         }
         EndStepForStop();
-        if (GetSourceInfoAtFrame(thread.ActiveFrame, _justMyCode is false) is { } source)
+        if (TopFrame(thread) is { } entered && GetSourceInfoAtFrame(entered, _justMyCode is false) is { } source)
         {
             ReportStop(thread.Id, StopReasons.Step, source.FilePath, source.StartLine, source.StartColumn);
         }

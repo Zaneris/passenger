@@ -407,7 +407,7 @@ public partial class ManagedDebugger
         SymbolsWanted? wanted;
         try
         {
-            wanted = thread?.ActiveFrame is ICorDebugILFrame frame && FindModule(frame.Function.Module) is { } module ? WantedFor(module) : null;
+            wanted = thread is not null && TopFrame(thread) is ICorDebugILFrame frame && FindModule(frame.Function.Module) is { } module ? WantedFor(module) : null;
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
@@ -697,7 +697,7 @@ public partial class ManagedDebugger
     /// not the user's code.</summary>
     internal bool StopStepAt(ICorDebugThread thread)
     {
-        if (thread.ActiveFrame is not ICorDebugILFrame frame || (_justMyCode && !IsUserCodeFrame(frame)) || FindModule(frame.Function.Module) is not { } module
+        if (TopFrame(thread) is not ICorDebugILFrame frame || (_justMyCode && !IsUserCodeFrame(frame)) || FindModule(frame.Function.Module) is not { } module
             || module.MetadataReader.IsCurrentSequencePointHidden(frame.Function.Token, frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame))
             || GetSourceInfoAtFrame(frame, _justMyCode is false) is not { } source)
         {
@@ -777,7 +777,7 @@ public partial class ManagedDebugger
     /// through its statement, or the IL range given.</summary>
     internal ICorDebugStepper SetupStepper(ICorDebugThread thread, StepType stepType, ICorDebugFrame? from = null, (int Start, int End)? through = null)
     {
-        ICorDebugFrame frame = from ?? thread.ActiveFrame;
+        ICorDebugFrame? frame = from ?? TopFrame(thread);
         if (frame is not ICorDebugILFrame ilFrame)
         {
             throw new InvalidOperationException("Active frame is not an IL frame");
@@ -1043,10 +1043,24 @@ public partial class ManagedDebugger
         return frame;
     }
 
-    /// <summary>The thread's managed frames from its stop down. An evaluation given up, still running on the thread, is a
+    /// <summary>The thread's managed frames from its stop down, as its stack shows them: those of <see cref="FramesOnStack"/>
+    /// but the runtime's own code between the program's frames (<see cref="ModuleMetadataReader.IsHiddenFrame"/>), such as
+    /// its exception dispatch above the frame that threw, which .NET 11's runtime leaves for the debugger to hide.</summary>
+    internal IEnumerable<ICorDebugFrame> EnumerateFramesForThread(ICorDebugThread thread)
+    {
+        foreach (ICorDebugFrame frame in FramesOnStack(thread))
+        {
+            if (!IsHiddenFrame(frame))
+            {
+                yield return frame;
+            }
+        }
+    }
+
+    /// <summary>Every managed frame of the thread from its stop down. An evaluation given up, still running on the thread, is a
     /// chain of its own above the stop's (CHAIN_FUNC_EVAL, ending at its [Func Eval] frame): its frames are left out, so a
     /// frame's depth names the same frame as before the evaluation began.</summary>
-    internal static IEnumerable<ICorDebugFrame> EnumerateFramesForThread(ICorDebugThread thread)
+    private static IEnumerable<ICorDebugFrame> FramesOnStack(ICorDebugThread thread)
     {
         List<ICorDebugChain> chains = [.. thread.EnumerateChains()];
         int stop = chains.FindLastIndex(chain => chain.Reason is CorDebugChainReason.CHAIN_FUNC_EVAL) + 1;
@@ -1061,6 +1075,21 @@ public partial class ManagedDebugger
             {
                 yield return frame;
             }
+        }
+    }
+
+    /// <summary>The frame a thread stands in as its stack shows it, where the runtime's own code may run above it.</summary>
+    internal ICorDebugFrame? TopFrame(ICorDebugThread thread) => EnumerateFramesForThread(thread).FirstOrDefault();
+
+    private bool IsHiddenFrame(ICorDebugFrame frame)
+    {
+        try
+        {
+            return frame is ICorDebugILFrame il && FindModule(il.Function.Module, reread: false) is { } module && module.MetadataReader.IsHiddenFrame(il.Function.Token);
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return false;
         }
     }
 

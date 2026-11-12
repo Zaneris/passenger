@@ -480,7 +480,7 @@ public partial class ManagedDebugger
             return;
         }
         EndStepForStop();
-        ICorDebugFrame? top = EnumerateFramesForThread(thread).FirstOrDefault();
+        ICorDebugFrame? top = TopFrame(thread);
         _writtenAt = top is null ? null : WritingStatement(thread, top);
         SourceInfo? source = top is ICorDebugILFrame ? GetSourceInfoAtFrame(top, _justMyCode is false) : null;
         string change = $"Previous Value: {before ?? "?"}, New Value: {target.Shown ?? "?"}";
@@ -531,7 +531,7 @@ public partial class ManagedDebugger
     private bool StepPastWrite(ICorDebugThread thread, StepType type)
     {
         if (type is StepType.StepOut || _writtenAt is not { } written || written.ThreadId != thread.Id
-            || EnumerateFramesForThread(thread).FirstOrDefault() is not ICorDebugILFrame top || RangeOf(top) != written.Frame)
+            || TopFrame(thread) is not ICorDebugILFrame top || RangeOf(top) != written.Frame)
         {
             return false;
         }

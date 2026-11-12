@@ -402,7 +402,7 @@ public partial class ManagedDebugger
     /// stopped by its own event stands where its top frame shows.</summary>
     private bool StepOutToManagedCode(ICorDebugThread thread)
     {
-        ICorDebugFrame? top = thread.ActiveFrame;
+        ICorDebugFrame? top = TopFrame(thread);
         if (!_justMyCode && _stoppedByEvent != thread.Id && LibraryInNativeCall(thread) is { } caller)
         {
             _logger?.Invoke($"Paused in native code {FrameTold(caller)} called: the step runs out of it");
@@ -509,7 +509,7 @@ public partial class ManagedDebugger
         }
         _stepBegan = BeganIn(thread);
         SetupStepper(thread, type);
-        if (type is StepType.StepOver && thread.ActiveFrame is ICorDebugILFrame from && StepRangeOf(from) is var (start, end))
+        if (type is StepType.StepOver && TopFrame(thread) is ICorDebugILFrame from && StepRangeOf(from) is var (start, end))
         {
             WatchReturns(thread, from, start, end);
         }
@@ -644,7 +644,7 @@ public partial class ManagedDebugger
         return result;
     }
 
-    private static bool HasManagedFrames(ICorDebugThread thread)
+    private bool HasManagedFrames(ICorDebugThread thread)
     {
         try
         {
@@ -1348,8 +1348,8 @@ public partial class ManagedDebugger
 
     /// <summary>The top frame of a thread's stop, found again for each use, as running code neuters a frame: an evaluation that
     /// could not be stopped, still running on the thread, has its frames above it.</summary>
-    private static ICorDebugILFrame StopFrame(ICorDebugThread thread) =>
-        EnumerateFramesForThread(thread).FirstOrDefault() as ICorDebugILFrame
+    private ICorDebugILFrame StopFrame(ICorDebugThread thread) =>
+        TopFrame(thread) as ICorDebugILFrame
             ?? throw new InvalidOperationException("The thread is stopped outside managed code, so its exception cannot be read");
 
     /// <summary>One exception of a stop, from what its fields hold to what its getters add, held by a strong handle, which

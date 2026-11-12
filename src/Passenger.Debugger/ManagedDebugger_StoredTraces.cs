@@ -323,7 +323,7 @@ public partial class ManagedDebugger
         {
             return live;
         }
-        foreach (ICorDebugFrame frame in EnumerateFramesForThread(thread))
+        foreach (ICorDebugFrame frame in FramesOnStack(thread))
         {
             if (frame is ICorDebugNativeFrame native && native.TryGetCode(out ICorDebugCode? code) is Cor.S_OK && code is not null && SpanOf(code) is { } span)
             {

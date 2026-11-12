@@ -103,7 +103,7 @@ public partial class ManagedDebugger
     /// statement.</summary>
     private async Task TakeWatchedReturn(ICorDebugThread thread, WatchedCall call)
     {
-        if (_returnWatch is not { } watch || thread.Id != watch.ThreadId || EnumerateFramesForThread(thread).FirstOrDefault() is not ICorDebugILFrame frame
+        if (_returnWatch is not { } watch || thread.Id != watch.ThreadId || TopFrame(thread) is not ICorDebugILFrame frame
             || RangeOf(frame) != watch.Frame || Read(frame, call.CallOffset) is not { } value)
         {
             _logger?.Invoke($"The breakpoint after the call at IL_{call.CallOffset:X4} on thread {thread.Id} is not the step's: another frame's, or no value is there");
