@@ -46,7 +46,8 @@ public partial class ModuleMetadataReader : IDisposable
     }
 
     /// <summary>Whether a method's code hides it from debuggers and stack traces alike, [DebuggerHidden] with
-    /// [StackTraceHidden] on it or its type: the runtime's own code between the program's frames, never a frame shown.</summary>
+    /// [StackTraceHidden] on it or its type, so no frame of it is shown, as its exception's stack trace shows none: the
+    /// runtime's helpers that compiled code calls, its exception dispatch, and a program's own method marked so.</summary>
     internal bool IsHiddenFrame(int methodToken)
     {
         if (!_hiddenFrames.TryGetValue(methodToken, out bool hidden))

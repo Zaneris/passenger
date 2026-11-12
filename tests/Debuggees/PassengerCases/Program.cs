@@ -151,6 +151,11 @@ if (args is ["unread", var how])
 	Unread.Run(how);
 	return;
 }
+if (args is ["hidden frames"])
+{
+	HiddenFrames.RunAsync().GetAwaiter().GetResult();
+	return;
+}
 if (args is ["named main"])
 {
 	// Main's thread named as an app may name its UI thread: the debugger still knows it for Main's.

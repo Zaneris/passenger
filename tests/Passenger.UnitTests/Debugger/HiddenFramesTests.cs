@@ -33,6 +33,20 @@ public class HiddenFramesTests
             "MethodBase.Invoke is [DebuggerHidden] alone, and its frame would go missing between a caller and the method it invoked");
     }
 
+    /// <summary>The runtime's contract with debuggers from .NET 11, read from this process's CoreLib: its exception dispatch
+    /// and its call of the entry point are marked hidden, for the debugger to leave out.</summary>
+    [Theory]
+    [InlineData("System.Runtime.EH", "DispatchEx")]
+    [InlineData("System.Runtime.EH", "RhThrowEx")]
+    [InlineData("System.Environment", "CallEntryPoint")]
+    public void The_runtimes_exception_dispatch_and_entry_point_call_are_frames_left_out(string type, string name)
+    {
+        MethodInfo? method = typeof(object).Assembly.GetType(type)?.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            .FirstOrDefault(m => m.Name == name);
+        Assert.SkipWhen(method is null, $"This runtime's CoreLib has no {type}.{name}");
+        Assert.True(IsHiddenFrame(method), $"{type}.{name} is not hidden from debuggers and stack traces alike, so a stop under it would show it on top");
+    }
+
     private static bool IsHiddenFrame(MethodInfo method)
     {
         using ModuleMetadataReader reader = ModuleMetadataReader.TryLoad(method.Module.Assembly.Location)

@@ -457,6 +457,14 @@ public partial class ManagedDebugger
         EndReturnWatch();
         // The statement is left without its Smart Step Into target entered (not called, or called on another thread).
         EndSmartStep();
+        if (IsHiddenFrame(ilFrame) && EnumerateFramesForThread(corThread).OfType<ICorDebugILFrame>().FirstOrDefault() is { } shown)
+        {
+            // Hidden code, as the helper a static constructor returns to: the step ends where the frame shown below goes on.
+            int at = shown.IP.pnOffset;
+            SetupStepper(corThread, StepType.StepOver, shown, (at, at + 1));
+            Continue(clearVariables: true);
+            return;
+        }
         if (stepCompleteEventArgs.Reason is CorDebugStepReason.STEP_RETURN)
         {
             // Back in a caller; reading a value type's return runs the program, so the frame is read again.

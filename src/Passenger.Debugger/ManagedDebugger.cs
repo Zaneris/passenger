@@ -1044,8 +1044,9 @@ public partial class ManagedDebugger
     }
 
     /// <summary>The thread's managed frames from its stop down, as its stack shows them: those of <see cref="FramesOnStack"/>
-    /// but the runtime's own code between the program's frames (<see cref="ModuleMetadataReader.IsHiddenFrame"/>), such as
-    /// its exception dispatch above the frame that threw, which .NET 11's runtime leaves for the debugger to hide.</summary>
+    /// but code its attributes hide (<see cref="ModuleMetadataReader.IsHiddenFrame"/>), on every runtime: a helper compiled
+    /// code calls, a program's method so marked, and from .NET 11, whose runtime no longer leaves them out itself, its
+    /// exception dispatch above the frame that threw and its call of the entry point.</summary>
     internal IEnumerable<ICorDebugFrame> EnumerateFramesForThread(ICorDebugThread thread)
     {
         foreach (ICorDebugFrame frame in FramesOnStack(thread))
@@ -1078,7 +1079,7 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>The frame a thread stands in as its stack shows it, where the runtime's own code may run above it.</summary>
+    /// <summary>The frame a thread stands in as its stack shows it, where hidden code may run above it.</summary>
     internal ICorDebugFrame? TopFrame(ICorDebugThread thread) => EnumerateFramesForThread(thread).FirstOrDefault();
 
     private bool IsHiddenFrame(ICorDebugFrame frame)

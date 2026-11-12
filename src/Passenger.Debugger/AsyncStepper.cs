@@ -184,7 +184,7 @@ internal sealed partial class AsyncStepper
     {
         try
         {
-            ICorDebugFrame? frame = thread.ActiveFrame;
+            ICorDebugFrame? frame = _debugger.TopFrame(thread);
             if (frame is null)
             {
                 return (false, null);

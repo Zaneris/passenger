@@ -404,9 +404,10 @@ a new name, and `just site-shots` retakes its images.
   Letting threads run voids every value read before, so an evaluation left
   running returns first (`LetAbandonedReturnAsync`), holding the program at the stop shown: never Continue there. One left
   is held with the rest (`process.Stop(0)`) until the person goes on, so "still running N s later" says nothing of how
-  long it ran. From .NET 11 ICorDebug walks the runtime's exception dispatch and entry-point call too, marked
-  [DebuggerHidden] with [StackTraceHidden]: a stop's frames and top come from `EnumerateFramesForThread` and `TopFrame`,
-  never a chain's own, and `thread.ActiveFrame` may be the runtime's (#1503).
+  long it ran. ICorDebug walks code marked [DebuggerHidden] with [StackTraceHidden] (compiled code's helpers, a program's
+  own; from .NET 11 the exception dispatch and entry-point call too), which the stack leaves out on every runtime: a
+  stop's frames and top come from `EnumerateFramesForThread` and `TopFrame`, never a chain's own, and
+  `thread.ActiveFrame` may be hidden code (#1503).
 - **Hot Reload**: the server's `EditAndContinueService` from the extension; update handlers through Passenger's hook
   (`UpdateHandlerHook`), never the runtime's agent, which refuses under a debugger; the hook connects by the system's
   socket calls, never .NET's Socket (whose first use starts a thread of .NET's on macOS and Linux), and makes its own
