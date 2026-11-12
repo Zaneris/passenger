@@ -146,6 +146,75 @@ public sealed class LiveTemplatesTests : IClassFixture<LiveTemplatesTests.Projec
         window.Close();
     }
 
+    /// <summary>Creating an instance leaves the caret ready for arguments, preserves the surrounding code, and undoes
+    /// in one step.</summary>
+    [AvaloniaTheory]
+    [InlineData("Pair.new", "new Pair()")]
+    [InlineData("var pair = Pair.new;", "var pair = new Pair();")]
+    [InlineData("return Pair.new;", "return new Pair();")]
+    [InlineData("Console.WriteLine(Pair.new);", "Console.WriteLine(new Pair());")]
+    [InlineData("System.Collections.Generic.List<string>.new", "new System.Collections.Generic.List<string>()")]
+    [InlineData("System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int>>.new",
+        "new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int>>()")]
+    [InlineData("global::System.Text.StringBuilder.new", "new global::System.Text.StringBuilder()")]
+    public void New_postfix_creates_an_instance_in_an_expression_and_undo_restores_the_suffix(string typed, string expanded)
+    {
+        MainWindow window = Open("Pair.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        NewLine(window, "int count = 2;");
+        int start = editor.Selections.Primary.Caret;
+        window.KeyTextInput(typed);
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        editor.Selections = SelectionSet.Single(start + typed.IndexOf(".new", StringComparison.Ordinal) + 4);
+        string before = Text(editor);
+
+        Ui.Press(window, "TAB");
+        Assert.Equal(before[..start] + expanded + before[(start + typed.Length)..], Text(editor));
+        Assert.True(editor.Selections.Primary.IsEmpty);
+        Assert.Equal(start + expanded.IndexOf(')', StringComparison.Ordinal), editor.Selections.Primary.Caret);
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(before, Text(editor));
+        window.Close();
+    }
+
+    /// <summary>The new postfix is offered with members, commits from completion, and obeys its Settings switch.</summary>
+    [AvaloniaFact]
+    public void New_postfix_is_offered_in_completion_and_can_be_turned_off()
+    {
+        MainWindow window = Open("Pair.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        NewLine(window, "int count = 2;");
+        window.KeyTextInput("System.Text.StringBuilder");
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("new"), "the new postfix after a type");
+        window.KeyTextInput("new");
+        Ui.Settle();
+        Ui.Press(window, "TAB");
+        Assert.Contains("new System.Text.StringBuilder()", Text(editor), StringComparison.Ordinal);
+
+        SettingsDialog dialog = window.ShowSettings();
+        Ui.Settle();
+        dialog.Page = SettingsDialog.PostfixPage;
+        Ui.Settle();
+        Assert.True(dialog.Postfix.Choose("new"));
+        Ui.Click(dialog.Postfix.EnabledBox("new")!);
+        dialog.Ok();
+        Ui.Settle();
+
+        NewLine(window, "int count = 2;");
+        window.KeyTextInput("System.Text.Encoding");
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("UTF8"), "the type's static members");
+        Assert.DoesNotContain("new", window.Assist.CompletionLabels);
+        window.KeyTextInput("new");
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        Ui.Press(window, "TAB");
+        Assert.Contains("System.Text.Encoding.new", Text(editor), StringComparison.Ordinal);
+        window.Close();
+    }
+
     /// <summary>A postfix template that could wrap more than one expression asks which and wraps the one chosen, one that
     /// fits only one wraps it at once; one turned off in Settings is offered no more, postfix templates kept out of the
     /// list still expand on Tab, and postfix completion turned off leaves Tab a tab.</summary>
