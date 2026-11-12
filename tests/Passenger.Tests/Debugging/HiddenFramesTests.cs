@@ -66,19 +66,18 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
         await AssertStoppedIn(host, outOf, StopReasons.Step, CaughtPastTheEnd, "RunAsync", "the step out of the async method");
     }
 
-    /// <summary>Without Just My Code, a step out of a static constructor the runtime's helpers ran goes on out of them to
-    /// the program's code that read the class, rather than ending in a frame the stack leaves out.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task A_step_out_of_a_static_constructor_without_Just_My_Code_stops_where_the_class_was_read(bool newestRuntime)
+    /// <summary>Without Just My Code, a step out of a static constructor, which from .NET 11 the runtime's hidden InitHelpers
+    /// run, goes on out of them to the program's code that read the class, rather than ending in a frame the stack leaves
+    /// out. On the newest .NET only: .NET 10 runs the constructor from native code, out of which such a step ends nowhere.</summary>
+    [Fact]
+    public async Task A_step_out_of_a_static_constructor_without_Just_My_Code_stops_where_the_class_was_read()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await Launch(host, newestRuntime, justMyCode: false, null, Initializing);
+        await Launch(host, newestRuntime: true, justMyCode: false, null, Initializing);
 
         StoppedEvent initializing = await host.WaitForStoppedEvent();
         await AssertStoppedIn(host, initializing, StopReasons.Breakpoint, Initializing, ".cctor", "the breakpoint in the static constructor");
-        await AssertOnRuntime(host, initializing, newestRuntime);
+        await AssertOnRuntime(host, initializing, newestRuntime: true);
         StoppedEvent outOf = await host.StepOutAsync(initializing.ThreadId!.Value).WaitForStoppedEvent();
         await AssertStoppedIn(host, outOf, StopReasons.Step, InitializedRead, "RunAsync", "the step out of the static constructor");
     }
