@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-12
 
+- `XamlTests`' `The_preview_draws_a_window_from_the_last_build_follows_its_text_as_it_is_typed_and_draws_styles_as_their_PreviewWith`,
+  CI's Windows (x64) runner at ad7e74e7e (run 43199610179): "Expected: 800, 450 / Actual: 375, 211" for the preview's
+  frame. **The IDE**: the pane learns the design's size only from the first frame, drawn at the window's own scale, then
+  asks the previewer for the share it has room for (a pane 409 wide in a 1200-wide window: 0.469, 375 × 211), and that
+  ask held nothing, so `Ui.Settle` returned as it was sent. The test checked the first frame, which the pane's own had
+  replaced on CI; on this Mac and the Windows VM it read 4 and 11 ms before that frame came. A rescale holds until its
+  frame comes, as WPF's does, and this test and the Avalonia 11 one check the design's size at the pane's scale: fixed
+  in 6f14ca4cb (#1517).
 - `LongTextTests`' `Edits_to_long_soft_wrapped_lines_leave_every_column_on_the_row_a_fresh_editor_wraps_it_onto`, CI's
   macOS report lane, shard 1, at ad7e74e7e (run 43199610179): the test process ended in a stack overflow (exit code
   134) under `SoftWrap`'s setter, `WrapRestAsync`, `Land`, `TakeWraps`, `Rows`, `Wraps` and `WrapRest` repeated 767
