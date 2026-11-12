@@ -339,6 +339,11 @@ public static class Refusals
         ? $"{name} is the project's web root: ASP.NET Core serves its static files from it"
         : $"{name} holds the project's launch and publish profiles";
 
+    /// <summary>A row Delete only takes out of the solution or a project, its files staying on disk, chosen with others,
+    /// which Delete moves to the Trash at once: Remove takes it chosen alone, asking its own questions.</summary>
+    public static string RemovedAlone(string name, string from) =>
+        $"Delete moves several files and folders to the Trash at once, but {name} only leaves {from}, its files staying on disk: choose it alone to remove it";
+
     /// <summary>A file shown read-only (decompiled, installed, carried by the app, a copy to read), which nothing edits or
     /// saves.</summary>
     public static string ReadOnly(string name) => $"{name} is read-only";

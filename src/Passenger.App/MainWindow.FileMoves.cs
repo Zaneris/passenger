@@ -81,12 +81,13 @@ public partial class MainWindow
         return drop.Target.Into is { } into ? PutAsync(Outermost([.. drop.Items.Select(i => i.Path!)]), into, drop.Copy) : Task.CompletedTask;
     }
 
-    /// <summary>The paths but those inside a folder among them, found by each one's folders rather than by every other path:
-    /// thousands chosen at once would otherwise be compared in pairs.</summary>
+    /// <summary>The paths, each once (two rows of the Solution view may show one file), but those inside a folder among
+    /// them, found by each one's folders rather than by every other path: thousands chosen at once would otherwise be
+    /// compared in pairs.</summary>
     private static IReadOnlyList<string> Outermost(IReadOnlyList<string> paths)
     {
         HashSet<string> chosen = new(paths, PathNames.Comparer);
-        return [.. paths.Where(path => !Above(path).Any(chosen.Contains))];
+        return [.. paths.Where(path => !Above(path).Any(chosen.Contains)).Distinct(PathNames.Comparer)];
 
         static IEnumerable<string> Above(string path)
         {
@@ -408,15 +409,14 @@ public partial class MainWindow
         E.Cut when RowsHeld(row).FirstOrDefault(n => n.Kept is not null) is { Kept: { } kept } => kept,
         E.Paste when row.Into is null => $"Nothing can be pasted into {row.Name}",
         E.Paste when held is null => NothingHeld,
-        E.Delete or E.Backspace when row.Kept is { } kept => kept,
-        E.Delete or E.Backspace when !row.CanRemove => $"{row.Name} cannot be deleted",
+        E.Delete or E.Backspace => WhyNotDeleted(row),
         _ => null,
     };
 
-    /// <summary>The editor's Delete as the Explorer's menu names it: Remove for what only leaves the
-    /// solution.</summary>
+    /// <summary>The editor's Delete as the Explorer's menu names it: Remove for what only leaves the solution, chosen
+    /// alone.</summary>
     private string? DeleteTitle(ActionContext context) =>
-        ExplorerEdits(E.Delete, context) && RowOf(context) is { } row ? row.LeavesFilesBehind ? "Remove…" : "Delete…" : null;
+        ExplorerEdits(E.Delete, context) && RowOf(context) is { } row ? RowsDeleted(row) is [{ LeavesFilesBehind: true }] ? "Remove…" : "Delete…" : null;
 
     /// <summary>The editor's Cut, Copy, Paste or Delete run on the Explorer's row; its Undo and Redo on the last command
     /// that renamed or moved files.</summary>

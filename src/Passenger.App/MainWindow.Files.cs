@@ -489,15 +489,18 @@ public partial class MainWindow
     /// to end.</summary>
     private static readonly TimeSpan BuildsGoing = TimeSpan.FromSeconds(60);
 
-    /// <summary>Deletes a file or folder to the Trash, once asked (unless it was already); its open files are saved first,
-    /// and again just before it goes with what was typed while it waited, so the Trash and Local History have what the
-    /// editor showed, and close once it is gone, or keep their tabs when it could not go. The design-time builds of the
-    /// projects in it are held off, those running waited out.</summary>
-    public async Task<bool> DeleteAsync(string path, bool asked = false)
+    /// <summary>Deletes a file or folder to the Trash, as <see cref="DeleteAsync(IReadOnlyList{string}, bool)"/> deletes
+    /// several.</summary>
+    public Task<bool> DeleteAsync(string path, bool asked = false) => DeleteAsync([path], asked);
+
+    /// <summary>Deletes files and folders to the Trash, none inside another, once asked in one question (unless it was
+    /// already); their open files are saved first, and again just before they go with what was typed while it waited, so
+    /// the Trash and Local History have what the editor showed, and close once gone, or keep their tabs where one could not
+    /// go. The design-time builds of the projects in them are held off, those running waited out. True once all went.</summary>
+    public async Task<bool> DeleteAsync(IReadOnlyList<string> paths, bool asked = false)
     {
-        string what = Path.GetFileName(path);
-        bool isFolder = Directory.Exists(path);
-        if (!asked && !await Confirm("Delete", isFolder ? $"Move the folder {what} and everything in it to the Trash?" : $"Move {what} to the Trash?", "Delete"))
+        List<string> names = [.. paths.Select(Path.GetFileName).OfType<string>()];
+        if (!asked && !await Confirm("Delete", DeleteQuestion(paths), "Delete"))
         {
             return false;
         }
@@ -506,53 +509,91 @@ public partial class MainWindow
             return false;
         }
         History.LocalHistory? keeping = session.LocalHistory;
-        History.HistoryDeletion? taken = keeping is null ? null : await keeping.CaptureAsync(path);
-        using IDisposable releasing = await LetGoAsync([path], $"Waiting for the design-time build of {what} to end before it goes to the Trash…");
-        // Nothing is awaited from here to the move, so what was typed while it waited goes with it.
+        History.HistoryDeletion?[] taken = keeping is null ? new History.HistoryDeletion?[paths.Count] : await Task.WhenAll(paths.Select(keeping.CaptureAsync));
+        using IDisposable releasing = await LetGoAsync(paths,
+            $"Waiting for the design-time {Plural.Noun(paths.Count, "build")} of {Plural.Listed(names)} to end before {Plural.Agreeing(paths.Count, "it goes", "they go")} to the Trash…");
+        // Nothing is awaited from here to the moves, so what was typed while it waited goes with them.
         if (SavedFirst() is not { } typed)
         {
             return false;
         }
-        if (taken is not null && typed.Count > 0)
+        List<string> gone = [];
+        List<(string Path, string Why)> refused = [];
+        for (int i = 0; i < paths.Count; i++)
         {
-            taken = keeping!.Retaken(taken, typed);
-        }
-        try
-        {
-            Trash.Move(path);
-            if (taken is not null)
+            string path = paths[i];
+            if (taken[i] is { } deletion && typed.Where(t => PathNames.Within(t, path)).ToList() is { Count: > 0 } retyped)
             {
-                keeping!.Deleted(taken);
+                taken[i] = keeping!.Retaken(deletion, retyped);
+            }
+            try
+            {
+                Trash.Move(path);
+                gone.Add(path);
+                if (taken[i] is { } kept)
+                {
+                    keeping!.Deleted(kept);
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                refused.Add((path, error.Message));
             }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            status.Text = $"{what} could not be deleted: {error.Message}{await HeldByAsync(path)}";
-            return false;
-        }
-        foreach (OpenDocument document in Editors.Documents.Where(d => PathNames.Within(d.Path, path)).ToList())
+        foreach (OpenDocument document in Editors.Documents.Where(d => gone.Any(path => PathNames.Within(d.Path, path))).ToList())
         {
             Editors.CloseDeleted(document);
         }
-        CameOrWent([path]);
-        status.Text = $"Moved {what} to the Trash";
-        return true;
+        if (gone.Count > 0)
+        {
+            CameOrWent(gone);
+        }
+        List<string> said = gone.Count == 0 ? [] : [$"Moved {Plural.Listed([.. gone.Select(Path.GetFileName).OfType<string>()])} to the Trash"];
+        // Those refused for one reason are named together, as the Trash refusing every one would be.
+        List<(string Name, string Why)> why = [];
+        foreach ((string path, string message) in refused)
+        {
+            why.Add((Path.GetFileName(path), message + await HeldByAsync(path)));
+        }
+        said.AddRange(why.GroupBy(r => r.Why).Select(g => $"{Plural.Listed([.. g.Select(r => r.Name)])} could not be deleted: {g.Key}"));
+        status.Text = string.Join("; ", said);
+        return refused.Count == 0;
 
-        // The open files under the path with edits not saved, each saved; null, said, when one could not be.
+        // The open files under the paths with edits not saved, each saved; null, said, when one could not be.
         List<string>? SavedFirst()
         {
             List<string> saved = [];
-            foreach (OpenDocument document in Editors.Documents.Where(d => d.IsModified && PathNames.Within(d.Path, path)).ToList())
+            foreach (OpenDocument document in Editors.Documents.Where(d => d.IsModified).ToList())
             {
+                if (paths.FirstOrDefault(path => PathNames.Within(document.Path, path)) is not { } under)
+                {
+                    continue;
+                }
                 if (!Editors.Save(document))
                 {
-                    status.Text = $"{what} could not be deleted: {document.Name} could not be saved first";
+                    status.Text = $"{Path.GetFileName(under)} could not be deleted: {document.Name} could not be saved first";
                     return null;
                 }
                 saved.Add(document.Path);
             }
             return saved;
         }
+    }
+
+    /// <summary>Delete's question: the file or folder it takes by name, several by their count.</summary>
+    private static string DeleteQuestion(IReadOnlyList<string> paths)
+    {
+        int folders = paths.Count(Directory.Exists);
+        int files = paths.Count - folders;
+        if (paths.Count == 1)
+        {
+            string what = Path.GetFileName(paths[0]);
+            return folders == 1 ? $"Move the folder {what} and everything in it to the Trash?" : $"Move {what} to the Trash?";
+        }
+        string everything = $"everything in {Plural.Agreeing(folders, "it", "them")}";
+        return folders == 0 ? $"Move {Plural.Of(files, "file")} to the Trash?"
+            : files == 0 ? $"Move {Plural.Of(folders, "folder")} and {everything} to the Trash?"
+            : $"Move {Plural.Of(files, "file")} and {Plural.Of(folders, "folder")}, with {everything}, to the Trash?";
     }
 
     /// <summary>Lets go of what is about to go or move until disposed: the design-time builds of the projects under it are

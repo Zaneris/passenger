@@ -231,9 +231,15 @@ public partial class MainWindow
     }
 
     /// <summary>Delete on a row: what is the solution's own (a project, a solution folder, a file it lists) and a
-    /// project reference leave it, their files staying on disk; a file or folder goes to the Trash.</summary>
+    /// project reference leave it, their files staying on disk; a file or folder goes to the Trash, and so does every one
+    /// chosen with it, asked once, but those inside another.</summary>
     private async Task DeleteRowAsync(ExplorerNode row)
     {
+        if (RowsDeleted(row) is { Count: > 1 } rows)
+        {
+            await DeleteAsync(Outermost([.. rows.Where(n => n.IsMovable).Select(n => n.Path).OfType<string>()]));
+            return;
+        }
         switch (row)
         {
             case { Kind: NodeKind.SolutionFolder, SolutionPath: { } removing }:
@@ -252,6 +258,32 @@ public partial class MainWindow
                 await DeleteAsync(path);
                 break;
         }
+    }
+
+    /// <summary>The rows Delete on a row takes: it, or every row chosen with it.</summary>
+    private IReadOnlyList<ExplorerNode> RowsDeleted(ExplorerNode row) =>
+        Explorer.SelectedNodes is { Count: > 1 } chosen && chosen.Contains(row) ? chosen : [row];
+
+    /// <summary>Why Delete cannot take the row, or a row chosen with it: a folder the SDK reads, a row nothing deletes, or
+    /// among several, one that only leaves the solution or its project, which Remove takes chosen alone, its questions
+    /// its own.</summary>
+    private string? WhyNotDeleted(ExplorerNode row)
+    {
+        IReadOnlyList<ExplorerNode> rows = RowsDeleted(row);
+        foreach (ExplorerNode each in rows)
+        {
+            if (each.Kept is { } kept)
+            {
+                return kept;
+            }
+            if (!each.CanRemove)
+            {
+                return $"{each.Name} cannot be deleted";
+            }
+        }
+        return rows.Count > 1 && rows.FirstOrDefault(n => n.LeavesFilesBehind) is { } leaving
+            ? Refusals.RemovedAlone(leaving.Name, leaving is { Kind: NodeKind.ProjectReference, Owner: { } owner } ? Path.GetFileNameWithoutExtension(owner) : "the solution")
+            : null;
     }
 
     private async Task CopyPathAsync(string path)

@@ -793,6 +793,107 @@ public sealed class ExplorerFilesTests : IDisposable
         }
     }
 
+    /// <summary>Delete on a file chosen with others (Ctrl+click, Cmd+click on macOS) asks once, by their count, and moves
+    /// every one to the Trash, closing their tabs and saying so in one line; a file chosen alone is asked of by its name, as
+    /// before.</summary>
+    [AvaloniaFact]
+    public void Delete_on_files_chosen_together_asks_once_and_moves_them_all_to_the_Trash_and_one_chosen_alone_is_asked_of_by_name()
+    {
+        string[] names = ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"];
+        foreach (string name in names)
+        {
+            File.WriteAllText(Path.Combine(folder, name), name);
+        }
+        MainWindow window = Open();
+        List<string> asked = Questions(window);
+        foreach (string name in (string[])["a.txt", "b.txt", "c.txt", "e.txt"])
+        {
+            window.OpenFile(Path.Combine(folder, name));
+        }
+        Ui.Settle();
+
+        // Each row found first, as finding one chooses it.
+        ExplorerNode[] rows = [.. names.Select(name => Row(window, name))];
+        Ui.ClickRow(window, rows[0]);
+        AlsoChoose(window, rows[1]);
+        AlsoChoose(window, rows[2]);
+        Ui.Press(window, "DELETE");
+        Ui.WaitFor(() => Finished(window, "Moved"), "the three files chosen to go to the Trash");
+        string[] left = [.. names.Where(name => File.Exists(Path.Combine(folder, name)))];
+        Assert.True(left.SequenceEqual(["d.txt", "e.txt"]), $"Delete on three files chosen left [{string.Join(", ", left)}], so the rest of those chosen were not deleted: '{window.Status}'");
+        Assert.True(asked.SequenceEqual(["Move 3 files to the Trash?"]), $"Delete on three files chosen asked [{string.Join(" | ", asked)}], where one question of all three was due");
+        Assert.All(["a.txt", "b.txt", "c.txt"], name => Assert.True(File.Exists(Path.Combine(trash, name)), $"{name} is not in the Trash, so it cannot be put back"));
+        Assert.True(window.EditorArea.Documents.Select(d => d.Name).SequenceEqual(["e.txt"]),
+            $"The tabs left are [{string.Join(", ", window.EditorArea.Documents.Select(d => d.Name))}], so a file deleted still shows as open");
+        Assert.Equal("Moved a.txt, b.txt and c.txt to the Trash", window.Status);
+
+        asked.Clear();
+        Ui.ClickRow(window, rows[3]);
+        Ui.Press(window, "DELETE");
+        Ui.WaitFor(() => !File.Exists(Path.Combine(folder, "d.txt")) || window.Status?.Contains("could not", StringComparison.Ordinal) == true, "d.txt to go to the Trash");
+        Assert.True(asked.SequenceEqual(["Move d.txt to the Trash?"]), $"Delete on a file chosen alone asked [{string.Join(" | ", asked)}], not of it by its name");
+        Assert.Equal("Moved d.txt to the Trash", window.Status);
+        Assert.True(File.Exists(Path.Combine(folder, "e.txt")) && window.EditorArea.Documents.Count == 1, "Delete on a file chosen alone took a file not chosen");
+        window.Close();
+    }
+
+    /// <summary>A folder chosen with a file inside it goes to the Trash once, the file with it: the question is of the
+    /// folder alone, and nothing is said to have failed for the file gone before its turn.</summary>
+    [AvaloniaFact]
+    public void Delete_on_a_folder_chosen_with_a_file_inside_it_moves_the_folder_once_with_the_file()
+    {
+        string order = Path.Combine(folder, "Models", "Order.cs");
+        File.WriteAllText(order, "class Order { }\n");
+        MainWindow window = Open();
+        List<string> asked = Questions(window);
+        ExplorerNode file = Row(window, Path.Combine("Models", "Order.cs"));
+
+        Ui.ClickRow(window, Row(window, "Models"));
+        AlsoChoose(window, file);
+        Ui.Press(window, "DELETE");
+        Ui.WaitFor(() => Finished(window, "Moved"), "the folder chosen to go to the Trash");
+        Assert.True(window.Status == "Moved Models to the Trash", $"Delete on a folder and a file in it said '{window.Status}', where the folder went once with the file");
+        Assert.True(asked.SequenceEqual(["Move the folder Models and everything in it to the Trash?"]),
+            $"Delete on a folder and a file in it asked [{string.Join(" | ", asked)}], where one question of the folder was due");
+        Assert.False(Directory.Exists(Path.Combine(folder, "Models")), "The folder chosen stayed");
+        Assert.True(File.Exists(Path.Combine(trash, "Models", "Order.cs")), "The file chosen inside the folder is not in the Trash with it, so it cannot be put back");
+        Assert.True(Directory.EnumerateFileSystemEntries(trash).Select(Path.GetFileName).SequenceEqual(["Models"]),
+            $"The Trash holds [{string.Join(", ", Directory.EnumerateFileSystemEntries(trash).Select(Path.GetFileName))}], so the file went apart from its folder");
+        window.Close();
+    }
+
+    /// <summary>Delete on rows chosen together greys while one of them would only leave the solution (a project), which
+    /// Remove takes chosen alone with its own questions: the row's menu and the keys say which row and why, and nothing is
+    /// asked or deleted.</summary>
+    [AvaloniaFact]
+    public void Delete_greys_on_a_project_chosen_with_a_file_saying_the_project_is_removed_chosen_alone()
+    {
+        File.WriteAllText(Path.Combine(folder, "Shop.slnx"), "<Solution>\n  <Project Path=\"Shop.csproj\" />\n</Solution>\n");
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "groceries\n");
+        MainWindow window = Open();
+        List<string> asked = Questions(window);
+        ExplorerNode project = Assert.Single(window.ExplorerView.Tree.Rows, r => r.Kind == NodeKind.Project);
+        ExplorerNode notes = Row(window, "Notes.txt");
+
+        Ui.ClickRow(window, project);
+        AlsoChoose(window, notes);
+        string why = Refusals.RemovedAlone("Shop", "the solution");
+        Ui.RightClick(Ui.Row(window.ExplorerView, notes));
+        Assert.True(window.ExplorerView.SelectedNodes.Count == 2, "A right-click on a row chosen with another chose it alone, so its menu is not of both");
+        ContextMenu menu = window.ExplorerView.OpenMenu ?? throw new Xunit.Sdk.XunitException("A right-click on Notes.txt opened no menu");
+        MenuItem delete = menu.Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Edit").Items.OfType<MenuItem>()
+            .Single(i => (string?)i.Header is "Delete…" or "Remove…");
+        menu.Close();
+        Ui.Settle();
+        Assert.True(!delete.IsEnabled && (string?)delete.Header == "Delete…" && Equals(ToolTip.GetTip(delete), why),
+            $"The menu's {delete.Header} of a project and a file chosen is {(delete.IsEnabled ? "enabled" : "greyed")}, saying '{ToolTip.GetTip(delete)}', so the person is not told why it takes neither");
+        Ui.Press(window, "DELETE");
+        Assert.Equal(why, window.Status);
+        Assert.True(asked.Count == 0 && File.Exists(Path.Combine(folder, "Notes.txt")) && File.ReadAllText(Path.Combine(folder, "Shop.slnx")).Contains("Shop.csproj", StringComparison.Ordinal),
+            "Delete on a project and a file chosen asked or deleted something");
+        window.Close();
+    }
+
     /// <summary>The Explorer's menu and keys are the window's actions: a row's Rename and Delete run from its menu and
     /// from the keys of the keymap chosen, Visual Studio's Ctrl+R, R (⌘R, R on macOS) and Delete, VS Code's F2 and
     /// Delete, as Rider's RenameElement and $Delete are bound in each; F2 renames nothing in Visual Studio's, where
@@ -877,7 +978,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
     /// <summary>A folder holding a web project and no solution opens in the File System view, where the project's
     /// Properties and, once MSBuild has evaluated the project as a web one, its wwwroot are listed before its other folders
-    /// and refuse Delete and Rename saying why.</summary>
+    /// and refuse Delete and Rename saying why, Properties' Delete too while it is chosen with another folder.</summary>
     [AvaloniaFact]
     public void A_web_projects_Properties_and_wwwroot_list_first_in_the_file_system_view_once_evaluated_and_refuse_delete_and_rename()
     {
@@ -900,6 +1001,13 @@ public sealed class ExplorerFilesTests : IDisposable
         Ui.ClickRow(window, Row(window, "Properties"));
         Ui.Press(window, "BACK_SPACE");
         Assert.Equal("Properties holds the project's launch and publish profiles", window.Status);
+        // Chosen with another folder, Properties keeps Delete from taking either, the keys on the other.
+        ExplorerNode properties = Row(window, "Properties");
+        Ui.ClickRow(window, Row(window, "Models"));
+        AlsoChoose(window, properties);
+        Ui.Press(window, "BACK_SPACE");
+        Assert.Equal("Properties holds the project's launch and publish profiles", window.Status);
+        Assert.True(Directory.Exists(Path.Combine(folder, "Models")), "Delete on a folder chosen with Properties took the folder, leaving Properties");
         Assert.True(Directory.Exists(webRoot) && Directory.Exists(Path.Combine(folder, "Properties")) && asked.Count == 0, "A folder the SDK reads was renamed or deleted");
         window.Close();
     }
@@ -923,7 +1031,30 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.True(window.Actions.Context().ToolWindow?.Id == ToolWindowIds.Explorer, $"The Explorer did not take the keys on {row.Name}");
     }
 
+    /// <summary>Clicks a row with the platform's key for choosing another row held (Cmd on macOS, Ctrl elsewhere and on the
+    /// headless platform everywhere), failing unless it is then chosen with those before.</summary>
+    private static void AlsoChoose(MainWindow window, ExplorerNode row)
+    {
+        int before = window.ExplorerView.SelectedNodes.Count;
+        KeyModifiers command = Application.Current?.PlatformSettings?.HotkeyConfiguration.CommandModifiers ?? KeyModifiers.Control;
+        Ui.Click(Ui.Row(window.ExplorerView, row), modifiers: (RawInputModifiers)command);
+        Assert.True(window.ExplorerView.SelectedNodes.Count == before + 1 && window.ExplorerView.SelectedNodes.Contains(row),
+            $"A click on {row.Name} with the key for choosing another held left [{string.Join(", ", window.ExplorerView.SelectedNodes.Select(n => n.Name))}] chosen");
+    }
+
     private MainWindow Open() => Ui.OpenFolder(folder, languageServer: false);
+
+    /// <summary>Agrees to every question the window asks, keeping what each asked in order.</summary>
+    private static List<string> Questions(MainWindow window)
+    {
+        List<string> asked = [];
+        window.Confirm = (_, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(true);
+        };
+        return asked;
+    }
 
     /// <summary>Agrees to every question the window asks, keeping their titles in order.</summary>
     private static List<string> Answer(MainWindow window)
