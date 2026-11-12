@@ -45,6 +45,10 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     /// <summary>The text last loaded whose elements' boxes are yet to be asked for, once its frame is drawn.</summary>
     private TextSnapshot? unplaced;
 
+    /// <summary>The DPI a rescale asked the host to draw at whose frame is yet to come, which screenshots and tests are held
+    /// for; null while none is.</summary>
+    private double? rescaled;
+
     private AvaloniaPreviewHost(XamlPreview preview, PreviewedBuild build)
     {
         this.preview = preview;
@@ -131,18 +135,29 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         {
             return;
         }
+        // The load's first frame lets the hold go, at whatever scale its window takes.
+        rescaled = null;
         preview.Hold();
         TextSnapshot text = preview.Document.Document.Text.Snapshot;
         unanswered.Enqueue(text);
         IdeErrors.Observe(open.Send(new UpdateXamlMessage { Xaml = text.ToString(), AssemblyPath = output, XamlFileProjectPath = preview.ProjectPath() }));
     }
 
+    /// <summary>The host's window drawn again at a scale, screenshots and tests held for its frame where the host has a
+    /// window drawn to draw again: none before its first frame, after a load it refused or at 0 × 0.</summary>
     public void Rescale(double scaling)
     {
-        if (connection is { } open && !disposed)
+        if (connection is not { } open || disposed)
         {
-            IdeErrors.Observe(open.Send(new ClientRenderInfoMessage { DpiX = 96 * scaling, DpiY = 96 * scaling }));
+            return;
         }
+        double dpi = 96 * scaling;
+        if (preview.Frame is not null && preview.Error is null && !empty)
+        {
+            rescaled = dpi;
+            preview.Hold();
+        }
+        IdeErrors.Observe(open.Send(new ClientRenderInfoMessage { DpiX = dpi, DpiY = dpi }));
     }
 
     private void Connected(IAvaloniaRemoteTransportConnection opened)
@@ -186,6 +201,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
                 preview.Error = result.Error is { Length: > 0 } ? Describe(result, answered) : null;
                 if (preview.Error is not null)
                 {
+                    rescaled = null;
                     preview.Let();
                 }
                 else if (preview.Frame is null || Math.Abs(drawnAt - (96 * preview.Scaling)) > 0.5)
@@ -200,6 +216,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
                 {
                     preview.Frame = null;
                     preview.Status = "Nothing to draw: the root is 0 × 0 (hidden, or sized to content with none and no d:DesignWidth and d:DesignHeight)";
+                    rescaled = null;
                     preview.Let();
                 }
                 preview.Tell();
@@ -223,7 +240,12 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
                 }
                 preview.Status = "Live";
                 preview.Tell();
-                preview.Let();
+                // One drawn before the host took a rescale is followed by the frame at the scale asked, which the hold waits for.
+                if (rescaled is not { } asked || Math.Abs(frame.DpiX - asked) <= 0.5)
+                {
+                    rescaled = null;
+                    preview.Let();
+                }
                 break;
         }
     }

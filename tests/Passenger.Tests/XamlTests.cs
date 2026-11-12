@@ -2225,6 +2225,20 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         return new WeakReference<MainWindow>(window);
     }
 
+    /// <summary>Checks the frame a preview settled on is its window's design-time width and height drawn at the scale its pane
+    /// asked of the previewer: the frame drawn after the first, which came at the window's own scale before the pane knew the
+    /// design's size.</summary>
+    private static void DrawnAtThePanesScale(Passenger.App.Xaml.XamlPreview preview, Size design)
+    {
+        double scale = preview.Scaling;
+        PixelSize drawn = preview.Frame!.PixelSize;
+        Assert.True(Math.Abs(drawn.Width - (design.Width * scale)) < 1 && Math.Abs(drawn.Height - (design.Height * scale)) < 1,
+            $"The {design.Width} × {design.Height} window's frame is {drawn.Width} × {drawn.Height} pixels where its pane asked for it at {scale:0.###}: "
+            + "the preview settled on a frame of another scale, shrunk or stretched as a picture");
+        Assert.True(Math.Abs(preview.FrameSize.Width - design.Width) < 1 && Math.Abs(preview.FrameSize.Height - design.Height) < 1,
+            $"The {design.Width} × {design.Height} window's frame is {preview.FrameSize} in the window's units: the pane would show it at another size than its design's");
+    }
+
     [AvaloniaFact]
     public void The_preview_draws_a_window_from_the_last_build_follows_its_text_as_it_is_typed_and_draws_styles_as_their_PreviewWith()
     {
@@ -2248,8 +2262,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Ui.WaitFor(() => preview.Frame is not null, "the previewer's first frame", TimeSpan.FromSeconds(60));
         Ui.Settle();
         Assert.Null(preview.Error);
-        // Drawn at the size the window's design-time width and height give it.
-        Assert.Equal(new PixelSize(800, 450), preview.Frame!.PixelSize);
+        DrawnAtThePanesScale(preview, new Size(800, 450));
         Avalonia.Controls.Image frame = window.PreviewPaneOf(document)!.Frame;
         // A point of the panel below its children, where its background shows.
         Color Below() => Ui.Pixel(window, frame.TranslatePoint(new Point(400, 300), window) ?? throw new InvalidOperationException("The preview's frame is not on the window"));
@@ -2524,7 +2537,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Ui.WaitFor(() => preview.Frame is not null, () => $"the Avalonia 11 previewer's first frame (the pane says: {preview.Status})", TimeSpan.FromSeconds(60));
         Ui.Settle();
         Assert.Null(preview.Error);
-        Assert.Equal(new PixelSize(400, 300), preview.Frame!.PixelSize);
+        DrawnAtThePanesScale(preview, new Size(400, 300));
         Avalonia.Controls.Image frame = window.PreviewPaneOf(document)!.Frame;
         Point inside = frame.TranslatePoint(new Point(frame.Bounds.Width / 2, frame.Bounds.Height * 0.75), window) ?? throw new InvalidOperationException("The preview's frame is not on the window");
         Assert.Equal(Color.Parse("#E2A33F"), Ui.Pixel(window, inside));
