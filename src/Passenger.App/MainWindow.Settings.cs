@@ -22,12 +22,14 @@ public partial class MainWindow
 
     private void AddSettings()
     {
-        Editors.ForEachEditor(editor => ApplyTo(editor, settings));
+        Editors.ForEachEditor(editor => ApplyTo(editor, settingsStore.Effective));
         settingsStore.Changed += OnSettingsChanged;
+        settingsStore.PreviewChanged += OnPreviewChanged;
         Activated += (_, _) => settingsStore.LookAgain();
         Closed += (_, _) =>
         {
             settingsStore.Changed -= OnSettingsChanged;
+            settingsStore.PreviewChanged -= OnPreviewChanged;
             if (!settingsStore.IsKept)
             {
                 settingsStore.Dispose();
@@ -50,17 +52,36 @@ public partial class MainWindow
             return;
         }
         settingsStore.Changed -= OnSettingsChanged;
+        settingsStore.PreviewChanged -= OnPreviewChanged;
         settingsStore.Dispose();
         settingsStore = kept;
         kept.Changed += OnSettingsChanged;
+        kept.PreviewChanged += OnPreviewChanged;
         keepsSettings = true;
         kept.PutInForce();
         Follow(kept.Value);
+        OnPreviewChanged(this, EventArgs.Empty);
     }
 
     /// <summary>Puts settings in force: what they change from this window's is put over the settings every window
     /// following them has, and kept when they are kept.</summary>
     public void ApplySettings(AppSettings next) => settingsStore.Apply(settings, next);
+
+    private AppSettings visualSettings = new();
+
+    private void OnPreviewChanged(object? sender, EventArgs args)
+    {
+        AppSettings next = settingsStore.Effective;
+        foreach (Editors.EditorGroup group in Editors.Groups)
+        {
+            ApplyTo(group.Editor, next);
+        }
+        FollowViewSettings(visualSettings, next);
+        FollowTitleBar(next);
+        FollowMainMenu(next);
+        session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
+        visualSettings = next;
+    }
 
     private void OnSettingsChanged(object? sender, SettingsChange change) => Follow(change.After);
 
@@ -85,17 +106,10 @@ public partial class MainWindow
         {
             BuildMenuBar();
         }
-        foreach (Editors.EditorGroup group in Editors.Groups)
-        {
-            ApplyTo(group.Editor, next);
-        }
-        FollowViewSettings(before, next);
         if (next.OpenDiffsIn != before.OpenDiffsIn)
         {
             MoveDiffs(next.OpenDiffsIn);
         }
-        FollowTitleBar(next);
-        FollowMainMenu(next);
         Explorer.NestFiles = next.NestFiles;
         Explorer.OpensOnClick = next.OpenFilesWithSingleClick;
         if (next.AlwaysSelectOpenedFile && !before.AlwaysSelectOpenedFile && Editors.Active?.Path is { } shown)
@@ -115,7 +129,6 @@ public partial class MainWindow
             console.Limit = next.ConsoleBufferKb * 1024;
         }
         ApplyAnalysis();
-        session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
         godotValues?.On = next.GodotLiveValues;
         session.Web?.UseNode(next.NodeInterpreter);
         session.Web?.UseTools();
@@ -134,7 +147,7 @@ public partial class MainWindow
     /// <summary>Settings (Ctrl+Alt+S, Cmd+, on the Mac), over this window until OK or Cancel.</summary>
     public SettingsDialog ShowSettings()
     {
-        SettingsDialog dialog = new(settings, actions!, (from, to) => settingsStore.Apply(from, to), Mcp.AgentSetup.Here(Folder, settings.TerminalShell));
+        SettingsDialog dialog = new(settings, actions!, (from, to) => settingsStore.Apply(from, to), Mcp.AgentSetup.Here(Folder, settings.TerminalShell), settingsStore.BeginPreview());
         IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }

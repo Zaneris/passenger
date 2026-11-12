@@ -15,7 +15,7 @@ public partial class MainWindow
         Editors.Opened += (_, document) =>
         {
             document.SoftWrap = settings.WrapsFile(document.Path);
-            document.ShowWhitespaces = settings.ShowWhitespaces;
+            document.ShowWhitespaces = settingsStore.Effective.ShowWhitespaces;
         };
         Editors.ForEachEditor(editor => editor.ZoomRequested += (_, points) => Zoom(settings.EditorFontSize + points));
         actions!.Add(new IdeAction(A.SoftWrap, "Soft-Wrap", "Editor", context => context.File!.SoftWrap = !context.File.SoftWrap)

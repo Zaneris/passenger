@@ -15,6 +15,8 @@ public sealed class SettingsStore : IDisposable
     private readonly StateDocument<AppSettings>? document;
     private readonly FileSystemWatcher? watcher;
     private AppSettings value;
+    private readonly List<SettingsPreview> previews = [];
+    private AppSettings? effective;
     private bool inForce;
     private bool disposed;
 
@@ -75,7 +77,33 @@ public sealed class SettingsStore : IDisposable
     /// <summary>The settings in force.</summary>
     public AppSettings Value => value;
 
-    /// <summary>Whether the settings are kept in a file (the person's), rather than a window's own.</summary>
+    /// <summary>Committed settings with the active dialogs' visual edits over them.</summary>
+    public AppSettings Effective => previews.Aggregate(value, (now, preview) => preview.Over(now));
+
+    public event EventHandler? PreviewChanged;
+
+    public SettingsPreview BeginPreview()
+    {
+        SettingsPreview preview = new(this);
+        previews.Add(preview);
+        return preview;
+    }
+
+    internal void EndPreview(SettingsPreview preview)
+    {
+        previews.Remove(preview);
+        RefreshPreview();
+    }
+
+    internal void RefreshPreview()
+    {
+        AppSettings next = Effective;
+        VisualsInForce(effective ?? value, next);
+        effective = next;
+        PreviewChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Whether these settings are kept in a file.</summary>
     public bool IsKept => document is not null;
 
     /// <summary>The system's watcher of settings.json; null for a window's own settings, or a file that could not be watched.</summary>
@@ -115,7 +143,8 @@ public sealed class SettingsStore : IDisposable
             return;
         }
         inForce = true;
-        InForce(null, value);
+        InForce(null, Effective);
+        effective = Effective;
     }
 
     /// <summary>Writes a change still waiting, now.</summary>
@@ -192,14 +221,17 @@ public sealed class SettingsStore : IDisposable
 
     private void Raise(AppSettings before, AppSettings after)
     {
-        InForce(before, after);
+        AppSettings next = Effective;
+        InForce(effective ?? before, next);
+        effective = next;
         Changed?.Invoke(this, new SettingsChange(before, after));
+        PreviewChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>What belongs to the process, put in force once for every window: the theme, its dark or light and the
     /// code's colours only when their settings change, so one named on the command line stands until then; the code font and
     /// the window's.</summary>
-    private static void InForce(AppSettings? before, AppSettings after)
+    private static void VisualsInForce(AppSettings? before, AppSettings after)
     {
         if (Avalonia.Application.Current is { } app && (before is null || before.Theme != after.Theme))
         {
@@ -217,6 +249,11 @@ public sealed class SettingsStore : IDisposable
         {
             WindowFonts.Use(framed, WindowFonts.Named(after.WindowFontFamily) ?? WindowFonts.Carried);
         }
+    }
+
+    private static void InForce(AppSettings? before, AppSettings after)
+    {
+        VisualsInForce(before, after);
         if (before is null || before.Keymap != after.Keymap || !SameShortcuts(before.OwnShortcuts(), after.OwnShortcuts()))
         {
             AppActions.Choose(after.Keymap, after.OwnShortcuts());

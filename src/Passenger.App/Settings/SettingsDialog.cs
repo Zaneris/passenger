@@ -10,7 +10,7 @@ namespace Passenger.App.Settings;
 
 /// <summary>Settings: the pages down the left under a search box, the chosen page's options on the right, OK, Cancel
 /// and Apply below. A search keeps the pages with an option whose words match and shows only those options. The options
-/// edit a copy, which Apply and OK hand back.</summary>
+/// edit a copy, previewing its visual changes until Apply or OK commits them or closing discards them.</summary>
 public sealed partial class SettingsDialog : IdeWindow
 {
     public const string Appearance = "Appearance";
@@ -85,6 +85,7 @@ public sealed partial class SettingsDialog : IdeWindow
 
     /// <summary>Puts what the options changed in force: from the settings as they were applied last, to the options'.</summary>
     private readonly Action<AppSettings, AppSettings> apply;
+    private readonly SettingsPreview? preview;
 
     /// <summary>The settings as the dialog opened on them or last applied them, which what is changed since is told
     /// from, so another window's change meanwhile is not undone.</summary>
@@ -106,10 +107,13 @@ public sealed partial class SettingsDialog : IdeWindow
     private readonly Button ok = DialogFooter.Default();
     private readonly Button applyButton = new() { Content = "Apply" };
 
+    /// <param name="preview">An optional temporary visual overlay, released when this dialog closes.</param>
     /// <param name="agents">The agents' setup the MCP Server page shows: this copy's, and the window's folder.</param>
-    public SettingsDialog(AppSettings current, ActionRegistry actions, Action<AppSettings, AppSettings> apply, Mcp.AgentSetup? agents = null)
+    public SettingsDialog(AppSettings current, ActionRegistry actions, Action<AppSettings, AppSettings> apply, Mcp.AgentSetup? agents = null, SettingsPreview? preview = null)
     {
         this.apply = apply;
+        this.preview = preview;
+        Closed += (_, _) => preview?.Dispose();
         this.actions = actions;
         Working = current;
         applied = current;
@@ -198,6 +202,7 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             apply(applied, Working);
             applied = Working;
+            preview?.Update(applied, Working);
         }
     }
 
@@ -206,6 +211,7 @@ public sealed partial class SettingsDialog : IdeWindow
     {
         Working = change(Working);
         ok.IsEnabled = applyButton.IsEnabled = Refused is null;
+        preview?.Update(applied, Working);
         foreach ((_, Control editor, SettingWhen when) in dependents)
         {
             Follow(editor, when);
