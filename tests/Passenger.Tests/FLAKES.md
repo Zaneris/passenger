@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-12
 
+- `HiddenFramesTests`' `A_step_into_a_line_reading_a_class_without_Just_My_Code_stops_in_the_helper_shown_and_goes_on_to_the_call`,
+  CI's Linux and Windows (x64) runners at baba59a1f and 82e72bd86 (runs 43178423272, 43188135235), on .NET 10 and the
+  newest; every arm64 machine passed. The step stopped in `StaticsHelpers.GetNonGCStaticBase` as it should, and the read
+  of `HiddenFrames.Bumped` there answered "Func eval cannot work. Bad starting point" (0x80131313). **The IDE**: a
+  class's first static read ran an evaluation to make sure its static constructor had run, which x64's runtime refuses
+  at that stop, though `HiddenFrames` has no static constructor to run. A class with none is read as it stands, which on
+  this Mac's engine log runs no evaluation at that stop (8fd6e3484, #1513).
 - `TerminalResponsivenessTests`' `A_paste_into_a_program_that_reads_nothing_leaves_the_window_taking_keys`, CI's macOS
   runner at baba59a1f (run 43178423272): "Waited 20 s for the start of the paste echoed", the screen showing the paste's
   lines. **A test waited wrong**: it let the loop end before it looked for `echo pasted 0`, and the shell's lines then
