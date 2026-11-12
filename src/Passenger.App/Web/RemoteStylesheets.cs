@@ -8,11 +8,11 @@ using Passenger.Workspace;
 namespace Passenger.App.Web;
 
 /// <summary>The stylesheets a page links on the web (a CDN's Bootstrap): each downloaded only while Settings allow it, never
-/// before, once for its address and its link's integrity, over HTTP or HTTPS, and kept in the state's cache under both,
-/// where the editor shows it read-only: a page that moves to another integrity is given what the address serves now. A
-/// copy is kept and used only where its bytes are what the integrity says. One whose link gives no integrity says nothing of
-/// what the address serves now, so it is asked again each time the folder is opened, the copy standing while it can't be.
-/// Called on any thread.</summary>
+/// before, once for its address and its link's integrity however many ask at once, over HTTP or HTTPS, and kept in the
+/// state's cache under both, where the editor shows it read-only: a page that moves to another integrity is given what the
+/// address serves now. A copy is kept and used only where its bytes are what the integrity says. One whose link gives no
+/// integrity says nothing of what the address serves now, so it is asked again each time the folder is opened, the copy
+/// standing while it can't be. Called on any thread.</summary>
 public sealed class RemoteStylesheets(Func<bool> download)
 {
     /// <summary>A stylesheet is some hundreds of kilobytes, a framework's whole some megabytes.</summary>
@@ -22,11 +22,13 @@ public sealed class RemoteStylesheets(Func<bool> download)
     /// page may move to a new stylesheet at different times, where every keystroke's check would download it.</summary>
     private static readonly TimeSpan RefusedFor = TimeSpan.FromMinutes(10);
 
-    /// <summary>Each download under way, its bytes where they are what its link's integrity says, by its copy.</summary>
-    private readonly ConcurrentDictionary<string, Task<byte[]?>> downloading = new(StringComparer.Ordinal);
+    /// <summary>Each download under way, by its copy, every window's ask taking it; let go only once it ended, never by an
+    /// ask that stopped waiting, so the next ask finds the copy it wrote.</summary>
+    private static readonly Dictionary<string, Task<byte[]?>> Downloading = new(StringComparer.Ordinal);
 
-    /// <summary>Each copy read and found to be what its link's integrity says, by its address and that integrity.</summary>
-    private readonly ConcurrentDictionary<(string Address, string? Integrity), Fetched> read = new();
+    /// <summary>Each link's fetch for the folder, by its address and integrity: one under way, or one that gave a copy still
+    /// there, is the one every ask takes; one that gave none is made again by the next ask.</summary>
+    private readonly Dictionary<(string Address, string? Integrity), Task<Fetched>> fetches = [];
 
     /// <summary>When each download last was not what its link's integrity says, by its address and that integrity.</summary>
     private readonly ConcurrentDictionary<(string Address, string? Integrity), long> refused = new();
@@ -55,7 +57,7 @@ public sealed class RemoteStylesheets(Func<bool> download)
     public static bool IsCopy(string path) => PathNames.IsUnder(path, Folder);
 
     /// <summary>The stylesheet at an address, as its copy has it: kept, else downloaded now where Settings allow it; why
-    /// not where it cannot be had or is not what the link's integrity says.</summary>
+    /// not where it cannot be had or is not what the link's integrity says. A cancelled ask leaves the fetch to the others.</summary>
     public async Task<Fetched> FetchAsync(Uri address, string? integrity, CancellationToken cancel)
     {
         if (address.Scheme != Uri.UriSchemeHttps && address.Scheme != Uri.UriSchemeHttp)
@@ -63,10 +65,24 @@ public sealed class RemoteStylesheets(Func<bool> download)
             return new Fetched(null, null, $"Passenger reads stylesheets from http and https addresses, not {address}");
         }
         (string, string?) link = (address.AbsoluteUri, integrity);
-        if (read.TryGetValue(link, out Fetched? known) && known.Path is { } kept && File.Exists(kept))
+        Task<Fetched> fetch;
+        lock (fetches)
         {
-            return known;
+            if (!fetches.TryGetValue(link, out Task<Fetched>? held) || held.IsCompleted && !Kept(held))
+            {
+                held = fetches[link] = BackgroundWork.Run(() => FetchOnceAsync(address, integrity, link));
+            }
+            fetch = held;
         }
+        return await fetch.WaitAsync(cancel);
+    }
+
+    /// <summary>Whether a fetch ended with a copy that is still there.</summary>
+    private static bool Kept(Task<Fetched> fetch) => fetch.IsCompletedSuccessfully && fetch.Result.Path is { } kept && File.Exists(kept);
+
+    /// <summary>A link's copy, read, else downloaded where Settings allow it, for every ask of the link: never cancelled.</summary>
+    private async Task<Fetched> FetchOnceAsync(Uri address, string? integrity, (string, string?) link)
+    {
         if (refused.TryGetValue(link, out long since) && Environment.TickCount64 - since < RefusedFor.TotalMilliseconds)
         {
             return NotWhatItSays(address);
@@ -75,7 +91,7 @@ public sealed class RemoteStylesheets(Func<bool> download)
         byte[]? bytes;
         try
         {
-            bytes = File.Exists(path) ? await File.ReadAllBytesAsync(path, cancel) : null;
+            bytes = File.Exists(path) ? await File.ReadAllBytesAsync(path) : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -88,18 +104,14 @@ public sealed class RemoteStylesheets(Func<bool> download)
             {
                 return new Fetched(null, null, $"{address} is not downloaded: {SettingsDialog.PlaceOfPage(SettingsDialog.StylesheetsPage)} does not allow it");
             }
-            Task<byte[]?> once = downloading.GetOrAdd(path, _ => DownloadAsync(address, integrity, path));
             try
             {
-                bytes = await once.WaitAsync(cancel);
-                // The copy is what is kept: a download is shared only while it is under way.
-                downloading.TryRemove(new KeyValuePair<string, Task<byte[]?>>(path, once));
+                bytes = await DownloadOnceAsync(address, integrity, path);
             }
             catch (Exception error) when (error is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException)
             {
                 // Asked again next time: a network that comes back finds it.
-                downloading.TryRemove(new KeyValuePair<string, Task<byte[]?>>(path, once));
-                if (!unsaid || cancel.IsCancellationRequested)
+                if (!unsaid)
                 {
                     return new Fetched(null, null, $"{address} could not be downloaded: {error.Message}");
                 }
@@ -111,9 +123,36 @@ public sealed class RemoteStylesheets(Func<bool> download)
             }
         }
         refused.TryRemove(link, out _);
-        Fetched fetched = new(path, Encoding.UTF8.GetString(bytes), null);
-        read[link] = fetched;
-        return fetched;
+        return new Fetched(path, Encoding.UTF8.GetString(bytes), null);
+    }
+
+    /// <summary>The download of a link's copy under way, else one begun now.</summary>
+    private static async Task<byte[]?> DownloadOnceAsync(Uri address, string? integrity, string path)
+    {
+        Task<byte[]?> once;
+        lock (Downloading)
+        {
+            if (!Downloading.TryGetValue(path, out Task<byte[]?>? under))
+            {
+                under = Downloading[path] = BackgroundWork.Run(() => DownloadAsync(address, integrity, path));
+            }
+            once = under;
+        }
+        try
+        {
+            return await once;
+        }
+        finally
+        {
+            // The copy is what is kept: a download is shared only while it is under way.
+            lock (Downloading)
+            {
+                if (Downloading.TryGetValue(path, out Task<byte[]?>? under) && under == once)
+                {
+                    Downloading.Remove(path);
+                }
+            }
+        }
     }
 
     private static Fetched NotWhatItSays(Uri address) => new(null, null, $"{address} is not used: its bytes are not what its link's integrity says");
