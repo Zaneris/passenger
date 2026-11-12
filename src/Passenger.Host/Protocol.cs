@@ -88,6 +88,10 @@ public static class HostMethods
     /// it with the global properties given reads (stamped) and makes, its references' too, or why a build of it reads more
     /// than its evaluations say.</summary>
     public const string Inputs = "inputs";
+
+    /// <summary><see cref="SolutionParams"/> to <see cref="SolutionBuild"/>: the configuration and platform a build of a
+    /// solution gives each project it builds, as MSBuild reads the solution.</summary>
+    public const string Solution = "solution";
 }
 
 public static class HostJson
@@ -428,6 +432,17 @@ public sealed record PropertiesParams(string Project, IReadOnlyDictionary<string
 
 /// <summary>Each property asked for that has a value, as evaluated, or why the project did not evaluate.</summary>
 public sealed record PropertiesAnswer(IReadOnlyDictionary<string, string> Values, string? Problem);
+
+/// <summary>A solution (.sln, .slnx) whose build, given no configuration or platform, is asked about.</summary>
+public sealed record SolutionParams(string Path);
+
+/// <summary>Each project a build of the solution builds, with the configuration and platform it gives it (the solution
+/// configuration's mapping of it); or why MSBuild could not read the solution.</summary>
+public sealed record SolutionBuild(IReadOnlyList<SolutionBuilt> Projects, string? Problem);
+
+/// <summary>A project's full path, and the Configuration and Platform a build of its solution gives it ("AnyCPU", never
+/// "Any CPU", as MSBuild gives it).</summary>
+public sealed record SolutionBuilt(string Project, string Configuration, string Platform);
 
 /// <summary>A file-based program's C# file, with the project the SDK makes of it (<c>dotnet run-api</c>): where that project
 /// would be (app.cs.csproj beside app.cs) and its XML; or why the SDK made none (a directive it does not read).</summary>

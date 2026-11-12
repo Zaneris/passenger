@@ -305,9 +305,12 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   for Run, Debug, Profile, Hot Reload and a debugged test host), `UpToDate`; a Passenger it launches keeps its state in
   `sandbox/`; `PASSENGER_DOTNET_RELEASES` is dead in tests. Godot: `GodotLaunch`, `GodotGame`; the Game window is an
   owned window, never a child; a GDScript-only game is never in `Projects`; export templates only from a `.tpz` the
-  person picks. On Windows a build first lets go of the Avalonia previewers holding its output. A solution's
-  multi-project launch profiles live only in Visual Studio's `.slnLaunch`/`.slnLaunch.user` beside it (`SolutionLaunch`,
-  written as text where each stands), each project started as its own configuration (`RunConfigurations.ProjectOf`).
+  person picks. On Windows a build first lets go of the Avalonia previewers holding its output. A solution's build gives
+  each project the configuration and platform it maps it to (bin/x64/…), a project's own build neither: what reads the
+  solution build's output is evaluated with them (the host's `SolutionBuild`, `WorkspaceModel.BuiltSolution`). A
+  solution's multi-project launch profiles live only in Visual Studio's `.slnLaunch`/`.slnLaunch.user` beside it
+  (`SolutionLaunch`, written as text where each stands), each project started as its own configuration
+  (`RunConfigurations.ProjectOf`).
 - **Runs of services.** `ServiceRun` is the one model: Debug, Attach, Restart and Profile written once; one start at a
   time; Stop ends every session and recording before the programs go.
 - **Containers.** The person's `docker` CLI and context only, never the Engine API or a Docker package; a service's name

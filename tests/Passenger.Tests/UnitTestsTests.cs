@@ -440,6 +440,49 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>A test project its solution maps to a platform (this machine's own: x64, or ARM64 on Arm), as a .slnx or a
+    /// .sln writes it, has its tests found where the solution's build put them, bin/&lt;platform&gt;/…, and runs them from
+    /// the caret.</summary>
+    [AvaloniaTheory]
+    [InlineData("slnx")]
+    [InlineData("sln")]
+    public void A_test_project_its_solution_maps_to_a_platform_is_found_where_the_solutions_build_put_it_and_runs_from_the_caret(string kind)
+    {
+        string platform = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "ARM64" : "x64";
+        string solution = NewFolder();
+        Write(solution, "Mapped.Tests/Mapped.Tests.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"NUnit\" Version=\"{TestPackages.NUnit}\" />\n" +
+            $"    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"{TestPackages.NUnitAdapter}\" />\n  </ItemGroup>\n</Project>\n");
+        string file = Write(solution, "Mapped.Tests/ExampleTests.cs",
+            "using NUnit.Framework;\n\nnamespace Mapped.Tests;\n\npublic class ExampleTests\n{\n    [Test]\n    public void Should_Do_Something()\n    {\n        Assert.That(2 + 2, Is.EqualTo(4));\n    }\n}\n");
+        string id = "{6F1C2B9E-2D4A-4C1B-9E1D-2B6A6E2C1A11}";
+        Write(solution, $"Mapped.{kind}", kind == "slnx"
+            ? $"<Solution>\n  <Configurations>\n    <Platform Name=\"{platform}\" />\n  </Configurations>\n  <Project Path=\"Mapped.Tests/Mapped.Tests.csproj\">\n" +
+              $"    <Platform Solution=\"*|{platform}\" Project=\"{platform}\" />\n  </Project>\n</Solution>\n"
+            : "Microsoft Visual Studio Solution File, Format Version 12.00\n# Visual Studio Version 17\n" +
+              $"Project(\"{{9A19103F-16F7-4668-BE54-9A1E7A4F7556}}\") = \"Mapped.Tests\", \"Mapped.Tests\\Mapped.Tests.csproj\", \"{id}\"\nEndProject\nGlobal\n" +
+              $"\tGlobalSection(SolutionConfigurationPlatforms) = preSolution\n\t\tDebug|{platform} = Debug|{platform}\n\t\tRelease|{platform} = Release|{platform}\n\tEndGlobalSection\n" +
+              $"\tGlobalSection(ProjectConfigurationPlatforms) = postSolution\n\t\t{id}.Debug|{platform}.ActiveCfg = Debug|{platform}\n\t\t{id}.Debug|{platform}.Build.0 = Debug|{platform}\n" +
+              $"\t\t{id}.Release|{platform}.ActiveCfg = Release|{platform}\n\t\t{id}.Release|{platform}.Build.0 = Release|{platform}\n\tEndGlobalSection\nEndGlobal\n");
+        Restore.Run(Path.Combine(solution, $"Mapped.{kind}"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        window.OpenFile(file);
+        Ui.Settle();
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Should_Do_Something") is not null, "the test from its code");
+
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "public void Should_");
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy, () => $"the run of the test at the caret: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(180));
+        string built = Path.Combine(solution, "Mapped.Tests", "bin", platform, "Debug", TestProjects.Framework, "Mapped.Tests.dll");
+        Assert.True(File.Exists(built), $"The solution's build did not put the tests in {built}, so this test proves nothing of where they are looked for");
+        Assert.True(Method(window, "Should_Do_Something")?.State == TestState.Passed,
+            $"The test its solution builds for {platform} did not run from the caret: the Unit Tests window said '{window.BottomPanel.Tests.Status}'");
+        Assert.StartsWith("Tests passed: 1, failed: 0 of 1", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+        window.Close();
+    }
+
     /// <summary>A test renamed on disk while its run is under way has its failure counted in the run's tally, though its
     /// row left the tree with its old name; and a test file deleted after a run takes the tests a runner found in it out of
     /// the Unit Tests window.</summary>

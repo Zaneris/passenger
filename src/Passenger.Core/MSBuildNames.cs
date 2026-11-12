@@ -46,6 +46,7 @@ public static class MSBuildNames
 
     // What a project builds for, and with.
     public const string Configuration = "Configuration";
+    public const string Platform = "Platform";
     public const string TargetFramework = "TargetFramework";
     public const string TargetFrameworks = "TargetFrameworks";
     public const string TargetFrameworkMoniker = "TargetFrameworkMoniker";

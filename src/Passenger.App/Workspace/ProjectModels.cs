@@ -310,6 +310,20 @@ public sealed class ProjectModels
         return properties;
     }
 
+    /// <summary>The global properties one project is evaluated with for what a build of its solution makes of it
+    /// (<see cref="Properties(WorkspaceModel?, ProjectModel)"/>), with the configuration and platform that build gives it
+    /// where it builds it (<paramref name="built"/>): mapped to x64, it builds into bin/x64/….</summary>
+    public static Dictionary<string, string> Properties(WorkspaceModel? workspace, ProjectModel project, SolutionBuilt? built)
+    {
+        Dictionary<string, string> properties = Properties(workspace, project);
+        if (built is not null)
+        {
+            properties[MSBuildNames.Configuration] = built.Configuration;
+            properties[MSBuildNames.Platform] = built.Platform;
+        }
+        return properties;
+    }
+
     private async Task RoundAsync(int mine, string following, List<string> projects, Dictionary<string, EvaluatedProject> before, Dictionary<string, string> properties,
         CancellationToken cancel)
     {

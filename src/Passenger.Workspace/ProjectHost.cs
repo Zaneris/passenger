@@ -300,6 +300,12 @@ public sealed class ProjectHost : IAsyncDisposable
             ?? throw new ProjectHostFailed("the project host gave no answer for the project's properties");
     }
 
+    /// <summary>Each project a build of a solution builds, with the configuration and platform it gives it; or why MSBuild
+    /// could not read the solution.</summary>
+    public async Task<SolutionBuild> SolutionBuildAsync(string solution, CancellationToken cancel = default) =>
+        await AskAsync<SolutionBuild>(HostMethods.Solution, new SolutionParams(solution), null, cancel).ConfigureAwait(false)
+            ?? throw new ProjectHostFailed("the project host gave no answer for the solution's build");
+
     /// <summary>What a build of one project with these global properties reads and makes, as its evaluations say, or why a
     /// build of it reads more than that.</summary>
     public async Task<BuildInputs> InputsAsync(string project, IReadOnlyDictionary<string, string> properties, CancellationToken cancel = default) =>

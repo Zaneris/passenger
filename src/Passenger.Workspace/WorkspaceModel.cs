@@ -151,9 +151,14 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// <summary>What building the whole builds: the solution and each program beside it, or each project loaded in turn
     /// when some are unloaded or there is no solution; the folder when it has neither, for the .NET command line to say why.</summary>
     public IReadOnlyList<string> BuildTargets(IReadOnlyList<ProjectModel> loaded) =>
-        Solution is not null && loaded.Count == Projects.Count && ComposeProjects.Count == 0 ? [Solution.Path, .. Programs.Select(p => p.Path)]
+        BuiltSolution(loaded) is { } solution ? [solution, .. Programs.Select(p => p.Path)]
         : Solution is null && Projects.Count == 0 ? [Folder]
         : [.. loaded.Select(p => p.Path)];
+
+    /// <summary>The solution building the whole builds (<see cref="BuildTargets"/>), which gives each project the
+    /// configuration and platform it maps it to; null where the whole is built project by project.</summary>
+    public string? BuiltSolution(IReadOnlyList<ProjectModel> loaded) =>
+        Solution is not null && loaded.Count == Projects.Count && ComposeProjects.Count == 0 ? Solution.Path : null;
 
     /// <summary>Whether a language server loaded from one has the other's projects: the same solution listing the same
     /// projects, through the same filter of them if any, or the same projects without one. A server is told its solution

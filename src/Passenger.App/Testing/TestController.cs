@@ -31,9 +31,10 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>The build, discovery or run under way, which Stop cancels whichever it is.</summary>
     private CancellationTokenSource? stopping;
 
-    /// <summary>The test projects last asked where they build, and the answer, kept until the folder's projects are read
-    /// again (a project or props file changed), which makes them other objects.</summary>
-    private (IReadOnlyList<ProjectModel> Projects, IReadOnlyList<TestAssembly> Assemblies)? resolved;
+    /// <summary>The test projects last asked where they build, the solution whose build built them as it was written then,
+    /// and the answer, kept until the folder's projects are read again (a project or props file changed), which makes them
+    /// other objects, or the solution changes.</summary>
+    private (IReadOnlyList<ProjectModel> Projects, (string Path, DateTime Written)? Solution, IReadOnlyList<TestAssembly> Assemblies)? resolved;
 
     /// <summary>What discovery found in each assembly, by its path, with the time the assembly was written then: an
     /// assembly not built again since is not asked again.</summary>
@@ -787,15 +788,18 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>The tests a project's code declares as last read, by its path.</summary>
     private IReadOnlyList<TestItem> Declared(string project) => (code.GetValueOrDefault(project) ?? CodeTests.None).Tests;
 
-    /// <summary>The test projects' assemblies, from MSBuild once for these projects as the folder last read them.</summary>
+    /// <summary>The test projects' assemblies, from MSBuild once for these projects as the folder last read them, where the
+    /// build of the whole puts them: a solution's build gives each project the configuration and platform it maps it to.</summary>
     private async Task<IReadOnlyList<TestAssembly>> Assemblies(IReadOnlyList<ProjectModel> tests, string workspace, CancellationToken cancel)
     {
-        if (resolved is { } known && known.Projects.SequenceEqual(tests, ReferenceEqualityComparer.Instance))
+        WorkspaceModel? model = workspaceModel();
+        (string Path, DateTime Written)? solution = model?.BuiltSolution(projects()) is { } path ? (path, File.GetLastWriteTimeUtc(path)) : null;
+        if (resolved is { } known && known.Projects.SequenceEqual(tests, ReferenceEqualityComparer.Instance) && known.Solution == solution)
         {
             return known.Assemblies;
         }
-        IReadOnlyList<TestAssembly> assemblies = await TestAssemblies.ResolveAsync(tests, workspace, workspaceModel(), UiThread.Marshal(log), cancel);
-        resolved = (tests, assemblies);
+        IReadOnlyList<TestAssembly> assemblies = await TestAssemblies.ResolveAsync(tests, workspace, model, solution?.Path, UiThread.Marshal(log), cancel);
+        resolved = (tests, solution, assemblies);
         return assemblies;
     }
 
