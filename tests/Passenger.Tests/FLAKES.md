@@ -30,6 +30,28 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `DebuggerTests`' Continue pressed while a stop's values are read, CI's Linux x64 report lane at a79ff0869 (run
+  43083723699): "slow.Getter never showed 1500 as a watch: the watches were slow.Getter = error: An evaluation that
+  could not be stopped is held unfinished on this thread…". **A race in the IDE**: Passenger's Hot Reload hook, in every
+  program it debugs, started its thread before Main and returned, the thread then compiling its loop, loading
+  System.Net.Sockets and making .NET's Socket while Main ran; on macOS and Linux that Socket's first use runs
+  SocketAsyncEngine's class constructor, which starts .NET's ".NET Sockets" thread. The program's first stop caught both
+  starting (the hook's thread in EmptyArray<SocketAsyncContext>'s class constructor under SocketAsyncEngine's, the new
+  thread at its StartCallback), and the stop's first evaluation, which runs its thread alone, waited outside managed
+  code, before the method it ran, past its limit: #599's symptom, then from a thread the test's own program had just
+  started. On this Mac the old hook's engine log shows it loading 8 assemblies (System.Net.Sockets to
+  System.Diagnostics.DiagnosticSource) and starting that thread after a stop on Main's first line, and a stop there
+  finds its thread still at its start, its lambda under StartCallback. Not met again in 15 runs of the test and 100 of
+  its program at stops aimed across the hook's setup on the Ubuntu VM beside 4 burners, nor on this Mac with a program's
+  own thread held at each assembly load of its Socket's setup, so which lock the evaluation waited on is not pinned. The
+  hook now connects with the system's own socket calls (no .NET Socket, so no thread of .NET's) and makes every call its
+  reads and answers make but the program's handlers' before Main goes on, which it does once the hook's thread is about
+  to wait in recv or after 2 s of the clock, the time a debugger holds the program included; the handlers themselves
+  still first run at the first update.
+  `A_program_stopped_at_once_finds_the_hooks_thread_waiting_in_its_read_with_no_thread_of_its_beside_it` finds the
+  thread in its call of the system's receive at a stop on Main's second line and fails at once on the old hook; on the
+  VM beside 4 burners it and the failing test each passed 10 of 10 ("Passenger's Hot Reload hook connects by the
+  system's own socket calls and makes every call of its own before the program's Main…", #1495).
 - `SolutionViewTests`' `New_file_new_folder_and_paste_make_again_only_the_rows_of_what_they_make_or_move`, the gate on
   the Windows 11 on Arm VM at a79ff0869, b5fef9c55 and 981a2042e (6 of 6 runs): "Cut and Paste made again rows other
   than those of what it changed: [Archive] are new". **A race in the IDE**: the Solution view showed a folder the
