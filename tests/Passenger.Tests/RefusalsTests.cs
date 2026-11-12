@@ -22,6 +22,8 @@ public sealed class RefusalsTests
         new(@"(?:^|: )\{\} is not one of the (?:folder|solution)'s projects(?:$|\W)"),
         new(@"(?:^|: )\{\} is not a project(?:$|[^\w ])"),
         new(@"(?:^|: )\{\}(?: of \{\})? is not running(?:$|\W)"),
+        new(@"(?:^|: |; )(?i:t)he tests in \{\} \(\{\}\) could not be found(?:$|\W)"),
+        new(@"(?:^|: )No test of \{\} was found(?:$|\W)"),
     ];
 
     [Fact]

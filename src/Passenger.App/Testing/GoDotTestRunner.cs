@@ -17,8 +17,8 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
     public bool IsUsable => true;
 
     /// <summary>GoDotTest's tests are found from the code, never from a build.</summary>
-    public Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default) =>
-        Task.FromResult<IReadOnlyList<TestItem>>([]);
+    public Task<FoundTests> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default) =>
+        Task.FromResult(FoundTests.All([]));
 
     /// <summary>Runs each game's tests in as few runs of it as GoDotTest takes them (<see cref="GoDotTests.Runs"/>), a game at
     /// a time, outcomes told as each run ends.</summary>

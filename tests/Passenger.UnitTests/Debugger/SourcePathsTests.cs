@@ -1,5 +1,4 @@
 using Passenger.Core;
-using Passenger.Debugger;
 
 namespace Passenger.UnitTests.Debugger;
 
@@ -41,7 +40,22 @@ public class SourcePathsTests
         Assert.Equal(SourcePaths.Same, Match(@"C:\src\App\Foo.cs", "c:/src/app/foo.cs"));
     }
 
+    [Fact]
+    public void An_images_document_names_back_the_one_file_a_breakpoint_in_it_binds_to_and_none_where_two_end_alike()
+    {
+        string api = At("plain", "Api", "Controllers", "Orders.cs");
+        string old = At("plain", "old", "Controllers", "Orders.cs");
+        On(api, old);
+        Assert.Equal(api, FileOf("/src/Api/Controllers/Orders.cs", api, old));
+        Assert.Equal(api, FileOf("/_/Api/Controllers/Orders.cs", api, old));
+        Assert.True(FileOf("/src/Web/Controllers/Orders.cs", api, old) is null, "Orders.cs of a folder neither file is in was named back as one of them");
+        Assert.True(FileOf("/src/Orders.cs", api, old) is null, "A file named alone, with no folder to share, was named back as one of the folder's");
+        Assert.True(FileOf("/src/Api/Controllers/Customers.cs", api, old) is null, "A file of another name was named back as one of the folder's");
+    }
+
     private int Match(string requested, string document) => SourcePaths.Match(requested, document, paths, path => there.Contains(path));
+
+    private string? FileOf(string document, params string[] files) => SourcePaths.FileOf(document, files, paths, path => there.Contains(path));
 
     private void On(params string[] files)
     {

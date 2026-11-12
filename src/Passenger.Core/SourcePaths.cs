@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
-using Passenger.Core;
 
-namespace Passenger.Debugger;
+namespace Passenger.Core;
 
 /// <summary>How well a breakpoint's source path names a document a PDB records. The same file is the best match, by the
 /// name the file system gives it (macOS's /var is /private/var, Windows' C:\Users\RUNNER~1 a long name). A document
@@ -59,6 +58,31 @@ public static class SourcePaths
         return shared >= 2 ? shared : 0;
     }
 
+    /// <summary>The way back from a document a PDB records to the file of <paramref name="files"/> it names, as a breakpoint
+    /// in that file binds to it (<see cref="Match"/>): the one matching it best; null where none does, or two match it as
+    /// well, which leaves which it is unsaid.</summary>
+    public static string? FileOf(string document, IEnumerable<string> files) => FileOf(document, files, PathNames.Comparer, Path.Exists);
+
+    /// <summary>The file, paths compared and asked for on the disk as <see cref="Match"/>'s overload asks.</summary>
+    internal static string? FileOf(string document, IEnumerable<string> files, StringComparer paths, Func<string, bool> exists)
+    {
+        (string? File, int Score) best = (null, 0);
+        bool tied = false;
+        foreach (string file in files)
+        {
+            int score = Match(file, document, paths, exists);
+            if (score > best.Score)
+            {
+                (best, tied) = ((file, score), false);
+            }
+            else if (score > 0 && score == best.Score)
+            {
+                tied = true;
+            }
+        }
+        return tied ? null : best.File;
+    }
+
     /// <summary>Whether a name of the breakpoint's path, in <paramref name="folder"/>, names the document's: the same, or
     /// alike but for case where the folder ignores case or holds no file of the document's spelling (a PDB built where case
     /// was ignored).</summary>
@@ -68,7 +92,7 @@ public static class SourcePaths
 
     /// <summary>Whether a breakpoint's file is on this disk, so matched by its canonical name: one not here yet (a generated
     /// file, a branch checked out later) is matched so once it is written.</summary>
-    internal static bool OnDisk(string requested) => Canonical(Normalize(requested)) is not null;
+    public static bool OnDisk(string requested) => Canonical(Normalize(requested)) is not null;
 
     /// <summary>A path a Windows machine gave, a drive's (C:\ or C:/) or a share's (\\server\share), on any system.</summary>
     private static bool IsWindows(string path) =>

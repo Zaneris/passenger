@@ -38,14 +38,14 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
     public bool IsUsable => vsTest?.IsUsable ?? true;
 
     /// <summary>The tests in built test assemblies, each assembly asked of its runner, the two runners at once.</summary>
-    public async Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
+    public async Task<FoundTests> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
     {
         bool[] onPlatform = await BackgroundWork.Run(() => assemblies.Select(a => TestingPlatformRunner.IsApplication(a.Path)).ToArray(), cancel);
         List<TestAssembly> platformOnes = [.. assemblies.Where((_, at) => onPlatform[at])];
         List<TestAssembly> vsTestOnes = [.. assemblies.Where((_, at) => !onPlatform[at])];
-        Task<IReadOnlyList<TestItem>> fromPlatform = platformOnes.Count > 0 ? platform.DiscoverAsync(platformOnes, log, cancel) : Task.FromResult<IReadOnlyList<TestItem>>([]);
-        Task<IReadOnlyList<TestItem>> fromVsTest = vsTestOnes.Count > 0 ? DiscoverWithVsTest(vsTestOnes, log, cancel) : Task.FromResult<IReadOnlyList<TestItem>>([]);
-        IReadOnlyList<TestItem>[] found = await Task.WhenAll(fromVsTest, fromPlatform);
+        Task<FoundTests> fromPlatform = platformOnes.Count > 0 ? platform.DiscoverAsync(platformOnes, log, cancel) : Task.FromResult(FoundTests.All([]));
+        Task<FoundTests> fromVsTest = vsTestOnes.Count > 0 ? DiscoverWithVsTest(vsTestOnes, log, cancel) : Task.FromResult(FoundTests.All([]));
+        FoundTests[] found = await Task.WhenAll(fromVsTest, fromPlatform);
         foreach (TestAssembly assembly in vsTestOnes)
         {
             byAssembly[(assembly.Project.Path, assembly.Framework)] = vsTest!;
@@ -54,10 +54,10 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
         {
             byAssembly[(assembly.Project.Path, assembly.Framework)] = platform;
         }
-        return [.. found[0], .. found[1]];
+        return new FoundTests([.. found[0].Tests, .. found[1].Tests], [.. found[0].Unfound, .. found[1].Unfound]);
     }
 
-    private async Task<IReadOnlyList<TestItem>> DiscoverWithVsTest(IReadOnlyList<TestAssembly> assemblies, Action<string>? log, CancellationToken cancel)
+    private async Task<FoundTests> DiscoverWithVsTest(IReadOnlyList<TestAssembly> assemblies, Action<string>? log, CancellationToken cancel)
     {
         vsTest ??= await startVsTest(folder, cancel);
         return await vsTest.DiscoverAsync(assemblies, log, cancel);

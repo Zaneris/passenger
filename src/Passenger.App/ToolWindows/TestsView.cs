@@ -235,10 +235,15 @@ public sealed class TestsView : DockPanel
 
     public bool HasFocus => tree.IsKeyboardFocusWithin;
 
+    /// <summary>What the window says of the tests last found or run, whole in its tip where the line trims it.</summary>
     public string Status
     {
         get => status.Text ?? string.Empty;
-        set => status.Text = value;
+        set
+        {
+            status.Text = value;
+            ToolTip.SetTip(status, value.Length > 0 ? value : null);
+        }
     }
 
     /// <summary>Tests are being found or run: Stop has something to end, and is disabled while it has not.</summary>

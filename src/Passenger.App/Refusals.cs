@@ -181,6 +181,16 @@ public static class Refusals
     public static string GoDotTestNeverRuns(string game) =>
         $"{game} never runs its GoDotTest tests: no scene of it calls GoTest.RunTests, neither its main scene nor a test scene (GoDotTest's README makes one in {Testing.GoDotTests.TestFolder}), so Godot is not started for them";
 
+    /// <summary>A built test assembly whose tests its runner could not look through, with what the runner said: a clause, after
+    /// what found no test or a run's tally.</summary>
+    public static string TestsNotFound(string assembly, string framework, string why) => $"the tests in {assembly} ({framework}) could not be found: {why}";
+
+    /// <summary>Run Tests at the caret took no test of the method or class there once the tests were looked for: why, where
+    /// its project's tests could not be found (<see cref="TestsNotFound"/>), else what is likeliest.</summary>
+    public static string NoTestOf(string name, string? unfound) => unfound is null
+        ? $"No test of {name} was found; is the project a test project?"
+        : $"No test of {name} was found: {unfound}";
+
     /// <summary>A test chosen of one of the classes GoDotTest cannot tell apart (<see cref="Testing.GoDotTests.Alike"/>).</summary>
     public static string GoDotTestAlike(string suite, IReadOnlyList<string> classes) =>
         $"Not run: GoDotTest knows {Plural.Listed(classes)} by one name ({suite}), so it can run neither alone. Rename one, or choose all of their tests together";

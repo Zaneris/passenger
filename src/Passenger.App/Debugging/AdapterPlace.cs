@@ -6,11 +6,11 @@ namespace Passenger.App.Debugging;
 /// <summary>Where a session's debug adapter runs when not beside the app: the command that starts it there, given the
 /// adapter's flags (<c>docker exec -i CONTAINER …/passenger-tools dap</c>, the protocol over its standard input and
 /// output), the folder it keeps decompiled symbols in there, how paths cross at the protocol's edge (a container run's
-/// <see cref="ContainerPaths"/>; a path the map does not cover, or <see cref="ContainerPaths.None"/>, crosses as it is),
-/// and what to call the place (the container's name, which docker exec reaches it by). A session with one is
-/// <see cref="DebugSession.Elsewhere"/>: its program's process id is the container's, never held or killed here. Ending
-/// the command (Stop, Detach, the IDE's end, the CLI killed) closes the adapter's standard input there, which lets the
-/// program go.</summary>
+/// <see cref="ContainerPaths"/>; a path the map does not cover crosses as it is, but one coming back that names a file of
+/// the folder's <see cref="Sources"/>), and what to call the place (the container's name, which docker exec reaches it
+/// by). A session with one is <see cref="DebugSession.Elsewhere"/>: its program's process id is the container's, never
+/// held or killed here. Ending the command (Stop, Detach, the IDE's end, the CLI killed) closes the adapter's standard
+/// input there, which lets the program go.</summary>
 public sealed record AdapterPlace(Func<IReadOnlyList<string>, ProcessStartInfo> Command, string SymbolCache, ContainerPaths Paths, string Where)
 {
     /// <summary>The program debugged there, by its name as the container's processes name it (its .dll's, else its
@@ -35,6 +35,10 @@ public sealed record AdapterPlace(Func<IReadOnlyList<string>, ProcessStartInfo> 
     /// <summary>A path of this machine as the program's names it.</summary>
     public string ToProgram(string path) => Paths.ToContainer(path) ?? path;
 
+    /// <summary>The open folder's files a path of the program's no map covers may name (a program attached to, built
+    /// elsewhere), or null where the map says all there is.</summary>
+    public WorkspaceSources? Sources { get; init; }
+
     /// <summary>A path the program names as this machine's.</summary>
-    public string ToIde(string path) => Paths.ToHost(path) ?? path;
+    public string ToIde(string path) => Paths.ToHost(path) ?? Sources?.FileOf(path) ?? path;
 }

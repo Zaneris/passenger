@@ -63,6 +63,42 @@ public sealed record ContainerReach(ContainerEngine Engine, string Container, st
             Program = program,
         };
 
+    /// <summary>Where the container's paths are files of <paramref name="folder"/>, as its image was built: for a container
+    /// Compose started from the folder's own file (its labels name its files, its project and its service), every folder its
+    /// service's Dockerfile copies from its context (<see cref="ContainerPaths.For"/>); for any other, or one Compose's files
+    /// no longer say, <see cref="ContainerPaths.None"/>.</summary>
+    public async Task<ContainerPaths> PathsAsync(string folder, CancellationToken cancel)
+    {
+        try
+        {
+            JsonElement inspected = await Engine.JsonAsync(["inspect", "--type", "container", Container], cancel).ConfigureAwait(false);
+            JsonElement? labels = inspected.ValueKind == JsonValueKind.Array && inspected.GetArrayLength() > 0
+                ? JsonMembers.Object(JsonMembers.Object(inspected[0], "Config"), "Labels") : null;
+            if (labels is not { } named || JsonMembers.Scalar(named, ComposeLabels.Project) is not { Length: > 0 } project
+                || JsonMembers.Scalar(named, ComposeLabels.Service) is not { Length: > 0 } service
+                || JsonMembers.Scalar(named, ComposeLabels.WorkingDir) is not { Length: > 0 } workingDir || !Directory.Exists(workingDir))
+            {
+                return ContainerPaths.None;
+            }
+            string[] files = (JsonMembers.Scalar(named, ComposeLabels.ConfigFiles) ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            // Every file Compose read, here as it read it (a run's override too, in Passenger's state), the folder's among them.
+            if (files.Length == 0 || !files.All(File.Exists) || !files.Any(file => PathNames.IsUnder(PathNames.Canonical(file), folder)))
+            {
+                return ContainerPaths.None;
+            }
+            ComposeModel model = await ComposeModel.ReadAsync(Engine, ["compose", "-p", project, .. files.SelectMany(file => (string[])["-f", file]), "--project-directory", workingDir],
+                workingDir, cancel).ConfigureAwait(false);
+            return model[service] is { DockerfilePath: { } dockerfile, Context: { } context } && File.Exists(dockerfile)
+                ? ContainerPaths.For(DockerfileStages.Read(await File.ReadAllTextAsync(dockerfile, cancel).ConfigureAwait(false)), PathNames.Canonical(context))
+                : ContainerPaths.None;
+        }
+        catch (Exception unread) when (unread is ContainerCommandException or JsonException or IOException or UnauthorizedAccessException or TimeoutException)
+        {
+            IdeLog.Write(IdeLog.Debugger, $"The paths of {Container}'s image were not read from its Compose files: {unread.Message}");
+            return ContainerPaths.None;
+        }
+    }
+
     /// <summary>Where the profiler records a program there, the paths its PDBs name made this machine's through <paramref name="paths"/>.</summary>
     public Profiler.ProfilePlace Recorder(ContainerPaths paths) =>
         new(words => Engine.Command(ContainerTools.ToolsCommand(Container, Tools, words)), Container, path => paths.ToHost(path) ?? path);

@@ -321,6 +321,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   on localhost; a push takes the logins the SDK reads (`RegistryLogins`, server names only), refused only on the
   registry's own 401 (`AsksForLoginAsync`). Vulnerabilities only when
   asked: without the plugin docker answers `scout … --format` with "unknown flag", so find it by `docker scout version`.
+  docker exec's end ends nothing it started, only closing its standard input; a container's first process takes no
+  SIGKILL from inside it, so Stop lets one attached to go (`ManagedDebugger.Unending`).
 - **Aspire.** `AspireController` checks bearer tokens first; deploy logins are read from each tool's files, never by
   running a cloud CLI; metrics only while shown. MetricsEventSource's CollectionStart and Stop reach TraceEvent as
   `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
@@ -329,11 +331,13 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   An app's OpenAPI document is asked only at its origin (`OpenApiAddresses`), and what's made from one with no app asked
   comes from `AppDocuments`, never a process-wide cache. `ResourceFiles` is the one reader and writer of `.resx` and
   `xlf/*.xlf`, a table's change one edit of the open text.
-- **Debugging.** `DebugController`, `DebugSession`; Variables and the hover card are one list. A row's expression is the
-  debugger's `evaluateName`, never built in the window. A library's types are shown as the App tells the debugger at
-  launch (`DapTypePresentation`), never by engine code naming a library. An exception is read from what it stores, a
-  getter or `ToString` only where that can't be. An HTTPS page's dev certificate is only read, never made or trusted.
-  Every breakpoint through one pipeline (`IHitBreakpoint`).
+- **Debugging.** `DebugController`, `DebugSession`; Variables and the hover card are one list, a hover evaluating only
+  inside the stopped frame's method (`MethodBounds`). A row's expression is the debugger's `evaluateName`, never built
+  in the window. A library's types are shown as the App tells the debugger at launch (`DapTypePresentation`), never by
+  engine code naming a library. An exception is read from what it stores, a getter or `ToString` only where that can't
+  be. An HTTPS page's dev certificate is only read, never made or trusted. Every breakpoint through one pipeline
+  (`IHitBreakpoint`). A program attached to in a container maps its paths by its Compose labels' Dockerfile
+  (`ContainerReach.PathsAsync`), else back by the engine's own match (`SourcePaths.FileOf`).
 - **Tests window.** `TestFinder`; tests are keyed by themselves (`TestItem.ById`), never a key string per test;
   `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
   asks to attach: `LaunchTestHost` is never called for one); the person's `GODOT_BIN` wins; GUT's tests are chosen by
@@ -341,7 +345,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   inside `TestFinder.ReadFile`'s parse, never captured by a listing. A case named in place of its method is a row from
   its source (`TestItem.NamedCase`), never by `NUnit.ClassName`, the declaring type; the Testing Platform's VSTest
   bridge says no file or line unless run settings ask (`TestingPlatformRunner.SourcesAsked`); run settings reach a
-  Testing Platform host through `PlatformRunSettings`, never `--settings`.
+  Testing Platform host through `PlatformRunSettings`, never `--settings`. VSTest ends a discovery at the first assembly
+  whose test host cannot start, so each it did not look through whole is asked again alone; an assembly a runner could
+  not look through is an `UnfoundTests`, said wherever its tests are missed.
 - **The rest.** `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
   only to their feed's host); under central package management Passenger writes each version where the evaluation keeps
   it (`CentralWrites`), never dotnet add package, which drops a props file's blank lines and turns a property to a literal;

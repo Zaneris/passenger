@@ -1182,10 +1182,18 @@ public partial class ManagedDebugger
         return new CompiledExpressionEvaluationContext(thread, threadId, frameStackDepth);
     }
 
-    /// <summary>Ends the program and lets go of it, once the runtime has seen it go.</summary>
+    /// <summary>Ends the program and lets go of it, once the runtime has seen it go; one nothing here can end
+    /// (<see cref="Unending"/>) is let go to run on, the console saying why.</summary>
     public async Task TerminateAsync()
     {
         _logger?.Invoke("Terminate");
+        if (Unending() is { } why)
+        {
+            _logger?.Invoke(why);
+            OnConsole?.Invoke($"{why}\n");
+            await LetGoAsync(null).ConfigureAwait(false);
+            return;
+        }
         if (_process is not null && !_exited.IsSet)
         {
             // A running process cannot be terminated (CORDBG_E_PROCESS_NOT_SYNCHRONIZED): it is stopped first.
@@ -1223,17 +1231,32 @@ public partial class ManagedDebugger
         }
         else
         {
-            if (_process is not null && _isAttached && !_exited.IsSet && _process?.TryIsRunning(out bool isRunning) is Cor.S_OK && isRunning)
-            {
-                int hResult = _process.TryStop(0);
-                if (hResult is not (Cor.S_OK or Cor.CORDBG_E_PROCESS_TERMINATED))
-                {
-                    _logger?.Invoke($"Error stopping process during disconnect: {hResult}");
-                }
-            }
-            await EndAsync(letGo: true, within).ConfigureAwait(false);
+            await LetGoAsync(within).ConfigureAwait(false);
         }
     }
+
+    /// <summary>Lets go of a program attached to, which runs on (stopped first, so no thread is let go amid an event).</summary>
+    private async Task LetGoAsync(TimeSpan? within)
+    {
+        if (_process is not null && _isAttached && !_exited.IsSet && _process?.TryIsRunning(out bool isRunning) is Cor.S_OK && isRunning)
+        {
+            int hResult = _process.TryStop(0);
+            if (hResult is not (Cor.S_OK or Cor.CORDBG_E_PROCESS_TERMINATED))
+            {
+                _logger?.Invoke($"Error stopping process during disconnect: {hResult}");
+            }
+        }
+        await EndAsync(letGo: true, within).ConfigureAwait(false);
+    }
+
+    /// <summary>Why the program attached to cannot be ended from here, or null: it is the first process of the adapter's
+    /// own PID namespace (a container's, the adapter come in by docker exec), which Linux keeps from every signal sent
+    /// inside that namespace it has no handler of its own for, SIGKILL among them. Terminated, it would live on held by
+    /// a debugger that could neither end nor let go of it.</summary>
+    private string? Unending() =>
+        OperatingSystem.IsLinux() && _isAttached && _attachedId == 1 && !_exited.IsSet
+            ? "Process 1 is its container's first process, which nothing inside the container can end: the debugger let go of it, and it runs on"
+            : null;
 
     /// <summary>The client went without disconnecting (crashed, or was ended): a program the session launched ends with it,
     /// and one it attached to is let go to run on, as a detach lets it go.</summary>
