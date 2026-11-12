@@ -12,7 +12,12 @@
 // a method that returns a value each turn, which a debugger attaches to (LoopingConsoleAppOptimized is it built optimized).
 // With "asleep" it writes its numbers in a culture of its own and a value by its own ToString, then sleeps for good. With
 // "locked" a second thread, Holder, holds a lock a property is read under, letting it go only as it runs on, then starts a
-// third, Let go, and waits.
+// third, Let go, and waits. With "starts" it sleeps where a breakpoint's condition can start a thread that turns.
+if (args is ["starts"])
+{
+    Console.WriteLine("starts"); // stop where a condition starts a thread
+    Thread.Sleep(Timeout.Infinite);
+}
 if (args is ["locked"])
 {
     Locked locked = new();
@@ -214,6 +219,26 @@ internal sealed class Locked
         }) { IsBackground = true, Name = "Holder" };
         holder.Start();
         SpinWait.SpinUntil(() => Holding);
+    }
+}
+
+internal static class Starter
+{
+    public static long Turns;
+
+    // A breakpoint's condition: starts a thread that turns, waits while it could turn many times, and is false.
+    public static bool Begin()
+    {
+        Thread turning = new(() =>
+        {
+            for (long turn = 0; ; turn++)
+            {
+                Turns = turn; // the started thread's turn
+            }
+        }) { IsBackground = true, Name = "Turning" };
+        turning.Start();
+        Thread.Sleep(300);
+        return false;
     }
 }
 

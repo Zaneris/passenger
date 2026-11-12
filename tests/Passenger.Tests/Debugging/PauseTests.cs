@@ -216,6 +216,25 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("377", Assert.Single(await host.LocalsAsync(stopped), v => v.Name == "i").Value);
     }
 
+    /// <summary>A thread made while a breakpoint's condition is evaluated, as a parallel loop's next worker can be, waits with
+    /// the other threads until the evaluation is over: its own breakpoint then stops it on its first pass, where the stop
+    /// shows it, never turns further on, past hits put off unseen.</summary>
+    [Fact]
+    public async Task A_thread_started_while_a_condition_is_evaluated_waits_with_the_others_and_stops_at_its_breakpoints_first_pass()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int turning = Debuggees.Line(Looping, "the started thread's turn");
+        await Start(host, ["starts"], host => host.BreakpointsAsync(Debuggees.Source(Looping, "Program.cs"),
+        [
+            new DapSourceBreakpoint(Debuggees.Line(Looping, "stop where a condition starts a thread"), Condition: "Starter.Begin()"),
+            new DapSourceBreakpoint(turning),
+        ]));
+        StoppedEvent stopped = await host.WaitForStoppedEvent();
+        Assert.Equal(turning, stopped.Line);
+        string turn = Assert.Single(await host.LocalsAsync(stopped), v => v.Name == "turn").Value;
+        Assert.True(turn == "0", $"The started thread's breakpoint showed it at turn {turn}, where it had run on unseen from its first pass while the condition was evaluated");
+    }
+
     [Gate]
     [Fact]
     public async Task An_exception_in_a_parallel_loop_whose_iterations_test_a_condition_stops_where_it_was_thrown()

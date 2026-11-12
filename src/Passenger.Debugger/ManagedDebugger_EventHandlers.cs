@@ -33,6 +33,10 @@ public partial class ManagedDebugger
         ICorDebugThread corThread = createThreadCorDebugManagedCallbackEventArgs.Thread;
         NoteMainThread(corThread);
         _threads[corThread.Id] = new ThreadInfo(corThread);
+        if (EvalStatus.ThreadId is int evaluating && !EvalStatus.LetThreadsRun)
+        {
+            HoldDuringEvaluation(corThread, evaluating);
+        }
         if (_dataSlots.Any(slot => slot is not null))
         {
             // A thread made since a data breakpoint was set watches what the others do.
@@ -40,6 +44,18 @@ public partial class ManagedDebugger
         }
         OnThreadStarted?.Invoke(corThread.Id);
         Continue(clearVariables: false);
+    }
+
+    /// <summary>A thread made while an evaluation runs its own thread alone, which the evaluation's hold of every other thread
+    /// came too early for: held as they are until the evaluation ends, when every thread is let go again. Left running, it
+    /// would pass a breakpoint whose event waits for the evaluation's end and run on, so the stop shown later is not where
+    /// the thread is.</summary>
+    private void HoldDuringEvaluation(ICorDebugThread thread, int evaluating)
+    {
+        int held = thread.TrySetDebugState(CorDebugThreadState.THREAD_SUSPEND);
+        _logger?.Invoke(held is Cor.S_OK
+            ? $"Held: thread {thread.Id}, made during an evaluation on thread {evaluating}"
+            : $"Thread {thread.Id}, made during an evaluation on thread {evaluating}, could not be held: 0x{held:X8}");
     }
 
     /// <summary>Notes the thread running Main. The runtime announces it first, but to a debugger that takes hold once
