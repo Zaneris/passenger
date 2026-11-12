@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `GodotUnkeptTests`' `Each_ended_games_unkept_values_are_held_until_they_are_kept_or_discarded`, CI's macOS report
+  lane at 38761732e (run 43121748961): "The IDE caught 1 error … InvalidOperationException: Not listening" at
+  `TcpListener.AcceptTcpClientAsync` in `GodotGame.ServeAsync`. **A race in the IDE**: `Listen` starts the listener and
+  hands `ServeAsync` to the thread pool, and a game that ended first was disposed, `Dispose` cancelling `ending` and
+  stopping the listener before the accept was reached, which then threw what the loop never took for the game's end.
+  `ServeAsync` now takes it so once `ending` is cancelled, which `Dispose` does before it stops the listener (#1502).
 - `McpRefactorTests`' `An_agents_code_action_renaming_a_class_takes_its_file_along_and_one_renaming_a_file_in_letter_case_renames_it`,
   CI's Windows x64 report lane at b5fef9c55 (run 43112936183): "The language server still holds Crate.cs by its old
   name, offering: Rename file to Crate.cs [refactor]; ...". **A race in the IDE**: the extension's loader marked a project

@@ -379,9 +379,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
                 Heard(body, null);
             }
         }
-        catch (Exception gone) when (gone is IOException or SocketException or OperationCanceledException or ObjectDisposedException or EndOfStreamException)
+        catch (Exception gone) when (gone is IOException or SocketException or OperationCanceledException or ObjectDisposedException or EndOfStreamException
+            || gone is InvalidOperationException && ending.IsCancellationRequested)
         {
-            // The game ended, or Passenger let go of it: either way it is over.
+            // The game ended, or Passenger let go of it (Dispose stops the listener, perhaps before its accept): it is over.
         }
         finally
         {
