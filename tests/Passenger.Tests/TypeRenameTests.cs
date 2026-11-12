@@ -681,7 +681,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
     /// <summary>Show Context Actions by its key at the end of a piece of the active file, and the action of that title
     /// chosen once offered.</summary>
-    private static void ContextAction(MainWindow window, string after, string title)
+    internal static void ContextAction(MainWindow window, string after, string title)
     {
         Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
         window.EditorArea.CodeEditor.Focus();

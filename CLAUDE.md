@@ -146,7 +146,9 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   A closed file changes through `Recording.Change`, written off the window's thread, every write of closed files in turn
   (`CommandHistory.InTurnAsync`); Undo and Redo put them back off it, a `Part` saying why it could not be put, one the
   disk may refuse going `First`, one refused partway taking back what it did. The window follows only what a change
-  made, moved or deleted (`ProjectSession.CameOrWent`), never a whole re-read of the folder.
+  made, moved or deleted (`ProjectSession.CameOrWent`), never a whole re-read of the folder; one that may make or delete
+  a file runs in `AssistContext.ChangeFilesAsync` (`MainWindow.Following`): the watcher hears the IDE's own writes as
+  saves (`FileText.Writing`), and Roslyn's server takes a file heard changed into no project.
 - **Saves land in order.** A save Windows refuses while another program holds the file lands in the background
   (`FileText.Landed`); what hands files to another program (a build, Git, a restore, an agent) waits for it
   (`SaveAllLandedAsync`); a change writing closed files is done only once its own writes landed

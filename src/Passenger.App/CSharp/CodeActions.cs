@@ -961,11 +961,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         return made.Left.Count == 0;
     }
 
-    /// <summary>A server's edit made as one command of Undo under <paramref name="title"/>, once the files it wrote have
-    /// landed, the window's and an agent's alike: the files it changed and moved and those it left, with that it is done
-    /// when the status bar said it was waiting for one, or that a file could not follow its type, or why not, each said as
-    /// <paramref name="what"/>. A type it renames takes along what Rename's does (<see cref="TakenAlongAsync"/>), its files
-    /// named after it as Rename's option was left (<see cref="RenameSettings"/>), whatever action made it.</summary>
+    /// <summary>A server's edit made as one command of Undo under <paramref name="title"/>, the window's and an agent's alike,
+    /// what it makes, moves or deletes followed as a refactoring's are (<see cref="AssistContext.ChangeFilesAsync"/>), once
+    /// its files have landed: the files it changed and moved and those it left, with that it is done when the status bar said
+    /// it was waiting for one, or that a file could not follow its type, or why not, each said as <paramref name="what"/>. A
+    /// type it renames takes along what Rename's does (<see cref="TakenAlongAsync"/>), whatever action made it.</summary>
     internal async Task<RefactorOutcome> ApplyEditAsync(System.Text.Json.JsonElement edit, Asked? asked, string title, string what, Patience? patience = null)
     {
         List<(string From, string To)> moves = [];
@@ -984,11 +984,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         List<string> dropped = [];
         IReadOnlyList<RefactoredFile> files = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         bool waited;
-        TypeRename.Applied applied;
+        TypeRename.Applied applied = new(0, [], null);
         using CommandHistory.Recording recording = context.Editors.Commands.Record(title);
         try
         {
-            applied = TypeRename.Apply(context.Editors, edit, moves, asked, dropped, recording);
+            await context.ChangeFilesAsync([.. WorkspaceEdits.Paths(edit), .. moves.SelectMany(m => new[] { m.From, m.To })], recording,
+                () => applied = TypeRename.Apply(context.Editors, edit, moves, asked, dropped, recording));
             waited = await WorkspaceEdits.LandedAsync(recording, context.Say);
         }
         catch (WorkspaceEditFailed failed)

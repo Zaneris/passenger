@@ -315,7 +315,7 @@ public sealed class RefactoringDialogsTests
     }
 
     /// <summary>The dialog a refactoring opened, once it shows.</summary>
-    private static T Shown<T>(MainWindow window, string what) where T : RefactoringDialog
+    internal static T Shown<T>(MainWindow window, string what) where T : RefactoringDialog
     {
         Ui.WaitFor(() => window.OwnedWindows.OfType<T>().Any() || window.Status?.Contains(what, StringComparison.Ordinal) == true, $"{what}'s dialog to open");
         return DialogButtonsTests.Check(window.OwnedWindows.OfType<T>().FirstOrDefault() ?? throw new Xunit.Sdk.XunitException($"{what} opened no dialog: {window.Status}"));
@@ -323,7 +323,7 @@ public sealed class RefactoringDialogsTests
 
     /// <summary>Next clicked, and the dialog waited out: closed once the refactoring is made, failing with what it says
     /// when it stays open.</summary>
-    private static void Next(RefactoringDialog dialog)
+    internal static void Next(RefactoringDialog dialog)
     {
         Assert.True(dialog.NextButton.IsEnabled, $"Next is disabled: {dialog.Problem}");
         Ui.Click(dialog.NextButton);
@@ -332,7 +332,7 @@ public sealed class RefactoringDialogsTests
     }
 
     /// <summary>Agrees to every question the window asks, keeping each one's title and text in order.</summary>
-    private static List<(string Title, string Text)> Answer(MainWindow window)
+    internal static List<(string Title, string Text)> Answer(MainWindow window)
     {
         List<(string, string)> asked = [];
         window.Confirm = (title, text, _) =>
