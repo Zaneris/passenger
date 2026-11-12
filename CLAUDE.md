@@ -616,7 +616,9 @@ failures never fail a run but each become a `ci-report` issue. `BannedSymbols.tx
 terminal's emulator, a hand-started Roslyn or profiling session, a lone `TextDocument`, `LineDiff`, `CommitGraph`,
 `Snippet.Parse`; `Rig.cs` excepted), raising Click events (`Ui.Click` instead), fixed sleeps (`Thread.Sleep`,
 `Task.Delay`, `Screenshot.Pump`) outside `Waiting` and `Ui`, and the process's heap total (`GC.GetTotalMemory`, which
-counts what classes beside let go of: what an object keeps is `HeldBytes.Of` it). The long random editing session checks
+counts what classes beside let go of: what an object keeps is `HeldBytes.Of` it), and `Process.Kill` (a process the test
+started ends through `ChildProcesses.Kill`, one found by its id through `OwnProcess`, taken while it is known to be the
+test's own: a dead program's id may be another's). The long random editing session checks
 every key against a string model, soft wrap too: keep it passing, never narrow it. Performance is held by what the UI
 thread allocates in a small case against a large one, never by a time (attach the profiler to the test process to see
 its time, `ProfilingSession.AttachAsync(Environment.ProcessId, …)`). Tests that press thousands of keys draw a small
