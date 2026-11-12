@@ -57,7 +57,8 @@ public sealed class ChildOutputTests
     public async Task A_childs_process_disposed_as_it_writes_leaves_its_streams_heard_until_the_child_has_gone()
     {
         Process child = Chatter();
-        int id = child.Id;
+        // Read before its process is disposed below, for the test's own end of it.
+        OwnProcess own = OwnProcess.Of(child);
         long output = 0;
         long errors = 0;
         Task heard = ChildProcesses.Hear(child, _ => Interlocked.Increment(ref output), _ => Interlocked.Increment(ref errors));
@@ -75,8 +76,7 @@ public sealed class ChildOutputTests
         }
         finally
         {
-            using Process running = Process.GetProcessById(id);
-            ChildProcesses.Kill(running);
+            own.Kill();
         }
         Assert.True(await Waiting.Within(heard, TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken),
             "The child's streams were not read to their end once it was killed");

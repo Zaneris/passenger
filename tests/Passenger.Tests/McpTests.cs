@@ -1869,7 +1869,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
         finally
         {
-            Processes.Kill(looping.Id);
+            ChildProcesses.Kill(looping);
         }
     }
 

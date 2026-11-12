@@ -211,7 +211,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         Passenger.Lsp.RoslynSession loading = second.CSharpService!.Session!;
         Assert.False(loading.IsLoaded, "The server loaded the project whose build was held off");
         // Ended as it loads, it never says the first projects loaded.
-        System.Diagnostics.Process.GetProcessById(loading.Server.ProcessId).Kill();
+        OwnProcess.Of(loading.Server.ProcessId).Kill(alone: true);
         Ui.PumpUntil(() => loading.Server.HasExited && second.CSharpService?.Session is { } again && again != loading, "the server ended and another started in its place",
             TimeSpan.FromMinutes(2));
         second.Close();
@@ -589,25 +589,25 @@ public sealed class ProjectWindowDebuggingTests : ProjectWindowsFolders
         Restore.Run(alpha);
         Restore.Run(beta);
         MainWindow window = Started(LaunchOptions.Empty with { Folder = alpha }, languageServer: false);
-        int running = 0;
-        int debugged = 0;
+        OwnProcess running = default;
+        OwnProcess debugged = default;
         try
         {
             Assert.True(window.Perform(AppActions.RunProgram), "Run could not run in the first folder");
-            running = Processes.WrittenId(Path.Combine(alpha, "run.pid"), "the first folder's program to run");
+            running = OwnProcess.Of(Processes.WrittenId(Path.Combine(alpha, "run.pid"), "the first folder's program to run"));
             Ui.WaitFor(() => window.BottomPanel.Problems.Problems.Any(p => p.Message.Contains("alpha warns", StringComparison.Ordinal)), "the first folder's build warning in Problems");
             Ui.WaitFor(() => Output(window).Contains("alpha runs", StringComparison.Ordinal), "the first folder's program's output in the Run window");
             window.Debugger.Breakpoints.Toggle(PathNames.Canonical(program), 3);
             Assert.True(window.Perform(AppActions.Debug), "Debug could not run in the first folder");
-            debugged = Processes.WrittenId(Path.Combine(alpha, "debugged.pid"), "the first folder's program to start under the debugger");
+            debugged = OwnProcess.Of(Processes.WrittenId(Path.Combine(alpha, "debugged.pid"), "the first folder's program to start under the debugger"));
             Ui.WaitFor(() => window.Debugger.Session is { State: Passenger.App.Debugging.DebugState.Paused } && window.BottomPanel.Debug.Frames.Count > 0,
                 "the debugged program to stop at its breakpoint", TimeSpan.FromMinutes(2));
 
             Assert.Null(window.Open(beta));
             Ui.ClickButton(Asked(window), OpenProjectDialog.ThisWindow);
             Ui.WaitFor(() => window.Folder == PathNames.Canonical(beta), "the second folder to open in the window");
-            Assert.True(Processes.Gone(running), "The first folder's program still runs after the second folder opened in its window");
-            Assert.True(Processes.Gone(debugged), "The first folder's debugged program still runs after the second folder opened in its window");
+            Assert.True(Processes.Gone(running.Id), "The first folder's program still runs after the second folder opened in its window");
+            Assert.True(Processes.Gone(debugged.Id), "The first folder's debugged program still runs after the second folder opened in its window");
             Assert.False(window.Runner.IsRunning || window.Debugger.IsDebugging, "The window still runs or debugs the first folder's program");
             Assert.Equal(string.Empty, Output(window));
             Assert.Equal(string.Empty, window.BottomPanel.Debug.Console.Document.Snapshot.ToString());
@@ -621,8 +621,8 @@ public sealed class ProjectWindowDebuggingTests : ProjectWindowsFolders
         }
         finally
         {
-            Processes.Kill(running);
-            Processes.Kill(debugged);
+            running.Kill();
+            debugged.Kill();
             window.Close();
         }
     }
@@ -684,7 +684,7 @@ public sealed class ProjectWindowDebuggingTests : ProjectWindowsFolders
     private WeakReference<MainWindow> Debugged(MainWindow first, Debugging.Helpers.StartHold hold, string? then)
     {
         MainWindow window = InNewWindow(first, alpha);
-        int program = 0;
+        OwnProcess program = default;
         try
         {
             window.SetConfigurations([new RunConfiguration
@@ -696,7 +696,7 @@ public sealed class ProjectWindowDebuggingTests : ProjectWindowsFolders
             Task<int> held = hold.Held(TimeSpan.FromMinutes(3));
             // Not settled: the start holds the window's background work for as long as the debugger waits for the program.
             Assert.True(window.Perform(AppActions.Debug), $"Debug did not start: {Ui.Said(window)}");
-            program = Ui.AwaitPumped(held, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3));
+            program = OwnProcess.Of(Ui.AwaitPumped(held, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3)));
             Assert.Equal(Passenger.App.Debugging.DebugState.Starting, window.Debugger.Session?.State);
             if (then is not null)
             {
@@ -705,16 +705,13 @@ public sealed class ProjectWindowDebuggingTests : ProjectWindowsFolders
                 Ui.PumpUntil(() => window.Asking is not null, "the window to ask where the other folder opens", TimeSpan.FromSeconds(30));
                 Ui.Click(window.Asking!.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible && b.Content as string == OpenProjectDialog.ThisWindow), settle: false);
                 Ui.WaitFor(() => window.Folder == PathNames.Canonical(then), "the other folder to open in the window");
-                Assert.True(Processes.Gone(program), "The program debugged in the first folder still runs after another folder opened in its window");
+                Assert.True(Processes.Gone(program.Id), "The program debugged in the first folder still runs after another folder opened in its window");
             }
         }
         finally
         {
             window.Close();
-            if (program != 0)
-            {
-                Processes.Kill(program);
-            }
+            program.Kill();
         }
         Ui.Settle();
         Assert.Equal([first], PassengerApp.Windows);

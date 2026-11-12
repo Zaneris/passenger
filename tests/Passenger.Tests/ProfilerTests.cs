@@ -558,7 +558,8 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     {
         string pids = TestFolders.Create("pids-");
         MainWindow window = OpenWaits("Starting: Undiagnosed", pids, undiagnosed: true);
-        IReadOnlyList<int> Programs() => ProfilerTests.Programs(pids);
+        Dictionary<int, OwnProcess> own = [];
+        IReadOnlyList<int> Programs() => Held(ProfilerTests.Programs(pids), own);
         IReadOnlyList<string> before = Ports();
         Task<string?> started = window.ProfileAsync();
         Task<string?>? again = null;
@@ -611,6 +612,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Configure(window, "Closed: Undiagnosed", closing, undiagnosed: true);
             Task<string?> waiting = window.ProfileAsync();
             closed = Started(closing, "the program to run as the profiler waits for it");
+            own[closed] = OwnProcess.Of(closed);
             Assert.False(waiting.IsCompleted, $"The profiler gave up on the program before the folder was closed: {(waiting.IsCompleted ? Ui.AwaitPumped(waiting, "the profile's start") : null)}");
             Assert.Null(window.CloseSolution());
             Assert.Equal(Refusals.SolutionClosed, Ui.AwaitPumped(waiting, "the profile's start to end with its folder", TimeSpan.FromSeconds(10)));
@@ -620,11 +622,10 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
         finally
         {
-            foreach (int program in Programs())
+            foreach (OwnProcess program in own.Values)
             {
-                Processes.Kill(program);
+                program.Kill();
             }
-            Processes.Kill(closed);
             if (again is { IsCompleted: false })
             {
                 Ui.PumpUntil(() => again.IsCompleted, "the second profile's start to give up", TimeSpan.FromSeconds(60));
@@ -715,11 +716,11 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         string pids = TestFolders.Create("pids-");
         MainWindow window = OpenWaits("Waits for its input", pids);
         IReadOnlyList<string> before = Ports();
-        int program = 0;
+        OwnProcess program = default;
         try
         {
             Ui.Launched(window, window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
-            program = Started(pids, "the profiled program to start");
+            program = OwnProcess.Of(Started(pids, "the profiled program to start"));
             Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
             Assert.True(view.IsFollowing, "The profiler window does not follow the run");
             Assert.NotEqual(before, Ports());
@@ -740,7 +741,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Assert.True(window.Profiling is { HasExited: false }, "The program being profiled ended with its memory snapshot");
 
             Assert.Null(window.CloseSolution());
-            Assert.True(Processes.Gone(program), $"Closing the folder left the program being profiled running: {Processes.Describe(program)}");
+            Assert.True(Processes.Gone(program.Id), $"Closing the folder left the program being profiled running: {Processes.Describe(program.Id)}");
             Ui.WaitFor(() => Ports().SequenceEqual(before), "the profiler's port to go with its folder");
             Assert.False(view.IsFollowing, "The profiler window went on timing the run of the folder left");
             Assert.False(view.CanKill, "The profiler window kept Kill for the program of the folder left");
@@ -751,7 +752,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
         finally
         {
-            Processes.Kill(program);
+            program.Kill();
         }
     }
 
@@ -765,10 +766,12 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         MainWindow window = OpenWaits("Lasting", pids);
         IReadOnlyList<string> before = Ports();
         int program = 0;
+        List<OwnProcess> own = [];
         try
         {
             Ui.Launched(window, window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
             program = Started(pids, "the profiled program to start");
+            own.Add(OwnProcess.Of(program));
             Passenger.App.ToolWindows.OutputView run = window.BottomPanel.Run;
             Ui.WaitFor(() => Shows(run, "waiting"), "the program to wait on its input");
 
@@ -797,6 +800,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             int first = program;
             Ui.Launched(window, window.ProfileAsync(), "the second start", TimeSpan.FromMinutes(2));
             Ui.PumpUntil(() => (program = Programs(pids).FirstOrDefault(p => p != first)) > 0, "the program profiled again to start", TimeSpan.FromMinutes(2));
+            own.Add(OwnProcess.Of(program));
             Passenger.App.Profiling.SnapshotRead again = Ui.Await(window.SnapshotAsync(), "the second snapshot", TimeSpan.FromMinutes(2));
             Assert.True(again.Snapshot is not null, again.Message);
             Assert.True(Processes.IsRunning(program), "The program profiled again ended with its snapshot");
@@ -806,7 +810,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
         finally
         {
-            Processes.Kill(program);
+            own.ForEach(left => left.Kill());
         }
     }
 
@@ -968,7 +972,8 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             }
             """);
         MainWindow window = Ui.OpenFolder(project, languageServer: false);
-        IReadOnlyList<int> Programs() => [.. Directory.GetFiles(pids, "*.pid").Select(p => int.Parse(Path.GetFileNameWithoutExtension(p), System.Globalization.CultureInfo.InvariantCulture))];
+        Dictionary<int, OwnProcess> own = [];
+        IReadOnlyList<int> Programs() => Held(ProfilerTests.Programs(pids), own);
         string generated = window.Configuration!.Name;
         try
         {
@@ -1007,9 +1012,9 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Ui.WaitFor(() => !window.IsRunning, "what ran to stop");
             window.ApplySettings(new Passenger.App.Settings.AppSettings());
             window.Close();
-            foreach (int program in Programs())
+            foreach (OwnProcess program in own.Values)
             {
-                Processes.Kill(program);
+                program.Kill();
             }
             TestFolders.Delete(pids);
         }
@@ -1163,6 +1168,17 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// <summary>The ids of the programs of <see cref="Waits"/> that have written theirs into a folder.</summary>
     private static IReadOnlyList<int> Programs(string pids) =>
         [.. Directory.GetFiles(pids, "*.pid").Select(p => int.Parse(Path.GetFileNameWithoutExtension(p), System.Globalization.CultureInfo.InvariantCulture))];
+
+    /// <summary>The programs' ids, each one not seen before held as it is now, while it runs: by a test's end one may have
+    /// gone, its id perhaps another program's.</summary>
+    private static IReadOnlyList<int> Held(IReadOnlyList<int> programs, Dictionary<int, OwnProcess> own)
+    {
+        foreach (int program in programs.Where(p => !own.ContainsKey(p)))
+        {
+            own[program] = OwnProcess.Of(program);
+        }
+        return programs;
+    }
 
     /// <summary>The id of the first program of <see cref="Waits"/> to write its id into a folder, the window's loop running
     /// meanwhile (not settling, which a profile's start under way would not let it do).</summary>

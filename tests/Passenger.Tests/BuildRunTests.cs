@@ -947,7 +947,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         // Settling waits for Roslyn to say the projects loaded, which it says once its restore's output has ended.
         MainWindow window = Open();
         Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
-        List<int> steps = [];
+        List<OwnProcess> steps = [];
         try
         {
             window.Perform(AppActions.Build);
@@ -981,14 +981,14 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             // Pumped, not settled: the build holds background work until it ends.
             Ui.PumpUntil(() => projects.Any(p => File.Exists(Path.Combine(Folder, "src", p, "bin", "Debug", TestProjects.Framework, "written.txt"))),
                 "a project's step to write into its output folder", TimeSpan.FromSeconds(60));
-            steps.AddRange(projects.Select(p => Processes.ReadId(Path.Combine(Folder, "src", p, "step.pid"))).Where(id => id > 0));
+            steps.AddRange(projects.Select(p => Processes.ReadId(Path.Combine(Folder, "src", p, "step.pid"))).Where(id => id > 0).Select(OwnProcess.Of));
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.IsBuilding, "the build to stop");
             Assert.Equal("Build stopped", window.Status);
 
-            foreach (int step in steps)
+            foreach (OwnProcess step in steps)
             {
-                Assert.True(Processes.Gone(step), $"After Stop, the build's step {Processes.Describe(step)} went on running: MSBuild ran it in a process that Stop did not end");
+                Assert.True(Processes.Gone(step.Id), $"After Stop, the build's step {Processes.Describe(step.Id)} went on running: MSBuild ran it in a process that Stop did not end");
             }
             Assert.True(Processes.Gone(command), "After Stop, the build's dotnet command went on running");
             string[] written = [.. projects.Select(p => Path.Combine(Folder, "src", p, "bin", "Debug", TestProjects.Framework, "written.txt")).Where(File.Exists)];
@@ -999,7 +999,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
         finally
         {
-            steps.ForEach(Processes.Kill);
+            steps.ForEach(step => step.Kill());
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.IsBuilding, "the build to stop");
             window.Close();
@@ -1045,7 +1045,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             {
                 Processes.WrittenId(Path.Combine(Folder, "src", project, "step.pid"), $"{project}'s step to start");
             }
-            Process.GetProcessById(server).Kill();
+            OwnProcess.Of(server).Kill(alone: true);
             Ui.WaitFor(() => !window.IsBuilding, "the build", TimeSpan.FromMinutes(2));
             Assert.True(window.Status == "Build succeeded",
                 $"The build failed once the language server was started again under it ({window.Status}):\n{window.BottomPanel.Build.Document.Snapshot}");
@@ -1749,19 +1749,19 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// may end: the window's end finishes within its limit. Whatever a failure leaves running is ended.</summary>
     private static void AssertEndsWithTheWindow(MainWindow window, string idFile, string what)
     {
-        int process = 0;
+        OwnProcess process = default;
         try
         {
-            process = Processes.WrittenId(idFile, $"{what} to start");
+            process = OwnProcess.Of(Processes.WrittenId(idFile, $"{what} to start"));
             int command = window.Runner.IsRunning ? window.Runner.ProcessId ?? 0 : 0;
             window.Close();
             Assert.True(Ui.Ended(window), "The window closed without ending what it started within its limit, so the IDE's process would not end");
-            Assert.True(Processes.Gone(process), $"After the window closed, {what} went on running, holding what it held for the next run");
+            Assert.True(Processes.Gone(process.Id), $"After the window closed, {what} went on running, holding what it held for the next run");
             Assert.True(Processes.Gone(command), $"After the window closed, the dotnet command that started {what} went on running (dotnet watch would start it again on a save)");
         }
         finally
         {
-            Processes.Kill(process);
+            process.Kill();
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.Runner.IsRunning && !window.IsBuilding, "the window to hear the run and the build end");
         }

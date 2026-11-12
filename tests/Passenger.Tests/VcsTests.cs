@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -783,7 +782,7 @@ public sealed class VcsTests : IDisposable
             "The diff opened before the language server answered never took its colours: the field it colours in the editor is plain in the diff");
 
         int ended = window.CSharpService!.Session!.Server.ProcessId;
-        Process.GetProcessById(ended).Kill();
+        OwnProcess.Of(ended).Kill(alone: true);
         Ui.WaitFor(() => window.CSharpService.Session is { IsLoaded: true } session && session.Server.ProcessId != ended, "the language server started again");
         Ui.WaitFor(() => Field(shop.Highlighter, shop.Text.Snapshot, use), "the new server's colour on the field in the editor");
         right.Focus();

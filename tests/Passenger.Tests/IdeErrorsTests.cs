@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -362,7 +360,7 @@ public sealed class IdeErrorsTests : IDisposable
         foreach (string time in (string[])["once", "a second time"])
         {
             int server = window.CSharpService!.Session!.Server.ProcessId;
-            Process.GetProcessById(server).Kill();
+            OwnProcess.Of(server).Kill(alone: true);
             Ui.WaitFor(() => window.CSharpService.Session is { IsLoaded: true } session && session.Server.ProcessId != server,
                 $"the language server to be started again after it ended {time} ({window.CSharpService.State})");
             Assert.Contains($"process {server}) ended", Ui.IdeLog());
@@ -457,7 +455,8 @@ public sealed class IdeErrorsTests : IDisposable
     {
         MainWindow window = OpenProgram();
         int server = window.CSharpService!.Session!.Server.ProcessId;
-        Processes.Suspend(server, "The language server");
+        OwnProcess stopped = OwnProcess.Of(server);
+        stopped.Suspend("The language server");
         try
         {
             window.Close();
@@ -474,7 +473,7 @@ public sealed class IdeErrorsTests : IDisposable
         finally
         {
             // Stopped, it never ends by itself, whatever failed above.
-            Processes.Kill(server);
+            stopped.Kill();
         }
     }
 
@@ -487,7 +486,8 @@ public sealed class IdeErrorsTests : IDisposable
         // Its 5 s and 10 s, shortened for this server alone: on any other a slow answer would end it.
         (server.SlowRequest, server.ResponseLimit) = (TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
 
-        Processes.Suspend(first, "The language server");
+        OwnProcess stopped = OwnProcess.Of(first);
+        stopped.Suspend("The language server");
         bool replaced = false;
         try
         {
@@ -502,7 +502,7 @@ public sealed class IdeErrorsTests : IDisposable
         {
             if (!replaced)
             {
-                End(first);
+                stopped.Kill(alone: true);
             }
         }
         Assert.Equal("Find Usages failed: the language server stopped responding, so it was ended", window.Status);
@@ -622,7 +622,8 @@ public sealed class IdeErrorsTests : IDisposable
             }
         };
         Task<IReadOnlyList<Passenger.Lsp.SymbolInformation>> asked;
-        Processes.Suspend(first, "The language server");
+        OwnProcess stopped = OwnProcess.Of(first);
+        stopped.Suspend("The language server");
         try
         {
             asked = session.SymbolsAsync("Main", asking.Token);
@@ -632,7 +633,7 @@ public sealed class IdeErrorsTests : IDisposable
         finally
         {
             Passenger.Lsp.LanguageServer.Trace = null;
-            End(first);
+            stopped.Kill(alone: true);
         }
         Ui.PumpUntil(() => asked.IsCompleted, "the request to end with its server");
         Assert.True(asked.IsCanceled, $"The request cancelled as its server ended came to {asked.Status}: {asked.Exception?.InnerException?.Message}");
@@ -680,17 +681,13 @@ public sealed class IdeErrorsTests : IDisposable
                     return;
                 }
                 int endedBefore = Said($"The C# language server (process {server}) ended");
-                using (Process ending = Process.GetProcessById(server))
-                {
-                    ending.Kill();
-                    ending.WaitForExit();
-                }
+                OwnProcess.Of(server).Kill(alone: true, waited: true);
                 if (!Waiting.Until(() => Said($"The C# language server (process {server}) ended") > endedBefore, TimeSpan.FromMinutes(1), every: TimeSpan.FromMilliseconds(50)))
                 {
                     missed = $"the end of the server (process {server}) was never heard";
                 }
             });
-            Process.GetProcessById(first).Kill();
+            OwnProcess.Of(first).Kill(alone: true);
             Ui.WaitFor(() => missed is not null || (next != 0 && !Running(next)), "the server started again to be ended as its start came back");
             Assert.True(missed is null, $"The window's thread was let go before its server's start and end had both come: {missed}");
             Ui.WaitFor(() => csharp.Session is { IsLoaded: true } session && session.Server.ProcessId != first && session.Server.ProcessId != next,
@@ -814,7 +811,8 @@ public sealed class IdeErrorsTests : IDisposable
         Assert.Contains("Helper", caller.Node.Item.Name, StringComparison.Ordinal);
         int first = window.CSharpService!.Session!.Server.ProcessId;
 
-        Processes.Suspend(first, "The language server");
+        OwnProcess stopped = OwnProcess.Of(first);
+        stopped.Suspend("The language server");
         Task<string?> asked;
         try
         {
@@ -824,7 +822,7 @@ public sealed class IdeErrorsTests : IDisposable
         }
         finally
         {
-            End(first);
+            stopped.Kill(alone: true);
         }
         Assert.Equal("Call Hierarchy failed: the language server stopped before it answered", Ui.AwaitPumped(asked, "Call Hierarchy to give up on the server that ended"));
 
@@ -1077,28 +1075,7 @@ public sealed class IdeErrorsTests : IDisposable
         Ui.WaitFor(() => window.EditorArea.Active!.Markers.Any(m => m.Kind == Editor.MarkerKind.Error), "the new server's diagnostics");
     }
 
-    /// <summary>Kills a server the IDE never replaced, so a failed test leaves none stopped behind.</summary>
-    private static void End(int id)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            Signal(id, 9);
-            return;
-        }
-        try
-        {
-            using Process process = Process.GetProcessById(id);
-            process.Kill();
-        }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
-        {
-        }
-    }
-
     private static bool Running(int id) => Passenger.Core.DotnetProcesses.Runs(id);
-
-    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
-    private static extern int Signal(int process, int signal);
 
     private static void Tick() => throw new InvalidOperationException("The timer went wrong");
 }

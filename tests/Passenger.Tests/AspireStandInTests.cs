@@ -1179,7 +1179,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Task<int> ended = window.RunEnd;
             Assert.False(ended.IsCompleted, "The second AppHost's run ended as it started");
 
-            Processes.Kill(started.ProcessId!.Value);
+            OwnProcess.Of(started.ProcessId!.Value).Kill();
             Ui.WaitFor(() => ended.IsCompleted, () => $"the second AppHost's run to end with its program, the first AppHost still running ({window.Status})");
             Assert.True(running.Runner.IsRunning && window.AspireRuntime.Apps.Contains(running), "The first AppHost, another configuration's run, ended with the second's");
         }
@@ -1206,7 +1206,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice");
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
-            int api = Api(window);
+            OwnProcess api = OwnProcess.Of(Api(window));
             Resource resource = ApiResource();
             resource.Commands.Add(new ResourceCommand { Name = "resource-stop", DisplayName = "Stop", State = ResourceCommandState.Enabled });
             resource.Commands.Add(new ResourceCommand { Name = "resource-start", DisplayName = "Start", State = ResourceCommandState.Enabled });
@@ -1216,7 +1216,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             {
                 if (command.CommandName == "resource-stop")
                 {
-                    Processes.Kill(api);
+                    api.Kill();
                     resource.Uid = "made-anew";
                     backend.PushResource(resource);
                 }
@@ -1256,7 +1256,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice");
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
-            int first = Api(window);
+            OwnProcess first = OwnProcess.Of(Api(window));
             Resource resource = ApiResource();
             resource.Commands.Add(new ResourceCommand { Name = "resource-stop", DisplayName = "Stop", State = ResourceCommandState.Enabled });
             resource.Commands.Add(new ResourceCommand { Name = "resource-start", DisplayName = "Start", State = ResourceCommandState.Enabled });
@@ -1266,7 +1266,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             {
                 if (command.CommandName == "resource-stop")
                 {
-                    Processes.Kill(first);
+                    first.Kill();
                 }
                 else if (command.CommandName == "resource-start")
                 {
@@ -1278,14 +1278,14 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             File.WriteAllText(project.PathOf(served), "body { color: blue; }\n");
             Ui.Run(window, AppActions.Rerun);
             Assert.Equal($"{config}: nothing changed, nothing restarted", window.Status);
-            Assert.True(Processes.IsRunning(first) && backend.Commands.Length == 0, "Rerun restarted the API for a CSS file its build makes nothing of");
+            Assert.True(Processes.IsRunning(first.Id) && backend.Commands.Length == 0, "Rerun restarted the API for a CSS file its build makes nothing of");
 
             File.WriteAllText(project.PathOf(scoped), "h1 { color: blue; }\n");
             Ui.Run(window, AppActions.Rerun);
             Ui.WaitFor(() => window.Status == $"{config}: restarted apiservice with the new build"
-                && window.AspireRuntime.Apps.Single().Services.SingleOrDefault() is { ProcessId: int restarted } && restarted != first,
+                && window.AspireRuntime.Apps.Single().Services.SingleOrDefault() is { ProcessId: int restarted } && restarted != first.Id,
                 () => $"Rerun to restart the API, whose scoped CSS changed ({window.Status})", TimeSpan.FromMinutes(3));
-            Assert.False(Processes.IsRunning(first), "The API that ran before Rerun still runs");
+            Assert.False(Processes.IsRunning(first.Id), "The API that ran before Rerun still runs");
             Assert.Equal(["resource-stop", "resource-start"], backend.Commands.Select(command => command.CommandName));
             Assert.Empty(backend.Errors);
         }
@@ -1573,7 +1573,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// again; disposed, the sockets its starts held are closed.</summary>
     private sealed class StandInReplicas(StandInAppHost project, AspireInteractionHost backend, MainWindow window, string[] instances) : IDisposable
     {
-        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> running = new(StringComparer.Ordinal);
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, OwnProcess> running = new(StringComparer.Ordinal);
         private readonly System.Collections.Concurrent.ConcurrentQueue<Task<(System.Net.WebSockets.ClientWebSocket Notified, HttpStatusCode Answer)>> starts = new();
         private System.Net.WebSockets.ClientWebSocket? subscribed;
 
@@ -1603,7 +1603,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 string instance = command.ResourceName["apiservice-".Length..];
                 if (command.CommandName is "resource-stop" or "resource-restart")
                 {
-                    Processes.Kill(running[instance]);
+                    running[instance].Kill();
                 }
                 if (command.CommandName is "resource-start" or "resource-restart")
                 {
@@ -1637,7 +1637,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         {
             foreach ((string instance, int program) in programs)
             {
-                running[instance] = program;
+                running[instance] = OwnProcess.Of(program);
                 backend.PushResource(new Resource
                 {
                     Name = $"apiservice-{instance}", DisplayName = "apiservice", Uid = $"api-{instance}", ResourceType = "Project", State = "Running",
@@ -1802,7 +1802,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice");
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
-            int first = Api(window);
+            OwnProcess first = OwnProcess.Of(Api(window));
             Resource resource = ApiResource();
             resource.Commands.Add(new ResourceCommand { Name = "resource-restart", DisplayName = "Restart", State = ResourceCommandState.Enabled });
             backend.PushResource(resource);
@@ -1813,7 +1813,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             FindAction(window, "Run Service without Debugger");
             string config = StandInAppHost.Configuration;
             Ui.WaitFor(() => window.Status == $"apiservice of {config} already runs without the debugger: nothing restarted", $"Run without Debugger to say so ({window.Status})");
-            Assert.True(Processes.IsRunning(first) && Api(window) == first && backend.Commands.Length == 0, "Run without Debugger restarted the API, which nothing held or debugged");
+            Assert.True(Processes.IsRunning(first.Id) && Api(window) == first.Id && backend.Commands.Length == 0, "Run without Debugger restarted the API, which nothing held or debugged");
 
             FindAction(window, "Attach to Service");
             Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.Single().DebugTab?.IsLive == true, $"Attach to the API as it runs ({window.Status})");
@@ -1821,7 +1821,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             {
                 if (command.CommandName == "resource-restart")
                 {
-                    Processes.Kill(first);
+                    first.Kill();
                     again = Waiting.Apart(() => project.StartApiAsync("apiservice", subscribe: false));
                 }
             };
@@ -1832,7 +1832,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             ContextMenu commands = window.GetVisualDescendants().OfType<ContextMenu>().FirstOrDefault(menu => menu.IsOpen)
                 ?? throw new Xunit.Sdk.XunitException("The commands button opened no menu");
             Ui.Choose(commands, "Restart");
-            Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.SingleOrDefault() is { ProcessId: int restarted, DebugTab.IsLive: true } && restarted != first,
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.SingleOrDefault() is { ProcessId: int restarted, DebugTab.IsLive: true } && restarted != first.Id,
                 $"the API restarted through its run and attached to again ({window.Status})", TimeSpan.FromMinutes(2));
             Assert.Equal(["resource-restart"], backend.Commands.Select(command => command.CommandName));
             Assert.Equal($"{config}: restarted apiservice", window.Status);

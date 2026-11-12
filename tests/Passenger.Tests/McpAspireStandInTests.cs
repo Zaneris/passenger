@@ -283,6 +283,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         ConcurrentBag<System.Net.WebSockets.ClientWebSocket> sockets = [];
         ConcurrentQueue<Task<int>> restarts = new();
         Dictionary<string, int> programs = [];
+        ConcurrentDictionary<int, OwnProcess> own = new();
         try
         {
             foreach (string instance in (string[])[first, second])
@@ -294,7 +295,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
                 string instance = command.ResourceName["apiservice-".Length..];
                 if (command.CommandName == "resource-restart")
                 {
-                    Processes.Kill(programs[instance]);
+                    own[programs[instance]].Kill();
                     restarts.Enqueue(Waiting.Apart(() => StartReplicaAsync(instance, subscribe: false)));
                 }
             };
@@ -323,17 +324,14 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         }
         finally
         {
-            List<int> left = [.. programs.Values];
+            // A restart's program is held once it has said its id.
             foreach (Task<int> start in restarts)
             {
-                if (await Waiting.Within(start, TimeSpan.FromMinutes(1), Cancel) && start.IsCompletedSuccessfully)
-                {
-                    left.Add(await start);
-                }
+                await Waiting.Within(start, TimeSpan.FromMinutes(1), Cancel);
             }
-            foreach (int program in left)
+            foreach (OwnProcess program in own.Values)
             {
-                Processes.Kill(program);
+                program.Kill();
             }
             foreach (System.Net.WebSockets.ClientWebSocket socket in sockets)
             {
@@ -355,6 +353,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             Assert.True((int)answer is >= 200 and < 300, $"The IDE refused replica {instance}'s run session: {answer}");
             int program = 0;
             Assert.True(await Waiting.UntilAsync(() => (program = Processes.ReadId(told)) > 0, TimeSpan.FromMinutes(1), Cancel), $"Replica {instance} never said its process's id");
+            own[program] = OwnProcess.Of(program);
             Passenger.App.Aspire.Protocol.Resource resource = new()
             {
                 Name = $"apiservice-{instance}", DisplayName = "apiservice", Uid = $"api-{instance}", ResourceType = "Project", State = "Running",
@@ -407,6 +406,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the web service's run session: {answer}");
         int program = 0;
         Assert.True(await Waiting.UntilAsync(() => (program = Processes.ReadId(told)) > 0, TimeSpan.FromMinutes(1), Cancel), "The web service never said its process's id");
+        OwnProcess own = OwnProcess.Of(program);
         port.LetGo(gate);
         resources.PushResource(new Passenger.App.Aspire.Protocol.Resource
         {
@@ -474,7 +474,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         {
             await stopAsking.CancelAsync();
             await asking.Ended();
-            Processes.Kill(program);
+            own.Kill();
         }
 
         // How far web had come: the requests it answered, whether its program runs, and what its console says.

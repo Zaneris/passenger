@@ -2604,9 +2604,7 @@ public sealed class EndingAsTheyStart : IDisposable
                 }
                 ended.Add(child.ProcessId);
             }
-            using Process ending = Process.GetProcessById(child.ProcessId);
-            ending.Kill();
-            ending.WaitForExit();
+            OwnProcess.Of(child.ProcessId).Kill(alone: true, waited: true);
         };
         ChildProcesses.Started += started;
     }
@@ -2993,44 +2991,228 @@ public static partial class Processes
     /// the time given.</summary>
     public static bool Gone(int id, TimeSpan? within = null) =>
         Waiting.Until(() => !IsRunning(id), within ?? TimeSpan.FromSeconds(15), every: TimeSpan.FromMilliseconds(100));
+}
 
-    /// <summary>Ends what a failed test left running, its children with it.</summary>
-    public static void Kill(int id)
+/// <summary>A process as a test came to know it for its own (one it started, one whose id a program it ran wrote as it ran,
+/// one a session of the IDE's names while it runs): its id and when it began. Once it has ended the system may give its id to
+/// any program, which begins later, so it is ended, stopped or signalled only while it is still the process the test knew:
+/// every end of a process found by its id goes through here (BannedSymbols.txt). Nothing for an id of 0, or one none had.</summary>
+public readonly struct OwnProcess
+{
+    /// <summary>When it began, as <see cref="BeganNow"/> reads it; 0 for none.</summary>
+    private readonly long began;
+
+    private OwnProcess(int id, long began)
+    {
+        Id = id;
+        this.began = began;
+    }
+
+    public int Id { get; }
+
+    /// <summary>The process with this id now, which the test knows for its own at this moment.</summary>
+    public static OwnProcess Of(int id) => id > 0 ? new(id, BeganNow(id)) : default;
+
+    /// <summary>A process the test holds, as it began.</summary>
+    public static OwnProcess Of(Process process)
     {
         try
         {
-            if (IsRunning(id))
-            {
-                using System.Diagnostics.Process left = System.Diagnostics.Process.GetProcessById(id);
-                left.Kill(entireProcessTree: true);
-            }
+            return DotnetProcesses.Runs(process) ? Of(process.Id) : default;
         }
-        catch (Exception gone) when (gone is ArgumentException or InvalidOperationException or AggregateException or System.ComponentModel.Win32Exception)
+        catch (InvalidOperationException)
         {
-            // Gone, or ending: Windows refuses to end a process of the tree that is.
+            // No process was ever associated with it.
+            return default;
         }
     }
 
-    /// <summary>Stops a process where it stands, answering nothing, as a deadlocked one would: SIGSTOP on macOS and
-    /// Linux, and on Windows every thread suspended (NtSuspendProcess), which a kill ends as surely. Signalled, not by
-    /// running kill: on macOS a child ending while another is stopped sets .NET reaping in a spin that holds Process's lock.</summary>
-    public static void Suspend(int id, string what)
+    /// <summary>Ends it and what it started, or it alone as a crash ends it, while it is still the process the test knew,
+    /// passing over one that has ended; <paramref name="waited"/>, once it has gone (what it started is not waited for).</summary>
+    public void Kill(bool alone = false, bool waited = false)
     {
         if (OperatingSystem.IsWindows())
         {
-            using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
+            using Process? held = Held();
+            if (held is not null)
+            {
+                End(held, alone);
+                if (waited)
+                {
+                    held.WaitForExit();
+                }
+            }
+            return;
+        }
+        if (!Runs())
+        {
+            return;
+        }
+        if (alone)
+        {
+            Libc.Signal(Id, SigKill);
+        }
+        else
+        {
+            try
+            {
+                using Process found = Process.GetProcessById(Id);
+                End(found, alone: false);
+            }
+            catch (ArgumentException)
+            {
+                // Gone meanwhile.
+            }
+        }
+        if (waited)
+        {
+            OwnProcess ended = this;
+            Waiting.Until(() => !ended.Runs(), TimeSpan.FromMinutes(1), every: TimeSpan.FromMilliseconds(50));
+        }
+    }
+
+    /// <summary>Stops it where it stands, answering nothing, as a deadlocked one would: SIGSTOP on macOS and Linux, and on
+    /// Windows every thread suspended (NtSuspendProcess), which a kill ends as surely. Signalled, not by running kill: on
+    /// macOS a child ending while another is stopped sets .NET reaping in a spin that holds Process's lock.</summary>
+    public void Suspend(string what)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Process? held = Held();
+            Assert.True(held is not null, $"{what} (process {Id}) had ended before it could be suspended");
+            using Process process = held;
             int status = NtSuspendProcess(process.Handle);
             Assert.True(status == 0, $"{what} could not be suspended (NTSTATUS 0x{status:X8})");
             return;
         }
-        Assert.True(Signal(id, OperatingSystem.IsMacOS() ? 17 : 19) == 0, $"{what} could not be stopped (errno {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()})");
+        Assert.True(Runs(), $"{what} (process {Id}) had ended before it could be stopped");
+        Assert.True(Libc.Signal(Id, OperatingSystem.IsMacOS() ? 17 : 19) == 0, $"{what} could not be stopped (errno {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()})");
     }
+
+    /// <summary>Asks it to end (SIGTERM), as the system asks a program, while it is still the process the test knew: on
+    /// macOS and Linux, which have the signal. One that ends meanwhile is as good.</summary>
+    public void Terminate()
+    {
+        if (Runs() && Libc.Signal(Id, SigTerm) != 0)
+        {
+            int error = System.Runtime.InteropServices.Marshal.GetLastPInvokeError();
+            Assert.True(error == NoSuchProcess, $"Process {Id} could not be asked to end (errno {error})");
+        }
+    }
+
+    /// <summary>Whether it still runs as the process the test knew: a process now given its id began later.</summary>
+    private bool Runs() => began != 0 && BeganNow(Id) == began;
+
+    /// <summary>Its process on Windows, held by its handle (its id then its own until let go), while it still runs as the
+    /// process the test knew; null once it has ended.</summary>
+    private Process? Held()
+    {
+        if (began == 0)
+        {
+            return null;
+        }
+        Process? found = null;
+        try
+        {
+            found = Process.GetProcessById(Id);
+            _ = found.SafeHandle;
+            if (!DotnetProcesses.Runs(found) || found.StartTime.ToUniversalTime().Ticks != began)
+            {
+                return null;
+            }
+            Process held = found;
+            found = null;
+            return held;
+        }
+        catch (Exception gone) when (gone is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return null;
+        }
+        finally
+        {
+            found?.Dispose();
+        }
+    }
+
+    private static void End(Process process, bool alone)
+    {
+        try
+        {
+#pragma warning disable RS0030 // The one end of a process found by its id, once it is shown to be the one the test knew.
+            if (alone)
+            {
+                process.Kill();
+            }
+            else
+            {
+                process.Kill(entireProcessTree: true);
+            }
+#pragma warning restore RS0030
+        }
+        catch (Exception ending) when (ending is InvalidOperationException or AggregateException or System.ComponentModel.Win32Exception)
+        {
+            // Ending already: Windows refuses to end a process of the tree that is.
+        }
+    }
+
+    /// <summary>When the process with this id began, as the system marks it (Windows' creation time in ticks, macOS's start
+    /// in microseconds, Linux's in clock ticks from boot); 0 when none runs by it. Read on macOS and Linux without .NET's
+    /// Process, whose calls there wait on the lock its reaping holds while a child of the test's process is stopped.</summary>
+    private static unsafe long BeganNow(int id)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                using Process process = Process.GetProcessById(id);
+                return DotnetProcesses.Runs(process) ? process.StartTime.ToUniversalTime().Ticks : 0;
+            }
+            catch (Exception gone) when (gone is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                return 0;
+            }
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            byte* info = stackalloc byte[BsdInfoSize];
+            return ProcPidInfo(id, ProcPidTbsdInfo, 0, info, BsdInfoSize) == BsdInfoSize && *(uint*)(info + BsdStatusOffset) != ZombieStatus
+                ? *(long*)(info + BsdStartOffset) * 1_000_000 + *(long*)(info + BsdStartOffset + 8)
+                : 0;
+        }
+        try
+        {
+            // The fields after the name, which may hold spaces and parentheses itself: the state is the 3rd, the start the 22nd.
+            string stat = File.ReadAllText($"/proc/{id}/stat");
+            string[] fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
+            return fields.Length > 19 && fields[0] is not ("Z" or "X")
+                && long.TryParse(fields[19], System.Globalization.CultureInfo.InvariantCulture, out long ticks) ? ticks : 0;
+        }
+        catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    private const int SigKill = 9;
+    private const int SigTerm = 15;
+
+    /// <summary>ESRCH, on macOS and Linux alike.</summary>
+    private const int NoSuchProcess = 3;
+
+    // macOS: proc_pidinfo's BSD side (struct proc_bsdinfo), its status and its start's seconds and microseconds.
+    private const int ProcPidTbsdInfo = 3;
+    private const int BsdInfoSize = 136;
+    private const int BsdStatusOffset = 4;
+    private const int BsdStartOffset = 120;
+
+    /// <summary>The BSD side's status of a process that has ended and waits for its parent (SZOMB).</summary>
+    private const uint ZombieStatus = 5;
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "proc_pidinfo")]
+    private static extern unsafe int ProcPidInfo(int pid, int flavor, ulong argument, byte* buffer, int size);
 
     [System.Runtime.InteropServices.DllImport("ntdll.dll")]
     private static extern int NtSuspendProcess(IntPtr process);
-
-    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "kill", SetLastError = true)]
-    private static extern int Signal(int process, int signal);
 }
 
 /// <summary>Where a process's threads wait, as macOS's sample sees them (it may read any of the user's processes): each
@@ -3062,7 +3244,7 @@ public static partial class NativeStacks
             Passenger.App.IdeErrors.Observe(heard);
             if (!sample.WaitForExit(TimeSpan.FromMinutes(1)))
             {
-                sample.Kill();
+                ChildProcesses.Kill(sample);
                 return $"\n{what}: sample did not finish in a minute";
             }
             // Once it has ended, until the last of what it wrote has been heard.

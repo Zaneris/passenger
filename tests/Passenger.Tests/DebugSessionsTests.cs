@@ -222,35 +222,35 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     public void A_session_whose_program_is_elsewhere_never_ends_a_process_here_by_its_programs_id()
     {
         MainWindow window = pair.Open(Counter, languageServer: false);
-        List<int> started = [];
+        List<OwnProcess> started = [];
         try
         {
-            (int here, int hereAdapter) = LeftRunning(window, "Here", elsewhere: false);
+            (OwnProcess here, OwnProcess hereAdapter) = LeftRunning(window, "Here", elsewhere: false);
             started.AddRange([here, hereAdapter]);
             // The IDE ends it on the window's thread as the adapter's end lands there: the wait runs that thread's loop.
-            Ui.PumpUntil(() => !Processes.IsRunning(here), "a session here to end the program its adapter let go of, left running");
+            Ui.PumpUntil(() => !Processes.IsRunning(here.Id), "a session here to end the program its adapter let go of, left running");
             DebugSession placed = window.Debugger.SessionNamed("Here")!;
-            string endedHere = DebugSession.EndedLeftRunning(Path.GetFileName(placed.Program), here);
+            string endedHere = DebugSession.EndedLeftRunning(Path.GetFileName(placed.Program), here.Id);
             Ui.WaitFor(() => window.Debugger.Output(placed).ToString().Contains(endedHere, StringComparison.Ordinal), $"the session here to say \"{endedHere}\"");
 
-            (int program, int adapter) = LeftRunning(window, "Elsewhere", elsewhere: true);
+            (OwnProcess program, OwnProcess adapter) = LeftRunning(window, "Elsewhere", elsewhere: true);
             started.AddRange([program, adapter]);
-            Assert.True(Processes.Gone(adapter), "The adapter that let the program go did not end");
+            Assert.True(Processes.Gone(adapter.Id), "The adapter that let the program go did not end");
             DebugSession elsewhere = window.Debugger.SessionNamed("Elsewhere")!;
             Ui.WaitFor(() => elsewhere.AdapterEnded.IsCompleted, "the adapter's end to reach the session, which ends a program left running");
-            Assert.True(Processes.IsRunning(program), "A session whose program is elsewhere ended the process of this machine that has its program's id");
-            Assert.DoesNotContain(DebugSession.EndedLeftRunning(Path.GetFileName(elsewhere.Program), program), window.Debugger.Output(elsewhere).ToString(), StringComparison.Ordinal);
+            Assert.True(Processes.IsRunning(program.Id), "A session whose program is elsewhere ended the process of this machine that has its program's id");
+            Assert.DoesNotContain(DebugSession.EndedLeftRunning(Path.GetFileName(elsewhere.Program), program.Id), window.Debugger.Output(elsewhere).ToString(), StringComparison.Ordinal);
         }
         finally
         {
             window.Close();
-            started.ForEach(Processes.Kill);
+            started.ForEach(left => left.Kill());
         }
     }
 
     /// <summary>A program launched under the debugger, its session here or elsewhere, which its adapter then lets go of and
-    /// goes, leaving it running; the program's process and the adapter's, once the session has ended.</summary>
-    private static (int Program, int Adapter) LeftRunning(MainWindow window, string name, bool elsewhere)
+    /// goes, leaving it running; the program's process and the adapter's, as they ran, once the session has ended.</summary>
+    private static (OwnProcess Program, OwnProcess Adapter) LeftRunning(MainWindow window, string name, bool elsewhere)
     {
         Passenger.App.Run.LaunchPlan plan = new()
         {
@@ -262,8 +262,8 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         Assert.Null(Ui.Await(window.Debugger.StartAsync(plan, elsewhere), $"{name}'s session to start"));
         DebugSession session = window.Debugger.SessionNamed(name)!;
         Assert.True(session.IsLocal != elsewhere, $"{name}'s session took its program for {(session.IsLocal ? "one of this machine's" : "another machine's")}");
-        int program = Ui.Await(session.ProcessStarted, $"{name}'s adapter to say which process it started");
-        int adapter = session.AdapterProcessId;
+        OwnProcess program = OwnProcess.Of(Ui.Await(session.ProcessStarted, $"{name}'s adapter to say which process it started"));
+        OwnProcess adapter = OwnProcess.Of(session.AdapterProcessId);
         // In its loop, it writes no more: on Windows its output is a pipe of the adapter's, which a write would find broken.
         Ui.WaitFor(() => window.Debugger.Output(session).ToString().Contains("looping", StringComparison.Ordinal), $"{name}'s program to say it loops");
         Task letGo = session.DetachAsync();
@@ -314,7 +314,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             window.Close();
             if (program is not null)
             {
-                Processes.Kill(program.Id);
+                ChildProcesses.Kill(program);
                 program.Dispose();
             }
         }
@@ -381,7 +381,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             window.Close();
             if (program is not null)
             {
-                Processes.Kill(program.Id);
+                ChildProcesses.Kill(program);
                 program.Dispose();
             }
         }
@@ -498,14 +498,14 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     public void A_failed_start_ends_the_output_it_followed_and_a_place_that_stopped_is_said_as_the_programs_end()
     {
         MainWindow window = pair.Open(Counter, languageServer: false);
-        List<int> followers = [];
+        List<OwnProcess> followers = [];
         EventHandler<ChildStart> started = (_, child) =>
         {
             if (child.Command.Contains("DebuggableConsoleApp", StringComparison.Ordinal))
             {
                 lock (followers)
                 {
-                    followers.Add(child.ProcessId);
+                    followers.Add(OwnProcess.Of(child.ProcessId));
                 }
             }
         };
@@ -521,7 +521,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             int follower;
             lock (followers)
             {
-                follower = Assert.Single(followers);
+                follower = Assert.Single(followers).Id;
             }
             Ui.PumpUntil(() => !Processes.IsRunning(follower), $"the output followed for the failed attach ({failed}) to be ended", TimeSpan.FromSeconds(30));
 
@@ -532,7 +532,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.Null(Ui.Await(window.Debugger.AttachAsync(looping.Id, "Placed", place: Here(follow: false, running: () => Task.FromResult(false))), "the attach in its place"));
             DebugSession placed = window.Debugger.SessionNamed("Placed")!;
             Ui.WaitFor(() => placed.State == DebugState.Running, "the program attached to in its place to run");
-            Processes.Kill(placed.AdapterProcessId);
+            OwnProcess.Of(placed.AdapterProcessId).Kill();
             Ui.WaitFor(() => placed.State == DebugState.Ended, "the session to end with its adapter");
             Assert.Equal("Debugging Placed ended: here stopped", window.Debugger.SummaryOf(placed));
             Assert.Null(placed.Failure);
@@ -543,11 +543,11 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             window.Close();
             lock (followers)
             {
-                followers.ForEach(Processes.Kill);
+                followers.ForEach(left => left.Kill());
             }
             if (looping is not null)
             {
-                Processes.Kill(looping.Id);
+                ChildProcesses.Kill(looping);
                 looping.Dispose();
             }
         }
@@ -585,7 +585,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             window.Close();
             if (looping is not null)
             {
-                Processes.Kill(looping.Id);
+                ChildProcesses.Kill(looping);
                 looping.Dispose();
             }
         }

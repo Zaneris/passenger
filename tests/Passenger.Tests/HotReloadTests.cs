@@ -105,7 +105,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     {
         using Debugging.Helpers.StartHold hold = new();
         MainWindow window = Open();
-        int program = 0;
+        OwnProcess program = default;
         try
         {
             window.SetConfigurations([new Passenger.App.Run.RunConfiguration
@@ -117,7 +117,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
             Task<int> held = hold.Held(TimeSpan.FromMinutes(3));
             // Not settled: the start holds the window's background work for as long as the debugger waits for the program.
             Assert.True(window.Perform(AppActions.Debug), $"Debug did not start: {Ui.Said(window)}");
-            program = Ui.AwaitPumped(held, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3));
+            program = OwnProcess.Of(Ui.AwaitPumped(held, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3)));
             DebugSession starting = window.Debugger.Session ?? throw new InvalidOperationException($"No session while the program was held: {window.Status}");
             Assert.Equal(DebugState.Starting, starting.State);
             window.OpenFile(GreeterPath);
@@ -139,7 +139,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
         finally
         {
             End(window);
-            Processes.Kill(program);
+            program.Kill();
         }
     }
 

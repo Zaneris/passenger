@@ -100,7 +100,7 @@ public sealed class McpSessionsTests : McpRig
             window.Close();
             if (program is { } running && DotnetProcesses.Runs(running))
             {
-                Processes.Kill(program.Id);
+                ChildProcesses.Kill(running);
             }
             program?.Dispose();
         }

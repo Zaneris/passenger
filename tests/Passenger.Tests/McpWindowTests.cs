@@ -911,11 +911,11 @@ public sealed class McpWindowDebuggingTests : McpRig, IClassFixture<RestoredFold
         File.WriteAllText(Path.Combine(Folder, "slow"), string.Empty);
         MainWindow window = AgentsWindow(Folder, languageServer: false);
         McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-        int step = 0;
+        OwnProcess step = default;
         try
         {
             Assert.True(window.Perform(AppActions.Build));
-            step = Processes.WrittenId(Path.Combine(Folder, "slow.pid"), "the build's slow step to start");
+            step = OwnProcess.Of(Processes.WrittenId(Path.Combine(Folder, "slow.pid"), "the build's slow step to start"));
 
             window.OpenFile(Path.Combine(Folder, "Sum.csproj"));
             window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(6, 0));
@@ -930,7 +930,7 @@ public sealed class McpWindowDebuggingTests : McpRig, IClassFixture<RestoredFold
         finally
         {
             window.Perform(AppActions.Stop);
-            Processes.Kill(step);
+            step.Kill();
             Ui.PumpUntil(() => !window.IsBuilding, "the build to stop", TimeSpan.FromMinutes(1));
             Gone(client);
             window.Close();

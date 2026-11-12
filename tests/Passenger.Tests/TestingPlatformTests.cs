@@ -243,12 +243,12 @@ public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, ICla
         CodeEditor editor = window.EditorArea.CodeEditor;
         editor.GoTo(new TextPosition(10, 8));
         Task<int> held = hold.Held(TimeSpan.FromMinutes(3));
-        int host = 0;
+        OwnProcess host = default;
         try
         {
             // Not settled: the start holds the window's background work while the debugger waits for the test host.
             Assert.True(window.Perform(AppActions.DebugTests), $"Debug Tests did not start: {Ui.Said(window)}");
-            host = Ui.AwaitPumped(held, "the build, then the test host's runtime to come to the hold", TimeSpan.FromMinutes(3));
+            host = OwnProcess.Of(Ui.AwaitPumped(held, "the build, then the test host's runtime to come to the hold", TimeSpan.FromMinutes(3)));
             TestNode four = Method(window, "Two_and_two_make_four")!;
             Assert.Equal(TestState.Running, four.State);
 
@@ -270,7 +270,7 @@ public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, ICla
         }
         finally
         {
-            Processes.Kill(host);
+            host.Kill();
         }
         window.Close();
 

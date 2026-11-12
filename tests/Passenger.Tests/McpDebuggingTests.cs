@@ -140,7 +140,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             }
             finally
             {
-                Processes.Kill(looping.Id);
+                ChildProcesses.Kill(looping);
             }
         }
 
@@ -281,14 +281,14 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
         Task<int> held = hold.Held(TimeSpan.FromMinutes(3));
         Task<CallToolResult> debugging = Result(client, McpTools.DebugStart, new() { ["configuration"] = "Sum: Held" });
-        int program = 0;
+        OwnProcess program = default;
         try
         {
             if (await Task.WhenAny(held, debugging) == debugging)
             {
                 Assert.Fail($"debug_start answered before the program came to the hold: {Text(await debugging)}{Said()}");
             }
-            program = await held;
+            program = OwnProcess.Of(await held);
 
             Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
             Assert.True(await Waiting.Within(debugging, TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken),
@@ -296,12 +296,12 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             CallToolResult stopped = await debugging;
             Assert.True(stopped.IsError == true && Text(stopped).Contains("Debugging Sum: Held was stopped as it started", StringComparison.Ordinal),
                 $"debug_start, stopped as it started, answered: {Text(stopped)}");
-            Assert.True(Processes.Gone(program), $"The agent's stop left the program running: {Processes.Describe(program)}");
+            Assert.True(Processes.Gone(program.Id), $"The agent's stop left the program running: {Processes.Describe(program.Id)}");
             Assert.Equal("not debugging", (await Call(client, McpTools.DebugState)).GetProperty("state").GetString());
         }
         finally
         {
-            Processes.Kill(program);
+            program.Kill();
         }
     }
 

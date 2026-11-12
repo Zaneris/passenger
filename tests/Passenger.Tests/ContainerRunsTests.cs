@@ -579,10 +579,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         {
             Launched(window, "the ticker to come up");
             Ui.WaitFor(() => Run(window).Contains("tick 2\n", StringComparison.Ordinal), "the ticker's lines in the Run window", TimeSpan.FromMinutes(1));
-            using (System.Diagnostics.Process log = System.Diagnostics.Process.GetProcessById(window.Runner.ProcessId ?? throw new InvalidOperationException("The run follows no log")))
-            {
-                log.Kill(entireProcessTree: true);
-            }
+            OwnProcess.Of(window.Runner.ProcessId ?? throw new InvalidOperationException("The run follows no log")).Kill();
             Ui.WaitFor(() => Run(window).Contains("services still run: following their log again", StringComparison.Ordinal) || !window.IsRunning,
                 "the run's log to be followed again", TimeSpan.FromMinutes(1));
             Assert.True(window.IsRunning, $"The run took its log's end for its own: {window.Status}\n{Run(window)}");

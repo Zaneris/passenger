@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -405,10 +404,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             CodeEditor editor = window.EditorArea.CodeEditor;
             editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.Length, 0, "let  more = 2;\n")]);
             Assert.True(window.Perform(AppActions.Save), "Save did not run");
-            using (Process runner = Process.GetProcessById(Processes.WrittenId(Path.Combine(held, "started"), "Prettier to start formatting first.js")))
-            {
-                runner.Kill();
-            }
+            OwnProcess.Of(Processes.WrittenId(Path.Combine(held, "started"), "Prettier to start formatting first.js")).Kill(alone: true);
             Ui.WaitFor(() => !first.IsModified, "first.js saved, though Prettier's runner ended as it formatted it");
             Assert.Equal("const first = 1;\nlet  more = 2;\n", File.ReadAllText(path));
             Assert.StartsWith("Prettier: Prettier's runner ended", window.Status, StringComparison.Ordinal);

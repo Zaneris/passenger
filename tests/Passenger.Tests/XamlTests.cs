@@ -2780,10 +2780,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             Ui.WaitFor(() => preview.Frame is not null, "the previewer's first frame", TimeSpan.FromSeconds(60));
             int killed = Assert.Single(Previewers());
 
-            using (System.Diagnostics.Process host = System.Diagnostics.Process.GetProcessById(killed))
-            {
-                host.Kill();
-            }
+            OwnProcess.Of(killed).Kill(alone: true);
             Ui.WaitFor(() => preview.Status.StartsWith("The previewer ended", StringComparison.Ordinal), () => $"the pane saying the previewer ended, not '{preview.Status}'");
             // Process.Kill ends it with TerminateProcess's -1 on Windows, and with SIGKILL on macOS and Linux.
             string exit = OperatingSystem.IsWindows() ? "exit code -1 (0xFFFFFFFF)" : "exit code 137 (SIGKILL)";

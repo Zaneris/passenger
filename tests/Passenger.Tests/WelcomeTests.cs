@@ -472,7 +472,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         string solution = PathNames.Canonical(Path.Combine(alpha, "App.slnx"));
         File.WriteAllText(solution, "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
         MainWindow window = Started(LaunchOptions.Empty with { Workspace = solution });
-        int step = 0;
+        OwnProcess step = default;
         try
         {
             window.OpenFile(program);
@@ -481,7 +481,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
 
             // A build under way, and an edit made since it saved the files.
             window.Perform(AppActions.Build);
-            step = Processes.WrittenId(Path.Combine(app, "build.pid"), "the build's step to start");
+            step = OwnProcess.Of(Processes.WrittenId(Path.Combine(app, "build.pid"), "the build's step to start"));
             window.KeyTextInput("// edited ");
             Assert.True(window.EditorArea.Active!.IsModified, "The edit typed did not reach the file");
 
@@ -497,7 +497,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
             Assert.Empty(window.ExplorerView.Tree.Rows);
             Assert.Equal("// edited Console.WriteLine(\"Hello\");\n", File.ReadAllText(program));
             Assert.False(window.IsBuilding, "The build still runs once its solution is closed");
-            Assert.True(Processes.Gone(step), $"The build's step went on running once its solution was closed: {Processes.Describe(step)}");
+            Assert.True(Processes.Gone(step.Id), $"The build's step went on running once its solution was closed: {Processes.Describe(step.Id)}");
             Assert.Null(window.CSharpService);
             Assert.True(Processes.Gone(server), "The language server went on running once its solution was closed");
             Assert.False(MenuItem(window, "File", "Close Solution").IsEnabled, "Close Solution can still run with nothing open");
@@ -511,7 +511,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         }
         finally
         {
-            Processes.Kill(step);
+            step.Kill();
             window.Close();
         }
     }

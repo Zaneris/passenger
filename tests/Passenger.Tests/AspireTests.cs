@@ -1174,15 +1174,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         Dictionary<int, string> left = Leftovers();
         foreach (int id in left.Keys)
         {
-            try
-            {
-                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
-                process.Kill();
-            }
-            catch (Exception ended) when (ended is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
-            {
-                // Gone meanwhile.
-            }
+            OwnProcess.Of(id).Kill(alone: true);
         }
         Assert.Fail($"The test's AppHost's programs outlived its window, and were ended:\n{string.Join("\n", left.Values)}");
     }

@@ -321,7 +321,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
                     debuggerRan ??= Processes.IsRunning(adapter);
                 }
             };
-            Processes.Kill(played);
+            OwnProcess.Of(played).Kill();
             Ui.WaitFor(() => session.State == DebugState.Ended, () => $"the game's session to end with the game ({Debugged(window)}; {Running([("Spinner", played)])})",
                 TimeSpan.FromMinutes(1));
             Assert.True(debuggerRan == true, "The game's session was shown ended only once its debugger had gone, not as the game ended");

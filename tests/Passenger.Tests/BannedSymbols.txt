@@ -30,3 +30,5 @@ M:Passenger.App.Aspire.AspireTelemetry.ReadTracesAsync(System.Uri,System.String,
 M:System.Diagnostics.Process.BeginOutputReadLine;A child's output is heard through ChildProcesses.Hear, as the IDE hears it, whose reads neither the child's end nor its process's disposal closes under them
 M:System.Diagnostics.Process.BeginErrorReadLine;A child's errors are heard through ChildProcesses.Hear, as the IDE hears them, whose reads neither the child's end nor its process's disposal closes under them
 M:System.GC.GetTotalMemory(System.Boolean);What an object keeps is counted by walking it (HeldBytes): the process's total also counts what the classes run beside a test let go of meanwhile
+M:System.Diagnostics.Process.Kill;A process a test started ends through ChildProcesses.Kill, and one found by its id through OwnProcess, while it is still the process the test knew: once a process has ended, its id may be any program's
+M:System.Diagnostics.Process.Kill(System.Boolean);A process a test started ends through ChildProcesses.Kill, and one found by its id through OwnProcess, while it is still the process the test knew: once a process has ended, its id may be any program's

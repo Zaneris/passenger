@@ -34,7 +34,7 @@ public sealed class TestGodotEditorsTests
         }
         finally
         {
-            Processes.Kill(game.Id);
+            ChildProcesses.Kill(game);
         }
     }
 }

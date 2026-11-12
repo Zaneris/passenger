@@ -65,7 +65,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
             Ui.Run(window, AppActions.ReattachToProcess);
             Ui.WaitFor(() => window.Debugger.Session is { State: DebugState.Paused or DebugState.Running } again && again != session, "Reattach to Process to attach again");
             DebugSession reattached = window.Debugger.Session!;
-            Processes.Kill(reattached.AdapterProcessId);
+            OwnProcess.Of(reattached.AdapterProcessId).Kill();
             Ui.WaitFor(() => reattached.State == DebugState.Ended, "the session to end with its docker exec");
             Ui.WaitFor(() => !Top(container).Contains(ContainerTools.Executable, StringComparison.Ordinal), "the adapter in the container to end once docker exec's CLI was killed");
             Assert.Equal("running", Docker.State(container));

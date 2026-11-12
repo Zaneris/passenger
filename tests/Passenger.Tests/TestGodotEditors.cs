@@ -26,7 +26,7 @@ public static class TestGodotEditors
                 if (process.Id != Environment.ProcessId && DotnetProcesses.Describe(process.Id) is { } game && NamesEditor(game.CommandLine, editor))
                 {
                     ended.Add($"process {game.Id}: {game.CommandLine}");
-                    Processes.Kill(game.Id);
+                    OwnProcess.Of(process).Kill();
                 }
             }
         }

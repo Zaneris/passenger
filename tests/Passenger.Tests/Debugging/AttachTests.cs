@@ -51,8 +51,12 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         first.GoWithoutDisconnecting();
         Assert.True(DotnetProcesses.Runs(debuggee), "The adapter ended the program it had only attached to when its client went without disconnecting");
 
+        // Held by its handle while it runs, so the second session's end takes no other process given its id.
+        Process found = Process.GetProcessById(debuggee.Id);
+        _ = found.SafeHandle;
+
         // Let go whole: it runs on, and another debugger can take hold of it.
-        await using DebugSession second = DebugSession.ForAttach(testOutputHelper, Process.GetProcessById(debuggee.Id));
+        await using DebugSession second = DebugSession.ForAttach(testOutputHelper, found);
         await second
             .InitializeAsync()
             .AttachAsync(debuggee.Id)

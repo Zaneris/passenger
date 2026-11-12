@@ -221,6 +221,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
         // No compiler server left for others' builds to use, which the kill would end under them.
         Process passenger = StartPassenger(["--mcp", Folder], environment: new() { ["UseSharedCompilation"] = "false" });
         List<int> started = [];
+        List<OwnProcess> own = [];
         Task<CallToolResult>? building = null;
         using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
         McpClient? client = null;
@@ -246,9 +247,10 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
             int shell = await WrittenId("shell.pid", "the terminal's shell");
 
             started.AddRange(Processes.Descendants(passenger.Id));
+            own.AddRange(started.Select(OwnProcess.Of));
             Assert.Subset(started.ToHashSet(), new HashSet<int> { load, run, debugged, build, shell });
             giveUp.Cancel();
-            passenger.Kill();
+            OwnProcess.Of(passenger).Kill(alone: true);
             string[] left = [.. started.Where(id => !Processes.Gone(id)).Select(Processes.Describe)];
             Assert.True(left.Length == 0, $"Passenger, killed, left running {left.Length} of the {started.Count} processes it had started:\n{string.Join('\n', left)}");
         }
@@ -257,9 +259,9 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
             // Given up before the kill, so the client's word of it reaches a Passenger still there.
             giveUp.Cancel();
             ChildProcesses.Kill(passenger);
-            foreach (int id in started)
+            foreach (OwnProcess process in own)
             {
-                Processes.Kill(id);
+                process.Kill();
             }
             // The build's call ends with the server; its failure is nobody's to report.
             _ = building?.ContinueWith(call => call.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
@@ -305,6 +307,7 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
         // No compiler server among what the build starts, which is the machine's to share.
         Process passenger = StartPassenger(["--mcp", two], environment: new() { ["UseSharedCompilation"] = "false" }, languageServer: false);
         List<int> left = [];
+        List<OwnProcess> own = [];
         McpClient? client = null;
         try
         {
@@ -324,6 +327,7 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
                 JsonElement built = await building;
                 Assert.True(built.GetProperty("succeeded").GetBoolean(), built.GetProperty("outcome").GetString());
                 left.AddRange(during.Where(Processes.IsRunning));
+                own.AddRange(left.Select(OwnProcess.Of));
                 if (left.Count == 0 && build == NodeBuilds)
                 {
                     Assert.Fail($"{NodeBuilds} builds left nothing for the next build to use, so there is nothing to see end with Passenger.{NoNodeLeft(passenger.Id, during, listed)}");
@@ -332,7 +336,7 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
 
             if (killed)
             {
-                passenger.Kill();
+                OwnProcess.Of(passenger).Kill(alone: true);
             }
             else
             {
@@ -346,7 +350,7 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
         finally
         {
             ChildProcesses.Kill(passenger);
-            left.ForEach(Processes.Kill);
+            own.ForEach(process => process.Kill());
             if (client is not null)
             {
                 try
@@ -404,7 +408,7 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
             ChildProcesses.Kill(passenger);
             foreach (int id in Processes.SaltedBuilds(salt).Keys)
             {
-                Processes.Kill(id);
+                OwnProcess.Of(id).Kill();
             }
             if (client is not null)
             {

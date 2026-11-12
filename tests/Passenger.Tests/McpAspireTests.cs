@@ -453,14 +453,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             int[] killed = [.. orchestrator, .. orchestrator.SelectMany(Processes.Descendants), .. Processes.Descendants(passenger.Id), passenger.Id];
             foreach (int id in killed.Distinct())
             {
-                try
-                {
-                    using Process process = Process.GetProcessById(id);
-                    process.Kill();
-                }
-                catch (Exception gone) when (gone is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
-                {
-                }
+                OwnProcess.Of(id).Kill(alone: true);
             }
             await Until(() => killed.All(id => !Processes.IsRunning(id)), "Passenger, its children and the orchestrator killed");
             Assert.Equal("running", await Docker.StateAsync(session));
@@ -495,7 +488,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             });
             await Restore.RunAsync(PathNames.Canonical(starter));
         }, starter);
-        int[] held = [];
+        OwnProcess[] held = [];
         try
         {
             McpClient client = await Start(["--mcp", starter], languageServer: false);
@@ -514,14 +507,14 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             int[] orchestrator = [.. Processes.Listed().Where(process => process.Value.Contains("dcp start-apiserver", StringComparison.Ordinal)
                 && process.Value.Contains($"--monitor {host.ToString(CultureInfo.InvariantCulture)} ", StringComparison.Ordinal)).Select(process => process.Key)];
             Assert.NotEmpty(orchestrator);
-            held = [.. orchestrator.Concat(orchestrator.SelectMany(Processes.Descendants)).Distinct()];
-            foreach (int id in held)
+            held = [.. orchestrator.Concat(orchestrator.SelectMany(Processes.Descendants)).Distinct().Select(OwnProcess.Of)];
+            foreach (OwnProcess process in held)
             {
-                Processes.Suspend(id, "The orchestrator");
+                process.Suspend("The orchestrator");
             }
             int[] children = [.. Processes.Descendants(passenger.Id)];
             Assert.Contains(host, children);
-            passenger.Kill();
+            OwnProcess.Of(passenger).Kill(alone: true);
             await Until(() => !Processes.IsRunning(passenger.Id), "Passenger killed alone");
             await Until(() => !Processes.IsRunning(host), "the watchdog to end the AppHost its Passenger started");
             await Until(async () => await Docker.StateAsync(session) is null, "the watchdog's last command to remove the session container the AppHost's orchestrator made");
@@ -529,9 +522,9 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         }
         finally
         {
-            foreach (int id in held)
+            foreach (OwnProcess process in held)
             {
-                Processes.Kill(id);
+                process.Kill();
             }
             await AspireContainersTests.RemoveMadeAsync();
         }

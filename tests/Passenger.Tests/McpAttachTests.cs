@@ -103,11 +103,11 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         giveUp.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
 
+        OwnProcess asked = OwnProcess.Of(proxy);
         proxy.StandardInput.Close();
         Waiting.For(TimeSpan.FromMilliseconds(20), "OpenCode 1's moment between closing the input and SIGTERM");
-        // Gone already, the signal finds no process, which is as good.
-        await ChildProcesses.RunAsync(ChildProcesses.Command("/bin/kill", ["-TERM", proxy.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)]),
-            limit: TimeSpan.FromSeconds(30), answers: [1], cancel: Cancel);
+        // Gone already, it is sent nothing, which is as good.
+        asked.Terminate();
         await Until(() => !DotnetProcesses.Runs(proxy), "the agent's server to end");
         Assert.Equal(0, proxy.ExitCode);
         await Until(() => !Processes.IsRunning(started), "the Passenger the agent started to end with it");
@@ -1052,7 +1052,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
     {
         MainWindow window = AgentsWindow(Folder);
         McpClient? client = null;
-        int suspended = 0;
+        OwnProcess suspended = default;
         using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
         try
         {
@@ -1066,8 +1066,8 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             Assert.DoesNotContain(InFlight.Now(), piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal));
             Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
             (server.SlowRequest, server.ResponseLimit) = (TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
-            suspended = server.ProcessId;
-            Processes.Suspend(suspended, "The test's language server");
+            suspended = OwnProcess.Of(server.ProcessId);
+            suspended.Suspend("The test's language server");
 
             // A file the server has not been asked of, so the call waits on it (Helper.cs's last pull would answer it).
             Task<CallToolResult> diagnostic = Waiting.Apart(() => revokeConnection
@@ -1092,15 +1092,12 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             }
             Ui.PumpUntil(() => !InFlight.Now().Any(piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal)),
                 "the diagnostic request to clear while its server is still suspended", TimeSpan.FromSeconds(10));
-            Assert.True(Processes.IsRunning(suspended), "The request cleared only because its language server ended");
+            Assert.True(Processes.IsRunning(suspended.Id), "The request cleared only because its language server ended");
         }
         finally
         {
             giveUp.Cancel();
-            if (suspended != 0)
-            {
-                Processes.Kill(suspended);
-            }
+            suspended.Kill();
             try
             {
                 if (client is not null)

@@ -334,7 +334,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
             Passenger.App.CSharp.CSharpService csharp = window.CSharpService!;
             HeldFeed held = new(csharp.Feed!);
             csharp.Feed = held;
-            System.Diagnostics.Process.GetProcessById(first).Kill();
+            OwnProcess.Of(first).Kill(alone: true);
             ProgramFoundAsItStarts(window, held, "tool.cs");
             int again = AllServed(window, first, program, extra, greeter);
             string[] trace = Trace(again);

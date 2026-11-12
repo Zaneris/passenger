@@ -133,7 +133,7 @@ public sealed class LaunchHandOffTests
             first.StandardInput.Close();
             if (!Ui.Pumped(() => !DotnetProcesses.Runs(first), TimeSpan.FromSeconds(30)))
             {
-                first.Kill(entireProcessTree: true);
+                OwnProcess.Of(first).Kill();
             }
             Ui.AwaitPumped(said, "the first launch's standard error to end");
         }
@@ -169,7 +169,7 @@ public sealed class LaunchHandOffTests
         {
             if (DotnetProcesses.Runs(launch))
             {
-                launch.Kill(entireProcessTree: true);
+                OwnProcess.Of(launch).Kill();
             }
         }
     }
