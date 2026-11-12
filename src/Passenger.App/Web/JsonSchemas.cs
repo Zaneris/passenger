@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Passenger.App.Settings;
 using Passenger.Core;
 
@@ -32,7 +31,8 @@ public sealed class JsonSchemas(Func<bool> download)
     /// <summary>A schema is some kilobytes, the largest SchemaStore lists some megabytes.</summary>
     private static readonly HttpClient Http = OutboundHttp.Client(TimeSpan.FromSeconds(15), most: 64 * 1024 * 1024);
 
-    private readonly ConcurrentDictionary<string, Task<string>> downloaded = new(StringComparer.Ordinal);
+    /// <summary>Each schema downloaded, or under way, by its URI: one that failed is downloaded again by the next ask.</summary>
+    private readonly SharedWork<string, string> downloaded = new(schema => schema.IsCompletedSuccessfully, StringComparer.Ordinal);
 
     /// <summary>Where the carried schemas are, beside the app.</summary>
     public static string Folder => Path.Combine(WebLanguages.Carried, "schemas");
@@ -66,15 +66,13 @@ public sealed class JsonSchemas(Func<bool> download)
         {
             throw new InvalidOperationException($"{uri} is not downloaded: {SettingsDialog.PlaceOfPage(SettingsDialog.SchemasPage)} does not allow it");
         }
-        Task<string> fetching = downloaded.GetOrAdd(uri, _ => DownloadAsync(From(asked)));
+        Task<string> fetching = downloaded.Take(uri, () => DownloadAsync(From(asked)));
         try
         {
             return await fetching.WaitAsync(cancel);
         }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        catch (Exception error) when (fetching.IsCompleted && error is HttpRequestException or TaskCanceledException)
         {
-            // Asked again next time: a network that comes back finds it.
-            downloaded.TryRemove(new KeyValuePair<string, Task<string>>(uri, fetching));
             throw new InvalidOperationException($"{uri} could not be downloaded: {error.Message}", error);
         }
     }
