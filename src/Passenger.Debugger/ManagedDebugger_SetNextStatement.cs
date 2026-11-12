@@ -70,7 +70,7 @@ public partial class ManagedDebugger
         _logger?.Invoke($"Set Next Statement on thread {threadId} to IL_{ilOffset:X4}: the runtime says 0x{safe:X8}");
         if (safe is not (Cor.S_OK or FromPartWay))
         {
-            throw new InvalidOperationException($"The program cannot go on from there: {WhyNotThere(safe)}");
+            throw new InvalidOperationException($"The program cannot go on from there: {WhyNotThere(safe, info.Thread)}");
         }
         frame.SetIP(ilOffset);
         ForgetReturnedValues();
@@ -83,8 +83,9 @@ public partial class ManagedDebugger
         ReportStop(threadId, StopReasons.Goto);
     }
 
-    /// <summary>Why the runtime will not move a thread to a place, in a person's words, by its answer to CanSetIP.</summary>
-    private static string WhyNotThere(int answer) => unchecked((uint)answer) switch
+    /// <summary>Why the runtime will not move a thread to a place, in a person's words, by its answer to CanSetIP. A frame the
+    /// runtime's own code runs above (<see cref="TopFrame"/>) is no leaf to it: at an exception, its dispatch.</summary>
+    private static string WhyNotThere(int answer, ICorDebugThread thread) => unchecked((uint)answer) switch
     {
         PartWayThrough => "the code there is part way through a statement, which would go on without what its start computes",
         0x8013130E => "it is inside a finally block, which runs only as its try block is left",
@@ -92,7 +93,11 @@ public partial class ManagedDebugger
         0x80131310 => "it is inside a catch block, which runs only for an exception it catches",
         0x8013131F => "the program is in a catch block, which this system lets it leave only by its end",
         0x8013131C => "it would enter or leave an exception filter",
-        0x80131333 => "the thread is stopped at an exception being thrown",
+        0x80131333 => AtException,
+        0x80131311 when thread.TryGetCurrentException(out _) is Cor.S_OK => AtException,
+        0x80131311 => "the runtime's own code runs above the method, called from it",
         _ => $"the runtime will not move the thread there (0x{answer:X8})",
     };
+
+    private const string AtException = "the thread is stopped at an exception being thrown";
 }
