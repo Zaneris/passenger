@@ -1,5 +1,6 @@
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
+using Passenger.Core;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 
 namespace Passenger.Debugger;

@@ -138,11 +138,16 @@ public partial class MainWindow
     }
 
     /// <summary>What attaching in a container takes: the program by its id there, reached through Passenger's tools
-    /// (<see cref="ProgramInContainerAsync"/>), and the adapter's place, docker exec.</summary>
+    /// (<see cref="ProgramInContainerAsync"/>), and the adapter's place, docker exec, its paths the open folder's files as
+    /// the image was built from them (<see cref="ContainerReach.PathsAsync"/>), else as the folder has them by name
+    /// (<see cref="WorkspaceSources"/>).</summary>
     private async Task<(DotnetProcess Target, AdapterPlace Place)> InContainerAsync(DotnetProcess process, string container, Working held)
     {
+        (string? folder, string? indexed, IReadOnlyList<string> files) = (session.Folder, session.Index.Root, session.Index.Files);
         (DotnetProcess target, ContainerReach reach) = await ProgramInContainerAsync(process, container, UiThread.Marshal<string>(held.Say), held.Stopping);
-        return (target, reach.Adapter(process.Program, ContainerPaths.None));
+        (ContainerPaths paths, WorkspaceSources? sources) = await BackgroundWork.Run(async () =>
+            (folder is null ? ContainerPaths.None : await reach.PathsAsync(folder, held.Stopping), indexed is null ? null : new WorkspaceSources(indexed, files)), held.Stopping);
+        return (target, reach.Adapter(process.Program, paths) with { Sources = sources });
     }
 
     /// <summary>A program in a container reached through Passenger's tools (<see cref="ContainerTools.ReachAsync"/>) and found

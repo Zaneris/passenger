@@ -18,11 +18,11 @@ namespace Passenger.Tests;
 /// <summary>Debugging a .NET program in a container Passenger did not start, as a person does with Attach to Process: the
 /// program listed under its container, attached to by Passenger's own adapter inside the container (copied in first, over
 /// docker exec), stopping at a breakpoint, evaluating and stepping, and running on after Detach, or after Stop where it is
-/// the container's first process, attached to again; on Alpine (musl) too; a
-/// build whose PDB names the container's paths, or a Windows machine's, stopping at its breakpoint by the document in the
-/// container, the path map at the protocol's edge, and case as Windows names files; and the tools downloaded from their
-/// release, checked against SHA256SUMS. Each skips, saying why, where no Linux engine runs. The program is built on this
-/// machine for .NET 10 and copied into images of .NET's own runtime, labelled as the run's (<see cref="Turns"/>).</summary>
+/// the container's first process, attached to again; on Alpine (musl) too; a build whose PDB names the container's paths,
+/// or a Windows machine's, or an image's build of the folder (by its Compose file's Dockerfile, or a deterministic build's
+/// /_/), stopping at its breakpoint and showing in the folder's file, case as Windows names files; and the tools downloaded
+/// from their release, checked against SHA256SUMS. Each skips, saying why, where no Linux engine runs. The program is built
+/// here for .NET 10 and copied into images of .NET's own runtime, labelled as the run's (<see cref="Turns"/>).</summary>
 [Collection(Alone.Name)]
 public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns) : IClassFixture<ContainerDebuggingTests.Turns>
 {
@@ -233,6 +233,68 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         }
     }
 
+    /// <summary>A program whose image the folder's own Compose file built from its Dockerfile, which copies the folder into
+    /// /src where the PDB names its sources, the folder holding another Program.cs of that name under samples/: attached
+    /// to, its stop opens the folder's own file at its line, as the top frame names it, the image's paths read from the
+    /// Dockerfile of the service Compose's labels on the container name. With no map, the stop showed nowhere (#1523).</summary>
+    [AvaloniaFact]
+    public void A_program_built_in_its_image_by_the_folders_compose_file_stops_in_the_folders_file_which_its_top_frame_opens()
+    {
+        Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
+        string project = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}turnscomposed";
+        string label = Docker.RunLabel.Replace("=", ": \"", StringComparison.Ordinal) + "\"";
+        string compose = Path.Combine(turns.Composed, "compose.yaml");
+        File.WriteAllText(compose, $"name: {project}\nservices:\n  turns:\n    build:\n      context: .\n      labels: {{ {label} }}\n    labels: {{ {label} }}\n"
+            + $"networks:\n  default:\n    labels: {{ {label} }}\n");
+        Docker.Run("compose", "-f", compose, "up", "-d", "--build", "--wait");
+        string container = $"{project}-turns-1";
+        Ui.WaitFor(() => Turned(container) > 0, "the program Compose started to start counting");
+        StopsInTheFoldersFile(turns.Composed, container);
+    }
+
+    /// <summary>A deterministic build's program (its PDB naming <c>/_/Turns/Program.cs</c>) in an image of the build alone,
+    /// run by hand, of which the folder says nothing: attached to, its stop opens the one file of the folder its path ends
+    /// in, as a breakpoint there bound to it (#1523).</summary>
+    [AvaloniaFact]
+    public void A_deterministic_build_in_a_container_run_by_hand_stops_in_the_folders_file_its_path_ends_in()
+    {
+        Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
+        string container = Start("deterministic", turns.DeterministicImage);
+        StopsInTheFoldersFile(turns.Deterministic, container);
+    }
+
+    /// <summary>Attaches to the program in a container from a window on a folder, the breakpoint set in its Turns/Program.cs
+    /// and the file closed: the stop opens that file at its line, the top frame naming it.</summary>
+    private static void StopsInTheFoldersFile(string folder, string container)
+    {
+        string source = Path.Combine(folder, "Turns", "Program.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(source);
+            Ui.Settle();
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(Said, 4));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.CloseTab);
+            Assert.NotEqual(source, window.EditorArea.Active?.Path);
+            AttachToProcessDialog dialog = OpenAttachToProcess(window);
+            ChooseIn(dialog, container);
+            dialog.Attach();
+            StoppedAtBreakpoint(window, $"the program in {container}");
+            ShownAt(window, Said);
+            Assert.Equal(source, window.EditorArea.Active?.Path);
+            DebugSession session = window.Debugger.Session!;
+            IReadOnlyList<Passenger.Dap.DapStackFrame> frames = Ui.Await(session.StackTraceAsync(session.StoppedThread ?? 0), "the stop's frames");
+            Assert.Equal(source, frames[0].Source?.Path);
+            Assert.True(window.Perform(AppActions.Detach), "Detach could not run");
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugger to let go");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>With no copy of the tools here, attaching downloads the release's of this version from its feed (a stand-in
     /// on loopback), checked against the release's SHA256SUMS, and caches them; a SHA256SUMS that names other bytes is
     /// refused, the status bar saying so, and nothing is copied into the container.</summary>
@@ -385,8 +447,9 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         return Ui.Await(session.EvaluateAsync(expression, frames[0].Id, Dap.EvaluateContexts.Watch), $"{expression} to be evaluated").Result;
     }
 
-    /// <summary>The program the tests debug, built here in Debug for .NET 10 four ways (as it is, naming the container's
-    /// paths, naming a Windows machine's), each copied into an image of .NET's runtime (Debian's, and Alpine's for musl),
+    /// <summary>The program the tests debug, built here in Debug for .NET 10 several ways (as it is, naming the container's
+    /// paths, naming a Windows machine's, in two checkouts as their images' builds name them), each copied into an image of
+    /// .NET's runtime (Debian's, and Alpine's for musl),
     /// and Passenger's container tools for the engine's processor made where a dev build finds them
     /// (artifacts/container-tools), as <c>just container-tools</c> makes them: a publish of each system, some seconds when
     /// they are up to date. The images carry the run's label and go with the run's containers as it ends (Docker.RemoveEverything).</summary>
@@ -441,7 +504,48 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
             Alpine = await Image("alpine", "mcr.microsoft.com/dotnet/runtime:10.0-alpine", host, null);
             Mapped = await Image("mapped", "mcr.microsoft.com/dotnet/runtime:10.0", mapped, Folder("mapped"));
             Windows = await Image("windows", "mcr.microsoft.com/dotnet/runtime:10.0", windows, null);
+            Composed = await Checkout("composed", "/src/");
+            // A copy of the program elsewhere in the folder, whose Program.cs ends as the image's does: only the Dockerfile tells them apart.
+            await File.WriteAllTextAsync(Path.Combine(Directory.CreateDirectory(Path.Combine(Composed, "samples", "Turns")).FullName, "Program.cs"), Program);
+            await File.WriteAllTextAsync(Path.Combine(Composed, "Dockerfile"), """
+                FROM mcr.microsoft.com/dotnet/runtime:10.0 AS build
+                WORKDIR /src
+                COPY . .
+
+                FROM mcr.microsoft.com/dotnet/runtime:10.0
+                COPY --from=build /src/out/ /app/
+                ENTRYPOINT ["dotnet", "/app/Turns.dll"]
+
+                """);
+            Deterministic = await Checkout("deterministic", "/_/");
+            await File.WriteAllTextAsync(Path.Combine(Deterministic, "Dockerfile"), """
+                FROM mcr.microsoft.com/dotnet/runtime:10.0
+                COPY out/ /app/
+                ENTRYPOINT ["dotnet", "/app/Turns.dll"]
+
+                """);
+            DeterministicImage = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}-turns:deterministic";
+            await Docker.RunAsync(["build", "-q", .. await Docker.LoadAsync(), "--label", Docker.RunLabel, "-t", DeterministicImage, Deterministic]);
         }
+
+        /// <summary>A person's checkout of the program, Turns/ in a folder of its own, its Dockerfile's build copying the
+        /// folder in at <paramref name="copiedTo"/>, where the PDB names its sources: built here into its out/ so.</summary>
+        private async Task<string> Checkout(string variant, string copiedTo)
+        {
+            string folder = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(root, "checkout-" + variant)).FullName);
+            await ContainerPrograms.BuildAsync(Path.Combine(folder, "Turns"), Project, Program, Path.Combine(folder, "out"), copiedTo + "Turns/");
+            return folder;
+        }
+
+        /// <summary>A checkout whose Dockerfile copies it into /src, which its PDB names, holding a copy of the program under
+        /// samples/ too, for its own Compose file to build and run.</summary>
+        public string Composed { get; private set; } = string.Empty;
+
+        /// <summary>A checkout built deterministically, its PDB naming <c>/_/Turns/Program.cs</c>.</summary>
+        public string Deterministic { get; private set; } = string.Empty;
+
+        /// <summary>The deterministic build's image, which holds the build alone.</summary>
+        public string DeterministicImage { get; private set; } = string.Empty;
 
         /// <summary>Why no container runs here, or null.</summary>
         public string? WhyNot { get; private set; }
