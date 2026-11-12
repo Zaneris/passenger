@@ -67,8 +67,11 @@ public partial class MainWindow
     /// following them has, and kept when they are kept.</summary>
     public void ApplySettings(AppSettings next) => settingsStore.Apply(settings, next);
 
+    /// <summary>The settings as this window last showed them, a Settings dialog's preview too.</summary>
     private AppSettings visualSettings = new();
 
+    /// <summary>The window's share of the look follows the settings shown: each editor's, the title bar's, the menu's, the
+    /// terminal's.</summary>
     private void OnPreviewChanged(object? sender, EventArgs args)
     {
         AppSettings next = settingsStore.Effective;
@@ -79,6 +82,10 @@ public partial class MainWindow
         FollowViewSettings(visualSettings, next);
         FollowTitleBar(next);
         FollowMainMenu(next);
+        if (terminal is { } panel)
+        {
+            FollowTerminalLook(panel, next, visualSettings);
+        }
         session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
         visualSettings = next;
     }

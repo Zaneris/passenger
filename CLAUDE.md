@@ -160,8 +160,9 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   by each window with it open; writes hold a lock every process honours (`StateFile.Hold`); a renamed key moves in
   `IStateDocument.Renamed`; a value of the wrong kind is passed over alone. A new setting: an `AppSettings` property,
   its row and range in `Declared` (refused values `Refused`, which Settings and `settings_set` ask), `Add`ed in
-  `SettingsDialog`, a line in `MainWindow.Follow` or `SettingsStore.InForce`; a row another setting voids says so
-  (`SettingRow.When`).
+  `SettingsDialog`, a line in `MainWindow.Follow` or `SettingsStore.InForce`, a look's in `SettingsPreview.Over` and
+  `MainWindow.OnPreviewChanged` (`VisualsInForce`) instead, so Settings shows it before Apply; a row another setting
+  voids says so (`SettingRow.When`).
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
   Find Action, context menus and MCP's `ide_action` all run it; `WhyNot` greys it with why; titles come from the
   registry (`TitleWhere`), one that asks more ending in "…"; what's missing is said in `Refusals`' words (RefusalsTests

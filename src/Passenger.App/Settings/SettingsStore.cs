@@ -16,6 +16,8 @@ public sealed class SettingsStore : IDisposable
     private readonly FileSystemWatcher? watcher;
     private AppSettings value;
     private readonly List<SettingsPreview> previews = [];
+
+    /// <summary>The settings as last shown, which the process's share of the look and the windows have followed.</summary>
     private AppSettings? effective;
     private bool inForce;
     private bool disposed;
@@ -77,11 +79,14 @@ public sealed class SettingsStore : IDisposable
     /// <summary>The settings in force.</summary>
     public AppSettings Value => value;
 
-    /// <summary>Committed settings with the active dialogs' visual edits over them.</summary>
+    /// <summary>The settings as shown: those in force with the looks open Settings dialogs changed put over them.</summary>
     public AppSettings Effective => previews.Aggregate(value, (now, preview) => preview.Over(now));
 
+    /// <summary>The settings as shown changed, by a change in force or a Settings dialog's preview; raised once the
+    /// process's share of the look is in force.</summary>
     public event EventHandler? PreviewChanged;
 
+    /// <summary>A Settings dialog's preview of the look, shown until it is disposed.</summary>
     public SettingsPreview BeginPreview()
     {
         SettingsPreview preview = new(this);
@@ -95,15 +100,20 @@ public sealed class SettingsStore : IDisposable
         RefreshPreview();
     }
 
+    /// <summary>The settings as shown followed, where a preview changed them: an edit of behaviour redraws nothing.</summary>
     internal void RefreshPreview()
     {
         AppSettings next = Effective;
+        if (next == effective)
+        {
+            return;
+        }
         VisualsInForce(effective ?? value, next);
         effective = next;
         PreviewChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Whether these settings are kept in a file.</summary>
+    /// <summary>Whether the settings are kept in a file (the person's), rather than a window's own.</summary>
     public bool IsKept => document is not null;
 
     /// <summary>The system's watcher of settings.json; null for a window's own settings, or a file that could not be watched.</summary>
@@ -228,7 +238,7 @@ public sealed class SettingsStore : IDisposable
         PreviewChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>What belongs to the process, put in force once for every window: the theme, its dark or light and the
+    /// <summary>The process's share of the look, put in force once for every window: the theme, its dark or light and the
     /// code's colours only when their settings change, so one named on the command line stands until then; the code font and
     /// the window's.</summary>
     private static void VisualsInForce(AppSettings? before, AppSettings after)
@@ -251,6 +261,8 @@ public sealed class SettingsStore : IDisposable
         }
     }
 
+    /// <summary>What belongs to the process, put in force once for every window: its share of the look, the keymap and the
+    /// logs' switches.</summary>
     private static void InForce(AppSettings? before, AppSettings after)
     {
         VisualsInForce(before, after);

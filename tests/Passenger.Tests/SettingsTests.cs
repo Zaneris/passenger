@@ -112,6 +112,46 @@ public sealed class SettingsTests : IDisposable
         }
     }
 
+    /// <summary>Settings shows the soft wrap of the files it names and the terminal's size and cursor as they are changed,
+    /// before Apply, and the file and the terminal go back as it closes unapplied.</summary>
+    [AvaloniaFact]
+    public void Soft_wrap_and_the_terminals_size_and_cursor_show_as_changed_in_settings_and_go_back_as_it_closes_unapplied()
+    {
+        TestFolders.Write(folder, "Long.cs", "class Long { }\n");
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "Long.cs"));
+            Ui.Settle();
+            Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+            Assert.False(document.SoftWrap);
+            Passenger.Terminal.TerminalView view = window.TerminalPanel.View;
+            Assert.Equal((13, Passenger.Terminal.CursorShape.Block), (view.FontSize, view.CursorStyle));
+            SettingsDialog dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.EditorPage;
+            Ui.Settle();
+            Editor<TextBox>(dialog, "Soft-wrap these files").Text = AppSettings.DefaultSoftWrapFiles + "; *.cs";
+            Ui.Settle();
+            Assert.True(document.SoftWrap, "Long.cs is among the files Settings now soft-wraps, but it is not wrapped before Apply");
+            dialog.Page = SettingsDialog.TerminalPage;
+            Ui.Settle();
+            Editor<NumericUpDown>(dialog, "Font size").Value = 21;
+            Editor<ComboBox>(dialog, "Cursor style").SelectedIndex = 1;
+            Ui.Settle();
+            Assert.Equal((21, Passenger.Terminal.CursorShape.Bar), (view.FontSize, view.CursorStyle));
+            Assert.Equal((AppSettings.DefaultSoftWrapFiles, 13), (window.Settings.SoftWrapFiles, window.Settings.TerminalFontSize));
+
+            dialog.Close();
+            Ui.Settle();
+            Assert.False(document.SoftWrap, "Settings closed unapplied, but Long.cs is still soft-wrapped");
+            Assert.Equal((13, Passenger.Terminal.CursorShape.Block), (view.FontSize, view.CursorStyle));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Terminal_preferences_apply_to_the_view_and_are_kept_for_the_next_window()
     {
@@ -145,11 +185,11 @@ public sealed class SettingsTests : IDisposable
         again.Close();
     }
 
-    /// <summary>The terminal's font chosen in Settings › Terminal is put in force only by Apply or OK; JetBrains Mono chosen
-    /// there stays the terminal's while the editor's font changes, and Same as the editor has it follow the editor's
-    /// again.</summary>
+    /// <summary>The terminal's font chosen in Settings › Terminal shows at once and goes back as Settings closes unapplied;
+    /// JetBrains Mono applied there stays the terminal's while the editor's font changes, and Same as the editor has it
+    /// follow the editor's again.</summary>
     [AvaloniaFact]
-    public void A_terminal_font_waits_for_apply_and_same_as_the_editor_follows_the_editors_font()
+    public void A_terminal_font_shows_as_chosen_until_settings_closes_unapplied_and_same_as_the_editor_follows_the_editors_font()
     {
         string font = OtherTerminalFont();
         MainWindow window = Open();
@@ -161,6 +201,9 @@ public sealed class SettingsTests : IDisposable
             Passenger.Terminal.TerminalView view = window.TerminalPanel.View;
             SettingsDialog dialog = TerminalDialog(window);
             ChooseRow(FontList(dialog), font);
+            Ui.Settle();
+            Assert.Equal(font, view.FontFamily.Name);
+            Assert.Null(window.Settings.TerminalFontFamily);
             dialog.Close();
             Assert.Equal(CodeFonts.Carried, view.FontFamily.Name);
 
