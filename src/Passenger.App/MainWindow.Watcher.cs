@@ -56,7 +56,8 @@ public partial class MainWindow
         }
         else if (changes.Structure)
         {
-            Explorer.RefreshFolders(changes.Paths.Select(Path.GetDirectoryName).OfType<string>());
+            // Only what came or went changes a folder's rows: Windows names a folder too as what is in it changes.
+            Explorer.RefreshFolders(changes.ComeOrGone.Select(Path.GetDirectoryName).OfType<string>());
             // A file come or gone may be one a project's wildcards take in (its folder's stamp says which), or a project's own.
             session.CameOrWent(cameOrWent);
         }

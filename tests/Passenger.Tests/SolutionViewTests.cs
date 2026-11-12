@@ -1472,6 +1472,36 @@ public sealed class SolutionViewTests : IDisposable
         }
     }
 
+    /// <summary>A folder cut and pasted into a folder New Folder just made, which the project shows only as a folder empty
+    /// on disk until it is evaluated again, leaves that folder's row the row it was as the folder above both is read again
+    /// before the evaluation: only the rows of the folder moved are made again.</summary>
+    [AvaloniaFact]
+    public void A_folder_cut_and_pasted_into_a_folder_just_made_keeps_that_folders_row()
+    {
+        string models = Path.Combine(folder, "Shop.App", "Models");
+        string lines = Path.Combine(models, "Lines");
+        string archive = Path.Combine(models, "Archive");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Show(window, Path.Combine(lines, "Line.cs"));
+        Ui.ChooseFromRowMenu(window, Show(window, models), "Add", "New Folder…");
+        window.KeyTextInput("Archive");
+        Ui.Press(window, "ENTER");
+        Assert.True(Directory.Exists(archive), $"New Folder made no Archive: {window.Status}");
+        Ui.Settle();
+
+        ExplorerNode into = Show(window, archive);
+        FilesFollowed.Check(window, "Cut and Paste of a folder", [lines, Path.Combine(archive, "Lines")], () =>
+        {
+            Ui.ClickRow(window, Show(window, lines));
+            Ui.Run(window, EditorActions.Cut);
+            Ui.ClickRow(window, into);
+            Ui.Run(window, EditorActions.Paste);
+        });
+        Assert.Equal("Moved Lines to Archive", window.Status);
+        Assert.True(File.Exists(Path.Combine(archive, "Lines", "Line.cs")), $"Paste left Lines where it was: {window.Status}");
+        window.Close();
+    }
+
     /// <summary>A project moved into a folder, its move taken back and made again, then taken back and the project moved
     /// into that folder once more, and last moved out and back by another program, is shown where it went as soon as each
     /// move is done, never dimmed as missing, and loaded there as MSBuild evaluates it.</summary>

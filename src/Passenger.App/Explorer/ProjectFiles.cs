@@ -8,7 +8,8 @@ namespace Passenger.App.Explorer;
 /// types that are files, Visible but for false) in its folder under the project's, a file from elsewhere at its Link or
 /// else at the project's top, and its Folder items; a file the project leaves out (a Remove, an Exclude) is not there,
 /// nor its folder unless something of the project is in it. A folder on disk with nothing in it at all shows too, since
-/// MSBuild has nothing to say of it and one just made would otherwise vanish.</summary>
+/// MSBuild has nothing to say of it and one just made would otherwise vanish; once shown, it shows until the project is
+/// evaluated again, a file come into it since being that evaluation's to judge, so its row stays the row it was.</summary>
 internal sealed class ProjectFiles
 {
     private readonly string root;
@@ -21,6 +22,10 @@ internal sealed class ProjectFiles
     private readonly Dictionary<string, List<(string Name, string Path)>> files;
     private readonly Dictionary<string, HashSet<string>> folders;
 
+    /// <summary>The places of the folders shown with nothing in them, which <see cref="FoldersIn"/> shows while they are
+    /// on disk.</summary>
+    private readonly HashSet<string> shownEmpty;
+
     /// <summary>Where each file the project holds shows, by its path: the place's folders and its name there.</summary>
     private readonly Dictionary<string, (string Folder, string Name)> places = new(PathNames.Comparer);
 
@@ -31,6 +36,7 @@ internal sealed class ProjectFiles
         names = PathNames.NamesIn(root);
         files = new(names);
         folders = new(names);
+        shownEmpty = new(names);
         HashSet<string> seen = new(PathNames.Comparer);
         foreach (EvaluatedItem item in project.Evaluated?.Items ?? [])
         {
@@ -99,7 +105,7 @@ internal sealed class ProjectFiles
     public string PathOf(string relative) => relative.Length == 0 ? root : Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
 
     /// <summary>The folders at a place: those the project holds something in, and but for a program's, those on disk with
-    /// nothing in them.</summary>
+    /// nothing in them, or that had nothing in them when shown before.</summary>
     public IEnumerable<string> FoldersIn(string relative)
     {
         HashSet<string> shown = folders.TryGetValue(relative, out HashSet<string>? held) ? new(held, names) : new(names);
@@ -111,9 +117,15 @@ internal sealed class ProjectFiles
         {
             foreach (DirectoryInfo folder in new DirectoryInfo(PathOf(relative)).EnumerateDirectories())
             {
-                if (!folder.Name.StartsWith('.') && folder.Name is not ("bin" or "obj") && !shown.Contains(folder.Name) && Empty(folder))
+                if (folder.Name.StartsWith('.') || folder.Name is "bin" or "obj" || shown.Contains(folder.Name))
+                {
+                    continue;
+                }
+                string place = relative.Length == 0 ? folder.Name : $"{relative}/{folder.Name}";
+                if (shownEmpty.Contains(place) || Empty(folder))
                 {
                     shown.Add(folder.Name);
+                    shownEmpty.Add(place);
                 }
             }
         }
