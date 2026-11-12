@@ -1,7 +1,8 @@
 using System.Diagnostics;
 
 // Code that runs under hidden code: the runtime's helpers the compiled code calls, which throw an index's exception and
-// run a static constructor, and a method of the program's own that hides itself from debuggers and stack traces alike.
+// run a static constructor, one before a call it counts, and a method of the program's own that hides itself from
+// debuggers and stack traces alike.
 internal static class HiddenFrames
 {
 	public static async Task RunAsync()
@@ -22,8 +23,14 @@ internal static class HiddenFrames
 		{
 			Console.WriteLine("caught from hidden code");
 		}
-		Console.WriteLine(Initialized.Value);
+		int sum = Later.Value + Bump();
+		Console.WriteLine(sum);
 	}
+
+	/// <summary>How many times <see cref="Bump"/> ran, which tells whether a step ran past it.</summary>
+	public static int Bumped;
+
+	private static int Bump() => ++Bumped;
 
 	private static async Task IndexesPastTheEndAsync()
 	{
@@ -36,13 +43,13 @@ internal static class HiddenFrames
 	[StackTraceHidden]
 	private static void Fail(string why) => throw new InvalidOperationException(why);
 
-	private static class Initialized
+	private static class Later
 	{
 		public static readonly int Value;
 
-		static Initialized()
+		static Later()
 		{
-			Value = 7;
+			Value = 5;
 		}
 	}
 }

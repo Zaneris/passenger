@@ -4,8 +4,9 @@ using Passenger.Tests.Debugging.Helpers;
 namespace Passenger.Tests.Debugging;
 
 /// <summary>Stops under code its own attributes hide from debuggers and stack traces alike, the runtime's helpers the
-/// compiled code calls and a method of the program's own: the stack leaves that code out, on the .NET the program targets
-/// and on the newest, and a stop or step shows and goes from the frame that called it.</summary>
+/// compiled code calls and a method of the program's own, on the .NET the program targets and on the newest: the stack
+/// leaves that code out, and a stop shows and steps from the frame that called it; without Just My Code a step that ends
+/// in such code shows it on top, where it stopped, before anything after it runs.</summary>
 // Its stops read the exception's text by an evaluation the engine holds to 5 s, which a loaded machine can outrun.
 [Collection(Alone.Name)]
 public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
@@ -15,10 +16,12 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
     private static readonly int Indexed = Debuggees.Line(Cases, "HiddenFrames.cs", "numbers[5] = 1;");
     private static readonly int CaughtPastTheEnd = Debuggees.Line(Cases, "HiddenFrames.cs", "catch (IndexOutOfRangeException)");
     private static readonly int FailCalled = Debuggees.Line(Cases, "HiddenFrames.cs", "Fail(\"hidden\");");
-    private static readonly int Initializing = Debuggees.Line(Cases, "HiddenFrames.cs", "Value = 7;");
+    private static readonly int LaterInitializing = Debuggees.Line(Cases, "HiddenFrames.cs", "Value = 5;");
+    private static readonly int LaterRead = Debuggees.Line(Cases, "HiddenFrames.cs", "int sum = Later.Value + Bump();");
+    private static readonly int BumpDeclared = Debuggees.Line(Cases, "HiddenFrames.cs", "private static int Bump() => ++Bumped;");
+
     /// <summary>Names in the methods the stops run under, which their attributes hide.</summary>
     private static readonly string[] Hidden = ["ThrowHelpers", "InitHelpers", "StaticsHelpers", "System.Runtime.EH.", "HiddenFrames.Fail("];
-    private static readonly int InitializedRead = Debuggees.Line(Cases, "HiddenFrames.cs", "Console.WriteLine(Initialized.Value);");
 
     /// <summary>The breakpoint on every exception stops at the index the runtime's helper throws for, in the async method
     /// with its locals, and at the call of the program's hidden method that throws, in its caller.</summary>
@@ -66,20 +69,53 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
         await AssertStoppedIn(host, outOf, StopReasons.Step, CaughtPastTheEnd, "RunAsync", "the step out of the async method");
     }
 
-    /// <summary>Without Just My Code, a step out of a static constructor, which from .NET 11 the runtime's hidden InitHelpers
-    /// run, goes on out of them to the program's code that read the class, rather than ending in a frame the stack leaves
-    /// out. On the newest .NET only: .NET 10 runs the constructor from native code, out of which such a step ends nowhere.</summary>
-    [Fact]
-    public async Task A_step_out_of_a_static_constructor_without_Just_My_Code_stops_where_the_class_was_read()
+    /// <summary>Without Just My Code, a step into a line that reads a class with a static constructor, then calls a method,
+    /// stops in the runtime's hidden helper that finds the class's statics, shown on top where the stop is, with nothing
+    /// past it run; a step out of the helper comes back to the line, and a step into it enters the method.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_step_into_a_line_reading_a_class_without_Just_My_Code_stops_in_the_helper_shown_and_goes_on_to_the_call(bool newestRuntime)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await Launch(host, newestRuntime: true, justMyCode: false, null, Initializing);
+        await Launch(host, newestRuntime, justMyCode: false, null, LaterRead);
+        StoppedEvent read = await host.WaitForStoppedEvent();
+        await AssertOnRuntime(host, read, newestRuntime);
 
+        StoppedEvent helper = await host.StepInAsync(read.ThreadId!.Value).WaitForStoppedEvent();
+        await AssertStoppedInTopFrame(host, helper, "the step into the line reading the class");
+        Assert.NotEqual(Source, helper.Source?.Path);
+        StoppedEvent back = await host.StepOutAsync(helper.ThreadId!.Value).WaitForStoppedEvent();
+        await AssertStoppedInTopFrame(host, back, "the step out of the helper");
+        Assert.Equal((Source, LaterRead), (back.Source?.Path, back.Line));
+        StoppedEvent bumping = await host.StepInAsync(back.ThreadId!.Value).WaitForStoppedEvent();
+        await AssertStoppedInTopFrame(host, bumping, "the step into the rest of the line");
+        Assert.Equal((Source, BumpDeclared), (bumping.Source?.Path, bumping.Line));
+    }
+
+    /// <summary>Without Just My Code, a step out of a static constructor the runtime's hidden InitHelpers run stops in them,
+    /// shown on top where the stop is, before the rest of the line that read the class runs. On the newest .NET only: .NET
+    /// 10 runs the constructor from native code, out of which such a step ends nowhere and the program runs on.</summary>
+    [Fact]
+    public async Task A_step_out_of_a_static_constructor_without_Just_My_Code_stops_before_the_rest_of_the_line_runs()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Launch(host, newestRuntime: true, justMyCode: false, null, LaterInitializing);
         StoppedEvent initializing = await host.WaitForStoppedEvent();
-        await AssertStoppedIn(host, initializing, StopReasons.Breakpoint, Initializing, ".cctor", "the breakpoint in the static constructor");
         await AssertOnRuntime(host, initializing, newestRuntime: true);
+
         StoppedEvent outOf = await host.StepOutAsync(initializing.ThreadId!.Value).WaitForStoppedEvent();
-        await AssertStoppedIn(host, outOf, StopReasons.Step, InitializedRead, "RunAsync", "the step out of the static constructor");
+        await AssertStoppedInTopFrame(host, outOf, "the step out of the static constructor");
+    }
+
+    /// <summary>A step's stop is in the stack's top frame, at its line, and the line's later call, Bump, has not run.</summary>
+    private static async Task AssertStoppedInTopFrame(DebugSession host, StoppedEvent stop, string what)
+    {
+        IReadOnlyList<DapStackFrame> frames = (await host.StackTraceAsync(stop.ThreadId!.Value, levels: null)).StackFrames;
+        string told = string.Join(" < ", frames.Take(4).Select(f => $"{f.Name}:{f.Line}"));
+        Assert.True(stop.Reason == StopReasons.Step && frames is [{ } top, ..] && top.Source?.Path == stop.Source?.Path && top.Line == stop.Line,
+            $"{what} stopped for {stop.Reason} at {stop.Source?.Path}:{stop.Line}, which is not the top frame of {told}");
+        Assert.True((await host.EvaluateAsync(frames[0].Id, "HiddenFrames.Bumped")).Result == "0", $"{what} ran the line's later call before it stopped, at {told}");
     }
 
     private static async Task Launch(DebugSession host, bool newestRuntime, bool justMyCode, SetExceptionBreakpointsArguments? exceptions, int? breakpoint = null)

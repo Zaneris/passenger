@@ -457,14 +457,6 @@ public partial class ManagedDebugger
         EndReturnWatch();
         // The statement is left without its Smart Step Into target entered (not called, or called on another thread).
         EndSmartStep();
-        if (IsHiddenFrame(ilFrame) && EnumerateFramesForThread(corThread).OfType<ICorDebugILFrame>().FirstOrDefault() is { } shown)
-        {
-            // Hidden code, as the helper a static constructor returns to: the step ends where the frame shown below goes on.
-            int at = shown.IP.pnOffset;
-            SetupStepper(corThread, StepType.StepOver, shown, (at, at + 1));
-            Continue(clearVariables: true);
-            return;
-        }
         if (stepCompleteEventArgs.Reason is CorDebugStepReason.STEP_RETURN)
         {
             // Back in a caller; reading a value type's return runs the program, so the frame is read again.
@@ -480,7 +472,7 @@ public partial class ManagedDebugger
         if (module is not null && module.MetadataReader.IsCurrentSequencePointHidden(ilFrame.Function.Token, ilFrame.IP.pnOffset, ModuleMetadataReader.VersionOf(ilFrame)))
         {
             // Past a hidden sequence point, which would show the line before it as where the step ended.
-            SetupStepper(corThread, StepType.StepOver);
+            SetupStepper(corThread, StepType.StepOver, ilFrame);
             Continue(clearVariables: true);
             return;
         }
@@ -488,7 +480,7 @@ public partial class ManagedDebugger
         if (module is null || sourceInfo is null)
         {
             // No line to show (no symbols, code the compiler made, an async state machine's start): the step goes on to one.
-            SetupStepper(corThread, StepType.StepIn);
+            SetupStepper(corThread, StepType.StepIn, ilFrame);
             Continue(clearVariables: true);
             return;
         }
@@ -497,7 +489,7 @@ public partial class ManagedDebugger
         (int currentIlOffset, int? nextUserCodeIlOffset) = metadataReader.GetFrameCurrentIlOffsetAndNextUserCodeIlOffset(ilFrame);
         if (stepCompleteEventArgs.Reason is CorDebugStepReason.STEP_CALL && currentIlOffset < nextUserCodeIlOffset)
         {
-            SetupStepper(corThread, StepType.StepOver);
+            SetupStepper(corThread, StepType.StepOver, ilFrame);
             Continue(clearVariables: true);
             return;
         }
@@ -510,7 +502,7 @@ public partial class ManagedDebugger
                 metadataImport.HasAnyAttribute(mdMethodDef, AttributeConstants.JmcMethodAttributeNames);
             if (methodIsNotDebuggable)
             {
-                SetupStepper(corThread, StepType.StepIn);
+                SetupStepper(corThread, StepType.StepIn, ilFrame);
                 Continue(clearVariables: true);
                 return;
             }
@@ -519,6 +511,7 @@ public partial class ManagedDebugger
         string sourceFilePath = sourceInfo.Value.FilePath;
         int line = sourceInfo.Value.StartLine;
         int column = sourceInfo.Value.StartColumn;
+        _steppedIntoHidden = IsHiddenFrame(ilFrame) ? corThread.Id : null;
         ReportStop(corThread.Id, StopReasons.Step, sourceFilePath, line, column, null);
     }
 

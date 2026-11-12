@@ -407,7 +407,9 @@ public partial class ManagedDebugger
         SymbolsWanted? wanted;
         try
         {
-            wanted = thread is not null && TopFrame(thread) is ICorDebugILFrame frame && FindModule(frame.Function.Module) is { } module ? WantedFor(module) : null;
+            // A step stops where it lands, hidden code too, where a data breakpoint shows the frame that wrote.
+            ICorDebugFrame? stopsIn = thread is null ? null : e is StepCompleteCorDebugManagedCallbackEventArgs ? thread.ActiveFrame : TopFrame(thread);
+            wanted = stopsIn is ICorDebugILFrame frame && FindModule(frame.Function.Module) is { } module ? WantedFor(module) : null;
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
@@ -582,6 +584,7 @@ public partial class ManagedDebugger
             _stepInTargets.Clear();
             _writtenAt = null;
             _stoppedShort = null;
+            _steppedIntoHidden = null;
         }
         if (!EvalStatus.IsRunning && (TakeDeferredEvent() || TakePendingPause()))
         {
@@ -1049,14 +1052,20 @@ public partial class ManagedDebugger
     /// exception dispatch above the frame that threw and its call of the entry point.</summary>
     internal IEnumerable<ICorDebugFrame> EnumerateFramesForThread(ICorDebugThread thread)
     {
+        bool leaf = _steppedIntoHidden == thread.Id;
         foreach (ICorDebugFrame frame in FramesOnStack(thread))
         {
-            if (!IsHiddenFrame(frame))
+            if (leaf || !IsHiddenFrame(frame))
             {
                 yield return frame;
             }
+            leaf = false;
         }
     }
+
+    /// <summary>A thread a step stopped in hidden code on, Just My Code off: its frames show that code's frame on top, where
+    /// the stop is and the next step goes from, until the program runs on.</summary>
+    private int? _steppedIntoHidden;
 
     /// <summary>Every managed frame of the thread from its stop down. An evaluation given up, still running on the thread, is a
     /// chain of its own above the stop's (CHAIN_FUNC_EVAL, ending at its [Func Eval] frame): its frames are left out, so a

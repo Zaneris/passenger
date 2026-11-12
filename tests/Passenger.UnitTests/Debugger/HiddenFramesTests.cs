@@ -33,17 +33,19 @@ public class HiddenFramesTests
             "MethodBase.Invoke is [DebuggerHidden] alone, and its frame would go missing between a caller and the method it invoked");
     }
 
-    /// <summary>The runtime's contract with debuggers from .NET 11, read from this process's CoreLib: its exception dispatch
-    /// and its call of the entry point are marked hidden, for the debugger to leave out.</summary>
+    /// <summary>The runtime's contract with debuggers from .NET 11, read from this process's CoreLib (the unit tests run on
+    /// .NET 11 or later): its exception dispatch and its call of the entry point are there, marked hidden for the debugger
+    /// to leave out.</summary>
     [Theory]
     [InlineData("System.Runtime.EH", "DispatchEx")]
     [InlineData("System.Runtime.EH", "RhThrowEx")]
     [InlineData("System.Environment", "CallEntryPoint")]
     public void The_runtimes_exception_dispatch_and_entry_point_call_are_frames_left_out(string type, string name)
     {
+        Assert.True(Environment.Version.Major >= 11, $"The unit tests run on .NET {Environment.Version}, before the runtime marked these hidden");
         MethodInfo? method = typeof(object).Assembly.GetType(type)?.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
             .FirstOrDefault(m => m.Name == name);
-        Assert.SkipWhen(method is null, $"This runtime's CoreLib has no {type}.{name}");
+        Assert.True(method is not null, $".NET {Environment.Version}'s CoreLib has no {type}.{name}, so the frames a stop shows above or below the program's are no longer known");
         Assert.True(IsHiddenFrame(method), $"{type}.{name} is not hidden from debuggers and stack traces alike, so a stop under it would show it on top");
     }
 
