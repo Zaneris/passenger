@@ -180,6 +180,59 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         }
     }
 
+    /// <summary>A hover reads only text the stopped frame can see: a name in another method of the stopped file, or in another
+    /// file, shows no value and asks nothing of the program, even a name the frame has a local of; a local of the method it
+    /// stopped in still shows its value.</summary>
+    [AvaloniaFact]
+    public void A_name_rested_on_outside_the_stopped_method_asks_nothing_of_the_program_and_a_local_inside_shows_its_value()
+    {
+        MainWindow window = Stopped();
+        try
+        {
+            NotEvaluated(window, "numbers.Sum()", "another method of the stopped file");
+            Assert.Null(window.OpenFile(people.PathOf("Other.cs")));
+            Ui.Settle();
+            NotEvaluated(window, "numbers.Count * 2", "another file");
+
+            Assert.Null(window.OpenFile(people.PathOf("Program.cs")));
+            Ui.Settle();
+            VariableNode numbers = Assert.Single(Hover(window, "numbers.Count").Tree.Rows);
+            Assert.True(numbers.Name == "numbers" && numbers.HasChildren, $"The stopped method's local showed as {numbers.Name} = {numbers.Value}");
+
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program to end");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The pointer rested on the start of some text of the editor's, a name the stopped frame has a local of, and the
+    /// hover it started read: the card shows no value of it.</summary>
+    private static void NotEvaluated(MainWindow window, string text, string where)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int at = editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + 1;
+        bool rested = false;
+        EventHandler<HoverEventArgs> heard = (_, _) => rested = true;
+        editor.Hovered += heard;
+        try
+        {
+            window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, RawInputModifiers.None);
+            Ui.WaitFor(() => rested, $"the pointer to rest on {text} in {where}");
+            Ui.Settle();
+        }
+        finally
+        {
+            editor.Hovered -= heard;
+        }
+        string word = text[..text.IndexOf('.', StringComparison.Ordinal)];
+        Assert.True(window.Assist.HoverValues is null && window.Assist.HoverText?.Contains($"{word} =", StringComparison.Ordinal) != true,
+            $"{word} rested on in {where} was evaluated in the stopped frame, which ran it in the program and showed the frame's value under another's name: "
+            + $"{Shown(window.Assist.HoverValues)}, \"{window.Assist.HoverText}\"");
+    }
+
     /// <summary>A window on the program paused at its breakpoint, on the line that writes what it made, its locals shown; with
     /// no C# language server, since a paused program's card is the debugger's values alone.</summary>
     private MainWindow Stopped()
@@ -232,7 +285,8 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         Ui.Click(control, within);
     }
 
-    /// <summary>A program that makes an object holding another and a list, and writes them: the stop is on that line.</summary>
+    /// <summary>A program that makes an object holding another and a list, and writes them: the stop is on that line. Below
+    /// its classes, and in a file of its own, a method of a parameter named as its list.</summary>
     public sealed class People : SharedProject
     {
         /// <summary>The line (from zero) that writes what the program made, where the breakpoint stops it.</summary>
@@ -247,7 +301,9 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
                 "Person person = new(\"Ada\", new Address(\"London\", 12));\nList<int> numbers = [10, 20, 30];\n"
                 + "Console.WriteLine($\"{person.Name} {person.Home.City} {numbers.Count} {numbers[0]}\");\n\n"
                 + "sealed record Address(string City, int Number);\n\n"
-                + "sealed class Person(string name, Address home)\n{\n    public string Name { get; set; } = name;\n\n    public Address Home { get; } = home;\n}\n");
+                + "sealed class Person(string name, Address home)\n{\n    public string Name { get; set; } = name;\n\n    public Address Home { get; } = home;\n}\n"
+                + "\nstatic class Sums\n{\n    public static int Of(List<int> numbers) => numbers.Sum();\n}\n");
+            File.WriteAllText(PathOf("Other.cs"), "static class Other\n{\n    public static int Twice(List<int> numbers) => numbers.Count * 2;\n}\n");
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
         }

@@ -329,11 +329,12 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   An app's OpenAPI document is asked only at its origin (`OpenApiAddresses`), and what's made from one with no app asked
   comes from `AppDocuments`, never a process-wide cache. `ResourceFiles` is the one reader and writer of `.resx` and
   `xlf/*.xlf`, a table's change one edit of the open text.
-- **Debugging.** `DebugController`, `DebugSession`; Variables and the hover card are one list. A row's expression is the
-  debugger's `evaluateName`, never built in the window. A library's types are shown as the App tells the debugger at
-  launch (`DapTypePresentation`), never by engine code naming a library. An exception is read from what it stores, a
-  getter or `ToString` only where that can't be. An HTTPS page's dev certificate is only read, never made or trusted.
-  Every breakpoint through one pipeline (`IHitBreakpoint`).
+- **Debugging.** `DebugController`, `DebugSession`; Variables and the hover card are one list, a hover evaluating only
+  inside the stopped frame's method (`MethodBounds`). A row's expression is the debugger's `evaluateName`, never built
+  in the window. A library's types are shown as the App tells the debugger at launch (`DapTypePresentation`), never by
+  engine code naming a library. An exception is read from what it stores, a getter or `ToString` only where that can't
+  be. An HTTPS page's dev certificate is only read, never made or trusted. Every breakpoint through one pipeline
+  (`IHitBreakpoint`).
 - **Tests window.** `TestFinder`; tests are keyed by themselves (`TestItem.ById`), never a key string per test;
   `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
   asks to attach: `LaunchTestHost` is never called for one); the person's `GODOT_BIN` wins; GUT's tests are chosen by

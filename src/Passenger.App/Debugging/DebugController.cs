@@ -2156,11 +2156,13 @@ public sealed class DebugController : IDisposable
 
     /// <summary>The value of the expression under the pointer while paused (a.b.c up to the word hovered), evaluated in the
     /// chosen frame of the stop shown, for the hover card; one with members as its row, which opens as the Variables view's
-    /// rows do (<see cref="HoverValues"/>). Null when there is none or it does not evaluate. The card goes with the stop.</summary>
+    /// rows do (<see cref="HoverValues"/>). Null when there is none, it does not evaluate or the frame cannot see the place
+    /// hovered (<see cref="SeesAsync"/>), where nothing is asked of the program. The card goes with the stop.</summary>
     public async Task<CSharp.DebuggerHover?> HoverAt(int offset, CancellationToken cancellation)
     {
         UiThread.Check();
-        if (Session is not { State: DebugState.Paused } session || frame is not { } at || ExpressionAt(editors.CodeEditor.Document.Snapshot, offset) is not { } expression)
+        if (Session is not { State: DebugState.Paused } session || frame is not { } at || editors.Active is not { } file
+            || ExpressionAt(editors.CodeEditor.Document.Snapshot, offset) is not { } expression)
         {
             return null;
         }
@@ -2168,6 +2170,10 @@ public sealed class DebugController : IDisposable
         CancellationToken gone = stopShown.Token;
         try
         {
+            if (!await SeesAsync(at, file, offset) || stop != shown)
+            {
+                return null;
+            }
             EvaluateResponse value = await session.EvaluateAsync(expression, at.Id, EvaluateContexts.Hover).WaitAsync(cancellation);
             if (stop != shown)
             {
@@ -2189,6 +2195,29 @@ public sealed class DebugController : IDisposable
         {
             return null;
         }
+    }
+
+    /// <summary>Whether a hover at an offset of a file reads text a frame can see: in the frame's own file, inside the method
+    /// it stopped in with its lambdas and local functions (<see cref="MethodBounds"/>); anywhere in it where that can't be
+    /// told (no C# syntax, as Razor's; a decompiled frame's; a place in no method). A frame with no file sees decompiled
+    /// code alone.</summary>
+    private async Task<bool> SeesAsync(DapStackFrame at, OpenDocument file, int offset)
+    {
+        if (at.Source?.Path is not { } source)
+        {
+            return file.IsDecompiled;
+        }
+        if (!PathNames.Same(source, file.Path))
+        {
+            return false;
+        }
+        if (at.DecompiledSourceInfo is not null || file.Syntax is not { } syntax)
+        {
+            return true;
+        }
+        TextPosition place = Current(file.Path, at);
+        ParsedText parsed = await syntax.CurrentAsync();
+        return MethodBounds.At(parsed, place.Line, place.Column) is not { } method || (method.Start <= offset && offset <= method.End);
     }
 
     /// <summary>Quick Evaluate Expression: the selection, else the expression the hover reads at the caret, evaluated in the
