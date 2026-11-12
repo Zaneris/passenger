@@ -151,6 +151,12 @@ internal static partial class Lifeline
         {
             return;
         }
+        KillGroup(group);
+    }
+
+    /// <summary><see cref="KillGroup(Process)"/> of a child by its id, read before anything let go of its process.</summary>
+    public static void KillGroup(int group)
+    {
         if (OperatingSystem.IsWindows())
         {
             SafeFileHandle? job;

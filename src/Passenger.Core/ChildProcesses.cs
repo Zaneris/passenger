@@ -5,7 +5,9 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace Passenger.Core;
 
@@ -815,11 +817,11 @@ public static class ChildProcesses
     /// elsewhere its process group already holds them.</summary>
     public static void HoldFamily(Process process) => Lifeline.HoldFamily(process);
 
-    /// <summary>Ends a child and everything it started, now, passing over what has ended: its tree on Windows, but for a
-    /// process of it Windows will not end (one ending, or not ours where a parent's id was reused), and the whole of a
-    /// family held (<see cref="HoldFamily"/>); on macOS and Linux its
-    /// process group, which holds what it started and what it left behind, whether or not it has ended itself. Never the
-    /// runtime's tree kill there, which stops each process before killing it and can then hang for good on macOS.</summary>
+    /// <summary>Ends a child and everything it started, now, passing over what has ended: its tree on Windows
+    /// (<see cref="ProcessTree"/>), whatever another thread does with the process meanwhile, and the whole of a family held
+    /// (<see cref="HoldFamily"/>); on macOS and Linux its process group, which holds what it started and what it left
+    /// behind, whether or not it has ended itself. Never the runtime's tree kill there, which stops each process before
+    /// killing it and can then hang for good on macOS.</summary>
     public static void Kill(Process process)
     {
         Ending(process);
@@ -833,19 +835,7 @@ public static class ChildProcesses
         {
             if (OperatingSystem.IsWindows())
             {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (AggregateException partly) when (partly.InnerExceptions.All(e => e is Win32Exception or InvalidOperationException))
-                {
-                    // Windows refuses a process of the tree that has ended or is ending, or is not ours: the child must still go.
-                    process.Kill();
-                }
-                finally
-                {
-                    Lifeline.KillGroup(process);
-                }
+                KillTreeOnWindows(process);
                 return;
             }
             Lifeline.KillGroup(process);
@@ -853,7 +843,42 @@ public static class ChildProcesses
         }
         catch (Exception error) when (error is InvalidOperationException or Win32Exception)
         {
-            // It had ended, or was ending.
+            // It had ended, or was ending, or was let go before it was ended.
+        }
+    }
+
+    /// <summary>A child's tree ended from a hold on its handle taken before anything ends, so a Dispose of the process on
+    /// another thread as it goes (its reader's, once the child's output ends with it) leaves the walk whole; then its
+    /// family held.</summary>
+    [SupportedOSPlatform("windows")]
+    private static void KillTreeOnWindows(Process process)
+    {
+        int id = process.Id;
+        try
+        {
+            // Null, or closed (thrown as it is held), only as it is let go at this moment.
+            SafeProcessHandle? handle = process.SafeHandle;
+            if (handle is null)
+            {
+                return;
+            }
+            bool held = false;
+            try
+            {
+                handle.DangerousAddRef(ref held);
+                ProcessTree.End(id, handle);
+            }
+            finally
+            {
+                if (held)
+                {
+                    handle.DangerousRelease();
+                }
+            }
+        }
+        finally
+        {
+            Lifeline.KillGroup(id);
         }
     }
 

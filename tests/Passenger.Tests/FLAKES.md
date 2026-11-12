@@ -30,6 +30,21 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `AspireStandInTests`' `A_confirmation_cancelled_and_a_form_the_AppHost_updates_send_what_the_dialog_shows`, CI's
+  Windows x64 report lane at 053101b37 (run 43132648654): "The IDE caught 1 error … NullReferenceException" at
+  `Process.GetProcessHandlePairs` < `Process.Kill(entireProcessTree: true)` < `ChildProcesses.KillTree` <
+  `ContainerEngine.Unfollow`. **A race in the IDE**: the last follower's going killed `docker events` outside the lock,
+  and its reader, hearing the output end as the kill ended the program, disposed the same `Process` while .NET's tree
+  walk still read it at each process on the machine. `Close` nulls the handle before clearing the flag that says it
+  has one, so a read between the two threw this; a read after it threw "No process is associated with this object",
+  which `KillTree` took for an end and dropped, leaving what the child started running. On the Windows on Arm VM, a
+  `cmd` with two `ping`s killed while a thread disposed it on its exit cut the walk short in 217 of 300 rounds, 434
+  pings left running; with no dispose, beside four threads starting short-lived programs, 30 of 30 ended whole.
+  `ChildProcesses.Kill` on Windows now holds the child's handle before anything ends and walks the tree itself
+  (`ProcessTree`), each process held by a handle of its own until the walk is done and checked by the parent it names
+  and its start, so nothing done to the `Process` meanwhile cuts it short;
+  `A_child_disposed_on_another_thread_as_it_is_killed_has_what_it_started_ended_too` fails on the old code on the VM
+  (#1504).
 - `TestingPlatformBytesTests`' `A_runs_results_cost_at_most_twice_their_JSON_to_read`, CI's macOS report lane at
   053101b37 (run 43132648654): "Reading a run's 2,000 results of 1,179,955 bytes of JSON allocated 2,370,080 bytes (2.0×
   its JSON)", 2.01 times, where CI's macOS runs had measured 1.44 to 1.46 (Linux 1.61 to 1.97, Windows 1.49 to 1.63).
