@@ -77,18 +77,14 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>The rows of the text as it stands: its lines less the folded ones, a wrapped line counted for each row.</summary>
-    private RowMap Rows
+    private RowMap Rows => rowMap = RowsOf(Wraps);
+
+    /// <summary>The rows a map of wraps makes with the folds now: those <see cref="Rows"/> keeps where made of that map, so
+    /// a map's own rows are read without asking for the wraps now, which may wrap it again.</summary>
+    private RowMap RowsOf(WrapMap? wrapped)
     {
-        get
-        {
-            FoldLines folds = Folding;
-            WrapMap? wrapped = Wraps;
-            if (rowMap is not { } map || !ReferenceEquals(map.Folds, folds) || !ReferenceEquals(map.Wraps, wrapped))
-            {
-                rowMap = map = new RowMap(folds, wrapped);
-            }
-            return map;
-        }
+        FoldLines folds = Folding;
+        return rowMap is { } map && ReferenceEquals(map.Folds, folds) && ReferenceEquals(map.Wraps, wrapped) ? map : new RowMap(folds, wrapped);
     }
 
     /// <summary>Where the text's lines wrap at the view's width now, or null while soft wrap is off or the view has no width
@@ -118,8 +114,7 @@ public sealed partial class CodeEditor
                 return map;
             }
             WrapMap from = wraps is { } old && ReferenceEquals(old.Text, text) ? old : WrapMap.Blank(text);
-            RowMap rows = rowMap is { } kept && ReferenceEquals(kept.Wraps, from) && ReferenceEquals(kept.Folds, Folding) ? kept : new RowMap(Folding, from);
-            (int line, int sub) = rows.LineOfRow(Math.Max(0, RowAtY(0)));
+            (int line, int sub) = RowsOf(from).LineOfRow(Math.Max(0, RowAtY(0)));
             wraps = map = WrapShown(from, Math.Min(line, text.LineCount - 1), ViewRows + sub, width)!;
             rowShape++;
             WrapRest(map);
@@ -220,7 +215,8 @@ public sealed partial class CodeEditor
             return;
         }
         int top = Math.Max(0, RowAtY(0));
-        (int line, int sub) = Rows.LineOfRow(top);
+        // The drawn map's own rows: asking for the wraps now would start wrapping the map being replaced again.
+        (int line, int sub) = RowsOf(was).LineOfRow(top);
         double within = scroll.Y - (top * metrics.LineHeight);
         wraps = next;
         double y = MaxScrollY;

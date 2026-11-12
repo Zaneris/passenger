@@ -51,7 +51,8 @@ public sealed partial class CodeEditor
         Wrapped? done;
         try
         {
-            done = await BackgroundWork.Run(job.Run, job.Stopping.Token);
+            // Landed on a turn of its own even when ended already, never inside the reading of rows that began it.
+            done = await BackgroundWork.Run(job.Run, job.Stopping.Token).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.ForceYielding);
         }
         catch (OperationCanceledException)
         {

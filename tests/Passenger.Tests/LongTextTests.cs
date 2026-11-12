@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Passenger.App;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -340,6 +341,28 @@ public sealed class LongTextTests : IDisposable
             Ui.Settle();
             AssertRowsMatchAFreshEditor(rig, lines, $"step {step}: {did}");
         }
+    }
+
+    /// <summary>Soft wrap turned on while the thread pool ends each wrap of the lines off screen before the window's thread
+    /// awaits it: the rows land once, on a later turn, never inside the window's reading of its rows, where each landing
+    /// wrapped the map it replaced again until the stack ran out (#1516), and every line is on the rows a fresh editor
+    /// wraps it onto.</summary>
+    [AvaloniaFact]
+    public void Soft_wrap_turned_on_while_the_thread_pool_ends_each_wrap_before_the_window_looks_lands_the_rows_once_on_a_later_turn()
+    {
+        string text = string.Concat(Enumerable.Range(0, 200).Select(i => string.Concat(Enumerable.Range(0, 40).Select(w => $"w{i}x{w} ")) + "\n"));
+        EditorRig rig = new(text);
+        using (BackgroundWork.AtOnce wrapping = BackgroundWork.EndingAtOnce())
+        {
+            rig.Editor.SoftWrap = true;
+            int unlanded = rig.Editor.RowsShown;
+            Ui.Settle();
+            Assert.True(rig.Editor.RowsShown > unlanded,
+                $"Turning soft wrap on showed {unlanded} rows as it returned and {rig.Editor.RowsShown} once settled: the wrap of the lines off screen landed inside the window's own reading of its rows");
+            Assert.True(wrapping.Ran == 1,
+                $"The lines off screen were wrapped {wrapping.Ran} times on the thread pool: landing, the wraps started wrapping the map they replaced again");
+        }
+        AssertRowsMatchAFreshEditor(rig, [0, 100, 199], "soft wrap turned on, the thread pool ending each wrap before the window looked");
     }
 
     [AvaloniaFact]

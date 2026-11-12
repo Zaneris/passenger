@@ -22,6 +22,10 @@ public static class BackgroundWork
 
     private static volatile Action<Action>? toUiThread;
 
+    /// <summary>The innermost scope of <see cref="EndingAtOnce"/> this thread has open, if any.</summary>
+    [ThreadStatic]
+    private static AtOnce? atOnce;
+
     public static int Pending => (int)Volatile.Read(ref state);
 
     public static void Begin([CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
@@ -129,6 +133,11 @@ public static class BackgroundWork
     /// there later, after what the UI thread was given to do before it.</summary>
     public static void Install(Action<Action> postToUiThread) => toUiThread = postToUiThread;
 
+    /// <summary>While open, a function or action this thread gives <c>Run</c> runs on it at once, so its task has ended
+    /// before the caller awaits it, as when the thread pool outruns the caller: for a test of what the caller does then.
+    /// Closed on the thread that opened it.</summary>
+    public static AtOnce EndingAtOnce() => atOnce = new AtOnce(atOnce);
+
     /// <summary>Work for the thread pool (Task.Run's), held until its answer is back on the caller's thread: an await
     /// on the UI thread lets go only there, so what it then draws is in the frame a screenshot waits for. Not for what
     /// the UI thread may block on (the window's end), which it could never come back to.</summary>
@@ -136,6 +145,11 @@ public static class BackgroundWork
     {
         using (Scope(file, line))
         {
+            if (atOnce is { } now)
+            {
+                now.Count(cancel);
+                return work();
+            }
             return await Task.Run(work, cancel);
         }
     }
@@ -154,6 +168,12 @@ public static class BackgroundWork
     {
         using (Scope(file, line))
         {
+            if (atOnce is { } now)
+            {
+                now.Count(cancel);
+                work();
+                return;
+            }
             await Task.Run(work, cancel);
         }
     }
@@ -212,6 +232,34 @@ public static class BackgroundWork
                 return;
             }
             seen = was;
+        }
+    }
+
+    /// <summary>A scope of <see cref="EndingAtOnce"/>, with how much work it ran.</summary>
+    public sealed class AtOnce : IDisposable
+    {
+        private readonly AtOnce? outer;
+        private bool closed;
+
+        internal AtOnce(AtOnce? outer) => this.outer = outer;
+
+        /// <summary>How many pieces of work ran at once while it was open.</summary>
+        public int Ran { get; private set; }
+
+        /// <summary>Counts a piece of work about to run at once, unless it was stopped before it began.</summary>
+        internal void Count(CancellationToken cancel)
+        {
+            cancel.ThrowIfCancellationRequested();
+            Ran++;
+        }
+
+        public void Dispose()
+        {
+            if (!closed)
+            {
+                closed = true;
+                atOnce = outer;
+            }
         }
     }
 
