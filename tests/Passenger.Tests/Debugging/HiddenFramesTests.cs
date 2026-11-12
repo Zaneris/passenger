@@ -115,7 +115,8 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
         string told = string.Join(" < ", frames.Take(4).Select(f => $"{f.Name}:{f.Line}"));
         Assert.True(stop.Reason == StopReasons.Step && frames is [{ } top, ..] && top.Source?.Path == stop.Source?.Path && top.Line == stop.Line,
             $"{what} stopped for {stop.Reason} at {stop.Source?.Path}:{stop.Line}, which is not the top frame of {told}");
-        Assert.True((await host.EvaluateAsync(frames[0].Id, "HiddenFrames.Bumped")).Result == "0", $"{what} ran the line's later call before it stopped, at {told}");
+        string bumped = (await host.EvaluateAsync(frames[0].Id, "HiddenFrames.Bumped")).Result;
+        Assert.True(bumped == "0", $"{what} stopped where HiddenFrames.Bumped reads {bumped}, not the 0 that says the line's later call has not run, at {told}");
     }
 
     private static async Task Launch(DebugSession host, bool newestRuntime, bool justMyCode, SetExceptionBreakpointsArguments? exceptions, int? breakpoint = null)
