@@ -30,6 +30,20 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `PauseTests`' `A_condition_that_calls_a_method_stops_a_parallel_loop_on_its_matching_iteration`, CI's Linux gate at
+  b5fef9c55 (run 43112936183): "Sequence contains no elements" at `DebugSession.LocalsAsync`, the stop a breakpoint's
+  and its thread's top frame of no scope. **The debugger let a thread run beside an evaluation**: a condition's
+  evaluation holds every thread but its own, but one the runtime told of only as the evaluation let the program go (the
+  loop's next worker, starting as the breakpoint stopped it) was never held. It reached the breakpoint, whose event waits
+  for the evaluation's end, and ran on past it, so the event was tried where the thread then stood, outside the lambda:
+  `i` was not found there, and the breakpoint stopped saying the condition could not be evaluated, in code with no
+  readable local. On the Ubuntu VM beside two busy loops, 30 runs of the loop with each thread's start logged met it
+  once, as CI did: thread 1898295 made during an evaluation, put off at the breakpoint 3 ms later, tried 57 ms later in
+  `Environment.get_TickCount64` < `Parallel.CheckTimeoutReached` < `ForWorker`, "The name 'i' does not exist", top frame
+  of no scope; six threads made during an evaluation reached the breakpoint unheld in those runs, four of them twice. A
+  thread made during an evaluation is now held until it ends, unless every thread was let go: 30 runs there since held
+  53 such threads and stopped right every time, and a condition that starts a thread past a breakpoint, which stopped it
+  1,188 turns past its first pass before, stops it on that pass (678bc540e, #1500).
 - `GodotUnkeptTests`' `Each_ended_games_unkept_values_are_held_until_they_are_kept_or_discarded`, CI's macOS report
   lane at 38761732e (run 43121748961): "The IDE caught 1 error … InvalidOperationException: Not listening" at
   `TcpListener.AcceptTcpClientAsync` in `GodotGame.ServeAsync`. **A race in the IDE**: `Listen` starts the listener and
