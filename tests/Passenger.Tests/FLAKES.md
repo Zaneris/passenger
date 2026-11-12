@@ -30,6 +30,10 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `DebuggerTests`' `Run_to_cursor_stops_at_a_line_holding_a_false_condition_or_a_tracepoint_each_as_it_was_after`, the
+  Ubuntu VM in two agents' runs: `i` and `total` were null where 1 and 0 were expected. **A test waited wrong**: it read
+  Variables as soon as the session counted the stop, before the stop's locals were listed; it waits for them at both
+  stops (60236921b).
 - `ProtocolBytesTests`' `A_variables_answer_of_2000_variables_costs_at_most_twice_its_JSON`, the Ubuntu VM loaded by
   other runs at 81048e3e9: 2.05 and 2.03 times its JSON against its 2, failing 1 of 3 alone, where it measures 1.75.
   **The IDE**: what a debugger answer cost hung on the shared pool. The adapter's write buffer (`PooledBytes`) took a
