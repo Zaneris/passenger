@@ -74,7 +74,7 @@ public sealed class TestingPlatformRunner : ITestRunner
         try
         {
             IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: true, null, log), cancel);
-            await using Host host = await Host.StartAsync(assembly, given, null, log, cancel);
+            await using Host host = await Host.StartAsync(assembly, given, null, null, log, cancel);
             bool asked = await host.RequestAsync("testing/discoverTests", null, changed =>
             {
                 lock (nodes)
@@ -108,17 +108,15 @@ public sealed class TestingPlatformRunner : ITestRunner
         ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
     {
         RunSummary summary = new(TimeSpan.Zero, false, false, null);
-        foreach (IGrouping<string, (TestItem Test, Found Node)> assembly in tests
-            .Select(t => (Test: t, Node: found.Of(t)!))
-            .Where(t => t.Node is not null)
-            .GroupBy(t => t.Node.Assembly.Path, StringComparer.Ordinal))
+        foreach (TestAssembly assembly in AssembliesOf(tests))
         {
             if (cancel.IsCancellationRequested)
             {
                 summary = summary with { Canceled = true };
                 break;
             }
-            RunSummary part = await RunIn(assembly.First().Node.Assembly, [.. assembly], outcomes, log, debugger, environment, cancel);
+            (Dictionary<string, TestItem> byUid, List<Found> chosen) = Asked(tests, assembly.Path);
+            RunSummary part = await RunIn(assembly, byUid, chosen, outcomes, log, debugger, environment, cancel);
             summary = summary.And(part);
             if (part.Canceled)
             {
@@ -130,24 +128,55 @@ public sealed class TestingPlatformRunner : ITestRunner
         return summary;
     }
 
-    private static async Task<RunSummary> RunIn(TestAssembly assembly, IReadOnlyList<(TestItem Test, Found Node)> tests, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel)
+    /// <summary>The assemblies the tests were found in, each once, in the order their tests come.</summary>
+    private List<TestAssembly> AssembliesOf(IReadOnlyList<TestItem> tests)
     {
-        Dictionary<string, TestItem> byUid = new(tests.Count, StringComparer.Ordinal);
-        List<Found> chosen = new(tests.Count);
-        foreach ((TestItem test, Found node) in tests)
+        List<TestAssembly> assemblies = [];
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        foreach (TestItem test in tests)
         {
-            if (byUid.TryAdd(node.Uid, test))
+            if (found.Of(test) is { } node && seen.Add(node.Assembly.Path))
+            {
+                assemblies.Add(node.Assembly);
+            }
+        }
+        return assemblies;
+    }
+
+    /// <summary>The tests of an assembly by the uid each was found as, the first of a uid named twice, and the nodes they
+    /// are run by; each made at its size.</summary>
+    private (Dictionary<string, TestItem> ByUid, List<Found> Chosen) Asked(IReadOnlyList<TestItem> tests, string assembly)
+    {
+        int count = 0;
+        foreach (TestItem test in tests)
+        {
+            if (found.Of(test) is { } node && string.Equals(node.Assembly.Path, assembly, StringComparison.Ordinal))
+            {
+                count++;
+            }
+        }
+        Dictionary<string, TestItem> byUid = new(count, StringComparer.Ordinal);
+        List<Found> chosen = new(count);
+        foreach (TestItem test in tests)
+        {
+            if (found.Of(test) is { } node && string.Equals(node.Assembly.Path, assembly, StringComparison.Ordinal) && byUid.TryAdd(node.Uid, test))
             {
                 chosen.Add(node);
             }
         }
+        return (byUid, chosen);
+    }
+
+    /// <summary>Runs an assembly's tests, the host's updates read by the tests asked for (<see cref="TestUpdate.ReaderOf"/>).</summary>
+    private static async Task<RunSummary> RunIn(TestAssembly assembly, Dictionary<string, TestItem> byUid, List<Found> chosen, Action<IReadOnlyList<TestOutcome>> outcomes,
+        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel)
+    {
         List<TestOutcome> all = new(chosen.Count);
         long began = Stopwatch.GetTimestamp();
         try
         {
             IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
-            await using Host host = await Host.StartAsync(assembly, given, debugger, log, cancel);
+            await using Host host = await Host.StartAsync(assembly, given, debugger, byUid, log, cancel);
             bool ran = await host.RequestAsync("testing/runTests", chosen, changed =>
             {
                 List<TestOutcome> batch = new(changed.Count);
@@ -311,9 +340,10 @@ public sealed class TestingPlatformRunner : ITestRunner
             this.heard = heard;
         }
 
-        /// <summary>Starts an assembly's program as a server that connects to a port of the IDE's own, and initializes it.</summary>
+        /// <summary>Starts an assembly's program as a server that connects to a port of the IDE's own, and initializes it; its
+        /// updates read by the tests a run asks for, by uid, if any.</summary>
         public static async Task<Host> StartAsync(TestAssembly assembly, IReadOnlyDictionary<string, string>? environment, ITestDebugLauncher? debugger,
-            Action<string>? log, CancellationToken cancel)
+            Dictionary<string, TestItem>? asked, Action<string>? log, CancellationToken cancel)
         {
             string name = $"{Path.GetFileNameWithoutExtension(assembly.Path)} ({assembly.Framework})";
             using TcpListener listener = new(IPAddress.Loopback, 0);
@@ -363,7 +393,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
             Notifications target = new(name, log);
             // What the test host sends is handled in the order it came, so its run's end is told after its last result.
-            JsonRpcPeer peer = new(client.GetStream());
+            JsonRpcPeer peer = new(client.GetStream(), asked is null ? null : new JsonSerializerOptions { Converters = { TestUpdate.ReaderOf(asked) } });
             peer.On<TestUpdate>("testing/testUpdates/tests", target.Tests);
             peer.On<PlatformLog>("client/log", target.Log);
             peer.On<PlatformLog>("client/showMessage", target.Log);

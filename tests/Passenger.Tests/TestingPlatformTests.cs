@@ -368,9 +368,9 @@ public sealed class TestingPlatformBytesTests(ITestOutputHelper testOutput) : ID
     public void Dispose() => TestFolders.Delete(folder);
 
     /// <summary>A run of 2,000 tests, a tenth failing and a seventh writing output, is told by its test host as test nodes
-    /// read straight from the bytes they came in, each test looked up by its key without making it: the run costs the IDE
-    /// at most twice the JSON of its results, least of three, and every result reads as the run with protocol traces on
-    /// (whose trace gives the JSON) read it.</summary>
+    /// read straight from the bytes they came in, each node's uid and name the strings its test was found with and each test
+    /// looked up by its key without making it: the run costs the IDE at most twice the JSON of its results, least of three, and
+    /// every result reads as the run with protocol traces on (whose trace gives the JSON) read it.</summary>
     [Fact]
     public async Task A_runs_results_cost_at_most_twice_their_JSON_to_read()
     {

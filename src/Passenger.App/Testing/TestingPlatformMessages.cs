@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Passenger.Core;
@@ -29,8 +30,8 @@ internal sealed record PlatformNode(string Uid, string DisplayName, bool IsTest,
 
 /// <summary>The platform's testing/testUpdates/tests: the test nodes a request changed or, with none, the request's end.
 /// Read straight from the bytes it came in by <see cref="Reader"/>, the names its nodes share (a file, a type, a method, a
-/// trait) read once and handed out again (<see cref="SharedNames"/>); a document of it is made only while protocol traces
-/// are on, for its trace.</summary>
+/// trait) read once and handed out again (<see cref="SharedNames"/>), a run's tests' uids and names as the strings they were
+/// found with (<see cref="ReaderOf"/>); a document of it is made only while protocol traces are on, for its trace.</summary>
 [JsonConverter(typeof(Reader))]
 internal sealed class TestUpdate
 {
@@ -43,6 +44,10 @@ internal sealed class TestUpdate
     /// <summary>Its JSON as it came, kept while protocol traces are on.</summary>
     public string? Json { get; private init; }
 
+    /// <summary>The reader of a run's updates: a node of a test the run asked for, by the uid it was found as, reads that uid,
+    /// and its display name where unchanged, as the test's own strings, making neither anew.</summary>
+    public static JsonConverter<TestUpdate> ReaderOf(Dictionary<string, TestItem> asked) => new Reader(asked);
+
     /// <summary>An update read property by property: a property not a string where a string is read, or not a number
     /// where a number is, is taken for none, and a property named twice says what its last says.</summary>
     private sealed class Reader : JsonConverter<TestUpdate>
@@ -50,6 +55,21 @@ internal sealed class TestUpdate
         /// <summary>The longest property name read on the stack: any the reader looks for is shorter, even with each of its
         /// characters escaped (\u0075, six bytes).</summary>
         private const int LongestName = 64 * 6;
+
+        /// <summary>The longest uid looked up among the tests asked for, read on the stack; a longer one is read as it is.</summary>
+        private const int LongestUid = 256;
+
+        /// <summary>The tests a run asked for, by uid; none for a discovery.</summary>
+        private readonly Dictionary<string, TestItem>.AlternateLookup<ReadOnlySpan<char>>? asked;
+
+        public Reader()
+        {
+        }
+
+        public Reader(Dictionary<string, TestItem> asked)
+        {
+            this.asked = asked.GetAlternateLookup<ReadOnlySpan<char>>();
+        }
 
         public override TestUpdate Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -103,7 +123,7 @@ internal sealed class TestUpdate
             return Guid.TryParse(text[..reader.CopyString(text)], out Guid run) ? run : null;
         }
 
-        private static List<PlatformNode> Changes(ref Utf8JsonReader reader, Located located)
+        private List<PlatformNode> Changes(ref Utf8JsonReader reader, Located located)
         {
             List<PlatformNode> nodes = [];
             while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
@@ -118,7 +138,7 @@ internal sealed class TestUpdate
         }
 
         /// <summary>A change's node, the reader left at the change's end; null for one without a node of a uid.</summary>
-        private static PlatformNode? Change(ref Utf8JsonReader reader, Located located)
+        private PlatformNode? Change(ref Utf8JsonReader reader, Located located)
         {
             PlatformNode? node = null;
             Span<byte> unescaped = stackalloc byte[LongestName];
@@ -135,10 +155,14 @@ internal sealed class TestUpdate
             return node;
         }
 
-        /// <summary>A node, the reader left at its end; null for one without a uid.</summary>
-        private static PlatformNode? Node(ref Utf8JsonReader reader, Located located)
+        /// <summary>A node, the reader left at its end; null for one without a uid. Its display name is read once its uid is
+        /// known, from where it lies.</summary>
+        private PlatformNode? Node(ref Utf8JsonReader reader, Located located)
         {
-            string? uid = null, display = null, type = null, space = null, method = null, vstestName = null, file = null, state = null;
+            string? uid = null, type = null, space = null, method = null, vstestName = null, file = null, state = null;
+            TestItem? test = null;
+            Utf8JsonReader shown = default;
+            bool named = false;
             string? message = null, stackTrace = null, standardOutput = null, standardError = null;
             double? line = null, duration = null;
             bool group = false, superseded = false;
@@ -152,11 +176,12 @@ internal sealed class TestUpdate
                 bool text = reader.TokenType == JsonTokenType.String;
                 if (name.SequenceEqual("uid"u8))
                 {
-                    uid = text ? reader.GetString() : null;
+                    (uid, test) = text ? Uid(ref reader) : (null, null);
                 }
                 else if (name.SequenceEqual("display-name"u8))
                 {
-                    display = text ? reader.GetString() : null;
+                    named = text;
+                    shown = reader;
                 }
                 else if (name.SequenceEqual("node-type"u8))
                 {
@@ -196,7 +221,7 @@ internal sealed class TestUpdate
                 }
                 else if (name.SequenceEqual("traits"u8))
                 {
-                    traits = reader.TokenType == JsonTokenType.StartArray ? Traits(ref reader) : null;
+                    traits = reader.TokenType == JsonTokenType.StartArray ? Traits(ref reader, located) : null;
                 }
                 else if (name.SequenceEqual("error.message"u8))
                 {
@@ -240,10 +265,10 @@ internal sealed class TestUpdate
             {
                 return null;
             }
-            string shown = display ?? uid;
+            string? display = !named ? null : test is not null && shown.ValueTextEquals(test.DisplayName) ? test.DisplayName : shown.GetString();
             string? output = string.IsNullOrEmpty(standardOutput) ? string.IsNullOrEmpty(standardError) ? null : standardError
                 : string.IsNullOrEmpty(standardError) ? standardOutput : $"{standardOutput}\n{standardError}";
-            return new PlatformNode(uid, shown, !group, state, located.Name(type, space, method) ?? vstestName ?? shown)
+            return new PlatformNode(uid, display ?? uid, !group, state, located.Name(type, space, method) ?? vstestName ?? display ?? uid)
             {
                 File = file,
                 Line = line is { } start and > 0 ? (int)start : 0,
@@ -255,6 +280,21 @@ internal sealed class TestUpdate
                 Superseded = superseded,
                 Attachments = Attachments(attachments),
             };
+        }
+
+        /// <summary>A uid, as the string of the test the run asked for by it, with that test, where there is one; else read anew.</summary>
+        private (string Uid, TestItem? Test) Uid(ref Utf8JsonReader reader)
+        {
+            long length = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
+            if (asked is { } tests && length <= LongestUid)
+            {
+                Span<char> text = stackalloc char[LongestUid];
+                if (tests.TryGetValue(text[..reader.CopyString(text)], out string? uid, out TestItem? test))
+                {
+                    return (uid, test);
+                }
+            }
+            return (reader.GetString()!, null);
         }
 
         private static double? Number(ref Utf8JsonReader reader) =>
@@ -311,8 +351,9 @@ internal sealed class TestUpdate
         }
 
         /// <summary>A node's traits: each an object of one name and its value (a category alone has none, and is a
-        /// Category), or of Key and Value; the reader left at the array's end.</summary>
-        private static KeyValuePair<string, string>[] Traits(ref Utf8JsonReader reader)
+        /// Category), or of Key and Value; the reader left at the array's end. A few are read on the stack, so the same traits
+        /// as the node before's are its array (<see cref="Located.Traits"/>).</summary>
+        private static KeyValuePair<string, string>[] Traits(ref Utf8JsonReader reader, Located located)
         {
             Utf8JsonReader counting = reader;
             int count = 0;
@@ -329,22 +370,24 @@ internal sealed class TestUpdate
                 reader.Skip();
                 return [];
             }
-            KeyValuePair<string, string>[] traits = new KeyValuePair<string, string>[count];
+            KeyValuePair<string, string>[]? made = count > FewTraits ? new KeyValuePair<string, string>[count] : null;
+            TraitsOnStack few = default;
+            Span<KeyValuePair<string, string>> traits = made ?? ((Span<KeyValuePair<string, string>>)few)[..count];
             int at = 0;
             while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
             {
                 if (reader.TokenType == JsonTokenType.StartObject)
                 {
-                    at += Trait(ref reader, traits.AsSpan(at));
+                    at += Trait(ref reader, traits[at..]);
                 }
                 reader.Skip();
             }
-            return traits;
+            return located.Traits(traits, made);
         }
 
         /// <summary>How many traits one trait object makes, written into <paramref name="into"/> unless it is empty; the
         /// reader left at the object's end. Of two properties, one a Key, it is that key and its value.</summary>
-        private static int Trait(ref Utf8JsonReader reader, Span<KeyValuePair<string, string>> into)
+        private static int Trait(ref Utf8JsonReader reader, scoped Span<KeyValuePair<string, string>> into)
         {
             Utf8JsonReader looking = reader;
             int properties = 0;
@@ -396,12 +439,44 @@ internal sealed class TestUpdate
         }
     }
 
-    /// <summary>The full name a node's location makes ("Space.Type.Method"), kept for the next node of the same location,
-    /// as a theory's rows are; null where the location names no type or method.</summary>
+    /// <summary>How many traits a node is read with on the stack.</summary>
+    private const int FewTraits = 4;
+
+    [InlineArray(FewTraits)]
+    private struct TraitsOnStack
+    {
+        private KeyValuePair<string, string> first;
+    }
+
+    /// <summary>The full name a node's location makes ("Space.Type.Method") and the traits it was read with, kept for the next
+    /// node of the same location and traits, as a theory's rows are; a name is null where the location names no type or
+    /// method.</summary>
     private sealed class Located
     {
         private string? type, space, method, name;
         private bool known;
+        private KeyValuePair<string, string>[]? traits;
+
+        /// <summary>The traits read, as the array the node before was given where they are the same: <paramref name="made"/>
+        /// where they were read into one, else a copy.</summary>
+        public KeyValuePair<string, string>[] Traits(ReadOnlySpan<KeyValuePair<string, string>> read, KeyValuePair<string, string>[]? made)
+        {
+            if (traits is { } kept && kept.Length == read.Length)
+            {
+                int same = 0;
+                while (same < read.Length && string.Equals(kept[same].Key, read[same].Key, StringComparison.Ordinal)
+                    && string.Equals(kept[same].Value, read[same].Value, StringComparison.Ordinal))
+                {
+                    same++;
+                }
+                if (same == read.Length)
+                {
+                    return kept;
+                }
+            }
+            traits = made ?? read.ToArray();
+            return traits;
+        }
 
         public string? Name(string? type, string? space, string? method)
         {

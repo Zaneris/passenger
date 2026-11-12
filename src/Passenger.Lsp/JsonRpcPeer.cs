@@ -1,4 +1,4 @@
-using Nerdbank.Streams;
+using System.Text.Json;
 using StreamJsonRpc;
 
 namespace Passenger.Lsp;
@@ -12,10 +12,12 @@ public sealed class JsonRpcPeer : IDisposable
 {
     private readonly JsonRpc rpc;
 
-    public JsonRpcPeer(Stream stream)
+    /// <summary>A conversation over <paramref name="stream"/>, whose parameters, results and notifications are read and written
+    /// with <paramref name="options"/> (the serializer's defaults where none).</summary>
+    public JsonRpcPeer(Stream stream, JsonSerializerOptions? options = null)
     {
-        // Each message in one piece, its envelope read where it lies and the rest as the type asked for.
-        rpc = new JsonRpc(new HeaderDelimitedMessageHandler(stream.UsePipeWriter(), new ContiguousReader(stream), new EnvelopeFormatter()))
+        // Each message in one piece, written whole and read where it lies, its envelope read alone and the rest as the type asked for.
+        rpc = new JsonRpc(new HeaderDelimitedMessageHandler(new ContiguousWriter(stream), new ContiguousReader(stream), new EnvelopeFormatter(options)))
         {
             SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false),
         };

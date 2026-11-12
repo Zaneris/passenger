@@ -244,12 +244,13 @@
     <Compile Include="../../src/Passenger.App/CSharp/HoverMarkdown.cs" Link="App/HoverMarkdown.cs" />
   </ItemGroup>
 
-  <!-- How a language server's messages are followed for the protocol trace, from their bytes alone, whether two of its
-       URIs name one document, from their paths, and what an HTML server is sent of Razor's files, against a stand-in,
-       compiled in since their project carries the servers. -->
+  <!-- How a language server's messages are followed for the protocol trace, from their bytes alone, how a test host's
+       conversation is written, whether two of its URIs name one document, from their paths, and what an HTML server is
+       sent of Razor's files, against a stand-in, compiled in since their project carries the servers. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Lsp/TracedStream.cs" Link="Lsp/TracedStream.cs" />
     <Compile Include="../../src/Passenger.Lsp/EnvelopeFormatter.cs" Link="Lsp/EnvelopeFormatter.cs" />
+    <Compile Include="../../src/Passenger.Lsp/ContiguousWriter.cs" Link="Lsp/ContiguousWriter.cs" />
     <Compile Include="../../src/Passenger.Lsp/DocumentUris.cs" Link="Lsp/DocumentUris.cs" />
     <Compile Include="../../src/Passenger.Lsp/LspLocation.cs" Link="Lsp/LspLocation.cs" />
     <Compile Include="../../src/Passenger.Lsp/RazorHtmlCopies.cs" Link="Lsp/RazorHtmlCopies.cs" />
