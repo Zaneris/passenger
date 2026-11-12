@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `McpRefactorTests`' `An_agents_code_action_renaming_a_class_takes_its_file_along_and_one_renaming_a_file_in_letter_case_renames_it`,
+  CI's Windows x64 report lane at b5fef9c55 (run 43112936183): "The language server still holds Crate.cs by its old
+  name, offering: Rename file to Crate.cs [refactor]; ...". **A race in the IDE**: the extension's loader marked a project
+  once a load left out a file renamed in letter case alone (Shelf.cs), and the project's next load, whatever brought it,
+  took the mark and loaded every file as given. On the loaded runner the agent's Rename file to Crate.cs moved crate.cs
+  while the Fix name violation's loads were under way, so the load after the mark found Crate.cs beside the crate.cs
+  the project held, which the server refused ("has already been added to this project"), and no later load came. On
+  this Mac a file moved 0.6 s after the fix failed that load the same way. Each load now judges such files from what
+  the project holds as it runs, and the failure gives the IDE's and the server's logs (0496a3cfc, #1494).
 - `NuGetTests`' `Update_all_stops_when_a_provider_check_handles_an_update_that_fails`, CI's macOS report lane at
   7f6f7db47 (run 43037078657): "Assert.Contains() Failure: Sub-string not found / String: "Updated 0 package references;
   App: /private/var/fo"··· / Not found: "failed"". **The IDE left dotnet's last lines out of a change's words**:
