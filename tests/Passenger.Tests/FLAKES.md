@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-12
 
+- `LongTextTests`' `Edits_to_long_soft_wrapped_lines_leave_every_column_on_the_row_a_fresh_editor_wraps_it_onto`, CI's
+  macOS report lane, shard 1, at ad7e74e7e (run 43199610179): the test process ended in a stack overflow (exit code
+  134) under `SoftWrap`'s setter, `WrapRestAsync`, `Land`, `TakeWraps`, `Rows`, `Wraps` and `WrapRest` repeated 767
+  times. **A race in the IDE**: a wrap of the lines off screen whose job had ended before its await looked (a short one on
+  a loaded runner) landed inside the reading of rows that started it, and a landing read `Rows` before it took the new
+  map, whose getter found the map being replaced unsettled with no wrap under way and started wrapping it again, so each
+  such job landed inside the one before. A wrap now lands on a turn of its own, and a landing reads the replaced map's
+  own rows; a test whose jobs end at once (`BackgroundWork.EndingAtOnce`) overflowed as CI did before the fix (fixed in
+  b81a9a8bb, #1516).
 - `HiddenFramesTests`' `A_step_into_a_line_reading_a_class_without_Just_My_Code_stops_in_the_helper_shown_and_goes_on_to_the_call`,
   CI's Linux and Windows (x64) runners at baba59a1f and 82e72bd86 (runs 43178423272, 43188135235), on .NET 10 and the
   newest; every arm64 machine passed. The step stopped in `StaticsHelpers.GetNonGCStaticBase` as it should, and the read
