@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
@@ -46,9 +47,18 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
         frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
         Assert.Equal("3", (await Evaluate(host, frame, "$ReturnValue * 4")).Result);
 
-        // The runtime does not give back a returned struct, so nothing is listed for it.
+        // A returned struct is listed where the runtime gives it back, from .NET 11 on; before, nothing is listed for it.
         stop = await host.StepOverAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
-        Assert.DoesNotContain(await host.LocalsAsync(stop), v => v.Name.EndsWith(" returned", StringComparison.Ordinal));
+        locals = await host.LocalsAsync(stop);
+        frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        if (int.Parse((await Evaluate(host, frame, "System.Environment.Version.Major")).Result, CultureInfo.InvariantCulture) >= 11)
+        {
+            Assert.Equal(("Locate() returned", "Spot { X = 2, Y = 3 }", "$ReturnValue"), (locals[0].Name, locals[0].Value, locals[0].EvaluateName));
+        }
+        else
+        {
+            Assert.DoesNotContain(locals, v => v.Name.EndsWith(" returned", StringComparison.Ordinal));
+        }
     }
 
     [Fact]

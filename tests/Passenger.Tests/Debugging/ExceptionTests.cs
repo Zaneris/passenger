@@ -21,7 +21,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task At_an_exceptions_stop_the_exception_is_listed_with_the_locals_and_evaluates(bool newestRuntime)
+    public async Task At_an_exceptions_stop_the_exception_is_listed_with_the_locals_and_evaluates_and_the_next_statement_is_refused_saying_why(bool newestRuntime)
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2,

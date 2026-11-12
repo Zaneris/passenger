@@ -670,13 +670,14 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Run(window, AppActions.RunToCursor);
         WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 2 }, "Run to Cursor's stop at the line whose condition is false");
         Assert.Contains(new LineMark(3, LineMarkKind.ExecutionPoint), editor.LineMarks);
-        Assert.Equal(("1", "0"), (Value(window, "i"), Value(window, "total")));
+        Ui.WaitFor(() => (Value(window, "i"), Value(window, "total")) == ("1", "0"),
+            () => $"the stop's locals as the loop's first turn left them, where i is {Value(window, "i") ?? "not listed"} and total {Value(window, "total") ?? "not listed"}");
 
         editor.GoTo(new TextPosition(5, 0));
         Ui.Run(window, AppActions.RunToCursor);
         WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 3 }, "Run to Cursor's stop at the tracepoint");
         Assert.Contains(new LineMark(5, LineMarkKind.ExecutionPoint), editor.LineMarks);
-        Assert.Equal("6", Value(window, "total"));
+        Ui.WaitFor(() => Value(window, "total") == "6", () => $"the tracepoint's stop's total, listed as {Value(window, "total") ?? "nothing"}");
         Ui.Run(window, AppActions.Resume);
         WaitDebugging(window, () => session.State == DebugState.Ended, "the program to run to its end");
         Assert.Contains("total 6", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);

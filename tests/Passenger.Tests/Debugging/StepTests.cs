@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
@@ -142,8 +145,9 @@ public class StepTests(ITestOutputHelper testOutputHelper)
     public async Task A_step_onto_a_breakpoints_line_stops_once_a_switch_expression_is_stopped_in_and_a_step_into_code_without_symbols_shows_it_decompiled()
     {
         bool startSuspended = true;
+        string cache = TestFolders.Create("symbols");
 
-        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2, cache);
 
         await debugProtocolHost
             .InitializeAsync()
@@ -189,8 +193,29 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(LogWritten, logged.ReadStopInfo().line);
         StoppedEvent decompiled = await debugProtocolHost.StepInAsync(logged.ThreadId!.Value).WaitForStoppedEvent();
         Assert.EndsWith("Console.cs", decompiled.ReadStopInfo().filePath);
-        // A newer ICSharpCode.Decompiler may move the decompiled code's line.
-        Assert.Equal(1219, decompiled.ReadStopInfo().line);
+        string console = (await debugProtocolHost.TopFrameAsync(decompiled.ThreadId!.Value)).DecompiledSourceInfo?.Assembly.AssemblyPath
+            ?? throw new InvalidOperationException("The decompiled stop's frame names no assembly");
+        Assert.Equal(FirstLineOfWriteLine(cache, console), decompiled.ReadStopInfo().line);
+    }
+
+    /// <summary>The first line of Console.WriteLine(string) in the symbols decompiled into the cache for the System.Console
+    /// at that path: where a step into it stops, wherever its runtime's code and the decompiler put it.</summary>
+    private static int FirstLineOfWriteLine(string cache, string console)
+    {
+        int token;
+        using (PEReader image = new(File.OpenRead(console)))
+        {
+            MetadataReader reader = image.GetMetadataReader();
+            // A static method taking one string and returning nothing.
+            byte[] signature = [0x00, 0x01, 0x01, 0x0E];
+            token = MetadataTokens.GetToken(Assert.Single(reader.MethodDefinitions, handle => reader.GetMethodDefinition(handle) is var method
+                && reader.GetString(method.Name) == "WriteLine" && reader.GetString(reader.GetTypeDefinition(method.GetDeclaringType()).Name) == "Console"
+                && reader.GetBlobBytes(method.Signature).AsSpan().SequenceEqual(signature)));
+        }
+        string pdb = Assert.Single(Directory.EnumerateFiles(Path.Combine(cache, "System.Console"), "*.pdb", SearchOption.AllDirectories));
+        using MetadataReaderProvider symbols = MetadataReaderProvider.FromPortablePdbStream(File.OpenRead(pdb));
+        MethodDebugInformation written = symbols.GetMetadataReader().GetMethodDebugInformation(MetadataTokens.MethodDefinitionHandle(token).ToDebugInformationHandle());
+        return written.GetSequencePoints().First(point => !point.IsHidden).StartLine;
     }
 
     [Gate]
