@@ -5,10 +5,15 @@ namespace Passenger.Lsp;
 
 /// <summary>What is written to a stream, gathered in one buffer kept for the conversation and written to the stream at each
 /// flush, so the one span a message handler asks for a message's whole content is never an array taken from a pool. The
-/// buffer grows to the longest message written; the conversation's end hands it to the next. The stream is left open.</summary>
+/// buffer grows to the longest message written; the conversation's end hands it to the next, up to a size. The stream is
+/// left open.</summary>
 internal sealed class ContiguousWriter(Stream stream) : PipeWriter
 {
     private const int FirstSize = 4 * 1024;
+
+    /// <summary>The largest buffer kept for the next conversation: one grown past it by a rare message (a run of a hundred
+    /// thousand tests) goes with its conversation rather than staying for the IDE's life.</summary>
+    private const int SpareMost = 1024 * 1024;
 
     /// <summary>The buffer of a conversation ended, which the next conversation takes rather than growing one anew.</summary>
     private static byte[]? spare;
@@ -54,7 +59,7 @@ internal sealed class ContiguousWriter(Stream stream) : PipeWriter
     public override void CancelPendingFlush() => throw new NotSupportedException("A flush is the stream's own write, canceled by its token");
 
     /// <summary>Ends the writing, with no flush under way: what is not flushed is dropped, and the buffer kept for the next
-    /// conversation where it is larger than the one kept.</summary>
+    /// conversation where it is larger than the one kept and no larger than <see cref="SpareMost"/>.</summary>
     public override void Complete(Exception? exception = null)
     {
         if (completed)
@@ -62,7 +67,7 @@ internal sealed class ContiguousWriter(Stream stream) : PipeWriter
             return;
         }
         completed = true;
-        if (spare is not { } kept || kept.Length < buffer.Length)
+        if (buffer.Length <= SpareMost && (spare is not { } kept || kept.Length < buffer.Length))
         {
             spare = buffer;
         }
