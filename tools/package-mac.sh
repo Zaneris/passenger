@@ -81,21 +81,26 @@ detach() {
     fi
     mounted=
 }
-# hdiutil create and convert now and then fail ("Resource busy", the system's scanners on what was just written), and
-# -quiet closes stderr: tried three times, a moment apart, the last one saying why. OUT is removed first.
+# hdiutil create and convert now and then fail ("Resource busy", the system's scanners on what was just written; on CI's
+# runner a convert's "Resource temporarily unavailable" partway through, #1473): tried three times, a moment apart, each
+# try's words kept (-quiet closes stderr), the last failure saying what memory, swap and disk the machine had left and
+# its largest processes. MADE is removed first.
 retry_hdiutil() {
-    out=$1
+    made=$1
     shift
-    for try in 1 2; do
-        rm -f "$out"
-        if hdiutil "$@" -quiet; then
+    said="$work/hdiutil-said.txt"
+    for try in 1 2 3; do
+        rm -f "$made"
+        if hdiutil "$@" >"$said" 2>&1; then
             return
         fi
-        echo "package-mac: hdiutil $1 failed (try $try), trying again" >&2
-        sleep $((try * 5))
+        echo "package-mac: hdiutil $1 failed (try $try): $(tail -n 5 "$said")" >&2
+        if [ "$try" -lt 3 ]; then
+            sleep $((try * 5))
+        fi
     done
-    rm -f "$out"
-    hdiutil "$@" || fail "hdiutil $1 failed three times"
+    { sysctl vm.swapusage; vm_stat; df -h "$work"; ps -axo rss=,pid=,comm= | sort -rn | head -n 8; } >&2 || true
+    fail "hdiutil $1 failed three times"
 }
 # The state of the copied app's runs (below), removed with it however the script ends.
 settings=
