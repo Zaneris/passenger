@@ -1,5 +1,5 @@
 using System.Buffers;
-using System.Runtime.InteropServices;
+using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -24,17 +24,15 @@ public sealed class DapConnection : IAsyncDisposable
     /// reader's memory.</summary>
     public const long MostBody = 256L * 1024 * 1024;
 
-    /// <summary>The read buffer's size between messages: a larger message's room is let go once it has been read.</summary>
-    private const int UsualBuffer = 64 * 1024;
-
     private readonly Stream input;
     private readonly Stream output;
     private readonly Action<string>? log;
     private readonly Lock writeGate = new();
 
     /// <summary>The message being written, under <see cref="writeGate"/>: its envelope and its body serialized straight into
-    /// one pooled buffer.</summary>
-    private readonly PooledBytes writing = new();
+    /// one buffer kept for the conversation, grown to its longest message, so no message's room is taken from the shared
+    /// pool, which a collection under memory load empties.</summary>
+    private readonly ArrayBufferWriter<byte> writing = new();
     private Utf8JsonWriter? writer;
 
     /// <summary>The requests sent and not yet answered, each by its command and what reads its answer's body; every message's
@@ -215,12 +213,12 @@ public sealed class DapConnection : IAsyncDisposable
     }
 
     /// <summary>Writes one message: its envelope, then its body (or arguments) serialized straight after it into the same
-    /// pooled buffer, and its header formatted on the stack. Nothing is sent of a message that does not serialize.</summary>
+    /// buffer, and its header formatted on the stack. Nothing is sent of a message that does not serialize.</summary>
     private void Write(Envelope envelope, ReadOnlySpan<byte> bodyName, object? body)
     {
         lock (writeGate)
         {
-            writing.Clear();
+            writing.ResetWrittenCount();
             Utf8JsonWriter json = writer ??= new Utf8JsonWriter(writing, new JsonWriterOptions { Encoder = Options.Encoder });
             json.Reset(writing);
             json.WriteStartObject();
@@ -253,7 +251,7 @@ public sealed class DapConnection : IAsyncDisposable
             }
             json.WriteEndObject();
             json.Flush();
-            ReadOnlySpan<byte> written = writing.Written;
+            ReadOnlySpan<byte> written = writing.WrittenSpan;
             Span<byte> header = stackalloc byte[ContentLengthHeader.Longest];
             header = header[..ContentLengthHeader.Write(written.Length, header)];
             // Under the gate, so the trace has the messages in the order they went.
@@ -266,70 +264,19 @@ public sealed class DapConnection : IAsyncDisposable
 
     private async Task ReadAsync()
     {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(UsualBuffer);
-        int filled = 0;
+        ContiguousReader reader = new(input);
         try
         {
             while (!stopping.IsCancellationRequested)
             {
-                int headerEnd = buffer.AsSpan(0, filled).IndexOf(ContentLengthHeader.End);
-                if (headerEnd < 0)
+                ReadResult result = await reader.ReadAsync(stopping.Token).ConfigureAwait(false);
+                ReadOnlySequence<byte> held = result.Buffer;
+                int consumed = ReadMessages(held.First.Span);
+                if (result.IsCompleted)
                 {
-                    if (filled >= MostHeader)
-                    {
-                        throw new IOException($"A DAP message's header ran past {MostHeader} bytes without the blank line that ends it");
-                    }
-                    if (filled == buffer.Length)
-                    {
-                        buffer = Grown(buffer, filled, buffer.Length * 2);
-                    }
-                    int read = await input.ReadAsync(buffer.AsMemory(filled), stopping.Token).ConfigureAwait(false);
-                    if (read == 0)
-                    {
-                        return;
-                    }
-                    filled += read;
-                    continue;
+                    return;
                 }
-                if (headerEnd > MostHeader)
-                {
-                    throw new IOException($"A DAP message's header ran past {MostHeader} bytes without the blank line that ends it");
-                }
-                long length = ContentLengthHeader.Read(buffer.AsSpan(0, headerEnd)) ?? throw NoLength(buffer.AsSpan(0, headerEnd));
-                if (length > MostBody)
-                {
-                    throw new IOException($"A DAP message of {length} bytes is over the {MostBody} bytes the connection reads of one");
-                }
-                int start = headerEnd + ContentLengthHeader.End.Length;
-                int size = (int)length;
-                if (buffer.Length < start + size)
-                {
-                    buffer = Grown(buffer, filled, start + size);
-                }
-                while (filled < start + size)
-                {
-                    int read = await input.ReadAsync(buffer.AsMemory(filled), stopping.Token).ConfigureAwait(false);
-                    if (read == 0)
-                    {
-                        return;
-                    }
-                    filled += read;
-                }
-                Trace?.Invoke(Name, $"<-- {Encoding.UTF8.GetString(buffer, start, size)}");
-                // Read in place, its document's room pooled: what outlives the buffer, reused, is copied out of it (Receive).
-                using (JsonDocument message = JsonDocument.Parse(buffer.AsMemory(start, size)))
-                {
-                    Receive(message.RootElement);
-                }
-                // What came after it moves to the front, into a buffer of the usual size again when it had grown for a large one.
-                byte[] next = buffer.Length > UsualBuffer && filled - start - size <= UsualBuffer ? ArrayPool<byte>.Shared.Rent(UsualBuffer) : buffer;
-                buffer.AsSpan(start + size, filled - start - size).CopyTo(next);
-                if (next != buffer)
-                {
-                    ArrayPool<byte>.Shared.Return(buffer);
-                }
-                buffer = next;
-                filled -= start + size;
+                reader.AdvanceTo(held.GetPosition(consumed), held.End);
             }
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
@@ -343,18 +290,44 @@ public sealed class DapConnection : IAsyncDisposable
         }
         finally
         {
+            reader.Complete();
             inbox.Writer.TryComplete();
             FailPending("the connection closed");
         }
     }
 
-    /// <summary>A larger buffer from the pool holding what this one was filled with, this one given back.</summary>
-    private static byte[] Grown(byte[] buffer, int filled, int size)
+    /// <summary>Reads each whole message at the front of what the reader holds (in one piece) where it lies, and gives the bytes
+    /// they took; what is left waits for the rest of its message.</summary>
+    private int ReadMessages(ReadOnlySpan<byte> held)
     {
-        byte[] grown = ArrayPool<byte>.Shared.Rent(size);
-        buffer.AsSpan(0, filled).CopyTo(grown);
-        ArrayPool<byte>.Shared.Return(buffer);
-        return grown;
+        int consumed = 0;
+        while (true)
+        {
+            ReadOnlySpan<byte> rest = held[consumed..];
+            int headerEnd = rest.IndexOf(ContentLengthHeader.End);
+            if (headerEnd < 0 ? rest.Length >= MostHeader : headerEnd > MostHeader)
+            {
+                throw new IOException($"A DAP message's header ran past {MostHeader} bytes without the blank line that ends it");
+            }
+            if (headerEnd < 0)
+            {
+                return consumed;
+            }
+            long length = ContentLengthHeader.Read(rest[..headerEnd]) ?? throw NoLength(rest[..headerEnd]);
+            if (length > MostBody)
+            {
+                throw new IOException($"A DAP message of {length} bytes is over the {MostBody} bytes the connection reads of one");
+            }
+            int start = headerEnd + ContentLengthHeader.End.Length;
+            if (rest.Length - start < length)
+            {
+                return consumed;
+            }
+            ReadOnlySpan<byte> message = rest.Slice(start, (int)length);
+            Trace?.Invoke(Name, $"<-- {Encoding.UTF8.GetString(message)}");
+            Receive(message);
+            consumed += start + (int)length;
+        }
     }
 
     /// <summary>What ends a conversation whose header gives no length, quoting the header's start.</summary>
@@ -366,45 +339,142 @@ public sealed class DapConnection : IAsyncDisposable
 
     /// <summary>A whole number a message cannot go without (its seq, an answer's request_seq): missing or of another kind, the
     /// message does not read, as one whose JSON does not.</summary>
-    private static int Needed(JsonElement message, string name) =>
-        JsonMembers.Number(message, name) ?? throw new FormatException($"A DAP message's {name} is missing or no whole number");
+    private static int Needed(JsonElement message, string name) => JsonMembers.Number(message, name) ?? throw Missing(name);
 
-    private void Receive(JsonElement message)
+    private static FormatException Missing(string name) => new($"A DAP message's {name} is missing or no whole number");
+
+    /// <summary>A message, read where it lies: a response straight into what its request waits for, with no document made of
+    /// it; a request or event copied out as an element for its handler.</summary>
+    private void Receive(ReadOnlySpan<byte> message)
     {
-        if (JsonMembers.Text(message, "type") == "response")
+        Heard heard = Heard.Read(message);
+        if (!heard.IsResponse)
         {
-            int seq = Needed(message, "request_seq");
-            // Read before the request is taken from those waiting, so an answer that does not read fails it with the rest.
-            bool succeeded = JsonMembers.Bool(message, "success") == true;
-            if (!succeeded)
-            {
-                pending.Fail(seq, asked => new DapException(JsonMembers.Text(message, "command") ?? asked.Command, JsonMembers.Text(message, "message") ?? "failed"));
-            }
-            else if (pending.TryGet(seq, out Asked asked))
-            {
-                // Read here, from the bytes it came in, into what the request waits for: a body that does not read fails it alone.
-                Exception? unread = null;
-                object? answer = null;
-                try
-                {
-                    answer = asked.Read(JsonMembers.Value(message, "body") is { } body ? JsonMarshal.GetRawUtf8Value(body) : default);
-                }
-                catch (Exception error)
-                {
-                    unread = error;
-                }
-                if (unread is null)
-                {
-                    pending.Answer(seq, answer);
-                }
-                else
-                {
-                    pending.Fail(seq, _ => unread);
-                }
-            }
+            Utf8JsonReader whole = new(message);
+            inbox.Writer.TryWrite(JsonElement.ParseValue(ref whole));
             return;
         }
-        inbox.Writer.TryWrite(message.Clone());
+        int seq = heard.RequestSeq ?? throw Missing("request_seq");
+        // Read before the request is taken from those waiting, so an answer that does not read fails it with the rest.
+        if (heard.Success != true)
+        {
+            string? command = heard.Command;
+            string? why = heard.Message;
+            pending.Fail(seq, asked => new DapException(command ?? asked.Command, why ?? "failed"));
+        }
+        else if (pending.TryGet(seq, out Asked asked))
+        {
+            // Read here, from the bytes it came in, into what the request waits for: a body that does not read fails it alone.
+            Exception? unread = null;
+            object? answer = null;
+            try
+            {
+                answer = asked.Read(heard.Body);
+            }
+            catch (Exception error)
+            {
+                unread = error;
+            }
+            if (unread is null)
+            {
+                pending.Answer(seq, answer);
+            }
+            else
+            {
+                pending.Fail(seq, _ => unread);
+            }
+        }
+    }
+
+    /// <summary>What a message's envelope says that its reading turns on, read from its bytes with no document of them: whether
+    /// it is a response, and a response's request_seq, success, command, message and body's bytes (none where it has none).
+    /// Each is read as <see cref="JsonMembers"/> reads a member, the last of its name, null where of another kind; a message
+    /// whose JSON does not read throws.</summary>
+    private readonly ref struct Heard(bool isResponse, int? requestSeq, bool? success, string? command, string? message, ReadOnlySpan<byte> body)
+    {
+        public bool IsResponse { get; } = isResponse;
+        public int? RequestSeq { get; } = requestSeq;
+        public bool? Success { get; } = success;
+        public string? Command { get; } = command;
+        public string? Message { get; } = message;
+        public ReadOnlySpan<byte> Body { get; } = body;
+
+        public static Heard Read(ReadOnlySpan<byte> message)
+        {
+            Utf8JsonReader reader = new(message);
+            reader.Read();
+            bool isResponse = false;
+            int? requestSeq = null;
+            bool? success = null;
+            string? command = null;
+            string? said = null;
+            ReadOnlySpan<byte> body = default;
+            if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+                {
+                    Part part = PartNamed(ref reader);
+                    reader.Read();
+                    switch (part)
+                    {
+                        case Part.Type:
+                            isResponse = reader.TokenType == JsonTokenType.String && reader.ValueTextEquals("response"u8);
+                            break;
+                        case Part.RequestSeq:
+                            requestSeq = reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out int seq) ? seq : null;
+                            break;
+                        case Part.Success:
+                            success = reader.TokenType switch { JsonTokenType.True => true, JsonTokenType.False => false, _ => null };
+                            break;
+                        case Part.Command:
+                            command = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
+                            break;
+                        case Part.Message:
+                            said = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
+                            break;
+                        case Part.Body:
+                        {
+                            int start = (int)reader.TokenStartIndex;
+                            reader.Skip();
+                            body = message[start..(int)reader.BytesConsumed];
+                            break;
+                        }
+                    }
+                    reader.Skip();
+                }
+            }
+            else
+            {
+                // A message that is no object has no members: its value is passed over whole.
+                reader.Skip();
+            }
+            // What follows the message's one value may only be space.
+            if (reader.Read())
+            {
+                throw new JsonException("A DAP message holds more than one JSON value");
+            }
+            return new Heard(isResponse, requestSeq, success, command, said, body);
+        }
+
+        private static Part PartNamed(ref Utf8JsonReader reader) =>
+            reader.ValueTextEquals("type"u8) ? Part.Type
+            : reader.ValueTextEquals("request_seq"u8) ? Part.RequestSeq
+            : reader.ValueTextEquals("success"u8) ? Part.Success
+            : reader.ValueTextEquals("command"u8) ? Part.Command
+            : reader.ValueTextEquals("message"u8) ? Part.Message
+            : reader.ValueTextEquals("body"u8) ? Part.Body
+            : Part.Other;
+
+        private enum Part
+        {
+            Other,
+            Type,
+            RequestSeq,
+            Success,
+            Command,
+            Message,
+            Body,
+        }
     }
 
     private async Task DispatchAsync()

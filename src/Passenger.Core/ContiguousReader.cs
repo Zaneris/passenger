@@ -1,13 +1,13 @@
 using System.Buffers;
 using System.IO.Pipelines;
 
-namespace Passenger.Lsp;
+namespace Passenger.Core;
 
 /// <summary>What a stream says, read into one buffer kept for the conversation and handed out in one piece, so each
 /// message read from it lies in one array and JSON parsed from it is read where it lies, with no copy made first. The
 /// buffer grows to the most bytes unconsumed at once; what was consumed is moved off its front only to make room. The
 /// stream is left open.</summary>
-internal sealed class ContiguousReader(Stream stream) : PipeReader
+public sealed class ContiguousReader(Stream stream) : PipeReader
 {
     private const int FirstSize = 64 * 1024;
 

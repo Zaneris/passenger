@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Passenger.Core;
 using StreamJsonRpc;
 
 namespace Passenger.Lsp;

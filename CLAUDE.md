@@ -578,7 +578,8 @@ a new name, and `just site-shots` retakes its images.
 - **`GC.GetAllocatedBytesForCurrentThread` counts the unused rest of a thread's allocation context** when a background
   collection's mark ends, up to 8 KB never allocated, so the unit tests run every collection blocking (#1355).
 - **`ArrayPool.Shared` loses a thread's arrays at a Gen 2 once load reaches 81% of memory**, so a `Rent` on a path held
-  to 0 bytes can allocate: such a path keeps a per-thread array (`FuzzyMatch`).
+  to 0 bytes can allocate: such a path keeps a per-thread array (`FuzzyMatch`), a conversation its own message buffers
+  (`ContiguousReader`).
 - **`FormattedText` lays its lines out again at every draw**: text drawn frame after frame is kept as a `TextLayout` or
   `TextLine` until what it says or its width changes. Avalonia's text formatter returns the pooled arrays of runs it
   shapes together only when finalized, so runs of one line are taken from two copies of its text in turn.

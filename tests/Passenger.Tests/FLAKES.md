@@ -30,6 +30,22 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `ProtocolBytesTests`' `A_variables_answer_of_2000_variables_costs_at_most_twice_its_JSON`, the Ubuntu VM loaded by
+  other runs at 81048e3e9: 2.05 and 2.03 times its JSON against its 2, failing 1 of 3 alone, where it measures 1.75.
+  **The IDE**: what a debugger answer cost hung on the shared pool. The adapter's write buffer (`PooledBytes`) took a
+  64 KB array from it for each message and 128, 256 and 512 KB ones as the 289 KB answer grew it, and the IDE's reader a
+  64 KB one, one of the answer's length to hold it and another for its document's index; a thread finding none of a size
+  in its own slot or the pool's stacks (one that gave none back there, or any after a gen-2 collection past the pool's
+  high mark of memory load, which empties them) allocated it anew. Held to 2 processors with the GC's high-memory mark
+  at 16 %, main measured 1.98 times in 1 of 8 runs on the Ubuntu VM (a fresh 64 KB array in each of its six answers) and
+  3.11 in 2 of 15 on this Mac (fresh 128 and 256 KB ones), and a harness of the same conversation, the pool's event
+  source naming each array it made, 1.75 to 4.92 times an answer, over 1.75 by those arrays alone. The 1.75 is the
+  answer itself: its 2,000 variables' strings in UTF-16 1.06 times the JSON, their objects 0.50, the list 0.06, and the
+  serializer's growing of it and the hints' constructor arguments 0.10. The connection now writes into a buffer it keeps
+  (`ArrayBufferWriter`), reads through `ContiguousReader` (moved to Core from Lsp), and reads a response's envelope with
+  no document, its body from the bytes it came in: `FramingTests` holds a 270 KB answer to no array of 64 KB or more
+  from the pool (main took 10), and the test measured 1.75 to 1.76 times in 20 runs so held on this Mac and 1.75 in 8
+  on the Ubuntu VM, and 1.75 idle there and on the Windows on Arm VM, as main did (#1510).
 - `AspireExecutionServerTests`' `Malformed_or_ambiguous_wire_input_never_reaches_the_launch_callback(kind:
   "duplicate-content-type")`, CI's Windows x64 report lane at fd37313ff (run 43162817058): "One or more Aspire project
   sessions could not be stopped. (Object reference not set to an instance of an object.)" from

@@ -88,6 +88,61 @@ public class FramingTests
         await connection.DisposeAsync();
     }
 
+    /// <summary>A response read straight from its bytes reads its members as a document of it would: by their names unescaped,
+    /// the last of a name, and a body of null as none.</summary>
+    [Theory]
+    [InlineData("""{"type":"event","type":"response","request_seq":1,"success":true,"body":{"text":"first"},"body":{"text":"last"}}""", "last")]
+    [InlineData("""{"\u0074ype":"\u0072esponse","request_seq":1,"success":true,"body":{"text":"caf\u00e9"}}""", "café")]
+    [InlineData("""{"type":"response","request_seq":1,"success":true,"body":null}""", null)]
+    public async Task A_response_is_read_by_its_members_as_a_document_of_it_reads_them(string response, string? text)
+    {
+        DapConnection connection = new(new ChunkedStream(Framed(response), 7), new MemoryStream());
+        Task<Words> answer = connection.RequestAsync<Words>("asked", null, TestContext.Current.CancellationToken);
+        connection.Start();
+        Assert.Equal(text, (await answer.WaitAsync(Patience, TestContext.Current.CancellationToken)).Text);
+        await connection.DisposeAsync();
+    }
+
+    /// <summary>A variables answer of 2,000 variables (about 270 KB) is written and read in buffers its conversation keeps: no
+    /// array of 64 KB or more comes from the shared pool, which a collection under memory load empties, so that each answer
+    /// would make its room anew.</summary>
+    [Fact]
+    public async Task A_large_answer_is_written_and_read_with_no_large_array_from_the_shared_pool()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        VariablesResponse sent = new([.. Enumerable.Range(0, 2000).Select(i => new DapVariable
+        {
+            Name = $"[{i}]", Value = $"\"customer-{i:D6}@example.com\"", Type = "string", EvaluateName = $"emails[{i}]",
+        })]);
+        byte[] asked = Framed($$$"""{"seq":1,"type":"request","command":"{{{DapCommands.Variables}}}","arguments":{"variablesReference":7}}""");
+        MemoryStream written = new();
+        VariablesResponse read;
+        using PoolRents rents = new(64 * 1024);
+        PoolRents.Counting = true;
+        try
+        {
+            DapConnection adapter = new(new ChunkedStream(asked, 4_096), written);
+            TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            adapter.Handle<VariablesArguments, VariablesResponse>(DapCommands.Variables, _ => Task.FromResult(sent), () => answered.TrySetResult());
+            adapter.Start();
+            await answered.Task.WaitAsync(Patience, cancel);
+            await adapter.DisposeAsync();
+            DapConnection ide = new(new ChunkedStream(written.ToArray(), 16_384), new MemoryStream());
+            Task<VariablesResponse> answer = ide.RequestAsync<VariablesResponse>(DapCommands.Variables, new VariablesArguments(7), cancel);
+            ide.Start();
+            read = await answer.WaitAsync(Patience, cancel);
+            await ide.DisposeAsync();
+        }
+        finally
+        {
+            PoolRents.Counting = false;
+        }
+
+        Assert.True(written.Length > 200_000, $"The answer came to {written.Length:N0} bytes, too few to need a large buffer");
+        Assert.Equivalent(sent.Variables, read.Variables, strict: true);
+        Assert.True(rents.Count == 0, $"Writing and reading a {written.Length:N0}-byte answer took {rents.Count} arrays of 64 KB or more from the shared pool, which a collection under memory load empties, so that each answer would allocate its room anew");
+    }
+
     /// <summary>A header that never ends, a length past the most a message may be or past any number, or no length at all: the
     /// reader ends the conversation saying why, never taking its memory for it or waiting on.</summary>
     [Theory]

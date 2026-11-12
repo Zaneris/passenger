@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.Tracing;
 using System.Text;
 using System.Text.Json;
 using Passenger.Lsp;
@@ -108,13 +107,13 @@ public class EnvelopeFormatterTests
         long readAlone = GC.GetAllocatedBytesForCurrentThread() - before;
         int rented;
         long read;
-        using (Rents rents = new())
+        using (PoolRents rents = new())
         {
-            Rents.Counting = true;
+            PoolRents.Counting = true;
             before = GC.GetAllocatedBytesForCurrentThread();
             JsonRpcConversations.TokensResult? tokens = Answered(formatter, message);
             read = GC.GetAllocatedBytesForCurrentThread() - before;
-            Rents.Counting = false;
+            PoolRents.Counting = false;
             rented = rents.Count;
             Assert.Equal(250_000, tokens?.Data.Length);
         }
@@ -173,31 +172,6 @@ public class EnvelopeFormatterTests
             Piece next = new(memory, RunningIndex + Memory.Length);
             Next = next;
             return next;
-        }
-    }
-
-    /// <summary>The shared pool's rents made on the thread counting, as its own event source tells them.</summary>
-    private sealed class Rents : EventListener
-    {
-        [ThreadStatic]
-        public static bool Counting;
-
-        public int Count { get; private set; }
-
-        protected override void OnEventSourceCreated(EventSource eventSource)
-        {
-            if (eventSource.Name == "System.Buffers.ArrayPoolEventSource")
-            {
-                EnableEvents(eventSource, EventLevel.Verbose);
-            }
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            if (Counting && eventData.EventName == "BufferRented")
-            {
-                Count++;
-            }
         }
     }
 }

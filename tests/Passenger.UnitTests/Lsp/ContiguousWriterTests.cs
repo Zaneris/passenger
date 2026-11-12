@@ -1,4 +1,3 @@
-using System.Diagnostics.Tracing;
 using System.IO.Pipelines;
 using System.Text;
 using Passenger.Lsp;
@@ -84,46 +83,21 @@ public class ContiguousWriterTests
     private static async Task<(byte[] Written, int LargeRents)> WrittenAsync(PipeWriter writer, MemoryStream stream, CancellationToken cancel)
     {
         HeaderDelimitedMessageHandler handler = new(writer, null, new EnvelopeFormatter(JsonRpcConversations.Web));
-        using LargeRents rents = new();
+        using PoolRents rents = new(128 * 1024);
         try
         {
             foreach (JsonRpcMessage message in Conversation())
             {
-                LargeRents.Counting = true;
+                PoolRents.Counting = true;
                 await handler.WriteAsync(message, cancel);
-                LargeRents.Counting = false;
+                PoolRents.Counting = false;
             }
         }
         finally
         {
-            LargeRents.Counting = false;
+            PoolRents.Counting = false;
             await handler.DisposeAsync();
         }
         return (stream.ToArray(), rents.Count);
-    }
-
-    /// <summary>The shared pool's rents of 128 KB or more made on the thread counting, as its own event source tells them.</summary>
-    private sealed class LargeRents : EventListener
-    {
-        [ThreadStatic]
-        public static bool Counting;
-
-        public int Count { get; private set; }
-
-        protected override void OnEventSourceCreated(EventSource eventSource)
-        {
-            if (eventSource.Name == "System.Buffers.ArrayPoolEventSource")
-            {
-                EnableEvents(eventSource, EventLevel.Verbose);
-            }
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            if (Counting && eventData.EventName == "BufferRented" && eventData.Payload is [_, int size, ..] && size >= 128 * 1024)
-            {
-                Count++;
-            }
-        }
     }
 }
