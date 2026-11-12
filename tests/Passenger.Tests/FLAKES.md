@@ -28,6 +28,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-12
+
+- `TerminalResponsivenessTests`' `A_paste_into_a_program_that_reads_nothing_leaves_the_window_taking_keys`, CI's macOS
+  runner at baba59a1f (run 43178423272): "Waited 20 s for the start of the paste echoed", the screen showing the paste's
+  lines. **A test waited wrong**: it let the loop end before it looked for `echo pasted 0`, and the shell's lines then
+  overran the 10,000-line scrollback (the dump held 10,014, from `echo pasted 747` on), macOS's terminal echoing what
+  was typed ahead again at each change between the line editor's raw mode and the command's cooked one. A plain pty
+  and `/bin/sh -i` with no Passenger, written the 2,000 lines as fast as it took them, gave 45,968 lines, one pasted line
+  2,012 times and 46 mangled commands. It looks while the loop runs, as the paste's other test does (5ac52ef16, #1512).
+
 ## 2026-11-11
 
 - `DebuggerTests`' `Run_to_cursor_stops_at_a_line_holding_a_false_condition_or_a_tracepoint_each_as_it_was_after`, the
