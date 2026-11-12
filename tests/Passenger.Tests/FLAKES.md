@@ -30,6 +30,11 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-12
 
+- `EnvelopeFormatterTests`' `A_large_answer_rents_no_buffer_and_costs_what_it_is_read_as`, CI's Windows (x64) gate at
+  870526803 (run 43272463855): "Reading a 756,694-byte answer rented 3 buffers from the shared pool". **The test
+  itself**: `PoolRents`' flag that a flow is counted was one static flag every listener read, so the rents
+  `FramingTests` counted beside it in the same process were counted against it too. The flag now names the listener
+  that set it (`rents.Counting`, 030307ed5).
 - `XamlTests`' `The_preview_draws_a_window_from_the_last_build_follows_its_text_as_it_is_typed_and_draws_styles_as_their_PreviewWith`,
   CI's Windows (x64) runner at ad7e74e7e (run 43199610179): "Expected: 800, 450 / Actual: 375, 211" for the preview's
   frame. **The IDE**: the pane learns the design's size only from the first frame, drawn at the window's own scale, then
