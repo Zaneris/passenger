@@ -546,7 +546,7 @@ public sealed class DebugController : IDisposable
             target.Say($"Hot Reload: {its.Said}", Unapplied(its));
             if (its.Code.Result == HotReloadResult.Applied && target is RunningReload run)
             {
-                ToldHandlers(run);
+                ToldHandlers(run, its.Code);
             }
         }
         // The program applied to is its own tab's, whichever is chosen now; one ended or restarted meanwhile is told nothing.
@@ -581,13 +581,13 @@ public sealed class DebugController : IDisposable
         return HotReloadOutcome.Both(code, markup) ?? new HotReloadOutcome(HotReloadResult.Failed, $"{target.Name} is not debugged with Hot Reload");
     }
 
-    /// <summary>The update handlers of a program run with Hot Reload told of an update it took (<see cref="ToldHandlers(DebugTab, DebugSession)"/>).</summary>
-    private void ToldHandlers(RunningReload run)
+    /// <summary>The update handlers of a program run with Hot Reload told of an update it took (<see cref="ToldHandlers(DebugTab, DebugSession, HotReloadOutcome)"/>).</summary>
+    private void ToldHandlers(RunningReload run, HotReloadOutcome outcome)
     {
         run.Browser?.Updated();
         if (run.Handlers is { } hook)
         {
-            hook.Updated();
+            hook.Updated(outcome.UpdatedTypes);
         }
         else if (run.Session.Elsewhere && toldUnhandled.Add(run))
         {
@@ -597,11 +597,11 @@ public sealed class DebugController : IDisposable
 
     /// <summary>The program's update handlers told of an update it took, so a Blazor component renders it at once; a program
     /// in a container or on another machine, which Passenger's hook cannot reach, says once that its handlers are not called.</summary>
-    private static void ToldHandlers(DebugTab tab, DebugSession session)
+    private static void ToldHandlers(DebugTab tab, DebugSession session, HotReloadOutcome outcome)
     {
         if (tab.Handlers is { } hook)
         {
-            hook.Updated();
+            hook.Updated(outcome.UpdatedTypes);
         }
         else if (session.Elsewhere && !tab.ToldUnhandled)
         {
@@ -651,7 +651,7 @@ public sealed class DebugController : IDisposable
         // An update of code alone: XAML Hot Reload changes no module.
         if (its.Result == HotReloadResult.Applied && its.Modules.Count > 0)
         {
-            ToldHandlers(tab, session);
+            ToldHandlers(tab, session, its);
             tab.Browser?.Updated();
         }
         if (its.Result == HotReloadResult.Applied && session.State == DebugState.Paused && session.StoppedThread is int thread && tab == chosen && !disposed)
