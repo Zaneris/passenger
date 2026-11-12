@@ -407,7 +407,9 @@ a new name, and `just site-shots` retakes its images.
   long it ran. ICorDebug walks code marked [DebuggerHidden] with [StackTraceHidden] (compiled code's helpers, a program's
   own; from .NET 11 the exception dispatch and entry-point call too), which the stack leaves out on every runtime: a
   stop's frames and top come from `EnumerateFramesForThread` and `TopFrame`, never a chain's own, and
-  `thread.ActiveFrame` may be hidden code (#1503).
+  `thread.ActiveFrame` may be hidden code (#1503). Without Just My Code the runtime's stepper loses a frame's return into
+  native code (a static constructor, .NET 11's CallClassConstructor): its step goes out of the hidden frame above the
+  next shown one, which guards its other steps (`AboveShownCaller`, #1511).
 - **Hot Reload**: the server's `EditAndContinueService` from the extension; update handlers through Passenger's hook
   (`UpdateHandlerHook`), never the runtime's agent, which refuses under a debugger; the hook connects by the system's
   socket calls, never .NET's Socket (whose first use starts a thread of .NET's on macOS and Linux), and makes its own

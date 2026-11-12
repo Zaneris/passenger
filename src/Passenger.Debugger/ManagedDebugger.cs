@@ -684,6 +684,18 @@ public partial class ManagedDebugger
     {
         _stepper?.TryDeactivate();
         _stepper = null;
+        EndReturnGuard();
+    }
+
+    /// <summary>A step out standing guard over a step whose frame returns to native code, Just My Code off, with the step it
+    /// guards: the runtime's stepper loses that return, so the guard's end is the step's (<see cref="AboveShownCaller"/>).</summary>
+    private (ICorDebugStepper Guard, ICorDebugStepper Step)? _returnGuard;
+
+    /// <summary>Ends a step's guard, with the step it guards or when another step begins.</summary>
+    private void EndReturnGuard()
+    {
+        _returnGuard?.Guard.TryDeactivate();
+        _returnGuard = null;
     }
 
     /// <summary>The step over an await goes on from where its run resumed, on this thread, which need not be the one that
@@ -744,6 +756,7 @@ public partial class ManagedDebugger
     /// unmapped, and, Just My Code, only in the user's code; <paramref name="step"/> says where it goes.</summary>
     private ICorDebugStepper BeginStep(ICorDebugStepper stepper, ICorDebugThread thread, ICorDebugFrame? from, bool justMyCode, Action<ICorDebugStepper> step)
     {
+        EndReturnGuard();
         stepper.SetUnmappedStopMask(CorDebugUnmappedStop.STOP_NONE);
         if (justMyCode)
         {
@@ -777,7 +790,9 @@ public partial class ManagedDebugger
     }
 
     /// <summary>A step from a frame, the thread's top one unless another is given, set up without letting the program go:
-    /// through its statement, or the IL range given.</summary>
+    /// through its statement, or the IL range given. Without Just My Code, a frame whose caller is native code, whose return
+    /// the runtime's stepper loses, is stepped out of as the hidden frame below that code that returns to the frame shown,
+    /// whose step out also stands guard over its other steps (<see cref="AboveShownCaller"/>).</summary>
     internal ICorDebugStepper SetupStepper(ICorDebugThread thread, StepType stepType, ICorDebugFrame? from = null, (int Start, int End)? through = null)
     {
         ICorDebugFrame? frame = from ?? TopFrame(thread);
@@ -791,10 +806,14 @@ public partial class ManagedDebugger
             throw new InvalidOperationException("A step operation is already in progress");
         }
 
-        ICorDebugStepper stepper = frame.CreateStepper();
-        stepper.SetInterceptMask(CorDebugIntercept.INTERCEPT_ALL & ~(CorDebugIntercept.INTERCEPT_SECURITY | CorDebugIntercept.INTERCEPT_CLASS_INIT));
+        ICorDebugILFrame? below = _justMyCode ? null : AboveShownCaller(thread, frame);
+        if (stepType is StepType.StepOut && below is not null)
+        {
+            _logger?.Invoke($"Stepper set on thread {thread.Id}: out of {FrameTold(frame)}, whose caller is native code, as out of {FrameTold(below)}");
+            return BeginStep(Intercepting(below.CreateStepper()), thread, below, justMyCode: false, stepper => stepper.StepOut());
+        }
         bool justMyCode = _justMyCode && _asyncStepper?.SeesFrameLeave(thread, frame) is not true;
-        return BeginStep(stepper, thread, frame, justMyCode, stepper =>
+        ICorDebugStepper begun = BeginStep(Intercepting(frame.CreateStepper()), thread, frame, justMyCode, stepper =>
         {
             if (stepType == StepType.StepOut)
             {
@@ -814,6 +833,81 @@ public partial class ManagedDebugger
             COR_DEBUG_STEP_RANGE range = new() { startOffset = checked((uint)start), endOffset = checked((uint)end) };
             stepper.StepRange(stepIn, [range], 1);
         });
+        if (below is not null)
+        {
+            ICorDebugStepper guard = Intercepting(below.CreateStepper());
+            guard.SetUnmappedStopMask(CorDebugUnmappedStop.STOP_NONE);
+            guard.StepOut();
+            _returnGuard = (guard, begun);
+            _logger?.Invoke($"  Its frame's caller is native code: a step out of {FrameTold(below)} stands guard over its return");
+        }
+        return begun;
+    }
+
+    /// <summary>A stepper that stops in the runtime's interceptors but its class initialization and security checks.</summary>
+    private static ICorDebugStepper Intercepting(ICorDebugStepper stepper)
+    {
+        stepper.SetInterceptMask(CorDebugIntercept.INTERCEPT_ALL & ~(CorDebugIntercept.INTERCEPT_SECURITY | CorDebugIntercept.INTERCEPT_CLASS_INIT));
+        return stepper;
+    }
+
+    /// <summary>For a frame whose caller is native code, which called it from below a frame the stack shows (the runtime's
+    /// class initialization, called by the code that read the class through its hidden helpers): the frame directly above
+    /// that shown one, the hidden helper it called, whose step out returns there. Null where the frame's caller is managed,
+    /// or the shown frame called the native code itself.</summary>
+    private ICorDebugILFrame? AboveShownCaller(ICorDebugThread thread, ICorDebugFrame frame)
+    {
+        if (RangeOf(frame) is not { } stepping)
+        {
+            return null;
+        }
+        List<ICorDebugChain> chains = [.. thread.EnumerateChains()];
+        int at = chains.FindLastIndex(chain => chain.Reason is CorDebugChainReason.CHAIN_FUNC_EVAL) + 1;
+        bool? callerManaged = null;
+        for (; at < chains.Count && callerManaged is null; at++)
+        {
+            if (chains[at].IsManaged)
+            {
+                callerManaged = CallerIn(chains[at], stepping);
+            }
+        }
+        if (callerManaged is not false || at >= chains.Count || chains[at].IsManaged)
+        {
+            return null;
+        }
+        for (; at < chains.Count; at++)
+        {
+            if (!chains[at].IsManaged)
+            {
+                continue;
+            }
+            ICorDebugFrame? above = null;
+            foreach (ICorDebugFrame below in chains[at].EnumerateFrames())
+            {
+                if (below is ICorDebugILFrame && !IsHiddenFrame(below))
+                {
+                    return above as ICorDebugILFrame;
+                }
+                above = below;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Whether a frame of the chain, known by its stack range, has a managed caller in the chain after it; null
+    /// where the chain does not hold the frame.</summary>
+    private static bool? CallerIn(ICorDebugChain chain, StackRange stepping)
+    {
+        bool found = false;
+        foreach (ICorDebugFrame frame in chain.EnumerateFrames())
+        {
+            if (found && frame is not ICorDebugInternalFrame)
+            {
+                return true;
+            }
+            found = found || RangeOf(frame) == stepping;
+        }
+        return found ? false : null;
     }
 
     /// <summary>The IL a step from a frame's statement (the one at its IP, or at the IL offset given) steps through: its
@@ -1265,8 +1359,10 @@ public partial class ManagedDebugger
         {
             // A step under way would stop the program as it runs off its stop, and fails the detach.
             _stepper?.TryDeactivate();
+            _returnGuard?.Guard.TryDeactivate();
         }
         _stepper = null!;
+        _returnGuard = null;
         _stepping = null;
         _stepAfterEvaluation = null;
         _unhandledByUser = null;

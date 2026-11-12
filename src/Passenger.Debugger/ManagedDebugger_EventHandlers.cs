@@ -433,6 +433,13 @@ public partial class ManagedDebugger
             return;
         }
         TakeBehindStep();
+        if (_returnGuard is ({ } guard, { } guarded) && _stepper is { } lost && guarded == lost && stepCompleteEventArgs.Stepper == guard)
+        {
+            _logger?.Invoke($"The step on thread {corThread.Id} ends where its guard's step out did, its frame having returned to native code");
+            _returnGuard = null;
+            lost.TryDeactivate();
+            _stepper = guard;
+        }
         if (stepCompleteEventArgs.Stepper != _stepper)
         {
             // A step that had completed when a stop (another thread's, a pause) ended it: its end, queued behind, stops nothing.
@@ -440,6 +447,7 @@ public partial class ManagedDebugger
             Continue(clearVariables: false);
             return;
         }
+        EndReturnGuard();
         if (_asyncStepper?.WaitsAtAwait(corThread) is true)
         {
             // The step's runtime-async method left at an await that suspended: the step goes on where its run does.
@@ -529,6 +537,7 @@ public partial class ManagedDebugger
             _stepper.Deactivate();
             _stepper = null;
         }
+        EndReturnGuard();
     }
 
     /// <summary>Another thread's breakpoint the runtime handed over just as a step completed, the step's StepComplete queued

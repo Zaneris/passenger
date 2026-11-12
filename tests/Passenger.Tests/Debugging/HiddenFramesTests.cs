@@ -6,7 +6,8 @@ namespace Passenger.Tests.Debugging;
 /// <summary>Stops under code its own attributes hide from debuggers and stack traces alike, the runtime's helpers the
 /// compiled code calls and a method of the program's own, on the .NET the program targets and on the newest: the stack
 /// leaves that code out, and a stop shows and steps from the frame that called it; without Just My Code a step that ends
-/// in such code shows it on top, where it stopped, before anything after it runs.</summary>
+/// in such code shows it on top, where it stopped, before anything after it runs, and a step leaving code the runtime's
+/// native code called ends in the frame shown below it.</summary>
 // Its stops read the exception's text by an evaluation the engine holds to 5 s, which a loaded machine can outrun.
 [Collection(Alone.Name)]
 public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
@@ -93,19 +94,50 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
         Assert.Equal((Source, BumpDeclared), (bumping.Source?.Path, bumping.Line));
     }
 
-    /// <summary>Without Just My Code, a step out of a static constructor the runtime's hidden InitHelpers run stops in them,
-    /// shown on top where the stop is, before the rest of the line that read the class runs. On the newest .NET only: .NET
-    /// 10 runs the constructor from native code, out of which such a step ends nowhere and the program runs on.</summary>
-    [Fact]
-    public async Task A_step_out_of_a_static_constructor_without_Just_My_Code_stops_before_the_rest_of_the_line_runs()
+    /// <summary>Without Just My Code, a step out of a static constructor stops before the rest of the line that read the
+    /// class runs, in the stack's top frame: on the newest .NET in the runtime's hidden InitHelpers that called it, shown on
+    /// top; on .NET 10, whose runtime calls it from native code, back in the code that read the class.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_step_out_of_a_static_constructor_without_Just_My_Code_stops_before_the_rest_of_the_line_runs(bool newestRuntime)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await Launch(host, newestRuntime: true, justMyCode: false, null, LaterInitializing);
+        await Launch(host, newestRuntime, justMyCode: false, null, LaterInitializing);
         StoppedEvent initializing = await host.WaitForStoppedEvent();
-        await AssertOnRuntime(host, initializing, newestRuntime: true);
+        await AssertOnRuntime(host, initializing, newestRuntime);
 
         StoppedEvent outOf = await host.StepOutAsync(initializing.ThreadId!.Value).WaitForStoppedEvent();
         await AssertStoppedInTopFrame(host, outOf, "the step out of the static constructor");
+    }
+
+    /// <summary>Without Just My Code, steps over, or out, from a static constructor come back to the line that read the
+    /// class before the rest of it runs, each stopping in the stack's top frame, through the runtime's hidden code that
+    /// called the constructor where a step stops in it (the newest .NET's CallClassConstructor): none is lost where that
+    /// code, or the constructor itself, returns to the runtime's native code.</summary>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Steps_from_a_static_constructor_without_Just_My_Code_come_back_to_the_line_that_read_the_class_before_the_rest_runs(bool newestRuntime, bool over)
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Launch(host, newestRuntime, justMyCode: false, null, LaterInitializing);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        await AssertOnRuntime(host, stop, newestRuntime);
+
+        int thread = stop.ThreadId!.Value;
+        string step = over ? "step over" : "step out";
+        List<string> stops = [];
+        for (int steps = 1; (stop.Source?.Path, stop.Line) != (Source, LaterRead) && steps <= 5; steps++)
+        {
+            stop = await (over ? host.StepOverAsync(thread) : host.StepOutAsync(thread)).WaitForStoppedEvent();
+            await AssertStoppedInTopFrame(host, stop, $"{step} {steps} from the static constructor");
+            stops.Add($"{Path.GetFileName(stop.Source?.Path)}:{stop.Line}");
+        }
+        Assert.True((stop.Source?.Path, stop.Line) == (Source, LaterRead),
+            $"Each {step} from the static constructor stopped short of the line that read the class, at {string.Join(", then ", stops)}");
     }
 
     /// <summary>A step's stop is in the stack's top frame, at its line, and the line's later call, Bump, has not run.</summary>
