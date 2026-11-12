@@ -223,6 +223,97 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The panel's side buttons act only where they can, each greyed elsewhere with a tip saying why after its name:
+    /// Update Selected on a local branch tracking a remote's (which it updates), never a remote's branch (Fetch's), a tag,
+    /// HEAD or a group; Delete on any branch or tag but the one checked out; New Branch… and Navigate on any, Navigate in a
+    /// log filtered to a branch lacking the head too; Mark/Unmark As Favorite on a branch. The menu and Delete key agree.</summary>
+    [AvaloniaFact]
+    public void Each_side_button_is_greyed_with_why_where_the_chosen_row_gives_it_nothing_to_act_on()
+    {
+        MainWindow window = Open();
+        BranchesPanel panel = window.GitBranches;
+        ListBox rows = List(panel);
+        string[] nothing = [$"New Branch…: {Refusals.NoRefChosen}", $"Update Selected: {Refusals.NoLocalBranchChosen}", $"Delete: {Refusals.NoRefChosen}",
+            $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen}", $"Navigate Log to Selected Branch Head: {Refusals.NoRefChosen}"];
+        string[] all = ["New Branch…", "Update Selected", "Delete", "Mark/Unmark As Favorite", "Navigate Log to Selected Branch Head"];
+        Assert.Null(panel.Selected);
+        Assert.Equal(nothing, Tools(panel));
+        panel.Toggle(panel.Rows.Single(r => r.Key == "tags"));
+        Ui.Settle();
+        foreach ((string key, string[] tools) in (ReadOnlySpan<(string, string[])>)[
+            ("head", nothing),
+            ("local", nothing),
+            ("refs/heads/main", [all[0], all[1], $"Delete: {Refusals.CheckedOut("main")}", all[3], all[4]]),
+            ("local/team/", nothing),
+            ("refs/heads/team/login", [all[0], $"Update Selected: {Refusals.Untracked("team/login")}", all[2], all[3], all[4]]),
+            ("refs/heads/feature", all),
+            ("remote", nothing),
+            ("remote/origin", nothing),
+            ("refs/remotes/origin/main", [all[0], $"Update Selected: {Refusals.FetchedNotUpdated("origin/main")}", all[2], all[3], all[4]]),
+            ("tags", nothing),
+            ("refs/tags/v1.0", [all[0], $"Update Selected: {Refusals.NoLocalBranchChosen}", all[2], $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen}", all[4]])])
+        {
+            BranchNode row = panel.Rows.Single(r => r.Key == key);
+            Ui.Click(Ui.Row(rows, row));
+            Assert.Same(row, panel.Selected);
+            Assert.Equal(tools, Tools(panel));
+            if (row.Branch is not { } branch)
+            {
+                continue;
+            }
+            // The row's menu offers what the buttons do where they do it, its Update greyed with the same why.
+            MenuItem[] menu = MenuOf(rows);
+            Assert.Equal(SideButton(panel, "New Branch…").IsEnabled, menu.Any(i => i.Header as string == $"New Branch from '{branch.Name}'…"));
+            Assert.Equal(SideButton(panel, "Delete").IsEnabled, menu.Any(i => i.Header as string == "Delete"));
+            if (menu.FirstOrDefault(i => i.Header as string == "Update") is { } update)
+            {
+                Assert.Equal(SideButton(panel, "Update Selected").IsEnabled, update.IsEnabled);
+                Assert.Equal(update.IsEnabled ? null : Refusals.Untracked(branch.Name), ToolTip.GetTip(update));
+            }
+            else
+            {
+                Assert.True(branch.Kind != RefKind.Local, $"{branch.Name}'s menu has no Update");
+            }
+        }
+
+        // Navigate keeps a branch filter holding the head, and shows every branch again where the filter's history lacks it.
+        GitLogView log = window.GitLog;
+        Assert.True(panel.Select("feature"));
+        panel.Activate(panel.Selected!);
+        Assert.True(panel.Select("main"));
+        Ui.Click(SideButton(panel, "Navigate Log to Selected Branch Head"));
+        Ui.Landed(() => log.Selected?.Hash == Git("rev-parse", "main").Trim(), "main's head chosen in the log filtered to feature");
+        Assert.Equal("refs/heads/feature", log.BranchFilter);
+        panel.Activate(panel.Selected!);
+        Assert.True(panel.Select("feature"));
+        Ui.Click(SideButton(panel, "Navigate Log to Selected Branch Head"));
+        Ui.Landed(() => log.Selected?.Hash == Git("rev-parse", "feature").Trim(), "feature's head chosen in the log once filtered to main");
+        Assert.Null(log.BranchFilter);
+
+        // The Delete key leaves the branch checked out, as the greyed Delete does.
+        window.Confirm = (_, _, _) => throw new InvalidOperationException("Delete on the branch checked out asked to delete it");
+        Assert.True(panel.Select("main"));
+        panel.FocusRows();
+        Ui.Press(window, "Delete");
+        Assert.Contains("main", LocalBranches());
+
+        // Update Selected on feature brings it up to the commit pushed to origin's since, fetched by the update itself.
+        string clone = TestFolders.Create("branches-clone-");
+        TestGit.Run(clone, "clone", "-q", "-b", "feature", origin, ".");
+        TestGit.Run(clone, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
+        TestGit.Run(clone, "config", "user.name", "Passenger Tests");
+        File.WriteAllText(Path.Combine(clone, "Feature.cs"), "class Feature { int more; }\n");
+        TestGit.Run(clone, "commit", "-q", "-am", "More");
+        TestGit.Run(clone, "push", "-q", "origin", "feature");
+        string pushed = TestGit.Run(clone, "rev-parse", "HEAD").Trim();
+        TestFolders.Delete(clone);
+        Assert.True(panel.Select("feature"));
+        Ui.Click(SideButton(panel, "Update Selected"));
+        Ui.Landed(() => Git("rev-parse", "feature").Trim() == pushed, "feature updated to the commit pushed to origin");
+        Assert.Equal("Updated feature", window.Status);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Merge_into_rebase_onto_and_checkout_and_rebase_onto_current_move_the_branches_as_git_would()
@@ -491,6 +582,35 @@ public sealed class BranchesTests : IDisposable
 
     private static ListBox List(BranchesPanel panel) =>
         Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel).OfType<ListBox>().Single();
+
+    /// <summary>A side button of the panel, by the name a screen reader says for it.</summary>
+    private static Button SideButton(BranchesPanel panel, string name) =>
+        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel).OfType<Button>().Single(b => Avalonia.Automation.AutomationProperties.GetName(b) == name);
+
+    /// <summary>The side buttons' tips top to bottom, as the pointer finds them: a button's name, or its name and why it is
+    /// greyed; a tip promising what a greyed button would do fails.</summary>
+    private static string[] Tools(BranchesPanel panel) =>
+    [
+        .. ((string[])["New Branch…", "Update Selected", "Delete", "Mark/Unmark As Favorite", "Navigate Log to Selected Branch Head"]).Select(name =>
+        {
+            Button button = SideButton(panel, name);
+            string tip = ToolTip.GetTip(button) as string ?? string.Empty;
+            Assert.True(button.IsEnabled == (tip == name), $"{name} is {(button.IsEnabled ? "enabled" : "greyed")} with the tip '{tip}'");
+            return tip;
+        }),
+    ];
+
+    /// <summary>The chosen row's menu as it opens under the pointer, closed again.</summary>
+    private static MenuItem[] MenuOf(ListBox rows)
+    {
+        ContextMenu menu = rows.ContextMenu ?? throw new InvalidOperationException("The branches panel's rows have no menu");
+        rows.RaiseEvent(new Avalonia.Input.ContextRequestedEventArgs());
+        Ui.Settle();
+        MenuItem[] items = [.. menu.Items.OfType<MenuItem>()];
+        menu.Close();
+        Ui.Settle();
+        return items;
+    }
 
     /// <summary>The rows as the panel shows them: indented by depth, the current and favourite marked, and a local branch's
     /// upstream after it.</summary>

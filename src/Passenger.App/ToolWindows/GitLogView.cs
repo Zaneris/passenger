@@ -226,10 +226,15 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     /// branch's again with <paramref name="all"/>.</summary>
     public void FilterBranch(BranchInfo? branch, bool all = false)
     {
-        (BranchFilter, BranchFilterName) = all ? (null, null) : branch is null ? ("HEAD", "HEAD") : (branch.Ref.FullName, branch.Name);
+        ShowBranchFilter(all ? (null, null) : branch is null ? ("HEAD", "HEAD") : (branch.Ref.FullName, branch.Name));
+        IdeErrors.Observe(LoadAsync());
+    }
+
+    private void ShowBranchFilter((string? Revision, string? Name) filter)
+    {
+        (BranchFilter, BranchFilterName) = filter;
         branchFilter.IsVisible = BranchFilter is not null;
         branchFilterText.Text = $"Branch: {BranchFilterName}";
-        IdeErrors.Observe(LoadAsync());
     }
 
     /// <summary>A history's tab closed: it stops following the history.</summary>
@@ -289,8 +294,26 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     }
 
     /// <summary>Chooses the commit with this hash, reading the log first if it has not been, and down to the commit when it
-    /// is older than those read.</summary>
+    /// is older than those read; a filter that hides it, the text's or a branch's whose history lacks it, shows it again.</summary>
     public async Task SelectHashAsync(string hash)
+    {
+        await ReachAsync(hash);
+        if (!all.Any(r => r.Commit.Hash == hash) && BranchFilter is not null)
+        {
+            ShowBranchFilter((null, null));
+            await ReachAsync(hash);
+        }
+        FilterText = string.Empty;
+        Filter();
+        if (rows.FirstOrDefault(r => r.Commit.Hash == hash) is { } row)
+        {
+            list.SelectedIndex = IndexOf(rows, row);
+            list.ScrollIntoView(list.SelectedIndex);
+        }
+    }
+
+    /// <summary>Reads the log if it has not been, and down to the commit when it is older than those read.</summary>
+    private async Task ReachAsync(string hash)
     {
         if (!all.Any(r => r.Commit.Hash == hash))
         {
@@ -301,13 +324,6 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         {
             most = depth;
             await LoadAsync();
-        }
-        FilterText = string.Empty;
-        Filter();
-        if (rows.FirstOrDefault(r => r.Commit.Hash == hash) is { } row)
-        {
-            list.SelectedIndex = IndexOf(rows, row);
-            list.ScrollIntoView(list.SelectedIndex);
         }
     }
 

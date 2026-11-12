@@ -33,6 +33,24 @@ public static class Refusals
     /// <summary>The folder open is in a Git working tree already, which Create Git Repository would make.</summary>
     public const string InRepository = "The folder is in a Git repository already";
 
+    /// <summary>The Git log's branches panel has HEAD, a group or no row chosen, where a branch or tag is acted on.</summary>
+    public const string NoRefChosen = "No branch or tag is chosen";
+
+    /// <summary>The branches panel has no branch chosen, which alone is marked as a favourite.</summary>
+    public const string NoBranchChosen = "No branch is chosen";
+
+    /// <summary>The branches panel has no local branch chosen, which alone Update brings up to date.</summary>
+    public const string NoLocalBranchChosen = "No local branch is chosen";
+
+    /// <summary>A local branch to update that tracks no remote's branch to bring it up to.</summary>
+    public static string Untracked(string branch) => $"{branch} tracks no remote's branch to update from";
+
+    /// <summary>A remote's branch, which a fetch brings up to date where Update brings a local branch.</summary>
+    public static string FetchedNotUpdated(string branch) => $"{branch} is a remote's branch, which Git › Fetch brings up to date";
+
+    /// <summary>The branch checked out, which git deletes only once another is.</summary>
+    public static string CheckedOut(string branch) => $"{branch} is checked out";
+
     /// <summary>The folder has no C# language server: it has neither a solution nor a project, or its window starts none.</summary>
     public const string NoCSharp = "No C# language server runs for this folder";
 

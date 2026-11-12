@@ -92,7 +92,11 @@ public sealed class BranchesPanel : DockPanel
     private readonly ListBox list;
     private readonly TextBox search;
     private readonly Dictionary<string, bool> expanded = [];
+    private readonly Button newBranch;
+    private readonly Button update;
+    private readonly Button delete;
     private readonly Button favorite;
+    private readonly Button navigate;
     private List<BranchNode> roots = [];
     private readonly TreeRows<BranchNode> rows = [];
     private int loads;
@@ -128,29 +132,29 @@ public sealed class BranchesPanel : DockPanel
         ListMenus.Attach(list, () => Selected is { Branch: { } branch } ? Menu(branch) : []);
         search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Branch or tag", Margin = new Thickness(6, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
         search.TextChanged += (_, _) => Show();
+        newBranch = ToolButtons.Of(IconKeys.Add, "New Branch…", () => Request(NewBranchRequested, WhyNotFrom));
+        update = ToolButtons.Of(IconKeys.Update, "Update Selected", () =>
+        {
+            if (Selected?.Branch is { } branch && WhyNotUpdate(branch) is null)
+            {
+                IdeErrors.Observe(vcs.UpdateBranchAsync(branch));
+            }
+        });
+        delete = ToolButtons.Of(IconKeys.Clear, "Delete", () => Request(DeleteRequested, WhyNotDelete));
         favorite = ToolButtons.Of(IconKeys.Star, "Mark/Unmark As Favorite", () =>
         {
-            if (Selected is { Branch: { } branch })
+            if (Selected?.Branch is { } branch && WhyNotFavorite(branch) is null)
             {
                 ToggleFavorite(branch);
             }
         });
-        Border strip = ToolBars.Side(
-            ToolButtons.Of(IconKeys.Add, "New Branch…", () => Request(NewBranchRequested)),
-            ToolButtons.Of(IconKeys.Update, "Update Selected", () =>
-            {
-                if (Selected is { Branch: { Kind: RefKind.Local } branch })
-                {
-                    IdeErrors.Observe(vcs.UpdateBranchAsync(branch));
-                }
-            }),
-            ToolButtons.Of(IconKeys.Clear, "Delete", () => Request(DeleteRequested)),
-            favorite,
-            ToolButtons.Of(IconKeys.Locate, "Navigate Log to Selected Branch Head", () => Request(NavigateRequested)));
+        navigate = ToolButtons.Of(IconKeys.Locate, "Navigate Log to Selected Branch Head", () => Request(NavigateRequested, WhyNotFrom));
+        Border strip = ToolBars.Side(newBranch, update, delete, favorite, navigate);
         Border top = ToolBars.Top(search);
         Children.Add(strip);
         Children.Add(top);
         Children.Add(list);
+        UpdateTools();
     }
 
     /// <summary>The rows shown, top to bottom, as the groups open and the search leaves them.</summary>
@@ -234,12 +238,14 @@ public sealed class BranchesPanel : DockPanel
         Separate();
         if (branch.Kind == RefKind.Local)
         {
-            Add("Update", () => IdeErrors.Observe(vcs.UpdateBranchAsync(branch)), isCurrent || branch.UpstreamRemote is not null);
+            string? notUpdated = WhyNotUpdate(branch);
+            Add("Update", () => IdeErrors.Observe(vcs.UpdateBranchAsync(branch)), notUpdated is null);
+            ToolTip.SetTip(items[^1], notUpdated);
             Add("Push…", () => IdeErrors.Observe(vcs.PushBranchAsync(branch)));
             Separate();
             Add("Rename…", () => RenameRequested?.Invoke(this, branch));
         }
-        if (!isCurrent)
+        if (WhyNotDelete(branch) is null)
         {
             Add("Delete", () => DeleteRequested?.Invoke(this, branch));
         }
@@ -497,15 +503,49 @@ public sealed class BranchesPanel : DockPanel
         return [];
     }
 
-    private void Request(EventHandler<BranchInfo>? requested)
+    /// <summary>Asks for what a button does to the chosen branch or tag, where <paramref name="whyNot"/> lets it.</summary>
+    private void Request(EventHandler<BranchInfo>? requested, Func<BranchInfo?, string?> whyNot)
     {
-        if (Selected is { Branch: { } branch })
+        if (Selected?.Branch is { } branch && whyNot(branch) is null)
         {
             requested?.Invoke(this, branch);
         }
     }
 
-    private void UpdateTools() => favorite.IsEnabled = Selected is { Branch.Kind: not RefKind.Tag };
+    /// <summary>Each button greyed where the row chosen gives it nothing to act on, saying why; its menu and keys agree.</summary>
+    private void UpdateTools()
+    {
+        BranchInfo? chosen = Selected?.Branch;
+        ToolButtons.Grey(newBranch, WhyNotFrom(chosen));
+        ToolButtons.Grey(update, WhyNotUpdate(chosen));
+        ToolButtons.Grey(delete, WhyNotDelete(chosen));
+        ToolButtons.Grey(favorite, WhyNotFavorite(chosen));
+        ToolButtons.Grey(navigate, WhyNotFrom(chosen));
+    }
+
+    /// <summary>Why New Branch… and Navigate can't act: HEAD, a group or no row is chosen, which names no commit of its own.</summary>
+    private static string? WhyNotFrom(BranchInfo? branch) => branch is null ? Refusals.NoRefChosen : null;
+
+    /// <summary>Why Update Selected can't act: it brings a local branch up to the remote's branch it tracks, as
+    /// <see cref="VcsController.UpdateBranchAsync"/> does, and nothing else.</summary>
+    private static string? WhyNotUpdate(BranchInfo? branch) => branch switch
+    {
+        { Kind: RefKind.Local, Upstream: null } => Refusals.Untracked(branch.Name),
+        { Kind: RefKind.Local } => null,
+        { Kind: RefKind.Remote } => Refusals.FetchedNotUpdated(branch.Name),
+        _ => Refusals.NoLocalBranchChosen,
+    };
+
+    /// <summary>Why Delete can't act: git deletes no branch while it is checked out.</summary>
+    private static string? WhyNotDelete(BranchInfo? branch) => branch switch
+    {
+        null => Refusals.NoRefChosen,
+        { IsCurrent: true } => Refusals.CheckedOut(branch.Name),
+        _ => null,
+    };
+
+    /// <summary>Why Mark/Unmark As Favorite can't act: a tag is never a favourite (<see cref="GitBranchesState.Holds"/>).</summary>
+    private static string? WhyNotFavorite(BranchInfo? branch) => branch is { Kind: not RefKind.Tag } ? null : Refusals.NoBranchChosen;
 
     /// <summary>Rider's keys here, beside the tree's (<see cref="TreeKeys"/>): Delete (Backspace too on the Mac) deletes, F2 or
     /// Shift+F6 renames a local branch on the Mac (Rename's Ctrl+R, R elsewhere, which the window routes here), and
@@ -519,7 +559,7 @@ public sealed class BranchesPanel : DockPanel
         }
         KeyModifiers command = Keystroke.Command;
         if (node.Branch is { } branch && (e.Key == Key.Delete && e.KeyModifiers == KeyModifiers.None
-            || mac && e.Key == Key.Back && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Meta) && !branch.IsCurrent)
+            || mac && e.Key == Key.Back && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Meta) && WhyNotDelete(branch) is null)
         {
             DeleteRequested?.Invoke(this, branch);
         }

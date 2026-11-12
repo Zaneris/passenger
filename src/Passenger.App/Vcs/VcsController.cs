@@ -916,7 +916,7 @@ public sealed class VcsController : IDisposable
             }
             if (await repository.UpstreamAsync() is not { } upstream)
             {
-                return Report(false, $"{branch} tracks no remote's branch to update from");
+                return Report(false, Refusals.Untracked(branch));
             }
             // Stop ends the fetch alone: the merge or rebase after it is the tree's own, never left halfway.
             if (await RemoteAsync(work, repository.FetchUpstreamAsync) is not { } fetched)
@@ -1337,7 +1337,7 @@ public sealed class VcsController : IDisposable
         }
         if (branch.UpstreamRemote is not { } remote || branch.UpstreamBranch is not { } tracked)
         {
-            return Task.FromResult(Report(false, $"Tracked branch is not configured for {branch.Name}"));
+            return Task.FromResult(Report(false, Refusals.Untracked(branch.Name)));
         }
         return RemoteSwitchAsync(AppActions.UpdateProject, $"Updating {branch.Name}…", "Update", (repository, stopping, asker) => repository.FetchIntoAsync(remote, tracked, branch.Name, stopping, asker),
             $"Updated {branch.Name}", "Git update");
