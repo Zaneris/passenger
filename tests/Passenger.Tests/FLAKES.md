@@ -30,6 +30,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-11
 
+- `StylesheetClassesTests`' `A_cdns_class_completes_in_a_component_only_once_settings_allow_its_download_beside_a_packages_and_the_components_own`,
+  CI's macOS report lane at 053101b37 (run 43132648654): "Expected: 1 Actual: 2", the stand-in CDN asked twice for
+  bootstrap.min.css once Settings allowed downloads. **A race in the IDE**: an ask of a stylesheet that stopped waiting
+  took the download it waited on out of those under way, though it ran on for the others. The completion began the
+  download and the diagnostics pull the settings change made waited on it; a later pull cancelled that one, and, finding
+  neither the copy, not yet written, nor a download under way, began a second; two asks at once could also each begin
+  one through `GetOrAdd`'s factory. On the Ubuntu VM, the stand-in answering after a second and a later pull begun as it
+  waited, the old code failed so: pull #4, cancelled 1 s in, removed the download it waited on, and pull #5 began
+  another 76 ms later. A link's fetch is now one task for the folder that every ask takes and none cancels, made again
+  only once it ended without a copy, and a download under way one task for every window, let go only once it ended;
+  there the cancelled pull left the fetch to the next, which took it, and the CDN was asked once (a7144a0a5, #1505).
 - `DebuggerTests`' Continue pressed while a stop's values are read, CI's Linux x64 report lane at a79ff0869 (run
   43083723699): "slow.Getter never showed 1500 as a watch: the watches were slow.Getter = error: An evaluation that
   could not be stopped is held unfinished on this thread…". **A race in the IDE**: Passenger's Hot Reload hook, in every
