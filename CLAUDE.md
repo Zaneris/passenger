@@ -331,7 +331,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   solution build's output is evaluated with them (the host's `SolutionBuild`, `WorkspaceModel.BuiltSolution`). A
   solution's multi-project launch profiles live only in Visual Studio's `.slnLaunch`/`.slnLaunch.user` beside it
   (`SolutionLaunch`, written as text where each stands), each project started as its own configuration
-  (`RunConfigurations.ProjectOf`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`), its target chosen per project;
+  (`RunConfigurations.ProjectOf`). What a mobile project needs is asked of its own workloads (`MobileQuestions`, said by `MobileBanner`), and a workload
+  installed reloads every project (`ProjectHosts.EndUnderAsync`, `ProjectModels.EvaluateAll`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`), its target chosen per project;
   Android's only through the workload's `ComputeAvailableDevices`, `DeployToDevice` and `ComputeRunArguments`, adb through
   `ChildProcesses`.
 - **Runs of services.** `ServiceRun` is the one model: Debug, Attach, Restart and Profile written once; one start at a
