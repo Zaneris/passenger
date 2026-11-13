@@ -36,13 +36,14 @@ public sealed record DotnetInstallation(string Root, IReadOnlyList<string> Sdks,
     }
 }
 
-/// <summary>This machine's .NET as Passenger finds it (<see cref="Dotnet.Find"/>): none at all, or the dotnet found, how,
+/// <summary>This machine's .NET as Passenger finds it (<see cref="Dotnet.Find()"/>): none at all, or the dotnet found, how,
 /// and what its installation holds. Read off the UI thread, as it looks at the disk.</summary>
 public sealed record DotnetMachine(DotnetFound? Found, DotnetInstallation? Installation)
 {
-    public static DotnetMachine Read()
+    /// <summary>The machine's .NET, or the installation a folder's projects take (<see cref="Dotnet.Find(string?)"/>).</summary>
+    public static DotnetMachine Read(string? folder = null)
     {
-        DotnetFound? found = Dotnet.Find();
+        DotnetFound? found = Dotnet.Find(folder);
         return new DotnetMachine(found, found is null ? null : DotnetInstallation.Read(found.Root));
     }
 

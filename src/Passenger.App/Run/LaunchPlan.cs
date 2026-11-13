@@ -375,7 +375,7 @@ public sealed partial record LaunchPlan
             }
             else if (assembly)
             {
-                program = Dotnet.Host();
+                program = Dotnet.Host(project.Folder);
                 arguments.Insert(0, target);
                 built = target;
                 leading = 1;
@@ -394,7 +394,7 @@ public sealed partial record LaunchPlan
         if (host is not null && !environment.Keys.Any(k => k.Equals(host.RootVariable, StringComparison.OrdinalIgnoreCase)))
         {
             environment[host.RootVariable] = environment.Where(v => v.Key.Equals(RuntimeVariables.Root, StringComparison.OrdinalIgnoreCase)).Select(v => v.Value).FirstOrDefault()
-                ?? Dotnet.Root();
+                ?? Dotnet.Root(project.Folder);
         }
         string? other = DesktopPrograms.NamedProject(program, arguments, working) is { } runs && !PathNames.Same(runs, project.Path) && !PathNames.Same(runs, project.Folder) ? runs : null;
         if (SandboxedState(built ?? program, environment, stateFolder) is { } sandbox)
@@ -517,7 +517,7 @@ public sealed partial record LaunchPlan
     {
         if (named is "dotnet" or "dotnet.exe")
         {
-            return Dotnet.Host();
+            return Dotnet.Host(projectFolder);
         }
         if (named.IndexOfAny(['/', '\\']) >= 0 || System.IO.Path.IsPathRooted(named))
         {

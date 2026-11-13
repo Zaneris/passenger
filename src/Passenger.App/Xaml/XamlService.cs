@@ -24,20 +24,20 @@ public sealed class XamlService : IDisposable
     /// <summary>How long typing in a C# file pauses before the XAML that names its types reads it again.</summary>
     private static readonly TimeSpan SourceSettle = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>The folder of the <c>dotnet</c> that builds, whose packs hold the framework's reference assemblies; found
-    /// once, off the UI thread, as finding it may wait for the login shell's environment.</summary>
-    private static readonly Lazy<string?> DotnetRoot = new(() =>
+    /// <summary>The folder of the <c>dotnet</c> that builds a project, whose packs hold the framework's reference
+    /// assemblies; found off the UI thread, as finding it may wait for the login shell's environment.</summary>
+    private static string? DotnetRoot(string project)
     {
         try
         {
-            return Dotnet.Root();
+            return Dotnet.Root(Path.GetDirectoryName(project));
         }
         catch (FileNotFoundException)
         {
             // No SDK: the framework's reference assemblies are not read, the packages' still are.
             return null;
         }
-    });
+    }
 
     private readonly Dictionary<string, XamlLoading> projects = new(PathNames.Comparer);
     private readonly Dictionary<OpenDocument, XamlDocument> documents = [];
@@ -363,7 +363,7 @@ public sealed class XamlService : IDisposable
     {
         using IDisposable held = BackgroundWork.Scope();
         await Dispatcher.Yield(DispatcherPriority.Background);
-        return disposed ? null : await BackgroundWork.Run(() => XamlProjectBuilder.For(project, DotnetRoot.Value, CSharpParsing.Default, IdeErrors.Report, evaluations));
+        return disposed ? null : await BackgroundWork.Run(() => XamlProjectBuilder.For(project, DotnetRoot(project), CSharpParsing.Default, IdeErrors.Report, evaluations));
     }
 
     private static async Task<XamlProject?> LoadAsync(Task<XamlProjectBuilder?> made, Dictionary<string, TextSnapshot> texts)

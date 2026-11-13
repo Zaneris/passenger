@@ -218,7 +218,7 @@ public partial class MainWindow
         }
         using (installing)
         {
-            string root = Dotnet.Root();
+            string root = Dotnet.Root(Folder);
             string named = $"{Plural.Noun(ids.Count, "workload")} {Plural.Listed([.. ids])}";
             string command = $"dotnet workload install {string.Join(' ', ids)}";
             if (WorkloadInstallStandIn is null && !await BackgroundWork.Run(() => Writable(root)))
@@ -234,7 +234,7 @@ public partial class MainWindow
                 return;
             }
             installing.Say($"Installing the .NET {named}");
-            ProcessStartInfo start = WorkloadInstallStandIn?.Invoke(ids) ?? ChildProcesses.DotnetCommand(["workload", "install", .. ids]);
+            ProcessStartInfo start = WorkloadInstallStandIn?.Invoke(ids) ?? ChildProcesses.DotnetCommand(["workload", "install", .. ids], Folder);
             (int code, IReadOnlyList<string> lines) = await RunInstallAsync(start, installing);
             if (installing.IsStopped)
             {
@@ -376,7 +376,7 @@ public partial class MainWindow
     /// projects asked of again.</summary>
     private async Task LoadAgainAsync()
     {
-        string root = Dotnet.Root();
+        string root = Dotnet.Root(Folder);
         await BackgroundWork.Run(() => Passenger.Workspace.ProjectHosts.EndUnderAsync(root));
         session.Models.EvaluateAll();
         session.Evaluate();

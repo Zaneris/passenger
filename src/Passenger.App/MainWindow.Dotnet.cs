@@ -117,14 +117,17 @@ public partial class MainWindow
 
     private async Task<bool> ReadingDotnetAsync(int mine)
     {
+        string? folder = Folder;
         (DotnetMachine read, ShellPath? change) = await BackgroundWork.Run(() =>
         {
-            DotnetMachine found = DotnetMachine.Read();
+            DotnetFound? first = Dotnet.Find();
             // One no PATH names is taken by what Passenger starts as one on the PATH would be.
-            if (found.Found is { Place: DotnetPlace.Installed } off)
+            if (first is { Place: DotnetPlace.Installed } off)
             {
                 Dotnet.Use(off.Root);
             }
+            // The folder's projects may take another, which its global.json asks for and the first lacks.
+            DotnetMachine found = DotnetMachine.Read(folder);
             return (found, found.Found is { Place: DotnetPlace.Installed } there ? ShellPath.For(there.Root) : null);
         });
         if (mine != dotnetReads)

@@ -478,7 +478,7 @@ public partial class MainWindow
         }
         IEnumerable<string> rest = arguments.Args.Skip(1);
         // A program named without a folder (a .dll's "dotnet") is the one the IDE builds with, or one on the PATH.
-        System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(program is "dotnet" ? Core.Dotnet.Host() : program, rest, arguments.Cwd ?? Folder, arguments.Env);
+        System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(program is "dotnet" ? Core.Dotnet.Host(arguments.Cwd ?? Folder) : program, rest, arguments.Cwd ?? Folder, arguments.Env);
         return ShowInTerminal(name, start);
     }
 

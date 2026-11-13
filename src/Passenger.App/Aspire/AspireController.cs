@@ -818,7 +818,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         return new LaunchPlan
         {
             Name = configuration.Name,
-            Program = target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? Dotnet.Host() : target,
+            Program = target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? Dotnet.Host(folder) : target,
             Arguments = [.. target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? new[] { target } : [],
                 .. CommandLine.Split(Expand(configuration.Arguments))],
             WorkingDirectory = configuration.WorkingDirectory.Length == 0 ? folder : PathNames.Canonical(Path.Combine(folder, Expand(configuration.WorkingDirectory))),

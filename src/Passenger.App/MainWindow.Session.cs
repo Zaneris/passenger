@@ -434,6 +434,8 @@ public partial class MainWindow
         godotEditorOffered = false;
         ShowDotnet();
         ShowSdk();
+        // The installation the new folder's projects take may be another (Dotnet.Find(folder)).
+        IdeErrors.Observe(ReadDotnetAsync());
         unreadSaid = null;
         next.WorkspaceChanged += (_, _) =>
         {

@@ -34,8 +34,12 @@ public static partial class Dotnet
         }
     }
 
-    /// <summary>Lets go of the SDKs named, once one is installed or removed.</summary>
-    public static void ForgetSdks() => Sdks.Clear();
+    /// <summary>Lets go of the SDKs named and the dotnet each folder takes, once one is installed or removed.</summary>
+    public static void ForgetSdks()
+    {
+        Sdks.Clear();
+        Taken.Clear();
+    }
 
     /// <summary>The version dotnet names, taken as its line comes: whatever dotnet does after naming it is never waited for.</summary>
     private static async Task<string> AskSdkAsync(string folder)
@@ -93,8 +97,8 @@ public static partial class Dotnet
 
     /// <summary>The <c>dotnet</c> of the installation <see cref="Use"/> chose, else the one that runs this app
     /// (framework-dependent, its runtime three folders under the host), else one on DOTNET_ROOT or the PATH, else where the
-    /// installers put it.</summary>
-    public static string Host() => HostSearch is { } standIn ? standIn() : Find()?.Host ?? throw new FileNotFoundException(NotFound);
+    /// installers put it; for a folder, the one its projects take (<see cref="Find(string?)"/>).</summary>
+    public static string Host(string? folder = null) => HostSearch is { } standIn ? standIn() : Find(folder)?.Host ?? throw new FileNotFoundException(NotFound);
 
     /// <summary>The <c>dotnet</c> <see cref="Host"/> runs and where it was found; null with none.</summary>
     public static DotnetFound? Find()
@@ -110,31 +114,94 @@ public static partial class Dotnet
                 return null;
             }
         }
+        return Candidates(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)).FirstOrDefault();
+    }
+
+    /// <summary>The dotnet a folder's projects take: the first, in <see cref="Find()"/>'s order, whose installation holds an SDK
+    /// the global.json over the folder takes (<see cref="GlobalJsonSdk.Takes"/>), any SDK without one, as the host's resolver
+    /// takes the first place holding a match; else the one <see cref="Find()"/> finds, whose dotnet then says what it lacks.
+    /// One that takes it is kept for the folder and its global.json until <see cref="ForgetSdks"/>.</summary>
+    public static DotnetFound? Find(string? folder)
+    {
+        if (folder is null || HostSearch is not null || Find() is not { } first)
+        {
+            return Find();
+        }
+        string key = $"{folder}\n{GlobalJsonOver(folder)}\n{first.Host}";
+        if (Taken.TryGetValue(key, out DotnetFound? kept))
+        {
+            return kept;
+        }
+        (DotnetFound? chosen, bool takes) = Choose(Candidates(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), folder, DotnetInstallation.Read);
+        if (chosen is not null && takes)
+        {
+            Taken[key] = chosen;
+        }
+        return chosen;
+    }
+
+    /// <summary>The installation a folder's projects take where it is not the one <see cref="Find()"/> finds, which what
+    /// runs for the folder is given as DOTNET_ROOT, as the process is given the one it takes; null where it is that one.</summary>
+    public static string? Apart(string? folder) => folder is not null && Find(folder) is { } taken && Find() is { } first && taken != first ? taken.Root : null;
+
+    /// <summary>The dotnet each folder takes, by the folder, its global.json and the first dotnet found.</summary>
+    private static readonly ConcurrentDictionary<string, DotnetFound> Taken = new(StringComparer.Ordinal);
+
+    /// <summary>The first of <paramref name="candidates"/> whose installation (read by <paramref name="read"/>, once each)
+    /// holds an SDK the global.json over <paramref name="folder"/> takes, any SDK without one; a process the system
+    /// translates passes over one with no x64 dotnet. With none, the first, or null for no candidate; and whether it takes it.</summary>
+    internal static (DotnetFound? Found, bool Takes) Choose(IEnumerable<DotnetFound> candidates, string folder, Func<string, DotnetInstallation> read)
+    {
+        GlobalJsonSdk? asked = GlobalJsonSdk.Read(GlobalJsonIn(folder)?.FullName);
+        DotnetFound? first = null;
+        HashSet<string> seen = new(PathNames.Comparer);
+        foreach (DotnetFound found in candidates)
+        {
+            first ??= found;
+            if (!seen.Add(found.Root) || (Translated && found != first && !ProgramProcessors.Of(found.Host).Contains(Architecture.X64)))
+            {
+                continue;
+            }
+            if (read(found.Root).Sdks.Any(sdk => asked?.Takes(sdk) ?? true))
+            {
+                return (found, true);
+            }
+        }
+        return (first, false);
+    }
+
+    /// <summary>Every dotnet there is, in the order <see cref="Find()"/> takes them, the installers' places under
+    /// <paramref name="home"/> for the person's own.</summary>
+    internal static IEnumerable<DotnetFound> Candidates(string home)
+    {
         string name = HostName;
         if (Chosen is { } own && File.Exists(Path.Combine(own, name)))
         {
-            return new DotnetFound(Path.Combine(own, name), DotnetPlace.Installed);
+            yield return new DotnetFound(Path.Combine(own, name), DotnetPlace.Installed);
         }
         ShellEnvironment.Ready();
         // Translated, this process loads MSBuild only from an x64 SDK: one installed beside the system's own comes first.
         if (Translated && PlacesStandIn is null && TranslatedPlaces(name).FirstOrDefault(File.Exists) is { } x64)
         {
-            return new DotnetFound(x64, DotnetPlace.Translated);
+            yield return new DotnetFound(x64, DotnetPlace.Translated);
         }
         string fromRuntime = Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", name));
         if (PlacesStandIn is null && File.Exists(fromRuntime))
         {
-            return new DotnetFound(fromRuntime, DotnetPlace.Runtime);
+            yield return new DotnetFound(fromRuntime, DotnetPlace.Runtime);
         }
         if (Environment.GetEnvironmentVariable(RuntimeVariables.Root) is { Length: > 0 } root && File.Exists(Path.Combine(root, name)))
         {
-            return new DotnetFound(Path.Combine(root, name), DotnetPlace.Root);
+            yield return new DotnetFound(Path.Combine(root, name), DotnetPlace.Root);
         }
         if (Programs.OnPath(name) is { } onPath)
         {
-            return new DotnetFound(onPath, DotnetPlace.Path);
+            yield return new DotnetFound(onPath, DotnetPlace.Path);
         }
-        return (PlacesStandIn ?? Installed(name)).FirstOrDefault(File.Exists) is { } installed ? new DotnetFound(installed, DotnetPlace.Installed) : null;
+        foreach (string installed in (PlacesStandIn ?? Installed(name, home)).Where(File.Exists))
+        {
+            yield return new DotnetFound(installed, DotnetPlace.Installed);
+        }
     }
 
     /// <summary>Whether the system translates this process: an x64 build on an Arm64 system (Rosetta on a Mac, Windows'
@@ -162,7 +229,7 @@ public static partial class Dotnet
         }
     }
 
-    /// <summary>The installation <see cref="Use"/> chose, which <see cref="Find"/> finds before any other for as long as its
+    /// <summary>The installation <see cref="Use"/> chose, which <see cref="Find()"/> finds before any other for as long as its
     /// dotnet is there, and as one no PATH names: the shell's own PATH and DOTNET_ROOT did not name it.</summary>
     internal static string? Chosen
     {
@@ -190,8 +257,9 @@ public static partial class Dotnet
     }
 
     /// <summary>The folder <see cref="Host"/> is installed in, its sdk, packs and shared folders beside it: the folder of the
-    /// host's real path, as a link to it (a Linux distribution's /usr/bin/dotnet) lies outside the installation.</summary>
-    public static string Root() => Path.GetDirectoryName(PathNames.Canonical(Host()))!;
+    /// host's real path, as a link to it (a Linux distribution's /usr/bin/dotnet) lies outside the installation. For a
+    /// folder, the installation its projects take (<see cref="Find(string?)"/>).</summary>
+    public static string Root(string? folder = null) => Path.GetDirectoryName(PathNames.Canonical(Host(folder)))!;
 
     /// <summary>The folder dotnet keeps a person's global tools and templates under, as the dotnet Passenger starts finds
     /// it: DOTNET_CLI_HOME, else the home folder (USERPROFILE on Windows, HOME elsewhere), read once the login shell's
@@ -204,11 +272,10 @@ public static partial class Dotnet
         static string? Set(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value ? value : null;
     }
 
-    /// <summary>Where Microsoft's installers, the install script, the package managers and Passenger
-    /// (<see cref="DotnetInstall.Folder"/>) put the .NET command line.</summary>
-    private static IEnumerable<string> Installed(string name)
+    /// <summary>Where Microsoft's installers, the package managers, then the install script and Passenger
+    /// (<see cref="DotnetInstall.Folder"/>) put the .NET command line, the person's own under <paramref name="home"/>.</summary>
+    private static IEnumerable<string> Installed(string name, string home)
     {
-        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (OperatingSystem.IsWindows())
         {
             yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet", name);
@@ -229,7 +296,7 @@ public static partial class Dotnet
     }
 }
 
-/// <summary>How <see cref="Dotnet.Find"/> found a dotnet: the one running this app, DOTNET_ROOT's, the PATH's, or one
+/// <summary>How <see cref="Dotnet.Find()"/> found a dotnet: the one running this app, DOTNET_ROOT's, the PATH's, or one
 /// neither names, where an installer puts it or <see cref="Dotnet.Use"/> chose it; or, for a process the system translates,
 /// the x64 one beside the system's own.</summary>
 public enum DotnetPlace

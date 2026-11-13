@@ -114,7 +114,7 @@ public sealed class ProjectHost : IAsyncDisposable
         try
         {
             // No SDK to load without the person's dotnet, whichever runtime the host runs on.
-            dotnet = Dotnet.Host();
+            dotnet = Dotnet.Host(folder);
         }
         catch (FileNotFoundException missing)
         {
@@ -130,14 +130,16 @@ public sealed class ProjectHost : IAsyncDisposable
         try
         {
             // Run in the IDE's folder, not the one it evaluates for, which may be deleted under it.
-            start = ChildProcesses.ConservingMemory(onMachine ? ChildProcesses.DotnetCommand([Assembly, "--folder", folder]) : ChildProcesses.HelperCommand(Assembly, ["--folder", folder]));
+            start = ChildProcesses.ConservingMemory(onMachine
+                ? ChildProcesses.DotnetCommand(dotnet, [Assembly, "--folder", folder], null)
+                : ChildProcesses.HelperCommand(Assembly, ["--folder", folder]));
         }
         catch (FileNotFoundException missing)
         {
             throw new ProjectHostFailed($"the project host could not start: {missing.Message}", missing);
         }
         // The installation MSBuild's SDK resolvers and tools take, which the helper host is no part of.
-        start.Environment[RuntimeVariables.HostPath] = dotnet;
+        ChildProcesses.NamingDotnet(start, folder);
         if (Dotnet.Translated)
         {
             // The locator finds its SDK where DOTNET_ROOT says, which may name the system's own rather than the x64 one chosen.
@@ -660,7 +662,7 @@ public static class ProjectHosts
                     wanted = null;
                 }
                 // A host's SDK is MSBuild's folder, named for its version under the sdk folder of the dotnet the folder takes.
-                string? root = wanted is null ? null : Dotnet.Find()?.Root;
+                string? root = wanted is null ? null : Dotnet.Find(folder)?.Root;
                 if (root is not null && Running.FirstOrDefault(h => PathNames.Same(Path.TrimEndingDirectorySeparator(h.Sdk), Path.Combine(root, "sdk", wanted!))) is { } same)
                 {
                     return same;

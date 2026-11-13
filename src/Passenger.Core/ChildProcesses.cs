@@ -103,12 +103,27 @@ public static class ChildProcesses
         }
     }
 
-    /// <summary>The .NET command line (<see cref="Dotnet.Host"/>) with these arguments, in English (the IDE reads what it
-    /// says) and with no first-run banner. It builds in its own process and worker nodes, never in MSBuild's server, which
-    /// would outlive it; a node left for the next build is the IDE's alone, so it ends with the IDE
-    /// (<see cref="Lifeline"/>). A <see cref="FileNotFoundException"/> when there is none.</summary>
+    /// <summary>The .NET command line (<see cref="Dotnet.Host"/>, the one the folder's projects take) with these arguments,
+    /// in English (the IDE reads what it says) and with no first-run banner. It builds in its own process and worker nodes,
+    /// never in MSBuild's server, which would outlive it; a node left for the next build is the IDE's alone, so it ends with
+    /// the IDE (<see cref="Lifeline"/>). A <see cref="FileNotFoundException"/> when there is none.</summary>
     public static ProcessStartInfo DotnetCommand(IEnumerable<string> arguments, string? folder = null) =>
-        AsDotnet(Command(Dotnet.Host(), arguments, folder));
+        TakingDotnet(AsDotnet(Command(Dotnet.Host(folder), arguments, folder)), folder);
+
+    /// <summary><see cref="DotnetCommand(IEnumerable{string}, string?)"/> of the dotnet at <paramref name="host"/>, an
+    /// installation's own, in place of the folder's.</summary>
+    public static ProcessStartInfo DotnetCommand(string host, IEnumerable<string> arguments, string? folder) => AsDotnet(Command(host, arguments, folder));
+
+    /// <summary>A start for a folder whose projects take an installation of their own (<see cref="Dotnet.Apart"/>) given it as
+    /// DOTNET_ROOT, so what it starts finds that installation's runtimes, and MSBuild's locator its SDKs, before any other.</summary>
+    private static ProcessStartInfo TakingDotnet(ProcessStartInfo start, string? folder)
+    {
+        if (Dotnet.Apart(folder) is { } root)
+        {
+            start.Environment[RuntimeVariables.Root] = root;
+        }
+        return start;
+    }
 
     /// <summary>The helper host carried beside the app (src/Passenger.Helper), by its name.</summary>
     public const string HelperHost = "passenger-helper";
@@ -116,7 +131,7 @@ public static class ChildProcesses
     /// <summary>One of Passenger's own helper programs (an assembly the app carries: Roslyn's server, the project host, the
     /// debug adapter) with these arguments, on the runtime Passenger itself runs on, never the person's dotnet: run by the
     /// helper host's apphost beside the app, which beside a self-contained app takes its runtime, else by the muxer of the
-    /// runtime this build runs on, at its version, with the .NET command line's environment (<see cref="DotnetCommand"/>).
+    /// runtime this build runs on, at its version, with the .NET command line's environment (<see cref="DotnetCommand(IEnumerable{string}, string?)"/>).
     /// A <see cref="FileNotFoundException"/> when the host is missing.</summary>
     public static ProcessStartInfo HelperCommand(string assembly, IEnumerable<string> arguments, string? folder = null)
     {
@@ -152,23 +167,24 @@ public static class ChildProcesses
     /// <summary>The <see cref="RuntimeVariables.ConserveMemory"/> of <see cref="ConservingMemory"/>.</summary>
     public const string HelperConservesMemory = "7";
 
-    /// <summary>A helper's start (<see cref="HelperCommand"/>) naming the person's .NET command line (<see cref="Dotnet.Host"/>)
-    /// as the one MSBuild, its SDK resolvers and its tools take for the installation, as the command line names itself to
-    /// the builds it runs: the helper's own host is none of the person's. Where there is none, none is named.</summary>
-    public static ProcessStartInfo NamingDotnet(ProcessStartInfo start)
+    /// <summary>A helper's start (<see cref="HelperCommand"/>) naming the person's .NET command line (<see cref="Dotnet.Host"/>,
+    /// the one the folder's projects take) as the one MSBuild, its SDK resolvers and its tools take for the installation, as
+    /// the command line names itself to the builds it runs: the helper's own host is none of the person's. Where there is
+    /// none, none is named.</summary>
+    public static ProcessStartInfo NamingDotnet(ProcessStartInfo start, string? folder = null)
     {
         try
         {
-            start.Environment[RuntimeVariables.HostPath] = Dotnet.Host();
+            start.Environment[RuntimeVariables.HostPath] = Dotnet.Host(folder);
         }
         catch (FileNotFoundException)
         {
             start.Environment.Remove(RuntimeVariables.HostPath);
         }
-        return start;
+        return TakingDotnet(start, folder);
     }
 
-    /// <summary>A start given the .NET command line's environment (<see cref="DotnetCommand"/>).</summary>
+    /// <summary>A start given the .NET command line's environment (<see cref="DotnetCommand(IEnumerable{string}, string?)"/>).</summary>
     private static ProcessStartInfo AsDotnet(ProcessStartInfo start)
     {
         start.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
@@ -192,7 +208,7 @@ public static class ChildProcesses
     }
 
     /// <summary>The IDE's own question of the .NET command line, asked in a folder of the person's and taken as its answer
-    /// comes (<see cref="AnswerAsync"/>): <see cref="DotnetCommand"/> with the command line's telemetry off, so it ends
+    /// comes (<see cref="AnswerAsync"/>): <see cref="DotnetCommand(IEnumerable{string}, string?)"/> with the command line's telemetry off, so it ends
     /// with its answer, where it would send its telemetry for seconds after it, its folder held meanwhile on Windows (no
     /// one could delete or rename it).</summary>
     public static ProcessStartInfo DotnetQuestion(IEnumerable<string> arguments, string folder) => Asked(DotnetCommand(arguments, folder));

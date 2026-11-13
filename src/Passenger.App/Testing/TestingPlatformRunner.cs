@@ -362,7 +362,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             int id;
             if (debugger is null)
             {
-                ProcessStartInfo start = ChildProcesses.Command(Dotnet.Host(), arguments, folder, environment);
+                ProcessStartInfo start = ChildProcesses.Command(Dotnet.Host(folder), arguments, folder, environment);
                 start.RedirectStandardOutput = true;
                 start.RedirectStandardError = true;
                 try
@@ -379,7 +379,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
             else
             {
-                id = await debugger.LaunchAsync(new TestHostStart(Dotnet.Host(), arguments, folder, environment ?? new Dictionary<string, string>(), assembly.Framework));
+                id = await debugger.LaunchAsync(new TestHostStart(Dotnet.Host(folder), arguments, folder, environment ?? new Dictionary<string, string>(), assembly.Framework));
             }
             TcpClient client;
             try
