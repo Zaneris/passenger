@@ -45,6 +45,15 @@ public static class Declared
             "How docked tool windows are named: by their icons on the stripes, or by tabs with their names along the foot of each "
             + "place where several dock as well, a click on one opening it and a drag moving it as its icon does."));
 
+    public static readonly ThemedChoiceSetting<StripeIcons> StripeIcons = new(s => s.StripeIcons, s => s.IconsBesideTabs(), (s, v) => s with { StripeIcons = v },
+        [(Passenger.App.StripeIcons.All, "Every window"), (Passenger.App.StripeIcons.Untabbed, "Only windows with no titled tab")],
+        new(D.Appearance, "Stripe icons beside titled tabs", "tool windows stripe icons wells titled tabs twice repeated duplicate declutter layout arrangement",
+            "Which tool windows keep an icon on the stripes while titled tabs name them: every one, or only those no titled tab "
+            + "shows, so a window whose place is open with its tab is named once.")
+        {
+            When = new(s => s.ToolWindowsAs() == Passenger.App.ToolWindowLook.TitledTabs, "Tool windows are named by stripe icons alone"),
+        });
+
     public static readonly ThemedChoiceSetting<ClosedToolWindows> ClosedToolWindows = new(s => s.ClosedToolWindows, s => s.ClosedWindows(),
         (s, v) => s with { ClosedToolWindows = v },
         [(Passenger.App.ClosedToolWindows.KeepIcons, "Keep their stripe icons"), (Passenger.App.ClosedToolWindows.LeaveStripe, "Leave the stripe")],

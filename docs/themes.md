@@ -124,6 +124,7 @@ language this Passenger does not know is passed over and named.
   "sizes": { "left": 260, "right": 320, "bottom": 220 },
   "editorTabs": "left",
   "toolWindows": "tabs",
+  "stripeIcons": "untabbed",
   "closedWindows": "leave",
   "findResults": "window"
 }
@@ -148,13 +149,15 @@ before put them.
   out, across the top.
 - `toolWindows` names the docked tool windows by their `icons` on the stripes alone, or by `tabs` too: titled tabs along
   the foot of each place where several dock; left out, by icons.
+- `stripeIcons` keeps an icon on the stripes for `all` the windows while titled tabs name them, or only for those no
+  titled tab names (`untabbed`), so a window whose place is open with its tab is named once; left out, all.
 - `closedWindows` says what closing a tool window by its × does to its icon: `keep` it on the stripe, as hiding it does,
   or `leave` the stripe until the window is opened again from View | Tool Windows, Find Action or its keys; left out,
   keep.
 - `findResults` keeps Find in Files' matches in its `popup` alone, or in the Find `window` as well once one is gone to,
   a tab to go back to; left out, the popup.
 
-What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `closedWindows`, `findResults`) is each a setting of Settings | Appearance: the
+What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `stripeIcons`, `closedWindows`, `findResults`) is each a setting of Settings | Appearance: the
 theme's is the default there, and the place you choose wins over it whatever theme you choose, until you choose Theme
 default again.
 

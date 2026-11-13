@@ -32,3 +32,11 @@ public enum FindResults
     Popup,
     FindWindow,
 }
+
+/// <summary>Which tool windows the stripes show icons of while titled tabs name them: every one, or only those no titled
+/// tab names (in a place shown with several docked), so a window is named once.</summary>
+public enum StripeIcons
+{
+    All,
+    Untabbed,
+}

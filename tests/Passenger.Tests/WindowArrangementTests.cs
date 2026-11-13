@@ -251,9 +251,9 @@ public sealed class WindowArrangementTests : IDisposable
             window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
             Ui.Settle();
             DockHost dock = window.DockHost;
-            Assert.True(window.EditorArea.ActiveGroup.TabsPlace == EditorTabsPlace.Top && dock.TitledTabs && dock.ClosesOffStripe
+            Assert.True(window.EditorArea.ActiveGroup.TabsPlace == EditorTabsPlace.Top && dock.TitledTabs && !dock.IconsBesideTabs && dock.ClosesOffStripe
                 && window.Settings.FindResultsIn() == FindResults.FindWindow && ToolTabs(window).Length > 0,
-                $"Cubicle arranges the tabs {window.EditorArea.ActiveGroup.TabsPlace}, titled tabs {dock.TitledTabs}, closed windows leaving {dock.ClosesOffStripe}, "
+                $"Cubicle arranges the tabs {window.EditorArea.ActiveGroup.TabsPlace}, titled tabs {dock.TitledTabs}, icons beside them {dock.IconsBesideTabs}, closed windows leaving {dock.ClosesOffStripe}, "
                 + $"Find in Files' results {window.Settings.FindResultsIn()}, {ToolTabs(window).Length} tool tabs shown");
         }
         finally
@@ -375,6 +375,38 @@ public sealed class WindowArrangementTests : IDisposable
     /// <summary>A window's stripe icon, shown or behind More for want of room; null for none.</summary>
     private static ToggleButton? StripeButton(MainWindow window, string id) =>
         window.DockHost.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(b => Equals(b.Tag, id));
+
+    [AvaloniaFact]
+    public void Stripe_icons_beside_titled_tabs_go_for_the_windows_a_tab_names_and_come_back_once_their_place_closes()
+    {
+        MainWindow window = Open();
+        try
+        {
+            DockHost dock = window.DockHost;
+            dock.Show(ToolWindowIds.Build);
+            window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs, StripeIcons = StripeIcons.Untabbed });
+            Ui.Settle();
+            Assert.True(StripeButton(window, ToolWindowIds.Build) is null && StripeButton(window, ToolWindowIds.Run) is null && ToolTab(window, ToolWindowIds.Run) is not null,
+                "Build and Run, named by tabs along their open place's foot, kept their stripe icons too");
+            Assert.True(StripeButton(window, ToolWindowIds.Bookmarks) is not null, "Bookmarks, docked in a closed place with no tab, lost its stripe icon");
+
+            dock.Hide(ToolWindowIds.Build);
+            Ui.Settle();
+            Assert.True(StripeButton(window, ToolWindowIds.Build) is not null && StripeButton(window, ToolWindowIds.Run) is not null,
+                "Their place closed, no tab names Build and Run, which did not get their stripe icons back");
+
+            Ui.Click(StripeButton(window, ToolWindowIds.Run)!);
+            window.ApplySettings(window.Settings with { StripeIcons = StripeIcons.All });
+            Ui.Settle();
+            Assert.True(StripeButton(window, ToolWindowIds.Run) is not null && ToolTab(window, ToolWindowIds.Run) is not null,
+                "Every window's icon chosen, Run named by its tab lost its stripe icon");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
 
     private static Border[] ToolTabs(MainWindow window) =>
         [.. window.DockHost.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.Tab) && b.Tag is string && b.IsEffectivelyVisible)];

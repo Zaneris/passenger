@@ -263,6 +263,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.DisplayScale);
         Add(Declared.EditorTabs);
         Add(Declared.ToolWindowLook);
+        Add(Declared.StripeIcons);
         Add(Declared.ClosedToolWindows);
         Add(Declared.FindResults);
 

@@ -62,6 +62,7 @@ public sealed class SettingsPreview : IDisposable
         DisplayScale = Shown(from.DisplayScale, to.DisplayScale, saved.DisplayScale),
         EditorTabs = Shown(from.EditorTabs, to.EditorTabs, saved.EditorTabs),
         ToolWindowLook = Shown(from.ToolWindowLook, to.ToolWindowLook, saved.ToolWindowLook),
+        StripeIcons = Shown(from.StripeIcons, to.StripeIcons, saved.StripeIcons),
         MainMenuBar = Shown(from.MainMenuBar, to.MainMenuBar, saved.MainMenuBar),
         MergeMainMenuWithWindowTitle = Shown(from.MergeMainMenuWithWindowTitle, to.MergeMainMenuWithWindowTitle, saved.MergeMainMenuWithWindowTitle),
         ColourScheme = Shown(from.ColourScheme, to.ColourScheme, saved.ColourScheme),

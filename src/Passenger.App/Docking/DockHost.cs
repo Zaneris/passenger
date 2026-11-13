@@ -61,6 +61,7 @@ public sealed class DockHost : Grid
 
     private bool titledTabs;
     private bool closesOffStripe;
+    private bool iconsBesideTabs = true;
 
     public DockHost()
     {
@@ -152,6 +153,21 @@ public sealed class DockHost : Grid
             if (value != titledTabs)
             {
                 titledTabs = value;
+                Layout();
+            }
+        }
+    }
+
+    /// <summary>Whether a window a titled tab names keeps its stripe icon too, or the stripe shows only windows no titled
+    /// tab names (those whose place is closed, or docks it alone, or that float).</summary>
+    public bool IconsBesideTabs
+    {
+        get => iconsBesideTabs;
+        set
+        {
+            if (value != iconsBesideTabs)
+            {
+                iconsBesideTabs = value;
                 Layout();
             }
         }
@@ -730,9 +746,13 @@ public sealed class DockHost : Grid
     /// <summary>The stripes' tips said again with the keymap in force, which a change of keymap or shortcut has replaced.</summary>
     public void FollowKeys()
     {
-        leftStripe.Fill(OnStripes);
-        rightStripe.Fill(OnStripes);
+        leftStripe.Fill(Iconed);
+        rightStripe.Fill(Iconed);
     }
+
+    /// <summary>The windows the stripes show icons of: those on them, but those a titled tab names where only windows with
+    /// none keep theirs.</summary>
+    private List<ToolWindow> Iconed => iconsBesideTabs || !titledTabs ? OnStripes : [.. OnStripes.Where(w => !panes.Values.Any(p => p.Names(w)))];
 
     internal void Layout()
     {
@@ -745,8 +765,8 @@ public sealed class DockHost : Grid
         Split(leftArea, panes[ToolAnchor.LeftTop], panes[ToolAnchor.LeftBottom], rows: true);
         Split(rightArea, panes[ToolAnchor.RightTop], panes[ToolAnchor.RightBottom], rows: true);
         Split(bottomArea, panes[ToolAnchor.BottomLeft], panes[ToolAnchor.BottomRight], rows: false);
-        leftStripe.Fill(OnStripes);
-        rightStripe.Fill(OnStripes);
+        leftStripe.Fill(Iconed);
+        rightStripe.Fill(Iconed);
         Fit();
     }
 

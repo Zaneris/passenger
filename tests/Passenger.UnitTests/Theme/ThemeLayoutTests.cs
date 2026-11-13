@@ -113,6 +113,13 @@ public class ThemeLayoutTests
     }
 
     [Fact]
+    public void A_layout_gives_which_windows_keep_stripe_icons_beside_titled_tabs_and_one_that_gives_none_keeps_Passengers_own()
+    {
+        Assert.Equal([StripeIcons.All, StripeIcons.Untabbed], ((string[])["all", "untabbed"]).Select(word => Read($$$"""{"stripeIcons": "{{{word}}}"}""").StripeIcons));
+        Assert.Null(Read("""{"editorTabs": "left"}""").StripeIcons);
+    }
+
+    [Fact]
     public void A_layout_gives_whether_a_closed_tool_window_leaves_its_stripe_and_one_that_gives_none_keeps_Passengers_own()
     {
         Assert.Equal([ClosedToolWindows.KeepIcons, ClosedToolWindows.LeaveStripe],

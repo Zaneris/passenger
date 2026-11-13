@@ -60,6 +60,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// stripe icons alone (<see cref="ToolWindowsAs"/>).</summary>
     public ToolWindowLook? ToolWindowLook { get; init; }
 
+    /// <summary>Which windows the stripes show icons of beside titled tabs as the person set it, or null where they set
+    /// none: the theme's, else every one (<see cref="IconsBesideTabs"/>).</summary>
+    public StripeIcons? StripeIcons { get; init; }
+
     /// <summary>What closing a tool window does to its stripe icon as the person set it, or null where they set none: the
     /// theme's, else keeps it (<see cref="ClosedWindows"/>).</summary>
     public ClosedToolWindows? ClosedToolWindows { get; init; }
@@ -503,6 +507,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     /// <summary>How docked tool windows are named: the person's choice, else the theme's, else by stripe icons alone.</summary>
     public ToolWindowLook ToolWindowsAs() => ToolWindowLook ?? Themes.Layout?.ToolWindows ?? Passenger.App.ToolWindowLook.StripeIcons;
+
+    /// <summary>Which windows the stripes show icons of beside titled tabs: the person's choice, else the theme's, else every one.</summary>
+    public StripeIcons IconsBesideTabs() => StripeIcons ?? Themes.Layout?.StripeIcons ?? Passenger.App.StripeIcons.All;
 
     /// <summary>What closing a tool window does to its stripe icon: the person's choice, else the theme's, else keeps it.</summary>
     public ClosedToolWindows ClosedWindows() => ClosedToolWindows ?? Themes.Layout?.ClosedWindows ?? Passenger.App.ClosedToolWindows.KeepIcons;

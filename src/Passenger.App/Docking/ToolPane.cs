@@ -236,6 +236,9 @@ internal sealed class ToolPane : DockPanel
         }
     }
 
+    /// <summary>Whether its titled tabs name a window.</summary>
+    public bool Names(ToolWindow window) => tabStrip.IsVisible && tabs.TryGetValue(window, out Border? tab) && tabRow.Children.Contains(tab);
+
     /// <summary>The windows whose tabs are out of the strip's sight, wholly or in part, in its order.</summary>
     public IReadOnlyList<ToolWindow> HiddenTabs
     {
