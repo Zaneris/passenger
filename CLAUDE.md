@@ -175,7 +175,8 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   its row and range in `Declared` (refused values `Refused`, which Settings and `settings_set` ask), `Add`ed in
   `SettingsDialog`, a line in `MainWindow.Follow` or `SettingsStore.InForce`, a look's in `SettingsPreview.Over` and
   `MainWindow.OnPreviewChanged` (`VisualsInForce`) instead, so Settings shows it before Apply; a row another setting
-  voids says so (`SettingRow.When`).
+  voids says so (`SettingRow.When`). A setting a theme may default is a `ThemedChoiceSetting`, its `AppSettings` value
+  nullable and read through an in-force method (as `CodeSize()`).
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
   Find Action, context menus and MCP's `ide_action` all run it; `WhyNot` greys it with why; titles come from the
   registry (`TitleWhere`), one that asks more ending in "…"; what's missing is said in `Refusals`' words (RefusalsTests
@@ -292,8 +293,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   (`OpenDocument.WhyNotConverted`), a language's literals beyond its strings go in `Language.Literals`, Python's blocks
   through `Indentation.FirstBlockAtRisk`, `Language.BlockWords` and `Language.Continued`.
 - **Docking.** A theme's default layout is the dock's default (`DockHost.UseDefault`/`Default`, `Themes.Layout`): what a
-  window with no kept layout opens on and what Restore Default Layout goes to, never laid over a kept layout. A kept
-  layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
+  window with no kept layout opens on and what Restore Default Layout goes to, never laid over a kept layout. A window
+  closed off its stripe (`ToolWindow.IsClosed`) is kept in the saved layout; the stripes and titled tabs list only
+  `OnStripes`. A kept layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
   on attach (a split rebuilds the frame).
