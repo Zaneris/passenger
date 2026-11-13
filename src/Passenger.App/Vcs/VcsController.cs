@@ -106,6 +106,21 @@ public sealed class VcsController : IDisposable
     /// <summary>The branch checked out, or null on a detached head or outside a working tree.</summary>
     public string? Branch { get; private set; }
 
+    /// <summary>The upstream the branch tracks as git shortens it (origin/main), as the last status read it; null where it
+    /// tracks none.</summary>
+    public string? Upstream { get; private set; }
+
+    /// <summary>How many commits the branch has that its upstream lacks, and the upstream has that it lacks, as the remote's
+    /// branch was last fetched; null where it tracks none or its upstream is gone. Counted again only once the history
+    /// moved (<see cref="DivergenceCounts"/>), never for a save.</summary>
+    public (int Ahead, int Behind)? Divergence { get; private set; }
+
+    /// <summary>How many times git has counted the commits between the branch and its upstream.</summary>
+    public int DivergenceCounts { get; private set; }
+
+    /// <summary>What the last count was of, and what it found.</summary>
+    private ((Git Tree, string? Branch, string Upstream, UInt128? Refs) Of, (int Ahead, int Behind)? Found)? counted;
+
     /// <summary>The changed and new files, as the last status read them, but the unversioned files a test framework wrote
     /// as its own output (<see cref="IgnoredFolders.InToolOutput"/>).</summary>
     public IReadOnlyList<FileChange> Changes { get; private set; } = [];
@@ -454,6 +469,8 @@ public sealed class VcsController : IDisposable
         if (git is not { } repository)
         {
             Branch = null;
+            Upstream = null;
+            Divergence = null;
             Changes = [];
             Conflicts = [];
             Merge = MergeState.Idle;
@@ -479,6 +496,7 @@ public sealed class VcsController : IDisposable
         GitStatus? status = null;
         MergeState? merge = null;
         UInt128? refs = null;
+        (int Ahead, int Behind)? divergence = null;
         string? failure = null;
         long begun = 0;
         try
@@ -488,6 +506,7 @@ public sealed class VcsController : IDisposable
             status = await repository.StatusAsync();
             merge = await repository.MergeStateAsync(status.Branch, status.Head);
             refs = history ? await repository.RefsAsync() : null;
+            divergence = await DivergenceAsync(repository, status, refs ?? knownHistory?.Refs);
         }
         catch (InvalidOperationException failed)
         {
@@ -517,6 +536,8 @@ public sealed class VcsController : IDisposable
         if (status is not null)
         {
             Branch = status.Branch;
+            Upstream = status.Upstream;
+            Divergence = divergence;
             Changes = status.Changes.Any(c => c.Kind is ChangeKind.Unversioned && IgnoredFolders.InToolOutput(c.Path))
                 ? [.. status.Changes.Where(c => c.Kind is not ChangeKind.Unversioned || !IgnoredFolders.InToolOutput(c.Path))] : status.Changes;
             Conflicts = status.Conflicts;
@@ -546,6 +567,31 @@ public sealed class VcsController : IDisposable
             knownHistory = (read, status.Head);
             HistoryChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>The commits between the branch and its upstream: none to count where it tracks none or its upstream is gone,
+    /// none apart where the status found the two at one commit, else as last counted while the branch, its upstream and the
+    /// refs as the history last read them (<paramref name="refs"/>, which hold both commits) stay as they were, so a save or
+    /// the window coming to the front counts none, and HEAD moving counts once its history is read.</summary>
+    private async Task<(int Ahead, int Behind)?> DivergenceAsync(Git repository, GitStatus status, UInt128? refs)
+    {
+        if (status.Upstream is not { } upstream || status.Even is not { } even)
+        {
+            return null;
+        }
+        if (even)
+        {
+            return (0, 0);
+        }
+        (Git, string?, string, UInt128?) of = (repository, status.Branch, upstream, refs);
+        if (counted is { } last && last.Of == of)
+        {
+            return last.Found;
+        }
+        DivergenceCounts++;
+        (int Ahead, int Behind)? found = await repository.DivergenceAsync();
+        counted = (of, found);
+        return found;
     }
 
     /// <summary>What the next read of the status waits for once git has answered it (<see cref="HoldNextRead"/>).</summary>

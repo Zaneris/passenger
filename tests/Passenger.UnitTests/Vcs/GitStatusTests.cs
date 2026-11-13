@@ -57,6 +57,22 @@ public class GitStatusTests
     }
 
     [Fact]
+    public void A_branchs_upstream_is_read_with_whether_HEAD_is_its_commit_and_none_said_where_it_is_gone()
+    {
+        Assert.Equal(("origin/main", true), Upstream("# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -0\0"u8));
+        Assert.Equal(("origin/main", false), Upstream("# branch.head main\0# branch.upstream origin/main\0# branch.ab +? -?\0"u8));
+        Assert.Equal(("upstream/feature", false), Upstream("# branch.head main\0# branch.upstream upstream/feature\0# branch.ab +2 -0\0"u8));
+        Assert.Equal(("origin/main", null), Upstream("# branch.head main\0# branch.upstream origin/main\0"u8));
+        Assert.Equal((null, null), Upstream("# branch.head main\0"u8));
+
+        static (string?, bool?) Upstream(ReadOnlySpan<byte> written)
+        {
+            Git.StatusRead read = Git.StatusOf(written, new Git.DiskNames(Root));
+            return (read.Upstream, read.Even);
+        }
+    }
+
+    [Fact]
     public void A_status_of_thousands_of_files_costs_each_file_no_more_than_its_path()
     {
         byte[] few = Untracked(200);

@@ -133,8 +133,11 @@ public sealed record BlameLine(string Hash, string Author, DateTimeOffset Time, 
 }
 
 /// <summary>What one status read found, together: the branch checked out (null on a detached head), the commit HEAD
-/// names (null before the first), the changed and new files, and those of them in conflict.</summary>
-public sealed record GitStatus(string? Branch, string? Head, IReadOnlyList<FileChange> Changes, IReadOnlyList<GitConflict> Conflicts);
+/// names (null before the first), the changed and new files, and those of them in conflict; and the upstream the branch
+/// tracks as git shortens it (origin/main; null where it tracks none), with whether the two name one commit (null where
+/// the upstream is gone from the remote's branches).</summary>
+public sealed record GitStatus(string? Branch, string? Head, IReadOnlyList<FileChange> Changes, IReadOnlyList<GitConflict> Conflicts,
+    string? Upstream = null, bool? Even = null);
 
 /// <summary>A file in conflict and which of git's three versions of it there are: the one both sides came from (stage
 /// 1), ours (stage 2, HEAD's side) and theirs (stage 3, the side brought in); a side without one deleted the file.
@@ -345,12 +348,17 @@ public sealed partial class Git
                 conflicts[i] = conflicts[i] with { IsBinary = read.Stages[i].Any(blob => binaryBlobs.GetValueOrDefault(blob)) };
             }
         }
-        return new GitStatus(read.Branch, read.Head, read.Changes, conflicts);
+        return new GitStatus(read.Branch, read.Head, read.Changes, conflicts, read.Upstream, read.Even);
     }
 
     /// <summary>A status as read from git's bytes: the branch, HEAD's commit, the files, the conflicts and, for each
-    /// conflict, the blobs of the stages git has a version at.</summary>
-    internal sealed record StatusRead(string? Branch, string? Head, List<FileChange> Changes, List<GitConflict> Conflicts, List<string[]> Stages);
+    /// conflict, the blobs of the stages git has a version at; the upstream and whether HEAD is where it is.</summary>
+    internal sealed record StatusRead(string? Branch, string? Head, List<FileChange> Changes, List<GitConflict> Conflicts, List<string[]> Stages)
+    {
+        public string? Upstream { get; init; }
+
+        public bool? Even { get; init; }
+    }
 
     /// <summary>A status from what <c>git status --porcelain=v2 -z --branch</c> wrote, read where it lies: each entry's
     /// fields found in place and only its paths, a branch, HEAD and a conflict's blobs made strings, so a status of
@@ -359,6 +367,8 @@ public sealed partial class Git
     {
         string? branch = null;
         string? head = null;
+        string? upstream = null;
+        bool? even = null;
         List<FileChange> changes = [];
         List<GitConflict> conflicts = [];
         List<string[]> stages = [];
@@ -377,6 +387,13 @@ public sealed partial class Git
                     break;
                 case (byte)'#' when entry.StartsWith("# branch.head "u8):
                     branch = entry[14..].SequenceEqual("(detached)"u8) ? null : Text(entry[14..]);
+                    break;
+                case (byte)'#' when entry.StartsWith("# branch.upstream "u8):
+                    upstream = Text(entry[18..]);
+                    break;
+                // "+0 -0" at the upstream's commit, "+? -?" apart (--no-ahead-behind counts none), no line once it is gone.
+                case (byte)'#' when entry.StartsWith("# branch.ab "u8):
+                    even = entry[12..].SequenceEqual("+0 -0"u8);
                     break;
                 // "1 XY sub mH mI mW hH hI path"
                 case (byte)'1' when Spaced(entry, fields[..9]):
@@ -412,7 +429,7 @@ public sealed partial class Git
                     break;
             }
         }
-        return new StatusRead(branch, head, changes, conflicts, stages);
+        return new StatusRead(branch, head, changes, conflicts, stages) { Upstream = upstream, Even = even };
 
         static ChangeKind Kind(ReadOnlySpan<byte> xy) =>
             xy.Contains((byte)'D') ? ChangeKind.Deleted : xy[0] == (byte)'A' ? ChangeKind.Added : ChangeKind.Modified;

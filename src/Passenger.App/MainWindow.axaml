@@ -160,6 +160,23 @@
             <Panel>
             <DockPanel Margin="12,0">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
+                    <!-- Git, in a working tree: the commits the branch's upstream has that it lacks and those it has that the
+                         upstream lacks, as last fetched (while it tracks one), a click comparing the two in the Git window;
+                         and the files changed since the last commit, a click opening the Commit window. -->
+                    <Button Name="GitSyncButton" Classes="statusItem" IsVisible="False" Click="OnGitSyncClicked">
+                        <StackPanel Orientation="Horizontal" Spacing="3">
+                            <PathIcon Data="{StaticResource Icon.ArrowDown}" Foreground="{DynamicResource Passenger.TextMuted}" Width="11" Height="11" />
+                            <TextBlock Name="GitIncomingText" Classes="status" />
+                            <PathIcon Data="{StaticResource Icon.ArrowUp}" Foreground="{DynamicResource Passenger.TextMuted}" Width="11" Height="11" Margin="5,0,0,0" />
+                            <TextBlock Name="GitOutgoingText" Classes="status" />
+                        </StackPanel>
+                    </Button>
+                    <Button Name="GitChangesButton" Classes="statusItem" IsVisible="False" Click="OnGitChangesClicked">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <PathIcon Data="{StaticResource Icon.Edit}" Foreground="{DynamicResource Passenger.TextMuted}" Width="12" Height="12" />
+                            <TextBlock Name="GitChangesText" Classes="status" />
+                        </StackPanel>
+                    </Button>
                     <!-- A newer release: its download under way, Restart to Update once it is ready, or (for a copy that
                          cannot update itself) a link to this system's download or the release page, once per version. -->
                     <Button Name="UpdateButton" Classes="statusItem" IsVisible="False" Click="OnUpdateClicked">
