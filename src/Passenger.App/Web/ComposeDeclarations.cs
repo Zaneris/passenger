@@ -327,10 +327,11 @@ public static partial class ComposeDeclarations
 
     /// <summary>The project a Dockerfile builds: the one whose assembly the final stage's ENTRYPOINT runs with dotnet (its
     /// own, else the one of the stage it is built FROM; never a comment's nor an earlier stage's alone), else the project
-    /// file its dotnet publish (or build) names, from the build's context.</summary>
-    public static string? Built(TextSnapshot dockerfile, string context, IReadOnlyList<ProjectModel> projects)
+    /// file its dotnet publish (or build) names, from the build's context; each with the variables its ARG and ENV lines
+    /// set put in, as the build's <paramref name="arguments"/> give them (<see cref="DockerfileStages.Expanded"/>).</summary>
+    public static string? Built(TextSnapshot dockerfile, string context, IReadOnlyList<ProjectModel> projects, IReadOnlyDictionary<string, string>? arguments = null)
     {
-        string text = dockerfile.ToString();
+        string text = DockerfileStages.Expanded(dockerfile.ToString(), arguments ?? new Dictionary<string, string>());
         DockerfileStages stages = DockerfileStages.Read(text);
         if (stages.Final is { } final && stages.Lineage(final).Select(s => s.EntryAssembly).FirstOrDefault(a => a is not null) is { } assembly
             && projects.FirstOrDefault(p => string.Equals(p.Evaluated?.AssemblyName ?? p.Name, assembly, StringComparison.OrdinalIgnoreCase)) is { } running)

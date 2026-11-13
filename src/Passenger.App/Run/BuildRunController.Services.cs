@@ -300,7 +300,11 @@ public sealed partial class BuildRunController
         }
         if (name is null || run.ServiceNamed(name) is not { } service)
         {
-            return (null, name is null ? $"No .NET service of {run.Name} is chosen" : $"{name} is not a .NET service of {run.Name}");
+            return (null, name is null ? $"No .NET service of {run.Name} is chosen"
+                // One of its compose files whose project nothing named: the person names it, as a copy of the configuration keeps.
+                : run is ContainerRun { Plan.Backing: var backing } && backing.Contains(name)
+                    ? $"{name} is not a .NET service of {run.Name}: no project of the solution is known to run it; choose its project in a copy of {run.Name} (Run > Edit Configurations)"
+                : $"{name} is not a .NET service of {run.Name}");
         }
         // One it left unstarted is acted on too: its Debug, Run and Profile start it later.
         return service.Starts ? (service, null)

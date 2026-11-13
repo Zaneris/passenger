@@ -164,7 +164,10 @@ internal static class ComposeConnections
         {
             string root = Path.GetFullPath(Path.Combine(folder, context));
             string dockerfile = Path.GetFullPath(Path.Combine(root, JsonMembers.Scalar(build, "dockerfile") ?? "Dockerfile"));
-            return File.Exists(dockerfile) ? Web.ComposeDeclarations.Built(TextSnapshot.From(File.ReadAllText(dockerfile)), root, projects) : null;
+            Dictionary<string, string> arguments = JsonMembers.Object(build, "args") is { ValueKind: JsonValueKind.Object } given
+                ? given.EnumerateObject().Where(a => a.Value.ValueKind == JsonValueKind.String).ToDictionary(a => a.Name, a => a.Value.GetString()!, StringComparer.Ordinal)
+                : [];
+            return File.Exists(dockerfile) ? Web.ComposeDeclarations.Built(TextSnapshot.From(File.ReadAllText(dockerfile)), root, projects, arguments) : null;
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or ArgumentException)
         {

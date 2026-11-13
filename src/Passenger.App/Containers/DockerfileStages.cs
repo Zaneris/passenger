@@ -4,7 +4,7 @@ namespace Passenger.App.Containers;
 
 /// <summary>A stage of a Dockerfile: its name (or its index), the image or stage it is FROM, the ARGs it declares, its last
 /// WORKDIR, the context's folders its COPY lines put in the image (each with where it went), its EXPOSEd ports, the
-/// assembly its <c>ENTRYPOINT ["dotnet", "X.dll"]</c> runs (its last ENTRYPOINT's) and the variables its ENV lines set.</summary>
+/// assembly its ENTRYPOINT runs with dotnet (its last ENTRYPOINT's) and the variables its ENV lines set.</summary>
 public sealed record DockerfileStage(string Name, string From, IReadOnlyList<string> Arguments, string? WorkDir, IReadOnlyList<(string Source, string Target)> Copies,
     IReadOnlyList<int> Exposed, string? EntryAssembly)
 {
@@ -142,6 +142,39 @@ public sealed partial record DockerfileStages(IReadOnlyList<DockerfileStage> Sta
         }
     }
 
+    /// <summary>A Dockerfile's text with each variable its ARG and ENV lines set ($NAME, ${NAME}, ${NAME:-default}) put in
+    /// as its build would have it: the build's arguments given first, else an ARG's own default, else what an ENV set it
+    /// to; one none of them sets is left as written, but for a default it carries. For finding what a build names (the
+    /// project it publishes, the assembly it runs), never for running it.</summary>
+    public static string Expanded(string text, IReadOnlyDictionary<string, string> given)
+    {
+        Dictionary<string, string> values = new(given, StringComparer.Ordinal);
+        foreach (string instruction in Instructions(text))
+        {
+            Match parts = Instruction().Match(instruction);
+            string verb = parts.Success ? parts.Groups["verb"].Value.ToUpperInvariant() : string.Empty;
+            string rest = parts.Groups["rest"].Value.Trim();
+            if (verb == "ARG" && rest.Split('=', 2) is [{ } name, { } fallback] && !given.ContainsKey(name.Trim()))
+            {
+                values[name.Trim()] = Put(Unquoted(fallback), values);
+            }
+            else if (verb == "ENV")
+            {
+                foreach ((string key, string value) in Variables(rest))
+                {
+                    values[key] = Put(value, values);
+                }
+            }
+        }
+        return Put(text, values);
+
+        static string Put(string text, Dictionary<string, string> values) => Variable().Replace(text, found =>
+        {
+            string name = found.Groups["braced"].Success ? found.Groups["braced"].Value : found.Groups["bare"].Value;
+            return values.TryGetValue(name, out string? value) ? value : found.Groups["default"].Success ? found.Groups["default"].Value : found.Value;
+        });
+    }
+
     /// <summary>A file's instructions: each line with its continuations ('\' at a line's end) joined, comments left out.</summary>
     private static IEnumerable<string> Instructions(string text)
     {
@@ -215,6 +248,11 @@ public sealed partial record DockerfileStages(IReadOnlyList<DockerfileStage> Sta
     [GeneratedRegex(@"""((?:[^""\\]|\\.)*)""")]
     private static partial Regex JsonWords();
 
-    [GeneratedRegex(@"ENTRYPOINT\s*\[\s*""dotnet""\s*,\s*""(?:[^""]*/)?(?<assembly>[^""/]+)\.dll""", RegexOptions.IgnoreCase)]
+    /// <summary>An ENTRYPOINT that runs an assembly with dotnet: <c>["dotnet", "X.dll"]</c>, a shell's
+    /// <c>["sh", "-c", "dotnet X.dll"]</c>, or the shell form <c>dotnet X.dll</c>, an <c>exec</c> before dotnet or not.</summary>
+    [GeneratedRegex(@"ENTRYPOINT\s*(?:\[\s*""dotnet""\s*,\s*""(?:[^""]*/)?(?<assembly>[^""/]+)\.dll""|\[\s*""(?:/bin/)?(?:ba)?sh""\s*,\s*""-c""\s*,\s*""(?:exec\s+)?dotnet\s+(?:\\"")?(?:[^""\s\\]*/)?(?<assembly>[^""\s/\\]+)\.dll|(?!\[)(?:exec\s+)?dotnet\s+""?(?:[^""\s]*/)?(?<assembly>[^""\s/]+)\.dll)", RegexOptions.IgnoreCase)]
     private static partial Regex EntryPoint();
+
+    [GeneratedRegex(@"\$\{(?<braced>[A-Za-z_][A-Za-z0-9_]*)(?::?-(?<default>[^}]*))?\}|\$(?<bare>[A-Za-z_][A-Za-z0-9_]*)")]
+    private static partial Regex Variable();
 }

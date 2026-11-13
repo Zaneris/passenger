@@ -393,8 +393,9 @@ public static class ContainerPlans
         return [.. model.Services.Select(s => (s, DotnetProject(s, projects, null, configuration, chosen)?.Path, s.DockerfilePath is { } file && File.Exists(file)))];
     }
 
-    /// <summary>The project a service runs: its Dockerfile's (by ENTRYPOINT's assembly, else its dotnet publish), else the
-    /// person's choice kept in the configuration, else a project of the Docker Compose project named as the service.</summary>
+    /// <summary>The project a service runs: the person's choice kept in the configuration, else the one its compose files
+    /// label it with (<see cref="ComposeLabels.VisualStudioProject"/>), else its Dockerfile's (by ENTRYPOINT's assembly, else
+    /// its dotnet publish, the build's arguments put in), else a project of the Docker Compose project named as the service.</summary>
     private static ProjectModel? DotnetProject(ComposeService service, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, RunConfiguration configuration,
         IReadOnlyDictionary<string, string> chosen)
     {
@@ -402,8 +403,13 @@ public static class ContainerPlans
         {
             return named;
         }
+        if (service.Labels.GetValueOrDefault(ComposeLabels.VisualStudioProject) is { Length: > 0 } labelled
+            && projects.FirstOrDefault(p => string.Equals(Path.GetFileNameWithoutExtension(p.Path), labelled.Trim(), StringComparison.OrdinalIgnoreCase)) is { } label)
+        {
+            return label;
+        }
         if (service.DockerfilePath is { } dockerfile && File.Exists(dockerfile)
-            && Web.ComposeDeclarations.Built(TextSnapshot.From(File.ReadAllText(dockerfile)), service.Context!, projects) is { } built)
+            && Web.ComposeDeclarations.Built(TextSnapshot.From(File.ReadAllText(dockerfile)), service.Context!, projects, service.BuildArguments) is { } built)
         {
             return projects.FirstOrDefault(p => PathNames.Same(p.Path, built));
         }

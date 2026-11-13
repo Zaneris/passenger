@@ -19,6 +19,9 @@ public sealed record ComposeService(string Name, string? Context, string? Docker
     /// <c>network_mode</c> puts it elsewhere.</summary>
     public IReadOnlyList<string> Networks { get; init; } = [];
 
+    /// <summary>The labels its files give its containers, by name.</summary>
+    public IReadOnlyDictionary<string, string> Labels { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
     /// <summary>The Dockerfile's full path, for a service built from a folder here (not a repository, not an inline one).</summary>
     public string? DockerfilePath => Context is { } context && Directory.Exists(context) ? Path.GetFullPath(Path.Combine(context, Dockerfile ?? "Dockerfile")) : null;
 }
@@ -80,6 +83,7 @@ public sealed record ComposeModel(string Name, IReadOnlyList<ComposeService> Ser
                 services.Add(new ComposeService(service.Name, context, dockerfile, target, args, JsonMembers.Scalar(value, "image"), ports, Map(value, "environment"), watches, depends)
                 {
                     Networks = joined,
+                    Labels = Map(value, "labels"),
                 });
             }
         }
