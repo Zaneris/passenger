@@ -15,7 +15,8 @@ namespace Passenger.Tests;
 
 /// <summary>File nesting in the Solution view: a file's dependents shown under it by Rider's own rules (a Razor
 /// component's code-behind and styles, a Razor Page's model, a form's designer and resources, a resource file's code)
-/// and by what the project says depends on what, the settings for an environment under appsettings.json; File Nesting's
+/// and by what the project says depends on what, the settings for an environment under appsettings.json, a compose
+/// file's override under the file it overrides, a Docker Compose project's DependentUpon too; File Nesting's
 /// "Show files with the same names as nested" lays the rules' out flat, DependentUpon's staying; and a parent renamed
 /// or moved in the Explorer takes its dependents with it, renamed with it, its project's DependentUpon
 /// following.</summary>
@@ -103,6 +104,50 @@ public sealed class FileNestingTests : IDisposable
         Ui.Click(dialog.OkButton);
         Ui.WaitFor(() => !dialog.IsVisible, "the File Nesting dialog to close");
         Assert.Equal(At("Components/Counter.razor"), Holder(window, At("Components/Counter.razor.cs")).Path);
+        window.Close();
+    }
+
+    /// <summary>A compose file's override nests under the file it overrides: by name in a project's folder (compose.override.yaml
+    /// under compose.yaml, docker-compose.prod.override.yaml under docker-compose.prod.yml), laid out flat with the other
+    /// name rules; and by a Docker Compose project's DependentUpon (docker-compose.api.override.yml under
+    /// docker-compose.api.yml), which stays.</summary>
+    [AvaloniaFact]
+    public void A_compose_files_override_nests_under_the_file_it_overrides_by_name_and_by_a_Docker_Compose_projects_DependentUpon()
+    {
+        Write("Shop/compose.yaml", "services: {}\n");
+        Write("Shop/compose.override.yaml", "services: {}\n");
+        Write("Shop/docker-compose.prod.yml", "services: {}\n");
+        Write("Shop/docker-compose.prod.override.yaml", "services: {}\n");
+        Write("Deploy/docker-compose.api.yml", "services: {}\n");
+        Write("Deploy/docker-compose.api.override.yml", "services: {}\n");
+        Write("Deploy/docker-compose-api.dcproj", """
+            <Project ToolsVersion="15.0" Sdk="Microsoft.Docker.Sdk">
+              <PropertyGroup>
+                <DockerComposeBaseFilePath>docker-compose.api</DockerComposeBaseFilePath>
+              </PropertyGroup>
+              <ItemGroup>
+                <None Include="docker-compose.api.override.yml">
+                  <DependentUpon>docker-compose.api.yml</DependentUpon>
+                </None>
+                <None Include="docker-compose.api.yml" />
+              </ItemGroup>
+            </Project>
+
+            """);
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n  <Project Path=\"Deploy/docker-compose-api.dcproj\" />\n</Solution>\n");
+        string deploy = Path.Combine(folder, "Deploy");
+        MainWindow window = Open();
+        Assert.Equal(At("compose.yaml"), Holder(window, At("compose.override.yaml")).Path);
+        Assert.Equal(At("docker-compose.prod.yml"), Holder(window, At("docker-compose.prod.override.yaml")).Path);
+        Assert.Equal(Path.Combine(deploy, "docker-compose.api.yml"), Holder(window, Path.Combine(deploy, "docker-compose.api.override.yml")).Path);
+
+        FileNestingDialog dialog = OpenFileNesting(window);
+        Ui.Click(dialog.NestBox);
+        Ui.Click(dialog.OkButton);
+        Ui.WaitFor(() => !dialog.IsVisible, "the File Nesting dialog to close");
+        Assert.Equal(At("Shop.csproj"), Holder(window, At("compose.override.yaml")).Path);
+        Assert.Equal(At("Shop.csproj"), Holder(window, At("docker-compose.prod.override.yaml")).Path);
+        Assert.Equal(Path.Combine(deploy, "docker-compose.api.yml"), Holder(window, Path.Combine(deploy, "docker-compose.api.override.yml")).Path);
         window.Close();
     }
 

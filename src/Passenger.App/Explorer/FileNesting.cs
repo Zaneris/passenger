@@ -7,8 +7,8 @@ namespace Passenger.App.Explorer;
 
 /// <summary>File nesting in the Solution view: a file shown under the one it belongs to, one level deep, by its
 /// project's DependentUpon and, while "Show files with the same names as nested" is on, by name, a suffix on a parent's
-/// name and another on its dependent's after the same start (Counter.razor, Counter.razor.cs). A move or rename of the
-/// parent takes its dependents along, renamed as it is.</summary>
+/// name and another on its dependent's after the same start (Counter.razor, Counter.razor.cs), a compose file's override
+/// under the file it overrides. A move or rename of the parent takes its dependents along, renamed as it is.</summary>
 public static partial class FileNesting
 {
     /// <summary>The languages the CLR rules are made for.</summary>
@@ -107,6 +107,28 @@ public static partial class FileNesting
     [GeneratedRegex(@"^appsettings\.[^.]+\.json$", RegexOptions.IgnoreCase)]
     private static partial Regex EnvironmentSettings();
 
+    /// <summary>A compose file's override (docker-compose.api.override.yml, compose.override.yaml) goes under the compose
+    /// file of its name without .override, of its extension else the other, which no suffix rule says alone.</summary>
+    public const string ComposeParent = "docker-compose.api.yml, compose.yaml";
+
+    public const string ComposeChildren = "docker-compose.api.override.yml, compose.override.yaml";
+
+    [GeneratedRegex(@"^(?<stem>.+)\.override\.(?<extension>ya?ml)$", RegexOptions.IgnoreCase)]
+    private static partial Regex ComposeOverride();
+
+    /// <summary>The compose file an override of a folder goes under, by the rule <see cref="ComposeParent"/> says; null for
+    /// a file that is no compose file's override, or whose file is not there.</summary>
+    private static string? Overridden(string name, Dictionary<string, string> named)
+    {
+        if (!Containers.ComposeFiles.IsCompose(name) || ComposeOverride().Match(name) is not { Success: true } over)
+        {
+            return null;
+        }
+        string extension = over.Groups["extension"].Value;
+        string other = extension.Length == 3 ? "yaml" : "yml";
+        return named.GetValueOrDefault($"{over.Groups["stem"].Value}.{extension}") ?? named.GetValueOrDefault($"{over.Groups["stem"].Value}.{other}");
+    }
+
     /// <summary>The files of one folder shown under another of them, each to the file it goes under, by path: what the
     /// project says it depends on first, then the name rules when <paramref name="byName"/>, names compared as their folder
     /// tells letter case. Nesting is one level: a file whose parent is nested itself goes under that one's parent.</summary>
@@ -145,6 +167,10 @@ public static partial class FileNesting
                 if (EnvironmentSettings().IsMatch(name) && named.TryGetValue(EnvironmentParent, out string? settings) && !found.Contains(settings))
                 {
                     found.Add(settings);
+                }
+                if (Overridden(name, named) is { } overridden && overridden != file && !found.Contains(overridden))
+                {
+                    found.Add(overridden);
                 }
             }
             if (found.Count > 0)

@@ -49,6 +49,7 @@ public sealed class FileNestingDialog : IdeWindow
             Row(rule.Key, string.Join("; ", rule.Select(r => r.Child)));
         }
         Row(FileNesting.EnvironmentParent, FileNesting.EnvironmentChildren);
+        Row(FileNesting.ComposeParent, FileNesting.ComposeChildren);
         Rules = table;
         Border framed = new() { Classes = { StyleClasses.Framed }, Child = new ScrollViewer { Content = table } };
         Rules.IsEnabled = nest;
