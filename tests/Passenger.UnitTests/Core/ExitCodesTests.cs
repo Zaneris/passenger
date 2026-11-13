@@ -15,6 +15,16 @@ public class ExitCodesTests
         Assert.Equal("exit code 143 (SIGTERM)", ExitCodes.Said(143, windows: false));
         // Numbered apart on macOS and Linux (SIGBUS, SIGUSR1), so said by number rather than named wrong on one of them.
         Assert.Equal("exit code 138 (signal 10)", ExitCodes.Said(138, windows: false));
+        Assert.Equal("exit code 152 (signal 24)", ExitCodes.Said(152, windows: false));
+    }
+
+    [Fact]
+    public void A_code_standing_for_a_signal_that_ends_no_program_is_the_programs_own()
+    {
+        // .NET's host exits 150 where a program's runtime is missing: SIGTTOU's number, which stops a program, never ends it.
+        Assert.Equal("exit code 150", ExitCodes.Said(150, windows: false));
+        Assert.Equal("exit code 148", ExitCodes.Said(148, windows: false));
+        Assert.Equal("exit code 156", ExitCodes.Said(156, windows: false));
     }
 
     [Fact]
