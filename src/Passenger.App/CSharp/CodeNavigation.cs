@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
@@ -11,6 +13,31 @@ namespace Passenger.App.CSharp;
 internal sealed class CodeNavigation(AssistContext context, PopupPlacement popups, QuickInfo quickInfo)
 {
     private CodeEditor Editor => context.Editor;
+
+    /// <summary>A C# identifier from which Go to Declaration has a target, without opening or copying that target.</summary>
+    public async Task<TextRange?> HoverTargetAsync(string action, int offset, CancellationToken cancel)
+    {
+        if (action != AppActions.GoToDeclaration || context.Current?.Lsp is not { LanguageId: LanguageIds.CSharp } lsp ||
+            context.Syntax is not { } syntax || !ReferenceEquals(syntax.Text, Editor.Document.Snapshot))
+        {
+            return null;
+        }
+        SyntaxToken token = syntax.Root.FindToken(offset);
+        if (!token.IsKind(SyntaxKind.IdentifierToken) || !token.Span.Contains(offset))
+        {
+            return null;
+        }
+        try
+        {
+            return (await lsp.DefinitionAsync(offset, cancel)).Count > 0
+                ? new TextRange(token.Span.Start, token.Span.Length) : null;
+        }
+        catch (LanguageServerFailed)
+        {
+            // Unavailable navigation leaves the ordinary text cursor, without interrupting editing.
+            return null;
+        }
+    }
 
     public async Task GoToDefinition(int offset)
     {

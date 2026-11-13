@@ -45,7 +45,26 @@ public sealed partial class CodeEditor
     /// row ends before.</summary>
     private TextLink? LinkAt(Point point)
     {
-        if (links is null || point.X < GutterWidth || point.Y + scroll.Y < 0 || RowAtY(point.Y) >= RowCount)
+        if (links is null || CharacterAt(point) is not { } offset)
+        {
+            return null;
+        }
+        TextSnapshot text = document.Snapshot;
+        foreach (TextLink link in links(text, text.GetLineFromOffset(offset)))
+        {
+            if (link.Range.Start <= offset && offset < link.Range.End)
+            {
+                return link;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The character under a point, excluding the gutter and space past the row's text.</summary>
+    private int? CharacterAt(Point point)
+    {
+        if (point.X < GutterWidth || point.Y < 0 || point.Y >= Bounds.Height || point.X >= Bounds.Width ||
+            point.Y + scroll.Y < 0 || RowAtY(point.Y) >= RowCount)
         {
             return null;
         }
@@ -69,15 +88,7 @@ public sealed partial class CodeEditor
             // The nearest boundary is after the character the point is over.
             column--;
         }
-        int offset = span.Start + column;
-        foreach (TextLink link in links(text, line))
-        {
-            if (link.Range.Start <= offset && offset < link.Range.End)
-            {
-                return link;
-            }
-        }
-        return null;
+        return span.Start + column;
     }
 
     /// <summary>The pointer moved: over a link, if no drag is under way, it takes the hand.</summary>

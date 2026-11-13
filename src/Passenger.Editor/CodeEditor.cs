@@ -420,6 +420,7 @@ public sealed partial class CodeEditor : Control
 
     private void ShowText(TextDocument value, DocumentDecorations? shared)
     {
+        StopNavigationHover();
         KeepWraps();
         StopWrapping();
         document.ChangedFirst -= OnChangedFirst;
@@ -690,6 +691,7 @@ public sealed partial class CodeEditor : Control
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        AttachNavigationKeys();
         RefreshStyle();
         RestartBlink();
     }
@@ -699,6 +701,7 @@ public sealed partial class CodeEditor : Control
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        DetachNavigationKeys();
         blink.Stop();
         hover?.Stop();
     }
@@ -714,6 +717,7 @@ public sealed partial class CodeEditor : Control
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
         base.OnLostFocus(e);
+        StopNavigationHover();
         blink.Stop();
         ownKeys?.Reset();
         document.BreakUndoGroup();
@@ -807,6 +811,7 @@ public sealed partial class CodeEditor : Control
 
     private void OnDocumentChanged(object? sender, DocumentChangedEventArgs e)
     {
+        StopNavigationHover();
         FollowLineShape(e);
         // What was offered to choose among is the text left behind.
         CancelChoices();

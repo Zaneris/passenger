@@ -91,6 +91,8 @@ public sealed class CodeAssist
         // Every editor a split makes is wired the same; what it asks is answered for the active one, which it is.
         editors.ForEachEditor(editor =>
         {
+            editor.NavigationTarget = (action, offset, cancel) => editor == Editor
+                ? navigation.HoverTargetAsync(action, offset, cancel) : Task.FromResult<TextRange?>(null);
             editor.Hovered += (_, e) =>
             {
                 // A value's card in use (its keys, its menu, a value being typed) stays over what else the pointer rests on.

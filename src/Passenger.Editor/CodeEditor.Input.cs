@@ -108,6 +108,7 @@ public sealed partial class CodeEditor
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        StopNavigationHover();
         // A press on a scrollbar that its thumb and track leave (beside the thumb) is the bar's, not the text's under it.
         if ((e.Source as Visual)?.FindAncestorOfType<ScrollBar>(includeSelf: true) is { } bar && (bar == vertical || bar == horizontal))
         {
@@ -273,6 +274,7 @@ public sealed partial class CodeEditor
         RestartHover(position);
         Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter ? Cursor.Default : IbeamCursor;
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
+        MoveNavigationPointer(e);
         bool inGutter = position.X < GutterWidth;
         if (inGutter != overGutter)
         {
@@ -353,6 +355,8 @@ public sealed partial class CodeEditor
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
+        StopNavigationHover();
+        navigationPoint = null;
         if (overGutter)
         {
             overGutter = false;

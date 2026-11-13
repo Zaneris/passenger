@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -28,6 +29,142 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     {
         this.project = project;
         project.Reset();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Declaration_hover_uses_the_hand_only_while_the_navigation_modifier_is_held(bool keyFirst)
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int offset = editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal);
+        Point point = editor.TranslatePoint(editor.PointOf(offset) + new Point(2, editor.LineHeight / 2), window)!.Value;
+        Key key = OperatingSystem.IsMacOS() ? Key.LWin : Key.LeftCtrl;
+        RawInputModifiers modifier = OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
+        if (keyFirst)
+        {
+            window.KeyPress(key, modifier, PhysicalKey.None, null);
+            window.MouseMove(point, modifier);
+        }
+        else
+        {
+            window.MouseMove(point, RawInputModifiers.None);
+            Assert.Equal("Ibeam", editor.Cursor?.ToString());
+            window.KeyPress(key, modifier, PhysicalKey.None, null);
+        }
+        Ui.WaitFor(() => editor.Cursor?.ToString() == "Hand", "the hand over a navigable method");
+        window.MouseMove(point + new Point(1, 0), modifier);
+        Assert.Equal("Hand", editor.Cursor?.ToString());
+        window.KeyRelease(key, RawInputModifiers.None, PhysicalKey.None, null);
+        Assert.Equal("Ibeam", editor.Cursor?.ToString());
+
+        window.KeyPress(key, modifier, PhysicalKey.None, null);
+        Ui.WaitFor(() => editor.Cursor?.ToString() == "Hand", "the hand without moving the pointer");
+        window.MouseMove(new Point(1, 1), modifier);
+        Assert.NotEqual("Hand", editor.Cursor?.ToString());
+        window.MouseMove(point, modifier);
+        Ui.WaitFor(() => editor.Cursor?.ToString() == "Hand", "the hand on returning to the method");
+        Ui.Click(editor, editor.PointOf(offset) + new Point(2, editor.LineHeight / 2), modifier);
+        Ui.WaitFor(() => window.EditorArea.Active?.Name == "Helper.cs", "the existing modified click to open the declaration");
+        Assert.Equal(2, editor.CaretPosition.Line);
+        window.KeyRelease(key, RawInputModifiers.None, PhysicalKey.None, null);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Declaration_hover_leaves_comments_strings_unknown_names_and_empty_space_as_text()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Typing.Replace(window, editor.Document.Snapshot.ToString(),
+            "class Program { static void Main() { Missing(); string text = \"Program\"; } }\n// Program\n// padding\n");
+        Ui.Settle();
+        RawInputModifiers modifier = OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
+        foreach (string code in new[] { "Missing", "// Program", "\"Program\"", "class", "{", "padding" })
+        {
+            int offset = editor.Document.Snapshot.ToString().IndexOf(code, StringComparison.Ordinal) +
+                (code == "// Program" ? 3 : code == "\"Program\"" ? 1 : 0);
+            Point point = editor.TranslatePoint(editor.PointOf(offset) + new Point(2, editor.LineHeight / 2), window)!.Value;
+            window.MouseMove(point, modifier);
+            Ui.Settle();
+            Assert.Equal("Ibeam", editor.Cursor?.ToString());
+        }
+        Point beyond = editor.PointOf(editor.Document.Snapshot.GetLine(1).End) + new Point(80, editor.LineHeight / 2);
+        window.MouseMove(editor.TranslatePoint(beyond, window)!.Value, modifier);
+        Ui.Settle();
+        Assert.Equal("Ibeam", editor.Cursor?.ToString());
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("leave")]
+    [InlineData("release")]
+    [InlineData("edit")]
+    [InlineData("file")]
+    public void Declaration_hover_discards_a_definition_that_arrives_after_moving_on(string change)
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int offset = editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal);
+        Point point = editor.TranslatePoint(editor.PointOf(offset) + new Point(2, editor.LineHeight / 2), window)!.Value;
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.Definition, _ => true, answered.Task);
+        RawInputModifiers modifier = OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
+        try
+        {
+            window.MouseMove(point, modifier);
+            Ui.AwaitPumped(held, "the hover definition held unanswered");
+            switch (change)
+            {
+                case "leave":
+                    window.MouseMove(new Point(1, 1), modifier);
+                    break;
+                case "release":
+                    window.KeyRelease(OperatingSystem.IsMacOS() ? Key.LWin : Key.LeftCtrl, RawInputModifiers.None, PhysicalKey.None, null);
+                    break;
+                case "edit":
+                    window.KeyTextInput(" ");
+                    break;
+                case "file":
+                    window.OpenFile(project.PathOf("Helper.cs"));
+                    break;
+            }
+        }
+        finally
+        {
+            answered.SetResult();
+        }
+        Ui.Settle();
+        Assert.NotEqual("Hand", editor.Cursor?.ToString());
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Declaration_hover_follows_a_custom_mouse_shortcut()
+    {
+        MainWindow window = project.Open("Program.cs");
+        AppSettings before = window.Settings;
+        try
+        {
+            window.ApplySettings(before with { Shortcuts = new() { [AppActions.GoToDeclaration] = ["F12", "control shift button1"] } });
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int offset = editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal);
+            Point point = editor.TranslatePoint(editor.PointOf(offset) + new Point(2, editor.LineHeight / 2), window)!.Value;
+            window.MouseMove(point, RawInputModifiers.Control);
+            Ui.Settle();
+            Assert.Equal("Ibeam", editor.Cursor?.ToString());
+            window.KeyPress(Key.LeftShift, RawInputModifiers.Control | RawInputModifiers.Shift, PhysicalKey.None, null);
+            Ui.WaitFor(() => editor.Cursor?.ToString() == "Hand", "the hand for the custom navigation gesture");
+            window.KeyRelease(Key.LeftShift, RawInputModifiers.Control, PhysicalKey.None, null);
+            Assert.Equal("Ibeam", editor.Cursor?.ToString());
+        }
+        finally
+        {
+            window.ApplySettings(before);
+            window.Close();
+        }
     }
 
     /// <summary>What the window says of the code around the caret, in one window on Program.cs: the status bar's path names
