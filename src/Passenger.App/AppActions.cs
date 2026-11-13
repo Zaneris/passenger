@@ -288,6 +288,9 @@ public static class AppActions
     public const string Rerun = "app.rerun";
     public const string EditConfigurations = "app.editConfigurations";
 
+    // Where the chosen configuration's app runs (a device, an emulator or a simulator), the widget beside the configuration's.
+    public const string ChooseRunTarget = "app.chooseRunTarget";
+
     // One of the folder's own run configurations saved as a launch profile of its project: no keys of Rider's.
     public const string SaveAsLaunchProfile = "app.saveAsLaunchProfile";
     public const string ShowBuild = "app.showBuild";

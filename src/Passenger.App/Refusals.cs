@@ -423,4 +423,25 @@ public static class Refusals
     /// <summary>Why a line of the file shown cannot be acted on: none is shown, or its tab holds no lines (a preview, a workbook).</summary>
     public static string? NeedsLines(ActionContext context) =>
         context.File is not { } file ? NoFile : file.HoldsText ? null : $"{file.Name} is {file.ShownAs}, with no lines";
+
+    /// <summary>A project whose app runs on a device, an emulator or a simulator has none chosen to run on.</summary>
+    public static string NoRunTarget(string project) =>
+        $"{project} runs on a device, an emulator or a simulator: choose one beside the run configuration";
+
+    /// <summary>A target of a platform Passenger does not run apps on yet.</summary>
+    public static string NotYetOn(string target) =>
+        $"Passenger does not run apps on {target} yet: it runs them on Android devices and emulators";
+
+    /// <summary>The Android workload could not list devices (no workload, no Android SDK, no Java), with how to get them.</summary>
+    public static string NoAndroid(string problem) =>
+        $"Android's devices could not be listed ({problem}): Android apps need the .NET android workload (dotnet workload install android), the Android SDK "
+        + "(its folder in ANDROID_HOME, or Android Studio's) and a JDK (its folder in JAVA_HOME)";
+
+    /// <summary>The Android SDK lacks the platform the workload builds against, named as its sdkmanager names the package.</summary>
+    public static string NoAndroidPlatform(string package) =>
+        $"The Android SDK lacks {package}, the platform the .NET android workload builds against: install it with the SDK's sdkmanager "
+        + $"(sdkmanager \"{package}\") or Android Studio's SDK Manager";
+
+    /// <summary>The project has no device chosen to run on, where the chooser lists none.</summary>
+    public const string NoTargets = "No device, emulator or simulator is listed for this project: connect a device, or make an emulator with Android Studio's Device Manager";
 }

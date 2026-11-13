@@ -2341,7 +2341,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, waits " +
         "for the work it begins and says what it came to, or says why it cannot. input: app.migrations.add's name, updateTo's " +
         "target; app.saveAsLaunchProfile's configuration (else the chosen one); app.targetFramework's framework, as " +
-        "Project:net9.0 where several projects target several.")]
+        "Project:net9.0 where several projects target several; app.chooseRunTarget's device or emulator by name (none lists them).")]
     public Task<string> IdeAction(string action, string? input = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null)
@@ -2355,6 +2355,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (action == AppActions.TargetFramework && input is not null)
         {
             return window.ChooseFrameworkForAgent(input);
+        }
+        if (action == AppActions.ChooseRunTarget)
+        {
+            return await window.ChooseRunTargetForAgentAsync(input);
         }
         if (input is not null)
         {

@@ -468,6 +468,7 @@ public partial class MainWindow
             if (session == next)
             {
                 ShowChosenConfiguration(next.Configurations);
+                ShowRunTarget();
                 // An AppHost evaluated or found since: its open files' resources are read, the others' kept.
                 ReadOpenAspireMarks(again: false);
                 // A file shown before its AppHost was evaluated pulled its diagnostics as no service's.
@@ -490,6 +491,7 @@ public partial class MainWindow
         BindPreviews(next);
         BindXamlWorkspace(next);
         BindTargetFrameworks(next);
+        BindRunTargets(next);
     }
 
     /// <summary>A session's debugger in the window: what it asks to run, what it says, where it stops and the toolbar's

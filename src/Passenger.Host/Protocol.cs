@@ -253,12 +253,17 @@ public static class CarriedProperties
     /// names its own.</summary>
     public const string AspireHostingSDKVersion = "AspireHostingSDKVersion";
 
+    /// <summary>Whether .NET for Android builds an app of it, which it makes of a project whose OutputType was Exe, giving it
+    /// OutputType Library (an Android app has no Main of its own).</summary>
+    public const string AndroidApplication = "AndroidApplication";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
         DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, UsingGodotNETSdk, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
+        AndroidApplication,
     ];
 }
 

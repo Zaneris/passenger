@@ -479,6 +479,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The target framework chosen for each multi-targeted project, which its XAML, its preview and its C# follow.</summary>
     public TargetFrameworkChoices Frameworks { get; } = new();
 
+    /// <summary>Where each project of devices, emulators or simulators runs, and each one's targets as last listed.</summary>
+    public Run.Devices.DeviceChoices Targets { get; } = new();
+
     /// <summary>A project's framework was chosen (by its path; null for every project's, as the folder's kept choices are
     /// taken), and its XAML and C# followed: what shows the choice, and the previews of its XAML, follow it.</summary>
     public event EventHandler<string?>? FrameworkChosen;
@@ -1157,6 +1160,7 @@ public sealed class ProjectSession : IAsyncDisposable
         }
         State = kept;
         Frameworks.Keep(kept.Workspace);
+        Targets.Keep(kept.Workspace);
         Configurations.Keep(kept.RunConfigurations, Projects);
         Folds.Restore(workspace.Folds);
         foreach (string file in workspace.RecentFiles.Where(File.Exists).Reverse())

@@ -745,6 +745,17 @@ public sealed class DebugController : IDisposable
             browser: hotReloadOn ? browser : Unheld(browser), attachedWords: startedElsewhere, stopLetsGo: startedElsewhere is not null);
     }
 
+    /// <summary>Attaches the debugger to an app on a device through Passenger's relay in it (<see cref="Run.Devices.DeviceLaunches"/>),
+    /// with Hot Reload as Settings has it (a Debug build's runtime takes edits); its console is the app's log, which its start
+    /// writes there. Null once the session is open, else why it could not.</summary>
+    public Task<string?> AttachThroughRelayAsync(Run.LaunchPlan plan, Run.Devices.RelaySession relay, BuiltEdits? edits = null)
+    {
+        bool hotReloadOn = HotReloadOn();
+        string where = plan.Device?.Target.Name ?? "its device";
+        return OpenAsync((built, log, output, starting) => DebugSession.AttachThroughRelayAsync(plan.Name, relay, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn),
+            plan.Name, launched: false, hotReloadOn: hotReloadOn, plan: plan, edits: edits, attachedWords: $"{plan.Name} runs on {where}; what it logs there is shown here");
+    }
+
     /// <summary>What no session will tell of an update (a hook, a browser refresh), let go of: null.</summary>
     private static T? Unheld<T>(T? held) where T : class, IDisposable
     {

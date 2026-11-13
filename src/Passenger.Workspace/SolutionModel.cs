@@ -327,10 +327,11 @@ public sealed record ProjectModel(
     /// references a test SDK, an adapter or a Testing Platform test framework.</summary>
     public bool IsTestProject => DeclaredTest || Packages.Any(p => TestPackages.Contains(p.Name));
 
-    /// <summary>Whether it builds something that runs: an executable, not a library, a test or a Blazor Web App's client
-    /// (<see cref="IsBrowserClient"/>).</summary>
+    /// <summary>Whether it builds something that runs: an executable or an Android app (<see cref="CarriedProperties.AndroidApplication"/>),
+    /// not a library, a test or a Blazor Web App's client (<see cref="IsBrowserClient"/>).</summary>
     public bool IsRunnable => (string.Equals(OutputType, "Exe", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(OutputType, "WinExe", StringComparison.OrdinalIgnoreCase)) && !IsTestProject && !IsBrowserClient;
+        || string.Equals(OutputType, "WinExe", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Property(CarriedProperties.AndroidApplication), "true", StringComparison.OrdinalIgnoreCase)) && !IsTestProject && !IsBrowserClient;
 
     /// <summary>Whether its code runs in the browser on .NET's WebAssembly runtime: it references Blazor's WebAssembly host.</summary>
     public bool RunsInBrowser => Packages.Any(p => p.Name.Equals(BlazorWebAssembly, StringComparison.OrdinalIgnoreCase));

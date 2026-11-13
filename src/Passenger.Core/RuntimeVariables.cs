@@ -32,6 +32,15 @@ public static class RuntimeVariables
     /// as each module loads.</summary>
     public const string ModifiableAssemblies = "DOTNET_MODIFIABLE_ASSEMBLIES";
 
+    /// <summary>"1" lets the runtime load the profiler <see cref="Profiler"/> names as it starts.</summary>
+    public const string EnableProfiling = "DOTNET_ENABLE_PROFILING";
+
+    /// <summary>The class id of the profiler the runtime loads, from the library <see cref="ProfilerPath"/> names.</summary>
+    public const string Profiler = "DOTNET_PROFILER";
+
+    /// <summary>The library the runtime loads its profiler from.</summary>
+    public const string ProfilerPath = "DOTNET_PROFILER_PATH";
+
     /// <summary>"0" has the runtime collect garbage with the workstation collector, "1" with the server one.</summary>
     public const string GcServer = "DOTNET_gcServer";
 

@@ -25,6 +25,9 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
     /// <summary>The target framework chosen for each multi-targeted project, by its path (<see cref="TargetFrameworkChoices"/>).</summary>
     public Dictionary<string, string> TargetFrameworks { get; init; } = [];
 
+    /// <summary>Where each project of devices, emulators or simulators runs, by its path (<see cref="Run.Devices.DeviceChoices"/>).</summary>
+    public Dictionary<string, Run.Devices.KeptTarget> RunTargets { get; init; } = [];
+
     /// <summary>The folds of the files opened lately, each as it closed, the latest first.</summary>
     public List<KeptFolds> Folds { get; init; } = [];
 
@@ -60,6 +63,9 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
         RecentFiles = [.. (RecentFiles ?? []).Where(f => !string.IsNullOrEmpty(f))],
         UnloadedProjects = [.. (UnloadedProjects ?? []).Where(p => !string.IsNullOrEmpty(p))],
         TargetFrameworks = (TargetFrameworks ?? []).Where(p => p.Key is { Length: > 0 } && p.Value is { Length: > 0 })
+            .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
+        RunTargets = (RunTargets ?? []).Where(p => p.Key is { Length: > 0 } && p.Value is { Key.Length: > 0, Name.Length: > 0 } t
+                && Enum.IsDefined(t.Platform) && Enum.IsDefined(t.Kind))
             .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
     };
 

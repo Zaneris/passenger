@@ -109,6 +109,7 @@ public partial class MainWindow : IdeWindow
         AcceptDrops(this);
         AddFileProperties();
         AddTargetFramework();
+        AddRunTargets();
         AddAutosave();
         AddReadOnly();
         AddConflicts();

@@ -9,6 +9,7 @@ using Passenger.App.Debugging;
 using Passenger.App.Docking;
 using Passenger.App.Editors;
 using Passenger.App.LiveTree;
+using Passenger.App.Run.Devices;
 using Passenger.App.Settings;
 using Passenger.App.Telemetry;
 using Passenger.App.ToolWindows;
@@ -761,7 +762,7 @@ public sealed partial class BuildRunController
         try
         {
             return (await LaunchPlan.ResolveAsync(arguments is null ? chosen : chosen with { Arguments = arguments }, session.Projects, session.Workspace, parts.StateFolder(), stop,
-                parts.Settings().GodotExecutable, parts.Editors.Active?.Path, session.GodotEnvironment, parts.Unseen), null);
+                parts.Settings().GodotExecutable, parts.Editors.Active?.Path, session.GodotEnvironment, parts.Unseen, session.Targets.Of), null);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
@@ -834,6 +835,25 @@ public sealed partial class BuildRunController
             await collecting.CancelAsync();
             await AbandonAsync(told);
             return (null, Checkpoint(work, chosen.Name) ?? unbuilt.Message, false);
+        }
+        if (build && plan.Device is { App: null } && session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, plan.Project!)) is { } device)
+        {
+            ProjectSession listing = session;
+            (LaunchPlan? installed, string? uninstalled) = await DeviceLaunches.ReadyAsync(plan, Workspace.ProjectModels.Properties(session.Workspace, device), parts.Unseen,
+                work.Say, targets => UiThread.Post(() =>
+                {
+                    if (!listing.IsEnded)
+                    {
+                        listing.Targets.List(device, targets);
+                    }
+                }), work.Stopping);
+            if (installed is null)
+            {
+                await collecting.CancelAsync();
+                await AbandonAsync(told);
+                return (null, Checkpoint(work, chosen.Name) ?? uninstalled, false);
+            }
+            plan = installed;
         }
         if (told is not null)
         {
@@ -1136,7 +1156,7 @@ public sealed partial class BuildRunController
             ShowInRun(null);
             UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
-            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects);
+            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects) && !RunsOnDevice(chosen);
             bool godot = chosen.RunsGodot(session.Projects);
             // A game's errors, which Godot writes every frame they happen, folded in its console.
             parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
@@ -1266,6 +1286,11 @@ public sealed partial class BuildRunController
             if (notStarted is null)
             {
                 Keep(Take(ref dashboard), session.Runner.Ended, () => session.Runner.WasStopped, said => parts.Views.Run.Append($"{said}\n"));
+            }
+            if (notStarted is null && plan.Device?.App is { } onDevice)
+            {
+                // Its shell on the device ends with the app; Stop ends the shell here, so the app is ended there too.
+                IdeErrors.Observe(EndOnDeviceAsync(session.Runner.Ended, onDevice));
             }
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {
@@ -2374,6 +2399,10 @@ public sealed partial class BuildRunController
             {
                 return Canceled(work, chosen.Name);
             }
+        }
+        if (plan.Device?.App is { } device)
+        {
+            return await DebugOnDeviceAsync(plan, device, work, edits);
         }
         work.Say($"Starting {chosen.Name} under the debugger…");
         parts.Dock.Show(ToolWindowIds.Debug);

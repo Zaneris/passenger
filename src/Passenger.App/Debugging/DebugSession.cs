@@ -418,6 +418,19 @@ public sealed class DebugSession
             new AttachArguments { ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null, Presentations = Godot.GodotValues.Presentations },
             breakpoints, lines, log, output, null, columns, starting, elsewhere, place, quiet);
 
+    /// <summary>Starts the adapter and attaches it to an app on a device through Passenger's relay in it, the app's start
+    /// waiting for it there: the relay's local address and token, and the build's copies of the app's assemblies, with the
+    /// store's breakpoints; <paramref name="starting"/> is handed the session as it begins.</summary>
+    public static Task<DebugSession> AttachThroughRelayAsync(string program, Run.Devices.RelaySession relay, BreakpointStore breakpoints, BuiltLines lines, Action<string> log,
+        Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false) =>
+        StartAsync(OwnAdapter(null, elsewhere: true), program, DapCommands.Attach,
+            new AttachArguments
+            {
+                Relay = relay.Address, RelayModules = relay.Modules, RelayToken = relay.Token, JustMyCode = true, HotReload = hotReload ? true : null,
+                Presentations = Godot.GodotValues.Presentations,
+            },
+            breakpoints, lines, log, output, null, columns, starting, elsewhere: true, place: null);
+
     /// <summary>Attaches an adapter inside the IDE to a program another session runs (a Godot game's GDScript, over the game's
     /// own connection, <paramref name="engine"/> saying which files' breakpoints it takes), with the store's breakpoints;
     /// <paramref name="starting"/> is handed the session as it begins.</summary>

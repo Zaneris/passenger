@@ -61,6 +61,15 @@
                                        MaxWidth="200" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </Button>
+                    <!-- Where the chosen configuration's app runs, shown for a project of devices, emulators or simulators
+                         (MainWindow.RunTargets.cs). -->
+                    <Button Name="RunTargetButton" Classes="widget" MinWidth="52" ToolTip.Tip="Where it runs" IsVisible="False" Click="OnRunTargetClicked">
+                        <DockPanel>
+                            <PathIcon DockPanel.Dock="Right" Margin="6,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
+                            <TextBlock Name="RunTargetName" Text="Choose a device" VerticalAlignment="Center"
+                                       MaxWidth="180" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                    </Button>
                     <Button Name="RunButton" Classes="tool" ToolTip.Tip="Run">
                         <PathIcon Classes="toolbarRun" Data="{StaticResource Icon.Run}" />
                     </Button>

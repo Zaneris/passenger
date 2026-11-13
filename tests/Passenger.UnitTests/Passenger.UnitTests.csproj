@@ -314,6 +314,14 @@
     <Compile Include="../../src/Passenger.App/Run/DesktopPrograms.cs" Link="App/DesktopPrograms.cs" />
   </ItemGroup>
 
+  <!-- Where an app of devices runs (the targets a workload lists, a choice kept and lost), its start's adb commands and its
+       Debug build's environment file, as text and bytes alone, compiled in since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Run/Devices/DeviceTarget.cs" Link="App/DeviceTarget.cs" />
+    <Compile Include="../../src/Passenger.App/Run/Devices/AndroidApp.cs" Link="App/AndroidApp.cs" />
+    <Compile Include="../../src/Passenger.App/Run/Devices/AndroidEnvironment.cs" Link="App/AndroidEnvironment.cs" />
+  </ItemGroup>
+
   <!-- Whether a plan starts a project's apphost and with which variable of its .NET, from an evaluation's properties alone,
        compiled in since its project is the app's. -->
   <ItemGroup>

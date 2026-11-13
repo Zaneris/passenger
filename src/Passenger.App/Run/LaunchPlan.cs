@@ -139,6 +139,10 @@ public sealed partial record LaunchPlan
 
     private static string NameOf(string project) => System.IO.Path.GetFileNameWithoutExtension(project);
 
+    /// <summary>Where it runs its app other than on this machine (an Android device or emulator), which its start installs it
+    /// on after its build (<see cref="Devices.DeviceLaunches"/>); null for a program of this machine.</summary>
+    public Devices.DeviceLaunch? Device { get; init; }
+
     /// <summary>The folder of the Godot project whose game or editor the plan runs on Godot (<see cref="GodotLaunch"/>);
     /// null for any other plan.</summary>
     public string? Godot { get; init; }
@@ -228,7 +232,8 @@ public sealed partial record LaunchPlan
     /// project runs on the Godot <paramref name="godot"/> names or found, its editor on the scene at hand, in the user folders
     /// <paramref name="godotFolders"/> gives, headless where <paramref name="unseen"/> (the process's by default). Throws a <see cref="LaunchException"/> saying why not.</summary>
     public static async Task<LaunchPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
-        CancellationToken cancel = default, string? godot = null, string? atHand = null, IReadOnlyDictionary<string, string>? godotFolders = null, bool? unseen = null)
+        CancellationToken cancel = default, string? godot = null, string? atHand = null, IReadOnlyDictionary<string, string>? godotFolders = null, bool? unseen = null,
+        Func<ProjectModel, Devices.KeptTarget?>? targets = null)
     {
         bool headless = unseen ?? PassengerApp.ShowsNoWindow;
         if (configuration.Unsupported is { } why)
@@ -271,7 +276,20 @@ public sealed partial record LaunchPlan
         }
         ProjectModel project = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
             ?? throw new LaunchException($"{configuration.Name} cannot run: its project {System.IO.Path.GetFileName(configuration.Project)} is not loaded in the open folder");
-        string? framework = FrameworkOf(configuration.Framework, project);
+        // The target chosen to run on decides the framework built: its platform's, unless the configuration names one of it.
+        Devices.KeptTarget? device = Devices.DeviceTargets.PlatformsOf(project.TargetFrameworks).Count > 0 ? targets?.Invoke(project) : null;
+        if (device is not null && Devices.DeviceTargets.FrameworkFor(project.TargetFrameworks, device.Platform) is null)
+        {
+            device = null;
+        }
+        string? framework = device is not null && Devices.DeviceTargets.PlatformOf(configuration.Framework) != device.Platform && project.TargetFrameworks.Count > 1
+            ? Devices.DeviceTargets.FrameworkFor(project.TargetFrameworks, device.Platform)
+            : FrameworkOf(configuration.Framework, project);
+        if (device is null && configuration.Program.Length == 0
+            && Devices.DeviceTargets.PlatformOf(framework ?? project.TargetFrameworks.FirstOrDefault() ?? string.Empty) is Devices.TargetPlatform.Android or Devices.TargetPlatform.Ios)
+        {
+            throw new LaunchException(Refusals.NoRunTarget(project.Name));
+        }
         // Before its build: the program would build here (EnableWindowsTargeting) and then fail to start for want of WindowsDesktop.
         if (configuration.Program.Length == 0 && project.RunsOnlyOnWindows(framework) is { } windows)
         {
@@ -398,6 +416,7 @@ public sealed partial record LaunchPlan
             Web = WebOf(project, framework, properties, workspace, projects),
             Unseen = headless,
             Notes = underDotnet is null ? [] : [$"{configuration.Name} runs as dotnet {System.IO.Path.GetFileName(target)}, not by its apphost: {underDotnet}"],
+            Device = device is not null && configuration.Program.Length == 0 ? new Devices.DeviceLaunch(device, framework ?? project.TargetFrameworks[0]) : null,
         };
     }
 

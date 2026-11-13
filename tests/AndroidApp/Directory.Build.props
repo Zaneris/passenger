@@ -1,0 +1,3 @@
+<Project>
+  <!-- Built alone, away from the repository's own properties (warnings as errors, the analyzers, central packages). -->
+</Project>
