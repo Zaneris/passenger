@@ -57,6 +57,8 @@ public sealed class CommandLineTests : IDisposable
     [InlineData("--mcp --no-mcp", "--no-mcp stops a window listening for agents, and --mcp's never does")]
     [InlineData("--mcp --size 1600x1000", "--size is for a --screenshot, and none is asked for")]
     [InlineData(". --window-buttons", "--window-buttons is for a --screenshot, and none is asked for")]
+    [InlineData(". --first-start", "--first-start is for a --screenshot, and none is asked for")]
+    [InlineData("--screenshot out.png --first-start --first-start", "--first-start is given twice")]
     [InlineData("--mcp --mcp-attach", "--mcp starts a Passenger of its own and --mcp-attach joins a running one; give one of them")]
     [InlineData("--mcp-attach notes.txt", "--mcp-attach finds the window by its folder, and 'notes.txt' is a file")]
     [InlineData("--mcp-attach missing", "'missing' is neither a folder nor a file")]

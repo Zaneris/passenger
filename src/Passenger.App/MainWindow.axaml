@@ -23,7 +23,9 @@
         </ControlTheme>
     </Window.Resources>
     <Panel Name="Root" Background="{DynamicResource Passenger.Editor.Background}">
-    <Grid RowDefinitions="Auto,*,Auto">
+    <!-- The title bar, the tool windows round the editors, and the status bar; the first start's question lies over the
+         last two (MainWindow.FirstStart.cs). -->
+    <Grid Name="Rows" RowDefinitions="Auto,*,Auto">
 
         <!-- The toolbar, which is the window's title bar too (MainWindow.TitleBar.cs): its empty space moves the window and
              a double click on it maximizes, while what is on it takes its own clicks (the role User, where Windows asks). -->

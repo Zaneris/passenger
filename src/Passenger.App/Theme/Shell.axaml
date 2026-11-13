@@ -1232,6 +1232,94 @@
         <Setter Property="Margin" Value="16,32" />
     </Style>
 
+    <!-- The first start's question (Welcome/FirstStartView.cs), over the window: the Welcome screen's hero, then large
+         tiles of pictures, each a card a click or Enter chooses, the one in force ringed in the accent and ticked. -->
+    <Style Selector=":is(UserControl).firstStart">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Editor.Background}" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
+    </Style>
+    <!-- A little above the middle, where the eye takes a page's middle to be. -->
+    <Style Selector="StackPanel.firstStartPage">
+        <Setter Property="MaxWidth" Value="960" />
+        <Setter Property="Margin" Value="32,24,32,40" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.firstStartTile">
+        <Setter Property="Padding" Value="10" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Top" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.CardRadius}" />
+        <Setter Property="Background" Value="{DynamicResource Passenger.Welcome.Tile}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Welcome.TileBorder}" />
+    </Style>
+    <Style Selector="Button.firstStartTile /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="BoxShadow" Value="{DynamicResource Passenger.Welcome.TileShadow}" />
+    </Style>
+    <Style Selector="Button.firstStartTile:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
+    </Style>
+    <Style Selector="Button.firstStartTile.chosen">
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
+    </Style>
+    <Style Selector="Border.firstStartPicture">
+        <Setter Property="ClipToBounds" Value="True" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Divider}" />
+    </Style>
+    <Style Selector="StackPanel.firstStartCaption">
+        <Setter Property="Orientation" Value="Horizontal" />
+        <Setter Property="Spacing" Value="6" />
+    </Style>
+    <Style Selector="Button.firstStartTile StackPanel.firstStartCaption">
+        <Setter Property="Margin" Value="2,12,2,0" />
+    </Style>
+    <Style Selector="PathIcon.firstStartCheck">
+        <Setter Property="Width" Value="14" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Accent}" />
+    </Style>
+    <Style Selector="TextBlock.firstStartName">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.firstStartWords">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Margin" Value="2,2,2,2" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
+    </Style>
+    <!-- The small choice under Dark and Light to follow the system: a quiet button, ringed in the accent while in force. -->
+    <Style Selector="Button.firstStartSystem">
+        <Setter Property="Margin" Value="0,20,0,0" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Welcome.TileBorder}" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
+    </Style>
+    <Style Selector="Button.firstStartSystem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
+    </Style>
+    <Style Selector="Button.firstStartSystem.chosen">
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
+    </Style>
+    <Style Selector="DockPanel.firstStartFoot">
+        <Setter Property="Margin" Value="0,28,0,0" />
+    </Style>
+    <!-- Back and Keep the Defaults: links in the page's muted words, which the pointer brings up. -->
+    <Style Selector="Button.firstStartQuiet">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
+    </Style>
+    <Style Selector="Button.firstStartQuiet:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
+    </Style>
+
     <!-- Release notes the app carries (What's New), rendered in the editor's place: a heading, then the notes' Markdown, a
          control a block (Editors/Markdown.cs). -->
     <Style Selector="ScrollViewer.notes">

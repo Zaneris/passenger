@@ -63,6 +63,8 @@ public partial class App : Application
             window.KeepSettings();
             // A theme named on the command line is the run's, over the one kept.
             Program.ApplyTheme(this, Program.Options);
+            // A new state's first start asks the theme and dark or light before anything else, from the first frame.
+            window.ShowFirstStartOnce();
             // Its default size is a large screen's: on a smaller one it opens inside the working area, centred.
             window.FitToScreen(keepPlace: false);
             window.Opened += (_, _) =>

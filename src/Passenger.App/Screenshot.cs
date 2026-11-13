@@ -114,6 +114,10 @@ public static class Screenshot
                 // As File, Open's panel hands the window what was chosen.
                 window.Open(open.Path);
             }
+            else if (step is ScriptStep.FirstStart)
+            {
+                window.ShowFirstStart();
+            }
             else if (step is ScriptStep.Agent agent)
             {
                 RunAgent(window, agent);

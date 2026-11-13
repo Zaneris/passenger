@@ -6,7 +6,8 @@ namespace Passenger.App.Updates;
 /// <summary>What the update check keeps: the newest release's version it has said is out, so each newer version is
 /// announced once, however often Passenger starts while it stays the latest; the version a session closed to install,
 /// so the next start says whether it did, and why it did not where the install said; and the version whose notes What's
-/// New showed last (or a fresh state began on), so a newer one shows its own once.</summary>
+/// New showed last (or a fresh state began on), so a newer one shows its own once; and whether the first start's question of
+/// the theme still waits for the person.</summary>
 public sealed record UpdatesState : IStateDocument<UpdatesState>
 {
     public string? Announced { get; init; }
@@ -19,6 +20,10 @@ public sealed record UpdatesState : IStateDocument<UpdatesState>
     /// <summary>The version whose release notes What's New showed last, or the one a fresh state began on; null in a state
     /// a Passenger before What's New kept, which counts as an older version's.</summary>
     public string? NotesShown { get; init; }
+
+    /// <summary>Whether a start an agent made of a new state left the first start's question of the theme to the person's
+    /// next start.</summary>
+    public bool FirstStartLeft { get; init; }
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 

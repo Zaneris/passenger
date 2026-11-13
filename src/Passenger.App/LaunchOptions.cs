@@ -41,7 +41,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     private static readonly HashSet<string> Repeatable = ["--file", "--type", "--key", "--click", "--click-name", "--double-click", "--right-click", "--drag", "--drag-hold", "--hover", "--wait", "--open", "--agent"];
 
     /// <summary>What only a screenshot takes: its window, its picture and the steps before it.</summary>
-    private static readonly HashSet<string> ScreenshotOnly = ["--size", "--scale", "--crop", "--window-buttons", "--type", "--key", "--click", "--click-name", "--double-click", "--right-click", "--drag", "--drag-hold", "--hover", "--wait", "--open", "--agent"];
+    private static readonly HashSet<string> ScreenshotOnly = ["--size", "--scale", "--crop", "--window-buttons", "--first-start", "--type", "--key", "--click", "--click-name", "--double-click", "--right-click", "--drag", "--drag-hold", "--hover", "--wait", "--open", "--agent"];
 
     /// <summary>A screenshot's longest side in pixels: a frame 16384 pixels square is already a gigabyte, and the headless
     /// window draws none at 24000.</summary>
@@ -206,6 +206,9 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     break;
                 case "--window-buttons":
                     windowButtons = true;
+                    break;
+                case "--first-start":
+                    steps.Add(new ScriptStep.FirstStart());
                     break;
                 case "--type":
                     steps.Add(new ScriptStep.Type(Value(args, ref i, flag)));
@@ -553,6 +556,10 @@ public abstract record ScriptStep
     /// through <c>$PASSENGER --mcp-attach $PASSENGER_PID</c>, and uses every tool unasked, since nobody is at a capture to
     /// answer.</summary>
     public sealed record Agent(string Text, IReadOnlyList<string> Command) : ScriptStep;
+
+    /// <summary>The first start's question of the theme and of dark or light laid over the window, as a new state's first
+    /// start shows it, its keys and clicks the next steps'.</summary>
+    public sealed record FirstStart : ScriptStep;
 
     /// <summary>A folder, solution or project opened as File, Open opens the one chosen: with one open already, Open
     /// Solution asks where (Settings' default), and a window of its own opens on New Window.</summary>
