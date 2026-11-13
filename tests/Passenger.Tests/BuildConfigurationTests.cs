@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -22,7 +23,7 @@ public sealed class BuildConfigurationTests
     [AvaloniaFact]
     public void Release_chosen_in_the_widget_greys_debug_code_and_the_next_build_builds_into_bin_release()
     {
-        string folder = TestFolders.Create("configuration-release-");
+        string folder = PathNames.Canonical(TestFolders.Create("configuration-release-"));
         TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console());
         string program = TestFolders.Write(folder, "Hello/Program.cs", Program);
         Restore.Run(Path.Combine(folder, "Hello", "Hello.csproj"));
@@ -59,7 +60,7 @@ public sealed class BuildConfigurationTests
     [AvaloniaFact]
     public void Run_under_release_starts_the_program_its_release_build_made()
     {
-        string folder = TestFolders.Create("configuration-run-");
+        string folder = PathNames.Canonical(TestFolders.Create("configuration-run-"));
         TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console());
         TestFolders.Write(folder, "Hello/Program.cs", Program);
         Restore.Run(Path.Combine(folder, "Hello", "Hello.csproj"));
@@ -90,7 +91,7 @@ public sealed class BuildConfigurationTests
     [InlineData("All.sln")]
     public void A_solutions_configuration_is_offered_and_builds_each_project_as_it_maps_it(string solution)
     {
-        string folder = TestFolders.Create("configuration-solution-");
+        string folder = PathNames.Canonical(TestFolders.Create("configuration-solution-"));
         TestFolders.Write(folder, "App/App.csproj", TestProjects.Console("<Configurations>Debug;Release;Staging</Configurations>")
             .With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n"));
         TestFolders.Write(folder, "App/Program.cs", "class Program\n{\n    static void Main() => System.Console.WriteLine(Lib.Name);\n}\n");
@@ -125,7 +126,7 @@ public sealed class BuildConfigurationTests
     [AvaloniaFact]
     public void The_configuration_chosen_is_kept_with_the_folder_and_a_window_opening_it_again_builds_as_it()
     {
-        string folder = TestFolders.Create("configuration-kept-");
+        string folder = PathNames.Canonical(TestFolders.Create("configuration-kept-"));
         string settings = TestFolders.Create("configuration-settings-");
         TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console("<Configurations>Debug;Release;Staging</Configurations>"));
         try
@@ -171,7 +172,7 @@ public sealed class BuildConfigurationTests
     [AvaloniaFact]
     public void A_project_declaring_godots_configurations_offers_them_and_never_release()
     {
-        string folder = TestFolders.Create("configuration-godot-");
+        string folder = PathNames.Canonical(TestFolders.Create("configuration-godot-"));
         TestFolders.Write(folder, "Game/Game.csproj", TestProjects.Library("<Configurations>Debug;ExportDebug;ExportRelease</Configurations>"));
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try

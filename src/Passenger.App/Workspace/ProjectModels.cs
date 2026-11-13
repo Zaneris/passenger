@@ -16,13 +16,17 @@ namespace Passenger.App.Workspace;
 public sealed class ProjectModels
 {
     private readonly Dictionary<string, EvaluatedProject> known = new(StringComparer.Ordinal);
-    private readonly ConcurrentQueue<(int Generation, EvaluatedProject Project)> landed = new();
+    private readonly ConcurrentQueue<(int Generation, string? Configured, EvaluatedProject Project)> landed = new();
+
+    /// <summary>The build configuration each evaluation known was made under (<see cref="BuildConfiguration.Key"/>), null for
+    /// the one MSBuild takes given none: one made under another than a round's stands for nothing in it, nor is it kept.</summary>
+    private readonly Dictionary<string, string?> under = new(StringComparer.Ordinal);
     private StateDocument<ProjectModelCache>? kept;
     private string? folder;
     private string? sdk;
 
-    /// <summary>The configuration the evaluations known were made under (<see cref="BuildConfiguration.Key"/>), null for the
-    /// one MSBuild takes given none: under another, none stands.</summary>
+    /// <summary>The configuration the last round was asked under (<see cref="BuildConfiguration.Key"/>), null for the one
+    /// MSBuild takes given none: what the folder keeps is what was made under it.</summary>
     private string? configured;
 
     /// <summary>Bumped as a folder is taken up or let go, so what lands for the one before is dropped.</summary>
@@ -125,10 +129,10 @@ public sealed class ProjectModels
         }
         // Evaluations kept under another configuration are shown until the first round evaluates them all again.
         sdk = value.Sdk;
-        configured = value.Configured;
         foreach ((string path, EvaluatedProject project) in value.Projects)
         {
             known[path] = project;
+            under[path] = value.Configured;
         }
         if (value.Projects.Count > 0)
         {
@@ -164,6 +168,7 @@ public sealed class ProjectModels
         sdk = null;
         configured = null;
         known.Clear();
+        under.Clear();
         made.Clear();
         Problem = null;
         MissingSdk = null;
@@ -205,6 +210,7 @@ public sealed class ProjectModels
         foreach (string path in known.Where(k => k.Value.Problem is not null && paths.Any(p => PathNames.Within(k.Key, p)) && File.Exists(k.Key)).Select(k => k.Key).ToList())
         {
             known.Remove(path);
+            under.Remove(path);
             made.Remove(path);
         }
     }
@@ -260,22 +266,18 @@ public sealed class ProjectModels
         running = generation;
         Rounds++;
         List<string> projects = [.. Ordered(next.Workspace, next.Active)];
+        configured = next.Workspace.Build?.Chosen.Key;
         Dictionary<string, EvaluatedProject> before = new(StringComparer.Ordinal);
         foreach (string path in projects)
         {
-            if (known.TryGetValue(path, out EvaluatedProject? evaluated))
+            // One made under another configuration is evaluated again, however its inputs stand.
+            if (known.TryGetValue(path, out EvaluatedProject? evaluated) && under.GetValueOrDefault(path) == configured)
             {
                 before[path] = evaluated;
             }
         }
-        if (next.Workspace.Build?.Chosen.Key != configured)
-        {
-            // Evaluated under another configuration: none of it stands.
-            configured = next.Workspace.Build?.Chosen.Key;
-            sdk = null;
-        }
         BackgroundWork.Begin();
-        IdeErrors.Observe(RoundAsync(generation, folder, projects, before, Properties(next.Workspace), Each(next.Workspace), ending.Token));
+        IdeErrors.Observe(RoundAsync(generation, configured, folder, projects, before, Properties(next.Workspace), Each(next.Workspace), ending.Token));
     }
 
     /// <summary>The workspace's projects, the active file's first and then those it references as last evaluated, through
@@ -356,7 +358,7 @@ public sealed class ProjectModels
         return properties;
     }
 
-    private async Task RoundAsync(int mine, string following, List<string> projects, Dictionary<string, EvaluatedProject> before, Dictionary<string, string> properties,
+    private async Task RoundAsync(int mine, string? madeUnder, string following, List<string> projects, Dictionary<string, EvaluatedProject> before, Dictionary<string, string> properties,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? each, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
@@ -455,7 +457,7 @@ public sealed class ProjectModels
                     evaluated.Add(project.Path);
                 }
             }
-            landed.Enqueue((mine, project));
+            landed.Enqueue((mine, madeUnder, project));
             if (Interlocked.Exchange(ref posting, 1) == 0)
             {
                 UiThread.Post(Land);
@@ -477,13 +479,14 @@ public sealed class ProjectModels
     {
         Interlocked.Exchange(ref posting, 0);
         HashSet<string> changed = new(StringComparer.Ordinal);
-        while (landed.TryDequeue(out (int Generation, EvaluatedProject Project) one))
+        while (landed.TryDequeue(out (int Generation, string? Configured, EvaluatedProject Project) one))
         {
             if (one.Generation != generation)
             {
                 continue;
             }
             known[one.Project.Path] = one.Project;
+            under[one.Project.Path] = one.Configured;
             changed.Add(one.Project.Path);
             if (one.Project.Complete)
             {
@@ -506,7 +509,8 @@ public sealed class ProjectModels
         Dictionary<string, EvaluatedProject> complete = new(StringComparer.Ordinal);
         foreach (string path in projects)
         {
-            if (known.TryGetValue(path, out EvaluatedProject? evaluated) && evaluated.Complete)
+            // Only what was made under the configuration asked last: one landing late from a round before it is not.
+            if (known.TryGetValue(path, out EvaluatedProject? evaluated) && evaluated.Complete && under.GetValueOrDefault(path) == configured)
             {
                 complete[path] = evaluated;
             }
