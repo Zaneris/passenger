@@ -28,10 +28,10 @@ public sealed class SettingsStore : IDisposable
     /// cref="stamped"/>; none before the first time.</summary>
     private (DateTime Written, long Length) read;
 
-    private SettingsStore(StateDocument<AppSettings>? document)
+    private SettingsStore(StateDocument<AppSettings>? document, AppSettings? opening = null)
     {
         this.document = document;
-        value = document?.Value ?? new AppSettings();
+        value = document?.Value ?? opening ?? new AppSettings();
         if (document is not null)
         {
             document.Wrote += Saw;
@@ -73,8 +73,16 @@ public sealed class SettingsStore : IDisposable
     /// <summary>Settings kept in a state folder's settings.json.</summary>
     internal static SettingsStore Kept(StateDocument<AppSettings> document) => new(document);
 
-    /// <summary>A window's own settings, kept nowhere: the defaults, changed only by that window.</summary>
-    public static SettingsStore Unkept() => new(null);
+    /// <summary>A window's own settings, kept nowhere: the defaults, or those it opens on, changed only by that window.</summary>
+    public static SettingsStore Unkept(AppSettings? opening = null) => new(null, opening);
+
+    /// <summary>The settings a state folder's settings.json keeps, read as a window keeping them reads them; null where it
+    /// keeps none (no file, or one that did not read). UI thread.</summary>
+    internal static AppSettings? KeptIn(string folder)
+    {
+        StateDocument<AppSettings> kept = new(Path.Combine(folder, StateStore.SettingsFile));
+        return kept.IsKept ? kept.Value : null;
+    }
 
     /// <summary>The settings in force.</summary>
     public AppSettings Value => value;

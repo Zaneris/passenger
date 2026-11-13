@@ -59,9 +59,10 @@ public sealed class StateStore
     public const string Variable = "PASSENGER_SETTINGS";
 
     /// <summary>The folder: PASSENGER_SETTINGS names it, else the user's local application data.</summary>
-    public static string DefaultRoot => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } folder
-        ? folder
-        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Passenger");
+    public static string DefaultRoot => Named ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Passenger");
+
+    /// <summary>The folder PASSENGER_SETTINGS names, or null where it names none.</summary>
+    public static string? Named => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } folder ? folder : null;
 
     public string Root { get; }
 

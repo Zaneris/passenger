@@ -278,6 +278,35 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    /// <summary>A screenshot's --key presses a key as a keyboard does, the character it types with it: Shift+4 types "$" in
+    /// the editor. Run where PASSENGER_SETTINGS names a folder whose settings.json turns Vim mode on, the window opens on
+    /// those settings, so the same Shift+4 is Vim's "$", to the line's end, where x deletes the line's last letter.</summary>
+    [Fact]
+    public async Task A_screenshot_opens_on_the_settings_kept_where_its_state_is_named_and_its_keys_type_shifted_characters()
+    {
+        string save = OperatingSystem.IsMacOS() ? "meta+S" : "control+S";
+        string notes = Path.Combine(folder, "notes.txt");
+        (int code, string error) = await Run(["notes.txt", "--caret", "1:1", "--key", "shift+4", "--key", save, "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], settings);
+        string typed = await File.ReadAllTextAsync(notes, TestContext.Current.CancellationToken);
+        Assert.True(code == 0 && typed == "$one\ntwo\nthree\n", $"--key shift+4 was to type $ before \"one\", saved; the run exited {code} ({error}) and the file holds:\n{typed}");
+
+        await File.WriteAllTextAsync(notes, "one\ntwo\nthree\n", TestContext.Current.CancellationToken);
+        string state = TestFolders.Create("vim-state-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(state, StateStore.SettingsFile),
+                new System.Text.Json.Nodes.JsonObject { ["version"] = global::Passenger.App.Settings.AppSettings.Upgrades.Count, ["vimMode"] = true }.ToJsonString(), TestContext.Current.CancellationToken);
+            (code, error) = await Run(["notes.txt", "--caret", "1:1", "--key", "shift+4", "--key", "x", "--key", save, "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], state);
+            string edited = await File.ReadAllTextAsync(notes, TestContext.Current.CancellationToken);
+            Assert.True(code == 0 && edited == "on\ntwo\nthree\n",
+                $"With Vim mode on in the named state's settings.json, $ then x were to delete the first line's last letter; the run exited {code} ({error}) and the file holds:\n{edited}");
+        }
+        finally
+        {
+            TestFolders.Delete(state);
+        }
+    }
+
     /// <summary>A login shell whose profile traces itself and then fails, as one may where Passenger starts from the Finder
     /// or the Dock with no terminal: the log's line saying why its environment was not read quotes what it printed with
     /// the secrets it exported masked, so a log attached to an issue holds none.</summary>

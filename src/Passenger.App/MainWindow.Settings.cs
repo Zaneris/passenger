@@ -46,7 +46,7 @@ public partial class MainWindow
     }
 
     /// <summary>The window a person uses follows the settings kept in its <see cref="StateFolder"/>, which every other
-    /// window keeping its state there follows too, and opens on them; headless ones keep the defaults.</summary>
+    /// window keeping its state there follows too, and opens on them; headless ones keep their own (<see cref="OpenOnSettings"/>).</summary>
     public void KeepSettings()
     {
         SettingsStore kept = Store().Settings;
@@ -54,15 +54,45 @@ public partial class MainWindow
         {
             return;
         }
+        keepsSettings = true;
+        Take(kept);
+    }
+
+    /// <summary>A window nobody sees opens on the settings given (those kept where PASSENGER_SETTINGS names), its own from
+    /// then on: kept nowhere, so its changes stay its own and no other Passenger's reach it.</summary>
+    public void OpenOnSettings(AppSettings opening)
+    {
+        keepsSettings = false;
+        Take(SettingsStore.Unkept(opening));
+    }
+
+    /// <summary>The window of a process nobody sees (an agent's <c>--mcp</c>, a screenshot) opens on the settings kept where
+    /// PASSENGER_SETTINGS names, as a person's window opens on theirs, keeping nothing; with no folder named, or no settings
+    /// kept there, on the defaults, so the person's own reach no Passenger they don't see. The command line's theme stands.</summary>
+    public void OpenOnNamedSettings(LaunchOptions launch)
+    {
+        if (State.StateStore.Named is { } folder && SettingsStore.KeptIn(folder) is { } kept)
+        {
+            OpenOnSettings(kept);
+            Program.ApplyTheme(Avalonia.Application.Current!, launch);
+        }
+    }
+
+    /// <summary>The settings the window follows from now on, the process's share of them put in force; a store of the
+    /// window's own it followed before is let go.</summary>
+    private void Take(SettingsStore next)
+    {
         settingsStore.Changed -= OnSettingsChanged;
         settingsStore.PreviewChanged -= OnPreviewChanged;
-        settingsStore.Dispose();
-        settingsStore = kept;
-        kept.Changed += OnSettingsChanged;
-        kept.PreviewChanged += OnPreviewChanged;
-        keepsSettings = true;
-        kept.PutInForce();
-        Follow(kept.Value);
+        if (!settingsStore.IsKept)
+        {
+            settingsStore.Dispose();
+        }
+        settingsStore = next;
+        next.Changed += OnSettingsChanged;
+        next.PreviewChanged += OnPreviewChanged;
+        next.PutInForce();
+        Follow(next.Value);
         OnPreviewChanged(this, EventArgs.Empty);
     }
 

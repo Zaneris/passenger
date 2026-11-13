@@ -36,6 +36,33 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's Passenger whose state PASSENGER_SETTINGS names opens on the settings.json kept there, as a person's
+    /// window would: solution-wide analysis on there is on from its start, listing an error of a file nobody opened, and the
+    /// settings stay its own, kept nowhere, so a change it makes leaves the file as it was.</summary>
+    [Fact]
+    public async Task An_agents_passenger_opens_on_the_settings_kept_in_its_named_state_and_keeps_its_changes_its_own()
+    {
+        await TakeFolderAsync();
+        Write("Bad.cs", "class Bad\n{\n    public int Count = \"none\";\n}\n");
+        string file = Path.Combine(OwnState, global::Passenger.App.State.StateStore.SettingsFile);
+        string kept = new System.Text.Json.Nodes.JsonObject { ["version"] = global::Passenger.App.Settings.AppSettings.Upgrades.Count, ["solutionWideAnalysis"] = true }.ToJsonString();
+        File.WriteAllText(file, kept);
+        McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement settings = await Call(client, McpTools.Settings);
+        Assert.False(settings.GetProperty("kept").GetBoolean(), "The agent's Passenger said its settings are kept, where they are its own");
+        Assert.True(settings.GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "solutionWideAnalysis").GetProperty("value").GetBoolean(),
+            "The agent's Passenger did not open on solution-wide analysis on, as its state's settings.json keeps it");
+        string[] solution = [.. (await Call(client, McpTools.Diagnostics)).GetProperty("solution").EnumerateArray().Select(p => $"{p.GetProperty("code").GetString()} {p.GetProperty("path").GetString()}:{p.GetProperty("line").GetInt32()}")];
+        Assert.True(solution.Contains("CS0029 Bad.cs:3"), $"Solution-wide analysis on from the start listed: {string.Join("; ", solution)}");
+
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontSize"] = 17 } });
+        await client.DisposeAsync();
+        // Ended, it has written all it would keep.
+        Assert.True(LastPassenger().WaitForExit(TimeSpan.FromMinutes(1).Scaled()), "The agent's Passenger did not end with its session");
+        Assert.Equal(kept, File.ReadAllText(file));
+    }
+
     [Fact]
     public async Task An_agent_finds_text_in_the_windows_scopes_reverts_a_file_through_local_history_and_reads_problems_and_the_build_window()
     {

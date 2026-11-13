@@ -35,6 +35,7 @@ public static class Screenshot
 
         // A capture lets in only its own agent: no socket at all without one.
         MainWindow window = new() { Width = options.Size.Width, Height = options.Size.Height, Autosaves = false, AgentsAllowed = options.Steps.OfType<ScriptStep.Agent>().Any(), TakesLaunches = false };
+        window.OpenOnNamedSettings(launch);
         window.SetRenderScaling(options.Scale);
         bool settled;
         try
@@ -138,15 +139,25 @@ public static class Screenshot
                 break;
             case ScriptStep.Key key:
                 RawInputModifiers modifiers = Raw(key.Stroke.Modifiers);
+                string? typed = Typed(key.Stroke.Key, modifiers);
                 // A dialog its key closes (Enter on Attach to Process) takes no release: it has gone.
                 bool closed = false;
+                bool taken = false;
                 EventHandler gone = (_, _) => closed = true;
+                EventHandler<KeyEventArgs> handled = (_, e) => taken = e.Handled;
                 window.Closed += gone;
-                window.KeyPress(key.Stroke.Key, modifiers, PhysicalKey.None, null);
+                window.AddHandler(InputElement.KeyDownEvent, handled, Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
+                window.KeyPress(key.Stroke.Key, modifiers, PhysicalKey.None, typed);
+                window.RemoveHandler(InputElement.KeyDownEvent, handled);
                 window.Closed -= gone;
+                // As a keyboard types: the character comes as text unless the key was taken as a shortcut.
+                if (!closed && !taken && typed is not null)
+                {
+                    window.KeyTextInput(typed);
+                }
                 if (!closed)
                 {
-                    window.KeyRelease(key.Stroke.Key, modifiers, PhysicalKey.None, null);
+                    window.KeyRelease(key.Stroke.Key, modifiers, PhysicalKey.None, typed);
                 }
                 break;
             case ScriptStep.Wait wait:
@@ -297,6 +308,30 @@ public static class Screenshot
         frame.CopyPixels(bounds, target.Address, target.RowBytes * bounds.Height, target.RowBytes);
         return part;
     }
+
+    /// <summary>The character a key types on a US keyboard, Shift's too ("$" for Shift+4); none for a key that types
+    /// nothing, or one held with Control, Alt or Command, which make it a shortcut.</summary>
+    internal static string? Typed(Key key, RawInputModifiers held) =>
+        (held & (RawInputModifiers.Control | RawInputModifiers.Alt | RawInputModifiers.Meta)) == 0
+        && PhysicalKeys.Value.TryGetValue(key, out PhysicalKey physical)
+        && physical.ToQwertyKeySymbol((held & RawInputModifiers.Shift) != 0) is { Length: > 0 } typed
+        && typed.All(c => c >= ' ' && c != '\u007f')
+            ? typed
+            : null;
+
+    /// <summary>Each key by where it is on a US keyboard.</summary>
+    private static readonly Lazy<Dictionary<Key, PhysicalKey>> PhysicalKeys = new(() =>
+    {
+        Dictionary<Key, PhysicalKey> keys = [];
+        foreach (PhysicalKey physical in Enum.GetValues<PhysicalKey>())
+        {
+            if (physical != PhysicalKey.None)
+            {
+                keys.TryAdd(physical.ToQwertyKey(), physical);
+            }
+        }
+        return keys;
+    });
 
     private static RawInputModifiers Raw(KeyModifiers modifiers)
     {

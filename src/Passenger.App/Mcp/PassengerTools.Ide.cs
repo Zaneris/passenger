@@ -28,7 +28,8 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.Settings, Title = "The IDE's settings", ReadOnly = true), Description(
         "Every setting the Settings dialog has, by its settings.json name (editorFontSize, theme...), with its value, kind, " +
-        "choices and range; kept is false for an --mcp Passenger's own defaults, kept nowhere.")]
+        "choices and range; kept is false for an --mcp Passenger's own, kept nowhere (it opens on the settings.json of the folder " +
+        "PASSENGER_SETTINGS names).")]
     public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         JsonObject values = SettingsNode(window.Settings);
