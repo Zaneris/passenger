@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -68,6 +69,8 @@ public sealed partial class SettingsDialog
             }
         };
         RefreshThemesButton.Click += (_, _) => IdeErrors.Observe(RefreshThemesAsync());
+        AutomationProperties.SetName(ThemeSourceList, "Theme sources");
+        AutomationProperties.SetName(ThemeSourceBox, "Theme source to add");
         List();
         StackPanel sources = new()
         {

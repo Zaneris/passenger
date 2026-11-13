@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -44,6 +45,7 @@ public sealed class ThemePicker : StackPanel
         this.working = working;
         this.change = change;
         Spacing = 4;
+        AutomationProperties.SetName(Box, setting.Row?.Label);
         ReusedRows.Use(Box, () =>
         {
             TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };

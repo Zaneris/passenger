@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
@@ -11,8 +12,8 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>Themes from sources, as a person meets them in Settings | Appearance: a folder and an address added and read
-/// through their index, their themes listed by name and source, one chosen kept and drawn at once, and again from its kept
-/// copy with the source gone; a source, a file it lists or a file added that cannot be read said why, changing nothing; and
+/// through their index, their themes listed by name and source, one chosen kept and drawn at once, taken anew only on
+/// Refresh, and drawn again from its kept copy with the source gone; a source, a file it lists or a file added that cannot be read said why, changing nothing; and
 /// a theme chosen in 0.3, when Passenger carried it, taken from Passenger's themes repository, said while it is fetched.</summary>
 public sealed class ThemeSourcesTests : IDisposable
 {
@@ -28,7 +29,7 @@ public sealed class ThemeSourcesTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void A_folder_source_added_in_Settings_lists_its_themes_by_name_and_source_and_one_chosen_is_kept_and_drawn_before_Apply()
+    public void A_folder_source_added_in_Settings_lists_its_themes_by_name_and_source_and_one_chosen_is_kept_drawn_before_Apply_and_taken_anew_only_on_Refresh()
     {
         string source = Path.Combine(sources, "mine");
         CarriedThemes.CopyTo(source, "Moss", "Phosphor");
@@ -57,11 +58,29 @@ public sealed class ThemeSourcesTests : IDisposable
             Assert.Equal(new SourcedTheme(added, "Phosphor"), window.Settings.Look);
             dialog.Close();
 
+            // A newer file in the source is taken only when Refresh asks for it.
+            string file = Path.Combine(source, "Phosphor.json");
+            JsonObject changed = (JsonObject)JsonNode.Parse(File.ReadAllText(file))!;
+            changed["dark"]!["Frame"] = "#102030";
+            changed["light"]!["Frame"] = "#D0E0F0";
+            File.WriteAllText(file, changed.ToJsonString());
+            Color newer = window.ActualThemeVariant == ThemeVariant.Dark ? Color.Parse("#102030") : Color.Parse("#D0E0F0");
+            dialog = window.ShowSettings();
+            Ui.Settle();
+            dialog.ThemePicker.Box.IsDropDownOpen = true;
+            Ui.Settle();
+            dialog.ThemePicker.Box.IsDropDownOpen = false;
+            Assert.Equal(Frame("Phosphor", window.ActualThemeVariant), Drawn(window));
+            Ui.Click(dialog.RefreshThemesButton);
+            Ui.WaitFor(() => dialog.ThemeSourceWords.Text == "1 kept theme taken anew from its source", () => $"Refresh to take the newer Phosphor, where it says {dialog.ThemeSourceWords.Text}");
+            Assert.Equal(newer, Drawn(window));
+            dialog.Close();
+
             // Its source gone, the theme draws from the copy kept.
             TestFolders.Delete(source);
             Themes.Reload();
             Ui.Settle();
-            Assert.Equal(Frame("Phosphor", window.ActualThemeVariant), Drawn(window));
+            Assert.Equal(newer, Drawn(window));
             Assert.Null(Themes.Said);
         }
         finally
