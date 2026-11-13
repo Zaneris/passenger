@@ -21,7 +21,7 @@ public sealed partial class PassengerTools
     // Version control
 
     [McpServerTool(Name = McpTools.VcsStatus, Title = "Changed files", ReadOnly = true), Description(
-        "The branch and the files changed since the last commit (modified, added, deleted, renamed, unversioned, conflicted), " +
+        "The branch (its upstream, and the commits it is ahead and behind as last fetched) and the files changed since the last commit (modified, added, deleted, renamed, unversioned, conflicted), " +
         "a folder of untracked files as one entry with how many it holds (files), as git status shows it; at most 200, more saying the rest. " +
         "While a merge, rebase, unstash or cherry-pick is stopped for conflicts, conflicts says what is under way, which " +
         "branches yours and theirs are (in a rebase yours is the branch being rebased) and whether each side modified or " +
@@ -66,7 +66,13 @@ public sealed partial class PassengerTools
             [.. vcs.Conflicts.Select(c => new VcsConflict(Relative(c.Path), sides.YoursHas(c) ? "modified" : "deleted", sides.TheirsHas(c) ? "modified" : "deleted"))]);
         (IReadOnlyList<ListedChange> listed, string? more) = AgentAnswers.Listed(AgentAnswers.Gathered(changes, untracked, scope), AgentAnswers.MostFiles,
             "change", "vcs_status with a folder's path lists its own");
-        return new VcsStatus(vcs.Branch, [.. listed.Select(Listed)], conflicts, vcs.Merge.UnderWay) { More = more };
+        return new VcsStatus(vcs.Branch, [.. listed.Select(Listed)], conflicts, vcs.Merge.UnderWay)
+        {
+            More = more,
+            Upstream = vcs.Upstream,
+            Ahead = vcs.Divergence?.Ahead,
+            Behind = vcs.Divergence?.Behind,
+        };
 
         VcsChange Listed(ListedChange c) => c.Files is { } files
             ? new VcsChange(Relative(c.Change.Path) + Path.DirectorySeparatorChar, "unversioned", null) { Files = files }
@@ -770,6 +776,15 @@ public sealed record VcsStatus(string? Branch, IReadOnlyList<VcsChange> Changes,
 {
     /// <summary>How many changes past the first ones listed were left out, and how to read them.</summary>
     public string? More { get; init; }
+
+    /// <summary>The upstream the branch tracks (origin/main), if any.</summary>
+    public string? Upstream { get; init; }
+
+    /// <summary>The commits the branch has that its upstream lacks, as last fetched; none where its upstream is gone.</summary>
+    public int? Ahead { get; init; }
+
+    /// <summary>The commits its upstream has that the branch lacks, as last fetched.</summary>
+    public int? Behind { get; init; }
 }
 
 /// <summary>What stopped for conflicts, the branches yours and theirs are, and the files in conflict.</summary>

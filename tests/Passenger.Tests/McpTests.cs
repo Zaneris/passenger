@@ -1553,7 +1553,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>vcs_commit commits the changes of a file its lines touch, through the Commit window's partial commit: one of
     /// two changes goes in, the other stays in the working tree; lines that no longer name a change, as once the file moved on
-    /// since vcs_status numbered it, are refused saying where its changes are now, and nothing is committed.</summary>
+    /// since vcs_status numbered it, are refused saying where its changes are now, and nothing is committed; tracking a
+    /// remote's branch, vcs_status then says the commit to push.</summary>
     [Fact]
     public async Task An_agents_commit_of_one_of_a_files_two_changes_leaves_the_other_and_refuses_lines_that_name_none()
     {
@@ -1581,6 +1582,14 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string left = await TestGit.RunAsync(repository, "diff", "--no-color", "-U0", "--", "Notes.txt");
         Assert.True(left.Contains("-one\n+zero\n+ONE\n", StringComparison.Ordinal) && !left.Contains("SEVEN", StringComparison.Ordinal),
             $"What the working tree holds beyond the commit is not the change left out: {left}");
+
+        // The branch set to track a remote's branch at the first commit, vcs_status says the commit to push.
+        await TestGit.RunAsync(repository, "remote", "add", "origin", repository);
+        await TestGit.RunAsync(repository, "update-ref", "refs/remotes/origin/main", "HEAD~1");
+        await TestGit.RunAsync(repository, "branch", "-q", "--set-upstream-to=origin/main");
+        JsonElement tracked = await Call(client, McpTools.VcsStatus);
+        Assert.True(tracked.TryGetProperty("upstream", out JsonElement upstream) && upstream.GetString() == "origin/main"
+            && tracked.GetProperty("ahead").GetInt32() == 1 && tracked.GetProperty("behind").GetInt32() == 0, $"vcs_status of a branch one commit ahead of its upstream answered: {tracked}");
     }
 
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
