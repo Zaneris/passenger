@@ -214,6 +214,7 @@ public sealed class ExplorerTree
             ProjectModel project = projects[node.Path!];
             node.Detail = Unloaded.Contains(project.Path) ? "(unloaded)" : DetailOf(project);
             node.Tip = Unloaded.Contains(project.Path) ? null : TipOf(project);
+            node.ProjectKind = Unloaded.Contains(project.Path) ? ProjectKind.Other : ProjectKinds.Of(project);
             foreach (ExplorerNode below in Loaded(node, _ => true))
             {
                 if (below.Reload())
@@ -617,7 +618,7 @@ public sealed class ExplorerTree
             List<ExplorerNode> children = [Dependencies(given, node.Depth + 1)];
             children.AddRange(HeldIn(given, string.Empty, node.Depth + 1));
             return children;
-        }, DetailOf(Current(given))) { Tip = TipOf(Current(given)) };
+        }, DetailOf(Current(given))) { Tip = TipOf(Current(given)), ProjectKind = ProjectKinds.Of(Current(given)) };
 
     /// <summary>What a project's row says beside its name: its frameworks, and off Windows those that run only on
     /// Windows (a WPF or Windows Forms app's); or that the folder has no SDK to evaluate it with, or MSBuild could
@@ -887,6 +888,21 @@ public sealed class ExplorerNode : Observable, ITreeRow
     }
 
     private string? tip;
+
+    /// <summary>What a project's row stands for, which its icon shows (an evaluation changes it).</summary>
+    public ProjectKind ProjectKind
+    {
+        get => projectKind;
+        set
+        {
+            if (Set(ref projectKind, value))
+            {
+                Raise(nameof(Icon));
+            }
+        }
+    }
+
+    private ProjectKind projectKind;
 
     /// <summary>Where the row is among the solution's own folders: a solution folder's path in the solution ("/src/tools/"),
     /// or for a file one holds, that folder's; null for every other row.</summary>

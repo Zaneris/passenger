@@ -6,10 +6,13 @@ namespace Passenger.App.Explorer;
 
 /// <summary>The icon and tint a file or folder is drawn with: <see cref="FileIconSet"/>'s shape and colour for its name, a
 /// folder the set draws nothing apart for as a folder (one the SDK reads with its badge, open or not), and a solution
-/// folder as a filled one, so it never passes for a folder on disk.</summary>
+/// folder as a filled one, so it never passes for a folder on disk. A project of a kind drawn apart (<see cref="KindIcon"/>)
+/// takes its kind's icon in its project file's tint.</summary>
 public static class FileIcons
 {
-    public static Geometry For(ExplorerNode node) => Look(node) is { } look
+    public static Geometry For(ExplorerNode node) => KindIcon(node.ProjectKind) is { } kind
+        ? Find<Geometry>(kind)
+        : Look(node) is { } look
         ? Find<Geometry>($"FileIcon.{look.Shape}")
         : Find<Geometry>(node.Kind switch
         {
@@ -22,6 +25,14 @@ public static class FileIcons
                 _ => node.IsExpanded ? IconKeys.FolderOpen : IconKeys.Explorer,
             },
         });
+
+    /// <summary>The icon each kind of project is drawn with, the one place a kind gets its look: the icon of the IDE's
+    /// window for it where it has one; null for a project drawn as its project file.</summary>
+    private static string? KindIcon(ProjectKind kind) => kind switch
+    {
+        ProjectKind.AspireHost => IconKeys.Aspire,
+        _ => null,
+    };
 
     public static IBrush BrushFor(ExplorerNode node) => Look(node) is { } look
         ? Tint(look)
