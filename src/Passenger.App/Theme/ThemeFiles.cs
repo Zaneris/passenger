@@ -56,6 +56,23 @@ public sealed record NumberValue(double Number) : TokenValue;
 /// <summary>How a kind of code's words are set, in the words the file gives: Normal, Bold, Italic or Bold Italic.</summary>
 public sealed record TextStyleValue(string Words) : TokenValue;
 
+/// <summary>Which variants a theme shows in: both, as Passenger's dark or light setting chooses, or one whatever it says.</summary>
+public enum ThemeShows
+{
+    /// <summary>Dark or Light, as the setting chooses.</summary>
+    Both,
+
+    /// <summary>Dark alone.</summary>
+    Dark,
+
+    /// <summary>Light alone.</summary>
+    Light,
+}
+
+/// <summary>A VS Code colour theme a theme is laid over: its extension's Open VSX id (<c>publisher.name</c>), the theme's
+/// label there, and the version pinned, or null for the newest.</summary>
+public sealed record VsCodeBase(string Id, string Theme, string? Version);
+
 /// <summary>A theme or a code colour scheme as its file gives it: its name, its words for a person, and its tokens for both
 /// variants and for Dark or Light alone, each named as its key without <c>Passenger.</c>; a theme's fonts and background
 /// picture for each variant, the code's tokens for a language over the file's own, and its default layout.</summary>
@@ -76,6 +93,12 @@ public sealed record ThemeFile(string Name, string Description, IReadOnlyDiction
 
     /// <summary>The default layout the theme gives, or null for Passenger's own.</summary>
     public ThemeLayout? Layout { get; init; }
+
+    /// <summary>The variants it shows in.</summary>
+    public ThemeShows Shows { get; init; }
+
+    /// <summary>The VS Code colour theme it is laid over, or null for none.</summary>
+    public VsCodeBase? Base { get; init; }
 
     /// <summary>The picture drawn under a variant, or null for none.</summary>
     public BackgroundValue? BackgroundOf(bool dark) => dark ? DarkBackground : LightBackground;
@@ -195,6 +218,7 @@ public static partial class ThemeFiles
             LightBackground = light,
             Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, problems),
             Layout = code ? null : Layout(file, JsonMembers.Value(root, "layout"), problems),
+            Base = code ? null : Base(file, JsonMembers.Value(root, "vscode"), problems),
         };
     }
 

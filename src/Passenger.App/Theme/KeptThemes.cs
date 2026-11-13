@@ -84,6 +84,66 @@ public static class KeptThemes
         }
     }
 
+    /// <summary>The folder a theme's VS Code base is kept in beside its file: the extension's manifest and the theme's files at
+    /// their paths in the extension.</summary>
+    public const string BaseFolder = "vscode";
+
+    /// <summary>The files of a kept theme's VS Code base, by their paths in its extension, each held to the most a theme file
+    /// may be.</summary>
+    public static VsCodeThemes.ExtensionFile BaseFiles(ThemeSource source, bool code, string name)
+    {
+        string folder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(PathOf(source, code, name))!, BaseFolder));
+        return path =>
+        {
+            string file = Path.GetFullPath(Path.Combine(folder, path.Replace('/', Path.DirectorySeparatorChar)));
+            try
+            {
+                if (!PathNames.IsUnder(file, folder) || !File.Exists(file))
+                {
+                    return (null, $"{name}'s VS Code theme is not kept here ({path})");
+                }
+                if (new FileInfo(file).Length > ThemeFiles.MostBytes)
+                {
+                    return (null, $"the kept {file} is more than the {ThemeFiles.MostBytes} bytes a theme file may hold");
+                }
+                return (File.ReadAllBytes(file), null);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return (null, $"the kept {file} could not be read: {error.Message}");
+            }
+        };
+    }
+
+    /// <summary>Whether a kept theme's VS Code base is kept beside it.</summary>
+    public static bool HoldsBase(ThemeSource source, bool code, string name) =>
+        File.Exists(Path.Combine(Path.GetDirectoryName(PathOf(source, code, name))!, BaseFolder, VsCodeThemes.Manifest));
+
+    /// <summary>Keeps a theme's VS Code base beside it, each file by its path in the extension, the manifest last, so a kept
+    /// manifest never names a theme not kept yet; why not where it cannot be written.</summary>
+    public static string? KeepBase(ThemeSource source, bool code, string name, IReadOnlyDictionary<string, byte[]> files)
+    {
+        string folder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(PathOf(source, code, name))!, BaseFolder));
+        try
+        {
+            foreach ((string path, byte[] bytes) in files.OrderBy(f => f.Key == VsCodeThemes.Manifest ? 1 : 0))
+            {
+                string file = Path.GetFullPath(Path.Combine(folder, path.Replace('/', Path.DirectorySeparatorChar)));
+                if (!PathNames.IsUnder(file, folder))
+                {
+                    return $"{name}'s VS Code theme names {path}, outside its extension";
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                AtomicFile.Write(file, bytes);
+            }
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return $"{name}'s VS Code theme could not be kept in {folder}: {error.Message}";
+        }
+    }
+
     /// <summary>The file of every theme or scheme of a source kept here, for the list Settings shows without the source.</summary>
     public static IReadOnlyList<byte[]> Of(ThemeSource source, bool code)
     {

@@ -223,6 +223,7 @@
        themes and the code colour scheme that left the app, held to the window's rules (UiRulesTests). -->
   <ItemGroup>
     <None Include="Themes/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="VsCodeThemes/*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- A test drives the IDE whole or a real process through its real boundary: the entry points a unit test would call

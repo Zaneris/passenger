@@ -1556,9 +1556,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         static (Color, double) Drawn(Button button) => button.Content is PathIcon { Foreground: ISolidColorBrush ink } icon ? (ink.Color, icon.Opacity) : default;
     }
 
-    /// <summary>Passenger's own theme, every theme it carries and every theme of its themes repository, for a rule held of
-    /// its tokens alone, which costs no window.</summary>
-    public static TheoryData<string> EveryLook => [CarriedThemes.Own, .. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames];
+    /// <summary>Passenger's own theme, every theme it carries, every theme of its themes repository and the VS Code colour
+    /// themes the tests carry as Passenger makes them, for a rule held of its tokens alone, which costs no window.</summary>
+    public static TheoryData<string> EveryLook => [CarriedThemes.Own, .. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames, .. CarriedThemes.VsCodeNames];
 
     [Gate]
     [AvaloniaTheory]

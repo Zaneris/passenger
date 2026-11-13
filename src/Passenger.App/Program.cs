@@ -44,6 +44,7 @@ internal static class Program
             _ = ThemeSource.Repository.Reached;
             Web.JsonSchemas.CheckVariable();
             Web.DockerHubTags.CheckVariable();
+            OpenVsx.CheckVariable();
             _ = Containers.BuildKitChecks.ByDefault;
             _ = Debugging.BrowserRun.Proxy;
             Mcp.McpProxy.CheckVariable();
@@ -175,12 +176,12 @@ internal static class Program
     {
         if (theme is { } choice)
         {
-            app.RequestedThemeVariant = choice switch
+            Themes.UseVariant(app, choice switch
             {
                 ThemeChoice.Dark => ThemeVariant.Dark,
                 ThemeChoice.Light => ThemeVariant.Light,
                 _ => ThemeVariant.Default,
-            };
+            });
         }
     }
 

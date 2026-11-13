@@ -81,9 +81,29 @@ public static class ThemeListing
                 }
             }
         }
+        ThemeSource[] keeping = [.. sources, ThemeSource.Added, ThemeSource.OpenVsx];
+        List<(ThemeSource Source, string Name, VsCodeBase Base)> bases = [.. keeping.SelectMany(source => Kept(source, false)
+            .Where(file => file.Base is not null).Select(file => (source, file.Name, file.Base!)))];
         string?[] refused = await BackgroundWork.Run(async () =>
         {
             List<string?> said = [];
+            // A base pinned to its version is taken again only where another is kept; the rest take Open VSX's newest.
+            foreach ((ThemeSource source, string name, VsCodeBase wanted) in bases)
+            {
+                string? kept = VsCodeBases.KeptVersion(source, false, name);
+                if (wanted.Version is { } pinned && kept == pinned)
+                {
+                    continue;
+                }
+                (OpenVsxEntry? newest, string? missing) = await OpenVsx.ExtensionAsync(wanted.Id, wanted.Version, CancellationToken.None);
+                if (newest is null || newest.Version == kept)
+                {
+                    said.AddRange(newest is null ? [$"{name}'s VS Code theme could not be refreshed: {missing}"] : []);
+                    continue;
+                }
+                (VsCodeTaken? taken, string? why) = await VsCodeBases.FetchAsync(wanted with { Version = newest.Version }, CancellationToken.None);
+                said.Add(taken is null ? why : KeptThemes.KeepBase(source, false, name, taken.Files));
+            }
             foreach ((ListedTheme listed, string name, byte[] bytes) in held)
             {
                 (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, listed.Source.Reached, CancellationToken.None);

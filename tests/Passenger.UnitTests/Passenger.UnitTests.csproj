@@ -83,8 +83,9 @@
     <Compile Include="../../src/Passenger.App/Packages/PackageFolders.cs" Link="App/PackageFolders.cs" />
   </ItemGroup>
 
-  <!-- What a theme file says, read from its JSON alone against a table of tokens, and a theme source as its words name
-       it, compiled in since their project is the app's. -->
+  <!-- What a theme file says, read from its JSON alone against a table of tokens, a theme source as its words name it, a
+       VS Code colour theme read and made a Passenger theme, and Open VSX's answers, compiled in since their project is the
+       app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.cs" Link="App/ThemeFiles.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.Beyond.cs" Link="App/ThemeFiles.Beyond.cs" />
@@ -94,6 +95,12 @@
     <Compile Include="../../src/Passenger.App/ToolWindowIds.cs" Link="App/ToolWindowIds.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeImages.cs" Link="App/ThemeImages.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeSources.cs" Link="App/ThemeSources.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/ThemeColours.cs" Link="App/ThemeColours.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/ThemePalettes.cs" Link="App/ThemePalettes.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/VsCodeThemes.cs" Link="App/VsCodeThemes.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/VsCodeScopes.cs" Link="App/VsCodeScopes.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/VsCodeColours.cs" Link="App/VsCodeColours.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/OpenVsx.cs" Link="App/OpenVsx.cs" />
   </ItemGroup>
 
   <!-- Which typeface a setting of the window's font names, read as words alone, compiled in since its project is the

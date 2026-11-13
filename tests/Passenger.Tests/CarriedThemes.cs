@@ -21,6 +21,27 @@ public static class CarriedThemes
     /// <summary>The names of the themes it lists, each named as its file is, in its order.</summary>
     public static IReadOnlyList<string> ThemeNames => [.. Index.Read!.Themes.Select(Path.GetFileNameWithoutExtension).OfType<string>()];
 
+    /// <summary>The VS Code colour themes the tests carry (VsCodeThemes/), small ones written for them, each by the name a
+    /// look of them goes by: <see cref="VsCodePrefix"/> and its file's name.</summary>
+    public static IReadOnlyList<string> VsCodeNames => [.. VsCodeFiles.Select(f => VsCodePrefix + f)];
+
+    /// <summary>The words before a VS Code theme's name among the looks.</summary>
+    public const string VsCodePrefix = "VS Code ";
+
+    private static readonly string[] VsCodeFiles = ["Lantern", "Paper"];
+
+    /// <summary>A VS Code colour theme the tests carry by its file's name, read with the files it includes.</summary>
+    public static VsCodeTheme ReadVsCode(string name)
+    {
+        string folder = Path.Combine(AppContext.BaseDirectory, "VsCodeThemes");
+        ThemeRead<VsCodeTheme> read = VsCodeThemes.ReadTheme($"{name}.json", null, null,
+            path => File.Exists(Path.Combine(folder, path)) ? (File.ReadAllBytes(Path.Combine(folder, path)), null) : (null, $"no {path}"));
+        return read.Read ?? throw new InvalidOperationException($"{name}.json does not read: {read.Refused}");
+    }
+
+    /// <summary>The bytes of a VS Code colour theme's file the tests carry, by its path in VsCodeThemes/.</summary>
+    public static byte[] VsCodeBytes(string path) => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "VsCodeThemes", path));
+
     /// <summary>The names of the themes Passenger carries beside its own.</summary>
     public static IReadOnlyList<string> BuiltInNames => ThemeSource.Carried;
 
@@ -33,7 +54,9 @@ public static class CarriedThemes
     public static ThemeRead<ThemeFile> ReadScheme(string name) => ThemeFiles.ReadCodeColours($"{name}.json", File.ReadAllBytes(Path.Combine(Folder, $"{name}.json")), ThemeResources.Kinds);
 
     /// <summary>A theme of the copy or one Passenger carries, whole; null for <see cref="Own"/>.</summary>
-    public static ThemeFile? Theme(string name) => name == Own ? null : ReadTheme(name).Read ?? throw new InvalidOperationException($"{name}.json does not read: {ReadTheme(name).Refused}");
+    public static ThemeFile? Theme(string name) => name == Own ? null
+        : name.StartsWith(VsCodePrefix, StringComparison.Ordinal) ? VsCodeColours.ToTheme(ReadVsCode(name[VsCodePrefix.Length..]))
+        : ReadTheme(name).Read ?? throw new InvalidOperationException($"{name}.json does not read: {ReadTheme(name).Refused}");
 
     /// <summary>Wears a theme of the copy for a test, laid as Themes lays a kept one, Passenger's own put back after it, pass or fail.</summary>
     public static IDisposable Wearing(string name)

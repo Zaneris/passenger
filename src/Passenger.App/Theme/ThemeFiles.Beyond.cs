@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Passenger.Core;
 
 namespace Passenger.App;
@@ -57,7 +58,8 @@ public sealed record ThemeFonts(string? CodeFamily, double? CodeSize, string? Wi
 public sealed record LanguageColours(IReadOnlyDictionary<string, TokenValue> Both, IReadOnlyDictionary<string, TokenValue> Dark,
     IReadOnlyDictionary<string, TokenValue> Light);
 
-/// <summary>A theme's members beyond its tokens: <c>fonts</c>, <c>background</c>, <c>languages</c> and <c>layout</c> (docs/themes.md).</summary>
+/// <summary>A theme's members beyond its tokens: <c>fonts</c>, <c>background</c>, <c>languages</c>, <c>layout</c> and <c>vscode</c>
+/// (docs/themes.md).</summary>
 public static partial class ThemeFiles
 {
     /// <summary>The most of a background picture that shows: every glyph keeps at least the rest of its difference from its
@@ -82,7 +84,7 @@ public static partial class ThemeFiles
     private const double OwnOpacity = 0.15;
     private const int LongestLanguage = 40;
 
-    private static readonly string[] Beyond = ["fonts", "background", "languages", "layout"];
+    private static readonly string[] Beyond = ["fonts", "background", "languages", "layout", "vscode"];
     private static readonly string[] PictureTypes = [".png", ".jpg", ".jpeg", ".webp"];
     private static readonly (string Word, BackgroundPlaces Place)[] PlaceWords =
         [("editor", BackgroundPlaces.Editor), ("toolWindows", BackgroundPlaces.ToolWindows), ("frame", BackgroundPlaces.Frame), ("welcome", BackgroundPlaces.Welcome)];
@@ -277,6 +279,61 @@ public static partial class ThemeFiles
         return read;
     }
 
+    private static VsCodeBase? Base(string file, JsonElement? named, List<string> problems)
+    {
+        if (named is null)
+        {
+            return null;
+        }
+        if (named.Value.ValueKind != JsonValueKind.Object)
+        {
+            throw new FormatException($"gives vscode as {Shown(named.Value)}: vscode is {{\"id\": \"publisher.extension\", \"theme\": \"its label\"}}, its version optional");
+        }
+        PassOver(file, named.Value, ["id", "theme", "version"], "vscode", problems);
+        string id = Words(named.Value, "id", LongestName * 4, needed: true);
+        if (!ExtensionId().IsMatch(id))
+        {
+            throw new FormatException($"gives vscode's id as \"{id}\": it is an extension's Open VSX id, publisher.extension");
+        }
+        string theme = Words(named.Value, "theme", LongestName * 2, needed: true);
+        string? version = JsonMembers.Value(named.Value, "version") is null ? null : Words(named.Value, "version", LongestName, needed: true);
+        if (version is not null && !VersionWords().IsMatch(version))
+        {
+            throw new FormatException($"gives vscode's version as \"{version}\": it is the extension's version, as 2.25.1");
+        }
+        return new VsCodeBase(id, theme, version);
+    }
+
+    /// <summary>A theme laid over another, as over its VS Code base: the one under giving every token the one over leaves
+    /// out, the one over its name, words, tokens, fonts, pictures, languages and layout; a token the one over gives one
+    /// variant alone keeps the one under's value for the other.</summary>
+    public static ThemeFile Over(ThemeFile under, ThemeFile over)
+    {
+        Dictionary<string, TokenValue> both = new(under.Both, StringComparer.Ordinal);
+        Dictionary<string, TokenValue> dark = new(under.Dark, StringComparer.Ordinal);
+        Dictionary<string, TokenValue> light = new(under.Light, StringComparer.Ordinal);
+        foreach ((string token, TokenValue value) in over.Both)
+        {
+            both[token] = value;
+            dark.Remove(token);
+            light.Remove(token);
+        }
+        foreach ((Dictionary<string, TokenValue> variant, Dictionary<string, TokenValue> other, IReadOnlyDictionary<string, TokenValue> given) in
+            ((Dictionary<string, TokenValue>, Dictionary<string, TokenValue>, IReadOnlyDictionary<string, TokenValue>)[])[(dark, light, over.Dark), (light, dark, over.Light)])
+        {
+            foreach ((string token, TokenValue value) in given)
+            {
+                // A value for both variants would win over one variant's, so the one under's moves to the other's.
+                if (both.Remove(token, out TokenValue? beneath))
+                {
+                    other.TryAdd(token, beneath);
+                }
+                variant[token] = value;
+            }
+        }
+        return over with { Both = both, Dark = dark, Light = light, Shows = under.Shows };
+    }
+
     private static JsonElement? Holder(JsonElement root, string member, string within)
     {
         JsonElement? value = JsonMembers.Value(root, member);
@@ -291,6 +348,13 @@ public static partial class ThemeFiles
     private static bool Inside(string path, string[] types) =>
         path.Length <= 260 && types.Any(t => path.EndsWith(t, StringComparison.OrdinalIgnoreCase)) && path.IndexOfAny(['\\', ':']) < 0 && !path.Any(char.IsControl)
         && path.Split('/').All(name => name.Length > 0 && name is not ("." or ".."));
+
+    // An extension's Open VSX id, publisher.name, each of letters, digits, '-' and '_'.
+    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9_-]*\.[A-Za-z0-9][A-Za-z0-9_-]*$")]
+    private static partial Regex ExtensionId();
+
+    [GeneratedRegex(@"^[0-9A-Za-z.+-]{1,64}$")]
+    private static partial Regex VersionWords();
 
     private static string Listed(IEnumerable<string> words)
     {

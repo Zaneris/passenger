@@ -23,6 +23,8 @@ public static class Themes
     private static readonly Dictionary<(bool Code, SourcedTheme Theme), ThemeFile> read = [];
     private static Application? applying;
     private static bool applied;
+    private static ThemeVariant chosenVariant = ThemeVariant.Default;
+    private static ThemeShows shows;
 
     /// <summary>The theme in force, or wanted while it is fetched; null for Passenger's own.</summary>
     public static SourcedTheme? Look { get; private set; }
@@ -44,6 +46,21 @@ public static class Themes
 
     /// <summary>The theme in force gave other fonts.</summary>
     public static event EventHandler? FontsChanged;
+
+    /// <summary>The variants the theme in force shows in: one alone where it is a VS Code theme's, whatever the setting.</summary>
+    public static ThemeShows Shows => shows;
+
+    /// <summary>Puts the dark or light the setting chooses in force, unless the theme in force shows in one alone.</summary>
+    public static void UseVariant(Application app, ThemeVariant chosen)
+    {
+        chosenVariant = chosen;
+        app.RequestedThemeVariant = shows switch
+        {
+            ThemeShows.Dark => ThemeVariant.Dark,
+            ThemeShows.Light => ThemeVariant.Light,
+            _ => chosen,
+        };
+    }
 
     /// <summary>The default layout the theme in force gives, or null for Passenger's own.</summary>
     public static ThemeLayout? Layout { get; private set; }
@@ -109,6 +126,19 @@ public static class Themes
             unfetched[(code, theme)] = got.Refused ?? $"{file} holds {got.Read?.Name}, not {theme.Name}";
             return null;
         }
+        if (whole.Base is { } wanted)
+        {
+            // A base not kept beside the theme is fetched in its place.
+            if (VsCodeBases.Kept(source, code, theme.Name, wanted, out string? why) is not { } under)
+            {
+                if (why is not null)
+                {
+                    unfetched[(code, theme)] = $"{theme.Name}'s VS Code theme {wanted.Theme} ({wanted.Id}) is refused: {why}";
+                }
+                return null;
+            }
+            whole = ThemeFiles.Over(VsCodeColours.ToTheme(under), whole);
+        }
         read[(code, theme)] = whole;
         return whole;
     }
@@ -151,8 +181,12 @@ public static class Themes
         string? why;
         try
         {
-            why = source.Kind is ThemeSourceKind.BuiltIn or ThemeSourceKind.Added
-                ? $"{theme.Name} is no longer kept: add its file again in {Settings.SettingsDialog.PlaceOfPage(Settings.SettingsDialog.Appearance)}"
+            byte[]? kept = source == ThemeSource.BuiltIn ? BuiltInThemes.Bytes(code, theme.Name) : KeptThemes.Bytes(source, code, theme.Name);
+            ThemeFile? file = kept is null ? null : ThemeFiles.ReadTheme(theme.Name, kept, kinds).Read;
+            why = file?.Base is not null
+                ? await Passenger.Core.BackgroundWork.Run(() => VsCodeBases.KeepAsync(source, code, theme.Name, file, CancellationToken.None))
+                : source.Kind is ThemeSourceKind.BuiltIn or ThemeSourceKind.Added or ThemeSourceKind.OpenVsx
+                ? $"{theme.Name} is no longer kept: {(source.Kind == ThemeSourceKind.OpenVsx ? "choose it again from VS Code themes" : "add its file again")} in {Settings.SettingsDialog.PlaceOfPage(Settings.SettingsDialog.Appearance)}"
                 : await Passenger.Core.BackgroundWork.Run(() => FetchOnceAsync(source, code, theme.Name, kinds));
         }
         finally
@@ -197,10 +231,10 @@ public static class Themes
         foreach (string path in paths.OrderBy(p => Path.GetFileNameWithoutExtension(p) == name ? 0 : 1))
         {
             ListedTheme file = await ThemeSourceReads.FileAsync(source, reached, path, code, kinds, CancellationToken.None);
-            if (file.Read.Read?.Name == name && file.Bytes is { } whole)
+            if (file.Read.Read is { } theme && theme.Name == name && file.Bytes is { } whole)
             {
                 (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(file, reached, CancellationToken.None);
-                return unseen ?? KeptThemes.Keep(source, code, name, whole, images);
+                return unseen ?? await VsCodeBases.KeepAsync(source, code, name, theme, CancellationToken.None) ?? KeptThemes.Keep(source, code, name, whole, images);
             }
         }
         return $"{source.Shown} lists no {(code ? "code colour scheme" : "theme")} named {name} that reads whole";
@@ -252,6 +286,11 @@ public static class Themes
             merged.Add(tokens);
         }
         TakeAccentFromTokens(app);
+        if ((theme?.Shows ?? ThemeShows.Both) != shows)
+        {
+            shows = theme?.Shows ?? ThemeShows.Both;
+            UseVariant(app, chosenVariant);
+        }
         ThemeLanguages.Use(theme, scheme);
         ThemeBackdrops.Use(theme, images);
         ThemeFonts fonts = theme?.Fonts ?? ThemeFonts.None;

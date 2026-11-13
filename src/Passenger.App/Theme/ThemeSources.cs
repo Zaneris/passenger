@@ -24,6 +24,9 @@ public enum ThemeSourceKind
 
     /// <summary>An HTTPS address whose files sit under it, <see cref="ThemeFiles.IndexFile"/> among them.</summary>
     Web,
+
+    /// <summary>VS Code colour themes chosen from Open VSX, each kept as a theme laid over its base.</summary>
+    OpenVsx,
 }
 
 /// <summary>A place themes and code colour schemes come from, by the words settings keep it under: a folder's full path,
@@ -46,6 +49,9 @@ public sealed partial record ThemeSource(ThemeSourceKind Kind, string Name)
 
     public static readonly ThemeSource Added = new(ThemeSourceKind.Added, "added");
 
+    /// <summary>The VS Code colour themes chosen in the theme explorer.</summary>
+    public static readonly ThemeSource OpenVsx = new(ThemeSourceKind.OpenVsx, "open-vsx");
+
     /// <summary>Passenger's themes repository.</summary>
     public static readonly ThemeSource Repository = new(ThemeSourceKind.GitHub, RepositoryName);
 
@@ -54,6 +60,7 @@ public sealed partial record ThemeSource(ThemeSourceKind Kind, string Name)
     {
         ThemeSourceKind.BuiltIn => "Passenger",
         ThemeSourceKind.Added => "added from a file",
+        ThemeSourceKind.OpenVsx => "Open VSX",
         _ => Name,
     };
 
@@ -116,7 +123,7 @@ public sealed partial record ThemeSource(ThemeSourceKind Kind, string Name)
 
     /// <summary>The source some words name, or null with why not: a full path (or one under <c>~/</c>) for a folder,
     /// <c>owner/name</c> or a github.com address for a repository, an https address (http on this machine) for the rest, its
-    /// index's name at its end left out; <c>built-in</c> and <c>added</c> for Passenger's own two.</summary>
+    /// index's name at its end left out; <c>built-in</c>, <c>added</c> and <c>open-vsx</c> for Passenger's own three.</summary>
     public static ThemeSource? Of(string words, out string? why)
     {
         why = null;
@@ -128,6 +135,10 @@ public sealed partial record ThemeSource(ThemeSourceKind Kind, string Name)
         if (text == Added.Name)
         {
             return Added;
+        }
+        if (text == OpenVsx.Name)
+        {
+            return OpenVsx;
         }
         if (text.Length == 0)
         {

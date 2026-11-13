@@ -1,0 +1,9 @@
+{
+  // What Lantern includes: its quieter words and the menu's colours, under Lantern's own.
+  "colors": {
+    "descriptionForeground": "#8A84A3",
+    "menu.background": "#211F30",
+    "menu.selectionBackground": "#8E6CEF",
+    "editor.background": "#000000"
+  }
+}

@@ -1,0 +1,24 @@
+// Paper: a small light VS Code colour theme written for Passenger's tests.
+{
+  "name": "Paper",
+  "type": "light",
+  "colors": {
+    "editor.background": "#FBF8F1",
+    "editor.foreground": "#2E2A24",
+    "sideBar.background": "#F1ECE0",
+    "activityBar.background": "#E6DFCF",
+    "statusBar.background": "#E6DFCF",
+    "button.background": "#2F7D6D",
+    "button.foreground": "#FFFFFF",
+    "list.activeSelectionBackground": "#D6E8E2",
+    "editorLineNumber.foreground": "#B5AD9C",
+  },
+  "tokenColors": [
+    { "settings": { "foreground": "#2E2A24" } },
+    { "scope": "comment", "settings": { "foreground": "#A39C8C" } },
+    { "scope": "keyword", "settings": { "foreground": "#2F7D6D", "fontStyle": "bold" } },
+    { "scope": "string", "settings": { "foreground": "#B5651D" } },
+    { "scope": "entity.name.type", "settings": { "foreground": "#7A4FA3" } },
+    { "scope": "entity.name.function", "settings": { "foreground": "#2B5FA8" } },
+  ],
+}

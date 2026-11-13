@@ -164,7 +164,8 @@ public sealed class ThemePicker : StackPanel
             string? why = await BackgroundWork.Run(async () =>
             {
                 (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, source.Reached, CancellationToken.None);
-                return unseen ?? KeptThemes.Keep(source, code, theme.Name, bytes, images);
+                return unseen ?? (listed.Read.Read is { } file ? await VsCodeBases.KeepAsync(source, code, theme.Name, file, CancellationToken.None) : null)
+                    ?? KeptThemes.Keep(source, code, theme.Name, bytes, images);
             });
             if (why is not null)
             {
@@ -199,7 +200,7 @@ public sealed class ThemePicker : StackPanel
         List<string> underWay = [];
         SourceRead builtIn = BuiltInThemes.Listed(ThemeResources.Kinds);
         Add(ThemeSource.BuiltIn, builtIn.Listed);
-        foreach (ThemeSource source in Sources().Append(ThemeSource.Added))
+        foreach (ThemeSource source in Sources().Append(ThemeSource.Added).Append(ThemeSource.OpenVsx))
         {
             if (ThemeListing.IsReading(source))
             {
