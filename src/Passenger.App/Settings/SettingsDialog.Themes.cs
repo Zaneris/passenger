@@ -147,7 +147,7 @@ public sealed partial class SettingsDialog
             ThemeSource[] sources = [ThemeSource.Repository, .. Working.ThemeSources.Select(s => ThemeSource.Of(s, out _)).OfType<ThemeSource>()];
             int taken = await ThemeListing.RefreshAsync(sources);
             string[] refused = [.. sources.Select(ThemeListing.Read).OfType<SourceRead>().Where(r => r.Refused is not null).Select(r => $"{r.Source.Shown} could not be read: {r.Refused}")];
-            SayOfSources(refused.Length > 0 ? string.Join("\n", refused) : taken == 0 ? "Every kept theme is as its source has it" : $"{Plural.Of(taken, "kept theme")} taken anew from {(taken == 1 ? "its source" : "their sources")}",
+            SayOfSources(refused.Length > 0 ? string.Join("\n", refused) : taken == 0 ? "Every kept theme is as its source has it" : $"{Plural.Of(taken, "kept theme")} taken anew from {Plural.Agreeing(taken, "its source", "their sources")}",
                 problem: refused.Length > 0);
         }
         finally
