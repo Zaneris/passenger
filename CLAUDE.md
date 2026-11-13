@@ -109,7 +109,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   only through `ThemeFiles` (format 1, `docs/themes.md`) and laid through `ThemeResources`, so a token added to
   Tokens.axaml is one a theme may give. A theme is a `SourcedTheme`; a source is read only through `ThemeSourceReads` and
   `ThemeListing`, never at a start whose themes are kept (`KeptThemes`); `PASSENGER_THEMES` names the repository's place; a theme's picture is drawn only through `ThemeBackdrop`
-  (`ThemeBackdrops`), its colours by language reach an editor only through `ThemeLanguages.Follow`; the code's size in force
+  (`ThemeBackdrops`), its colours by language reach an editor only through `ThemeLanguages.Follow`; a VS Code colour theme is read as data only (`VsCodeThemes`, a `.vsix` as a zip, nothing of it run), mapped by `VsCodeColours`, a theme's base by `VsCodeBases`, and Open VSX reached only through `OpenVsx` while the explorer is open or a theme is picked, never Microsoft's Marketplace; a token a theme may leave out is in `ThemeFiles.Optional`; the code's size in force
   is `AppSettings.CodeSize()`, never `EditorFontSize`, the person's own and null until set;
   Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. The window's typeface
   is the resource `WindowFonts.Key` (macOS tracking `WindowTracking`), the code's `CodeFonts.Key`; a control drawing its
@@ -735,7 +735,7 @@ container labels, user secrets, dotnet new's templates, Aspire's HOME and CLI, G
 (`PASSENGER_GODOT_HOME`); `PersonsGodot` fails a run that writes the person's Godot folders. Its themes come from the tests' copy (`PASSENGER_THEMES`). It never reaches nuget.org
 (local feeds, the run folder's feedless nuget.config `TestRun.Feedless`, the restore-only `tests/*Graphs`, which name
 every package their test apps resolve, at its version: a CI cache restored by key prefix hides one missing), GitHub
-(`PASSENGER_RELEASES` dead), registries (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, the
+(`PASSENGER_RELEASES` dead), Open VSX (`PASSENGER_OPEN_VSX` dead), registries (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, the
 person's Passenger (`PASSENGER_START=headless`), or a host a browser asks of its own accord (`PASSENGER_BROWSER_PROXY`).
 It shortens `PASSENGER_EVAL_TIMEOUT_MS`, `PASSENGER_WATCH_LATER_MS` (3 s each), `PASSENGER_MCP_PROGRESS_MS` and
 `PASSENGER_REGEX_TIMEOUT_MS` (1 s each); a test holding a server to not answering sets that server's limits, never the
