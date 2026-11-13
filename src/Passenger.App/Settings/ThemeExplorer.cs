@@ -18,7 +18,8 @@ namespace Passenger.App.Settings;
 /// nothing.</summary>
 public sealed class ThemeExplorer : StackPanel
 {
-    private static readonly string[] Orders = ["Most downloaded", "Best rated", "Newest", "Name"];
+    private const double Gap = 8;
+    private static readonly string[] Orders = ["Popular", "Top rated", "Newest", "Name"];
     private readonly Func<AppSettings> working;
     private readonly Action<Func<AppSettings, AppSettings>> change;
     private readonly Action chosen;
@@ -37,7 +38,6 @@ public sealed class ThemeExplorer : StackPanel
         this.change = change;
         this.chosen = chosen;
         Spacing = 6;
-        Width = 420;
         AutomationProperties.SetName(SearchBox, "Search VS Code themes");
         AutomationProperties.SetName(OrderBox, "Order of VS Code themes");
         AutomationProperties.SetName(List, "VS Code themes");
@@ -54,6 +54,8 @@ public sealed class ThemeExplorer : StackPanel
             {
                 label.Text = shown.Theme.Label;
                 about.Text = shown.About;
+                // A row too long for the list ends in an ellipsis; its tip says it whole.
+                ToolTip.SetTip(row, $"{shown.Theme.Label}: {shown.About}");
             });
         });
         OpenButton.Click += (_, _) => Open();
@@ -85,7 +87,7 @@ public sealed class ThemeExplorer : StackPanel
             searching?.Cancel();
             choosing?.Cancel();
         };
-        opened.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { SearchBox, OrderBox } });
+        opened.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gap, Children = { SearchBox, OrderBox } });
         opened.Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = List });
         opened.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { MoreButton } });
         Children.Add(OpenButton);
@@ -99,11 +101,11 @@ public sealed class ThemeExplorer : StackPanel
     /// <summary>The words searched for: a theme's or extension's name, its publisher, or words it is described by.</summary>
     public TextBox SearchBox { get; } = new()
     {
-        Classes = { StyleClasses.Search }, PlaceholderText = "Name, publisher or words", Width = 236,
+        Classes = { StyleClasses.Search }, PlaceholderText = "Name, publisher or words", Width = 260,
     };
 
     /// <summary>The order the themes are listed in.</summary>
-    public ComboBox OrderBox { get; } = new() { Classes = { StyleClasses.Form }, Width = 176 };
+    public ComboBox OrderBox { get; } = new() { Classes = { StyleClasses.Form }, Width = 120 };
 
     /// <summary>The colour themes found, one row each.</summary>
     public ListBox List { get; } = new() { Classes = { StyleClasses.Tree }, Height = 240 };
@@ -112,7 +114,7 @@ public sealed class ThemeExplorer : StackPanel
     public Button MoreButton { get; } = new() { Content = "Show More", IsVisible = false };
 
     /// <summary>What the explorer is doing, what it found, or why a search or a theme was refused.</summary>
-    public TextBlock Said { get; } = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 420, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
+    public TextBlock Said { get; } = new() { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
 
     /// <summary>Whether it is open, and so reaches Open VSX.</summary>
     public bool IsOpen => opened.IsVisible;
@@ -129,6 +131,24 @@ public sealed class ThemeExplorer : StackPanel
 
     /// <summary>The search or choice under way, for a test to wait for.</summary>
     public Task Working { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Lays it under a row of a drop-down and its button, as wide as both: its search box as the drop-down, its
+    /// order as the button, its list and words across them.</summary>
+    public void Under(Control box, Control button)
+    {
+        void Fit()
+        {
+            if (box.Bounds.Width > 0 && button.Bounds.Width > 0)
+            {
+                SearchBox.Width = box.Bounds.Width;
+                OrderBox.Width = button.Bounds.Width;
+                Width = box.Bounds.Width + Gap + button.Bounds.Width;
+            }
+        }
+        box.SizeChanged += (_, _) => Fit();
+        button.SizeChanged += (_, _) => Fit();
+        Fit();
+    }
 
     /// <summary>Opens it and searches, as its button does.</summary>
     public void Open()
