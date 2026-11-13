@@ -217,7 +217,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   editors draw its one `DocumentDecorations`, never fed per split. Vim mode: `Vim` decides a key's meaning purely over the editor's
   `IVimView` (`Vim.Commands`, `Vim.Operators`, `VimMotions`, `VimTextObjects`) and `CodeEditor.PressVim` takes it before
   any keymap; an insert session is one `EditKind.Joined` step, `.`'s edits one too (`FollowVim`); normal-mode carets
-  settle in `SetSelections`; registers are each window's own (`CodeEditor.VimRegisters`), `+`/`*` the clipboard;
+  settle in `SetSelections`; registers are each window's own (`CodeEditor.VimRegisters`), `+`/`*` the clipboard; visual mode's stretches are the editor's selections, a selection made
+  otherwise entering it (`Vim.FollowSelections`); macros are pressed again by `CodeEditor.ReplayVim`;
   `VimTests`' expected texts are the system Vim 9.1's. Wide characters are counted by `WideCharacters` (Passenger.Text).
 - **A key costs what it changed, not the file's size**: keep it so. Wraps, rows, folds, hints and built lines move only
   where an edit reaches; a highlighter keeps colours an edit didn't reach (`KeptColours`, `ChangedWithin`); a row is a
@@ -343,7 +344,10 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `ChildProcesses`.
 - **Runs of services.** `ServiceRun` is the one model: Debug, Attach, Restart and Profile written once; one start at a
   time; Stop ends every session and recording before the programs go.
-- **Containers.** The person's `docker` CLI and context only, never the Engine API or a Docker package; a service's name
+- **Containers.** A published port takes connections from the container's start, before its program listens, so a
+  container's page opens on an HTTP answer (`BrowserLaunch.AnsweringAsync`), never a connection. A .dcproj is MSBuild's
+  file in the editor but never evaluated (its SDK is Visual Studio's); its properties are read as text (`ComposeProjectFile`).
+  The person's `docker` CLI and context only, never the Engine API or a Docker package; a service's name
   always after `--`; Compose's own model is the plan, Passenger's override in the state; downloaded tools
   SHA256-checked; Podman both ways. A container publish (`-t:PublishContainer`; several platforms need
   `RuntimeIdentifiers` too, NETSDK1047 otherwise, and containerd's image store) is judged by the SDK's "Pushed image"
@@ -424,7 +428,8 @@ a new name, and `just site-shots` retakes its images.
 - **Roslyn's server reruns every project's generators** a second after its projects load and for each 5 s batch of
   `.dll` changes under .NET's packs folders, which moves every project's version: solution-wide analysis drops a pull
   under way at the server's diagnostic refresh (`CSharpService.SolutionMoved`), and its first round ends at the
-  extension's word that it analysed everything, never at the answer.
+  extension's word that it analysed everything, never at the answer. A change under such a `**/*.dll` watch reaches the server only for a
+  file a project references (`WatchedFiles.ReferencedAsync`, the extension's `ReferencedFiles`).
 - **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
   references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`, which moves
   `LanguageServer.Changes` itself (`AnswersMoved`).
@@ -494,7 +499,8 @@ a new name, and `just site-shots` retakes its images.
   a headless window test's thread never runs again once its test is over.
 - **A window the IDE opens of its own accord** (a notification, an agent's question) shows with `ShowActivated` false,
   or it takes the keys from what the person types; an agent's question is not waited on as a dialog and has no default
-  button, so a stray Enter never answers it.
+  button, so a stray Enter never answers it. The File Cache Conflict question is answered only by its buttons (Enter and
+  Escape are Cancel), and a screenshot run says each file it wrote.
 - **Agents never open windows on the person's screen**: `--mcp FOLDER`, or a headless screenshot run's `--agent` step
   for attached behaviour; never a bare `--mcp-attach` (headless, it keeps no settings and asks a person who isn't
   there), never `just run`.
