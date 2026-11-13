@@ -99,9 +99,12 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   own; Aspire's unlabelled DCP containers and network through `AspireContainerOwnership`; persistent containers and the
   person's own never.
 - **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`, the default theme every other is laid over), given in
-  every built-in theme (dark and light, `Theme/BuiltIn/*.json`: Harbour's and the code colour scheme by hand, the rest by
-  `just themes`); a theme file is read only through `ThemeFiles` (format 1, `docs/themes.md`) and laid through
-  `ThemeResources`, so a token added to Tokens.axaml is one a theme may give; Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. The window's typeface
+  every theme (dark and light; the others live in Zaneris/passenger-themes, the tests' copy in
+  `tests/Passenger.Tests/Themes`, Harbour's and Reef by hand, the rest by `just themes FOLDER`); a theme file is read
+  only through `ThemeFiles` (format 1, `docs/themes.md`) and laid through `ThemeResources`, so a token added to
+  Tokens.axaml is one a theme may give. A theme is a `SourcedTheme`; a source is read only through `ThemeSourceReads` and
+  `ThemeListing`, never at a start whose themes are kept (`KeptThemes`); `PASSENGER_THEMES` names the repository's place;
+  Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. The window's typeface
   is the resource `WindowFonts.Key` (macOS tracking `WindowTracking`), the code's `CodeFonts.Key`; a control drawing its
   own words takes `TextElement.GetFontFamily`, never a named family. UiRulesTests fails on a colour or non-zero
   CornerRadius written outside `Theme/` (but the content's own) and on an unmapped Fluent key. No access keys:
@@ -672,7 +675,7 @@ machine sleeps), never the wall clock, of a developer machine's time scaled by `
 **Isolation.** A run keeps to its own folder (`TestRun`): state, logs, sockets, test folders, shells' history, an empty
 Git configuration (no ssh-agent; its own GnuPG home and keys), NuGet's home on macOS and Linux, MSBuild's node salt,
 container labels, user secrets, dotnet new's templates, Aspire's HOME and CLI, Godot's user folders
-(`PASSENGER_GODOT_HOME`); `PersonsGodot` fails a run that writes the person's Godot folders. It never reaches nuget.org
+(`PASSENGER_GODOT_HOME`); `PersonsGodot` fails a run that writes the person's Godot folders. Its themes come from the tests' copy (`PASSENGER_THEMES`). It never reaches nuget.org
 (local feeds, the run folder's feedless nuget.config `TestRun.Feedless`, the restore-only `tests/*Graphs`, which name
 every package their test apps resolve, at its version: a CI cache restored by key prefix hides one missing), GitHub
 (`PASSENGER_RELEASES` dead), registries (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, the
