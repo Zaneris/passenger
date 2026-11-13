@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Workspace;
@@ -241,8 +242,113 @@ public sealed class BuildConfigurationTests
 
         """;
 
+    /// <summary>The C# language server follows the choice: under Debug it says the error in the code under #if DEBUG and
+    /// nothing of the #else's, and once Release is chosen the other way round, as Release compiles the file.</summary>
+    [AvaloniaFact]
+    public void The_language_server_answers_as_the_configuration_chosen_compiles_the_file()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("configuration-server-"));
+        TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console());
+        string program = TestFolders.Write(folder, "Hello/Program.cs",
+            "class Program\n{\n    static void Main()\n    {\n#if DEBUG\n        Lacking();\n#else\n        Missing();\n#endif\n    }\n}\n");
+        Restore.Run(Path.Combine(folder, "Hello", "Hello.csproj"));
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.OpenFile(program);
+            OpenDocument document = window.EditorArea.Active!;
+            Ui.WaitFor(() => Said(window, document, "Lacking") && !Said(window, document, "Missing"),
+                () => $"the server's error on Lacking alone, as Debug compiles the file; it says {Errors(window, document)}", TimeSpan.FromMinutes(2));
+
+            Choose(window, "Release");
+            Ui.WaitFor(() => Said(window, document, "Missing") && !Said(window, document, "Lacking"),
+                () => $"the server's error on Missing alone once Release is chosen, as Release compiles the file; it says {Errors(window, document)}", TimeSpan.FromMinutes(2));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static bool Said(MainWindow window, OpenDocument document, string name) =>
+            window.CSharpService?.For(document)?.Diagnostics.Any(d => d.Code?.ToString() == "CS0103" && d.Message.Contains($"'{name}'", StringComparison.Ordinal)) == true;
+
+        static string Errors(MainWindow window, OpenDocument document) =>
+            string.Join("; ", window.CSharpService?.For(document)?.Diagnostics.Select(d => $"{d.Code} {d.Message}") ?? ["nothing"]);
+    }
+
+    /// <summary>A project's Configuration completes to the configurations it declares, Staging among them, never the SDK's
+    /// Debug and Release alone.</summary>
+    [AvaloniaFact]
+    public void A_project_files_configuration_completes_to_the_configurations_the_project_declares()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("configuration-completion-"));
+        string project = TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console("<Configurations>Debug;Release;Staging</Configurations>"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => Offered(window) == "Debug, Release, Staging", () => $"Debug, Release and Staging offered, where the widget offers {Offered(window)}");
+            window.OpenFile(project);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "<Configurations>Debug;Release;Staging</Configurations>");
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("<");
+            Ui.WaitFor(() => window.Assist.CompletionLabels.Count > 0, "the properties a PropertyGroup takes after a tag's '<'");
+            window.KeyTextInput("Configuration");
+            Ui.Settle();
+            Assert.True(window.Assist.CompletionLabels.FirstOrDefault() == "Configuration",
+                $"Configuration typed after '<' is not the property offered first: [{string.Join(", ", window.Assist.CompletionLabels.Take(5))}]");
+            Ui.Press(window, "ENTER");
+            Assert.EndsWith("<Configuration>|</Configuration>", XamlTests.CaretLine(editor), StringComparison.Ordinal);
+            Ui.WaitFor(() => window.Assist.CompletionLabels.Count > 0, "Configuration's values offered between its tags");
+            Assert.True(window.Assist.CompletionLabels.SequenceEqual(["Debug", "Release", "Staging"]),
+                $"Configuration completes to [{string.Join(", ", window.Assist.CompletionLabels)}], not the Debug, Release and Staging the project declares");
+            Ui.Press(window, "ESCAPE");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Release chosen, Run All builds the test project as Release and runs its Release build, whose test passes
+    /// only there, building nothing as Debug.</summary>
+    [AvaloniaFact]
+    public void A_test_run_under_release_runs_the_tests_release_build()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("configuration-tests-"));
+        TestFolders.Write(folder, "Built.Tests/Built.Tests.csproj", TestProjects.Library("<ImplicitUsings>enable</ImplicitUsings>").With(
+            $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n"
+            + $"    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n"
+            + $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "Built.Tests/BuiltTests.cs", "using Xunit;\n\nnamespace Built.Tests;\n\npublic class BuiltTests\n{\n    [Fact]\n"
+            + "    public void Built_as_release()\n    {\n#if DEBUG\n        Assert.Fail(\"built as Debug\");\n#endif\n"
+            + "        Assert.Contains(Path.Combine(\"bin\", \"Release\"), AppContext.BaseDirectory);\n    }\n}\n");
+        Restore.Run(Path.Combine(folder, "Built.Tests"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => Offered(window) == "Debug, Release", () => $"Debug and Release offered, where the widget offers {Offered(window)}");
+            Choose(window, "Release");
+            Assert.True(window.Perform(AppActions.RunAllTests), $"Run All did not run: {window.Status}");
+            Ui.WaitFor(() => !window.Tests.IsBusy && Built(window) is { State: not Passenger.App.Testing.TestState.NotRun },
+                () => $"the run of the test: {Ui.Said(window)}", TimeSpan.FromMinutes(3));
+            Assert.True(Built(window) is { State: Passenger.App.Testing.TestState.Passed },
+                $"The test passing only in a Release build did not pass under Release: {Built(window)?.Details}{Ui.BuildErrors(window)}");
+            Assert.True(File.Exists(Path.Combine(folder, "Built.Tests", "bin", "Release", TestProjects.Framework, "Built.Tests.dll")), "The test run under Release did not build into bin/Release");
+            Assert.False(Directory.Exists(Path.Combine(folder, "Built.Tests", "bin", "Debug")), "The test run under Release built into bin/Debug");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static Passenger.App.Testing.TestNode? Built(MainWindow window) =>
+            window.Tests.Tree.Roots.SelectMany(r => r.Methods).FirstOrDefault(m => m.Name == "Built_as_release");
+    }
+
     /// <summary>A configuration chosen as a person chooses it: the widget clicked, then its item in the menu.</summary>
-    private static void Choose(MainWindow window, string shown)
+    internal static void Choose(MainWindow window, string shown)
     {
         Ui.Click(window.FindControl<Button>("BuildConfigButton")!);
         Ui.WaitFor(() => window.OpenContextMenu is { IsOpen: true }, "the menu of the build configurations");
@@ -251,7 +357,7 @@ public sealed class BuildConfigurationTests
     }
 
     /// <summary>The configurations the widget's menu would offer, as shown, in order.</summary>
-    private static string Offered(MainWindow window) =>
+    internal static string Offered(MainWindow window) =>
         string.Join(", ", window.Session.BuildChoices.Offered.Select(o => o.Shown(window.Session.BuildChoices.Offered)));
 
     private static string Output(string folder, string project, string configuration) =>

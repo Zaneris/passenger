@@ -247,6 +247,42 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         static string Tail(string text, int lines) => string.Join('\n', text.Split('\n', StringSplitOptions.RemoveEmptyEntries).TakeLast(lines));
     }
 
+    /// <summary>Release chosen, Run builds the AppHost as Release and runs the program its Release build made.</summary>
+    [AvaloniaFact]
+    public void Run_under_release_runs_the_AppHosts_release_build()
+    {
+        project.Reset();
+        File.Delete(project.KeyFile);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        project.Serve(backend);
+        string release = Path.Combine(PathNames.Canonical(project.Folder), StandInAppHost.Name, "bin", "Release", TestProjects.Framework) + Path.DirectorySeparatorChar;
+        MainWindow window = Ui.OpenFolder(project.Folder, languageServer: false, autosaves: false);
+        try
+        {
+            Ui.WaitFor(() => BuildConfigurationTests.Offered(window) == "Debug, Release",
+                () => $"Debug and Release offered, where the widget offers {BuildConfigurationTests.Offered(window)}");
+            BuildConfigurationTests.Choose(window, "Release");
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
+            Ui.Launched(window, window.RunAsync(), "the stand-in AppHost to come up under Release");
+            AspireAppRun app = Assert.Single(window.AspireRuntime.Apps);
+            Ui.WaitFor(() => Said(app).Contains("The stand-in AppHost is up", StringComparison.Ordinal), () => $"the AppHost to say it is up:\n{Said(app)}");
+            Assert.True(Said(app).Contains($"Built into {release}", StringComparison.Ordinal),
+                $"Run under Release did not run the AppHost its Release build made, in {release}:\n{Said(app)}");
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+
+        static string Said(AspireAppRun app)
+        {
+            app.Console.Flush();
+            return app.Console.Document.Snapshot.ToString();
+        }
+    }
+
     /// <summary>The question a start asked of its certificate, held to the dialogs' rules.</summary>
     internal static CertificateQuestionDialog Question(MainWindow window, Task<string?> running)
     {
@@ -3452,6 +3488,7 @@ public sealed class StandInAppHost : SharedProject
             File.WriteAllText(keyFile + ".session", $"{Environment.GetEnvironmentVariable("DEBUG_SESSION_PORT")}\n{Environment.GetEnvironmentVariable("DEBUG_SESSION_TOKEN")}\n{Environment.GetEnvironmentVariable("DEBUG_SESSION_INFO")}");
             File.WriteAllText(keyFile + ".part", Environment.GetEnvironmentVariable("ASPIRE_DASHBOARD_RESOURCESERVICE_APIKEY"));
             File.Move(keyFile + ".part", keyFile, overwrite: true);
+            Console.WriteLine($"Built into {AppContext.BaseDirectory}");
             Console.WriteLine("The stand-in AppHost is up");
             Thread.Sleep(Timeout.Infinite);
 
