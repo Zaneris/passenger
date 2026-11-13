@@ -623,6 +623,9 @@ public sealed partial class CodeEditor
 
         /// <summary>The look's popup corners (the host's <c>Passenger.PopupRadius</c>), which the fold preview's card takes.</summary>
         public double PopupRadius { get; private init; } = 4;
+
+        /// <summary>The room between the gutter and the text (the host's <c>Passenger.EditorTextPadding</c>).</summary>
+        public double TextPadding { get; private init; } = 6;
         public IBrush SmartStepTarget { get; private init; } = None;
         public IBrush SmartStepChosen { get; private init; } = None;
         public IBrush SmartStepBorder { get; private init; } = None;
@@ -713,6 +716,8 @@ public sealed partial class CodeEditor
                 PopupBorder = F(TokenKeys.Editor_PopupBorder) ?? defaults.PopupBorder,
                 PopupRadius = control.TryFindResource(TokenKeys.PopupRadius, control.ActualThemeVariant, out object? radius) && radius is CornerRadius corners
                     ? corners.TopLeft : defaults.PopupRadius,
+                TextPadding = control.TryFindResource(TokenKeys.EditorTextPadding, control.ActualThemeVariant, out object? padding) && padding is double room
+                    ? room : defaults.TextPadding,
                 SmartStepTarget = F(TokenKeys.Editor_SmartStepTarget) ?? defaults.SmartStepTarget,
                 SmartStepChosen = F(TokenKeys.Editor_SmartStepChosen) ?? defaults.SmartStepChosen,
                 SmartStepBorder = F(TokenKeys.Editor_SmartStepBorder) ?? defaults.SmartStepBorder,
@@ -734,6 +739,7 @@ public sealed partial class CodeEditor
                         | (named.Contains("Italic", StringComparison.Ordinal) ? SyntaxStyle.Italic : 0);
                 }
             }
+            found.Add(padding);
             palette.found = found;
             return palette;
         }

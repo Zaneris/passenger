@@ -147,7 +147,7 @@
     <Style Selector="Border.footerBar">
         <Setter Property="Background" Value="{DynamicResource Passenger.Frame}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="16,10" />
+        <Setter Property="Padding" Value="{DynamicResource Passenger.DialogFooterPadding}" />
     </Style>
     <!-- Popups follow their target's display scale, including nested menus and overlay popups. -->
     <Style Selector="Popup">
@@ -217,13 +217,13 @@
     <!-- Clear rather than empty, so the header takes the press that drags its window; taller than a toolbar's row and its
          title larger than the window's words, so a tool window reads as a place of its own. -->
     <Style Selector="Border.toolHeader">
-        <Setter Property="Height" Value="38" />
+        <Setter Property="Height" Value="{DynamicResource Passenger.ToolHeaderHeight}" />
         <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="TextBlock.toolTitle">
         <Setter Property="FontSize" Value="14" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Margin" Value="14,0,0,0" />
+        <Setter Property="Margin" Value="{DynamicResource Passenger.ToolTitleMargin}" />
     </Style>
     <Style Selector="Border.tabStrip">
         <Setter Property="Height" Value="{DynamicResource Passenger.TabStripHeight}" />

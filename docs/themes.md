@@ -45,7 +45,9 @@ variants, `dark` and `light` for one each; a token goes in `tokens` or in `dark`
 three may be left out, as may `background`, `fonts` and `languages` below.
 
 A token is named as its key in [Tokens.axaml](../src/Passenger.App/Theme/Tokens.axaml) without `Passenger.`:
-`Frame`, `Editor.Background`, `Syntax.Keyword`, `SyntaxStyle.Comment`, `ControlRadius`. Tokens.axaml gives every token
+`Frame`, `Editor.Background`, `Syntax.Keyword`, `SyntaxStyle.Comment`, `ControlRadius`, and the margins
+`EditorTextPadding` (between the editor's gutter and its text), `ToolHeaderHeight`, `ToolTitleMargin` and
+`DialogFooterPadding`. Tokens.axaml gives every token
 and its default value; a token takes the kind of value its default is:
 
 | The default | The value |

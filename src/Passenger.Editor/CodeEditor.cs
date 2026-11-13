@@ -33,7 +33,8 @@ public sealed partial class CodeEditor : Control
     /// <summary>Space between the gutter's edge and the line numbers, and after them.</summary>
     private const double GutterPadLeft = 14;
     private const double GutterPadRight = 22;
-    private const double TextPadLeft = 6;
+    /// <summary>The room between the gutter and the text, the theme's <c>Passenger.EditorTextPadding</c>.</summary>
+    private double TextPadLeft => palette.TextPadding;
 
     /// <summary>Drawn by the host's ScrollBar theme; "stripe" marks the bar that carries the error stripe.</summary>
     private readonly ScrollBar vertical = new() { Orientation = Orientation.Vertical, AllowAutoHide = false, Classes = { StyleClasses.Stripe } };

@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
@@ -5,12 +6,13 @@ using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Settings;
+using Passenger.Editor;
 
 namespace Passenger.Tests;
 
 /// <summary>What a theme sets beyond its tokens, as a person meets it: a theme added from a file with a picture beside it keeps
 /// the picture and draws it over the editor at its opacity, and colours a language's code its own way, other languages
-/// keeping the theme's.</summary>
+/// keeping the theme's; and a theme's margins move the editor's text and size a tool window's header and a dialog's footer.</summary>
 public sealed class ThemeLooksTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("theme-looks-folder-");
@@ -71,6 +73,43 @@ public sealed class ThemeLooksTests : IDisposable
             Ui.Settle();
             Assert.Null(ThemeBackdrops.Of(window.ActualThemeVariant));
             Assert.Equal(plain, Keyword(window.EditorArea.CodeEditor));
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_themes_margins_move_the_editors_text_and_size_the_tool_windows_header_and_a_dialogs_footer()
+    {
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "public class One { }\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
+        window.Show();
+        window.OpenFolder(folder);
+        window.OpenFile(Path.Combine(folder, "One.cs"));
+        Ui.Settle();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            double text = editor.PointOf(0).X;
+            Border header = window.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.ToolHeader) && b.IsEffectivelyVisible);
+            TextBlock title = header.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains(StyleClasses.ToolTitle));
+            Assert.True(header.Bounds.Height == 38 && title.Margin == new Thickness(14, 0, 0, 0), $"Passenger's own tool window header is {header.Bounds.Height} high, its title at {title.Margin}");
+
+            string name = $"Margins {Guid.NewGuid():N}";
+            string json = $$$"""{"format": 1, "name": "{{{name}}}", "tokens": {"EditorTextPadding": 30, "ToolHeaderHeight": 50, "ToolTitleMargin": [20, 0, 0, 0], "DialogFooterPadding": [24, 14, 24, 14]} }""";
+            Assert.Null(KeptThemes.Keep(ThemeSource.Added, false, name, System.Text.Encoding.UTF8.GetBytes(json)));
+            window.ApplySettings(window.Settings with { Look = new SourcedTheme(ThemeSource.Added.Name, name) });
+            Ui.Settle();
+            Assert.True(editor.PointOf(0).X == text + 24, $"The theme's 30 between gutter and text put the text at {editor.PointOf(0).X}, where Passenger's own 6 put it at {text}");
+            Assert.True(header.Bounds.Height == 50 && title.Margin == new Thickness(20, 0, 0, 0), $"The theme's tool window header is {header.Bounds.Height} high, its title at {title.Margin}");
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            Border footer = dialog.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.FooterBar));
+            Assert.Equal(new Thickness(24, 14, 24, 14), footer.Padding);
+            dialog.Close();
         }
         finally
         {

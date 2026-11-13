@@ -258,20 +258,25 @@ THEMES = {
     ),
 }
 
-# The shapes a theme draws its own way: Passenger's pills and crowned popups, or Harbour's cards joined to the editor.
+# The shapes a theme draws its own way: Passenger's pills and crowned popups, or Harbour's cards joined to the editor;
+# and its margins, today Passenger's own in both.
 SHAPES = {
     "pill": [("CornerRadius", "Passenger.ControlRadius", "6"), ("CornerRadius", "Passenger.ToolRadius", "8"),
              ("CornerRadius", "Passenger.PopupRadius", "10"), ("CornerRadius", "Passenger.CardRadius", "10"),
              ("CornerRadius", "Passenger.BadgeRadius", "6"), ("CornerRadius", "Passenger.ChipRadius", "10"),
              ("x:Double", "Passenger.TabStripHeight", "38"), ("Thickness", "Passenger.TabMargin", "2,5"),
              ("Thickness", "Passenger.TabPadding", "10,0,6,0"), ("CornerRadius", "Passenger.TabRadius", "7"),
-             ("BoxShadows", "Passenger.TabShadow", "0 1 2 0 #1F000000"), ("Thickness", "Passenger.PopupEdge", "1,3,1,1")],
+             ("BoxShadows", "Passenger.TabShadow", "0 1 2 0 #1F000000"), ("Thickness", "Passenger.PopupEdge", "1,3,1,1"),
+             ("x:Double", "Passenger.EditorTextPadding", "6"), ("x:Double", "Passenger.ToolHeaderHeight", "38"),
+             ("Thickness", "Passenger.ToolTitleMargin", "14,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "16,10")],
     "card": [("CornerRadius", "Passenger.ControlRadius", "8"), ("CornerRadius", "Passenger.ToolRadius", "8"),
              ("CornerRadius", "Passenger.PopupRadius", "12"), ("CornerRadius", "Passenger.CardRadius", "14"),
              ("CornerRadius", "Passenger.BadgeRadius", "99"), ("CornerRadius", "Passenger.ChipRadius", "99"),
              ("x:Double", "Passenger.TabStripHeight", "40"), ("Thickness", "Passenger.TabMargin", "1,6,1,0"),
              ("Thickness", "Passenger.TabPadding", "14,0,8,0"), ("CornerRadius", "Passenger.TabRadius", "10,10,0,0"),
-             ("BoxShadows", "Passenger.TabShadow", "0 0 0 0 #00000000"), ("Thickness", "Passenger.PopupEdge", "1")],
+             ("BoxShadows", "Passenger.TabShadow", "0 0 0 0 #00000000"), ("Thickness", "Passenger.PopupEdge", "1"),
+             ("x:Double", "Passenger.EditorTextPadding", "6"), ("x:Double", "Passenger.ToolHeaderHeight", "38"),
+             ("Thickness", "Passenger.ToolTitleMargin", "14,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "16,10")],
 }
 
 SYNTAX_KINDS = ["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number",
