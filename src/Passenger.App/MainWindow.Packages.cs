@@ -36,6 +36,21 @@ public partial class MainWindow
         });
     }
 
+    /// <summary>Manage NuGet Packages for Solution: the NuGet window shown (behind, for an agent) on its Packages tab over
+    /// every project, a project it was narrowed to let go.</summary>
+    private void ManageSolutionPackages(ActionContext context)
+    {
+        if (context.ByAgent)
+        {
+            Dock.ShowBehind(ToolWindowIds.NuGet);
+        }
+        else
+        {
+            Dock.Show(ToolWindowIds.NuGet);
+        }
+        NuGet.ShowSolution();
+    }
+
     /// <summary>The session's packages followed while it is the window's: a change's end said in the status bar, its files
     /// taken from disk and the solution read again before whoever asked for the change is answered, the nuget.config files
     /// the Sources tab wrote taken too, wherever they are; and the NuGet window, once built, shows them.</summary>

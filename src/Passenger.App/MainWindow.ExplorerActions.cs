@@ -52,6 +52,13 @@ public partial class MainWindow
         });
         Row(A.ManageNuGet, "Manage NuGet Packages", _ => ShowToolWindow(ToolWindowIds.NuGet),
             row => row is { Kind: NodeKind.Project } or { Kind: NodeKind.Dependencies, Owner: not null } ? null : $"{row.Name} has no packages");
+        // The solution's row, and Find Action wherever a solution is open: the NuGet window over every project.
+        actions!.Add(new IdeAction(A.ManageNuGetForSolution, "Manage NuGet Packages for Solution", ExplorerGroup, ManageSolutionPackages)
+        {
+            WhyNot = c => RowOf(c) is { } row
+                ? row.Kind == NodeKind.Solution ? null : "The solution's packages are managed from its row"
+                : Solution is null ? Refusals.NoSolution : null,
+        });
         Row(A.EditProjectFile, "Edit Project File", row => OpenFile(row.Path!), row => row is { Kind: NodeKind.Project, Path: not null } ? null : Refusals.NotAProject(row.Name));
         Row(A.UnloadProject, "Unload Project", row => SetUnloaded(row.Path!, true),
             row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : Explorer.Tree.Unloaded.Contains(project) ? $"{row.Name} is unloaded" : null);
@@ -330,6 +337,10 @@ public partial class MainWindow
                 entries.Add(Item(A.Publish));
             }
             entries.Add(separator);
+        }
+        if (node.Kind == NodeKind.Solution)
+        {
+            entries.AddRange([Item(A.ManageNuGetForSolution), separator]);
         }
         // A Godot project's page, from its project's row, its project.godot's or its folder's.
         if (GodotProjectOfRow(node) is not null)

@@ -90,6 +90,37 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The solution's row offers Manage NuGet Packages for Solution, which a project's row does not: it shows the
+    /// NuGet window over every project, a project it was narrowed to let go.</summary>
+    [AvaloniaFact]
+    public void The_solution_rows_menu_manages_the_solutions_packages_across_every_project()
+    {
+        const string Other = "Passenger.Other";
+        feed.Add(Other, "1.0.0");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.1.0\" /></ItemGroup>");
+        Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /></ItemGroup>");
+        File.WriteAllText(Path.Combine(folder, "Shop.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+        MainWindow window = Ui.OpenFolder(Path.Combine(folder, "Shop.slnx"), languageServer: false);
+        ExplorerNode solution = window.ExplorerView.Tree.Rows.First(r => r.Kind == NodeKind.Solution);
+        ExplorerNode project = window.ExplorerView.Tree.Rows.First(r => r.Kind == NodeKind.Project && r.Name == "Lib");
+        Ui.RightClick(Ui.Row(window.ExplorerView, project));
+        string[] offered = [.. window.ExplorerView.OpenMenu!.Items.OfType<MenuItem>().Select(i => i.Header).OfType<string>()];
+        window.ExplorerView.OpenMenu.Close();
+        Assert.Contains("Manage NuGet Packages", offered);
+        Assert.DoesNotContain("Manage NuGet Packages for Solution", offered);
+        Ui.ChooseFromRowMenu(window, solution, "Manage NuGet Packages for Solution");
+        NuGetView nuget = window.NuGet;
+        Assert.True(nuget.IsShown, "Manage NuGet Packages for Solution left the NuGet window hidden");
+        Assert.Equal([Other, Id], nuget.Rows.Select(r => r.Id));
+        nuget.UsedBy = Named(window, "Lib").Path;
+        Ui.Settle();
+        Assert.Equal([Id], nuget.Rows.Select(r => r.Id));
+        Ui.ChooseFromRowMenu(window, solution, "Manage NuGet Packages for Solution");
+        Assert.True(nuget.UsedBy is null && nuget.Rows.Select(r => r.Id).SequenceEqual([Other, Id]),
+            $"The solution's packages are [{string.Join(", ", nuget.Rows.Select(r => r.Id))}], narrowed to {nuget.UsedBy}, rather than every project's");
+        window.Close();
+    }
+
     /// <summary>The package list's Sort and Filter, over two restored projects whose restore brought in packages neither
     /// names: App references Lib and Passenger.Other, Lib references Passenger.Charts, which depends on a vulnerable
     /// Passenger.Vulnerable. Transitive packages are listed only when asked, tagged, with what brings each in for each

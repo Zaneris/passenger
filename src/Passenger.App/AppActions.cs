@@ -248,6 +248,7 @@ public static class AppActions
     public const string AddDockerCompose = "app.explorer.addDockerCompose";
     public const string AddAspireOrchestration = "app.explorer.addAspireOrchestration";
     public const string ManageNuGet = "app.explorer.manageNuGet";
+    public const string ManageNuGetForSolution = "app.explorer.manageNuGetForSolution";
     public const string ManageUserSecrets = "app.explorer.manageUserSecrets";
     public const string EditProjectFile = "app.explorer.editProjectFile";
     public const string UnloadProject = "app.explorer.unloadProject";
