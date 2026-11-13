@@ -459,6 +459,16 @@
     <Compile Include="../../src/Passenger.App/Editors/ServedPage.cs" Link="App/ServedPage.cs" />
   </ItemGroup>
 
+  <!-- The first start's pictures, the version they show and the themes Passenger carries, compiled in with the names the
+       app gives them, so the pictures are held to this build and to every theme it offers. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Welcome/FirstStartPictures.cs" Link="App/FirstStartPictures.cs" />
+    <EmbeddedResource Include="../../src/Passenger.App/Assets/FirstStart/*" LogicalName="first-start/%(Filename)%(Extension)"
+                      Link="Theme/FirstStart/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../src/Passenger.App/Theme/BuiltIn/*.json" LogicalName="built-in/%(Filename)%(Extension)"
+                      Link="Theme/BuiltIn/%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- The JSON schemas the app carries under web/schemas, compiled in for the checks of what they offer and take. -->
   <ItemGroup>
     <EmbeddedResource Include="../../src/Passenger.Lsp/WebServers/schemas/*.json" LogicalName="schemas/%(Filename)%(Extension)"

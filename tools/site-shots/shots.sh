@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# The site's pictures, site/images/<scene>-<dark|light>.webp, retaken from the sample solutions beside this script:
-# just site-shots [SCENE...] (every headless scene when none is named), after just build, on macOS with libwebp's cwebp
-# and img2webp; godot-game, taken only when named, runs in a window on the screen (game.py), and html-preview, taken only
-# when named too, in the Windows VM (vm-shots.sh), since neither draws in a window nobody sees. Each sample is copied to
-# a folder of its own under TMPDIR and given a git history there; its tools' state stays under artifacts/site-shots and
-# Passenger's beside the copy, never the person's. SITE_SHOTS_FLAGS (--window-buttons by default, so macOS's are in
-# every main-window picture) is added to every capture's command line; SITE_SHOTS_REUSE=1 takes the pictures in the
-# last run's copy without making it again; SITE_SHOTS_THEMES=dark (or light) takes one theme's. A step's point is in the
-# window's logical units: half the picture's pixels.
+# The site's pictures, site/images/<scene>-<dark|light>.webp, retaken from the sample solutions beside this script: just
+# site-shots [SCENE...] (every headless scene when none is named), after just build, on macOS with libwebp's cwebp and
+# img2webp; godot-game, taken only when named, runs in a window on the screen (game.py), and html-preview, taken only
+# when named too, in the Windows VM (vm-shots.sh), since neither draws in a window nobody sees; first-start, taken only
+# when named as well (just first-start-shots), writes the app's own pictures rather than the site's. Each sample is
+# copied to a folder of its own under TMPDIR and given a git history there; its tools' state stays under
+# artifacts/site-shots and Passenger's beside the copy, never the person's. SITE_SHOTS_FLAGS (--window-buttons by
+# default, so macOS's are in every main-window picture) is added to every capture's command line; SITE_SHOTS_REUSE=1
+# takes the pictures in the last run's copy without making it again; SITE_SHOTS_THEMES=dark (or light) takes one
+# theme's. A step's point is in the window's logical units: half the picture's pixels.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/../.." && pwd -P)
@@ -30,13 +31,15 @@ all_scenes=(editor debugger git find-in-files profiler xaml project-files web li
     aspire-metrics)
 # Taken only when named: a window someone could see, on the screen (game.py) or in the Windows VM (vm-shots.sh).
 windowed_scenes=(godot-game html-preview)
+# Taken only when named (just first-start-shots): the app's own pictures, never the site's.
+app_scenes=(first-start)
 scenes=("$@")
 if [[ ${#scenes[@]} -eq 0 ]]; then
     scenes=("${all_scenes[@]}")
 fi
 for scene in "${scenes[@]}"; do
-    if [[ " ${all_scenes[*]} ${windowed_scenes[*]} " != *" $scene "* ]]; then
-        echo "site-shots: no scene '$scene'; the scenes are ${all_scenes[*]} ${windowed_scenes[*]}" >&2
+    if [[ " ${all_scenes[*]} ${windowed_scenes[*]} ${app_scenes[*]} " != *" $scene "* ]]; then
+        echo "site-shots: no scene '$scene'; the scenes are ${all_scenes[*]} ${windowed_scenes[*]} ${app_scenes[*]}" >&2
         exit 2
     fi
 done
@@ -399,6 +402,35 @@ themes() {
     encode "$work/png/themes/passenger-$theme.png" "$images/themes-still-$theme.webp"
 }
 
+# The first start's tiles (src/Passenger.App/Assets/FirstStart): the sample's window in Passenger's own theme and in each
+# theme the app carries, at the tiles' size and lossless, with no window buttons, since a tile is no window of any one
+# system; and the version they are of, which the unit tests hold to the app's.
+first_start() {
+    local theme=$1 look state out="$repo/src/Passenger.App/Assets/FirstStart" version
+    mkdir -p "$work/png/first-start" "$out"
+    for look in passenger $(python3 -I - "$repo/src/Passenger.App/Theme/BuiltIn" <<'EOF2'
+import json, os, sys
+folder = sys.argv[1]
+with open(os.path.join(folder, "passenger-themes.json"), encoding="utf-8") as f:
+    for file in json.load(f)["themes"]:
+        with open(os.path.join(folder, file), encoding="utf-8") as theme:
+            print(json.load(theme)["name"].lower())
+EOF2
+    ); do
+        state="$tmp/passenger-site-shots/state/first-start-$look-$theme"
+        rm -rf "$state"
+        mkdir -p "$state"
+        # The class's doc comment, keywords, types, a lambda and numbers in the editor, the theme's own layout round it.
+        PASSENGER_SETTINGS="$state" "$passenger" "$folder/Greenhouse.slnx" --theme "$theme" --look "$look" \
+            --size 936x585 --scale 1.5 --file src/Greenhouse.Core/WateringPlan.cs --caret 4:21 \
+            --screenshot "$work/png/first-start/$look-$theme.png"
+        cwebp -quiet -lossless -z 9 "$work/png/first-start/$look-$theme.png" -o "$out/$look-$theme.webp"
+        echo "site-shots: $out/$look-$theme.webp ($(($(wc -c < "$out/$look-$theme.webp") / 1024)) KB)"
+    done
+    version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$repo/Directory.Build.props")
+    printf '{\n  "version": "%s"\n}\n' "$version" > "$out/pictures.json"
+}
+
 scene() {
     local name=$1 theme=$2
     case $name in
@@ -446,6 +478,8 @@ scene() {
                 --key "meta+control+1" --drag 700,444,700,404 --drag 1155,124,1155,148 --wait 1000 --hover 600,300 ;;
         themes)
             themes "$theme" ;;
+        first-start)
+            first_start "$theme" ;;
         aspire)
             # The AppHost debugged, stopped in the API's handler while the sensors run on, beside the Aspire window.
             services_ready

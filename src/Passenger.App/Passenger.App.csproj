@@ -15,12 +15,15 @@
   <ItemGroup>
     <!-- Every window's icon (AppIcon), at each size Windows draws one. -->
     <AvaloniaResource Include="Assets/Passenger.ico" />
-    <!-- The mark About, the Welcome page and What's New show, drawn from Assets/passenger.svg. -->
+    <!-- The mark About, the Welcome page, the first start and What's New show, drawn from Assets/passenger.svg. -->
     <AvaloniaResource Include="Assets/passenger.png" />
     <!-- The window's typeface (Theme/WindowFonts.cs): Inter 4.1's hinted faces as rsms/inter's release gives them. -->
     <AvaloniaResource Include="Fonts/*.ttf" />
     <!-- The themes Passenger carries beside its own, a source in theme format 1 (Theme/BuiltInThemes.cs, docs/themes.md). -->
     <AvaloniaResource Include="Theme/BuiltIn/**/*.json;Theme/BuiltIn/**/*.png;Theme/BuiltIn/**/*.jpg;Theme/BuiltIn/**/*.jpeg;Theme/BuiltIn/**/*.webp" />
+    <!-- The first start's pictures of Passenger in each theme it carries, dark and light (Welcome/FirstStartView.cs), taken
+         by just first-start-shots. -->
+    <AvaloniaResource Include="Assets/FirstStart/*.webp" />
     <!-- MSBuild's own schemas (dotnet/msbuild, MIT), which the .NET SDK does not carry: the elements, properties, items,
          metadata and tasks the code help in project files offers and describes (MSBuild/MSBuildSchema.cs). -->
     <EmbeddedResource Include="MSBuild/Schemas/*.xsd" LogicalName="MSBuild/%(Filename)%(Extension)" />

@@ -190,3 +190,9 @@ godot-sweep *args:
 [unix]
 site-shots *scenes:
     tools/site-shots/shots.sh {{scenes}}
+
+# Retake the first start's pictures of each theme Passenger carries, src/Passenger.App/Assets/FirstStart, after just build
+# (macOS), as the version moves: just first-start-shots
+[unix]
+first-start-shots:
+    tools/site-shots/shots.sh first-start
