@@ -1,6 +1,7 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Mobile;
+using Passenger.App.Templates;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -9,7 +10,8 @@ namespace Passenger.Tests;
 /// whose workload the .NET lacks says so, and Install Workloads asks, runs the install (a stand-in of dotnet's) and loads
 /// the project again; an Android project whose workload's answers say it lacks its SDK's platform and a JDK (stand-ins of
 /// the workload's targets in the project) offers the workload's installer, which runs only once the person accepted the
-/// licences Google's repository (a stand-in) gives, and the banner goes once nothing lacks. It sets a process-wide
+/// licences Google's repository (a stand-in) gives, and the banner goes once nothing lacks; New Project offers each mobile
+/// template a missing workload brings, named by it. It sets a process-wide
 /// stand-in and ANDROID_HOME, so it runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class MobileNeedsWindowTests : IDisposable
@@ -120,6 +122,25 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Assert.True(window.MobileSaid is null && !window.MobileWant.AndroidLacks, $"Once installed, the banner still says: {window.MobileSaid}");
         Assert.StartsWith("platforms;android-37.0 and Microsoft's build of OpenJDK 21.0.8", window.Status, StringComparison.Ordinal);
         window.Close();
+    }
+
+    [Fact]
+    public void New_Project_offers_each_mobile_template_a_missing_workload_brings_naming_the_workload_that_installs_it()
+    {
+        List<ProjectTemplate> offered = [.. TemplatePacks.Offered([])];
+        string id = OperatingSystem.IsLinux() ? "maui-android" : "maui";
+        ProjectTemplate maui = offered.Single(t => t.ShortNames.Contains("maui"));
+        Assert.True(maui.Pack is { IsWorkload: true } pack && pack.Id == id, $"The MAUI app is offered with {maui.Pack?.Id}");
+        Assert.Equal($"the .NET {id} workload", maui.Pack!.Named);
+        Assert.Equal($"dotnet workload install {id}", maui.Pack.Command);
+        Assert.Equal(["workload", "install", id], maui.Pack.Install);
+        Assert.Equal("android", offered.Single(t => t.ShortNames.Contains("android")).Pack!.Id);
+        Assert.Equal(!OperatingSystem.IsLinux(), offered.Any(t => t.ShortNames.Contains("ios") && t.Pack!.Id == "ios"));
+        Assert.Equal("Avalonia.Templates", offered.Single(t => t.ShortNames.Contains("avalonia.xplat")).Pack!.Command["dotnet new install ".Length..]);
+
+        List<ProjectTemplate> again = [.. TemplatePacks.Offered([maui with { Pack = null }])];
+        Assert.DoesNotContain(again, t => t.ShortNames.Contains("maui"));
+        Assert.Contains(again, t => t.ShortNames.Contains("maui-blazor"));
     }
 
     /// <summary>A Google repository of one licence, which the platform uses.</summary>

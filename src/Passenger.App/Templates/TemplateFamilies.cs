@@ -91,6 +91,21 @@ public static class TemplateFamilies
         return [.. families, .. others.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)];
     }
 
+    /// <summary>The families with one more in its place: among those of no project type, by name.</summary>
+    public static IReadOnlyList<TemplateFamily> With(IReadOnlyList<TemplateFamily> families, TemplateFamily added)
+    {
+        int at = families.Count;
+        for (int i = 0; i < families.Count; i++)
+        {
+            if (!RiderOrder.Contains(families[i].Name) && StringComparer.OrdinalIgnoreCase.Compare(families[i].Name, added.Name) > 0)
+            {
+                at = i;
+                break;
+            }
+        }
+        return [.. families.Take(at), added, .. families.Skip(at)];
+    }
+
     /// <summary>A family, each Type named and in its place, its first the one a family opens on: those installed before
     /// those whose package is not, then the leading short names, then projects before the solutions made around them
     /// (Avalonia's App and MVVM App, then its Cross Platform Application), then by Type name.</summary>

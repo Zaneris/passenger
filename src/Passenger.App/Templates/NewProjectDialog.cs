@@ -719,7 +719,7 @@ public sealed class NewProjectDialog : IdeWindow
         await Task.WhenAll(godotFound, runtimes);
         if (catalog is not null && creating is null)
         {
-            families = [.. families.Where(f => !f.Types.Any(t => t.GodotGame)), GodotFamily(catalog)];
+            families = TemplateFamilies.With([.. families.Where(f => !f.Types.Any(t => t.GodotGame))], GodotFamily(catalog));
             Filter(searched: false);
         }
         if (template is { GodotGame: true })
@@ -764,16 +764,16 @@ public sealed class NewProjectDialog : IdeWindow
         using CancellationTokenSource cancel = new();
         installing = cancel;
         Fail(null);
-        progress.Text = $"Installing {pack.Id} (dotnet new install {pack.Id})…";
+        progress.Text = $"Installing {pack.Named} ({pack.Command})…";
         Busy(true);
         installOutput.Clear();
         installOutput.IsVisible = true;
         using ProcessRunner runner = new(installOutput);
         try
         {
-            if (runner.StartDotnet(ProjectTemplates.New(["install", pack.Id]), InstallFolder()) is { } refused)
+            if (runner.StartDotnet(pack.Install, InstallFolder()) is { } refused)
             {
-                Fail($"Installation of {pack.Id} has failed: {refused}");
+                Fail($"Installation of {pack.Named} has failed: {refused}");
                 return;
             }
             BackgroundWork.Track(runner.Ended);
@@ -788,7 +788,7 @@ public sealed class NewProjectDialog : IdeWindow
             }
             if (code != 0)
             {
-                Fail($"Installation of {pack.Id} has failed ({ExitCodes.Said(code)}): its output says why");
+                Fail($"Installation of {pack.Named} has failed ({ExitCodes.Said(code)}): its output says why");
                 return;
             }
             ProjectTemplates.Forget();
@@ -797,7 +797,7 @@ public sealed class NewProjectDialog : IdeWindow
             await RefreshAsync();
             if (wanted is not null && template is { Pack: not null })
             {
-                Fail($"{pack.Id} is installed, but dotnet new has no {wanted.Name} ({wanted.ShortName}) from it");
+                Fail($"{pack.Named} is installed, but dotnet new has no {wanted.Name} ({wanted.ShortName}) from it");
             }
             else if (wanted is null && AspireMissing() is not null)
             {
@@ -861,7 +861,7 @@ public sealed class NewProjectDialog : IdeWindow
         }
         if (template.Pack is { } pack)
         {
-            return $"{template.Name} comes with {pack.Id}, which is not installed: Install it first";
+            return $"{template.Name} comes with {pack.Named}, which is not installed: Install it first";
         }
         if (template.GodotGame && GodotWhyNot() is { } godot)
         {
@@ -1163,7 +1163,7 @@ public sealed class NewProjectDialog : IdeWindow
             return;
         }
         catalog = read;
-        families = [.. read.Families.Select(f => target is null ? f : f.Projects()).OfType<TemplateFamily>(), GodotFamily(read)];
+        families = TemplateFamilies.With([.. read.Families.Select(f => target is null ? f : f.Projects()).OfType<TemplateFamily>()], GodotFamily(read));
         setting = true;
         string? formatWas = format.SelectedItem as string;
         List<string> formats = [.. read.SolutionFormats.Select(f => $".{f}")];
@@ -1466,7 +1466,9 @@ public sealed class NewProjectDialog : IdeWindow
         if (chosen is { Pack: { } pack })
         {
             offerText.Text = pack.Offer;
-            offerCommand.Text = $"{pack.Id} is not installed. Install runs dotnet new install {pack.Id}, which takes it from the NuGet feeds this directory uses.";
+            offerCommand.Text = pack.IsWorkload
+                ? $"{char.ToUpperInvariant(pack.Named[0])}{pack.Named[1..]} is not installed. Install runs {pack.Command}, which installs it into the .NET Passenger builds with, from NuGet."
+                : $"{pack.Id} is not installed. Install runs {pack.Command}, which takes it from the NuGet feeds this directory uses.";
             installOutput.IsVisible = false;
         }
         if (chosen is null)
@@ -1537,7 +1539,7 @@ public sealed class NewProjectDialog : IdeWindow
         {
             string types = row.Types.Count > 1 ? $": {string.Join(", ", row.Types.Select(t => t.TypeName))}" : row.Name == row.Types[0].Name ? string.Empty : $": {row.Types[0].Name}";
             bool windows = row.Types.All(t => t.WindowsOnly is not null);
-            ToolTip.SetTip(item, row.NotInstalled ? $"{row.Name}{types}, from {row.Types[0].Pack!.Id}, which is not installed"
+            ToolTip.SetTip(item, row.NotInstalled ? $"{row.Name}{types}, from {row.Types[0].Pack!.Named}, which is not installed"
                 : windows ? $"{row.Name}{types}: they build here but run only on Windows" : $"{row.Name}{types}");
             name.Text = row.Name;
             Mark(mark, row.NotInstalled ? NotInstalled : windows ? WindowsOnly : null);

@@ -1,8 +1,22 @@
 namespace Passenger.App.Templates;
 
 /// <summary>A template package New Project offers to install when dotnet new does not have it: by its NuGet id, what
-/// the offer says it is for, the version its kinds were taken from, and the kinds it gives.</summary>
-public sealed record TemplatePack(string Id, string Offer, string Version, string Author, IReadOnlyList<PackKind> Kinds);
+/// the offer says it is for, the version its kinds were taken from, and the kinds it gives. One a .NET workload brings
+/// (<see cref="IsWorkload"/>) is named by the workload's id and installed with it.</summary>
+public sealed record TemplatePack(string Id, string Offer, string Version, string Author, IReadOnlyList<PackKind> Kinds)
+{
+    /// <summary>Whether a .NET workload of this id brings the templates, which dotnet workload install installs.</summary>
+    public bool IsWorkload { get; init; }
+
+    /// <summary>The package or workload as the dialog names it.</summary>
+    public string Named => IsWorkload ? $"the .NET {Id} workload" : Id;
+
+    /// <summary>The .NET command line that installs it.</summary>
+    public IReadOnlyList<string> Install => IsWorkload ? ["workload", "install", Id] : ProjectTemplates.New(["install", Id]);
+
+    /// <summary>What Install runs, as the dialog says it.</summary>
+    public string Command => IsWorkload ? $"dotnet workload install {Id}" : $"dotnet new install {Id}";
+}
 
 /// <summary>A project (or a solution, which only New Solution makes) a template package gives, as its template.json
 /// names it.</summary>
@@ -10,7 +24,7 @@ public sealed record PackKind(string Name, string ShortName, bool IsSolution, IR
     IReadOnlyList<string> Classifications, string DefaultName);
 
 /// <summary>The template packages Passenger knows before they are installed: Avalonia's, .NET Aspire's, Azure
-/// Functions' and AI Extensions' (MAUI is a workload, not a package). Their kinds are kept here, from each package at
+/// Functions' and AI Extensions', and those the mobile workloads bring (<see cref="Workloads"/>). Their kinds are kept here, from each package at
 /// the version named, rather than read from the package, which would mean downloading every one each time the dialog
 /// opens; once installed, dotnet new's own templates take their place, at the version installed.</summary>
 public static class TemplatePacks
@@ -18,6 +32,49 @@ public static class TemplatePacks
     private static readonly string[] Desktop = ["Desktop", "Xaml", "Avalonia", "Windows", "Linux", "macOS"];
 
     private static readonly string[] AspireService = ["Common", "Aspire", "Cloud", "Web", "Web API", "API", "Service"];
+
+    private static readonly string[] Maui = ["MAUI", "Android", "iOS", "macOS", "Mac Catalyst", "Windows", "Mobile"];
+
+    private static readonly string[] Android = ["Android", "Mobile"];
+
+    private static readonly string[] Ios = ["iOS", "Mobile"];
+
+    /// <summary>The workloads whose templates New Project offers where they are not installed, each on the systems it
+    /// installs on (MAUI's on Linux as its Android part alone), their kinds from each workload's templates at the version named.</summary>
+    private static IEnumerable<TemplatePack> Workloads()
+    {
+        bool apple = OperatingSystem.IsMacOS() || OperatingSystem.IsWindows();
+        yield return new TemplatePack(apple ? "maui" : "maui-android", "Install the .NET MAUI workload for creating apps for Android, iOS, Mac Catalyst and Windows from one project",
+            "11.0.0", "Microsoft",
+        [
+            new(".NET MAUI App", "maui", false, ["C#"], "A project for creating a .NET MAUI application for iOS, Android, Mac Catalyst and WinUI", Maui, "MauiApp1"),
+            new(".NET MAUI Blazor Hybrid App", "maui-blazor", false, ["C#"], "A project for creating a .NET MAUI application for iOS, Android, Mac Catalyst and WinUI, using Blazor Hybrid",
+                [.. Maui, "Blazor", "Blazor Hybrid"], "MauiApp1"),
+            new(".NET MAUI Multi-Project App", "maui-multiproject", true, ["C#"],
+                "A project for creating a .NET MAUI application for iOS, Android, Mac Catalyst and WinUI with multiple, separate app projects.", Maui, "MauiApp1"),
+            new(".NET MAUI Class Library", "mauilib", false, ["C#"], "A project for creating a .NET MAUI class library", Maui, "MauiLib1"),
+        ]) { IsWorkload = true };
+        yield return new TemplatePack("android", "Install the .NET android workload for creating Android apps", "37.2.31", "Microsoft",
+        [
+            new("Android Application", "android", false, ["C#"], "A project for creating a .NET for Android application", Android, "AndroidApp1"),
+            new("Android Class Library", "androidlib", false, ["C#"], "A project for creating a .NET for Android class library", Android, "AndroidLib1"),
+            new("Android Wear Application", "androidwear", false, ["C#"], "A project for creating a Wear OS app using .NET for Android", Android, "AndroidApp1"),
+        ]) { IsWorkload = true };
+        if (!apple)
+        {
+            yield break;
+        }
+        yield return new TemplatePack("ios", "Install the .NET ios workload for creating iOS apps", "27.2.11039", "Microsoft",
+        [
+            new("iOS Application", "ios", false, ["C#"], "A project for creating a .NET iOS application", Ios, "iOSApp1"),
+            new("iOS Tabbed Application", "ios-tabbed", false, ["C#"], "A project for creating a .NET iOS tabbed application", Ios, "iOSTabbedApp1"),
+        ]) { IsWorkload = true };
+        yield return new TemplatePack("maccatalyst", "Install the .NET maccatalyst workload for creating Mac Catalyst apps", "27.2.11039", "Microsoft",
+        [
+            new("Mac Catalyst Application", "maccatalyst", false, ["C#"], "A project for creating a .NET Mac Catalyst application", ["Desktop", "macOS", "Mac Catalyst"],
+                "MacCatalystApp1"),
+        ]) { IsWorkload = true };
+    }
 
     public static IReadOnlyList<TemplatePack> All { get; } =
     [
@@ -72,7 +129,7 @@ public static class TemplatePacks
     public static IEnumerable<ProjectTemplate> Offered(IReadOnlyList<ProjectTemplate> installed)
     {
         HashSet<string> had = new(installed.SelectMany(t => t.ShortNames), StringComparer.OrdinalIgnoreCase);
-        foreach (TemplatePack pack in All)
+        foreach (TemplatePack pack in All.Concat(Workloads()))
         {
             foreach (PackKind kind in pack.Kinds.Where(k => !had.Contains(k.ShortName)))
             {

@@ -39,11 +39,9 @@ public sealed class TemplateFamiliesTests : IDisposable
         Ui.WaitFor(() => ProjectTemplates.Ready(place) is not null, "the templates to be read ahead of New Solution", TimeSpan.FromMinutes(2));
         Assert.True(window.Perform(AppActions.NewSolution));
         NewProjectDialog dialog = Assert.Single(window.OwnedWindows.OfType<NewProjectDialog>());
-        // Rider's types first, in its order (Desktop where WPF builds, MAUI with its workload's templates), then the rest by name.
+        // Rider's types first, in its order (Desktop where WPF builds, MAUI installed or offered with its workload), then the rest by name.
         string[] atOnce = [.. dialog.Families.Select(f => f.Name)];
-        bool maui = Lists("MAUI");
-        string[] riders = ["Console", "Class Library", "Desktop", "Web", "AI Extensions",
-            "Services", "Unit Test", "Aspire", "Azure Functions", .. maui ? ["MAUI"] : Array.Empty<string>()];
+        string[] riders = ["Console", "Class Library", "Desktop", "Web", "AI Extensions", "Services", "Unit Test", "Aspire", "Azure Functions", "MAUI"];
         Assert.Equal(riders, atOnce.Take(riders.Length));
         string[] others = atOnce[riders.Length..];
         Assert.Contains("Avalonia", others);
@@ -74,6 +72,12 @@ public sealed class TemplateFamiliesTests : IDisposable
             ? "Aspire's family is marked not installed though dotnet new has some of it"
             : "Aspire's family is not marked not installed though dotnet new has none of it");
         Assert.Equal(["App", "MVVM App", "Cross Platform Application"], Family(dialog, "Avalonia").Types.Select(t => t.TypeName));
+        // MAUI's templates are listed whether or not its workload is, which Install installs where it is not.
+        bool maui = Lists("MAUI");
+        TemplateFamily mauis = Family(dialog, "MAUI");
+        Assert.True(mauis.NotInstalled != maui && mauis.Types.Any(t => t.ShortName == "maui"),
+            $"MAUI's family, {(maui ? "installed" : "not installed")}, lists {string.Join(", ", mauis.Types.Select(t => t.ShortName))}, not installed: {mauis.NotInstalled}");
+        Assert.True(maui || mauis.Types.All(t => t.Pack is { IsWorkload: true }), "A MAUI template not installed is offered as no workload's");
 
         Ui.Click(dialog.SearchBox);
         Type(dialog, "nunit");
