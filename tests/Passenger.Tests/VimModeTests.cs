@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Passenger.App;
 using Passenger.Editor;
 using Passenger.Text;
@@ -12,8 +13,10 @@ namespace Passenger.Tests;
 /// character as text unless the key was taken): the setting turns it on and off live, the status bar says the mode and a
 /// command half typed, normal mode's keys (Enter and Tab too) move and delete but never type, a Shift pressed on its own
 /// keeps a count, u takes back one x and a whole insert session, Escape leaves insert mode keeping every caret, carets
-/// stand on a character in normal mode however they were put there, and an input method composes only in insert mode.
-/// What each key does is VimTests'.</summary>
+/// stand on a character in normal mode however they were put there, and an input method composes only in insert mode;
+/// motions, operators with motions and text objects, registers (the system clipboard's too) and . typed as keys, each
+/// change one step of the window's undo and every caret taking it; and a long random session of normal mode's keys
+/// checked key by key against a small model of Vim's rules. What each key does is VimTests'.</summary>
 public sealed class VimModeTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("vim-");
@@ -162,6 +165,168 @@ public sealed class VimModeTests : IDisposable
         Assert.Equal(("one wo\nthree\n", 4), (rig.Text, rig.Caret));
     }
 
+    [AvaloniaFact]
+    public void Motions_typed_move_the_caret_as_vims_do()
+    {
+        EditorRig rig = new("one (two [three] four)\n\nfive six-seven eight\n");
+        rig.Editor.UsesVim = true;
+        Keys(rig.Window, "f(");
+        Assert.Equal(4, rig.Caret);
+        Keys(rig.Window, "%");
+        Assert.Equal(21, rig.Caret);
+        Keys(rig.Window, "F[;");
+        Assert.Equal(9, rig.Caret);
+        Keys(rig.Window, "}");
+        Assert.Equal(23, rig.Caret);
+        Keys(rig.Window, "jWE");
+        Assert.Equal(37, rig.Caret);
+        Keys(rig.Window, "gge");
+        Assert.Equal(2, rig.Caret);
+    }
+
+    /// <summary>An operator over a motion or an object, its count either side, and a change with what it typed: each one
+    /// step of the window's undo, u taking each back in turn.</summary>
+    [AvaloniaFact]
+    public void Operators_with_motions_and_objects_change_the_text_each_one_step_of_undo()
+    {
+        (MainWindow window, CodeEditor editor) = Open("alpha beta gamma delta\n  (one two) three\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "d2w");
+            Assert.Equal("gamma delta\n  (one two) three\n", Text(editor));
+            Keys(window, "jfociwZED<Esc>");
+            Assert.Equal("gamma delta\n  (ZED two) three\n", Text(editor));
+            Keys(window, "di(");
+            Assert.Equal("gamma delta\n  () three\n", Text(editor));
+            Keys(window, ">>kgUiw");
+            Assert.Equal("gamma DELTA\n      () three\n", Text(editor));
+            string[] undone = ["gamma delta\n      () three\n", "gamma delta\n  () three\n", "gamma delta\n  (ZED two) three\n", "gamma delta\n  (one two) three\n", "alpha beta gamma delta\n  (one two) three\n"];
+            foreach (string was in undone)
+            {
+                Keys(window, "u");
+                Ui.WaitFor(() => Text(editor) == was, () => $"u left \"{Text(editor)}\", not \"{was}\": a change was not one step of undo");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A named register yanked into and appended to, then put; the black hole register keeping nothing; and + reaching
+    /// the system clipboard both ways.</summary>
+    [AvaloniaFact]
+    public void Registers_keep_what_was_yanked_and_plus_is_the_system_clipboard()
+    {
+        (MainWindow window, CodeEditor editor) = Open("one\ntwo\nthree\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "\"ayyj\"Ayy\"_ddG\"ap");
+            Assert.Equal("one\nthree\none\ntwo\n", Text(editor));
+            Keys(window, "gg\"+yiw");
+            Ui.WaitFor(() => Ui.Await(window.Clipboard!.TryGetTextAsync(), "the clipboard's text") == "one", () => "\"+yiw put nothing on the system clipboard");
+            Ui.Await(window.Clipboard!.SetTextAsync("pasted\n"), "the clipboard written");
+            Keys(window, "\"+P");
+            Ui.WaitFor(() => Text(editor) == "pasted\none\nthree\none\ntwo\n", () => $"\"+P put \"{Text(editor)}\", not the clipboard's line above");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>. makes a change with what its insert typed again at every caret, as one step of undo.</summary>
+    [AvaloniaFact]
+    public void Dot_repeats_a_change_at_every_caret_as_one_step_of_undo()
+    {
+        EditorRig rig = new("one two three\nfour five six\n");
+        rig.Editor.UsesVim = true;
+        rig.Editor.Selections = SelectionSet.Create([Selection.At(0), Selection.At(14)], 1);
+        Keys(rig.Window, "cwX<Esc>w");
+        Assert.Equal("X two three\nX five six\n", rig.Text);
+        Keys(rig.Window, ".");
+        Assert.Equal("X X three\nX X six\n", rig.Text);
+        Keys(rig.Window, "u");
+        Assert.Equal("X two three\nX five six\n", rig.Text);
+    }
+
+    /// <summary>A long session of normal mode's keys in an editor, seeded, checked after each key against a model of what
+    /// Vim does with them: counts, h l j k 0 $, x X D dd, yy p P, J, ~ and u; the model knows a string, a caret, the column
+    /// j and k aim for, the unnamed register and the text before each change.</summary>
+    [AvaloniaTheory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void A_random_normal_mode_session_leaves_what_a_model_of_vims_rules_says(int seed)
+    {
+        Random random = new(seed);
+        VimModel model = new(string.Concat(Enumerable.Range(0, 12).Select(_ => VimModel.Line(random) + "\n")));
+        EditorRig rig = new(model.Text);
+        rig.Window.Height = 300;
+        rig.Editor.UsesVim = true;
+        string[] commands = ["h", "l", "j", "k", "0", "$", "x", "X", "D", "dd", "yy", "p", "P", "J", "~", "u"];
+        for (int step = 0; step < 400; step++)
+        {
+            string command = commands[random.Next(commands.Length)];
+            int count = command is "h" or "l" or "j" or "k" or "x" or "X" or "dd" or "~" && random.Next(4) == 0 ? random.Next(2, 4) : 0;
+            string keys = (count > 0 ? count.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty) + command;
+            if (!model.Press(command, Math.Max(count, 1)))
+            {
+                continue;
+            }
+            Keys(rig.Window, keys);
+            string where = $"seed {seed}, step {step}, after {keys}";
+            Assert.True(rig.DifferenceFrom(model.Text) < 0, $"The text differs from the model's at {rig.DifferenceFrom(model.Text)} ({where}): \"{rig.Text}\" against \"{model.Text}\"");
+            Assert.True(rig.Caret == model.Caret, $"The caret stands at {rig.Caret}, the model's at {model.Caret} ({where}) in \"{model.Text}\"");
+        }
+    }
+
+    /// <summary>Keys in Vim's notation typed one by one as a keyboard types them: a character with the key that types it,
+    /// Escape, Enter and Backspace by name.</summary>
+    private static void Keys(TopLevel window, string keys)
+    {
+        for (int i = 0; i < keys.Length; i++)
+        {
+            string? named = keys[i] == '<' ? Array.Find(["<Esc>", "<CR>", "<BS>"], n => string.CompareOrdinal(keys, i, n, 0, n.Length) == 0) : null;
+            if (named is not null)
+            {
+                Ui.Press(window, named switch { "<Esc>" => "ESCAPE", "<CR>" => "ENTER", _ => "BACK_SPACE" });
+                i += named.Length - 1;
+                continue;
+            }
+            char c = keys[i];
+            string key = c switch
+            {
+                >= 'a' and <= 'z' => char.ToUpperInvariant(c).ToString(),
+                >= 'A' and <= 'Z' => "shift " + c,
+                >= '0' and <= '9' => c.ToString(),
+                ' ' => "SPACE",
+                '.' => "PERIOD",
+                ',' => "COMMA",
+                ';' => "SEMICOLON",
+                '[' => "OPEN_BRACKET",
+                ']' => "CLOSE_BRACKET",
+                '{' => "shift OPEN_BRACKET",
+                '}' => "shift CLOSE_BRACKET",
+                '(' => "shift 9",
+                ')' => "shift 0",
+                '%' => "shift 5",
+                '$' => "shift 4",
+                '"' => "shift QUOTE",
+                '>' => "shift PERIOD",
+                '<' => "shift COMMA",
+                '~' => "shift BACK_QUOTE",
+                '_' => "shift MINUS",
+                '+' => "shift EQUALS",
+                _ => throw new ArgumentException($"No key types '{c}' here", nameof(keys)),
+            };
+            Key(window, key, c.ToString());
+        }
+    }
+
     private (MainWindow Window, CodeEditor Editor) Open(string text)
     {
         string path = Path.Combine(folder, "One.txt");
@@ -186,4 +351,165 @@ public sealed class VimModeTests : IDisposable
     }
 
     private static string Text(CodeEditor editor) => editor.Document.Snapshot.ToString();
+
+    /// <summary>What Vim does with a few of normal mode's keys, as plainly as it can be said: a string of lines each ending
+    /// with a break, a caret, the column j and k aim for, the unnamed register (whole lines or not) and the text and caret
+    /// before each change, for u. It passes over a dd that would leave no line.</summary>
+    private sealed class VimModel(string text)
+    {
+        private readonly Stack<(string Text, int Caret)> undo = [];
+
+        private int want;
+
+        private (string Text, bool Lines)? register;
+
+        public string Text { get; private set; } = text;
+
+        public int Caret { get; private set; }
+
+        public static string Line(Random random)
+        {
+            string[] words = ["foo", "Bar", "x", "baz", "qux", "Ok"];
+            int length = random.Next(0, 5);
+            string indent = random.Next(4) == 0 ? "  " : string.Empty;
+            return length == 0 ? string.Empty : indent + string.Join(' ', Enumerable.Range(0, length).Select(_ => words[random.Next(words.Length)]));
+        }
+
+        public bool Press(string command, int n)
+        {
+            List<string> lines = [.. Text[..^1].Split('\n')];
+            int line = Text[..Caret].Count(c => c == '\n');
+            int column = Caret - Start(lines, line);
+            int length = lines[line].Length;
+            switch (command)
+            {
+                case "h":
+                    Move(lines, line, Math.Max(0, column - n));
+                    break;
+                case "l":
+                    Move(lines, line, Math.Min(Math.Max(length - 1, 0), column + n));
+                    break;
+                case "0":
+                    Move(lines, line, 0);
+                    break;
+                case "$":
+                    Move(lines, line, Math.Max(length - 1, 0));
+                    want = int.MaxValue;
+                    break;
+                case "j" or "k":
+                    int to = Math.Clamp(line + (command == "j" ? n : -n), 0, lines.Count - 1);
+                    if (to == line)
+                    {
+                        break;
+                    }
+                    Caret = Start(lines, to) + Math.Min(want, Math.Max(lines[to].Length - 1, 0));
+                    break;
+                case "x" or "X" or "D" or "~":
+                    int from = command == "X" ? Math.Max(0, column - n) : column;
+                    int end = command switch { "X" => column, "D" => length, _ => Math.Min(length, column + n) };
+                    if (end <= from)
+                    {
+                        break;
+                    }
+                    string taken = lines[line][from..end];
+                    Changed();
+                    if (command == "~")
+                    {
+                        lines[line] = lines[line][..from] + new string([.. taken.Select(c => char.IsUpper(c) ? char.ToLowerInvariant(c) : char.ToUpperInvariant(c))]) + lines[line][end..];
+                        Set(lines, line, Math.Min(end, Math.Max(lines[line].Length - 1, 0)));
+                        break;
+                    }
+                    register = (taken, false);
+                    lines[line] = lines[line][..from] + lines[line][end..];
+                    Set(lines, line, Math.Min(from, Math.Max(lines[line].Length - 1, 0)));
+                    break;
+                case "dd" or "yy":
+                    if (n > 1 && line == lines.Count - 1)
+                    {
+                        break;
+                    }
+                    int last = Math.Min(line + n - 1, lines.Count - 1);
+                    if (command == "dd" && line == 0 && last == lines.Count - 1)
+                    {
+                        return false;
+                    }
+                    register = (string.Concat(lines.Skip(line).Take(last - line + 1).Select(l => l + "\n")), true);
+                    if (command == "yy")
+                    {
+                        break;
+                    }
+                    Changed();
+                    lines.RemoveRange(line, last - line + 1);
+                    int now = Math.Min(line, lines.Count - 1);
+                    Set(lines, now, FirstNonBlank(lines[now]));
+                    break;
+                case "p" or "P":
+                    if (register is not { } put || put.Text.Length == 0)
+                    {
+                        break;
+                    }
+                    Changed();
+                    if (put.Lines)
+                    {
+                        int at = command == "p" ? line + 1 : line;
+                        lines.InsertRange(at, put.Text[..^1].Split('\n'));
+                        Set(lines, at, FirstNonBlank(lines[at]));
+                        break;
+                    }
+                    int into = command == "p" && length > 0 ? column + 1 : column;
+                    lines[line] = lines[line][..into] + put.Text + lines[line][into..];
+                    Set(lines, line, into + put.Text.Length - 1);
+                    break;
+                case "J":
+                    if (line == lines.Count - 1)
+                    {
+                        break;
+                    }
+                    Changed();
+                    string next = lines[line + 1].TrimStart(' ');
+                    string space = next.Length == 0 || length == 0 || lines[line].EndsWith(' ') ? string.Empty : " ";
+                    lines[line] += space + next;
+                    lines.RemoveAt(line + 1);
+                    Set(lines, line, Math.Min(length, Math.Max(lines[line].Length - 1, 0)));
+                    break;
+                case "u":
+                    if (undo.TryPop(out (string Text, int Caret) before))
+                    {
+                        (Text, Caret) = before;
+                        List<string> back = [.. Text[..^1].Split('\n')];
+                        int at = Text[..Caret].Count(c => c == '\n');
+                        Caret = Start(back, at) + Math.Min(Caret - Start(back, at), Math.Max(back[at].Length - 1, 0));
+                        want = Caret - Start(back, at);
+                    }
+                    break;
+            }
+            return true;
+        }
+
+        private void Changed() => undo.Push((Text, Caret));
+
+        private void Move(List<string> lines, int line, int column)
+        {
+            Caret = Start(lines, line) + column;
+            want = column;
+        }
+
+        private void Set(List<string> lines, int line, int column)
+        {
+            Text = string.Concat(lines.Select(l => l + "\n"));
+            Move(lines, line, column);
+        }
+
+        private static int Start(List<string> lines, int line) => lines.Take(line).Sum(l => l.Length + 1);
+
+        private static int FirstNonBlank(string line)
+        {
+            int at = 0;
+            while (at < line.Length - 1 && line[at] == ' ')
+            {
+                at++;
+            }
+            return at;
+        }
+    }
 }

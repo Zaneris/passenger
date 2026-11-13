@@ -9,18 +9,28 @@ public enum VimMode
 }
 
 /// <summary>What a key did in Vim mode: taken, or left to the keymap; and what the editor is to do with it: carets to set,
-/// an edit to apply as one step of undo, or one of <see cref="EditorActions"/> to run <see cref="Repeat"/> times.</summary>
-public sealed record VimResult(bool Taken, SelectionSet? Selections = null, EditPlan? Edit = null, string? Action = null, int Repeat = 1)
+/// edits to apply in turn as one step of undo, or one of <see cref="EditorActions"/> to run <see cref="Repeat"/> times.</summary>
+public sealed record VimResult(bool Taken, SelectionSet? Selections = null, IReadOnlyList<EditPlan>? Edits = null, string? Action = null, int Repeat = 1)
 {
     public static readonly VimResult Left = new(false);
 
     public static readonly VimResult Held = new(true);
+
+    /// <summary>Text a yank or delete wrote to + or *, for the editor to put on the system clipboard.</summary>
+    public VimRegister? Clipboard { get; init; }
+
+    /// <summary>A put from + or *: the editor reads the system clipboard and hands it to <see cref="Vim.PutClipboard"/>.</summary>
+    public bool ReadsClipboard { get; init; }
+
+    /// <summary>The last of <see cref="Edits"/>, or null with none.</summary>
+    public EditPlan? Edit => Edits is { Count: > 0 } edits ? edits[^1] : null;
 }
 
 /// <summary>Vim's normal and insert modes as a function from keys to what the editor does, knowing nothing of the window.
-/// Keys come in Vim's notation ("w", "G", "&lt;Esc&gt;", "&lt;C-r&gt;"); every caret moves alike; a key normal mode
-/// doesn't take (a shortcut with Cmd, an arrow) is left to the keymap, so the IDE's own keys keep working.</summary>
-public sealed class Vim
+/// Keys come in Vim's notation ("w", "G", "&lt;Esc&gt;", "&lt;C-r&gt;"); counts, registers, operators with motions and text
+/// objects, puts and . act at every caret alike; a key normal mode doesn't take (a shortcut with Cmd, an arrow) is left to
+/// the keymap, so the IDE's own keys keep working.</summary>
+public sealed partial class Vim(VimRegisters registers)
 {
     /// <summary>Escape in Vim's notation.</summary>
     public const string Escape = "<Esc>";
@@ -28,131 +38,111 @@ public sealed class Vim
     /// <summary>The most undos or redos a count asks for at once: the window queues each apart.</summary>
     private const int MostRepeated = 1000;
 
-    private string pending = string.Empty;
+    /// <summary>The most characters a count's repeats of a put or an insert make at once.</summary>
+    private const int MostRepeatedText = 10_000_000;
 
-    /// <summary>The columns j and k aim for, one per caret of <see cref="wantedFor"/>, so a short line passed over
-    /// doesn't pull the caret left for good.</summary>
+    private static readonly IVimView PlainView = new VimTextView(new IndentOptions());
+
+    private readonly List<string> pending = [];
+
+    /// <summary>The display columns j and k aim for, one per caret of <see cref="wantedFor"/>, so a short line passed
+    /// over doesn't pull the caret left for good.</summary>
     private int[] wanted = [];
 
     private SelectionSet? wantedFor;
 
+    /// <summary>The last f, F, t or T, for ; and , to repeat.</summary>
+    private (string Target, bool Back, bool Till)? lastFind;
+
+    /// <summary>The last change, for . to make again: its keys after the count, the count, and what its insert typed.</summary>
+    private (IReadOnlyList<string> Keys, int Count, string Inserted)? lastChange;
+
+    /// <summary>The insert session under way: the command that began it and how, where its first caret began, the text's
+    /// length and the carets then, and the count to repeat its text by.</summary>
+    private (IReadOnlyList<string> Keys, int Count, string How, int First, int Length, int Carets)? inserting;
+
+    /// <summary>A put from + or * waiting for the clipboard's text.</summary>
+    private (bool Before, int Count)? clipboardPut;
+
+    /// <summary>Set while . makes the last change again, which records nothing.</summary>
+    private bool replaying;
+
+    public Vim()
+        : this(new VimRegisters())
+    {
+    }
+
     public VimMode Mode { get; private set; } = VimMode.Normal;
 
     /// <summary>The count and keys typed toward a command not yet complete ("2d"), for the status bar.</summary>
-    public string Pending => pending;
+    public string Pending => string.Concat(pending);
 
-    public VimResult Press(string key, TextSnapshot text, SelectionSet selections)
+    public VimRegisters Registers => registers;
+
+    public VimResult Press(string key, TextSnapshot text, SelectionSet selections, IVimView? view = null)
     {
+        view ??= PlainView;
         if (Mode == VimMode.Insert)
         {
-            if (key != Escape)
-            {
-                return VimResult.Left;
-            }
-            Mode = VimMode.Normal;
-            return new VimResult(true, selections.With(s => Selection.At(Settled(text, StepBack(text, s.Caret)))));
+            return key == Escape ? LeaveInsert(text, selections, view) : VimResult.Left;
         }
         if (key == Escape)
         {
-            bool waiting = pending.Length > 0;
-            pending = string.Empty;
+            bool waiting = pending.Count > 0;
+            pending.Clear();
             return waiting ? VimResult.Held : VimResult.Left;
         }
         if (key == "<C-r>")
         {
-            int redo = Count(pending, out _);
-            pending = string.Empty;
+            int redo = CountOnly();
+            pending.Clear();
             return new VimResult(true, Action: EditorActions.Redo, Repeat: Math.Clamp(redo, 1, MostRepeated));
         }
-        if (key.Length != 1 && key is not ("<BS>" or "<CR>" or "<Del>" or "<Tab>"))
+        if (key == "<Del>" && pending.Count > 0)
         {
-            pending = string.Empty;
+            // Delete after a count takes back the count's last digit, as Vim does.
+            bool counting = pending.All(k => k.Length == 1 && char.IsAsciiDigit(k[0]));
+            if (counting)
+            {
+                pending.RemoveAt(pending.Count - 1);
+            }
+            else
+            {
+                pending.Clear();
+            }
+            return VimResult.Held;
+        }
+        if (!IsVimKey(key))
+        {
+            pending.Clear();
             return VimResult.Left;
         }
-        pending += key;
-        int count = Count(pending, out string command);
-        if (command is "" or "g" or "d")
+        pending.Add(key == "<Del>" ? "x" : key);
+        Command? command = Parse(pending, out bool incomplete);
+        if (incomplete)
         {
             return VimResult.Held;
         }
-        string typed = pending;
-        pending = string.Empty;
-        int n = Math.Max(count, 1);
-        switch (command)
+        pending.Clear();
+        // A command Vim mode doesn't know is swallowed whole, so its keys never type into the text.
+        return command is null ? VimResult.Held : Run(command, text, selections, view);
+    }
+
+    /// <summary>The put a p or P from + or * asked for, with the clipboard's text the editor read.</summary>
+    public VimResult PutClipboard(string clipboard, TextSnapshot text, SelectionSet selections, IVimView? view = null)
+    {
+        if (clipboardPut is not { } put || clipboard.Length == 0)
         {
-            case "h":
-                return Move(text, selections, c => Repeated(n, c, p => Math.Max(StepBack(text, p), LineOf(text, c).Start)));
-            case "<BS>":
-                // Backspace crosses into the line before, as Vim's whichwrap has it by default.
-                return Move(text, selections, c => Repeated(n, c, p => p > LineOf(text, p).Start ? StepBack(text, p) : Settled(text, StepBack(text, p))));
-            case "<CR>":
-                return Move(text, selections, c =>
-                {
-                    int from = text.GetLineFromOffset(c);
-                    int to = (int)Math.Min((long)from + n, LastLine(text));
-                    return to == from ? c : FirstNonBlank(text, to);
-                });
-            case "<Del>" when count > 0:
-                // Delete after a count takes back the count's last digit, as Vim does.
-                pending = typed[..(typed.Length - command.Length - 1)];
-                return VimResult.Held;
-            case "<Del>":
-                return DeleteCharacters(text, selections, 1);
-            case "l":
-                return Move(text, selections, c => Repeated(n, c, p => Math.Min(TextNavigation.NextGrapheme(text, p), LineOf(text, c).End)));
-            case "j":
-                return Vertically(text, selections, n);
-            case "k":
-                return Vertically(text, selections, -n);
-            case "0":
-                return Move(text, selections, c => LineOf(text, c).Start);
-            case "^":
-                return Move(text, selections, c => TextNavigation.IndentEnd(text, LineOf(text, c)));
-            case "$":
-                return ToLineEnd(text, selections, n);
-            case "w":
-                return Move(text, selections, c => Repeated(n, c, p => WordStart(text, p)));
-            case "b":
-                return Move(text, selections, c => Repeated(n, c, p => WordBack(text, p)));
-            case "e":
-                return Move(text, selections, c => Repeated(n, c, p => WordEnd(text, p)));
-            case "gg":
-                return Move(text, selections, _ => FirstNonBlank(text, count == 0 ? 0 : Math.Min(count - 1, LastLine(text))));
-            case "G":
-                return Move(text, selections, _ => FirstNonBlank(text, count == 0 ? LastLine(text) : Math.Min(count - 1, LastLine(text))));
-            case "x":
-                return DeleteCharacters(text, selections, n);
-            case "dd":
-                return DeleteLines(text, selections, n);
-            case "i":
-                return Insert(selections);
-            case "a":
-                return Insert(selections.With(s => Selection.At(Math.Min(TextNavigation.NextGrapheme(text, s.Caret), LineOf(text, s.Caret).End))));
-            case "I":
-                return Insert(selections.With(s => Selection.At(TextNavigation.IndentEnd(text, LineOf(text, s.Caret)))));
-            case "A":
-                return Insert(selections.With(s => Selection.At(LineOf(text, s.Caret).End)));
-            case "o":
-                Mode = VimMode.Insert;
-                return new VimResult(true, Action: EditorActions.StartNewLine);
-            case "O":
-                Mode = VimMode.Insert;
-                return new VimResult(true, Action: EditorActions.StartNewLineBefore);
-            case "u":
-                return new VimResult(true, Action: EditorActions.Undo, Repeat: Math.Min(n, MostRepeated));
-            default:
-                // A command Vim mode doesn't know yet is swallowed whole, so its keys never type into the text.
-                return VimResult.Held;
+            clipboardPut = null;
+            return VimResult.Held;
         }
+        clipboardPut = null;
+        return Put(VimRegisters.FromClipboard(clipboard), put.Before, put.Count, text, selections, view ?? PlainView);
     }
 
     /// <summary>Where a normal-mode caret may stand nearest the offset: on a character of its line, never past its last
     /// one, but at the start of an empty line.</summary>
-    public static int Settled(TextSnapshot text, int offset)
-    {
-        LineSpan line = LineOf(text, offset);
-        return line.Length == 0 || offset < line.End ? Math.Max(offset, line.Start) : Math.Max(StepBack(text, line.End), line.Start);
-    }
+    public static int Settled(TextSnapshot text, int offset) => VimMotions.Settled(text, offset);
 
     /// <summary>The carets as normal mode lets them stand, each on a character (<see cref="Settled(TextSnapshot, int)"/>)
     /// with the column it aims for kept; a selection stays as it is, and the set itself where every caret already stands.</summary>
@@ -169,202 +159,189 @@ public sealed class Vim
         return carets;
     }
 
-    /// <summary>The count typed before a command and the command after it; 0 when none was typed (a leading 0 is the
-    /// command), the largest int when it overflows.</summary>
-    private static int Count(string typed, out string command)
+    private static bool IsVimKey(string key) =>
+        key.Length == 1 || (key.Length == 2 && char.IsSurrogatePair(key[0], key[1])) || key is "<BS>" or "<CR>" or "<Del>" or "<Tab>";
+
+    /// <summary>The count typed so far where nothing else is, 0 with none.</summary>
+    private int CountOnly()
     {
-        int digits = 0;
-        while (digits < typed.Length && char.IsAsciiDigit(typed[digits]) && !(digits == 0 && typed[0] == '0'))
+        int count = 0;
+        foreach (string key in pending)
         {
-            digits++;
+            if (key.Length != 1 || !char.IsAsciiDigit(key[0]))
+            {
+                return 0;
+            }
+            count = (int)Math.Min((long)count * 10 + (key[0] - '0'), int.MaxValue);
         }
-        command = typed[digits..];
-        return digits == 0 ? 0 : int.TryParse(typed.AsSpan(0, digits), out int count) ? count : int.MaxValue;
+        return count;
     }
 
-    private VimResult Insert(SelectionSet selections)
+    private VimResult Insert(TextSnapshot text, SelectionSet carets, Command command, string how)
     {
         Mode = VimMode.Insert;
-        return new VimResult(true, selections);
+        Begin(command, how, carets, text.Length);
+        return new VimResult(true, carets);
     }
 
-    private static VimResult Move(TextSnapshot text, SelectionSet selections, Func<int, int> to) =>
-        new(true, selections.With(s => Selection.At(Settled(text, to(s.Caret)))));
-
-    private VimResult Vertically(TextSnapshot text, SelectionSet selections, int lines)
+    /// <summary>An edit that ends in insert mode, the insert session beginning where it leaves the carets.</summary>
+    private VimResult InsertAfter(TextSnapshot text, EditPlan plan, Command command, string how)
     {
-        int[] columns = wantedFor is { } known && known.SameAs(selections)
-            ? wanted
-            : selections.Items.Select(s => s.Caret - LineOf(text, s.Caret).Start).ToArray();
-        List<Selection> moved = [];
-        for (int i = 0; i < selections.Count; i++)
+        Mode = VimMode.Insert;
+        Begin(command, how, plan.Selections, text.Length + plan.Edits.Sum(e => e.Text.Length - e.Length));
+        return new VimResult(true, Edits: [plan]);
+    }
+
+    /// <summary>An insert session begun; only i, a, I, A, o and O repeat what it types by their count.</summary>
+    private void Begin(Command command, string how, SelectionSet carets, int length) =>
+        inserting = (command.Keys, command.Count, how, carets.Items[0].Caret, length, carets.Count);
+
+    /// <summary>Escape in insert mode: the carets step back onto the text, a line the session indented and left blank loses
+    /// its indent, a count repeats what it typed, and what it typed is kept for . to type again.</summary>
+    private VimResult LeaveInsert(TextSnapshot text, SelectionSet selections, IVimView view)
+    {
+        Mode = VimMode.Normal;
+        (IReadOnlyList<string> Keys, int Count, string How, int First, int Length, int Carets)? session = inserting;
+        inserting = null;
+        string? typed = null;
+        if (session is { } s && selections.Count == s.Carets && text.Length >= s.Length && (text.Length - s.Length) % s.Carets == 0
+            && s.First + ((text.Length - s.Length) / s.Carets) <= text.Length)
         {
-            int from = text.GetLineFromOffset(selections.Items[i].Caret);
-            int to = (int)Math.Clamp((long)from + lines, 0, LastLine(text));
-            LineSpan line = text.GetLine(to);
-            // Columns count UTF-16 chars, so a tab or a wide character before the caret lands it off the column drawn.
-            moved.Add(Selection.At(Settled(text, line.Start + Math.Min(columns[i], line.Length))));
+            typed = text.GetText(s.First, (text.Length - s.Length) / s.Carets).Replace("\r\n", "\n", StringComparison.Ordinal);
         }
-        return Aimed(SelectionSet.Create(moved, selections.PrimaryIndex), columns);
-    }
-
-    private VimResult ToLineEnd(TextSnapshot text, SelectionSet selections, int n)
-    {
-        SelectionSet moved = selections.With(s =>
+        List<EditPlan> plans = [];
+        // A line the session indented and left blank loses its indent, as Vim's autoindent takes back.
+        bool indents = session is { How: "o" or "O" or "cc" } && typed == string.Empty || typed is not null && BlankAfterBreak(typed);
+        if (indents && Unindented(text, selections) is { } unindent)
         {
-            int line = (int)Math.Min((long)text.GetLineFromOffset(s.Caret) + n - 1, LastLine(text));
-            return Selection.At(Settled(text, text.GetLine(line).End));
-        });
-        return Aimed(moved, [.. Enumerable.Repeat(int.MaxValue, moved.Count)]);
-    }
-
-    private VimResult Aimed(SelectionSet moved, int[] columns)
-    {
-        bool kept = moved.Count == columns.Length;
-        wantedFor = kept ? moved : null;
-        wanted = kept ? columns : [];
-        return new VimResult(true, moved);
-    }
-
-    private static VimResult DeleteCharacters(TextSnapshot text, SelectionSet selections, int n)
-    {
-        SelectionSet spans = selections.With(s =>
-        {
-            int end = LineOf(text, s.Caret).End;
-            return new Selection(s.Caret, Repeated(n, s.Caret, p => Math.Min(TextNavigation.NextGrapheme(text, p), end)));
-        });
-        return spans.Items.All(s => s.IsEmpty) || TextEditing.Delete(text, spans) is not { } plan
-            ? VimResult.Held
-            : Settle(text, plan with { Kind = EditKind.Other }, p => p);
-    }
-
-    private static VimResult DeleteLines(TextSnapshot text, SelectionSet selections, int n)
-    {
-        SelectionSet spans = selections.With(s =>
-        {
-            int first = text.GetLineFromOffset(s.Caret);
-            int last = (int)Math.Min((long)first + n - 1, LastLine(text));
-            return new Selection(text.GetLine(first).Start, text.GetLine(last).End);
-        });
-        EditPlan plan = TextEditing.DeleteLines(text, spans);
-        return Settle(text, plan, null);
-    }
-
-    /// <summary>The plan with its carets settled where normal mode lets them stand in the text after it: each where
-    /// <paramref name="at"/> puts it, or at its line's first non-blank when null.</summary>
-    private static VimResult Settle(TextSnapshot text, EditPlan plan, Func<int, int>? at)
-    {
-        TextSnapshot after = text.Apply(plan.Edits);
-        SelectionSet settled = plan.Selections.With(s => Selection.At(at is null
-            ? FirstNonBlank(after, Math.Min(after.GetLineFromOffset(s.Caret), LastLine(after)))
-            : Settled(after, at(s.Caret))));
-        return new VimResult(true, Edit: plan with { Selections = settled });
-    }
-
-    /// <summary>A step taken <paramref name="n"/> times from <paramref name="from"/>, ending early once it stops moving,
-    /// so a count of millions costs no more than the text is long.</summary>
-    private static int Repeated(int n, int from, Func<int, int> step)
-    {
-        int at = from;
-        for (int i = 0; i < n; i++)
-        {
-            int next = step(at);
-            if (next == at)
-            {
-                break;
-            }
-            at = next;
+            plans.Add(unindent);
+            (text, selections) = (text.Apply(unindent.Edits), unindent.Selections);
+            typed = typed is null ? null : TrimLastIndent(typed);
         }
-        return at;
-    }
-
-    private static int StepBack(TextSnapshot text, int offset) => offset == 0 ? 0 : TextNavigation.PreviousGrapheme(text, offset);
-
-    private static LineSpan LineOf(TextSnapshot text, int offset) => text.GetLine(text.GetLineFromOffset(offset));
-
-    private static int FirstNonBlank(TextSnapshot text, int line) => Settled(text, TextNavigation.IndentEnd(text, text.GetLine(line)));
-
-    /// <summary>The last line Vim would count: the empty one after a final line break is the file's end, not a line.</summary>
-    private static int LastLine(TextSnapshot text)
-    {
-        int last = text.LineCount - 1;
-        return last > 0 && text.GetLine(last).Length == 0 ? last - 1 : last;
-    }
-
-    /// <summary>A character's kind for Vim's word motions: 0 blank or line break, 1 punctuation, 2 a word's.</summary>
-    private static int Kind(char c) => char.IsWhiteSpace(c) ? 0 : TextNavigation.IsWordChar(c) ? 2 : 1;
-
-    private static bool EmptyLineAt(TextSnapshot text, int offset)
-    {
-        LineSpan line = LineOf(text, offset);
-        return line.Length == 0 && line.Start == offset;
-    }
-
-    /// <summary>Vim's w: the start of the next word or run of punctuation, an empty line counting as a word.</summary>
-    private static int WordStart(TextSnapshot text, int offset)
-    {
-        int p = offset;
-        int n = text.Length;
-        if (p < n && Kind(text[p]) is var kind and not 0)
+        if (session is { Count: > 1, How: not ("c" or "cc") } counted && typed is not null && (typed.Length > 0 || counted.How is "o" or "O"))
         {
-            while (p < n && Kind(text[p]) == kind)
+            for (int i = 1; i < Math.Min(counted.Count, Math.Max(2, MostRepeatedText / Math.Max(1, typed.Length))); i++)
             {
-                p++;
+                if (counted.How is "o" or "O")
+                {
+                    // Each line again as o opens it, indented only where text goes on it.
+                    EditPlan line = typed.Length == 0
+                        ? TextEditing.Insert(text, selections.With(c => Selection.At(VimMotions.LineOf(text, c.Caret).End)), view.LineEnding, EditKind.Joined)
+                        : TextEditing.StartNewLine(text, selections, view.LineEnding, view.Indent, above: false, view.Markup) with { Kind = EditKind.Joined };
+                    plans.Add(line);
+                    (text, selections) = (text.Apply(line.Edits), line.Selections);
+                }
+                if (typed.Length > 0)
+                {
+                    EditPlan again = TextEditing.Insert(text, selections, LineEndings.In(typed, view.LineEnding), EditKind.Joined);
+                    plans.Add(again);
+                    (text, selections) = (text.Apply(again.Edits), again.Selections);
+                }
             }
         }
-        while (p < n && Kind(text[p]) == 0)
+        if (session is { } begun && !replaying)
         {
-            p++;
-            if (text[p - 1] == '\n' && EmptyLineAt(text, p))
-            {
-                return p;
-            }
+            lastChange = (begun.Keys, begun.Count, typed ?? string.Empty);
         }
-        return p;
+        SelectionSet back = selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start))));
+        if (plans.Count == 0)
+        {
+            return new VimResult(true, back);
+        }
+        plans[^1] = plans[^1] with { Selections = back };
+        return new VimResult(true, Edits: [.. plans.Select(p => p with { Kind = EditKind.Joined })]);
     }
 
-    /// <summary>Vim's e: the last character of this word if the caret is before it, else of the next.</summary>
-    private static int WordEnd(TextSnapshot text, int offset)
+    /// <summary>The blanks of each line a caret ends on at its end, where the line holds nothing else; null with none.</summary>
+    private static EditPlan? Unindented(TextSnapshot text, SelectionSet carets)
     {
-        int n = text.Length;
-        int p = offset + 1;
-        while (p < n && Kind(text[p]) == 0)
+        List<TextEdit> edits = [];
+        foreach (Selection caret in carets.Items)
         {
-            p++;
+            LineSpan line = VimMotions.LineOf(text, caret.Caret);
+            if (line.Length > 0 && caret.Caret == line.End && TextNavigation.IndentEnd(text, line) == line.End && (edits.Count == 0 || edits[^1].Start != line.Start))
+            {
+                edits.Add(new TextEdit(line.Start, line.Length, string.Empty));
+            }
         }
-        if (p >= n)
-        {
-            return offset;
-        }
-        int kind = Kind(text[p]);
-        while (p + 1 < n && Kind(text[p + 1]) == kind)
-        {
-            p++;
-        }
-        return p;
+        return edits.Count == 0 ? null : new EditPlan(edits, TextEditing.MapThrough(carets, edits), EditKind.Joined);
     }
 
-    /// <summary>Vim's b: the start of this word if the caret is past it, else of the one before; an empty line stops it.</summary>
-    private static int WordBack(TextSnapshot text, int offset)
+    /// <summary>Whether what was typed ends with a line break and blanks alone after it.</summary>
+    private static bool BlankAfterBreak(string typed)
     {
-        if (offset == 0)
+        int end = typed.LastIndexOf('\n');
+        return end >= 0 && typed.AsSpan(end + 1).Trim(" \t").IsEmpty;
+    }
+
+    private static string TrimLastIndent(string typed)
+    {
+        int end = typed.Length;
+        while (end > 0 && typed[end - 1] is ' ' or '\t')
         {
-            return 0;
+            end--;
         }
-        int p = offset - 1;
-        while (p > 0 && Kind(text[p]) == 0)
+        return end == 0 || typed[end - 1] == '\n' ? typed[..end] : typed;
+    }
+
+    /// <summary>. : the last change again, with the count given in place of its own, as one step of undo.</summary>
+    private VimResult Again(int count, TextSnapshot text, SelectionSet selections, IVimView view)
+    {
+        if (lastChange is not { } change)
         {
-            if (EmptyLineAt(text, p))
+            return VimResult.Held;
+        }
+        List<string> keys = [.. change.Keys];
+        if (keys.Count >= 2 && keys[0] == "\"" && keys[1] is [>= '1' and <= '8'] digit)
+        {
+            // A put from a numbered register puts the next one up each time it is repeated.
+            keys[1] = ((char)(digit[0] + 1)).ToString();
+            lastChange = (keys, change.Count, change.Inserted);
+        }
+        int times = count > 0 ? count : change.Count;
+        List<EditPlan> plans = [];
+        SelectionSet carets = selections;
+        replaying = true;
+        try
+        {
+            List<string> typed = times > 0 ? [.. times.ToString(System.Globalization.CultureInfo.InvariantCulture).Select(c => c.ToString())] : [];
+            foreach (string key in typed.Concat(keys))
             {
-                return p;
+                Follow(Press(key, text, carets, view));
             }
-            p--;
+            if (Mode == VimMode.Insert)
+            {
+                if (change.Inserted.Length > 0)
+                {
+                    Follow(new VimResult(true, Edits: [TextEditing.Insert(text, carets, LineEndings.In(change.Inserted, view.LineEnding), EditKind.Joined)]));
+                }
+                Follow(LeaveInsert(text, carets, view));
+            }
         }
-        int kind = Kind(text[p]);
-        while (p > 0 && kind != 0 && Kind(text[p - 1]) == kind)
+        finally
         {
-            p--;
+            replaying = false;
+            pending.Clear();
         }
-        return p;
+        if (plans.Count == 0)
+        {
+            return new VimResult(true, carets);
+        }
+        plans[^1] = plans[^1] with { Selections = carets };
+        return new VimResult(true, Edits: [.. plans.Select(p => p with { Kind = EditKind.Joined })]);
+
+        void Follow(VimResult result)
+        {
+            foreach (EditPlan plan in result.Edits ?? [])
+            {
+                plans.Add(plan);
+                text = text.Apply(plan.Edits);
+                carets = plan.Selections;
+            }
+            if (result.Selections is { } moved)
+            {
+                carets = moved;
+            }
+        }
     }
 }

@@ -1,5 +1,8 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
+using Passenger.Core;
 using Avalonia.Media;
 using Passenger.Text;
 
@@ -10,7 +13,14 @@ namespace Passenger.Editor;
 /// what insert mode types one step of undo.</summary>
 public sealed partial class CodeEditor
 {
+    /// <summary>Vim's registers, one set for every editor of every window, as Vim keeps one.</summary>
+    private static readonly VimRegisters Registers = new();
+
     private Vim? vim;
+
+    private EditorVimView? vimView;
+
+    private IVimView VimView => vimView ??= new EditorVimView(this);
 
     /// <summary>Whether keys go through Vim's modes first (<see cref="PressVim"/>); turned off, the editor is modeless again.</summary>
     public bool UsesVim
@@ -20,7 +30,7 @@ public sealed partial class CodeEditor
         {
             if (UsesVim != value)
             {
-                vim = value ? new Vim() : null;
+                vim = value ? new Vim(Registers) : null;
                 FollowVimMode();
                 SetSelections(selections, reveal: false);
             }
@@ -50,19 +60,8 @@ public sealed partial class CodeEditor
         }
         VimMode was = vim.Mode;
         string pendingWas = vim.Pending;
-        VimResult result = vim.Press(VimKey(e), document.Snapshot, selections);
-        if (vim.Mode != was)
-        {
-            FollowVimMode();
-        }
-        if (result.Edit is { } edit)
-        {
-            Apply(edit);
-        }
-        else if (result.Selections is { } moved)
-        {
-            Selections = moved;
-        }
+        VimResult result = vim.Press(VimKey(e), document.Snapshot, selections, VimView);
+        FollowVim(result, was);
         action = result.Action;
         repeat = action is null ? 0 : result.Repeat;
         if (vim.Mode == was && vim.Pending != pendingWas)
@@ -80,13 +79,60 @@ public sealed partial class CodeEditor
         {
             return false;
         }
-        VimResult result = vim.Press(Vim.Escape, document.Snapshot, selections);
-        FollowVimMode();
-        if (result.Selections is { } moved)
+        FollowVim(vim.Press(Vim.Escape, document.Snapshot, selections, VimView), VimMode.Insert);
+        return true;
+    }
+
+    /// <summary>What Vim made of a key, done: entering insert mode first so the edit that begins it joins its step of
+    /// undo, leaving it last so the edits that end it do too; several edits of normal mode one step; the clipboard written
+    /// or read for + and *.</summary>
+    private void FollowVim(VimResult result, VimMode was)
+    {
+        bool entering = was == VimMode.Normal && vim?.Mode == VimMode.Insert;
+        if (entering)
+        {
+            FollowVimMode();
+        }
+        IReadOnlyList<EditPlan> edits = result.Edits ?? [];
+        bool oneStep = !entering && was == VimMode.Normal && edits.Count > 1;
+        if (oneStep)
+        {
+            document.BreakUndoGroup();
+        }
+        foreach (EditPlan plan in edits)
+        {
+            Apply(plan);
+        }
+        if (oneStep)
+        {
+            document.BreakUndoGroup();
+        }
+        if (edits.Count == 0 && result.Selections is { } moved)
         {
             Selections = moved;
         }
-        return true;
+        if (!entering && vim?.Mode != was)
+        {
+            FollowVimMode();
+        }
+        if (result.Clipboard is { } copied)
+        {
+            SetClipboard(LineEndings.In(copied.Text, document.LineEnding), copied.Linewise);
+        }
+        if (result.ReadsClipboard)
+        {
+            BackgroundWork.Track(PutFromClipboardAsync());
+        }
+    }
+
+    /// <summary>A put from + or *: the system clipboard's text, read as Paste reads it, put as Vim puts it.</summary>
+    private async Task PutFromClipboardAsync()
+    {
+        string? pasted = TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard ? await clipboard.TryGetTextAsync() : null;
+        if (vim is not null)
+        {
+            FollowVim(vim.PutClipboard(pasted ?? string.Empty, document.Snapshot, selections, VimView), vim.Mode);
+        }
     }
 
     /// <summary>A key press in Vim's notation: a character typed with no modifier but Shift (or the AltGr a layout types
@@ -149,5 +195,38 @@ public sealed partial class CodeEditor
         Rect block = new(Math.Round(left + x), y, Math.Max(1, Math.Round(left + x + width) - Math.Round(left + x)), metrics.LineHeight);
         context.FillRectangle(palette.BlockCaret, block);
         context.DrawRectangle(null, palette.PenOf(palette.Caret, 1), block.Deflate(0.5));
+    }
+
+    /// <summary>The editor as Vim mode sees it: its indent and line breaks, its rows for gj and gk, and the rows on screen
+    /// for H, M and L.</summary>
+    private sealed class EditorVimView(CodeEditor editor) : IVimView
+    {
+        public IndentOptions Indent => editor.Indent;
+
+        public string LineEnding => editor.document.LineEnding;
+
+        public MarkupKind Markup => editor.Markup;
+
+        public int RowsAway(TextSnapshot text, int offset, int rows)
+        {
+            (int row, double x) = editor.Place(text, offset, editor.LeansBack(offset));
+            int target = Math.Clamp(row + rows, 0, Math.Max(0, editor.RowCount - 1));
+            return target == row ? offset : editor.OffsetAtRow(text, target, x, out _);
+        }
+
+        public int LineShown(TextSnapshot text, VimScreenLine at, int count)
+        {
+            double height = editor.metrics.LineHeight;
+            int first = (int)Math.Ceiling(editor.scroll.Y / height);
+            int last = Math.Min((int)Math.Floor((editor.scroll.Y + editor.Bounds.Height) / height) - 1, editor.RowCount - 1);
+            last = Math.Max(first, last);
+            int row = at switch
+            {
+                VimScreenLine.Top => (int)Math.Min(first + (long)count - 1, last),
+                VimScreenLine.Bottom => (int)Math.Max(last - (long)count + 1, first),
+                _ => (first + last) / 2,
+            };
+            return editor.Rows.LineOfRow(row).Line;
+        }
     }
 }
