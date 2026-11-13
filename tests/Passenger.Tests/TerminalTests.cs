@@ -310,7 +310,7 @@ public sealed class TerminalTests
         }
         WaitForLine(shell, "^[[A^[[1;5C^[[3~^[[Z", "the keys as the program read them");
         Ui.Press(window, "control C");
-        WaitForScreen(window, shell, s => s.CursorColumn > 0, "the prompt after the program");
+        WaitForPromptBelow(window, shell, "^[[A^[[1;5C^[[3~^[[Z");
 
         RunCase(window, "keys", "application");
         WaitForScreen(window, shell, s => s.ApplicationCursorKeys && s.Lines.Count(l => l.Text() == "keys?") == 2, "the program to wait in the application cursor mode");
@@ -347,7 +347,7 @@ public sealed class TerminalTests
             Press(window, keys);
             string legacy = $"^M^M{alt}^M^M{alt}^M^J^M";
             WaitForScreen(window, shell, s => Lines(s).Contains(legacy), $"the keys as xterm sends them, {legacy}, read by a program that never asked for more");
-            WaitForScreen(window, shell, s => s.CursorColumn > 0, "the prompt after the program");
+            WaitForPromptBelow(window, shell, legacy);
 
             RunCase(window, "keyboard", "5");
             WaitForLine(shell, "flags 1", "the program told disambiguation alone is in force");
@@ -357,6 +357,7 @@ public sealed class TerminalTests
             string kitty = "^[[13;2u^[[13;5u^[[13;3u^[[13;6u^[[13;4u^[[106;5u^M";
             WaitForScreen(window, shell, s => Lines(s).Contains(kitty), $"the keys as the kitty keyboard protocol sends them, {kitty}");
             WaitForScreen(window, shell, s => s.KeyboardFlags == 0, "the program's flags to go as it pops them");
+            WaitForPromptBelow(window, shell, kitty);
             Run(window, "echo after");
             WaitForLine(shell, "after", "a command Enter runs once the program has ended");
         }
@@ -394,6 +395,7 @@ public sealed class TerminalTests
         Assert.Equal(["^[[<0;3;2M", "^[[<32;4;2M", "^[[<32;5;2M", "^[[<32;6;2M", "^[[<32;7;2M", "^[[<0;7;2m"], Reports(shell.Screen, 1));
         Ui.Press(window, "control C");
         WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.None && !s.SgrMouse, "the program to give the mouse back as it ends");
+        WaitForPromptBelow(window, shell, "^[[<0;7;2m");
 
         RunCase(window, "mouse", "1003");
         WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.Any && Lines(s).Count(l => l == "mouse?") == 2, "the program to ask for every move");
@@ -1366,6 +1368,30 @@ public sealed class TerminalTests
             TerminalScreen screen = shell.Screen;
             throw new TimeoutException($"{waited.Message}. The terminal, {screen.Columns} by {screen.Rows} with its cursor at row {screen.CursorRow} "
                 + $"column {screen.CursorColumn}, {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} having the keys, shows:\n{Screen(shell)}", waited);
+        }
+    }
+
+    /// <summary>Waits for the shell's prompt on a row below a program's last line, so the program has ended and its terminal
+    /// modes are the shell's again: a line typed sooner comes while the program still puts them back, unechoed and its
+    /// Enter a bare carriage return, or echoed ahead of the prompt.</summary>
+    private static void WaitForPromptBelow(MainWindow window, TerminalSession shell, string last)
+    {
+        WaitForScreen(window, shell, PromptBelow, $"the shell's prompt below the program's last line, {last}");
+
+        bool PromptBelow(TerminalScreen screen)
+        {
+            if (screen.CursorColumn == 0)
+            {
+                return false;
+            }
+            for (long line = screen.ScreenTop + screen.CursorRow - 1; line >= screen.FirstLine; line--)
+            {
+                if (screen.LineAt(line).Text() == last)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
