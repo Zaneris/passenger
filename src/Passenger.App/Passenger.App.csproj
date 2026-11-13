@@ -19,6 +19,8 @@
     <AvaloniaResource Include="Assets/passenger.png" />
     <!-- The window's typeface (Theme/WindowFonts.cs): Inter 4.1's hinted faces as rsms/inter's release gives them. -->
     <AvaloniaResource Include="Fonts/*.ttf" />
+    <!-- The built-in themes and code colour scheme, a source in theme format 1 (Theme/BuiltInThemes.cs, docs/themes.md). -->
+    <AvaloniaResource Include="Theme/BuiltIn/*.json" />
     <!-- MSBuild's own schemas (dotnet/msbuild, MIT), which the .NET SDK does not carry: the elements, properties, items,
          metadata and tasks the code help in project files offers and describes (MSBuild/MSBuildSchema.cs). -->
     <EmbeddedResource Include="MSBuild/Schemas/*.xsd" LogicalName="MSBuild/%(Filename)%(Extension)" />

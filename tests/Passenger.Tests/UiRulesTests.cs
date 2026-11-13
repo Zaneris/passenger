@@ -1543,29 +1543,48 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(below.Count == 0, $"In {look}, {below.Count} pairs fall below WCAG AA (text 4.5:1, icons, focus rings and the caret 3:1):\n" + string.Join("\n", below));
     }
 
+    /// <summary>The built-in source reads whole: its index lists a theme for each look but Passenger's own and a code colour
+    /// scheme for each choice but the theme's, and nothing more; each file reads with no problem, named as its look, and
+    /// gives every token Tokens.axaml gives in Dark and Light (a theme) or every colour of the code but the editor's ground
+    /// (the code colour scheme), and no other.</summary>
     [Gate]
     [AvaloniaFact]
-    public void Every_theme_gives_every_colour_in_Dark_and_Light_and_Rider_s_scheme_only_the_codes()
+    public void Every_built_in_theme_reads_whole_and_gives_every_colour_in_Dark_and_Light_and_the_code_colour_scheme_only_the_codes()
     {
         ResourceDictionary passenger = Dictionary("Tokens.axaml");
-        ResourceDictionary rider = Dictionary("RiderScheme.axaml");
         string[] keys = Keys(passenger, ThemeVariant.Dark);
         string[] shapes = [.. passenger.Keys.Select(k => k.ToString()!).Order(StringComparer.Ordinal)];
         Assert.Equal(keys, Keys(passenger, ThemeVariant.Light));
-        List<(string, ResourceDictionary)> files = [("Tokens.axaml", passenger), ("RiderScheme.axaml", rider)];
+        ThemeRead<ThemeIndex> index = BuiltInThemes.Index;
+        Assert.True(index.Read is not null && index.Problems.Count == 0, $"The built-in source's index does not read whole: {index.Refused}{string.Join("\n", index.Problems)}");
+        Assert.Equal([.. Enum.GetValues<Look>().Where(l => l != Look.Passenger).Select(l => $"{l}.json")], index.Read.Themes);
+        Assert.Equal([.. Enum.GetValues<ColourScheme>().Where(s => s != ColourScheme.Theme).Select(s => $"{s}.json")], index.Read.CodeColours);
+        List<(string, ResourceDictionary)> files = [("Tokens.axaml", passenger)];
         foreach (Look look in Enum.GetValues<Look>().Where(l => l != Look.Passenger))
         {
-            ResourceDictionary theme = Dictionary($"{look}.axaml");
-            files.Add(($"{look}.axaml", theme));
+            ThemeRead<ThemeFile> read = BuiltInThemes.ReadTheme($"{look}.json");
+            Assert.True(read.Read is not null && read.Problems.Count == 0 && read.Read.Name == look.ToString(),
+                $"{look}.json does not read whole as {look}, so choosing {look} would fail: {read.Refused}{string.Join("\n", read.Problems)}");
+            ResourceDictionary theme = ThemeResources.Dictionary(read.Read);
+            files.Add(($"{look}.json", theme));
             Assert.True(keys.SequenceEqual(Keys(theme, ThemeVariant.Dark)) && keys.SequenceEqual(Keys(theme, ThemeVariant.Light)),
                 $"{look} does not give every colour Tokens.axaml gives, in Dark and Light, and no other: a colour it lacks shows Passenger's own under it");
             Assert.True(shapes.SequenceEqual(theme.Keys.Select(k => k.ToString()!).Order(StringComparer.Ordinal)), $"{look} does not give every shape Tokens.axaml gives");
         }
-        // The code's colours, which Rider's scheme gives in its place; the editor's ground, gutter and cards stay the theme's.
-        string[] scheme = [.. keys.Where(k => (k.StartsWith("Passenger.Editor.", StringComparison.Ordinal) && k is not (TokenKeys.Editor_Background or TokenKeys.Editor_Gutter or TokenKeys.Editor_PopupBorder))
-            || k.StartsWith("Passenger.Syntax.", StringComparison.Ordinal) || k.StartsWith("Passenger.SyntaxStyle.", StringComparison.Ordinal) || k.StartsWith("Passenger.Diff.", StringComparison.Ordinal))];
-        Assert.Equal(scheme, Keys(rider, ThemeVariant.Dark));
-        Assert.Equal(scheme, Keys(rider, ThemeVariant.Light));
+        foreach (ColourScheme choice in Enum.GetValues<ColourScheme>().Where(s => s != ColourScheme.Theme))
+        {
+            ThemeRead<ThemeFile> read = BuiltInThemes.ReadCodeColours($"{choice}.json");
+            Assert.True(read.Read is not null && read.Problems.Count == 0 && read.Read.Name == choice.ToString(),
+                $"{choice}.json does not read whole as {choice}, so choosing it would fail: {read.Refused}{string.Join("\n", read.Problems)}");
+            ResourceDictionary scheme = ThemeResources.Dictionary(read.Read);
+            files.Add(($"{choice}.json", scheme));
+            // The code's colours, which the scheme gives in the theme's place; the editor's ground, gutter and cards stay the theme's.
+            string[] code = [.. keys.Where(k => (k.StartsWith("Passenger.Editor.", StringComparison.Ordinal) && k is not (TokenKeys.Editor_Background or TokenKeys.Editor_Gutter or TokenKeys.Editor_PopupBorder))
+                || k.StartsWith("Passenger.Syntax.", StringComparison.Ordinal) || k.StartsWith("Passenger.SyntaxStyle.", StringComparison.Ordinal) || k.StartsWith("Passenger.Diff.", StringComparison.Ordinal))];
+            Assert.Equal(code, Keys(scheme, ThemeVariant.Dark));
+            Assert.Equal(code, Keys(scheme, ThemeVariant.Light));
+            Assert.Empty(scheme.Keys);
+        }
         // A theme is tokens alone: Fluent's own keys are FluentKeys.axaml's, once for every theme.
         foreach ((string file, ResourceDictionary theme) in files)
         {
@@ -1766,7 +1785,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             }
         }
         Assert.True(found.Count == 0, $"{found.Count} colours or rounded corners are written outside Theme/, so one look's would show under another: give each a token "
-            + $"(Tokens.axaml and Harbour.axaml, Dark and Light) or a radius resource, and read that:\n{string.Join("\n", found)}");
+            + $"(Tokens.axaml and every built-in theme's file, Dark and Light) or a radius resource, and read that:\n{string.Join("\n", found)}");
     }
 
     /// <summary>Every theme key and icon the code names (TokenKeys and IconKeys, a literal still shaped like one in C#, a

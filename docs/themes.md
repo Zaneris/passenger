@@ -61,3 +61,8 @@ laid over the theme in force; `dark` gives its colours under a dark theme and `l
 - A member or token this Passenger does not know is passed over and named, so a typo shows and a file written for a
   later Passenger still reads.
 
+## The built-in themes
+
+Passenger carries Harbour, the ten generated themes and the Rider code colour scheme as a source in
+`src/Passenger.App/Theme/BuiltIn`. Harbour.json and Rider.json are written by hand; the ten are written by
+`tools/themes.py` from its palettes (`just themes`), so change a palette there rather than its file.

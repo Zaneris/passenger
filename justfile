@@ -114,7 +114,7 @@ package-linux rid="linux-x64":
 app-icon:
     tools/app-icon.sh
 
-# Rewrite the generated themes (Theme/Sorbet.axaml and the rest) from the palettes in tools/themes.py, contrast checked.
+# Rewrite the generated themes (Theme/BuiltIn/Sorbet.json and the rest) from the palettes in tools/themes.py, contrast checked.
 themes:
     python3 -I tools/themes.py
 

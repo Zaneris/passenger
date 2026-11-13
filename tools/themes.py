@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Writes the generated themes, src/Passenger.App/Theme/<Name>.axaml, from the palettes below.
+"""Writes the generated themes, src/Passenger.App/Theme/BuiltIn/<Name>.json (theme format 1, docs/themes.md), from the
+palettes below.
 
 Each theme is a few colours per variant (its grounds, words, accent and hues); every token Tokens.axaml gives is worked
 out from them here, then nudged in lightness until each pair UiRulesTests holds to WCAG AA passes, so a palette never
 has to be tuned token by token. The token list is read from Tokens.axaml, so a token added there and not here fails
-this script rather than leaving a theme without it. Adding a theme is a palette here, a `Look` and `just themes`.
+this script rather than leaving a theme without it. Adding a theme is a palette here, its file in the built-in source's
+index (passenger-themes.json beside them), a `Look` and `just themes`.
 """
+import json
 import math
 import os
 import re
@@ -13,6 +16,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 THEME = os.path.join(ROOT, "src", "Passenger.App", "Theme")
+BUILT_IN = os.path.join(THEME, "BuiltIn")
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Colour arithmetic: sRGB hex, OKLab for moving lightness while hue and chroma hold, WCAG's luminance and CIELAB's L*.
@@ -599,48 +603,59 @@ def token_order():
     return re.findall(r'<([\w:]+) x:Key="(Passenger\.[^"]+)"', dark)
 
 
-def element(kind, key, value):
+def value_of(kind, value):
+    """A token's value as theme format 1 writes it."""
     if isinstance(value, tuple) and value[0] == "gradient":
-        return (f'<LinearGradientBrush x:Key="{key}" StartPoint="0%,0%" EndPoint="100%,0%">\n'
-                f'                <GradientStop Offset="0" Color="{value[1]}" />\n'
-                f'                <GradientStop Offset="1" Color="{value[2]}" />\n'
-                f'            </LinearGradientBrush>')
+        return ('{"start": [0, 0], "end": [1, 0], "stops": [{"offset": 0, "colour": "%s"}, {"offset": 1, "colour": "%s"}]}'
+                % (value[1], value[2]))
     if isinstance(value, tuple) and value[0] == "opacity":
-        return f'<SolidColorBrush x:Key="{key}" Color="{value[1]}" Opacity="{value[2]}" />'
+        return '{"colour": "%s", "opacity": %s}' % (value[1], value[2])
     if isinstance(value, tuple) and value[0] == "string":
-        return f'<x:String x:Key="{key}">{value[1]}</x:String>'
-    if kind == "BoxShadows":
-        return f'<BoxShadows x:Key="{key}">{value}</BoxShadows>'
-    return f'<SolidColorBrush x:Key="{key}" Color="{value}" />'
+        return json.dumps(value[1])
+    if kind in ("CornerRadius", "Thickness"):
+        numbers = value.split(",")
+        if len(numbers) == 2 and kind == "Thickness":
+            # Avalonia's "h,v": left and right h, top and bottom v.
+            numbers = numbers * 2
+        if len(numbers) not in (1, 4):
+            raise SystemExit(f"{kind} {value} is neither one number nor four")
+        return numbers[0] if len(numbers) == 1 else "[" + ", ".join(numbers) + "]"
+    if kind == "x:Double":
+        return value
+    return json.dumps(value)
+
+
+def members(entries):
+    """An object's members, one to a line, under its member's line."""
+    return ",\n".join(f"    {json.dumps(key[len('Passenger.'):])}: {value}" for key, value in entries)
 
 
 def write(name, theme):
     theme["name"] = name
     order = token_order()
-    lines = ['<ResourceDictionary xmlns="https://github.com/avaloniaui"',
-             '                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">',
-             f'    <!-- {name}, one of Passenger\'s themes (Settings, Appearance): {theme["about"]}. Written by',
-             '         tools/themes.py from its palette there (just themes), every token of Tokens.axaml again; change the palette',
-             '         and run it again rather than editing this file. -->']
-    for kind, key, value in SHAPES[theme["shape"]]:
-        lines.append(f'    <{kind} x:Key="{key}">{value}</{kind}>')
-    lines += ["", "    <ResourceDictionary.ThemeDictionaries>"]
+    about = theme["about"]
+    lines = ["{", '  "format": 1,', f'  "name": {json.dumps(name)},',
+             f'  "description": {json.dumps(about[0].upper() + about[1:] + ".")},', '  "tokens": {',
+             members((key, value_of(kind, value)) for kind, key, value in SHAPES[theme["shape"]]), "  },"]
     for which, dark in (("Dark", True), ("Light", False)):
         tokens = variant(theme, theme[which.lower()], dark)
         missing = [key for _, key in order if key not in tokens]
         extra = [key for key in tokens if key not in {k for _, k in order}]
         if missing or extra:
             raise SystemExit(f"{name} {which}: Tokens.axaml has {missing} that this script does not give, and it gives {extra} that Tokens.axaml lacks")
-        lines.append(f'        <ResourceDictionary x:Key="{which}">')
-        for kind, key in order:
-            lines.append("            " + element(kind, key, tokens[key]))
-        lines.append("        </ResourceDictionary>")
-    lines += ["    </ResourceDictionary.ThemeDictionaries>", "</ResourceDictionary>", ""]
-    with open(os.path.join(THEME, f"{name}.axaml"), "w", encoding="utf-8", newline="\n") as f:
+        lines += [f'  "{which.lower()}": {{', members((key, value_of(kind, tokens[key])) for kind, key in order),
+                  "  }," if dark else "  }"]
+    lines += ["}", ""]
+    with open(os.path.join(BUILT_IN, f"{name}.json"), "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines))
 
 
 def main():
+    with open(os.path.join(BUILT_IN, "passenger-themes.json"), encoding="utf-8") as f:
+        listed = json.load(f)["themes"]
+    unlisted = [name for name in THEMES if f"{name}.json" not in listed]
+    if unlisted:
+        raise SystemExit(f"passenger-themes.json lists no {', '.join(unlisted)}: add each to its themes")
     for name, theme in THEMES.items():
         write(name, theme)
     print(f"Wrote {len(THEMES)} themes: {', '.join(THEMES)}")
