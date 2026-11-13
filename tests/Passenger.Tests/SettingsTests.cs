@@ -740,8 +740,9 @@ public sealed class SettingsTests : IDisposable
         again.Close();
     }
 
-    /// <summary>Appearance's Theme: Passenger's own or another (Harbour here), each in the dark or light the next row says,
-    /// the window dressed in the one chosen the moment it is applied; Editor's Colour scheme: the theme's own or Rider's.</summary>
+    /// <summary>Appearance's Theme: Passenger's own or one of a source's (Harbour of Passenger's themes repository here), each
+    /// in the dark or light the next row says, listed by name and source once the drop-down opens, the window dressed in the
+    /// one chosen the moment it is chosen, before Apply; the Colour scheme beside it: the theme's own or the repository's.</summary>
     [AvaloniaFact]
     public void Harbour_chosen_as_the_theme_dresses_the_window_at_once_beside_passengers_own()
     {
@@ -750,36 +751,44 @@ public sealed class SettingsTests : IDisposable
         {
             SettingsDialog dialog = window.ShowSettings();
             Ui.Settle();
-            Assert.Equal(["Theme", "Dark or light"], dialog.Shown.Take(2));
-            ComboBox theme = Editor<ComboBox>(dialog, "Theme");
-            Assert.Equal("Passenger", theme.SelectedItem);
+            Assert.Equal(["Theme", "Dark or light", "Colour scheme"], dialog.Shown.Take(3));
+            ThemePicker theme = dialog.ThemePicker;
+            Assert.Equal("Passenger", theme.Listed[0]);
+            Assert.Equal(0, theme.Box.SelectedIndex);
             Assert.Equal(["System", "Dark", "Light"], Editor<ComboBox>(dialog, "Dark or light").Items.Cast<string>());
+            theme.Box.IsDropDownOpen = true;
+            // Themes another test added from a file, kept in the run's state, come after the repository's.
+            string[] repository = ["Passenger", .. ThemeSource.FormerlyCarried.Select(n => $"{n} ({ThemeSource.RepositoryName})")];
+            Ui.WaitFor(() => theme.Listed.Take(repository.Length).SequenceEqual(repository), () => $"every theme of the repository listed in its order, where it lists {string.Join(", ", theme.Listed)}");
+            theme.Box.IsDropDownOpen = false;
             Border stripe = window.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.StripeBar) && b.IsEffectivelyVisible);
             Point bare = Bare(window, stripe);
             Color passenger = Ui.Pixel(window, bare);
 
-            theme.SelectedItem = "Harbour";
+            theme.Choose("Harbour");
             Ui.Settle();
             Color harbour = Ui.Pixel(window, bare);
             Assert.True(window.TryFindResource(TokenKeys.Frame, window.ActualThemeVariant, out object? frame) && frame is ISolidColorBrush desk && desk.Color == harbour && harbour != passenger,
                 $"With Harbour applied the window's frame is {harbour}, where it was {passenger} under Passenger's own: Harbour's desk did not take its place");
+            Assert.True(KeptThemes.Holds(ThemeSource.Repository, false, "Harbour"), "Harbour chosen is not kept, so it would not draw without its source");
 
-            Assert.Equal(Look.Passenger, window.Settings.Look);
-            theme.SelectedItem = "Passenger";
+            Assert.Null(window.Settings.Look);
+            theme.Choose("Passenger");
             Ui.Settle();
             Assert.Equal(passenger, Ui.Pixel(window, bare));
-            theme.SelectedItem = "Harbour";
+            theme.Choose("Harbour");
             Ui.Settle();
             dialog.Close();
             Ui.Settle();
             Assert.Equal(passenger, Ui.Pixel(window, bare));
             dialog = window.ShowSettings();
-            dialog.Change(s => s with { Look = Look.Harbour });
+            dialog.Change(s => s with { Look = SourcedTheme.Repository("Harbour") });
             dialog.Apply();
-            Assert.Equal(Look.Harbour, window.Settings.Look);
-            dialog.Page = SettingsDialog.EditorPage;
-            Ui.Settle();
-            Assert.Equal(["Same as theme", "Rider"], Editor<ComboBox>(dialog, "Colour scheme").Items.Cast<string>());
+            Assert.Equal(SourcedTheme.Repository("Harbour"), window.Settings.Look);
+            dialog.SchemePicker.Box.IsDropDownOpen = true;
+            Ui.WaitFor(() => dialog.SchemePicker.Listed.Take(2).SequenceEqual(["Same as theme", $"{ThemeSource.FormerScheme} ({ThemeSource.RepositoryName})"]),
+                () => $"the repository's code colour scheme listed after the theme's own, where it lists {string.Join(", ", dialog.SchemePicker.Listed)}");
+            dialog.SchemePicker.Box.IsDropDownOpen = false;
             dialog.Close();
         }
         finally

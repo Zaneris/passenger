@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "themes": [
+    "Harbour.json",
+    "Sorbet.json",
+    "Nocturne.json",
+    "Saffron.json",
+    "Bonbon.json",
+    "Ledger.json",
+    "Slate.json",
+    "Orbit.json",
+    "Nightjar.json",
+    "Moss.json",
+    "Phosphor.json"
+  ],
+  "codeColours": [
+    "Reef.json"
+  ]
+}

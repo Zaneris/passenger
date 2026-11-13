@@ -51,12 +51,6 @@ public sealed partial class SettingsDialog : IdeWindow
     public static readonly (OpenProjectIn Choice, string Name)[] OpenProjectChoices =
         [(OpenProjectIn.NewWindow, "New window"), (OpenProjectIn.CurrentWindow, "Current window"), (OpenProjectIn.Ask, "Ask")];
 
-    /// <summary>The themes, in the order Settings offers them.</summary>
-    public static readonly (Look Look, string Name)[] LookChoices = [.. Enum.GetValues<Look>().Select(l => (l, l.ToString()))];
-
-    /// <summary>The code's colour schemes, in the order Settings offers them.</summary>
-    public static readonly (ColourScheme Scheme, string Name)[] ColourSchemeChoices = [(ColourScheme.Theme, "Same as theme"), (ColourScheme.Rider, "Rider")];
-
     /// <summary>The names of <see cref="DiscordShown"/>'s choices, in its order.</summary>
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
@@ -252,8 +246,7 @@ public sealed partial class SettingsDialog : IdeWindow
 
     private void AddOptions(Mcp.AgentSetup agents)
     {
-        Add(Declared.Look);
-        Add(Declared.Theme);
+        AddThemes();
         if (TitleBars.Offered)
         {
             CheckBox merge = Check(Working.MergeMainMenuWithWindowTitle, v => Change(s => s with { MergeMainMenuWithWindowTitle = v }));
@@ -303,7 +296,6 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.OpenFilesWithSingleClick);
         Add(Declared.NestFiles);
 
-        Add(Declared.ColourScheme);
         Add(Declared.EditorFontFamily);
         Add(Declared.EditorFontSize);
         Add(Declared.EditorLineSpacing);

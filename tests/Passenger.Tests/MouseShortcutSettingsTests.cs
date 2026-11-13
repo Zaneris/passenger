@@ -97,8 +97,9 @@ public sealed class MouseShortcutSettingsTests : IDisposable
     [AvaloniaFact]
     public void A_settings_json_of_keys_alone_keeps_the_keymaps_gestures_for_the_actions_it_names()
     {
+        // Version 2, the last before an action's own shortcuts gave its gestures too.
         File.WriteAllText(Path.Combine(settings, "settings.json"),
-            $"{{\n  \"version\": {AppSettings.Upgrades.Count - 1},\n  \"shortcuts\": {{ \"{AppActions.GoToDeclaration}\": [\"F12\", \"{(Mac ? "meta" : "control")} alt shift F12\"] }}\n}}\n");
+            $"{{\n  \"version\": 2,\n  \"shortcuts\": {{ \"{AppActions.GoToDeclaration}\": [\"F12\", \"{(Mac ? "meta" : "control")} alt shift F12\"] }}\n}}\n");
         MainWindow window = Open();
         try
         {

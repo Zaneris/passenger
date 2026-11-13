@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Writes the generated themes, src/Passenger.App/Theme/BuiltIn/<Name>.json (theme format 1, docs/themes.md), from the
-palettes below.
+"""Writes the generated themes, <Name>.json (theme format 1, docs/themes.md), from the palettes below, into the folder it
+is given: a checkout of Passenger's themes repository (Zaneris/passenger-themes), or the copy the tests carry
+(tests/Passenger.Tests/Themes).
 
 Each theme is a few colours per variant (its grounds, words, accent and hues); every token Tokens.axaml gives is worked
 out from them here, then nudged in lightness until each pair UiRulesTests holds to WCAG AA passes, so a palette never
 has to be tuned token by token. The token list is read from Tokens.axaml, so a token added there and not here fails
-this script rather than leaving a theme without it. Adding a theme is a palette here, its file in the built-in source's
-index (passenger-themes.json beside them), a `Look` and `just themes`.
+this script rather than leaving a theme without it. Adding a theme is a palette here, its file in that folder's index
+(passenger-themes.json beside them) and `just themes FOLDER`.
 """
 import json
 import math
@@ -16,7 +17,6 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 THEME = os.path.join(ROOT, "src", "Passenger.App", "Theme")
-BUILT_IN = os.path.join(THEME, "BuiltIn")
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Colour arithmetic: sRGB hex, OKLab for moving lightness while hue and chroma hold, WCAG's luminance and CIELAB's L*.
@@ -630,7 +630,7 @@ def members(entries):
     return ",\n".join(f"    {json.dumps(key[len('Passenger.'):])}: {value}" for key, value in entries)
 
 
-def write(name, theme):
+def write(folder, name, theme):
     theme["name"] = name
     order = token_order()
     about = theme["about"]
@@ -646,19 +646,23 @@ def write(name, theme):
         lines += [f'  "{which.lower()}": {{', members((key, value_of(kind, tokens[key])) for kind, key in order),
                   "  }," if dark else "  }"]
     lines += ["}", ""]
-    with open(os.path.join(BUILT_IN, f"{name}.json"), "w", encoding="utf-8", newline="\n") as f:
+    with open(os.path.join(folder, f"{name}.json"), "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines))
 
 
 def main():
-    with open(os.path.join(BUILT_IN, "passenger-themes.json"), encoding="utf-8") as f:
+    if len(sys.argv) != 2 or not os.path.isfile(os.path.join(sys.argv[1], "passenger-themes.json")):
+        raise SystemExit("themes.py takes the folder of a source to write into, holding its passenger-themes.json: "
+                         "a checkout of Zaneris/passenger-themes, or tests/Passenger.Tests/Themes")
+    folder = sys.argv[1]
+    with open(os.path.join(folder, "passenger-themes.json"), encoding="utf-8") as f:
         listed = json.load(f)["themes"]
     unlisted = [name for name in THEMES if f"{name}.json" not in listed]
     if unlisted:
-        raise SystemExit(f"passenger-themes.json lists no {', '.join(unlisted)}: add each to its themes")
+        raise SystemExit(f"{folder}'s passenger-themes.json lists no {', '.join(unlisted)}: add each to its themes")
     for name, theme in THEMES.items():
-        write(name, theme)
-    print(f"Wrote {len(THEMES)} themes: {', '.join(THEMES)}")
+        write(folder, name, theme)
+    print(f"Wrote {len(THEMES)} themes into {folder}: {', '.join(THEMES)}")
 
 
 if __name__ == "__main__":

@@ -46,11 +46,13 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     /// <see cref="Folder"/>, its own folder.</summary>
     public string? Workspace { get; init; }
 
-    /// <summary>The theme <c>--look</c> names over the one kept, or null for that one.</summary>
-    public Look? Look { get; init; }
+    /// <summary>The theme <c>--look</c> names over the one kept, or null for that one: Passenger's own, or one Passenger
+    /// carried before its themes moved to its themes repository, read from there.</summary>
+    public NamedTheme? Look { get; init; }
 
-    /// <summary>The code's colours <c>--scheme</c> names over the ones kept, or null for those.</summary>
-    public ColourScheme? Scheme { get; init; }
+    /// <summary>The code's colours <c>--scheme</c> names over the ones kept, or null for those: the theme's own, or the
+    /// scheme Passenger carried before, read from its themes repository.</summary>
+    public NamedTheme? Scheme { get; init; }
 
     /// <summary>The run configuration <c>--run</c> or <c>--debug</c> starts in the window once the folder opened has read
     /// its projects (<see cref="MainWindow.StartedRun"/>), or null; a screenshot's is one of its steps.</summary>
@@ -71,8 +73,8 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         string? caretText = null;
         bool zeroBased = false;
         ThemeChoice? theme = null;
-        global::Passenger.App.Look? look = null;
-        ColourScheme? scheme = null;
+        NamedTheme? look = null;
+        NamedTheme? scheme = null;
         string? shot = null;
         LogicalSize size = new(1600, 1000);
         double scale = 2;
@@ -145,18 +147,16 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     break;
                 case "--look":
                     string lookText = Value(args, ref i, flag);
-                    global::Passenger.App.Look[] looks = Enum.GetValues<global::Passenger.App.Look>();
-                    look = looks.Cast<global::Passenger.App.Look?>().FirstOrDefault(l => l.ToString()!.ToLowerInvariant() == lookText)
-                        ?? throw new FormatException($"--look takes {string.Join(", ", looks.Select(l => l.ToString().ToLowerInvariant()))}, not '{lookText}'");
+                    look = lookText == "passenger" ? new NamedTheme(null)
+                        : ThemeSource.FormerlyCarried.FirstOrDefault(n => n.ToLowerInvariant() == lookText) is { } carried ? new NamedTheme(SourcedTheme.Repository(carried))
+                        : throw new FormatException($"--look takes passenger, {string.Join(", ", ThemeSource.FormerlyCarried.Select(n => n.ToLowerInvariant()))}, not '{lookText}'");
                     break;
                 case "--scheme":
                     string schemeText = Value(args, ref i, flag);
-                    scheme = schemeText switch
-                    {
-                        "theme" => ColourScheme.Theme,
-                        "rider" => ColourScheme.Rider,
-                        _ => throw new FormatException($"--scheme takes theme or rider, not '{schemeText}'"),
-                    };
+                    // "rider" is the word 0.3 took for the same scheme.
+                    scheme = schemeText == "theme" ? new NamedTheme(null)
+                        : schemeText == ThemeSource.FormerScheme.ToLowerInvariant() || schemeText == "rider" ? new NamedTheme(SourcedTheme.Repository(ThemeSource.FormerScheme))
+                        : throw new FormatException($"--scheme takes theme or {ThemeSource.FormerScheme.ToLowerInvariant()}, not '{schemeText}'");
                     break;
                 case "--screenshot":
                     shot = Value(args, ref i, flag);

@@ -35,11 +35,11 @@ public sealed class DialogButtonsTests : IDisposable
     }
 
     [AvaloniaTheory]
-    [InlineData(Look.Passenger)]
-    [InlineData(Look.Harbour)]
-    public void Every_dialog_has_its_buttons_words_centred_and_its_text_buttons_alike_with_the_default_where_Rider_puts_it(Look look)
+    [InlineData(CarriedThemes.Own)]
+    [InlineData("Harbour")]
+    public void Every_dialog_has_its_buttons_words_centred_and_its_text_buttons_alike_with_the_default_where_Rider_puts_it(string look)
     {
-        using IDisposable worn = UiRulesTests.Wearing(look);
+        using IDisposable worn = CarriedThemes.Wearing(look);
         // A solution, which Add Aspire Orchestration adds to; no C# language server, which no dialog here asks of.
         File.WriteAllText(Path.Combine(folder, "Dialogs.slnx"), "<Solution />\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);

@@ -13,8 +13,8 @@ public static class Declared
     /// <summary>Every declaration, each adding itself as it is made, so this comes before them.</summary>
     internal static readonly List<Setting> All = [];
 
-    public static readonly ChoiceSetting<Look> Look = new(s => s.Look, (s, v) => s with { Look = v }, D.LookChoices,
-        new(D.Appearance, "Theme", "colour color theme look palette " + string.Join(" ", D.LookChoices.Select(c => c.Name.ToLowerInvariant()))));
+    public static readonly ThemeSetting Look = new(code: false, s => s.Look, (s, v) => s with { Look = v },
+        new(D.Appearance, "Theme", "colour color theme look palette source repository passenger-themes " + string.Join(" ", ThemeSource.FormerlyCarried.Select(n => n.ToLowerInvariant()))));
 
     public static readonly ChoiceSetting<ThemeChoice> Theme = new(s => s.Theme, (s, v) => s with { Theme = v },
         [(ThemeChoice.System, "System"), (ThemeChoice.Dark, "Dark"), (ThemeChoice.Light, "Light")],
@@ -66,9 +66,9 @@ public static class Declared
             "A file whose name carries another's, as Counter.razor.cs carries Counter.razor, shows under it in the Solution view. "
             + "File Nesting… in the Explorer's options lists the rules."));
 
-    public static readonly ChoiceSetting<ColourScheme> ColourScheme = new(s => s.ColourScheme, (s, v) => s with { ColourScheme = v }, D.ColourSchemeChoices,
-        new(D.EditorPage, "Colour scheme", "colour color scheme syntax highlighting code colours rider keywords strings comments",
-            "The colours the code is drawn in: the theme's own, or Rider's, Dark or Light as the theme is. The editor keeps the theme's background."));
+    public static readonly ThemeSetting ColourScheme = new(code: true, s => s.ColourScheme, (s, v) => s with { ColourScheme = v },
+        new(D.Appearance, "Colour scheme", "colour color scheme syntax highlighting code colours editor keywords strings comments " + ThemeSource.FormerScheme.ToLowerInvariant(),
+            "The colours the code is drawn in: the theme's own, or a code colour scheme's, Dark or Light as the theme is. The editor keeps the theme's background."));
 
     public static readonly FontSetting EditorFontFamily = new(nameof(AppSettings.EditorFontFamily), s => s.EditorFontFamily, (s, v) => s with { EditorFontFamily = v }, null,
         FontChoices.Code, new(D.EditorPage, "Font family", "font family typeface monospace monospaced code",

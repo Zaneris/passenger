@@ -149,6 +149,8 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.App.Xaml.SourceLink.Variable, "http://127.0.0.1:9/");
         // Nor the web for a JSON schema a file names: those Passenger does not carry are asked of where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Web.JsonSchemas.Variable, "http://127.0.0.1:9/");
+        // Nor GitHub for Passenger's themes repository: it is read from the copy the tests carry.
+        Environment.SetEnvironmentVariable(Passenger.App.ThemeSource.Variable, Path.Combine(AppContext.BaseDirectory, "Themes"));
         // Nor Docker Hub for an image's tags: a Dockerfile server without a stand-in asks where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Web.DockerHubTags.Variable, "http://127.0.0.1:9/");
         // Nor a registry for a Dockerfile's base images: BuildKit's checks are off but in the one test that turns them on.

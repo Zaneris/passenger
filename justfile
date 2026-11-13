@@ -114,9 +114,10 @@ package-linux rid="linux-x64":
 app-icon:
     tools/app-icon.sh
 
-# Rewrite the generated themes (Theme/BuiltIn/Sorbet.json and the rest) from the palettes in tools/themes.py, contrast checked.
-themes:
-    python3 -I tools/themes.py
+# Rewrite the generated themes (Sorbet.json and the rest) from the palettes in tools/themes.py, contrast checked, into a
+# source's folder: a checkout of Zaneris/passenger-themes, or the copy the tests carry (tests/Passenger.Tests/Themes).
+themes folder="tests/Passenger.Tests/Themes":
+    python3 -I tools/themes.py {{ quote(folder) }}
 
 # Rewrite src/Passenger.Workspace/GodotShaderTypes.json, Godot's shading language as its sources at one commit say it
 # (tools/godot-shader-types.py).

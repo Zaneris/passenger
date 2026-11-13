@@ -41,6 +41,7 @@ internal static class Program
             options = LaunchOptions.Parse(args);
             _ = Updates.ReleaseFeed.Default;
             _ = Discord.DiscordIpc.Default;
+            _ = ThemeSource.Repository.Reached;
             Web.JsonSchemas.CheckVariable();
             Web.DockerHubTags.CheckVariable();
             _ = Containers.BuildKitChecks.ByDefault;
@@ -164,7 +165,10 @@ internal static class Program
     public static void ApplyTheme(Application app, LaunchOptions options)
     {
         ApplyTheme(app, options.Theme);
-        Themes.Apply(app, options.Look, options.Scheme);
+        if (options.Look is not null || options.Scheme is not null)
+        {
+            Themes.Apply(app, options.Look is { } look ? look.Theme : Themes.Look, options.Scheme is { } scheme ? scheme.Theme : Themes.Scheme);
+        }
     }
 
     public static void ApplyTheme(Application app, ThemeChoice? theme)

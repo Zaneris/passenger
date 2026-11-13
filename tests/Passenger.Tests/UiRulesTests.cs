@@ -46,7 +46,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>The looks a window's rules are held under, in the order a window wears them: Passenger's and Harbour's, whose
     /// shapes are every other theme's (tools/themes.py gives each one or the other's), the rest's colours held by the rules
     /// of tokens alone (<see cref="EveryLook"/>) and their grounds' steps checked as tools/themes.py writes them.</summary>
-    private static readonly Look[] Looks = [Look.Passenger, Look.Harbour];
+    private static readonly SourcedTheme?[] Looks = [null, SourcedTheme.Repository("Harbour")];
 
     [Gate]
     [AvaloniaFact]
@@ -1516,15 +1516,16 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
-    /// <summary>Every theme, for a rule held of its tokens alone, which costs no window.</summary>
-    public static TheoryData<Look> EveryLook => [.. Enum.GetValues<Look>()];
+    /// <summary>Passenger's own theme and every theme of its themes repository, for a rule held of its tokens alone, which
+    /// costs no window.</summary>
+    public static TheoryData<string> EveryLook => [CarriedThemes.Own, .. CarriedThemes.ThemeNames];
 
     [Gate]
     [AvaloniaTheory]
     [MemberData(nameof(EveryLook))]
-    public void Text_icons_and_focus_rings_meet_WCAG_AA_on_what_they_are_drawn_on_dark_and_light(Look look)
+    public void Text_icons_and_focus_rings_meet_WCAG_AA_on_what_they_are_drawn_on_dark_and_light(string look)
     {
-        using IDisposable worn = Wearing(look);
+        using IDisposable worn = CarriedThemes.Wearing(look);
         List<string> below = [];
         foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
         {
@@ -1543,27 +1544,29 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(below.Count == 0, $"In {look}, {below.Count} pairs fall below WCAG AA (text 4.5:1, icons, focus rings and the caret 3:1):\n" + string.Join("\n", below));
     }
 
-    /// <summary>The built-in source reads whole: its index lists a theme for each look but Passenger's own and a code colour
-    /// scheme for each choice but the theme's, and nothing more; each file reads with no problem, named as its look, and
-    /// gives every token Tokens.axaml gives in Dark and Light (a theme) or every colour of the code but the editor's ground
-    /// (the code colour scheme), and no other.</summary>
+    /// <summary>Passenger's themes repository reads whole: each theme its index lists reads with no problem, named as its
+    /// file, giving every token Tokens.axaml gives in Dark and Light, and each code colour scheme every colour of the code
+    /// but the editor's ground, and no other; the source Passenger carries lists nothing, Passenger's own theme being
+    /// Tokens.axaml.</summary>
     [Gate]
     [AvaloniaFact]
-    public void Every_built_in_theme_reads_whole_and_gives_every_colour_in_Dark_and_Light_and_the_code_colour_scheme_only_the_codes()
+    public void Every_theme_of_the_repository_reads_whole_and_gives_every_colour_in_Dark_and_Light_and_the_code_colour_scheme_only_the_codes()
     {
         ResourceDictionary passenger = Dictionary("Tokens.axaml");
         string[] keys = Keys(passenger, ThemeVariant.Dark);
         string[] shapes = [.. passenger.Keys.Select(k => k.ToString()!).Order(StringComparer.Ordinal)];
         Assert.Equal(keys, Keys(passenger, ThemeVariant.Light));
-        ThemeRead<ThemeIndex> index = BuiltInThemes.Index;
-        Assert.True(index.Read is not null && index.Problems.Count == 0, $"The built-in source's index does not read whole: {index.Refused}{string.Join("\n", index.Problems)}");
-        Assert.Equal([.. Enum.GetValues<Look>().Where(l => l != Look.Passenger).Select(l => $"{l}.json")], index.Read.Themes);
-        Assert.Equal([.. Enum.GetValues<ColourScheme>().Where(s => s != ColourScheme.Theme).Select(s => $"{s}.json")], index.Read.CodeColours);
+        ThemeRead<ThemeIndex> builtIn = BuiltInThemes.Index;
+        Assert.True(builtIn.Read is { Themes: [], CodeColours: [] } && builtIn.Problems.Count == 0, $"The built-in source does not read whole as listing nothing: {builtIn.Refused}");
+        ThemeRead<ThemeIndex> index = CarriedThemes.Index;
+        Assert.True(index.Read is not null && index.Problems.Count == 0, $"The themes repository's index does not read whole: {index.Refused}{string.Join("\n", index.Problems)}");
+        Assert.Equal([.. ThemeSource.FormerlyCarried.Select(n => $"{n}.json")], index.Read.Themes);
+        Assert.Equal([$"{ThemeSource.FormerScheme}.json"], index.Read.CodeColours);
         List<(string, ResourceDictionary)> files = [("Tokens.axaml", passenger)];
-        foreach (Look look in Enum.GetValues<Look>().Where(l => l != Look.Passenger))
+        foreach (string look in CarriedThemes.ThemeNames)
         {
-            ThemeRead<ThemeFile> read = BuiltInThemes.ReadTheme($"{look}.json");
-            Assert.True(read.Read is not null && read.Problems.Count == 0 && read.Read.Name == look.ToString(),
+            ThemeRead<ThemeFile> read = CarriedThemes.ReadTheme(look);
+            Assert.True(read.Read is not null && read.Problems.Count == 0 && read.Read.Name == look,
                 $"{look}.json does not read whole as {look}, so choosing {look} would fail: {read.Refused}{string.Join("\n", read.Problems)}");
             ResourceDictionary theme = ThemeResources.Dictionary(read.Read);
             files.Add(($"{look}.json", theme));
@@ -1571,10 +1574,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 $"{look} does not give every colour Tokens.axaml gives, in Dark and Light, and no other: a colour it lacks shows Passenger's own under it");
             Assert.True(shapes.SequenceEqual(theme.Keys.Select(k => k.ToString()!).Order(StringComparer.Ordinal)), $"{look} does not give every shape Tokens.axaml gives");
         }
-        foreach (ColourScheme choice in Enum.GetValues<ColourScheme>().Where(s => s != ColourScheme.Theme))
+        foreach (string choice in index.Read.CodeColours.Select(Path.GetFileNameWithoutExtension).OfType<string>())
         {
-            ThemeRead<ThemeFile> read = BuiltInThemes.ReadCodeColours($"{choice}.json");
-            Assert.True(read.Read is not null && read.Problems.Count == 0 && read.Read.Name == choice.ToString(),
+            ThemeRead<ThemeFile> read = CarriedThemes.ReadScheme(choice);
+            Assert.True(read.Read is not null && read.Problems.Count == 0 && read.Read.Name == choice,
                 $"{choice}.json does not read whole as {choice}, so choosing it would fail: {read.Refused}{string.Join("\n", read.Problems)}");
             ResourceDictionary scheme = ThemeResources.Dictionary(read.Read);
             files.Add(($"{choice}.json", scheme));
@@ -1639,9 +1642,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
         Assert.True(unmapped.Count == 0, $"Fluent gives {unmapped.Count} keys Passenger's controls can reach that no theme answers for, each showing Fluent's own colour "
             + $"under every look: name each in FluentKeys.axaml as the token it is, or say in this test why no control of Passenger's reads it:\n{string.Join("\n", unmapped)}");
-        foreach (Look look in Enum.GetValues<Look>())
+        foreach (string look in (string[])[CarriedThemes.Own, .. CarriedThemes.ThemeNames])
         {
-            using IDisposable worn = Wearing(look);
+            using IDisposable worn = CarriedThemes.Wearing(look);
             foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
             {
                 foreach ((string key, string token) in FluentKeys.Tokens)
@@ -2396,18 +2399,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
-    /// <summary>Wears a theme for a test, Passenger's own put back after it, pass or fail.</summary>
-    public static IDisposable Wearing(Look look)
-    {
-        Themes.Apply(Application.Current!, look, ColourScheme.Theme);
-        return new Worn();
-    }
-
-    private sealed class Worn : IDisposable
-    {
-        public void Dispose() => Themes.Apply(Application.Current!, Look.Passenger, ColourScheme.Theme);
-    }
-
     /// <summary>The least step in lightness (CIELAB's L*) between two grounds side by side that tells them apart.</summary>
     private const double MinimumStep = 2;
 
@@ -2674,7 +2665,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     {
         try
         {
-            foreach (Look look in Looks)
+            foreach (SourcedTheme? look in Looks)
             {
                 window.ApplySettings(window.Settings with { Look = look });
                 Ui.Settle();
@@ -2684,13 +2675,13 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 }
                 catch (Xunit.Sdk.XunitException failed)
                 {
-                    throw new Xunit.Sdk.XunitException($"Under the {look} look: {failed.Message}", failed);
+                    throw new Xunit.Sdk.XunitException($"Under the {look?.Name ?? CarriedThemes.Own} look: {failed.Message}", failed);
                 }
             }
         }
         finally
         {
-            Themes.Apply(Application.Current!, Look.Passenger, ColourScheme.Theme);
+            Themes.Apply(Application.Current!, null, null);
         }
     }
 

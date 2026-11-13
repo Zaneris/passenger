@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "name": "Rider",
-  "description": "Rider's colours for the code: its Dark under a dark theme and its Light under a light one, the editor's ground and gutter left to the theme so the window's areas stay told apart by shade.",
+  "name": "Reef",
+  "description": "Sky-blue keywords, leaf-green comments, sand strings, coral numbers and mint methods on a dark theme, deeper inks of the same on a light one; the editor's ground and gutter stay the theme's, so the window's areas stay told apart by shade.",
   "dark": {
     "Editor.Bookmark": "#548AF7",
     "Editor.Text": "#BCBEC4",

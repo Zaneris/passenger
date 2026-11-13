@@ -26,8 +26,11 @@ public partial class MainWindow
         settingsStore.Changed += OnSettingsChanged;
         settingsStore.PreviewChanged += OnPreviewChanged;
         Activated += (_, _) => settingsStore.LookAgain();
+        Themes.SaidChanged += OnThemesSaid;
+        OnThemesSaid(null, EventArgs.Empty);
         Closed += (_, _) =>
         {
+            Themes.SaidChanged -= OnThemesSaid;
             settingsStore.Changed -= OnSettingsChanged;
             settingsStore.PreviewChanged -= OnPreviewChanged;
             if (!settingsStore.IsKept)
@@ -91,6 +94,26 @@ public partial class MainWindow
     }
 
     private void OnSettingsChanged(object? sender, SettingsChange change) => Follow(change.After);
+
+    /// <summary>The status bar says a chosen theme being fetched, or why it could not be, a click on it opening Appearance;
+    /// words said for the themes before go once the theme came.</summary>
+    private void OnThemesSaid(object? sender, EventArgs args)
+    {
+        if (Themes.Said is { } said)
+        {
+            themesSaid = said;
+            status.Say(said, Themes.SaidProblem ? Run.ProblemSeverity.Warning : null,
+                new StatusPlace($"choose a theme in {SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)}", () => ShowSettings().Page = SettingsDialog.Appearance));
+        }
+        else if (themesSaid is not null && status.Text == themesSaid)
+        {
+            status.Text = null;
+            themesSaid = null;
+        }
+    }
+
+    /// <summary>What the status bar last said of the themes.</summary>
+    private string? themesSaid;
 
     /// <summary>The window's share of settings come into force: each editor's, the terminal's, the consoles', the menus'
     /// shortcuts and the rest that is this window's.</summary>

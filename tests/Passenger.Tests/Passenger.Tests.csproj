@@ -219,6 +219,12 @@
     </ItemGroup>
   </Target>
 
+  <!-- Passenger's themes repository as the tests read it, in its place (TestRun names it through PASSENGER_THEMES): the
+       themes and the code colour scheme that left the app, held to the window's rules (UiRulesTests). -->
+  <ItemGroup>
+    <None Include="Themes/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- A test drives the IDE whole or a real process through its real boundary: the entry points a unit test would call
        instead are banned (BannedSymbols.txt), as is hearing a child past ChildProcesses.Hear, which warnings as errors
        make a failed build. -->

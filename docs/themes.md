@@ -6,8 +6,18 @@ over it, so a file gives only what it changes.
 
 ## A source
 
-A source is a folder holding `passenger-themes.json` at its root, which lists its files by paths inside it (folders
-joined by `/`, no `..`, no absolute path or address, each ending `.json`). A theme's images go beside its file.
+A source holds `passenger-themes.json` at its root, which lists its files by paths inside it (folders joined by `/`, no
+`..`, no absolute path or address, each ending `.json`). A theme's images go beside its file. A source is one of:
+
+- a folder on your machine, by its full path;
+- a GitHub repository, as `owner/name` or its github.com address, read through its raw files at its default branch;
+- a web address over https, under which `passenger-themes.json` and the files sit.
+
+Passenger lists its own themes repository, [Zaneris/passenger-themes](https://github.com/Zaneris/passenger-themes), from
+the start; add another in Settings | Appearance | Theme sources. Passenger reads a source only when you look at its
+themes there, choose one or press Refresh, never as it starts; a source that cannot be read, or a file it lists that
+cannot, is said in Settings and changes nothing. Add from File beside the Theme and Colour scheme lists takes a theme or
+scheme file of your own.
 
 ```json
 {
@@ -61,8 +71,18 @@ laid over the theme in force; `dark` gives its colours under a dark theme and `l
 - A member or token this Passenger does not know is passed over and named, so a typo shows and a file written for a
   later Passenger still reads.
 
-## The built-in themes
+## A theme chosen is kept
 
-Passenger carries Harbour, the ten generated themes and the Rider code colour scheme as a source in
-`src/Passenger.App/Theme/BuiltIn`. Harbour.json and Rider.json are written by hand; the ten are written by
-`tools/themes.py` from its palettes (`just themes`), so change a palette there rather than its file.
+A theme or scheme you choose is kept as its file was read, under Passenger's state folder in `themes/` (a folder for each
+source, then one for each theme), so it draws at every start and offline without its source. Passenger takes a newer
+copy only when you press Refresh. A theme you chose that is not kept yet (one chosen before Passenger moved its themes
+to their repository) is fetched as Passenger starts, said in the status bar while it comes; Passenger's own theme shows
+until then, and one that cannot be fetched is said, never dropped from your settings.
+
+## Passenger's themes
+
+Passenger carries only its own theme, `Tokens.axaml`; the built-in source (`src/Passenger.App/Theme/BuiltIn`) lists
+nothing beside it yet. Harbour, the ten generated themes and the Reef code colour scheme live in Passenger's themes
+repository, whose copy the tests carry in `tests/Passenger.Tests/Themes`. Harbour.json and Reef.json are written by hand;
+the ten are written by `tools/themes.py` from its palettes (`just themes FOLDER`, into a checkout of the repository or the
+tests' copy), so change a palette there rather than its file.

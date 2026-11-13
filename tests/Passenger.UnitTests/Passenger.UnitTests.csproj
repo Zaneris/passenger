@@ -79,10 +79,11 @@
     <Compile Include="../../src/Passenger.App/Packages/PackageFolders.cs" Link="App/PackageFolders.cs" />
   </ItemGroup>
 
-  <!-- What a theme file says, read from its JSON alone against a table of tokens, compiled in since its project is the
-       app's. -->
+  <!-- What a theme file says, read from its JSON alone against a table of tokens, and a theme source as its words name
+       it, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.cs" Link="App/ThemeFiles.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/ThemeSources.cs" Link="App/ThemeSources.cs" />
   </ItemGroup>
 
   <!-- Which typeface a setting of the window's font names, read as words alone, compiled in since its project is the

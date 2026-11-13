@@ -20,12 +20,17 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Dark or light, or as the system is.</summary>
     public ThemeChoice Theme { get; init; } = ThemeChoice.System;
 
-    /// <summary>The theme, Passenger's own or another of <see cref="Look"/>'s, each in the dark or light <see cref="Theme"/> says.</summary>
-    public Look Look { get; init; } = Look.Passenger;
+    /// <summary>The theme, by its source and name, or null for Passenger's own, each in the dark or light <see cref="Theme"/>
+    /// says.</summary>
+    public SourcedTheme? Look { get; init; }
 
-    /// <summary>The code's colours: the theme's own scheme, or Rider's colours in its Dark or Light as the theme is
-    /// (over the theme's ground, so the areas stay told apart).</summary>
-    public ColourScheme ColourScheme { get; init; } = ColourScheme.Theme;
+    /// <summary>The code's colours, a code colour scheme by its source and name (Dark or Light as the theme is, over the
+    /// theme's ground, so the areas stay told apart), or null for the theme's own.</summary>
+    public SourcedTheme? ColourScheme { get; init; }
+
+    /// <summary>The theme sources the person added, each as <see cref="ThemeSource"/> keeps it, beside Passenger's themes
+    /// repository, which every Passenger lists.</summary>
+    public IReadOnlyList<string> ThemeSources { get; init; } = [];
 
     /// <summary>"Merge main menu with window title", which Linux alone offers: the toolbar is the window's title bar
     /// (its window buttons at its right) rather than a strip under the system's. On at first, since the frame Passenger
@@ -382,11 +387,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>"Reformat on save": a save (File, Save All) first reformats each changed GDScript as Reformat Code does.</summary>
     public bool GDScriptFormatOnSave { get; init; }
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept, ThemesFromTheirRepository];
 
-    /// <summary><see cref="AgentFolders"/> is a set: a folder let in always from one window while another's Settings takes
-    /// back a different one stays let in.</summary>
-    public static IReadOnlyList<string> Sets { get; } = [nameof(AgentFolders)];
+    /// <summary><see cref="AgentFolders"/> and <see cref="ThemeSources"/> are sets: a folder let in always (a source added)
+    /// from one window while another's Settings takes back a different one stays.</summary>
+    public static IReadOnlyList<string> Sets { get; } = [nameof(AgentFolders), nameof(ThemeSources)];
 
     /// <summary>A shortcut kept under an action's former id is kept under its id now, unless one is there already, as
     /// <see cref="Clamped"/> reads them: written so, the former id leaves the file, and an action's shortcuts reset stay so.</summary>
@@ -452,6 +457,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         }
     }
 
+    /// <summary>Version 3 to 4: a theme and a code colour scheme chosen when Passenger carried them are the same from
+    /// Passenger's themes repository, where they moved.</summary>
+    private static void ThemesFromTheirRepository(JsonObject settings) => ThemeSource.MoveFormerChoices(settings,
+        StateFile.Options.PropertyNamingPolicy!.ConvertName(nameof(Look)), StateFile.Options.PropertyNamingPolicy.ConvertName(nameof(ColourScheme)));
+
     /// <summary>A hand-edited or later build's value this build cannot use is brought into range, or back to its default
     /// (each setting of one value as <see cref="Declared"/> says); a shortcut that does not parse is the keymap's to pass over.</summary>
     public AppSettings Clamped()
@@ -473,12 +483,19 @@ public sealed record AppSettings : IStateDocument<AppSettings>
             XamlFormat = (XamlFormat ?? defaults.XamlFormat).Clamped(),
             GDScriptFormat = (GDScriptFormat ?? defaults.GDScriptFormat).Clamped(),
             AgentFolders = [.. (AgentFolders ?? []).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(Passenger.Core.PathNames.Comparer)],
+            Look = Named(Look),
+            ColourScheme = Named(ColourScheme),
+            ThemeSources = [.. (ThemeSources ?? []).Where(s => s is not null && ThemeSource.Of(s, out _) is { Kind: ThemeSourceKind.Folder or ThemeSourceKind.GitHub or ThemeSourceKind.Web } source
+                && source != ThemeSource.Repository).Distinct(StringComparer.Ordinal)],
         };
         foreach (Setting setting in Declared.All)
         {
             clamped = setting.Clamp(clamped);
         }
         return clamped;
+
+        // A theme named by nothing, or by no name, is Passenger's own.
+        static SourcedTheme? Named(SourcedTheme? theme) => theme is { Source: { Length: > 0 }, Name: { Length: > 0 } } ? theme : null;
 
         // A shortcut kept under an action's former id is the action's now (one kept under its id now winning).
         static Dictionary<string, string[]> Readable(Dictionary<string, string[]>? shortcuts) =>
