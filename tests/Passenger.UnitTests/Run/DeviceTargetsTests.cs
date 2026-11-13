@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.App.Run;
 using Passenger.App.Run.Devices;
 using Passenger.Core;
 using Passenger.Host;
@@ -8,8 +9,9 @@ namespace Passenger.UnitTests.Run;
 
 /// <summary>Where an app of devices runs: the targets Android's workload lists (an emulator by its AVD whether or not it
 /// runs, a device by its serial), the framework a target's platform builds, a choice found again in a later listing by
-/// its key and said once gone, an installed app's adb commands for Run and Debug, and the Debug build's environment file
-/// with the relay's variables added.</summary>
+/// its key and said once gone, an installed app's adb commands for Run and Debug, the Debug build's environment file
+/// with the relay's variables added, and a launch profile tied to one platform taken where that platform is the target
+/// rather than making a configuration named for it.</summary>
 public class DeviceTargetsTests
 {
     private const string Listed = """
@@ -172,6 +174,68 @@ public class DeviceTargetsTests
             """, "emulator-5554", "/src/Shop");
         Assert.Null(none);
         Assert.Equal("com.shop starts through its instrumentation, which Passenger does not run: give it a launcher activity", why);
+    }
+
+    /// <summary>The .NET MAUI template's launch settings: its one profile, for Windows.</summary>
+    private const string MauiSettings = """
+        {
+          "profiles": {
+            "Windows Machine": {
+              "commandName": "Project",
+              "nativeDebugging": false
+            }
+          }
+        }
+        """;
+
+    [Fact]
+    public void A_profile_running_the_project_and_naming_one_platform_is_tied_to_it()
+    {
+        TargetPlatform? Tied(string name, string command = "Project") =>
+            DeviceTargets.TiedTo(new LaunchProfile(name, command, null, null, null, new Dictionary<string, string>(), null, false, null));
+
+        Assert.Equal(TargetPlatform.Windows, Tied("Windows Machine"));
+        Assert.Equal(TargetPlatform.Android, Tied("Android Emulator"));
+        Assert.Equal(TargetPlatform.Ios, Tied("iOS Simulator"));
+        Assert.Equal(TargetPlatform.MacCatalyst, Tied("Mac Catalyst"));
+        Assert.Equal(TargetPlatform.MacCatalyst, Tied("MacCatalyst (debug)"));
+        Assert.Null(Tied("http"));
+        Assert.Null(Tied("WindowsAuthentication"));
+        Assert.Null(Tied("Windows and Android"));
+        Assert.Null(Tied("Windows Machine", "Executable"));
+    }
+
+    [Fact]
+    public void The_maui_templates_windows_profile_makes_no_configuration_of_its_own_so_its_one_is_named_for_the_project()
+    {
+        IReadOnlyList<LaunchProfile> profiles = LaunchProfile.Parse(MauiSettings);
+        IReadOnlyList<LaunchProfile> withHttp = LaunchProfile.Parse(MauiSettings.Replace("\"profiles\": {", "\"profiles\": {\n\"http\": { \"commandName\": \"Project\" },", StringComparison.Ordinal));
+        string[] Own(string[] frameworks, IReadOnlyList<LaunchProfile> read) => [.. DeviceTargets.OwnProfiles(frameworks, read).Select(p => p.Name)];
+
+        Assert.Empty(Own(["net11.0-android", "net11.0-ios", "net11.0-maccatalyst"], profiles));
+        Assert.Empty(Own(["net11.0-android"], profiles));
+        Assert.Empty(Own(["net11.0-android", "net11.0-windows10.0.19041.0"], profiles));
+        Assert.Equal(["http"], Own(["net11.0-android", "net11.0-windows10.0.19041.0"], withHttp));
+        // A desktop project has no target to tie a profile to.
+        Assert.Equal(["Windows Machine"], Own(["net11.0-windows"], profiles));
+        Assert.Equal(["Windows Machine"], Own(["net11.0"], profiles));
+    }
+
+    [Fact]
+    public void Where_its_platform_is_the_target_the_profile_tied_to_it_is_found()
+    {
+        IReadOnlyList<LaunchProfile> profiles = LaunchProfile.Parse("""
+            {
+              "profiles": {
+                "http": { "commandName": "Project" },
+                "Windows Machine": { "commandName": "Project", "commandLineArgs": "--tied" }
+              }
+            }
+            """);
+
+        Assert.Null(DeviceTargets.ProfileFor(profiles, TargetPlatform.Android));
+        Assert.Equal("Windows Machine", DeviceTargets.ProfileFor(profiles, TargetPlatform.Windows)?.Name);
+        Assert.Equal(TargetKind.ThisMachine, DeviceTargets.Here(TargetPlatform.Windows).Kind);
     }
 
     [Fact]

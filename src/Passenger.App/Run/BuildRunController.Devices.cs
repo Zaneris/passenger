@@ -14,11 +14,11 @@ namespace Passenger.App.Run;
 public sealed partial class BuildRunController
 {
     /// <summary>Whether a configuration runs its project's app on a device or an emulator: one is chosen for it, or its
-    /// project runs nowhere else.</summary>
+    /// project runs nowhere else; this machine chosen runs it here.</summary>
     private bool RunsOnDevice(RunConfiguration chosen) =>
         chosen.Program.Length == 0 && session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project)) is { } project
         && DeviceTargets.PlatformsOf(project.TargetFrameworks).Count > 0
-        && (session.Targets.Of(project) is not null || DeviceTargets.RunsOnlyElsewhere(project.TargetFrameworks));
+        && (session.Targets.Of(project) is { } target ? target.Kind != TargetKind.ThisMachine : DeviceTargets.RunsOnlyElsewhere(project.TargetFrameworks));
 
     /// <summary>The app ended on its device once its run here ends, however it ended.</summary>
     private static async Task EndOnDeviceAsync(Task<int> ended, AndroidApp app)

@@ -306,7 +306,8 @@ public sealed record RunConfiguration
                 continue;
             }
             string name = NameOf(project);
-            IReadOnlyList<LaunchProfile> profiles = project.IsScriptGame ? [] : Run.LaunchProfile.Read(project);
+            // A profile tied to a platform its apps run on makes none: the project's own takes it where that platform is the target.
+            IReadOnlyList<LaunchProfile> profiles = project.IsScriptGame ? [] : Devices.DeviceTargets.OwnProfiles(project.TargetFrameworks, Run.LaunchProfile.Read(project));
             if (!profiles.Any(p => p.Unsupported is null && !p.RunsInContainer))
             {
                 generated.Add(new RunConfiguration
@@ -354,6 +355,28 @@ public sealed record RunConfiguration
             }
         }
         return generated;
+    }
+
+    /// <summary>It with a launch profile's values where it gives none of its own, as it runs on the platform the profile is
+    /// tied to: the profile's arguments, working folder and browser where it names none, the profile's variables under its
+    /// own, and the profile's name, which dotnet run names it by.</summary>
+    public RunConfiguration TakingProfile(ProjectModel project, LaunchProfile profile)
+    {
+        RunConfiguration made = From(project, profile);
+        Dictionary<string, string> environment = new(made.Environment);
+        foreach ((string name, string value) in Environment)
+        {
+            environment[name] = value;
+        }
+        return this with
+        {
+            LaunchProfile = profile.Name,
+            Arguments = Arguments.Length > 0 ? Arguments : made.Arguments,
+            WorkingDirectory = WorkingDirectory.Length > 0 ? WorkingDirectory : made.WorkingDirectory,
+            Environment = environment,
+            LaunchBrowser = LaunchBrowser || made.LaunchBrowser,
+            BrowserUrl = BrowserUrl.Length > 0 ? BrowserUrl : made.BrowserUrl,
+        };
     }
 
     /// <summary>What a Godot project's configuration that starts Godot's editor on it is called after the project's name.</summary>

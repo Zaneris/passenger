@@ -10,9 +10,10 @@ using Passenger.Workspace;
 namespace Passenger.Tests;
 
 /// <summary>An Android app (tests/AndroidApp) run and debugged on an emulator from the window: chosen beside the run
-/// configuration, Run installs and starts it there, its log in the Run window, and Stop ends it on the emulator; Debug
-/// stops at a breakpoint in its OnCreate through Passenger's relay in the app, its locals shown, and Stop ends it. Skips,
-/// saying why, without the Android workload, its SDK and Java, or an emulator. Debugged through the window, so run alone.</summary>
+/// configuration named for the app (its launch settings' only profile is the MAUI template's Windows one), Run installs
+/// and starts it there, its log in the Run window, and Stop ends it on the emulator; Debug stops at a breakpoint in its
+/// OnCreate through Passenger's relay in the app, its locals shown, and Stop ends it. Skips, saying why, without the
+/// Android workload, its SDK and Java, or an emulator. Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class AndroidDeviceTests
 {
@@ -25,9 +26,12 @@ public sealed class AndroidDeviceTests
     {
         string folder = TestFolders.Create("android");
         string source = Path.Combine(Debuggees.Root, "tests", "AndroidApp");
-        foreach (string file in Directory.EnumerateFiles(source))
+        foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories).Where(f => !Path.GetRelativePath(source, f).StartsWith("bin", StringComparison.Ordinal)
+            && !Path.GetRelativePath(source, f).StartsWith("obj", StringComparison.Ordinal)))
         {
-            File.Copy(file, Path.Combine(folder, Path.GetFileName(file)));
+            string copy = Path.Combine(folder, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+            File.Copy(file, copy);
         }
         string project = PathNames.Canonical(Path.Combine(folder, "AndroidApp.csproj"));
         (IReadOnlyList<DeviceTarget> targets, AndroidTools? tools, string? problem) = Ui.Await(Waiting.Apart(() =>

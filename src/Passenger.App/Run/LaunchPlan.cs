@@ -290,10 +290,15 @@ public sealed partial record LaunchPlan
         string? framework = device is not null && Devices.DeviceTargets.PlatformOf(configuration.Framework) != device.Platform && project.TargetFrameworks.Count > 1
             ? Devices.DeviceTargets.FrameworkFor(project.TargetFrameworks, device.Platform)
             : FrameworkOf(configuration.Framework, project);
-        if (device is null && configuration.Program.Length == 0
-            && Devices.DeviceTargets.PlatformOf(framework ?? project.TargetFrameworks.FirstOrDefault() ?? string.Empty) is Devices.TargetPlatform.Android or Devices.TargetPlatform.Ios)
+        Devices.TargetPlatform? platform = device?.Platform ?? Devices.DeviceTargets.PlatformOf(framework ?? project.TargetFrameworks.FirstOrDefault() ?? string.Empty);
+        if (device is null && configuration.Program.Length == 0 && platform is Devices.TargetPlatform.Android or Devices.TargetPlatform.Ios)
         {
             throw new LaunchException(Refusals.NoRunTarget(project.Name));
+        }
+        // The project's own configuration, named for no platform, runs its platform's profile where the target is of that platform.
+        if (platform is { } on && configuration is { LaunchProfile.Length: 0, Program.Length: 0 } && Devices.DeviceTargets.ProfileFor(LaunchProfile.Read(project), on) is { } tied)
+        {
+            configuration = configuration.TakingProfile(project, tied);
         }
         // Before its build: the program would build here (EnableWindowsTargeting) and then fail to start for want of WindowsDesktop.
         if (configuration.Program.Length == 0 && project.RunsOnlyOnWindows(framework) is { } windows)
@@ -426,7 +431,7 @@ public sealed partial record LaunchPlan
             Web = WebOf(project, framework, properties, workspace, projects),
             Unseen = headless,
             Notes = underDotnet is null ? [] : [$"{configuration.Name} runs as dotnet {System.IO.Path.GetFileName(target)}, not by its apphost: {underDotnet}"],
-            Device = device is not null && configuration.Program.Length == 0 ? new Devices.DeviceLaunch(device, framework ?? project.TargetFrameworks[0]) : null,
+            Device = device is { Kind: not Devices.TargetKind.ThisMachine } && configuration.Program.Length == 0 ? new Devices.DeviceLaunch(device, framework ?? project.TargetFrameworks[0]) : null,
         };
     }
 

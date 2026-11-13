@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Passenger.Core;
 
 namespace Passenger.App.Run.Devices;
@@ -58,7 +59,7 @@ public sealed record KeptTarget
 }
 
 /// <summary>Reads what a platform's workload lists, and tells a project's platforms from its target frameworks.</summary>
-public static class DeviceTargets
+public static partial class DeviceTargets
 {
     /// <summary>The target framework's platform (<c>net11.0-android36.0</c>'s Android); null for a framework of no platform
     /// an app runs on elsewhere, or a Windows desktop app's (<c>net11.0-windows</c>).</summary>
@@ -124,6 +125,57 @@ public static class DeviceTargets
     /// <summary>A description without the workload's own word on whether it runs, which the chooser says itself.</summary>
     private static string Unsaid(string description) =>
         description.EndsWith(" (Not Running)", StringComparison.OrdinalIgnoreCase) ? description[..^" (Not Running)".Length] : description;
+
+    /// <summary>This machine as the target of a platform whose apps run here (a Windows app's head on Windows), which the
+    /// chooser lists beside the devices.</summary>
+    public static DeviceTarget Here(TargetPlatform platform) =>
+        new(platform, platform.ToString().ToLowerInvariant(), $"{platform} (this machine)", TargetKind.ThisMachine, Running: true);
+
+    /// <summary>The platform whose apps run on this machine, where the system has one: Windows' on Windows.</summary>
+    public static TargetPlatform? OfThisMachine => OperatingSystem.IsWindows() ? TargetPlatform.Windows : null;
+
+    /// <summary>The one platform a launch profile running the project names, as a multi-platform app's template names its
+    /// Windows profile ("Windows Machine"): that platform's own, taken where it is the target (<see cref="ProfileFor"/>);
+    /// null for a profile naming none or several, or running another program.</summary>
+    public static TargetPlatform? TiedTo(Run.LaunchProfile profile)
+    {
+        if (!profile.RunsProject)
+        {
+            return null;
+        }
+        string[] words = [.. NameWords().Split(profile.Name).Where(w => w.Length > 0).Select(w => w.ToLowerInvariant())];
+        HashSet<TargetPlatform> named = [];
+        for (int i = 0; i < words.Length; i++)
+        {
+            TargetPlatform? platform = words[i] switch
+            {
+                "windows" => TargetPlatform.Windows,
+                "android" => TargetPlatform.Android,
+                "ios" => TargetPlatform.Ios,
+                "maccatalyst" => TargetPlatform.MacCatalyst,
+                "mac" when i + 1 < words.Length && words[i + 1] == "catalyst" => TargetPlatform.MacCatalyst,
+                _ => null,
+            };
+            if (platform is { } one)
+            {
+                named.Add(one);
+            }
+        }
+        return named.Count == 1 ? named.Single() : null;
+    }
+
+    /// <summary>The launch profiles that make run configurations of their own for a project of these frameworks: every one,
+    /// but for a project whose apps run on devices, those tied to one platform, which its own configuration takes where
+    /// that platform is the target, so it is named for the project and the target alone says where it runs.</summary>
+    public static IReadOnlyList<Run.LaunchProfile> OwnProfiles(IReadOnlyList<string> frameworks, IReadOnlyList<Run.LaunchProfile> profiles) =>
+        PlatformsOf(frameworks).Count > 0 ? [.. profiles.Where(p => TiedTo(p) is null)] : profiles;
+
+    /// <summary>The project's first launch profile tied to a platform (<see cref="TiedTo"/>); null where none is.</summary>
+    public static Run.LaunchProfile? ProfileFor(IEnumerable<Run.LaunchProfile> profiles, TargetPlatform platform) =>
+        profiles.FirstOrDefault(p => TiedTo(p) == platform);
+
+    [GeneratedRegex(@"[^\p{L}\p{N}]+")]
+    private static partial Regex NameWords();
 
     /// <summary>A kept choice in a listing, by its platform and key.</summary>
     public static DeviceTarget? Find(KeptTarget? choice, IReadOnlyList<DeviceTarget> targets) =>

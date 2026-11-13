@@ -11,8 +11,9 @@ namespace Passenger.App;
 /// <summary>Where the chosen configuration's app runs: for a project whose frameworks run on devices, emulators or
 /// simulators, the widget beside the run configuration's names the target chosen, and its action lists what the
 /// project's platforms run on as their workloads list it (Android's devices and emulators, those not running too, which
-/// Run and Debug start). The choice is the project's, kept with the folder, and decides the framework built; one no
-/// longer listed is said.</summary>
+/// Run and Debug start), with this machine for a platform whose apps run here (Windows'). The choice is the project's,
+/// kept with the folder, and decides the framework built and the launch profile tied to its platform; one no longer
+/// listed is said.</summary>
 public partial class MainWindow
 {
     /// <summary>Why the last listing of the project's targets found none, where it could not list them.</summary>
@@ -66,7 +67,10 @@ public partial class MainWindow
         DeviceTarget? found = session.Targets.Found(project);
         string? gone = session.Targets.WasListed(project) ? DeviceTargets.Gone(chosen, session.Targets.Listed(project), project.Name) : null;
         RunTargetName.Text = found?.Shown ?? chosen?.Name ?? "Choose a device";
-        ToolTip.SetTip(RunTargetButton, gone ?? (chosen is null ? Refusals.NoRunTarget(project.Name) : $"{project.Name} runs on {chosen.Name}"));
+        string? tied = chosen is not null && session.Configurations.Chosen is { LaunchProfile.Length: 0 }
+            ? DeviceTargets.ProfileFor(Run.LaunchProfile.Read(project), chosen.Platform)?.Name : null;
+        ToolTip.SetTip(RunTargetButton, gone ?? (chosen is null ? Refusals.NoRunTarget(project.Name)
+            : $"{project.Name} runs on {chosen.Name}{(tied is null ? string.Empty : $" with its launch profile {tied}")}"));
     }
 
     private void OnRunTargetClicked(object? sender, RoutedEventArgs e) => Request(A.ChooseRunTarget);
@@ -99,7 +103,8 @@ public partial class MainWindow
     private async Task ListRunTargetsAsync(ProjectModel project)
     {
         ProjectSession listing = session;
-        List<DeviceTarget> found = [];
+        List<DeviceTarget> found = DeviceTargets.OfThisMachine is { } here && DeviceTargets.FrameworkFor(project.TargetFrameworks, here) is not null
+            ? [DeviceTargets.Here(here)] : [];
         string? problem = null;
         if (DeviceTargets.FrameworkFor(project.TargetFrameworks, TargetPlatform.Android) is { } android)
         {

@@ -153,7 +153,13 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         {
             return named.Unsupported is { } unsupported ? (null, $"its launch profile {start.LaunchProfile} cannot run here: {unsupported}") : (named, null);
         }
-        return LaunchProfile.Read(project).FirstOrDefault(p => p.Name == start.LaunchProfile) is { } profile
+        LaunchProfile? profile = LaunchProfile.Read(project).FirstOrDefault(p => p.Name == start.LaunchProfile);
+        if (profile is { Unsupported: null, RunsInContainer: false })
+        {
+            // A profile tied to a platform makes no configuration of its own (DeviceTargets.OwnProfiles), but runs as named.
+            return (RunConfiguration.From(project, profile) with { Name = RunConfiguration.NameOf(project, profile.Name), Generated = true }, null);
+        }
+        return profile is not null
             ? (null, profile.RunsInContainer ? $"its launch profile {start.LaunchProfile} runs a container, which a configuration of its own runs"
                 : $"its launch profile {start.LaunchProfile} cannot run here: {profile.Unsupported}")
             : (null, $"{name}'s {LaunchProfile.SettingsName(project.Path)} has no launch profile named {start.LaunchProfile}");
