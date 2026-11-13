@@ -276,7 +276,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 `src/Passenger.App`, by area:
 - **Shell.** A new state's first start asks the theme and dark or light (`MainWindow.ShowFirstStartOnce`,
   `Welcome/FirstStartView`), never in a window nobody sees; a carried theme needs its first-start pictures.
-  `KeepWorkspace` writes `WorkspaceState` whole, so a field added to it is added there too. Every open through
+  `KeepWorkspace` writes `WorkspaceState` whole, so a field added to it is added there too. The person's window opens where the last stood (`MainWindow.OpenWherePlaced`, one place for every folder, `StateStore.Placement`), its normal bounds taken only once settled (`KeepPlacement`). Every open through
   `PassengerApp.OpenProject`; a `.slnf`'s left-out projects are never saved as the
   person's; a handler acts only while its session is bound (`ProjectSession.Bind`). A Passenger nobody sees
   (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`; what a start
@@ -297,7 +297,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   through `Indentation.FirstBlockAtRisk`, `Language.BlockWords` and `Language.Continued`.
 - **Docking.** A theme's default layout is the dock's default (`DockHost.UseDefault`/`Default`, `Themes.Layout`): what a
   window with no kept layout opens on and what Restore Default Layout goes to, never laid over a kept layout. A window
-  closed off its stripe (`ToolWindow.IsClosed`) is kept in the saved layout; the stripes and titled tabs list only
+  closed off its stripe (`ToolWindow.IsClosed`, set only through `DockHost.SetOnStripe`: Close and the stripe's checklist, `DockHost.StripeMenu`; `ClosesOffStripe` governs only ×) is kept in the saved layout; the stripes and titled tabs list only
   `OnStripes`. A kept layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
