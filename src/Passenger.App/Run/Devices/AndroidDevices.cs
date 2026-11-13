@@ -23,7 +23,7 @@ public static class AndroidDevices
         IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
     {
         List<string> arguments = ["msbuild", project, "-nologo", "-restore", "-target:ComputeAvailableDevices", "-getItem:Devices", "-getProperty:AdbToolPath",
-            "-getProperty:EmulatorToolPath", "-getProperty:AndroidSdkDirectory", "-getProperty:TargetPlatformVersion", $"-property:TargetFramework={framework}", .. globals.Where(g => g.Key != "TargetFramework").Select(g => $"-property:{g.Key}={g.Value}")];
+            "-getProperty:EmulatorToolPath", "-getProperty:AndroidSdkDirectory", "-getProperty:TargetPlatformVersion", $"-property:{MSBuildNames.TargetFramework}={framework}", .. globals.Where(g => g.Key != MSBuildNames.TargetFramework).Select(g => $"-property:{g.Key}={g.Value}")];
         ChildResult listed = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(arguments, Path.GetDirectoryName(project)!), cancel: cancel);
         if (!listed.Succeeded)
         {
@@ -155,8 +155,8 @@ public static class AndroidDevices
     public static async Task<(AndroidApp? App, string? Problem)> DeployAsync(string project, string framework, string serial, IReadOnlyDictionary<string, string> globals,
         CancellationToken cancel)
     {
-        List<string> arguments = ["msbuild", project, "-nologo", "-target:DeployToDevice;ComputeRunArguments", $"-property:TargetFramework={framework}", $"-property:Device={serial}",
-            .. globals.Where(g => g.Key is not "TargetFramework" and not "Device").Select(g => $"-property:{g.Key}={g.Value}"),
+        List<string> arguments = ["msbuild", project, "-nologo", "-target:DeployToDevice;ComputeRunArguments", $"-property:{MSBuildNames.TargetFramework}={framework}", $"-property:Device={serial}",
+            .. globals.Where(g => g.Key is not MSBuildNames.TargetFramework and not "Device").Select(g => $"-property:{g.Key}={g.Value}"),
             .. AndroidApp.Properties.Select(p => $"-getProperty:{p}")];
         ChildResult deployed = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(arguments, Path.GetDirectoryName(project)!), cancel: cancel);
         if (!deployed.Succeeded)

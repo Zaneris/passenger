@@ -9,7 +9,7 @@ namespace Passenger.App.Run.Devices;
 public sealed record AndroidApp(string Serial, string Adb, string Package, string Activity, string Intermediate)
 {
     /// <summary>The properties the workload's <c>ComputeRunArguments</c> leaves that the app's start reads.</summary>
-    public static readonly IReadOnlyList<string> Properties = ["AndroidLaunchActivity", "_AndroidPackage", "_AdbToolPath", "IntermediateOutputPath", "AndroidInstrumentation"];
+    public static readonly IReadOnlyList<string> Properties = ["AndroidLaunchActivity", "_AndroidPackage", "_AdbToolPath", MSBuildNames.IntermediateOutputPath, "AndroidInstrumentation"];
 
     /// <summary>The profiler the runtime loads Passenger's relay as (its class id, which the relay's factory answers to).</summary>
     public const string RelayProfiler = "{7A3E5B2C-8D41-4F6A-9C0E-5B1D2E3F4A50}";
@@ -38,7 +38,7 @@ public sealed record AndroidApp(string Serial, string Adb, string Package, strin
         string package = JsonMembers.Text(properties, "_AndroidPackage") ?? string.Empty;
         string activity = JsonMembers.Text(properties, "AndroidLaunchActivity") ?? string.Empty;
         string adb = JsonMembers.Text(properties, "_AdbToolPath") ?? string.Empty;
-        string intermediate = JsonMembers.Text(properties, "IntermediateOutputPath") ?? string.Empty;
+        string intermediate = JsonMembers.Text(properties, MSBuildNames.IntermediateOutputPath) ?? string.Empty;
         if (package.Length == 0 || adb.Length == 0)
         {
             return (null, "The Android workload did not say which package it installed");

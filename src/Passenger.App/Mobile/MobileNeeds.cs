@@ -102,7 +102,7 @@ public static class MobileAnswers
                     continue;
                 }
                 string? framework = (JsonMembers.Text(item, "AdditionalProperties") ?? string.Empty).Split(';')
-                    .Select(p => p.Split('=', 2)).FirstOrDefault(p => p is ["TargetFramework", _])?[1];
+                    .Select(p => p.Split('=', 2)).FirstOrDefault(p => p is [MSBuildNames.TargetFramework, _])?[1];
                 found.Add(new WorkloadLacked(id, framework));
             }
             return found;

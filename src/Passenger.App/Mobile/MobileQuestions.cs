@@ -47,10 +47,10 @@ public static class MobileQuestions
         CancellationToken cancel)
     {
         List<string> arguments = ["msbuild", project, "-nologo", "-property:SkipResolvePackageAssets=true", .. asked,
-            .. globals.Where(g => g.Key is not "TargetFramework").Select(g => $"-property:{g.Key}={g.Value}")];
+            .. globals.Where(g => g.Key is not MSBuildNames.TargetFramework).Select(g => $"-property:{g.Key}={g.Value}")];
         if (framework is not null)
         {
-            arguments.Add($"-property:TargetFramework={framework}");
+            arguments.Add($"-property:{MSBuildNames.TargetFramework}={framework}");
         }
         return ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(arguments, Path.GetDirectoryName(project)!), cancel: cancel);
     }

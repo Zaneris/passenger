@@ -294,9 +294,9 @@ public partial class MainWindow
                 return;
             }
             installing.Say($"Installing {what}");
-            List<string> arguments = ["msbuild", project.Path, "-nologo", "-target:InstallAndroidDependencies", $"-property:TargetFramework={framework}",
+            List<string> arguments = ["msbuild", project.Path, "-nologo", "-target:InstallAndroidDependencies", $"-property:{MSBuildNames.TargetFramework}={framework}",
                 $"-property:AndroidSdkDirectory={sdk}", "-property:AcceptAndroidSDKLicenses=True",
-                .. ProjectModels.Properties(session.Workspace, project).Where(g => g.Key is not "TargetFramework").Select(g => $"-property:{g.Key}={g.Value}")];
+                .. ProjectModels.Properties(session.Workspace, project).Where(g => g.Key is not MSBuildNames.TargetFramework).Select(g => $"-property:{g.Key}={g.Value}")];
             (int code, IReadOnlyList<string> lines) = await RunInstallAsync(ChildProcesses.DotnetCommand(arguments, project.Folder), installing);
             if (installing.IsStopped)
             {
