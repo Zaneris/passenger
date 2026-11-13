@@ -74,6 +74,12 @@ public sealed partial class CodeEditor
     /// the compositor draws again in every frame that scrolls.</summary>
     public int StripeRectangles { get; private set; }
 
+    /// <summary>How many times the stripe has been drawn.</summary>
+    public long StripesDrawn { get; private set; }
+
+    /// <summary>How many times the counts over the stripe have been drawn.</summary>
+    public long CountsDrawn { get; private set; }
+
     /// <summary>The counts' errors and warnings, as their widget shows them, counted when the markers are set.</summary>
     public (int Errors, int Warnings) ProblemCount => decorations.Problems;
 
@@ -437,24 +443,31 @@ public sealed partial class CodeEditor
     private Track? BarTrack() => vertical.GetVisualDescendants().OfType<Track>().FirstOrDefault();
 
     private StripeBuild? stripeBuild;
-    private (int Built, int CaretRow, (int, int) Counts) stripeDrawn;
+    /// <summary>What the stripe and the counts were last asked to draw: the marks' build, where the caret's mark stands on the
+    /// track, and the counts; default once a new look or document has them drawn again whole.</summary>
+    private (int Built, double CaretTop, (int, int) Counts) stripeDrawn;
     private bool stripeRefreshPosted;
 
     /// <summary>The stripe and the counts are drawn apart from the text: when what they show moved, they are asked again
-    /// once the frame is done (invalidating a visual while the editor renders leaves the window's hit testing stale).</summary>
+    /// once the frame is done (invalidating a visual while the editor renders leaves the window's hit testing stale). Each
+    /// is asked only for what it shows, as the compositor draws again all that lies between two visuals asked together:
+    /// the stripe for other marks or its caret's mark moved, which a file of more rows than the track has pixels leaves
+    /// where it was for a row or two, and the counts for other counts.</summary>
     private void RefreshStripe()
     {
         if (!showErrorStripe || stripeRefreshPosted)
         {
             return;
         }
-        (int Built, int CaretRow, (int, int) Counts) now = (BuiltMarks().Number, CaretMark().Row, ProblemCount);
-        // A build kept through a key shares its marks: the stripe is drawn again only for other marks or another caret row.
+        StripeBuild built = BuiltMarks();
+        (int Built, double CaretTop, (int, int) Counts) now = (built.Number, stripe.CaretTop(CaretMark(), built.RowCount), ProblemCount);
+        // A build kept through a key shares its marks: the stripe is drawn again only for other marks or its caret's moved.
         if (now == stripeDrawn)
         {
             return;
         }
         bool recount = now.Counts != stripeDrawn.Counts;
+        bool redrawCounts = recount || stripeDrawn == default;
         stripeDrawn = now;
         stripeRefreshPosted = true;
         Dispatcher.UIThread.Post(() =>
@@ -466,7 +479,10 @@ public sealed partial class CodeEditor
                 InvalidateArrange();
             }
             stripe.InvalidateVisual();
-            counts.InvalidateVisual();
+            if (redrawCounts)
+            {
+                counts.InvalidateVisual();
+            }
         });
     }
 
@@ -515,10 +531,15 @@ public sealed partial class CodeEditor
 
         public bool HitTest(Point point) => At(point) is not null;
 
+        /// <summary>Where the caret's mark is drawn on the track as last placed; before the stripe was first drawn, nowhere.</summary>
+        public double CaretTop(StripeMark caret, int rowCount) =>
+            placed.Built < 0 ? double.NegativeInfinity : Span(caret, placed.Track, rowCount).Top;
+
         /// <summary>The marks in order, those next to each other drawn alike and touching as one rectangle, so thousands of
         /// problems are as many rectangles as the track has room for: what the compositor draws again in every frame.</summary>
         public override void Render(DrawingContext context)
         {
+            editor.StripesDrawn++;
             Palette palette = editor.palette;
             (StripeBuild built, Rect track) = Placed();
             IBrush? brush = null;
@@ -737,6 +758,7 @@ public sealed partial class CodeEditor
 
         public override void Render(DrawingContext context)
         {
+            editor.CountsDrawn++;
             (int errors, int warnings) = editor.ProblemCount;
             Palette palette = editor.palette;
             context.FillRectangle(palette.Background, new Rect(Bounds.Size), 4);
