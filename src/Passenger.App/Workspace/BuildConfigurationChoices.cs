@@ -40,6 +40,11 @@ public sealed class BuildConfigurationChoices
     /// <summary>The one chosen: <see cref="Choice"/>'s, else the default.</summary>
     public BuildConfiguration? Chosen => choice?.Chosen ?? Default;
 
+    /// <summary>The choice as the folder keeps it: null for the one MSBuild takes given none.</summary>
+    public KeptBuildChoice? Kept => choice is { } chosen
+        ? new KeptBuildChoice(chosen.Chosen.Configuration, chosen.Chosen.Platform, chosen.OfSolution) { Mapped = [.. chosen.Mapped] }
+        : null;
+
     /// <summary>The choice the folder kept, taken as it opens, before anything is read.</summary>
     public void Take(WorkspaceState state)
     {
@@ -171,8 +176,7 @@ public sealed class BuildConfigurationChoices
         choice = next;
         if (kept is { } document)
         {
-            KeptBuildChoice? keeping = next is null ? null
-                : new KeptBuildChoice(next.Chosen.Configuration, next.Chosen.Platform, next.OfSolution) { Mapped = [.. next.Mapped] };
+            KeptBuildChoice? keeping = Kept;
             if (document.Value.Build != keeping && !(document.Value.Build is { } was && keeping is not null && was.Same(keeping)))
             {
                 document.Set(document.Value with { Build = keeping });

@@ -120,6 +120,52 @@ public sealed class BuildConfigurationTests
         }
     }
 
+    /// <summary>The configuration chosen is the folder's: a window keeping state opens it again building as Staging, its
+    /// widget naming it and its projects evaluated under it from the start.</summary>
+    [AvaloniaFact]
+    public void The_configuration_chosen_is_kept_with_the_folder_and_a_window_opening_it_again_builds_as_it()
+    {
+        string folder = TestFolders.Create("configuration-kept-");
+        string settings = TestFolders.Create("configuration-settings-");
+        TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console("<Configurations>Debug;Release;Staging</Configurations>"));
+        try
+        {
+            MainWindow first = Keeping(settings, folder);
+            Ui.WaitFor(() => Offered(first) == "Debug, Release, Staging", () => $"Debug, Release and Staging offered, where the widget offers {Offered(first)}");
+            Choose(first, "Staging");
+            first.Close();
+
+            MainWindow second = Keeping(settings, folder);
+            try
+            {
+                Assert.True(second.Session.Workspace?.Build?.Chosen.Configuration == "Staging",
+                    $"The folder opened again building as {second.Session.Workspace?.Build?.Chosen.Key ?? "what MSBuild takes given none"}, not the Staging chosen before");
+                Ui.WaitFor(() => second.FindControl<TextBlock>("BuildConfigName")!.Text == "Staging", () => $"the widget to name Staging: {Ui.Said(second)}");
+                Ui.WaitFor(() => second.Session.Projects.Single().Property(Passenger.Host.CarriedProperties.TargetPath)?.Contains("Staging", StringComparison.Ordinal) == true,
+                    () => $"the project evaluated under Staging, where its build makes {second.Session.Projects.Single().Property(Passenger.Host.CarriedProperties.TargetPath)}");
+            }
+            finally
+            {
+                second.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(settings);
+        }
+    }
+
+    /// <summary>A window that keeps its state in a folder of its own, on the folder given.</summary>
+    private static MainWindow Keeping(string settings, string folder)
+    {
+        MainWindow window = new() { Width = 1000, Height = 800, StateFolder = settings };
+        window.Show();
+        window.KeepLayout();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        return window;
+    }
+
     /// <summary>A project declaring Godot.NET.Sdk's configurations, with no solution, offers Debug, ExportDebug and
     /// ExportRelease, never Release.</summary>
     [AvaloniaFact]
