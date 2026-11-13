@@ -28,7 +28,8 @@ public sealed class ThemeSetting(bool code, Func<AppSettings, SourcedTheme?> get
 /// after it, Passenger's themes repository first, then the person's sources and the files they added. Before a source is
 /// read it lists what is kept from it; opened, it reads each source not read yet in this process, saying which it reads and
 /// why one could not be. A choice from a source is kept as it is chosen, so the preview and every later start draw it
-/// without the source; Add from File reads a file of the person's, says why one is refused and changes nothing then.</summary>
+/// without the source; Add from File reads a file of the person's (a Passenger theme, a VS Code theme's JSON or a .vsix),
+/// says why one is refused and changes nothing then.</summary>
 public sealed class ThemePicker : StackPanel
 {
     private readonly ThemeSetting setting;
@@ -96,43 +97,145 @@ public sealed class ThemePicker : StackPanel
     public void Choose(string name, string? source = null) =>
         Box.SelectedItem = (Box.ItemsSource as IEnumerable<Choice> ?? []).First(c => c.Name == name && (source is null || c.Source == source));
 
-    /// <summary>A file of the person's added as a theme or scheme and chosen, or why not, said under the drop-down.</summary>
+    /// <summary>A file of the person's added as a theme or scheme and chosen, or why not, said under the drop-down: a
+    /// Passenger theme file, a VS Code colour theme's JSON (the files it includes beside it), or a <c>.vsix</c>, each colour
+    /// theme it contributes added and the first chosen; as a code colour scheme, a VS Code theme gives its token and
+    /// semantic colours alone.</summary>
     public async Task<string?> AddFileAsync(string path)
     {
         IReadOnlyDictionary<string, ThemeTokenKind> kinds = ThemeResources.Kinds;
         bool code = setting.Code;
-        (ThemeRead<ThemeFile>? read, byte[]? bytes, Dictionary<string, byte[]>? images, string? why) =
-            await BackgroundWork.Run<(ThemeRead<ThemeFile>?, byte[]?, Dictionary<string, byte[]>?, string?)>(async () =>
+        (List<string>? names, IReadOnlyList<string> problems, string? why) = await BackgroundWork.Run(async () =>
         {
-            (byte[]? found, string? unread) = ThemeSourceReads.FromFile(path);
-            if (found is null)
-            {
-                return (null, null, null, unread);
-            }
-            ThemeRead<ThemeFile> theme = code ? ThemeFiles.ReadCodeColours(path, found, kinds) : ThemeFiles.ReadTheme(path, found, kinds);
-            if (theme.Read is not { } whole)
-            {
-                return (theme, null, null, null);
-            }
-            (Dictionary<string, byte[]> pictures, string? unseen) = await ThemeImages.ReadAsync(whole, image => Task.FromResult(ThemeSourceReads.BesideFile(path, image)));
-            return (theme, found, pictures, unseen);
+            List<Added> added = [];
+            List<string> said = [];
+            string? refused = path.EndsWith(".vsix", StringComparison.OrdinalIgnoreCase) ? FromVsix(path, added, said)
+                : await FromJsonAsync(path, code, kinds, added, said);
+            refused ??= added.Select(a => KeptThemes.KeepBase(ThemeSource.Added, code, a.Name, a.Base)
+                ?? KeptThemes.Keep(ThemeSource.Added, code, a.Name, a.Bytes, a.Beside)).FirstOrDefault(w => w is not null);
+            return (refused is null ? added.Select(a => a.Name).ToList() : null, (IReadOnlyList<string>)said, refused);
         });
-        if (read?.Read is not { } file || bytes is null || why is not null)
+        if (names is not [string first, ..])
         {
-            Say(why ?? read?.Refused);
-            return why ?? read?.Refused;
-        }
-        if (await BackgroundWork.Run(() => KeptThemes.Keep(ThemeSource.Added, code, file.Name, bytes, images)) is { } unkept)
-        {
-            Say(unkept);
-            return unkept;
+            Say(why);
+            return why;
         }
         Themes.Reload();
-        Say(read.Problems.Count == 0 ? null : string.Join("\n", read.Problems));
-        change(s => setting.Set(s, new SourcedTheme(ThemeSource.Added.Name, file.Name)));
+        Say(problems.Count == 0 ? null : string.Join("\n", problems));
+        change(s => setting.Set(s, new SourcedTheme(ThemeSource.Added.Name, first)));
         Fill();
         return null;
     }
+
+    /// <summary>A theme added from a file: its name, its file as kept, the files kept beside it, and its VS Code base's.</summary>
+    private sealed record Added(string Name, byte[] Bytes, Dictionary<string, byte[]> Beside, IReadOnlyDictionary<string, byte[]> Base);
+
+    /// <summary>Every colour theme a .vsix contributes, each a theme over it kept with its files; why not where none reads.</summary>
+    private static string? FromVsix(string path, List<Added> added, List<string> said)
+    {
+        byte[] bytes;
+        try
+        {
+            long length = new FileInfo(path).Length;
+            if (length > VsCodeThemes.MostVsixBytes)
+            {
+                return $"{path} is {length} bytes, more than the {VsCodeThemes.MostVsixBytes} a .vsix may hold";
+            }
+            bytes = File.ReadAllBytes(path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return $"{path} could not be read: {error.Message}";
+        }
+        if (VsCodeThemes.Vsix(bytes, out string? unzipped) is not { } files)
+        {
+            return $"{path} is refused: {unzipped}";
+        }
+        ThemeRead<VsCodeExtension> manifest = VsCodeThemes.ReadManifest(VsCodeThemes.Manifest, files(VsCodeThemes.Manifest).Bytes);
+        if (manifest.Read is not { } extension)
+        {
+            return $"{path} is refused: {manifest.Refused}";
+        }
+        if (extension.Themes.Count == 0)
+        {
+            return $"{path} contributes no colour theme";
+        }
+        foreach (VsCodeContribution theme in extension.Themes)
+        {
+            (VsCodeTaken? taken, string? why) = VsCodeThemes.FromVsix(bytes, theme.Label);
+            if (taken is null)
+            {
+                said.Add($"{theme.Label} in {path} is refused: {why}");
+                continue;
+            }
+            said.AddRange(taken.Problems);
+            added.Add(new Added(theme.Label, Wrapper(theme.Label, new Dictionary<string, string>
+            {
+                ["id"] = extension.Id, ["theme"] = theme.Label, ["version"] = extension.Version,
+            }), [], taken.Files));
+        }
+        return added.Count > 0 ? null : string.Join("\n", said);
+    }
+
+    /// <summary>A Passenger theme file with the pictures and VS Code theme it names beside it, or a VS Code theme's JSON with
+    /// the files it includes, kept as a theme over it; why not where it cannot be read.</summary>
+    private static async Task<string?> FromJsonAsync(string path, bool code, IReadOnlyDictionary<string, ThemeTokenKind> kinds, List<Added> added, List<string> said)
+    {
+        (byte[]? found, string? unread) = ThemeSourceReads.FromFile(path);
+        if (found is null)
+        {
+            return unread;
+        }
+        if (VsCodeThemes.IsVsCode(found))
+        {
+            Dictionary<string, byte[]> read = new(StringComparer.Ordinal);
+            ThemeRead<VsCodeTheme> vs = VsCodeThemes.ReadTheme(Path.GetFileName(path), null, null, file =>
+            {
+                (byte[]? bytes, string? why) = ThemeSourceReads.BesideFile(path, file);
+                if (bytes is not null)
+                {
+                    read[$"{KeptThemes.BaseFolder}/{file}"] = bytes;
+                }
+                return (bytes, why);
+            });
+            if (vs.Read is not { } theme)
+            {
+                return $"{path} is refused: {vs.Refused}";
+            }
+            said.AddRange(vs.Problems);
+            added.Add(new Added(theme.Name, Wrapper(theme.Name, new Dictionary<string, string> { ["file"] = $"{KeptThemes.BaseFolder}/{Path.GetFileName(path)}" }), read,
+                new Dictionary<string, byte[]>()));
+            return null;
+        }
+        ThemeRead<ThemeFile> own = code ? ThemeFiles.ReadCodeColours(path, found, kinds) : ThemeFiles.ReadTheme(path, found, kinds);
+        if (own.Read is not { } whole)
+        {
+            return own.Refused;
+        }
+        (Dictionary<string, byte[]> beside, string? unseen) = await ThemeImages.ReadAsync(whole, image => Task.FromResult(ThemeSourceReads.BesideFile(path, image)));
+        (Dictionary<string, byte[]> based, string? unbased) = await VsCodeBases.BesideAsync(whole, file => Task.FromResult(ThemeSourceReads.BesideFile(path, file)));
+        foreach ((string file, byte[] bytes) in based)
+        {
+            beside[file] = bytes;
+        }
+        IReadOnlyDictionary<string, byte[]> fetched = new Dictionary<string, byte[]>();
+        if (whole.Base is { Id: not null } wanted)
+        {
+            (VsCodeTaken? taken, string? why) = await VsCodeBases.FetchAsync(wanted, CancellationToken.None);
+            if (taken is null)
+            {
+                return why;
+            }
+            fetched = taken.Files;
+        }
+        said.AddRange(own.Problems);
+        added.Add(new Added(whole.Name, found, beside, fetched));
+        return unseen ?? unbased;
+    }
+
+    /// <summary>A theme file laid over a VS Code theme and giving nothing of its own.</summary>
+    private static byte[] Wrapper(string name, Dictionary<string, string> vscode) =>
+        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object> { ["format"] = ThemeFiles.Format, ["name"] = name, ["vscode"] = vscode });
 
     private async Task PickFileAsync()
     {
@@ -143,7 +246,7 @@ public sealed class ThemePicker : StackPanel
         IReadOnlyList<IStorageFile> picked = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = setting.Code ? "Add Code Colour Scheme" : "Add Theme",
-            FileTypeFilter = [new FilePickerFileType("Passenger theme files") { Patterns = ["*.json"] }],
+            FileTypeFilter = [new FilePickerFileType("Passenger and VS Code themes") { Patterns = ["*.json", "*.vsix"] }],
         });
         if (picked.Count == 1 && picked[0].TryGetLocalPath() is { } path)
         {

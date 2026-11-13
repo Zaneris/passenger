@@ -316,6 +316,22 @@ public static partial class VsCodeThemes
         };
     }
 
+    /// <summary>The file a theme's file includes, by its path inside the extension, or null where it includes none, cannot be
+    /// read or names a file outside.</summary>
+    public static string? Included(string path, byte[] bytes)
+    {
+        ThemeRead<Parsed> parsed = Parse(path, bytes, (root, _) => new Parsed(root.Clone()));
+        return parsed.Read is { Root: var root } && JsonMembers.Text(root, "include") is { } include ? Inside(include, Folder(path)) : null;
+    }
+
+    /// <summary>Whether a file's JSON is a VS Code colour theme's rather than a Passenger theme's: an object naming no
+    /// format. Read as VS Code reads it.</summary>
+    public static bool IsVsCode(byte[] bytes)
+    {
+        ThemeRead<Parsed> parsed = Parse("file", bytes, (root, _) => new Parsed(root.Clone()));
+        return parsed.Read is { Root: var root } && JsonMembers.Value(root, "format") is null;
+    }
+
     /// <summary>A path inside an extension from one a file names, beside <paramref name="folder"/> (its folders joined by
     /// <c>/</c>, <c>./</c> and <c>../</c> taken as they go), or null where it leaves the extension or is no theme's file.</summary>
     public static string? Inside(string path, string folder)

@@ -337,12 +337,25 @@ A kind a theme colours no way takes the one after "else", then Passenger's palet
 }
 ```
 
-`vscode` names a VS Code colour theme as the theme's base: `id` is its extension's Open VSX id (`publisher.name`), `theme`
+```json
+"vscode": { "file": "dracula.json" }
+```
+
+`vscode` names a VS Code colour theme as the theme's base, by its Open VSX id or as a VS Code theme's JSON beside the
+theme's file (`file`, its folders joined by `/`, no `..`, the files it includes beside it, not named `theme.json`): `id` is its extension's Open VSX id (`publisher.name`), `theme`
 its label in that extension, and `version`, which may be left out, pins the extension's version. The VS Code theme gives
 every colour as above, and the theme's own tokens, background, fonts, languages and layout are laid over it, so a theme
-gives only what it changes; it shows in the base's variant. The base is fetched from Open VSX with the theme and kept
-beside it (`vscode/` in its folder), so it draws offline; Refresh takes the extension's newest version unless `version`
-pins one.
+gives only what it changes; it shows in the base's variant. The base is fetched with the theme, from Open VSX or beside the
+theme's file, and kept beside it (`vscode/` in its folder), so it draws offline; Refresh takes the extension's newest
+version unless `version` pins one.
+
+A code colour scheme may name a VS Code theme as its base too, giving the code its token and semantic colours alone under
+any theme: in the VS Code theme's own variant as it draws them, and under a theme of the other variant moved in lightness,
+their hue kept, until they read at AA.
+
+Add from File beside Theme takes a Passenger theme file, a VS Code theme's JSON (the files it includes beside it) or a
+`.vsix`, every colour theme it contributes added and the first chosen; beside Colour scheme it takes the same as code colour
+schemes. A VS Code theme added so is kept as a theme laid over it, with its files, so it draws offline.
 
 ## A code colour scheme
 

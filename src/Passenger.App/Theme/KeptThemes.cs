@@ -90,9 +90,29 @@ public static class KeptThemes
 
     /// <summary>The files of a kept theme's VS Code base, by their paths in its extension, each held to the most a theme file
     /// may be.</summary>
-    public static VsCodeThemes.ExtensionFile BaseFiles(ThemeSource source, bool code, string name)
+    public static VsCodeThemes.ExtensionFile BaseFiles(ThemeSource source, bool code, string name) => FilesIn(source, code, name, BaseFolder);
+
+    /// <summary>The files kept beside a theme's file, by their paths there, each held to the most a theme file may be.</summary>
+    public static VsCodeThemes.ExtensionFile BesideFiles(ThemeSource source, bool code, string name) => FilesIn(source, code, name, string.Empty);
+
+    /// <summary>A file kept beside a theme's, by its path there, as it was written, or null where none is.</summary>
+    public static byte[]? Beside(ThemeSource source, bool code, string name, string path)
     {
-        string folder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(PathOf(source, code, name))!, BaseFolder));
+        string file = Path.Combine(Path.GetDirectoryName(PathOf(source, code, name))!, path.Replace('/', Path.DirectorySeparatorChar));
+        try
+        {
+            return File.Exists(file) && new FileInfo(file).Length <= ThemeFiles.MostImageBytes ? File.ReadAllBytes(file) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Themes: the kept {file} could not be read: {error.Message}");
+            return null;
+        }
+    }
+
+    private static VsCodeThemes.ExtensionFile FilesIn(ThemeSource source, bool code, string name, string under)
+    {
+        string folder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(PathOf(source, code, name))!, under));
         return path =>
         {
             string file = Path.GetFullPath(Path.Combine(folder, path.Replace('/', Path.DirectorySeparatorChar)));

@@ -16,7 +16,8 @@ namespace Passenger.Tests;
 /// theme its extensions contribute, most downloaded first, by rating or by words on request; one chosen shows at once,
 /// in its own variant whatever the setting, is kept with its base and draws with Open VSX gone; a <c>.vsix</c> that cannot
 /// be read is refused, saying why; and a Passenger theme naming a VS Code theme by its id draws that base under its own
-/// tokens, kept so it draws offline.</summary>
+/// tokens, kept so it draws offline; and Add from File taking a VS Code theme's JSON or .vsix as a theme, and one as a code
+/// colour scheme under any theme.</summary>
 public sealed class VsCodeThemeExplorerTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("vscode-themes-folder-");
@@ -189,6 +190,68 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
         finally
         {
             registry.Dispose();
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Add_from_File_takes_a_VS_Code_theme_s_JSON_or_vsix_as_a_theme_and_one_as_a_code_colour_scheme_under_any_theme()
+    {
+        string files = Path.Combine(sources, "files");
+        Directory.CreateDirectory(files);
+        string json = Path.Combine(files, "Lantern.json");
+        File.WriteAllBytes(json, CarriedThemes.VsCodeBytes("Lantern.json"));
+        File.WriteAllBytes(Path.Combine(files, "lantern-base.json"), CarriedThemes.VsCodeBytes("lantern-base.json"));
+        string vsix = Path.Combine(files, "lantern.vsix");
+        File.WriteAllBytes(vsix, LanternVsix());
+        string broken = Path.Combine(files, "broken.vsix");
+        File.WriteAllText(broken, "no zip at all");
+        ThemeFile lantern = CarriedThemes.Theme(CarriedThemes.VsCodePrefix + "Lantern")!;
+        MainWindow window = Open();
+        try
+        {
+            window.KeepSettings();
+            window.ApplySettings(new AppSettings { Theme = ThemeChoice.Dark });
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            Assert.Null(Ui.Await(dialog.ThemePicker.AddFileAsync(json), "Lantern's JSON added"));
+            Ui.Settle();
+            Assert.Equal(new SourcedTheme(ThemeSource.Added.Name, "Lantern"), dialog.Working.Look);
+            Assert.Equal(Token(lantern, "Editor.Background"), Drawn(window, TokenKeys.Editor_Background));
+            Assert.True(KeptThemes.Holds(ThemeSource.Added, false, "Lantern"), "Lantern added from its JSON is not kept");
+
+            Assert.Null(Ui.Await(dialog.ThemePicker.AddFileAsync(vsix), "Lantern's .vsix added"));
+            Ui.Settle();
+            Assert.Contains("Paper (added from a file)", dialog.ThemePicker.Listed);
+            dialog.ThemePicker.Choose("Paper", "added from a file");
+            Ui.Settle();
+            Assert.Equal(ThemeVariant.Light, window.ActualThemeVariant);
+            Assert.Equal(Token(CarriedThemes.Theme(CarriedThemes.VsCodePrefix + "Paper")!, "Editor.Background"), Drawn(window, TokenKeys.Editor_Background));
+
+            string? refused = Ui.Await(dialog.ThemePicker.AddFileAsync(broken), "a broken .vsix refused");
+            Assert.Contains("no zip Passenger reads", refused, StringComparison.Ordinal);
+            Assert.Equal(new SourcedTheme(ThemeSource.Added.Name, "Paper"), dialog.Working.Look);
+
+            // As a code colour scheme under Passenger's own theme: Lantern's code colours in Dark, moved to read in Light.
+            dialog.ThemePicker.Choose("Passenger");
+            Assert.Null(Ui.Await(dialog.SchemePicker.AddFileAsync(json), "Lantern's JSON added as a code colour scheme"));
+            Ui.Settle();
+            Assert.Equal(new SourcedTheme(ThemeSource.Added.Name, "Lantern"), dialog.Working.ColourScheme);
+            Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant);
+            Assert.Equal(Token(lantern, "Syntax.Keyword"), Drawn(window, TokenKeys.Syntax_Keyword));
+            Assert.NotEqual(Token(lantern, "Editor.Background"), Drawn(window, TokenKeys.Editor_Background));
+            window.RequestedThemeVariant = ThemeVariant.Light;
+            Ui.Settle();
+            Color light = Drawn(window, TokenKeys.Syntax_Keyword);
+            Assert.NotEqual(Token(lantern, "Syntax.Keyword"), light);
+            Assert.True(ThemeColours.Ratio(light.ToUInt32(), Drawn(window, TokenKeys.Editor_Background).ToUInt32()) >= 4.5,
+                $"Lantern's keyword under a light theme, {light}, does not read on its ground");
+            dialog.Close();
+        }
+        finally
+        {
+            window.RequestedThemeVariant = null;
             window.ApplySettings(new AppSettings());
             window.Close();
         }

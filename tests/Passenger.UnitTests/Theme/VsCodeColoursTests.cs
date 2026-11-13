@@ -173,11 +173,38 @@ public class VsCodeColoursTests
         Assert.False(based.Dark.ContainsKey("Syntax.Parameter"), "Over a VS Code theme a parameter is the base's");
     }
 
+    [Fact]
+    public void A_theme_names_a_vs_code_theme_beside_its_file_and_a_code_colour_scheme_may_name_one_too()
+    {
+        ThemeFile own = ThemeFiles.ReadTheme("Mine.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Mine", "vscode": {"file": "vscode/dark.json"}}"""),
+            new Dictionary<string, ThemeTokenKind>()).Read!;
+        Assert.Equal(new VsCodeBase(null, null, null, "vscode/dark.json"), own.Base);
+        ThemeFile scheme = ThemeFiles.ReadCodeColours("Mine.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Mine", "vscode": {"id": "a.b", "theme": "T"}}"""),
+            new Dictionary<string, ThemeTokenKind>()).Read!;
+        Assert.Equal(new VsCodeBase("a.b", "T", null), scheme.Base);
+    }
+
+    [Fact]
+    public void As_a_code_colour_scheme_a_vs_code_theme_gives_only_the_code_s_colours_its_own_variant_s_as_drawn_and_the_other_s_moved_to_read()
+    {
+        ThemeFile scheme = VsCodeColours.ToScheme(Theme(Lantern));
+        ThemeFile theme = VsCodeColours.ToTheme(Theme(Lantern));
+        Assert.All(scheme.Dark.Keys.Concat(scheme.Light.Keys).Concat(scheme.Both.Keys), token => Assert.True(ThemeFiles.IsCode(token), $"{token} is not the code's"));
+        Assert.Equal(theme.Both["Syntax.Keyword"], scheme.Dark["Syntax.Keyword"]);
+        Assert.False(scheme.Dark.ContainsKey("Syntax.Brace1") || scheme.Dark.ContainsKey("Editor.Text"), "A scheme from a VS Code theme gives its token colours alone");
+        uint light = ((ColourValue)scheme.Light["Syntax.Keyword"]).Argb;
+        Assert.True(Ratio(light, 0xFFFFFFFF) >= 4.5 && Ratio(light, 0xFFECECEC) >= 4.5, $"The keyword under a light theme, {light:X8}, does not read");
+        Assert.Equal(new TextStyleValue("Italic"), scheme.Both["SyntaxStyle.Comment"]);
+    }
+
     [Theory]
     [InlineData("""{"vscode": "dracula"}""", "vscode is {\"id\": \"publisher.extension\"")]
     [InlineData("""{"vscode": {"id": "no-dot", "theme": "Dracula"}}""", "it is an extension's Open VSX id")]
     [InlineData("""{"vscode": {"id": "a.b", "theme": "Dracula", "version": "1 2"}}""", "it is the extension's version")]
     [InlineData("""{"vscode": {"id": "a.b"}}""", "gives no theme")]
+    [InlineData("""{"vscode": {"file": "theme.json"}}""", "not named theme.json")]
+    [InlineData("""{"vscode": {"file": "../dark.json"}}""", "with no ..")]
+    [InlineData("""{"vscode": {"file": "dark.json", "id": "a.b"}}""", "given instead of an id")]
     public void A_vs_code_base_named_wrongly_refuses_the_theme_saying_why(string member, string why)
     {
         string json = $$"""{"format": 1, "name": "Mine", {{member[1..^1]}}}""";

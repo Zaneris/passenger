@@ -144,32 +144,36 @@ public static class VsCodeColours
         ("Operator", ["operator"], [["source.cs", "keyword.operator"]], null),
     ];
 
+    /// <summary>The theme's token and semantic colours alone, as a code colour scheme under any theme: each kind it colours,
+    /// in its own variant as its theme draws it and in the other moved in lightness to read on that variant's grounds, and
+    /// how its comments and parameters are set.</summary>
+    public static ThemeFile ToScheme(VsCodeTheme theme)
+    {
+        ThemeFile whole = ToTheme(theme);
+        (Dictionary<string, uint> syntax, _, _) = CodeOf(theme, Ground(theme));
+        uint[] grounds = theme.Dark ? [0xFFFFFFFF, 0xFFECECEC] : [0xFF2D2D2D, 0xFF1E1E1E];
+        Dictionary<string, TokenValue> own = new(StringComparer.Ordinal);
+        Dictionary<string, TokenValue> other = new(StringComparer.Ordinal);
+        foreach (string kind in syntax.Keys.Where(k => Code.Any(c => c.Kind == k)))
+        {
+            uint drawn = ((ColourValue)whole.Both[$"Syntax.{kind}"]).Argb;
+            own[$"Syntax.{kind}"] = new ColourValue(drawn, 1);
+            other[$"Syntax.{kind}"] = new ColourValue(Legible(drawn, grounds, 4.6, !theme.Dark), 1);
+        }
+        Dictionary<string, TokenValue> styles = new(whole.Both.Where(t => t.Key.StartsWith("SyntaxStyle.", StringComparison.Ordinal)), StringComparer.Ordinal);
+        return new ThemeFile(theme.Name, string.Empty, styles, theme.Dark ? own : other, theme.Dark ? other : own);
+    }
+
     /// <summary>The theme as a Passenger theme of its one variant, its every colour token given.</summary>
     public static ThemeFile ToTheme(VsCodeTheme theme)
     {
         bool dark = theme.Dark;
         Dictionary<string, uint> colors = new(theme.Colors, StringComparer.Ordinal);
-        // A rule naming no scope gives the editor's words and ground where the workbench colours do not.
+        uint ground = Ground(theme);
+        // A rule naming no scope gives the editor's words where the workbench colours do not.
         VsCodeRule? plain = theme.TokenColors.LastOrDefault(r => r.Selectors.Count == 0 && r.Foreground is not null);
-        uint ground = Opaque(Over(Colour(colors, "editor.background") ?? (dark ? 0xFF1E1E1E : 0xFFFFFFFF), dark ? 0xFF000000 : 0xFFFFFFFF));
         uint text = Opaque(Over(Colour(colors, "editor.foreground") ?? plain?.Foreground ?? Colour(colors, "foreground") ?? (dark ? 0xFFD4D4D4 : 0xFF333333), ground));
-
-        Dictionary<string, uint> syntax = new(StringComparer.Ordinal);
-        bool italicComments = false;
-        string? parameterStyle = null;
-        foreach ((string kind, string[] semantic, string[][] scopes, string? or) in Code)
-        {
-            if (Coloured(semantic, scopes, out string? style) is { } colour)
-            {
-                syntax[kind] = Opaque(Over(colour, ground));
-                italicComments |= kind == "Comment" && style is not null && style.Contains("italic", StringComparison.Ordinal);
-                parameterStyle = kind == "Parameter" ? Style(style) : parameterStyle;
-            }
-            else if (or is not null && syntax.TryGetValue(or, out uint other))
-            {
-                syntax[kind] = other;
-            }
-        }
+        (Dictionary<string, uint> syntax, bool italicComments, string? parameterStyle) = CodeOf(theme, ground);
         // Its bracket colours, one to six of them: the first three always, the rest as far as it gives them in turn.
         if (Colour(colors, "editorBracketHighlight.foreground1") is { } brace1)
         {
@@ -228,6 +232,33 @@ public static class VsCodeColours
         {
             Shows = dark ? ThemeShows.Dark : ThemeShows.Light,
         };
+    }
+
+    /// <summary>The editor's ground the theme gives, opaque, or VS Code's own for its variant.</summary>
+    private static uint Ground(VsCodeTheme theme) =>
+        Opaque(Over(theme.Colors.TryGetValue("editor.background", out uint given) ? given : theme.Dark ? 0xFF1E1E1E : 0xFFFFFFFF, theme.Dark ? 0xFF000000 : 0xFFFFFFFF));
+
+    /// <summary>The colours the theme gives the code's kinds, drawn over its ground, and how its comments and parameters are
+    /// set: a kind it colours no way taking the one it falls back on.</summary>
+    private static (Dictionary<string, uint> Syntax, bool ItalicComments, string? ParameterStyle) CodeOf(VsCodeTheme theme, uint ground)
+    {
+        Dictionary<string, uint> syntax = new(StringComparer.Ordinal);
+        bool italicComments = false;
+        string? parameterStyle = null;
+        foreach ((string kind, string[] semantic, string[][] scopes, string? or) in Code)
+        {
+            if (Coloured(semantic, scopes, out string? style) is { } colour)
+            {
+                syntax[kind] = Opaque(Over(colour, ground));
+                italicComments |= kind == "Comment" && style is not null && style.Contains("italic", StringComparison.Ordinal);
+                parameterStyle = kind == "Parameter" ? Style(style) : parameterStyle;
+            }
+            else if (or is not null && syntax.TryGetValue(or, out uint other))
+            {
+                syntax[kind] = other;
+            }
+        }
+        return (syntax, italicComments, parameterStyle);
 
         uint? Coloured(string[] semantic, string[][] scopes, out string? style)
         {

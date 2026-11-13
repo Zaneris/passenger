@@ -69,9 +69,9 @@ public enum ThemeShows
     Light,
 }
 
-/// <summary>A VS Code colour theme a theme is laid over: its extension's Open VSX id (<c>publisher.name</c>), the theme's
-/// label there, and the version pinned, or null for the newest.</summary>
-public sealed record VsCodeBase(string Id, string Theme, string? Version);
+/// <summary>A VS Code colour theme a theme is laid over: by its extension's Open VSX id (<c>publisher.name</c>), the theme's
+/// label there and the version pinned (null for the newest), or by its JSON's <see cref="File"/> beside the theme's file.</summary>
+public sealed record VsCodeBase(string? Id, string? Theme, string? Version, string? File = null);
 
 /// <summary>A theme or a code colour scheme as its file gives it: its name, its words for a person, and its tokens for both
 /// variants and for Dark or Light alone, each named as its key without <c>Passenger.</c>; a theme's fonts and background
@@ -220,7 +220,7 @@ public static partial class ThemeFiles
     private static ThemeFile Theme(string file, JsonElement root, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool code, List<string> problems)
     {
         string what = code ? "a code colour scheme" : "a theme";
-        PassOver(file, root, code ? ["format", "name", "description", .. Sections, "languages"] : ["format", "name", "description", .. Sections, .. Beyond], what, problems);
+        PassOver(file, root, code ? ["format", "name", "description", .. Sections, "languages", "vscode"] : ["format", "name", "description", .. Sections, .. Beyond], what, problems);
         string name = Words(root, "name", LongestName, needed: true);
         string description = Words(root, "description", LongestDescription, needed: false);
         // Over a VS Code theme, the plain kinds a file leaves out are the base's own.
@@ -234,7 +234,7 @@ public static partial class ThemeFiles
             LightBackground = light,
             Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, plain, problems),
             Layout = code ? null : Layout(file, JsonMembers.Value(root, "layout"), problems),
-            Base = code ? null : Base(file, JsonMembers.Value(root, "vscode"), problems),
+            Base = Base(file, JsonMembers.Value(root, "vscode"), problems),
         };
     }
 

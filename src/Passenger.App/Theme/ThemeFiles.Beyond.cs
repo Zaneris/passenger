@@ -288,9 +288,21 @@ public static partial class ThemeFiles
         }
         if (named.Value.ValueKind != JsonValueKind.Object)
         {
-            throw new FormatException($"gives vscode as {Shown(named.Value)}: vscode is {{\"id\": \"publisher.extension\", \"theme\": \"its label\"}}, its version optional");
+            throw new FormatException($"gives vscode as {Shown(named.Value)}: vscode is {{\"id\": \"publisher.extension\", \"theme\": \"its label\"}}, its version optional, "
+                + "or {\"file\": \"a VS Code theme's JSON beside the theme's\"}");
         }
-        PassOver(file, named.Value, ["id", "theme", "version"], "vscode", problems);
+        PassOver(file, named.Value, ["id", "theme", "version", "file"], "vscode", problems);
+        if (JsonMembers.Value(named.Value, "file") is { } beside)
+        {
+            // theme.json is the name a theme's own file is kept under, beside which this one is kept.
+            if (beside.ValueKind != JsonValueKind.String || !Inside(beside.GetString()!, [".json"]) || beside.GetString() == "theme.json"
+                || JsonMembers.Value(named.Value, "id") is not null)
+            {
+                throw new FormatException($"gives vscode's file as {Shown(beside)}: it is a VS Code theme's JSON beside the theme's file, its folders joined by /, "
+                    + "with no .., ending .json and not named theme.json, given instead of an id");
+            }
+            return new VsCodeBase(null, null, null, beside.GetString());
+        }
         string id = Words(named.Value, "id", LongestName * 4, needed: true);
         if (!ExtensionId().IsMatch(id))
         {

@@ -137,7 +137,7 @@ public static class Themes
                 }
                 return null;
             }
-            whole = ThemeFiles.Over(VsCodeColours.ToTheme(under), whole);
+            whole = ThemeFiles.Over(code ? VsCodeColours.ToScheme(under) : VsCodeColours.ToTheme(under), whole);
         }
         read[(code, theme)] = whole;
         return whole;
@@ -182,8 +182,8 @@ public static class Themes
         try
         {
             byte[]? kept = source == ThemeSource.BuiltIn ? BuiltInThemes.Bytes(code, theme.Name) : KeptThemes.Bytes(source, code, theme.Name);
-            ThemeFile? file = kept is null ? null : ThemeFiles.ReadTheme(theme.Name, kept, kinds).Read;
-            why = file?.Base is not null
+            ThemeFile? file = kept is null ? null : (code ? ThemeFiles.ReadCodeColours(theme.Name, kept, kinds) : ThemeFiles.ReadTheme(theme.Name, kept, kinds)).Read;
+            why = file?.Base is { Id: not null }
                 ? await Passenger.Core.BackgroundWork.Run(() => VsCodeBases.KeepAsync(source, code, theme.Name, file, CancellationToken.None))
                 : source.Kind is ThemeSourceKind.BuiltIn or ThemeSourceKind.Added or ThemeSourceKind.OpenVsx
                 ? $"{theme.Name} is no longer kept: {(source.Kind == ThemeSourceKind.OpenVsx ? "choose it again from VS Code themes" : "add its file again")} in {Settings.SettingsDialog.PlaceOfPage(Settings.SettingsDialog.Appearance)}"

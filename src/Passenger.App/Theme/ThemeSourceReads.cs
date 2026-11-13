@@ -148,10 +148,23 @@ public static class ThemeSourceReads
         }
     }
 
-    /// <summary>Every picture a theme a source lists names, each read beside its file there and checked, or why not.</summary>
-    public static Task<(Dictionary<string, byte[]> Images, string? Why)> ImagesAsync(ListedTheme listed, ThemeSource reached, CancellationToken cancel) =>
-        listed.Read.Read is not { } theme ? Task.FromResult((new Dictionary<string, byte[]>(), (string?)null))
-            : ThemeImages.ReadAsync(theme, image => BytesAsync(reached, ThemeImages.Beside(listed.Path, image), ThemeFiles.MostImageBytes, cancel));
+    /// <summary>Every picture a theme a source lists names, each read beside its file there and checked, and the VS Code theme
+    /// it names as a file beside it with the files that includes, or why not.</summary>
+    public static async Task<(Dictionary<string, byte[]> Images, string? Why)> ImagesAsync(ListedTheme listed, ThemeSource reached, CancellationToken cancel)
+    {
+        if (listed.Read.Read is not { } theme)
+        {
+            return ([], null);
+        }
+        (Dictionary<string, byte[]> images, string? why) = await ThemeImages.ReadAsync(theme, image => BytesAsync(reached, ThemeImages.Beside(listed.Path, image), ThemeFiles.MostImageBytes, cancel));
+        // A VS Code theme named as a file beside the theme's comes with it, as its pictures do.
+        (Dictionary<string, byte[]> beside, string? unread) = await VsCodeBases.BesideAsync(theme, file => BytesAsync(reached, ThemeImages.Beside(listed.Path, file), ThemeFiles.MostBytes, cancel));
+        foreach ((string path, byte[] bytes) in beside)
+        {
+            images[path] = bytes;
+        }
+        return (images, why ?? unread);
+    }
 
     /// <summary>A picture beside a file named by the person, by its path there.</summary>
     public static (byte[]? Bytes, string? Why) BesideFile(string file, string image) =>

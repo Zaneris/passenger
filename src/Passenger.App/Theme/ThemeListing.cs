@@ -82,33 +82,33 @@ public static class ThemeListing
             }
         }
         ThemeSource[] keeping = [.. sources, ThemeSource.Added, ThemeSource.OpenVsx];
-        List<(ThemeSource Source, string Name, VsCodeBase Base)> bases = [.. keeping.SelectMany(source => Kept(source, false)
-            .Where(file => file.Base is not null).Select(file => (source, file.Name, file.Base!)))];
+        List<(ThemeSource Source, bool Code, string Name, VsCodeBase Base)> bases = [.. keeping.SelectMany(source => ((bool[])[false, true])
+            .SelectMany(code => Kept(source, code).Where(file => file.Base is { Id: not null }).Select(file => (source, code, file.Name, file.Base!))))];
         string?[] refused = await BackgroundWork.Run(async () =>
         {
             List<string?> said = [];
             // A base pinned to its version is taken again only where another is kept; the rest take Open VSX's newest.
-            foreach ((ThemeSource source, string name, VsCodeBase wanted) in bases)
+            foreach ((ThemeSource source, bool code, string name, VsCodeBase wanted) in bases)
             {
-                string? kept = VsCodeBases.KeptVersion(source, false, name);
+                string? kept = VsCodeBases.KeptVersion(source, code, name);
                 if (wanted.Version is { } pinned && kept == pinned)
                 {
                     continue;
                 }
-                (OpenVsxEntry? newest, string? missing) = await OpenVsx.ExtensionAsync(wanted.Id, wanted.Version, CancellationToken.None);
+                (OpenVsxEntry? newest, string? missing) = await OpenVsx.ExtensionAsync(wanted.Id!, wanted.Version, CancellationToken.None);
                 if (newest is null || newest.Version == kept)
                 {
                     said.AddRange(newest is null ? [$"{name}'s VS Code theme could not be refreshed: {missing}"] : []);
                     continue;
                 }
                 (VsCodeTaken? taken, string? why) = await VsCodeBases.FetchAsync(wanted with { Version = newest.Version }, CancellationToken.None);
-                said.Add(taken is null ? why : KeptThemes.KeepBase(source, false, name, taken.Files));
+                said.Add(taken is null ? why : KeptThemes.KeepBase(source, code, name, taken.Files));
             }
             foreach ((ListedTheme listed, string name, byte[] bytes) in held)
             {
                 (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, listed.Source.Reached, CancellationToken.None);
                 bool changed = unseen is null && (KeptThemes.Bytes(listed.Source, listed.Code, name) is not { } kept || !kept.AsSpan().SequenceEqual(bytes)
-                    || images.Any(i => KeptThemes.Image(listed.Source, listed.Code, name, i.Key) is not { } picture || !picture.AsSpan().SequenceEqual(i.Value)));
+                    || images.Any(i => KeptThemes.Beside(listed.Source, listed.Code, name, i.Key) is not { } beside || !beside.AsSpan().SequenceEqual(i.Value)));
                 if (unseen is not null || changed)
                 {
                     said.Add(unseen ?? KeptThemes.Keep(listed.Source, listed.Code, name, bytes, images));
