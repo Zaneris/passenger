@@ -60,6 +60,14 @@ and its default value; a token takes the kind of value its default is:
 | a number (`x:Double`) | a number, 0 to 1000 |
 | a syntax style (`x:String`) | `"Normal"`, `"Bold"`, `"Italic"` or `"Bold Italic"` |
 
+Beside those, a theme may give three tokens Passenger's own theme leaves out, `Syntax.Brace4`, `Syntax.Brace5` and
+`Syntax.Brace6`: rainbow braces take turns in as many colours as a theme gives, three to six, a bracket's depth cycling
+through exactly those (`Syntax.Brace5` counts only after `Syntax.Brace4`, `Syntax.Brace6` only after both), so a theme of
+five draws the sixth depth in `Syntax.Brace1`'s colour. It may also give `SyntaxStyle.Parameter`, how a parameter is set.
+`Syntax.Parameter`, `Syntax.Local`, `Syntax.Namespace` and `Syntax.Operator` are drawn in the code's plain words in
+Passenger's own theme; a file that leaves them out draws them in its own `Editor.Text`, unless it is laid over a VS Code
+theme, whose own they are.
+
 ### Its background picture
 
 ```json
@@ -216,6 +224,11 @@ refused, saying so.
 | `Syntax.Code` | – | `markup.inline.raw.string.markdown`, `markup.fenced_code.block.markdown`, else `Syntax.String` |
 | `Syntax.Quote` | – | `markup.quote.markdown`, else `Syntax.Comment` |
 | `Syntax.LinkDestination` | – | `markup.underline.link.markdown` |
+| `Syntax.Parameter` | `parameter` | `variable.parameter` (its italics or bold as `SyntaxStyle.Parameter`) |
+| `Syntax.Local` | `variable` | `variable.other.readwrite`, `variable.other.local` |
+| `Syntax.Namespace` | `namespace` | `entity.name.namespace`, `entity.name.type.namespace` |
+| `Syntax.Operator` | `operator` | `keyword.operator` |
+| `Syntax.Brace1` to `Syntax.Brace6` | – | the workbench's `editorBracketHighlight.foreground1` to `6`: the first three always, the rest as far as it gives them in turn |
 
 A kind a theme colours no way takes the one after "else", then Passenger's palette from the theme's own colours.
 

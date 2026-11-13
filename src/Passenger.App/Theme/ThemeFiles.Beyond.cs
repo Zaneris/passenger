@@ -250,7 +250,8 @@ public static partial class ThemeFiles
         return (x ?? 0.5, y ?? 0.5);
     }
 
-    private static Dictionary<string, LanguageColours> Languages(string file, JsonElement? languages, IReadOnlyDictionary<string, ThemeTokenKind> tokens, List<string> problems)
+    private static Dictionary<string, LanguageColours> Languages(string file, JsonElement? languages, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool plain,
+        List<string> problems)
     {
         Dictionary<string, LanguageColours> read = new(StringComparer.Ordinal);
         if (languages is null)
@@ -273,7 +274,7 @@ public static partial class ThemeFiles
                 throw new FormatException($"gives languages' {language.Name} as {Shown(language.Value)}: a language's are tokens, dark and light, as a theme's");
             }
             PassOver(file, language.Value, Sections, $"languages' {language.Name}", problems);
-            Dictionary<string, TokenValue>[] sections = TokenSections(file, language.Value, tokens, code: true, language.Name, problems);
+            Dictionary<string, TokenValue>[] sections = TokenSections(file, language.Value, tokens, code: true, language.Name, plain, problems);
             read[language.Name] = new LanguageColours(sections[0], sections[1], sections[2]);
         }
         return read;

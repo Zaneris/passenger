@@ -103,6 +103,12 @@
     <Compile Include="../../src/Passenger.App/Theme/OpenVsx.cs" Link="App/OpenVsx.cs" />
   </ItemGroup>
 
+  <!-- How many colours rainbow braces cycle through, and which a depth takes, from numbers alone, compiled in since its
+       project is the languages'. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Languages/CSharp/BraceLevels.cs" Link="Languages/BraceLevels.cs" />
+  </ItemGroup>
+
   <!-- Which typeface a setting of the window's font names, read as words alone, compiled in since its project is the
        app's. -->
   <ItemGroup>

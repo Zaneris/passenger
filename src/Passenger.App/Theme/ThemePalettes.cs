@@ -14,13 +14,14 @@ public sealed record ThemePalette(uint Ground, uint Text, uint Muted, uint Accen
 /// a word or mark still held to AA. Tokens are named without <c>Passenger.</c>. Pure.</summary>
 public static class ThemePalettes
 {
-    /// <summary>The code's kinds coloured from the palette, each also held to AA on the editor's ground and current line.</summary>
+    /// <summary>The code's kinds coloured from the palette, each also held to AA on the editor's ground and current line; the
+    /// fourth to sixth brace colours are given where the colours for the code name them.</summary>
     public static readonly IReadOnlyList<string> SyntaxKinds =
     [
         "Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number", "Preprocessor", "Class", "Interface", "Struct",
         "Enum", "Delegate", "TypeParameter", "Method", "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
         "BuildError", "BuildWarning", "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey",
-        "Heading", "Code", "Quote", "LinkDestination",
+        "Heading", "Code", "Quote", "LinkDestination", "Parameter", "Local", "Namespace", "Operator",
     ];
 
     private const double Text = 4.6;
@@ -281,6 +282,10 @@ public static class ThemePalettes
         foreach (string kind in SyntaxKinds)
         {
             t[$"Syntax.{kind}"] = Legible(syntax.TryGetValue(kind, out uint colour) ? Opaque(colour) : Fallback(kind), code, Text, dark);
+        }
+        for (int level = 4; level <= 6 && syntax.TryGetValue($"Brace{level}", out uint brace); level++)
+        {
+            t[$"Syntax.Brace{level}"] = Legible(Opaque(brace), code, Text, dark);
         }
         t["Syntax.Excluded"] = Mix(editor, text, 0.35);
 

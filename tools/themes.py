@@ -313,6 +313,9 @@ SHAPES = {
                ("Thickness", "Passenger.ToolTitleMargin", "10,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "12,8")],
 }
 
+# Kinds of code drawn in the code's plain words unless a palette's code roles name a hue for one (parameter, local, ...).
+PLAIN_KINDS = ["Parameter", "Local", "Namespace", "Operator"]
+
 SYNTAX_KINDS = ["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number",
                 "Preprocessor", "Class", "Interface", "Struct", "Enum", "Delegate", "TypeParameter", "Method",
                 "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
@@ -577,6 +580,9 @@ def variant(theme, p, dark):
     }
     for kind in SYNTAX_KINDS:
         t[f"Passenger.Syntax.{kind}"] = legible(syntax[kind], code_grounds, 4.6, dark)
+    for kind in PLAIN_KINDS:
+        role = roles.get(kind.lower())
+        t[f"Passenger.Syntax.{kind}"] = legible(hue(role), code_grounds, 4.6, dark) if role else t["Passenger.Editor.Text"]
     t["Passenger.Syntax.Excluded"] = mix(editor, text, 0.35)
     style = "Italic" if theme["italic"] else "Normal"
     t["Passenger.SyntaxStyle.Comment"] = ("string", style)
@@ -618,7 +624,7 @@ def check(name, which, t):
               ("Editor.InlineValue", "Editor.Background", text), ("Editor.InlineValue", "Editor.ExecutionLine", text),
               ("Editor.InlayHint", "Editor.InlayHintBack", text), ("Editor.Caret", "Editor.Background", mark),
               ("Editor.Caret", "Editor.CurrentLine", mark)]
-    for kind in SYNTAX_KINDS:
+    for kind in SYNTAX_KINDS + PLAIN_KINDS:
         pairs += [(f"Syntax.{kind}", "Editor.Background", text), (f"Syntax.{kind}", "Editor.CurrentLine", text)]
     below = []
     for fore, ground, least in pairs:

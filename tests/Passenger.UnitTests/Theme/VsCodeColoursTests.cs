@@ -125,6 +125,54 @@ public class VsCodeColoursTests
         Assert.Equal(0xFF191A21u, Colour(laid, "Frame"));
     }
 
+    [Fact]
+    public void Its_six_bracket_colours_are_carried_over_and_three_where_it_gives_three()
+    {
+        string[] six = ["#FFD700", "#DA70D6", "#179FFF", "#FF8C66", "#7FE07F", "#E0A0FF"];
+        string colours = string.Join(", ", six.Select((c, i) => $"\"editorBracketHighlight.foreground{i + 1}\": \"{c}\""));
+        ThemeFile theme = VsCodeColours.ToTheme(Theme($$$"""{"colors": {"editor.background": "#1E1E1E", {{{colours}}}}}"""));
+        for (int level = 1; level <= 6; level++)
+        {
+            Assert.Equal(VsCodeThemes.Colour(six[level - 1])!.Value, Colour(theme, $"Syntax.Brace{level}"));
+        }
+        ThemeFile three = VsCodeColours.ToTheme(Theme("""{"colors": {"editor.background": "#1E1E1E", "editorBracketHighlight.foreground1": "#FFD700", "editorBracketHighlight.foreground5": "#7FE07F"}}"""));
+        Assert.Equal(Colour(three, "Syntax.Brace1"), Colour(three, "Syntax.Brace3"));
+        Assert.False(three.Both.ContainsKey("Syntax.Brace4") || three.Both.ContainsKey("Syntax.Brace5"), "A fifth colour after no fourth is a level given");
+    }
+
+    [Fact]
+    public void Its_parameters_locals_namespaces_and_operators_take_its_colours_and_a_parameter_its_italics()
+    {
+        ThemeFile theme = VsCodeColours.ToTheme(Theme("""
+            {"colors": {"editor.background": "#282A36", "editor.foreground": "#F8F8F2"},
+             "tokenColors": [
+               {"scope": "variable.parameter", "settings": {"foreground": "#FFB86C", "fontStyle": "italic"}},
+               {"scope": "keyword.operator", "settings": {"foreground": "#FF79C6"}},
+               {"scope": "entity.name.namespace", "settings": {"foreground": "#8BE9FD"}}]}
+            """));
+        Assert.Equal(0xFFFFB86Cu, Colour(theme, "Syntax.Parameter"));
+        Assert.Equal(new TextStyleValue("Italic"), theme.Both["SyntaxStyle.Parameter"]);
+        Assert.Equal(0xFFFF79C6u, Colour(theme, "Syntax.Operator"));
+        Assert.Equal(0xFF8BE9FDu, Colour(theme, "Syntax.Namespace"));
+        Assert.Equal(Colour(theme, "Editor.Text"), Colour(theme, "Syntax.Local"));
+    }
+
+    [Fact]
+    public void A_file_leaving_out_the_plain_kinds_draws_them_in_its_own_plain_words_unless_it_is_laid_over_a_vs_code_theme()
+    {
+        Dictionary<string, ThemeTokenKind> kinds = new(StringComparer.Ordinal)
+        {
+            ["Editor.Text"] = ThemeTokenKind.Colour, ["Syntax.Parameter"] = ThemeTokenKind.Colour, ["Syntax.Local"] = ThemeTokenKind.Colour,
+            ["Syntax.Namespace"] = ThemeTokenKind.Colour, ["Syntax.Operator"] = ThemeTokenKind.Colour,
+        };
+        ThemeFile own = ThemeFiles.ReadTheme("Old.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Old", "dark": {"Editor.Text": "#E2DACE"}, "light": {"Editor.Text": "#2A2520", "Syntax.Operator": "#AA0000"}}"""), kinds).Read!;
+        Assert.Equal(new ColourValue(0xFFE2DACE, 1), own.Dark["Syntax.Parameter"]);
+        Assert.Equal(new ColourValue(0xFF2A2520, 1), own.Light["Syntax.Namespace"]);
+        Assert.False(own.Dark.ContainsKey("Syntax.Operator") || own.Light["Syntax.Operator"] != new ColourValue(0xFFAA0000, 1), "A kind the file gives is its own");
+        ThemeFile based = ThemeFiles.ReadTheme("Over.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Over", "vscode": {"id": "a.b", "theme": "T"}, "dark": {"Editor.Text": "#E2DACE"}}"""), kinds).Read!;
+        Assert.False(based.Dark.ContainsKey("Syntax.Parameter"), "Over a VS Code theme a parameter is the base's");
+    }
+
     [Theory]
     [InlineData("""{"vscode": "dracula"}""", "vscode is {\"id\": \"publisher.extension\"")]
     [InlineData("""{"vscode": {"id": "no-dot", "theme": "Dracula"}}""", "it is an extension's Open VSX id")]

@@ -1571,6 +1571,11 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         {
             foreach ((string fore, string ground, double least) in ContrastPairs)
             {
+                // The fourth to sixth brace colours are held where a theme gives them.
+                if (fore.StartsWith("Passenger.Syntax.Brace", StringComparison.Ordinal) && !Application.Current!.TryGetResource(fore, variant, out _))
+                {
+                    continue;
+                }
                 // A see-through ground is drawn over what it stands on: the title bar's hover over the bar, a row's over a tool window.
                 Color[] under = Colours(ground.StartsWith("Passenger.TitleBar.", StringComparison.Ordinal) ? TokenKeys.TitleBar : ground == "Passenger.HoverOnFrame" ? TokenKeys.Frame : TokenKeys.Panel, variant);
                 Color[] grounds = Colours(ground == "Passenger.HoverOnFrame" ? TokenKeys.Hover : ground, variant);
@@ -2552,7 +2557,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         pairs.Add((TokenKeys.Editor_Caret, TokenKeys.Editor_CurrentLine, Mark));
         foreach (string kind in (string[])["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number", "Preprocessor", "Class", "Interface",
             "Struct", "Enum", "Delegate", "TypeParameter", "Method", "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
-            "BuildError", "BuildWarning", "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote", "LinkDestination"])
+            "BuildError", "BuildWarning", "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote", "LinkDestination",
+            "Parameter", "Local", "Namespace", "Operator", "Brace4", "Brace5", "Brace6"])
         {
             pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_Background, Text));
             pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_CurrentLine, Text));

@@ -24,6 +24,12 @@
     "terminal.ansiBlue": "#7AA7FF",
     "terminal.ansiMagenta": "#C792EA",
     "terminal.ansiCyan": "#6FD6E0",
+    "editorBracketHighlight.foreground1": "#F5D67B",
+    "editorBracketHighlight.foreground2": "#C792EA",
+    "editorBracketHighlight.foreground3": "#7AA7FF",
+    "editorBracketHighlight.foreground4": "#FF9E64",
+    "editorBracketHighlight.foreground5": "#7BE0A0",
+    "editorBracketHighlight.foreground6": "#3A3557",
   },
   "tokenColors": [
     { "scope": "comment", "settings": { "foreground": "#4E4A63", "fontStyle": "italic" } },
@@ -32,6 +38,8 @@
     { "scope": "constant.numeric", "settings": { "foreground": "#FF9E64" } },
     { "scope": ["entity.name.function", "support.function"], "settings": { "foreground": "#7AA7FF" } },
     { "scope": ["entity.name.type", "support.class"], "settings": { "foreground": "#6FD6E0" } },
+    { "scope": "variable.parameter", "settings": { "foreground": "#FFB86B", "fontStyle": "italic" } },
+    { "scope": "keyword.operator", "settings": { "foreground": "#C792EA" } },
   ],
   "semanticTokenColors": { "property": "#E9A8D2" },
 }

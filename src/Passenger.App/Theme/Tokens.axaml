@@ -315,6 +315,11 @@
             <SolidColorBrush x:Key="Passenger.Syntax.Code" Color="#4FD8C5" />
             <SolidColorBrush x:Key="Passenger.Syntax.Quote" Color="#95A1B8" />
             <SolidColorBrush x:Key="Passenger.Syntax.LinkDestination" Color="#7EA7FF" />
+            <!-- Parameters, locals, namespaces and operators: the code's plain words here, a theme giving them their own. -->
+            <SolidColorBrush x:Key="Passenger.Syntax.Parameter" Color="#D3DAE6" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Local" Color="#D3DAE6" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Namespace" Color="#D3DAE6" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Operator" Color="#D3DAE6" />
             <x:String x:Key="Passenger.SyntaxStyle.Comment">Italic</x:String>
             <x:String x:Key="Passenger.SyntaxStyle.DocComment">Italic</x:String>
         </ResourceDictionary>
@@ -560,6 +565,11 @@
             <SolidColorBrush x:Key="Passenger.Syntax.Code" Color="#08766A" />
             <SolidColorBrush x:Key="Passenger.Syntax.Quote" Color="#626B80" />
             <SolidColorBrush x:Key="Passenger.Syntax.LinkDestination" Color="#1F55D6" />
+            <!-- Parameters, locals, namespaces and operators, as the code's plain words. -->
+            <SolidColorBrush x:Key="Passenger.Syntax.Parameter" Color="#1A2232" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Local" Color="#1A2232" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Namespace" Color="#1A2232" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Operator" Color="#1A2232" />
             <x:String x:Key="Passenger.SyntaxStyle.Comment">Italic</x:String>
             <x:String x:Key="Passenger.SyntaxStyle.DocComment">Italic</x:String>
         </ResourceDictionary>

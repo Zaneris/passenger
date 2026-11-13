@@ -139,6 +139,20 @@ public static partial class ThemeFiles
     private const double Farthest = 1000;
 
     private static readonly string[] CodePrefixes = ["Editor.", "Syntax.", "SyntaxStyle.", "Diff."];
+
+    /// <summary>Tokens a theme may give that Passenger's own theme leaves out, each drawn as Passenger draws it without: the
+    /// fourth to sixth rainbow brace colours, so depths cycle through as many as a theme gives, and how a parameter is set.</summary>
+    public static readonly IReadOnlyDictionary<string, ThemeTokenKind> Optional = new Dictionary<string, ThemeTokenKind>(StringComparer.Ordinal)
+    {
+        ["Syntax.Brace4"] = ThemeTokenKind.Colour,
+        ["Syntax.Brace5"] = ThemeTokenKind.Colour,
+        ["Syntax.Brace6"] = ThemeTokenKind.Colour,
+        ["SyntaxStyle.Parameter"] = ThemeTokenKind.TextStyle,
+    };
+
+    /// <summary>Kinds of code drawn in the code's plain words unless a file colours them: one a file leaves out takes the
+    /// file's <c>Editor.Text</c> where it gives that, so a file written before they were tokens draws them as it did.</summary>
+    public static readonly IReadOnlyList<string> PlainKinds = ["Syntax.Parameter", "Syntax.Local", "Syntax.Namespace", "Syntax.Operator"];
     private static readonly string[] Styles = ["Normal", "Bold", "Italic", "Bold Italic"];
     private static readonly string[] Sections = ["tokens", "dark", "light"];
 
@@ -209,23 +223,26 @@ public static partial class ThemeFiles
         PassOver(file, root, code ? ["format", "name", "description", .. Sections, "languages"] : ["format", "name", "description", .. Sections, .. Beyond], what, problems);
         string name = Words(root, "name", LongestName, needed: true);
         string description = Words(root, "description", LongestDescription, needed: false);
-        Dictionary<string, TokenValue>[] sections = TokenSections(file, root, tokens, code, null, problems);
+        // Over a VS Code theme, the plain kinds a file leaves out are the base's own.
+        bool plain = JsonMembers.Value(root, "vscode") is null;
+        Dictionary<string, TokenValue>[] sections = TokenSections(file, root, tokens, code, null, plain, problems);
         (BackgroundValue? dark, BackgroundValue? light) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
         return new ThemeFile(name, description, sections[0], sections[1], sections[2])
         {
             Fonts = code ? ThemeFonts.None : Fonts(file, JsonMembers.Value(root, "fonts"), problems),
             DarkBackground = dark,
             LightBackground = light,
-            Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, problems),
+            Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, plain, problems),
             Layout = code ? null : Layout(file, JsonMembers.Value(root, "layout"), problems),
             Base = code ? null : Base(file, JsonMembers.Value(root, "vscode"), problems),
         };
     }
 
     /// <summary>A holder's tokens for both variants, Dark and Light, each in its section; <paramref name="language"/> names
-    /// the language a theme's <c>languages</c> gives them for, whose tokens are the code's alone.</summary>
+    /// the language a theme's <c>languages</c> gives them for, whose tokens are the code's alone; with
+    /// <paramref name="plain"/>, the plain kinds it leaves out take its plain words (<see cref="PlainKinds"/>).</summary>
     private static Dictionary<string, TokenValue>[] TokenSections(string file, JsonElement root, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool code,
-        string? language, List<string> problems)
+        string? language, bool plain, List<string> problems)
     {
         Dictionary<string, TokenValue>[] sections = [new(StringComparer.Ordinal), new(StringComparer.Ordinal), new(StringComparer.Ordinal)];
         string inLanguage = language is null ? string.Empty : $" of languages' {language}";
@@ -261,6 +278,16 @@ public static partial class ThemeFiles
                     throw new FormatException($"gives {token.Name} in {Sections[before]} and in {Sections[i]}{inLanguage}: a token is given once, in tokens for both variants or in dark or light for one");
                 }
                 sections[i][token.Name] = Value(file, $"{token.Name} in {Sections[i]}{inLanguage}", kind, token.Value, problems);
+            }
+        }
+        foreach (string kind in PlainKinds.Where(k => plain && tokens.ContainsKey(k) && !sections.Any(s => s.ContainsKey(k))))
+        {
+            foreach (Dictionary<string, TokenValue> section in sections)
+            {
+                if (section.TryGetValue("Editor.Text", out TokenValue? words))
+                {
+                    section[kind] = words;
+                }
             }
         }
         return sections;

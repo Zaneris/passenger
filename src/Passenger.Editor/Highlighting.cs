@@ -51,7 +51,8 @@ public enum TokenKind
     /// <summary>A console's line naming a warning as MSBuild and the compilers write one, in the warning colour.</summary>
     BuildWarning,
 
-    /// <summary>A bracket at a nesting depth, the three colours taking turns (rainbow braces).</summary>
+    /// <summary>A bracket at a nesting depth, the theme's three to six colours taking turns (rainbow braces); the fourth
+    /// to sixth are <see cref="Brace4"/> to <see cref="Brace6"/>.</summary>
     Brace1,
     Brace2,
     Brace3,
@@ -87,6 +88,11 @@ public enum TokenKind
 
     /// <summary>Where a Markdown link goes: its URL or reference.</summary>
     LinkDestination,
+
+    /// <summary>A bracket at the fourth to sixth level of a theme giving that many rainbow brace colours.</summary>
+    Brace4,
+    Brace5,
+    Brace6,
 }
 
 /// <summary>Where the pointer rested: the offset under it and the point, in the editor's coordinates, and the inlay

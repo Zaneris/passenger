@@ -291,6 +291,9 @@ public static class Themes
             shows = theme?.Shows ?? ThemeShows.Both;
             UseVariant(app, chosenVariant);
         }
+        // Depths cycle through as many brace colours as the theme and the scheme give, from three to six.
+        Passenger.Languages.CSharp.BraceLevels.InForce = Passenger.Languages.CSharp.BraceLevels.Given(level =>
+            ((ThemeFile?[])[theme, scheme]).Any(file => file is not null && Gives(file, $"Syntax.Brace{level}")));
         ThemeLanguages.Use(theme, scheme);
         ThemeBackdrops.Use(theme, images);
         ThemeFonts fonts = theme?.Fonts ?? ThemeFonts.None;
@@ -305,6 +308,8 @@ public static class Themes
             LayoutChanged?.Invoke(null, EventArgs.Empty);
         }
     }
+
+    private static bool Gives(ThemeFile file, string token) => file.Both.ContainsKey(token) || file.Dark.ContainsKey(token) || file.Light.ContainsKey(token);
 
     /// <summary>Fluent's own accented parts (a ticked box, a chosen radio button, a focused drop-down) in the theme's
     /// Passenger.Accent: Fluent takes the system's accent otherwise (the user's on macOS, #0078D4 headless).</summary>

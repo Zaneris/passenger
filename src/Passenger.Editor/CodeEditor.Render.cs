@@ -514,7 +514,7 @@ public sealed partial class CodeEditor
     /// neighbouring runs of one look on a line are formatted and drawn as one (<see cref="ColouredRuns"/>).</summary>
     private TextRunProperties Run(TokenKind kind)
     {
-        if (!rainbowBraces && kind is TokenKind.Brace1 or TokenKind.Brace2 or TokenKind.Brace3)
+        if (!rainbowBraces && kind is TokenKind.Brace1 or TokenKind.Brace2 or TokenKind.Brace3 or TokenKind.Brace4 or TokenKind.Brace5 or TokenKind.Brace6)
         {
             kind = TokenKind.Text;
         }

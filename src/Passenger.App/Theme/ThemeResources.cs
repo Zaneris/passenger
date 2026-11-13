@@ -15,8 +15,9 @@ public static class ThemeResources
     private const string Prefix = "Passenger.";
     private static IReadOnlyDictionary<string, ThemeTokenKind>? kinds;
 
-    /// <summary>Every token the default theme gives, named without <c>Passenger.</c>, and the kind of value it takes; the
-    /// languages a theme may colour are named to the reader with them.</summary>
+    /// <summary>Every token the default theme gives and those a theme may give beside them (<see cref="ThemeFiles.Optional"/>),
+    /// named without <c>Passenger.</c>, and the kind of value each takes; the languages a theme may colour are named to the
+    /// reader with them.</summary>
     public static IReadOnlyDictionary<string, ThemeTokenKind> Kinds
     {
         get
@@ -117,6 +118,10 @@ public static class ThemeResources
                     _ => throw new InvalidOperationException($"Tokens.axaml gives {key} as a {value?.GetType().Name ?? "null"}, a kind of value theme files cannot give: teach ThemeFiles and ThemeResources it"),
                 };
             }
+        }
+        foreach ((string token, ThemeTokenKind kind) in ThemeFiles.Optional)
+        {
+            read.TryAdd(token, kind);
         }
         return read;
     }

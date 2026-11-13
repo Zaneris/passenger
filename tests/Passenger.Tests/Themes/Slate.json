@@ -239,6 +239,10 @@
     "Syntax.Code": "#97C17A",
     "Syntax.Quote": "#929AA6",
     "Syntax.LinkDestination": "#62ADED",
+    "Syntax.Parameter": "#BAC0CB",
+    "Syntax.Local": "#BAC0CB",
+    "Syntax.Namespace": "#BAC0CB",
+    "Syntax.Operator": "#BAC0CB",
     "SyntaxStyle.Comment": "Italic",
     "SyntaxStyle.DocComment": "Italic"
   },
@@ -461,6 +465,10 @@
     "Syntax.Code": "#347D33",
     "Syntax.Quote": "#6C6E76",
     "Syntax.LinkDestination": "#3267D8",
+    "Syntax.Parameter": "#383A42",
+    "Syntax.Local": "#383A42",
+    "Syntax.Namespace": "#383A42",
+    "Syntax.Operator": "#383A42",
     "SyntaxStyle.Comment": "Italic",
     "SyntaxStyle.DocComment": "Italic"
   }

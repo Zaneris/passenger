@@ -347,8 +347,8 @@ public sealed class SemanticHighlighter : CarriedColours
 
     /// <summary>Roslyn's token types, standard and its own, and Razor's for a Razor file's markup, as the editor's kinds:
     /// a component's tag in a type's colour and its parameters in a property's, HTML's in the HTML grammar's kinds,
-    /// Razor's directives and transitions as keywords. Operators, punctuation and text are left to
-    /// the syntax.</summary>
+    /// Razor's directives and transitions as keywords. Operators are the theme's operators; punctuation and text are left
+    /// to the syntax.</summary>
     private static TokenKind? Kind(string type) => type switch
     {
         "razorTransition" or "razorDirective" or "razorDirectiveColon" or "razorDirectiveAttribute" => TokenKind.Keyword,
@@ -374,6 +374,7 @@ public sealed class SemanticHighlighter : CarriedColours
         "variable" or "local" or "localName" => TokenKind.Local,
         "parameter" or "parameterName" => TokenKind.Parameter,
         "label" or "labelName" => TokenKind.Label,
+        "operator" or "operatorOverloaded" => TokenKind.Operator,
         "keyword" => TokenKind.Keyword,
         "controlKeyword" => TokenKind.ControlKeyword,
         "string" or "stringVerbatim" => TokenKind.String,

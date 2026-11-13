@@ -138,6 +138,10 @@ public static class VsCodeColours
         ("Code", [], [["text.html.markdown", "markup.inline.raw.string.markdown"], ["text.html.markdown", "markup.fenced_code.block.markdown"]], "String"),
         ("Quote", [], [["text.html.markdown", "markup.quote.markdown"]], "Comment"),
         ("LinkDestination", [], [["text.html.markdown", "markup.underline.link.markdown"]], null),
+        ("Parameter", ["parameter"], [["source.cs", "variable.parameter"]], null),
+        ("Local", ["variable"], [["source.cs", "variable.other.readwrite"], ["source.cs", "variable.other.local"]], null),
+        ("Namespace", ["namespace"], [["source.cs", "entity.name.namespace"], ["source.cs", "entity.name.type.namespace"]], null),
+        ("Operator", ["operator"], [["source.cs", "keyword.operator"]], null),
     ];
 
     /// <summary>The theme as a Passenger theme of its one variant, its every colour token given.</summary>
@@ -152,23 +156,34 @@ public static class VsCodeColours
 
         Dictionary<string, uint> syntax = new(StringComparer.Ordinal);
         bool italicComments = false;
+        string? parameterStyle = null;
         foreach ((string kind, string[] semantic, string[][] scopes, string? or) in Code)
         {
             if (Coloured(semantic, scopes, out string? style) is { } colour)
             {
                 syntax[kind] = Opaque(Over(colour, ground));
                 italicComments |= kind == "Comment" && style is not null && style.Contains("italic", StringComparison.Ordinal);
+                parameterStyle = kind == "Parameter" ? Style(style) : parameterStyle;
             }
             else if (or is not null && syntax.TryGetValue(or, out uint other))
             {
                 syntax[kind] = other;
             }
         }
+        // Its bracket colours, one to six of them: the first three always, the rest as far as it gives them in turn.
         if (Colour(colors, "editorBracketHighlight.foreground1") is { } brace1)
         {
-            syntax["Brace1"] = Over(brace1, ground);
-            syntax["Brace2"] = Over(Colour(colors, "editorBracketHighlight.foreground2") ?? brace1, ground);
-            syntax["Brace3"] = Over(Colour(colors, "editorBracketHighlight.foreground3") ?? brace1, ground);
+            uint before = brace1;
+            for (int level = 1; level <= 6; level++)
+            {
+                uint? named = Colour(colors, $"editorBracketHighlight.foreground{level}") is { } own && own >> 24 != 0 ? own : null;
+                if (level > 3 && named is null)
+                {
+                    break;
+                }
+                before = named ?? before;
+                syntax[$"Brace{level}"] = Over(before, ground);
+            }
         }
         if (Colour(colors, "textLink.foreground") is { } link)
         {
@@ -204,8 +219,12 @@ public static class VsCodeColours
             }
         }
         given["Editor.Text"] = text;
-        return new ThemeFile(theme.Name, string.Empty, ThemePalettes.Tokens(palette, dark, given, syntax, italicComments),
-            new Dictionary<string, TokenValue>(StringComparer.Ordinal), new Dictionary<string, TokenValue>(StringComparer.Ordinal))
+        Dictionary<string, TokenValue> tokens = ThemePalettes.Tokens(palette, dark, given, syntax, italicComments);
+        if (parameterStyle is not null)
+        {
+            tokens["SyntaxStyle.Parameter"] = new TextStyleValue(parameterStyle);
+        }
+        return new ThemeFile(theme.Name, string.Empty, tokens, new Dictionary<string, TokenValue>(StringComparer.Ordinal), new Dictionary<string, TokenValue>(StringComparer.Ordinal))
         {
             Shows = dark ? ThemeShows.Dark : ThemeShows.Light,
         };
@@ -236,6 +255,20 @@ public static class VsCodeColours
             }
             return null;
         }
+    }
+
+    /// <summary>How a TextMate rule's font style sets words, in a theme's words, or null where it sets them plainly.</summary>
+    private static string? Style(string? fontStyle)
+    {
+        bool bold = fontStyle?.Contains("bold", StringComparison.Ordinal) == true;
+        bool italic = fontStyle?.Contains("italic", StringComparison.Ordinal) == true;
+        return (bold, italic) switch
+        {
+            (true, true) => "Bold Italic",
+            (true, false) => "Bold",
+            (false, true) => "Italic",
+            _ => null,
+        };
     }
 
     private static uint? Colour(Dictionary<string, uint> colors, string key) => colors.TryGetValue(key, out uint colour) ? colour : null;
