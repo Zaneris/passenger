@@ -405,7 +405,7 @@ public sealed class SolutionViewTests : IDisposable
         window.AskConflict = document =>
         {
             conflicts.Add(document.Name);
-            return Task.FromResult(false);
+            return Task.FromResult<bool?>(false);
         };
 
         window.OpenFile(app);

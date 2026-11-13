@@ -1914,7 +1914,7 @@ public sealed class VcsTests : IDisposable
         Git("switch", "-q", "main");
         MainWindow window = Open();
         int asked = 0;
-        window.AskConflict = _ => Task.FromResult(asked++ < 0);
+        window.AskConflict = _ => Task.FromResult<bool?>(asked++ < 0);
         window.OpenFile(Path.Combine(folder, "Notes.cs"));
         Ui.Settle();
         window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);

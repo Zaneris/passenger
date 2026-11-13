@@ -311,6 +311,50 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    /// <summary>A screenshot only looks: what its steps type stays in the editor, never written to the file, even when
+    /// another program (here its --agent) writes the file meanwhile and the File Cache Conflict question takes the Escape
+    /// and Enter typed after; File, Save typed as a step writes it, and the run says on standard error that it did.</summary>
+    [Fact]
+    public async Task A_screenshot_writes_no_file_its_steps_type_into_but_one_a_step_saves_and_says_so()
+    {
+        string notes = Path.Combine(folder, "notes.txt");
+        string agent = TestFolders.Create("disk-writer-");
+        string state = TestFolders.Create("disk-writer-state-");
+        string command;
+        if (OperatingSystem.IsWindows())
+        {
+            string script = Path.Combine(agent, "write.ps1");
+            await File.WriteAllTextAsync(script, "[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'notes.txt'), \"disk`n\")", TestContext.Current.CancellationToken);
+            command = $"powershell -NoProfile -ExecutionPolicy Bypass -File \"{script}\"";
+        }
+        else
+        {
+            string script = Path.Combine(agent, "write.sh");
+            await File.WriteAllTextAsync(script, "printf 'disk\\n' > notes.txt\n", TestContext.Current.CancellationToken);
+            command = $"sh \"{script}\"";
+        }
+        try
+        {
+            (int code, string error) = await Run(["notes.txt", "--caret", "1:1", "--type", "typed ", "--key", "shift+4", "--agent", command, "--wait", "3000",
+                "--key", "escape", "--key", "enter", "--type", "more", "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], state);
+            string held = await File.ReadAllTextAsync(notes, TestContext.Current.CancellationToken);
+            Assert.True(code == 0 && held == "disk\n" && !error.Contains("screenshot: wrote", StringComparison.Ordinal),
+                $"What the steps typed was to stay out of notes.txt, which holds what the agent wrote; the run exited {code} ({error}) and the file holds:\n{held}");
+
+            string save = OperatingSystem.IsMacOS() ? "meta+S" : "control+S";
+            (code, error) = await Run(["notes.txt", "--caret", "1:1", "--type", "saved ", "--key", save, "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], state);
+            string saved = await File.ReadAllTextAsync(notes, TestContext.Current.CancellationToken);
+            Assert.True(code == 0 && saved == "saved disk\n" && error.Contains("screenshot: wrote notes.txt", StringComparison.Ordinal),
+                $"File, Save as a step was to write what was typed and say so; the run exited {code} ({error}) and the file holds:\n{saved}");
+        }
+        finally
+        {
+            TestFolders.Delete(agent);
+            TestFolders.Delete(state);
+            TestFolders.Delete(global::Passenger.App.Mcp.McpHost.SocketFolderFor(state));
+        }
+    }
+
     /// <summary>A login shell whose profile traces itself and then fails, as one may where Passenger starts from the Finder
     /// or the Dock with no terminal: the log's line saying why its environment was not read quotes what it printed with
     /// the secrets it exported masked, so a log attached to an issue holds none.</summary>

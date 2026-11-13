@@ -179,7 +179,7 @@ public sealed class FolderWatchTests : IDisposable
         window.AskConflict = document =>
         {
             asked.Add(document.Name);
-            return Task.FromResult(loadDisk);
+            return Task.FromResult<bool?>(loadDisk);
         };
         Type(window, "public ");
 
@@ -211,22 +211,57 @@ public sealed class FolderWatchTests : IDisposable
         Type(window, "public ");
 
         File.WriteAllText(path, "class One { int disk; }\n");
-        Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), "the File Cache Conflict dialog");
+        ChoiceDialog dialog = ConflictAsked(window);
         // The dialog has the focus and the idle wait goes by: neither writes over the disk's version, nor does Save.
         Ui.Hold(TimeSpan.FromSeconds(1.5), "the idle save's second to go by");
         window.Perform(AppActions.Save);
         Ui.Settle();
         Assert.Equal("class One { int disk; }\n", File.ReadAllText(path));
-        Assert.Single(window.OwnedWindows.OfType<ConfirmDialog>());
+        Assert.Single(window.OwnedWindows.OfType<ChoiceDialog>());
 
-        ConfirmDialog dialog = window.OwnedWindows.OfType<ConfirmDialog>().Single();
-        Avalonia.Controls.Button load = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(dialog)
-            .OfType<Avalonia.Controls.Button>().First(b => (string?)b.Content == "Load File System Changes");
-        Ui.Click(load, settle: false);
+        Ui.Click(Answer(dialog, "Load File System Changes"), settle: false);
         Ui.WaitFor(() => Text(window) == "class One { int disk; }\n", "the disk's text in the editor");
         Assert.False(window.EditorArea.Active!.IsModified);
         window.Close();
     }
+
+    /// <summary>The File Cache Conflict comes on its own as another program writes the file, while the person may be
+    /// typing, so a key meant for the editor answers it neither way: Escape and Enter close it with the edits kept unsaved
+    /// and the disk's version as it was, and the next save asks again, where Keep Memory Changes writes the edits over it.</summary>
+    [AvaloniaFact]
+    public void A_key_meant_for_the_editor_answers_the_conflict_question_neither_way_and_the_next_save_asks_again()
+    {
+        string path = Path.Combine(folder, "One.cs");
+        File.WriteAllText(path, "class One { }\n");
+        MainWindow window = Open(languageServer: false);
+        window.OpenFile("One.cs");
+        Ui.Settle();
+        Type(window, "public ");
+
+        File.WriteAllText(path, "class One { int disk; }\n");
+        foreach (string key in (string[])["ESCAPE", "ENTER"])
+        {
+            Ui.Press(ConflictAsked(window), key);
+            Ui.WaitFor(() => !window.OwnedWindows.OfType<ChoiceDialog>().Any(), $"{key} to close the File Cache Conflict question");
+            Assert.True(File.ReadAllText(path) == "class One { int disk; }\n" && Text(window) == "public class One { }\n" && window.EditorArea.Active!.IsModified,
+                $"{key} on the File Cache Conflict question was to keep both versions as they were; the disk holds '{File.ReadAllText(path)}' and the editor '{Text(window)}'");
+            window.Perform(AppActions.Save);
+        }
+
+        Ui.Click(Answer(ConflictAsked(window), "Keep Memory Changes"), settle: false);
+        Ui.WaitFor(() => File.ReadAllText(path) == "public class One { }\n", "Keep Memory Changes to write the edits over the disk's version");
+        Assert.False(window.EditorArea.Active!.IsModified);
+        window.Close();
+    }
+
+    private static ChoiceDialog ConflictAsked(MainWindow window)
+    {
+        Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(d => d.Title == "File Cache Conflict"), "the File Cache Conflict question");
+        return DialogButtonsTests.Check(window.OwnedWindows.OfType<ChoiceDialog>().Single());
+    }
+
+    private static Avalonia.Controls.Button Answer(ChoiceDialog dialog, string words) =>
+        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(dialog).OfType<Avalonia.Controls.Button>().First(b => (string?)b.Content == words);
 
     [AvaloniaFact]
     public void A_file_with_unsaved_edits_deleted_on_disk_stays_open_and_saving_writes_it_back()
@@ -391,7 +426,7 @@ public sealed class FolderWatchTests : IDisposable
         window.AskConflict = document =>
         {
             asked.Add(document.Name);
-            return Task.FromResult(false);
+            return Task.FromResult<bool?>(false);
         };
         Type(window, "public ");
 

@@ -295,17 +295,18 @@ public partial class MainWindow
     }
 
     /// <summary>File Cache Conflict: the disk's version, or the edits made here, written over the disk's. Until it is
-    /// answered the file is never saved, so the answer is the person's.</summary>
+    /// answered the file is never saved, so the answer is the person's: closed unanswered, both stay as they are, and the
+    /// file's next save asks again.</summary>
     private async Task ResolveConflictAsync(OpenDocument document)
     {
         try
         {
-            bool fromDisk = await AskConflict(document);
-            if (fromDisk)
+            bool? fromDisk = await AskConflict(document);
+            if (fromDisk == true)
             {
                 document.Reload(overUnsaved: true);
             }
-            else
+            else if (fromDisk == false)
             {
                 Editors.SaveOver(document);
             }
@@ -316,14 +317,24 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The question itself: true for Load File System Changes.</summary>
-    public Func<OpenDocument, Task<bool>> AskConflict
+    private const string LoadDisk = "Load File System Changes";
+    private const string KeepMemory = "Keep Memory Changes";
+
+    /// <summary>The question itself: true for Load File System Changes, false for Keep Memory Changes, null once closed
+    /// unanswered. It comes on its own as another program writes the file, and either answer loses something, so no key
+    /// typed for the editor answers it: Enter and Escape are Cancel.</summary>
+    public Func<OpenDocument, Task<bool?>> AskConflict
     {
-        get => askConflict ?? (document => new ConfirmDialog("File Cache Conflict",
-            $"Changes have been made to {document.Name} in memory and on disk. Load the version on disk, losing the changes made here, or keep the changes made here, writing them over it?",
-            "Load File System Changes", "Keep Memory Changes").ShowDialog<bool>(this));
+        get => askConflict ?? (async document => await Choose("File Cache Conflict",
+            $"Changes have been made to {document.Name} in memory and on disk. Load the version on disk, losing the changes made here, or keep the changes made here, writing them over it? Cancel leaves both as they are, asking again when the file is next saved.",
+            [LoadDisk, KeepMemory], chosen: null) switch
+        {
+            LoadDisk => true,
+            KeepMemory => false,
+            _ => null,
+        });
         set => askConflict = value;
     }
 
-    private Func<OpenDocument, Task<bool>>? askConflict;
+    private Func<OpenDocument, Task<bool?>>? askConflict;
 }

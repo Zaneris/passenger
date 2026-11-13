@@ -751,7 +751,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.EditorArea.CodeEditor.Selections = SelectionSet.Single(new Selection(at, at + "before".Length));
         window.KeyTextInput("typed");
         Ui.WaitFor(() => Saying("typed", closed: false) == 1, "the open file's edit's warning");
-        TaskCompletionSource<bool> fromDisk = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool?> fromDisk = new(TaskCreationOptions.RunContinuationsAsynchronously);
         window.AskConflict = _ => fromDisk.Task;
 
         Passenger.Lsp.LanguageServer server = window.CSharpService.Session.Server;

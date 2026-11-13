@@ -7,6 +7,7 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.App;
 
@@ -14,7 +15,8 @@ namespace Passenger.App;
 /// names and taking its steps. It runs on Avalonia's headless platform with real Skia drawing, so nothing appears on
 /// screen and nothing takes the focus. The picture is the compositor's own frame, the path the desktop draws through,
 /// not a re-render into a bitmap, so it shows what a person would see minus the system's window chrome;
-/// <c>--window-buttons</c> draws macOS's traffic lights back in (<see cref="TrafficLights"/>).</summary>
+/// <c>--window-buttons</c> draws macOS's traffic lights back in (<see cref="TrafficLights"/>). The window saves nothing
+/// by itself, as it only looks; a file a step wrote (a save, a close or a run that saves first) is said on standard error.</summary>
 public static class Screenshot
 {
     /// <summary>How long to wait for background work (colouring, indexing) before capturing anyway.</summary>
@@ -34,6 +36,8 @@ public static class Screenshot
             .SetupWithoutStarting();
 
         // A capture lets in only its own agent: no socket at all without one.
+        Written written = new();
+        FileText.Writing += written.Add;
         MainWindow window = new() { Width = options.Size.Width, Height = options.Size.Height, Autosaves = false, AgentsAllowed = options.Steps.OfType<ScriptStep.Agent>().Any(), TakesLaunches = false };
         window.OpenOnNamedSettings(launch);
         window.SetRenderScaling(options.Scale);
@@ -44,8 +48,10 @@ public static class Screenshot
         }
         catch (StepRefused refused)
         {
+            string? opened = window.Folder;
             PassengerApp.Quit();
             PassengerApp.End();
+            written.Say(opened);
             Console.Error.WriteLine($"screenshot: {refused.Message}");
             return 2;
         }
@@ -78,8 +84,10 @@ public static class Screenshot
 
         double elapsed = Stopwatch.GetElapsedTime(Program.StartedAt).TotalMilliseconds;
         // A program or a build the steps started ends with the windows, as it does with the person's.
+        string? folder = window.Folder;
         PassengerApp.Quit();
         PassengerApp.End();
+        written.Say(folder);
         if (!settled)
         {
             // The picture is kept to show what was still going on, but it is not the settled window.
@@ -264,6 +272,33 @@ public static class Screenshot
             throw new StepRefused($"{start.Flag}: {starting.Exception!.GetBaseException().Message}");
         }
         return starting.IsCompletedSuccessfully && (starting.Result ?? window.NotStarted) is { } refused ? throw new StepRefused(refused) : settled;
+    }
+
+    /// <summary>The files the run's saves wrote, heard from any thread.</summary>
+    private sealed class Written
+    {
+        private readonly HashSet<string> paths = new(PathNames.Comparer);
+
+        public void Add(string path)
+        {
+            lock (paths)
+            {
+                paths.Add(path);
+            }
+        }
+
+        /// <summary>Says each file written on standard error, from the open folder where it is in it.</summary>
+        public void Say(string? folder)
+        {
+            FileText.Writing -= Add;
+            lock (paths)
+            {
+                foreach (string path in paths.Order(PathNames.Comparer))
+                {
+                    Console.Error.WriteLine($"screenshot: wrote {PathNames.Shown(path, folder)}");
+                }
+            }
+        }
     }
 
     /// <summary>A step the window cannot take as asked, which ends the screenshot with exit code 2 and why.</summary>
