@@ -160,12 +160,19 @@ public class MobileNeedsTests
     }
 
     [Fact]
-    public void Off_a_Mac_an_app_only_of_Apple_platforms_builds_nowhere_and_Xcode_is_not_asked_of()
+    public void Off_a_Mac_an_app_only_of_Apple_platforms_builds_nowhere_and_neither_Xcode_nor_a_workload_is_asked_of()
     {
         ProjectNeeds ios = new("IosApp", ["net11.0-ios"]) { Apple = new AppleAnswer("Could not find a valid Xcode developer path") };
 
         Assert.Equal("IosApp builds only on a Mac, with Xcode", Want([ios], onMac: false).Said);
         Assert.Null(Want([new ProjectNeeds(Maui, MauiFrameworks)], onMac: false).Said);
+
+        // The workload Linux's SDK names for a tvOS app, and Windows' own, install nothing that builds it there.
+        ProjectNeeds tv = new("Tv", ["net11.0-tvos"]) { Workloads = [new WorkloadLacked("wasm-tools", null), new WorkloadLacked("tvos", "net11.0-tvos")] };
+        MobileWant offMac = Want([tv, new ProjectNeeds("Droid", ["net11.0-android"]) { Workloads = [new WorkloadLacked("android", null)] }], onMac: false);
+        Assert.Equal(["android"], offMac.Workloads);
+        Assert.Equal("Droid needs the .NET workload android. Tv builds only on a Mac, with Xcode", offMac.Said);
+        Assert.Equal(["tvos"], Want([tv with { Workloads = [new WorkloadLacked("tvos", "net11.0-tvos")] }]).Workloads);
         Assert.Equal("IosApp needs Xcode (Could not find a valid Xcode developer path)", Want([ios]).Said);
     }
 

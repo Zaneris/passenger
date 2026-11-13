@@ -7,12 +7,12 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>What a mobile project needs, said over the window as it opens and got from there: a project of a platform
-/// whose workload the .NET lacks says so, and Install Workloads asks, runs the install (a stand-in of dotnet's) and loads
-/// the project again; an Android project whose workload's answers say it lacks its SDK's platform and a JDK (stand-ins of
-/// the workload's targets in the project) offers the workload's installer, which runs only once the person accepted the
-/// licences Google's repository (a stand-in) gives, and the banner goes once nothing lacks; New Project offers each mobile
-/// template a missing workload brings, named by it. It sets a process-wide
-/// stand-in and ANDROID_HOME, so it runs alone.</summary>
+/// whose workload the .NET lacks (tvOS on a Mac, Android elsewhere) says so, and Install Workloads asks, runs the install
+/// (a stand-in of dotnet's) and loads the project again; an Android project whose workload's answers say it lacks its
+/// SDK's platform and a JDK (stand-ins of the workload's targets in the project) offers the workload's installer, which
+/// runs only once the person accepted the licences Google's repository (a stand-in) gives, and the banner goes once nothing
+/// lacks; New Project offers each mobile template a missing workload brings, named by it. It sets a process-wide stand-in
+/// and ANDROID_HOME, so it runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class MobileNeedsWindowTests : IDisposable
 {
@@ -36,10 +36,12 @@ public sealed class MobileNeedsWindowTests : IDisposable
     [AvaloniaFact]
     public void A_project_whose_workload_is_missing_says_so_and_Install_Workloads_asks_installs_and_loads_it_again()
     {
-        File.WriteAllText(Path.Combine(folder, "Tv.csproj"), $"""
+        // A platform this system builds, whose workload neither this Mac nor CI's runners have: tvOS builds only on a Mac.
+        (string name, string platform) = OperatingSystem.IsMacOS() ? ("Tv", "tvos") : ("Droid", "android");
+        File.WriteAllText(Path.Combine(folder, $"{name}.csproj"), $"""
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup>
-                <TargetFramework>{Mobile}-tvos</TargetFramework>
+                <TargetFramework>{Mobile}-{platform}</TargetFramework>
                 <OutputType>Exe</OutputType>
               </PropertyGroup>
             </Project>
@@ -49,10 +51,10 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
         if (window.MobileWant.Workloads.Count == 0)
         {
-            Assert.Skip("This .NET has the tvos workload, so nothing is lacking to say");
+            Assert.Skip($"This .NET has the {platform} workload, so nothing is lacking to say");
         }
-        Assert.Equal(["tvos"], window.MobileWant.Workloads);
-        Assert.Equal("Tv needs the .NET workload tvos", window.MobileSaid);
+        Assert.Equal([platform], window.MobileWant.Workloads);
+        Assert.Equal($"{name} needs the .NET workload {platform}", window.MobileSaid);
 
         List<IReadOnlyList<string>> installed = [];
         MainWindow.WorkloadInstallStandIn = ids =>
@@ -70,12 +72,12 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Ui.ClickButton(window, "Install Workloads…");
         Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallWorkloads) is null, () => $"the install to end: {window.Status}", Slow);
 
-        Assert.Equal(["Install the .NET workload tvos?"], asked);
-        Assert.Equal(["tvos"], Assert.Single(installed));
+        Assert.Equal([$"Install the .NET workload {platform}?"], asked);
+        Assert.Equal([platform], Assert.Single(installed));
         Assert.True(window.Session.Models.Rounds > rounds, "The project was not evaluated again after the install");
         // The stand-in installs nothing, so the project still lacks it, and says so.
-        Assert.Equal("dotnet workload install ended, but the projects still lack tvos", window.Status);
-        Assert.Equal("Tv needs the .NET workload tvos", window.MobileSaid);
+        Assert.Equal($"dotnet workload install ended, but the projects still lack {platform}", window.Status);
+        Assert.Equal($"{name} needs the .NET workload {platform}", window.MobileSaid);
         window.Close();
     }
 
