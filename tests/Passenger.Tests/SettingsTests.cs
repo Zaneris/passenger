@@ -1035,6 +1035,70 @@ public sealed class SettingsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>At its smallest size, Settings' every page keeps what it shows within its width, so each row's label,
+    /// editor and note is read whole and reached by scrolling down alone: the rows stand their labels above their
+    /// editors, which narrow to the page, and the list pages their lists above what they show. At its own size the
+    /// labels stand beside the editors as ever.</summary>
+    [AvaloniaFact]
+    public void Every_page_keeps_its_rows_within_its_width_at_the_dialogs_smallest_size()
+    {
+        MainWindow window = Open();
+        SettingsDialog dialog = window.ShowSettings();
+        try
+        {
+            Ui.Settle();
+            OptionRow theme = dialog.GetVisualDescendants().OfType<OptionRow>().First(r => r.Label.Text == "Theme");
+            Assert.False(theme.IsStacked, "At Settings' own size, Appearance's Theme label stands above its editor rather than beside it");
+            dialog.Width = dialog.MinWidth;
+            dialog.Height = dialog.MinHeight;
+            Ui.Settle();
+            Assert.True(theme.IsStacked, $"At Settings' smallest size ({dialog.Bounds.Size}), Appearance's Theme label stands beside its editor, which has no room there");
+            List<string> cut = [];
+            foreach (string page in dialog.Pages.ToList())
+            {
+                dialog.Page = page;
+                Ui.Settle();
+                ScrollViewer scroll = dialog.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Content is StackPanel && s.IsEffectivelyVisible);
+                Control column = (Control)scroll.GetVisualParent()!;
+                foreach (Visual part in column.GetVisualChildren().Where(v => v != scroll).Append((Visual)scroll.Content!))
+                {
+                    Cut(part, column, column.Bounds.Width, page, cut);
+                }
+            }
+            Assert.True(cut.Count == 0, $"At Settings' smallest size ({dialog.Bounds.Size}), these run past the page's right edge, cut off "
+                + $"and reached by no scrolling:\n{string.Join("\n", cut.Distinct().Take(40))}");
+        }
+        finally
+        {
+            dialog.Close();
+            window.Close();
+        }
+
+        // What is drawn of a part and inside it, but for what a control clips to itself (a list's rows, a box's text).
+        static void Cut(Visual part, Visual column, double width, string page, List<string> cut)
+        {
+            if (!part.IsEffectivelyVisible || part.Bounds.Width <= 0)
+            {
+                return;
+            }
+            Rect at = new Rect(part.Bounds.Size).TransformToAABB(part.TransformToVisual(column)!.Value);
+            if (at.Right > width + 0.5 || at.X < -0.5)
+            {
+                string words = part.GetSelfAndVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => !string.IsNullOrEmpty(t.Text))?.Text ?? string.Empty;
+                cut.Add($"{page}: a {part.GetType().Name} '{words[..Math.Min(words.Length, 40)]}' from {at.X:0} to {at.Right:0} of {width:0}");
+                return;
+            }
+            if (part.ClipToBounds)
+            {
+                return;
+            }
+            foreach (Visual inside in part.GetVisualChildren())
+            {
+                Cut(inside, column, width, page, cut);
+            }
+        }
+    }
+
     internal static SettingsDialog TerminalDialog(MainWindow window)
     {
         SettingsDialog dialog = window.ShowSettings();

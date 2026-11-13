@@ -142,7 +142,7 @@ public sealed class ThemeExplorer : StackPanel
             {
                 SearchBox.Width = box.Bounds.Width;
                 OrderBox.Width = button.Bounds.Width;
-                Width = box.Bounds.Width + Gap + button.Bounds.Width;
+                MaxWidth = box.Bounds.Width + Gap + button.Bounds.Width;
             }
         }
         box.SizeChanged += (_, _) => Fit();

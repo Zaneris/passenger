@@ -66,7 +66,10 @@ public sealed class ThemePicker : StackPanel
             }
         };
         AddFile.Click += (_, _) => IdeErrors.Observe(PickFileAsync());
-        Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Box, AddFile } });
+        // As wide as a form's other drop-downs where there is room, narrower where not.
+        NarrowingField choosing = new(Box, AddFile);
+        choosing.Bind(NarrowingField.MostProperty, this.GetResourceObservable(TokenKeys.DropDownWidth));
+        Children.Add(choosing);
         Children.Add(reading);
         Children.Add(problems);
         AttachedToVisualTree += (_, _) =>
@@ -79,7 +82,7 @@ public sealed class ThemePicker : StackPanel
     }
 
     /// <summary>The drop-down.</summary>
-    public ComboBox Box { get; } = new() { Classes = { StyleClasses.Form }, MinWidth = 260, MaxDropDownHeight = 360 };
+    public ComboBox Box { get; } = new() { MaxDropDownHeight = 360 };
 
     /// <summary>Add from File…: a theme or code colour scheme file of the person's, kept as added and chosen.</summary>
     public Button AddFile { get; } = new() { Content = "Add from File…" };

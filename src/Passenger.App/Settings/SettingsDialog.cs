@@ -485,20 +485,13 @@ public sealed partial class SettingsDialog : IdeWindow
         TextBlock name = new()
         {
             Text = label,
-            Width = 220,
             Padding = new Thickness(0, 0, 16, 0),
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = firstLine < 0 ? VerticalAlignment.Center : VerticalAlignment.Top,
-            Margin = new Thickness(0, Math.Max(0, firstLine), 0, 0),
         };
         AutomationProperties.SetLabeledBy(editor, name);
-        Control row = new StackPanel { Orientation = Orientation.Horizontal, Children = { name, editor } };
-        if (note is not null)
-        {
-            TextBlock said = new() { Text = note, TextWrapping = TextWrapping.Wrap, MaxWidth = 360, Margin = new Thickness(name.Width, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
-            said.Classes.Add(StyleClasses.Muted);
-            row = new StackPanel { Spacing = 4, Children = { row, said } };
-        }
+        TextBlock? said = note is null ? null : new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };
+        OptionRow row = new(name, editor, said, firstLine);
         options.Add(new Option(page, label, row, $"{page} {label} {keywords}", action));
         return row;
     }

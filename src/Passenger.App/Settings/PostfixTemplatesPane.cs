@@ -12,7 +12,7 @@ namespace Passenger.App.Settings;
 /// completion autopopup over the templates under their language, each with the check box that turns it on or off, and
 /// beside them the chosen one's Description, Before and After. Each change goes back to the settings being edited at
 /// once, the templates turned off kept by name.</summary>
-public sealed class PostfixTemplatesPane : DockPanel
+public sealed class PostfixTemplatesPane : ListPane
 {
     private const string Language = "C#";
 
@@ -28,7 +28,6 @@ public sealed class PostfixTemplatesPane : DockPanel
     {
         turned = new(current.PostfixTemplates);
         this.change = change;
-        Height = 520;
         EnableBox = new CheckBox { Content = "Enable postfix completion", IsChecked = current.PostfixCompletion };
         AutopopupBox = new CheckBox { Content = "Show postfix templates in completion autopopup", IsChecked = current.PostfixInCompletion, IsEnabled = current.PostfixCompletion };
         EnableBox.IsCheckedChanged += (_, _) =>
@@ -44,20 +43,19 @@ public sealed class PostfixTemplatesPane : DockPanel
         tree.ItemsSource = (object[])[Language, .. PostfixTemplates.All];
         tree.SelectionChanged += (_, _) => Describe();
 
-        Border framed = new() { Classes = { StyleClasses.Framed }, Child = tree, Width = 300 };
+        Border framed = new() { Classes = { StyleClasses.Framed }, Child = tree };
         about = new StackPanel
         {
             Spacing = 6,
-            Margin = new Thickness(16, 0, 0, 0),
             Children = { new TextBlock { Text = "Description:" }, description, new TextBlock { Text = "Before:", Margin = new Thickness(0, 8, 0, 0) }, before,
                 new TextBlock { Text = "After:", Margin = new Thickness(0, 8, 0, 0) }, after },
         };
         StackPanel options = new() { Spacing = 6, Margin = new Thickness(0, 0, 0, 10), Children = { EnableBox, AutopopupBox } };
         SetDock(options, Dock.Top);
-        SetDock(framed, Dock.Left);
         Children.Add(options);
         Children.Add(framed);
         Children.Add(about);
+        Lay(framed, about, 300, 520);
         tree.SelectedIndex = 1;
     }
 

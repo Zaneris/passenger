@@ -27,7 +27,7 @@ public sealed partial class SettingsDialog
     /// <summary>Where a source to add is written.</summary>
     public TextBox ThemeSourceBox { get; } = new()
     {
-        Classes = { StyleClasses.Search }, PlaceholderText = "A folder, owner/repository or https:// address", Width = 300,
+        Classes = { StyleClasses.Search }, PlaceholderText = "A folder, owner/repository or https:// address",
     };
 
     public Button AddThemeSourceButton { get; } = new() { Content = "Add" };
@@ -83,11 +83,11 @@ public sealed partial class SettingsDialog
         StackPanel sources = new()
         {
             Spacing = 6,
-            Width = 420,
+            MaxWidth = OptionRow.EditorWidth,
             Children =
             {
                 new Border { Classes = { StyleClasses.Framed }, Child = ThemeSourceList },
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ThemeSourceBox, AddThemeSourceButton } },
+                new NarrowingField(ThemeSourceBox, AddThemeSourceButton) { Most = 300 },
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { RemoveThemeSourceButton, RefreshThemesButton } },
                 ThemeSourceWords,
             },

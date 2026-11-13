@@ -50,7 +50,7 @@ public sealed partial class SettingsDialog
         StackPanel folders = new()
         {
             Spacing = 6,
-            Width = 420,
+            MaxWidth = OptionRow.EditorWidth,
             Children =
             {
                 new Border { Classes = { StyleClasses.Framed }, Child = new Panel { Children = { AgentFolderList, none } } },
