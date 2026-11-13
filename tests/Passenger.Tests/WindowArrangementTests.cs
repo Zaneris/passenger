@@ -1,6 +1,7 @@
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -144,6 +145,79 @@ public sealed class WindowArrangementTests : IDisposable
             window.Close();
         }
     }
+
+    [AvaloniaFact]
+    public void A_tool_window_closed_by_its_x_leaves_its_stripe_through_a_restart_until_its_action_opens_it_and_keeping_icons_brings_it_back()
+    {
+        string state = TestFolders.Create("arrangement-state-");
+        try
+        {
+            File.WriteAllText(Path.Combine(state, Passenger.App.State.StateStore.SettingsFile), """{ "version": 5, "closedToolWindows": "LeaveStripe" }""");
+            MainWindow window = Keeping(state);
+            try
+            {
+                window.DockHost.Show(ToolWindowIds.Run);
+                Ui.Settle();
+                Assert.True(StripeButton(window, ToolWindowIds.Run) is not null, "Run has no stripe icon before it was closed");
+                Ui.Click(window.DockHost.GetVisualDescendants().OfType<Button>().Single(b => b.Name == AppActions.CloseToolWindow && b.IsEffectivelyVisible
+                    && b.FindAncestorOfType<Border>() is { } header && header.Classes.Contains(StyleClasses.ToolHeader)
+                    && header.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Classes.Contains(StyleClasses.ToolTitle) && t.Text == "Run")));
+                Assert.True(!window.DockHost.IsShown(ToolWindowIds.Run) && StripeButton(window, ToolWindowIds.Run) is null,
+                    "Run closed by its × kept its stripe icon, where closed windows leave the stripe");
+                Assert.True(StripeButton(window, ToolWindowIds.Debug) is not null, "Debug, hidden but never closed, lost its stripe icon");
+            }
+            finally
+            {
+                window.Close();
+                Ui.Settle();
+            }
+
+            MainWindow again = Keeping(state);
+            try
+            {
+                Assert.True(StripeButton(again, ToolWindowIds.Run) is null, "Run, closed, came back to its stripe at the next start");
+                Ui.Run(again, AppActions.ShowRun);
+                Assert.True(again.DockHost.IsShown(ToolWindowIds.Run) && StripeButton(again, ToolWindowIds.Run) is not null,
+                    "Run opened by its action did not come back to its stripe, open");
+
+                again.DockHost.Show(ToolWindowIds.Debug);
+                Ui.Settle();
+                Assert.True(again.Perform(AppActions.CloseToolWindow), "Close Active Tool Window was refused with Debug open");
+                Ui.Settle();
+                Assert.True(StripeButton(again, ToolWindowIds.Debug) is null, "Close Active Tool Window left Debug's stripe icon");
+                again.ApplySettings(again.Settings with { ClosedToolWindows = ClosedToolWindows.KeepIcons });
+                Ui.Settle();
+                Assert.True(StripeButton(again, ToolWindowIds.Debug) is not null && again.Actions.WhyNot(AppActions.CloseToolWindow, again.Actions.Context()) == Refusals.ClosedKeepIcons,
+                    "Keeping icons chosen, the closed Debug window did not get its stripe icon back, or Close was not greyed for it");
+                Assert.DoesNotContain(again.DockHost.GetVisualDescendants().OfType<Button>(), b => b.Name == AppActions.CloseToolWindow && b.IsEffectivelyVisible);
+            }
+            finally
+            {
+                again.ApplySettings(new AppSettings());
+                again.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(state);
+        }
+    }
+
+    /// <summary>A window that keeps its state, settings and layout in a folder, over the test's project.</summary>
+    private MainWindow Keeping(string state)
+    {
+        MainWindow window = new() { Width = 1400, Height = 900, StateFolder = state };
+        window.Show();
+        window.KeepSettings();
+        window.KeepLayout();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        return window;
+    }
+
+    /// <summary>A window's stripe icon, shown or behind More for want of room; null for none.</summary>
+    private static ToggleButton? StripeButton(MainWindow window, string id) =>
+        window.DockHost.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(b => Equals(b.Tag, id));
 
     private static Border[] ToolTabs(MainWindow window) =>
         [.. window.DockHost.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.Tab) && b.Tag is string && b.IsEffectivelyVisible)];

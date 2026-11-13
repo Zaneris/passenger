@@ -33,6 +33,9 @@ internal sealed class ToolPane : DockPanel
     /// <summary>At the tabs' end, shown while some are out of sight: a menu of them.</summary>
     private readonly Button hiddenTabs;
 
+    /// <summary>The header's ×, shown while a window closed leaves its stripe.</summary>
+    private readonly Button close;
+
     /// <summary>The window's own action's button (<see cref="ToolWindow.HeaderAction"/>), made as the pane shows it.</summary>
     private Button? own;
 
@@ -43,6 +46,17 @@ internal sealed class ToolPane : DockPanel
         collapseAll = ToolButtons.Of(AppActions.CollapseAll, IconKeys.CollapseAll, "Collapse All", Ask);
         Button options = HeaderButton(IconKeys.More, "Options");
         Button hide = HeaderButton(IconKeys.Minimize, "Hide");
+        close = HeaderButton(IconKeys.Close, "Close");
+        close.Name = AppActions.CloseToolWindow;
+        ActionTips.Set(close, AppActions.CloseToolWindow, "Close");
+        close.IsVisible = false;
+        close.Click += (_, _) =>
+        {
+            if (Window is { } window)
+            {
+                host.Close(window.Id);
+            }
+        };
         hide.Name = AppActions.HideToolWindow;
         ActionTips.Set(hide, AppActions.HideToolWindow, "Hide");
         options.Click += (_, _) =>
@@ -70,7 +84,7 @@ internal sealed class ToolPane : DockPanel
             {
                 Children =
                 {
-                    new StackPanel { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 6, 0), Children = { options, hide } },
+                    new StackPanel { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 6, 0), Children = { options, hide, close } },
                     treeButtons,
                     new ShrinkingRow { Children = { title, tools } },
                 },
@@ -142,6 +156,13 @@ internal sealed class ToolPane : DockPanel
     public Window? Floating { get; init; }
 
     public ToolWindow? Window { get; private set; }
+
+    /// <summary>Whether its header offers Close beside Hide: a window closed leaves its stripe until opened again.</summary>
+    public bool Closes
+    {
+        get => close.IsVisible;
+        set => close.IsVisible = value;
+    }
 
     public void Show(ToolWindow? window)
     {
@@ -355,6 +376,18 @@ internal sealed class ToolPane : DockPanel
         menu.Items.Add(maximize);
         menu.Items.Add(new Separator());
         menu.Items.Add(hide);
+        if (Closes)
+        {
+            MenuItem closing = new() { Header = "Close" };
+            closing.Click += (_, _) =>
+            {
+                if (Window is { } window)
+                {
+                    host.Close(window.Id);
+                }
+            };
+            menu.Items.Add(closing);
+        }
         return menu;
     }
 

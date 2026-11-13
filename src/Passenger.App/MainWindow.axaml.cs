@@ -669,6 +669,20 @@ public partial class MainWindow : IdeWindow
         }
     }
 
+    /// <summary>Close Active Tool Window: the tool window open last closes off its stripe, and the editor has the keys again
+    /// as after Shift+Escape.</summary>
+    private void CloseToolWindow(ActionContext context)
+    {
+        if (Dock.Active is { } active)
+        {
+            Dock.Close(active.Id);
+        }
+        if (!context.ByAgent)
+        {
+            FocusEditor();
+        }
+    }
+
     /// <summary>Focus Editor: the file shown has the keys again, its window brought to the front from a tool window
     /// floating in one of its own, the tool windows left as they are.</summary>
     private void FocusEditor()

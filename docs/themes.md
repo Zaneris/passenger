@@ -123,7 +123,8 @@ language this Passenger does not know is passed over and named.
   "open": ["explorer", "build", "problems"],
   "sizes": { "left": 260, "right": 320, "bottom": 220 },
   "editorTabs": "left",
-  "toolWindows": "tabs"
+  "toolWindows": "tabs",
+  "closedWindows": "leave"
 }
 ```
 
@@ -145,8 +146,11 @@ before put them.
   out, across the top.
 - `toolWindows` names the docked tool windows by their `icons` on the stripes alone, or by `tabs` too: titled tabs along
   the foot of each place where several dock; left out, by icons.
+- `closedWindows` says what closing a tool window by its × does to its icon: `keep` it on the stripe, as hiding it does,
+  or `leave` the stripe until the window is opened again from View | Tool Windows, Find Action or its keys; left out,
+  keep.
 
-What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`) is each a setting of Settings | Appearance: the
+What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `closedWindows`) is each a setting of Settings | Appearance: the
 theme's is the default there, and the place you choose wins over it whatever theme you choose, until you choose Theme
 default again.
 

@@ -44,4 +44,7 @@ public sealed record DockedWindow(ToolAnchor Anchor, int Order, bool Shown)
 
     /// <summary>A floating or windowed one's window, in screen pixels.</summary>
     public int[]? Bounds { get; init; }
+
+    /// <summary>Closed off its stripe, until it is opened again.</summary>
+    public bool Closed { get; init; }
 }

@@ -16,3 +16,11 @@ public enum ToolWindowLook
     StripeIcons,
     TitledTabs,
 }
+
+/// <summary>What closing a tool window does to its stripe icon: keeps it, or takes it off the stripe until the window is
+/// opened again from the View menu, Find Action or its keys.</summary>
+public enum ClosedToolWindows
+{
+    KeepIcons,
+    LeaveStripe,
+}

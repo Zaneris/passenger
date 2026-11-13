@@ -102,9 +102,18 @@ public class ThemeLayoutTests
         Assert.Null(Read("""{"editorTabs": "left"}""").ToolWindows);
     }
 
+    [Fact]
+    public void A_layout_gives_whether_a_closed_tool_window_leaves_its_stripe_and_one_that_gives_none_keeps_Passengers_own()
+    {
+        Assert.Equal([ClosedToolWindows.KeepIcons, ClosedToolWindows.LeaveStripe],
+            ((string[])["keep", "leave"]).Select(word => Read($$$"""{"closedWindows": "{{{word}}}"}""").ClosedWindows));
+        Assert.Null(Read("""{"editorTabs": "left"}""").ClosedWindows);
+    }
+
     [Theory]
     [InlineData("\"layout\": {\"editorTabs\": \"bottom\"}", "gives layout's editorTabs as \"bottom\": it is \"top\", \"left\" or \"right\"")]
     [InlineData("\"layout\": {\"editorTabs\": 1}", "gives layout's editorTabs as 1")]
+    [InlineData("\"layout\": {\"closedWindows\": true}", "gives layout's closedWindows as true: it is \"keep\" or \"leave\"")]
     [InlineData("\"layout\": {\"toolWindows\": \"titled\"}", "gives layout's toolWindows as \"titled\": it is \"icons\" or \"tabs\"")]
     public void An_arrangement_word_a_layout_does_not_know_refuses_the_theme_naming_the_words_it_takes(string members, string why)
     {

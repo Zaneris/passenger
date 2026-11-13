@@ -1,4 +1,5 @@
 using System.Globalization;
+using Passenger.App.Settings;
 using Passenger.Core;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -9,6 +10,13 @@ namespace Passenger.App;
 /// action, a tool or a status line says it: the status bar, a greyed menu item's tip and an agent's ide_action alike.</summary>
 public static class Refusals
 {
+    /// <summary>No tool window is open, for an action on the one open last.</summary>
+    public const string NoToolWindowOpen = "No tool window is open";
+
+    /// <summary>Closed tool windows keep their stripe icons, so Close is Hide.</summary>
+    public static readonly string ClosedKeepIcons =
+        $"Closed tool windows keep their stripe icons: Hide closes them ({SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} | Closed tool windows)";
+
     /// <summary>No file is shown in the editor.</summary>
     public const string NoFile = "No file is open";
 

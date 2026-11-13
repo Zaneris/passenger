@@ -58,6 +58,7 @@ public sealed class DockHost : Grid
     private Window? host;
 
     private bool titledTabs;
+    private bool closesOffStripe;
 
     public DockHost()
     {
@@ -153,6 +154,24 @@ public sealed class DockHost : Grid
             }
         }
     }
+
+    /// <summary>Whether a window closed by its × leaves its stripe (and its place's tabs) until it is opened again, rather
+    /// than keeping its icon as a hidden window does; while not, the windows closed before keep theirs.</summary>
+    public bool ClosesOffStripe
+    {
+        get => closesOffStripe;
+        set
+        {
+            if (value != closesOffStripe)
+            {
+                closesOffStripe = value;
+                Layout();
+            }
+        }
+    }
+
+    /// <summary>The windows the stripes and the places' tabs name: all but those closed off them.</summary>
+    private List<ToolWindow> OnStripes => [.. windows.Where(w => !closesOffStripe || !w.IsClosed)];
 
     /// <summary>The window shown last, which Shift+Escape hides.</summary>
     public ToolWindow? Active { get; private set; }
@@ -266,7 +285,7 @@ public sealed class DockHost : Grid
         DockLayout now = Capture();
         return now.LeftWidth == layout.LeftWidth && now.RightWidth == layout.RightWidth && now.BottomHeight == layout.BottomHeight
             && windows.All(w => layout.Windows.TryGetValue(w.Id, out DockedWindow? placed) && now.Windows[w.Id] is { Mode: ToolMode.Docked } standing
-                && (standing.Anchor, standing.Order, standing.Shown) == (placed.Anchor, placed.Order, placed.Shown));
+                && (standing.Anchor, standing.Order, standing.Shown, standing.Closed) == (placed.Anchor, placed.Order, placed.Shown, placed.Closed));
     }
 
     /// <summary>Shows a window in its place, hiding the one that was there; for an attached agent's call, behind
@@ -303,6 +322,7 @@ public sealed class DockHost : Grid
     {
         ToolWindow window = this[id];
         hiddenAll = null;
+        window.IsClosed = false;
         if (window.Mode == ToolMode.Docked)
         {
             foreach (ToolWindow other in windows.Where(w => w.Anchor == window.Anchor && w != window && w.Mode == ToolMode.Docked))
@@ -333,6 +353,20 @@ public sealed class DockHost : Grid
         // A view just put in its place joins the window as the window is laid out.
         UpdateLayout();
         this[id].TakeKeys();
+    }
+
+    /// <summary>Closes a window: hidden as <see cref="Hide"/> hides it, and, while <see cref="ClosesOffStripe"/>, taken off its
+    /// stripe and its place's tabs until it is opened again (its place kept for then).</summary>
+    public void Close([IdentifierOf(typeof(ToolWindowIds))] string id)
+    {
+        ToolWindow window = this[id];
+        Hide(id);
+        if (closesOffStripe && !window.IsClosed)
+        {
+            window.IsClosed = true;
+            Layout();
+            LayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public void Hide([IdentifierOf(typeof(ToolWindowIds))] string id)
@@ -465,7 +499,7 @@ public sealed class DockHost : Grid
             return;
         }
         FloatWindow created = new(this, window.WindowBounds, new Size(520, 420)) { Title = window.Title, ShowInTaskbar = window.Mode == ToolMode.Windowed, ShowActivated = forward };
-        ToolPane pane = new(this) { Floating = created };
+        ToolPane pane = new(this) { Floating = created, Closes = closesOffStripe };
         pane.Show(window);
         created.Content = pane;
         created.Dismissed += (_, _) => FloatClosed(window, created);
@@ -575,6 +609,7 @@ public sealed class DockHost : Grid
         Dictionary<string, DockedWindow> placed = windows.ToDictionary(w => w.Id, w => new DockedWindow(w.Anchor, w.Order, w.IsShown)
         {
             Mode = w.Mode,
+            Closed = w.IsClosed,
             Bounds = (floats.TryGetValue(w, out FloatWindow? open) ? open.Placement : w.WindowBounds) is { } at ? [at.X, at.Y, at.Width, at.Height] : null,
         });
         foreach ((string id, DockedWindow other) in others)
@@ -600,6 +635,7 @@ public sealed class DockHost : Grid
                 window.Order = placed.Order;
                 window.IsShown = placed.Shown;
                 window.Mode = placed.Mode;
+                window.IsClosed = placed.Closed && !placed.Shown;
                 window.WindowBounds = placed.Bounds is [int x, int y, int width, int height] ? new PixelRect(x, y, width, height) : null;
             }
         }
@@ -643,8 +679,8 @@ public sealed class DockHost : Grid
     /// <summary>The stripes' tips said again with the keymap in force, which a change of keymap or shortcut has replaced.</summary>
     public void FollowKeys()
     {
-        leftStripe.Fill(windows);
-        rightStripe.Fill(windows);
+        leftStripe.Fill(OnStripes);
+        rightStripe.Fill(OnStripes);
     }
 
     internal void Layout()
@@ -652,13 +688,14 @@ public sealed class DockHost : Grid
         foreach ((ToolAnchor anchor, ToolPane pane) in panes)
         {
             pane.Show(windows.FirstOrDefault(w => w.Anchor == anchor && w.IsShown && w.Mode == ToolMode.Docked));
-            pane.ShowTabs(titledTabs && pane.Window is not null ? [.. windows.Where(w => w.Anchor == anchor && w.Mode == ToolMode.Docked).OrderBy(w => w.Order)] : []);
+            pane.ShowTabs(titledTabs && pane.Window is not null ? [.. OnStripes.Where(w => w.Anchor == anchor && w.Mode == ToolMode.Docked).OrderBy(w => w.Order)] : []);
+            pane.Closes = closesOffStripe;
         }
         Split(leftArea, panes[ToolAnchor.LeftTop], panes[ToolAnchor.LeftBottom], rows: true);
         Split(rightArea, panes[ToolAnchor.RightTop], panes[ToolAnchor.RightBottom], rows: true);
         Split(bottomArea, panes[ToolAnchor.BottomLeft], panes[ToolAnchor.BottomRight], rows: false);
-        leftStripe.Fill(windows);
-        rightStripe.Fill(windows);
+        leftStripe.Fill(OnStripes);
+        rightStripe.Fill(OnStripes);
         Fit();
     }
 

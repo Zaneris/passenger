@@ -45,6 +45,13 @@ public static class Declared
             "How docked tool windows are named: by their icons on the stripes, or by tabs with their names along the foot of each "
             + "place where several dock as well, a click on one opening it and a drag moving it as its icon does."));
 
+    public static readonly ThemedChoiceSetting<ClosedToolWindows> ClosedToolWindows = new(s => s.ClosedToolWindows, s => s.ClosedWindows(),
+        (s, v) => s with { ClosedToolWindows = v },
+        [(Passenger.App.ClosedToolWindows.KeepIcons, "Keep their stripe icons"), (Passenger.App.ClosedToolWindows.LeaveStripe, "Leave the stripe")],
+        new(D.Appearance, "Closed tool windows", "tool windows close closed hide remove declutter stripe icons wells view menu reopen layout arrangement",
+            "Whether a tool window closed by its × keeps its icon on the stripe, or leaves the stripe until it is opened again from "
+            + "View | Tool Windows, Find Action or its keys. Hide always keeps it."));
+
     public static readonly ToggleSetting ReopenProjectsOnStartup = new(s => s.ReopenProjectsOnStartup, (s, v) => s with { ReopenProjectsOnStartup = v },
         new(D.SystemPage, "Reopen projects on startup", "reopen last solution project folder startup start launch welcome screen recent"));
 

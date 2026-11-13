@@ -221,6 +221,10 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
         internal set => Set(ref isShown, value);
     }
 
+    /// <summary>Closed off its stripe while the dock takes closed windows off (<see cref="DockHost.ClosesOffStripe"/>), until
+    /// it is opened again.</summary>
+    public bool IsClosed { get; internal set; }
+
     /// <summary>The name a menu gives a place: "Left Top", "Bottom Right".</summary>
     public static string Name(ToolAnchor anchor) => anchor switch
     {

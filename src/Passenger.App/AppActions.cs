@@ -329,6 +329,7 @@ public static class AppActions
     public const string RestartCSharpServer = "app.restartCSharpServer";
     public const string ShowDebug = "app.showDebug";
     public const string HideToolWindow = "app.hideToolWindow";
+    public const string CloseToolWindow = "app.closeToolWindow";
     public const string Back = "app.back";
     public const string Forward = "app.forward";
 

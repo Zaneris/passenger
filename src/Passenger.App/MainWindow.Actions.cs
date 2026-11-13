@@ -210,6 +210,11 @@ public partial class MainWindow
         actions.Add(new IdeAction(A.MaximizeToolWindow, "Maximize Tool Window", "Tool Windows", _ => Dock.ToggleMaximize()) { Menus = [new("View", 3, 0)], FromTerminal = true });
         actions.Add(new IdeAction(A.HideAllToolWindows, "Hide All Tool Windows", "Tool Windows", _ => Dock.ToggleHideAll()) { Menus = [new("View", 3, 1)], FromTerminal = true });
         actions.Add(new IdeAction(A.HideToolWindow, "Hide Active Tool Window", "Tool Windows", HideToolWindow) { Menus = [new("View", 3, 2)], FromTerminal = true });
+        actions.Add(new IdeAction(A.CloseToolWindow, "Close Active Tool Window", "Tool Windows", CloseToolWindow)
+        {
+            FromTerminal = true,
+            WhyNot = _ => !Dock.ClosesOffStripe ? Refusals.ClosedKeepIcons : Dock.Active is not { IsShown: true } ? Refusals.NoToolWindowOpen : null,
+        });
         actions.Add(new IdeAction(A.ExpandAll, "Expand All", "Tool Windows", c => c.ToolWindow!.ExpandAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.ExpandAll, "open") });
         actions.Add(new IdeAction(A.CollapseAll, "Collapse All", "Tool Windows", c => c.ToolWindow!.CollapseAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.CollapseAll, "close") });
         // Pressed in a tool window by the editor's Escape (KeysIn), where nothing of the window's own takes that key.

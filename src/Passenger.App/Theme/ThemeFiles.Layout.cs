@@ -18,6 +18,9 @@ public sealed record ThemeLayout(IReadOnlyList<PlacedWindow> Places, IReadOnlyLi
 
     /// <summary>How docked tool windows are named.</summary>
     public ToolWindowLook? ToolWindows { get; init; }
+
+    /// <summary>What closing a tool window does to its stripe icon.</summary>
+    public ClosedToolWindows? ClosedWindows { get; init; }
 }
 
 /// <summary>A theme's <c>layout</c> (docs/themes.md).</summary>
@@ -45,7 +48,7 @@ public static partial class ThemeFiles
         {
             throw new FormatException($"gives layout as {Shown(layout.Value)}: layout is {{\"places\": {{…}}, \"open\": […], \"sizes\": {{…}}}}");
         }
-        PassOver(file, layout.Value, ["places", "open", "sizes", "editorTabs", "toolWindows"], "layout", problems);
+        PassOver(file, layout.Value, ["places", "open", "sizes", "editorTabs", "toolWindows", "closedWindows"], "layout", problems);
         List<PlacedWindow> places = [];
         if (Part(layout.Value, "places") is { } placed)
         {
@@ -74,6 +77,7 @@ public static partial class ThemeFiles
         {
             EditorTabs = Word(layout.Value, "editorTabs", [("top", EditorTabsPlace.Top), ("left", EditorTabsPlace.Left), ("right", EditorTabsPlace.Right)]),
             ToolWindows = Word(layout.Value, "toolWindows", [("icons", ToolWindowLook.StripeIcons), ("tabs", ToolWindowLook.TitledTabs)]),
+            ClosedWindows = Word(layout.Value, "closedWindows", [("keep", ClosedToolWindows.KeepIcons), ("leave", ClosedToolWindows.LeaveStripe)]),
         };
     }
 

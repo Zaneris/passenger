@@ -130,11 +130,12 @@ public partial class MainWindow
     }
 
     /// <summary>The window's arrangement in force, the person's where they set it, else the theme's: where the editor's tabs
-    /// stand and how the tool windows are named.</summary>
+    /// stand, how the tool windows are named and whether one closed leaves its stripe.</summary>
     private void FollowArrangement(AppSettings next)
     {
         Editors.TabsPlace = next.TabsPlace();
         Dock.TitledTabs = next.ToolWindowsAs() == ToolWindowLook.TitledTabs;
+        Dock.ClosesOffStripe = next.ClosedWindows() == ClosedToolWindows.LeaveStripe;
     }
 
     /// <summary>The tab an action acts on: the one whose menu it was chosen from, else the one the active group shows.</summary>
