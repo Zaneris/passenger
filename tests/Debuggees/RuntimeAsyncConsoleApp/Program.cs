@@ -8,6 +8,9 @@ if (args is ["child"])
 }
 if (args is ["throws"])
 {
+	// The pool's threads started and gone round once, so no stop below catches one starting, holding what an evaluation needs.
+	Task.WaitAll([.. Enumerable.Range(0, Environment.ProcessorCount).Select(_ => Task.Run(() => Thread.Sleep(50)))]);
+	Thread.Sleep(200);
 	try
 	{
 		await ThrowsLaterAsync(2);

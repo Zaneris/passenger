@@ -28,6 +28,21 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-13
+
+- `StoredTracesTests`' `A_stack_trace_through_runtime_async_methods_is_what_its_getter_writes`, CI's macOS (arm64)
+  report lane, shard 2, at 667bdfccd (run 43448880209): "$exception.StackTrace was answered: error: The evaluation took
+  longer than 3 s and could not be stopped, as it runs outside managed code". The program's first `Task.Yield` had the
+  thread pool start its threads just before the first exception's stop, which caught its gate thread inside its class
+  constructor (making its event) and a worker at its start (naming itself); the stop's first evaluation, the trace's
+  getter reading the program's PDB, ran its thread alone and waited outside managed code, in `FileStream`'s constructor,
+  on what one of them held, past its 3 s and the abort's window: #599's symptom, from threads of the runtime's own. Which
+  lock is not pinned: on this Mac a thread caught renaming itself, held so through an evaluation, waits in
+  `RareDisablePreemptiveGC` holding none (sampled), and the same evaluation at 8 stops on a program's first use of the
+  pool, and 25 runs of the test beside 4 burners, all passed. Not the IDE's: it gives up and says so, as for any
+  evaluation waiting on a thread it holds still. **The test**: its program starts the pool's threads and lets them go
+  round once before it throws (in this commit, #1561).
+
 ## 2026-11-12
 
 - `EnvelopeFormatterTests`' `A_large_answer_rents_no_buffer_and_costs_what_it_is_read_as`, CI's Windows (x64) gate at
