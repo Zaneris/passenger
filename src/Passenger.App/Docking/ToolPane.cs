@@ -88,7 +88,7 @@ internal sealed class ToolPane : DockPanel
         header.PointerMoved += (_, e) => host.Drag.Continue(e);
         header.PointerReleased += (_, e) => host.Drag.End(e);
         Children.Add(header);
-        Children.Add(body);
+        Children.Add(new Panel { Children = { body, new ThemeBackdrop(BackgroundPlaces.ToolWindows) } });
         Classes.Add(StyleClasses.ToolPane);
         IsVisible = false;
         AddHandler(KeyDownEvent, OnKeyDown);

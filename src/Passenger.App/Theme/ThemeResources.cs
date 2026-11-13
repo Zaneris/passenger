@@ -15,8 +15,20 @@ public static class ThemeResources
     private const string Prefix = "Passenger.";
     private static IReadOnlyDictionary<string, ThemeTokenKind>? kinds;
 
-    /// <summary>Every token the default theme gives, named without <c>Passenger.</c>, and the kind of value it takes.</summary>
-    public static IReadOnlyDictionary<string, ThemeTokenKind> Kinds => kinds ??= Read();
+    /// <summary>Every token the default theme gives, named without <c>Passenger.</c>, and the kind of value it takes; the
+    /// languages a theme may colour are named to the reader with them.</summary>
+    public static IReadOnlyDictionary<string, ThemeTokenKind> Kinds
+    {
+        get
+        {
+            if (kinds is null)
+            {
+                ThemeFiles.LanguageIds = new HashSet<string>(Passenger.Languages.Language.Ids, StringComparer.Ordinal);
+                kinds = Read();
+            }
+            return kinds;
+        }
+    }
 
     /// <summary>The theme's tokens as a dictionary of resources, a new one at each call.</summary>
     public static ResourceDictionary Dictionary(ThemeFile theme)
@@ -33,7 +45,8 @@ public static class ThemeResources
         return laid;
     }
 
-    private static ResourceDictionary Filled(IReadOnlyDictionary<string, TokenValue> tokens)
+    /// <summary>Tokens as a dictionary of resources, each under its key.</summary>
+    public static ResourceDictionary Filled(IReadOnlyDictionary<string, TokenValue> tokens)
     {
         ResourceDictionary dictionary = [];
         foreach ((string name, TokenValue value) in tokens)

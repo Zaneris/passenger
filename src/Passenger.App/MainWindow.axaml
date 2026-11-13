@@ -28,6 +28,7 @@
         <!-- The toolbar, which is the window's title bar too (MainWindow.TitleBar.cs): its empty space moves the window and
              a double click on it maximizes, while what is on it takes its own clicks (the role User, where Windows asks). -->
         <Border Name="Toolbar" Classes="titleBar" Grid.Row="0" Height="40" PointerPressed="OnToolbarPressed">
+            <Panel>
             <app:ToolbarRow Name="ToolbarContent" Margin="8,0">
                 <!-- The window's buttons at the bar's right on Windows and Linux; macOS's own stand at its left. Their
                      roles make Windows treat them as its caption buttons (its snap layouts on the maximize one). -->
@@ -124,6 +125,8 @@
                     </Button>
                 </app:ShrinkingRow>
             </app:ToolbarRow>
+            <app:ThemeBackdrop Place="Frame" />
+            </Panel>
         </Border>
 
         <DockPanel Grid.Row="1">
@@ -141,6 +144,7 @@
 
         <!-- The status bar: where the caret is and how the file is stored. -->
         <Border Classes="statusBar" Grid.Row="2">
+            <Panel>
             <DockPanel Margin="12,0">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
                     <!-- A newer release: its download under way, Restart to Update once it is ready, or (for a copy that
@@ -208,6 +212,8 @@
                     </Button>
                 </app:StatusLine>
             </DockPanel>
+            <app:ThemeBackdrop Place="Frame" />
+            </Panel>
         </Border>
     </Grid>
 

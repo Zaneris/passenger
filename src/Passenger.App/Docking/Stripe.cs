@@ -54,7 +54,7 @@ internal sealed class Stripe : Border
         StackPanel sides = new() { [DockPanel.DockProperty] = Dock.Top, Children = { groups[upper], gap, groups[lower], more } };
         groups[bottom].VerticalAlignment = VerticalAlignment.Bottom;
         groups[bottom][DockPanel.DockProperty] = Dock.Bottom;
-        Child = new DockPanel { Margin = new Thickness(0, 6), Children = { sides, groups[bottom] } };
+        Child = new Panel { Children = { new DockPanel { Margin = new Thickness(0, 6), Children = { sides, groups[bottom] } }, new ThemeBackdrop(BackgroundPlaces.Frame) } };
         SizeChanged += (_, _) => FitButtons();
         Classes.Add(StyleClasses.StripeBar);
     }

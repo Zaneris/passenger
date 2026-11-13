@@ -160,11 +160,11 @@ public class ThemeFilesTests
     public void A_member_this_Passenger_does_not_know_is_passed_over_and_named_wherever_it_is()
     {
         ThemeRead<ThemeFile> read = Theme("""
-            {"format": 1, "name": "Mine", "background": {"image": "sky.png"},
+            {"format": 1, "name": "Mine", "sounds": {"save": "chime.ogg"},
              "dark": {"DropZone": {"colour": "#2F6BF2", "opacity": 0.2, "blend": "multiply"}}}
             """);
         Assert.Equal(new ColourValue(0xFF2F6BF2, 0.2), read.Read!.Dark["DropZone"]);
-        Assert.Equal(["Mine.json: background is no member of a theme this Passenger knows, so it was passed over",
+        Assert.Equal(["Mine.json: sounds is no member of a theme this Passenger knows, so it was passed over",
             "Mine.json: blend is no member of DropZone in dark, a colour this Passenger knows, so it was passed over"], read.Problems);
     }
 

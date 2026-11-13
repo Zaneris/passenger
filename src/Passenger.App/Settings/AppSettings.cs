@@ -10,9 +10,9 @@ namespace Passenger.App.Settings;
 public sealed record AppSettings : IStateDocument<AppSettings>
 {
     /// <summary>The smallest font Settings offers; a size read from the file is brought between it and the largest.</summary>
-    public const double MinFontSize = 6;
+    public const double MinFontSize = ThemeFiles.LeastFontSize;
 
-    public const double MaxFontSize = 48;
+    public const double MaxFontSize = ThemeFiles.MostFontSize;
 
     /// <summary>The names that soft-wrap at first.</summary>
     public const string DefaultSoftWrapFiles = "*.md; *.txt; *.rst; *.adoc";

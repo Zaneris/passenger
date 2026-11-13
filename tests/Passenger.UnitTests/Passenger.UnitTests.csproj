@@ -83,6 +83,8 @@
        it, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.cs" Link="App/ThemeFiles.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.Beyond.cs" Link="App/ThemeFiles.Beyond.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/ThemeImages.cs" Link="App/ThemeImages.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeSources.cs" Link="App/ThemeSources.cs" />
   </ItemGroup>
 

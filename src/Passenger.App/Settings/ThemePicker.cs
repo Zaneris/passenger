@@ -101,18 +101,28 @@ public sealed class ThemePicker : StackPanel
     {
         IReadOnlyDictionary<string, ThemeTokenKind> kinds = ThemeResources.Kinds;
         bool code = setting.Code;
-        (ThemeRead<ThemeFile>? read, byte[]? bytes, string? why) = await BackgroundWork.Run<(ThemeRead<ThemeFile>?, byte[]?, string?)>(() =>
+        (ThemeRead<ThemeFile>? read, byte[]? bytes, Dictionary<string, byte[]>? images, string? why) =
+            await BackgroundWork.Run<(ThemeRead<ThemeFile>?, byte[]?, Dictionary<string, byte[]>?, string?)>(async () =>
         {
             (byte[]? found, string? unread) = ThemeSourceReads.FromFile(path);
-            return found is null ? (null, null, unread)
-                : (code ? ThemeFiles.ReadCodeColours(path, found, kinds) : ThemeFiles.ReadTheme(path, found, kinds), found, null);
+            if (found is null)
+            {
+                return (null, null, null, unread);
+            }
+            ThemeRead<ThemeFile> theme = code ? ThemeFiles.ReadCodeColours(path, found, kinds) : ThemeFiles.ReadTheme(path, found, kinds);
+            if (theme.Read is not { } whole)
+            {
+                return (theme, null, null, null);
+            }
+            (Dictionary<string, byte[]> pictures, string? unseen) = await ThemeImages.ReadAsync(whole, image => Task.FromResult(ThemeSourceReads.BesideFile(path, image)));
+            return (theme, found, pictures, unseen);
         });
-        if (read?.Read is not { } file || bytes is null)
+        if (read?.Read is not { } file || bytes is null || why is not null)
         {
             Say(why ?? read?.Refused);
             return why ?? read?.Refused;
         }
-        if (await BackgroundWork.Run(() => KeptThemes.Keep(ThemeSource.Added, code, file.Name, bytes)) is { } unkept)
+        if (await BackgroundWork.Run(() => KeptThemes.Keep(ThemeSource.Added, code, file.Name, bytes, images)) is { } unkept)
         {
             Say(unkept);
             return unkept;
@@ -150,7 +160,13 @@ public sealed class ThemePicker : StackPanel
         if (choice is { Value: { } theme, Listed: { Bytes: { } bytes } } && theme.From is { } source && !KeptThemes.Holds(source, setting.Code, theme.Name))
         {
             bool code = setting.Code;
-            if (await BackgroundWork.Run(() => KeptThemes.Keep(source, code, theme.Name, bytes)) is { } why)
+            ListedTheme listed = choice.Listed;
+            string? why = await BackgroundWork.Run(async () =>
+            {
+                (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, source.Reached, CancellationToken.None);
+                return unseen ?? KeptThemes.Keep(source, code, theme.Name, bytes, images);
+            });
+            if (why is not null)
             {
                 Say(why);
                 Fill();

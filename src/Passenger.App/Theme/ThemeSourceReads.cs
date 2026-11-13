@@ -106,10 +106,10 @@ public static class ThemeSourceReads
             }
             if (response.Content.Headers.ContentLength is > 0 and var length && length > most)
             {
-                return (null, $"{source.Shown}'s {path} is {length} bytes, more than the {most} a theme file may hold");
+                return (null, $"{source.Shown}'s {path} is {length} bytes, more than the {most} it may hold");
             }
             await using Stream stream = await response.Content.ReadAsStreamAsync(cancel);
-            return await BoundedAsync(stream, most, cancel) is { } bytes ? (bytes, null) : (null, $"{source.Shown}'s {path} is more than the {most} bytes a theme file may hold");
+            return await BoundedAsync(stream, most, cancel) is { } bytes ? (bytes, null) : (null, $"{source.Shown}'s {path} is more than the {most} bytes it may hold");
         }
         catch (Exception error) when (error is HttpRequestException or IOException || (error is TaskCanceledException && !cancel.IsCancellationRequested))
         {
@@ -137,16 +137,25 @@ public static class ThemeSourceReads
             }
             if (info.Length > most)
             {
-                return (null, $"{file} is {info.Length} bytes, more than the {most} a theme file may hold");
+                return (null, $"{file} is {info.Length} bytes, more than the {most} it may hold");
             }
             using FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            return Bounded(stream, most) is { } bytes ? (bytes, null) : (null, $"{file} is more than the {most} bytes a theme file may hold");
+            return Bounded(stream, most) is { } bytes ? (bytes, null) : (null, $"{file} is more than the {most} bytes it may hold");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return (null, $"{file} could not be read: {error.Message}");
         }
     }
+
+    /// <summary>Every picture a theme a source lists names, each read beside its file there and checked, or why not.</summary>
+    public static Task<(Dictionary<string, byte[]> Images, string? Why)> ImagesAsync(ListedTheme listed, ThemeSource reached, CancellationToken cancel) =>
+        listed.Read.Read is not { } theme ? Task.FromResult((new Dictionary<string, byte[]>(), (string?)null))
+            : ThemeImages.ReadAsync(theme, image => BytesAsync(reached, ThemeImages.Beside(listed.Path, image), ThemeFiles.MostImageBytes, cancel));
+
+    /// <summary>A picture beside a file named by the person, by its path there.</summary>
+    public static (byte[]? Bytes, string? Why) BesideFile(string file, string image) =>
+        System.IO.Path.GetDirectoryName(file) is { } folder ? FromFolder(folder, image, ThemeFiles.MostImageBytes) : (null, $"{file} is no file");
 
     /// <summary>A file named by the person, as <see cref="FromFolder"/> reads one a source lists.</summary>
     public static (byte[]? Bytes, string? Why) FromFile(string file) =>

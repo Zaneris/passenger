@@ -42,7 +42,7 @@ scheme file of your own.
 
 `name` is required, at most 64 characters; `description` is optional, at most 1,000. `tokens` holds values for both
 variants, `dark` and `light` for one each; a token goes in `tokens` or in `dark` and `light`, never both. Any of the
-three may be left out.
+three may be left out, as may `background`, `fonts` and `languages` below.
 
 A token is named as its key in [Tokens.axaml](../src/Passenger.App/Theme/Tokens.axaml) without `Passenger.`:
 `Frame`, `Editor.Background`, `Syntax.Keyword`, `SyntaxStyle.Comment`, `ControlRadius`. Tokens.axaml gives every token
@@ -58,10 +58,67 @@ and its default value; a token takes the kind of value its default is:
 | a number (`x:Double`) | a number, 0 to 1000 |
 | a syntax style (`x:String`) | `"Normal"`, `"Bold"`, `"Italic"` or `"Bold Italic"` |
 
+### Its background picture
+
+```json
+"background": {
+  "image": "dusk.webp",
+  "opacity": 0.25,
+  "tint": { "colour": "#101830", "strength": 0.2 },
+  "places": ["editor", "toolWindows", "frame", "welcome"],
+  "fit": "cover",
+  "align": "bottom right",
+  "light": { "image": "day.jpg", "opacity": 0.2 }
+}
+```
+
+`image` is a picture beside the theme's file (its folders joined by `/`, no `..`): a PNG, JPEG or WebP of at most 8 MB,
+at most 8192 pixels along a side and 16 million pixels in all. Passenger reads its size from its
+header before anything decodes it, then decodes it with its own decoders. The rest may be left out:
+
+- `opacity`, how much of the picture shows, 0 to 0.3 (0.15 if left out). The picture is drawn over the area, its text and
+  its ground alike, so every glyph keeps at least 70% of its contrast with its ground whatever the picture holds.
+- `tint`, a colour washed over the picture at a `strength` from 0 (none) to 1 (the colour alone; 0.5 if left out).
+- `places`, where it is drawn: one or more of `editor` (each editor, fitted to it), `toolWindows` (each tool window's
+  page), `frame` (the toolbar, the stripes, the editor tabs' strip and the status bar, fitted to the whole window so they
+  show one picture) and `welcome` (the Welcome screen). `["editor"]` if left out.
+- `fit`: `cover` (fills the area, its overflow cut off; the default), `contain` (whole inside the area), `tile` (at its own
+  size, repeated) or `centre` (at its own size, once).
+- `align`: `centre` (the default), or `top`, `bottom`, `left`, `right`, or one of each, `bottom right`.
+- `dark` and `light` give what differs under one variant, the rest as above, or `"none"` for no picture there.
+
+The picture is kept beside the theme when the theme is chosen, so it draws offline too.
+
+### Its fonts
+
+```json
+"fonts": { "code": { "family": "Fira Code" }, "window": { "family": "Inter" } }
+```
+
+The code's and the window's family, each by its name. A family Settings names wins wherever you chose one; one not
+installed here leaves Passenger's own. (The code's `size`, 6 to 48, is read and kept for a later Passenger, which will
+take it where Settings gives none.)
+
+### The code's colours by language
+
+```json
+"languages": {
+  "csharp": { "dark": { "Syntax.Keyword": "#FF7AB8" }, "light": { "Syntax.Keyword": "#B0306A" } },
+  "json": { "tokens": { "SyntaxStyle.Comment": "Italic" } }
+}
+```
+
+A language is named by its id as Passenger knows it (`csharp`, `xaml`, `msbuild`, `xml`, `json`, `aspnetcorerazor`, `gdscript`, `typescript`,
+`css`, `markdown`, …), and gives the code's tokens (`Editor.*`, `Syntax.*`, `SyntaxStyle.*`, `Diff.*`) in `tokens`,
+`dark` and `light` as a theme gives its own. They are laid over the file's own tokens in that language's editors. A
+language this Passenger does not know is passed over and named.
+
 ## A code colour scheme
 
-The same shape as a theme, giving only the code's tokens: `Editor.*`, `Syntax.*`, `SyntaxStyle.*` and `Diff.*`. It is
-laid over the theme in force; `dark` gives its colours under a dark theme and `light` under a light one.
+The same shape as a theme, giving only the code's tokens: `Editor.*`, `Syntax.*`, `SyntaxStyle.*` and `Diff.*`, and
+`languages` as a theme gives them. It is laid over the theme in force; `dark` gives its colours under a dark theme and
+`light` under a light one. In order: the theme's tokens, the theme's for a language, the scheme's, then the scheme's for
+the language, the last laid winning.
 
 ## How Passenger reads a file
 

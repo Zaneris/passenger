@@ -112,13 +112,12 @@ public sealed class EditorGroup : DockPanel
         {
             Classes = { StyleClasses.TabStrip },
             [DockProperty] = Dock.Top,
-            Child = new DockPanel
+            Child = new Panel
             {
                 Children =
                 {
-                    hiddenTabs,
-                    PreviewToggle,
-                    stripView,
+                    new DockPanel { Children = { hiddenTabs, PreviewToggle, stripView } },
+                    new ThemeBackdrop(BackgroundPlaces.Frame),
                 },
             },
         };
@@ -131,6 +130,7 @@ public sealed class EditorGroup : DockPanel
         // The editor beside a pane of its file's own (a XAML file's preview), divided by a hairline that resizes them.
         body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,0,0") };
         body.Children.Add(Editor);
+        body.Children.Add(new ThemeBackdrop(BackgroundPlaces.Editor) { [Grid.ColumnSpanProperty] = 3 });
         Children.Add(body);
         // The group the person works in is the area's active one; while a table lies over the editor, the table takes its focus.
         Editor.GotFocus += (_, _) =>
@@ -490,6 +490,7 @@ public sealed class EditorGroup : DockPanel
             return;
         }
         (SelectionSet selections, Vector scroll) = views.TryGetValue(document, out (SelectionSet Selections, Vector Scroll) view) ? view : (document.Selections, document.Scroll);
+        ThemeLanguages.Follow(Editor, document.Language.Id);
         Editor.LineCommentPrefix = document.Language.LineComment;
         Editor.BlockComment = document.Language.BlockComment;
         Editor.Markup = document.Language.Markup;

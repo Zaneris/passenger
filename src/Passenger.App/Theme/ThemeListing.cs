@@ -70,18 +70,32 @@ public static class ThemeListing
     public static async Task<int> RefreshAsync(IEnumerable<ThemeSource> sources)
     {
         SourceRead[] read = await Task.WhenAll(sources.Where(s => s.Kind is ThemeSourceKind.Folder or ThemeSourceKind.GitHub or ThemeSourceKind.Web).Select(AgainAsync));
-        List<(ThemeSource Source, bool Code, string Name, byte[] Bytes)> newer = [];
+        List<(ListedTheme Listed, string Name, byte[] Bytes)> held = [];
         foreach (SourceRead source in read.Where(r => r.Refused is null))
         {
             foreach (ListedTheme listed in source.Listed)
             {
-                if (listed is { Read.Read: { } file, Bytes: { } bytes } && KeptThemes.Bytes(source.Source, listed.Code, file.Name) is { } kept && !kept.AsSpan().SequenceEqual(bytes))
+                if (listed is { Read.Read: { } file, Bytes: { } bytes } && KeptThemes.Holds(source.Source, listed.Code, file.Name))
                 {
-                    newer.Add((source.Source, listed.Code, file.Name, bytes));
+                    held.Add((listed, file.Name, bytes));
                 }
             }
         }
-        string?[] refused = await BackgroundWork.Run(() => newer.Select(n => KeptThemes.Keep(n.Source, n.Code, n.Name, n.Bytes)).ToArray());
+        string?[] refused = await BackgroundWork.Run(async () =>
+        {
+            List<string?> said = [];
+            foreach ((ListedTheme listed, string name, byte[] bytes) in held)
+            {
+                (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, listed.Source.Reached, CancellationToken.None);
+                bool changed = unseen is null && (KeptThemes.Bytes(listed.Source, listed.Code, name) is not { } kept || !kept.AsSpan().SequenceEqual(bytes)
+                    || images.Any(i => KeptThemes.Image(listed.Source, listed.Code, name, i.Key) is not { } picture || !picture.AsSpan().SequenceEqual(i.Value)));
+                if (unseen is not null || changed)
+                {
+                    said.Add(unseen ?? KeptThemes.Keep(listed.Source, listed.Code, name, bytes, images));
+                }
+            }
+            return said.ToArray();
+        });
         foreach (string why in refused.OfType<string>())
         {
             IdeErrors.Write($"Themes: {why}");

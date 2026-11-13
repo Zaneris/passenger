@@ -95,7 +95,7 @@ public sealed class WelcomeView : UserControl
         page.Children.Add(new Border { Classes = { StyleClasses.WelcomeRecent }, Child = new Panel { Children = { list, empty } } });
         ScrollViewer scroller = new() { Content = page };
         scroller.SizeChanged += (_, e) => page.View = e.NewSize.Height - page.Margin.Top - page.Margin.Bottom;
-        Content = scroller;
+        Content = new Panel { Children = { scroller, new ThemeBackdrop(BackgroundPlaces.Welcome) } };
         Filter();
     }
 

@@ -57,9 +57,29 @@ public sealed record NumberValue(double Number) : TokenValue;
 public sealed record TextStyleValue(string Words) : TokenValue;
 
 /// <summary>A theme or a code colour scheme as its file gives it: its name, its words for a person, and its tokens for both
-/// variants and for Dark or Light alone, each named as its key without <c>Passenger.</c>.</summary>
+/// variants and for Dark or Light alone, each named as its key without <c>Passenger.</c>; a theme's fonts and background
+/// picture for each variant, and the code's tokens for a language over the file's own.</summary>
 public sealed record ThemeFile(string Name, string Description, IReadOnlyDictionary<string, TokenValue> Both,
-    IReadOnlyDictionary<string, TokenValue> Dark, IReadOnlyDictionary<string, TokenValue> Light);
+    IReadOnlyDictionary<string, TokenValue> Dark, IReadOnlyDictionary<string, TokenValue> Light)
+{
+    /// <summary>The fonts the theme gives, each null where it leaves the window's or the code's as it is.</summary>
+    public ThemeFonts Fonts { get; init; } = ThemeFonts.None;
+
+    /// <summary>The picture drawn under Dark, or null for none.</summary>
+    public BackgroundValue? DarkBackground { get; init; }
+
+    /// <summary>The picture drawn under Light, or null for none.</summary>
+    public BackgroundValue? LightBackground { get; init; }
+
+    /// <summary>The code's tokens for a language by its id (<c>csharp</c>), laid over the file's own for that language's files.</summary>
+    public IReadOnlyDictionary<string, LanguageColours> Languages { get; init; } = new Dictionary<string, LanguageColours>(StringComparer.Ordinal);
+
+    /// <summary>The picture drawn under a variant, or null for none.</summary>
+    public BackgroundValue? BackgroundOf(bool dark) => dark ? DarkBackground : LightBackground;
+
+    /// <summary>Every picture the file names, each once.</summary>
+    public IEnumerable<string> Images => ((BackgroundValue?[])[DarkBackground, LightBackground]).OfType<BackgroundValue>().Select(b => b.Image).Distinct(StringComparer.Ordinal);
+}
 
 /// <summary>A source's index: the paths inside the source of its themes and of its code colour schemes, in its order.</summary>
 public sealed record ThemeIndex(IReadOnlyList<string> Themes, IReadOnlyList<string> CodeColours);
@@ -73,7 +93,7 @@ public sealed record ThemeRead<T>(T? Read, string? Refused, IReadOnlyList<string
 /// levels. A file that is no JSON object, names another format, or gives a value of the wrong kind is refused whole, saying
 /// why; a member or token this Passenger does not know is passed over and named in the problems, so a later Passenger's
 /// additions leave a file readable and a typo shows.</summary>
-public static class ThemeFiles
+public static partial class ThemeFiles
 {
     /// <summary>The format these files are read as.</summary>
     public const int Format = 1;
@@ -160,10 +180,27 @@ public static class ThemeFiles
     private static ThemeFile Theme(string file, JsonElement root, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool code, List<string> problems)
     {
         string what = code ? "a code colour scheme" : "a theme";
-        PassOver(file, root, ["format", "name", "description", .. Sections], what, problems);
+        PassOver(file, root, code ? ["format", "name", "description", .. Sections, "languages"] : ["format", "name", "description", .. Sections, .. Beyond], what, problems);
         string name = Words(root, "name", LongestName, needed: true);
         string description = Words(root, "description", LongestDescription, needed: false);
+        Dictionary<string, TokenValue>[] sections = TokenSections(file, root, tokens, code, null, problems);
+        (BackgroundValue? dark, BackgroundValue? light) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
+        return new ThemeFile(name, description, sections[0], sections[1], sections[2])
+        {
+            Fonts = code ? ThemeFonts.None : Fonts(file, JsonMembers.Value(root, "fonts"), problems),
+            DarkBackground = dark,
+            LightBackground = light,
+            Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, problems),
+        };
+    }
+
+    /// <summary>A holder's tokens for both variants, Dark and Light, each in its section; <paramref name="language"/> names
+    /// the language a theme's <c>languages</c> gives them for, whose tokens are the code's alone.</summary>
+    private static Dictionary<string, TokenValue>[] TokenSections(string file, JsonElement root, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool code,
+        string? language, List<string> problems)
+    {
         Dictionary<string, TokenValue>[] sections = [new(StringComparer.Ordinal), new(StringComparer.Ordinal), new(StringComparer.Ordinal)];
+        string inLanguage = language is null ? string.Empty : $" of languages' {language}";
         for (int i = 0; i < Sections.Length; i++)
         {
             JsonElement? section = JsonMembers.Value(root, Sections[i]);
@@ -173,30 +210,32 @@ public static class ThemeFiles
             }
             if (section.Value.ValueKind != JsonValueKind.Object)
             {
-                throw new FormatException($"gives {Sections[i]} as {Shown(section.Value)}: {Sections[i]} is an object of tokens and their values");
+                throw new FormatException($"gives {Sections[i]}{inLanguage} as {Shown(section.Value)}: {Sections[i]} is an object of tokens and their values");
             }
             foreach (JsonProperty token in section.Value.EnumerateObject())
             {
                 if (!tokens.TryGetValue(token.Name, out ThemeTokenKind kind))
                 {
                     string hint = token.Name.StartsWith("Passenger.", StringComparison.Ordinal) ? " (a token is named without \"Passenger.\")" : string.Empty;
-                    problems.Add($"{file}: {token.Name} in {Sections[i]} is no token this Passenger knows{hint}, so it was passed over");
+                    problems.Add($"{file}: {token.Name} in {Sections[i]}{inLanguage} is no token this Passenger knows{hint}, so it was passed over");
                     continue;
                 }
                 if (code && !IsCode(token.Name))
                 {
-                    throw new FormatException($"gives {token.Name}, which is not the code's: a code colour scheme gives only Editor.*, Syntax.*, SyntaxStyle.* and Diff.*");
+                    throw new FormatException(language is null
+                        ? $"gives {token.Name}, which is not the code's: a code colour scheme gives only Editor.*, Syntax.*, SyntaxStyle.* and Diff.*"
+                        : $"gives {token.Name} for {language}, which is not the code's: a language's tokens are only Editor.*, Syntax.*, SyntaxStyle.* and Diff.*");
                 }
                 // Both variants' value and one variant's would leave which wins to the reader.
                 int before = i == 0 ? Array.FindIndex(sections, 1, s => s.ContainsKey(token.Name)) : sections[0].ContainsKey(token.Name) ? 0 : -1;
                 if (before >= 0)
                 {
-                    throw new FormatException($"gives {token.Name} in {Sections[before]} and in {Sections[i]}: a token is given once, in tokens for both variants or in dark or light for one");
+                    throw new FormatException($"gives {token.Name} in {Sections[before]} and in {Sections[i]}{inLanguage}: a token is given once, in tokens for both variants or in dark or light for one");
                 }
-                sections[i][token.Name] = Value(file, $"{token.Name} in {Sections[i]}", kind, token.Value, problems);
+                sections[i][token.Name] = Value(file, $"{token.Name} in {Sections[i]}{inLanguage}", kind, token.Value, problems);
             }
         }
-        return new ThemeFile(name, description, sections[0], sections[1], sections[2]);
+        return sections;
     }
 
     private static TokenValue Value(string file, string where, ThemeTokenKind kind, JsonElement value, List<string> problems)
@@ -343,17 +382,13 @@ public static class ThemeFiles
         List<string> paths = [];
         foreach (JsonElement item in value.Value.EnumerateArray())
         {
-            if (item.ValueKind != JsonValueKind.String || !Inside(item.GetString()!))
+            if (item.ValueKind != JsonValueKind.String || !Inside(item.GetString()!, [".json"]))
             {
                 throw new FormatException($"lists {Shown(item)} in {member}: each is a path inside the source, its folders joined by /, with no .. and ending .json");
             }
             paths.Add(item.GetString()!);
         }
         return paths;
-
-        static bool Inside(string path) =>
-            path.Length <= 260 && path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && path.IndexOfAny(['\\', ':']) < 0 && !path.Any(char.IsControl)
-            && path.Split('/').All(name => name.Length > 0 && name is not ("." or ".."));
     }
 
     private static void PassOver(string file, JsonElement holder, string[] known, string what, List<string> problems)

@@ -39,6 +39,12 @@ public static class Themes
     /// <summary>What the window says of the themes changed.</summary>
     public static event EventHandler? SaidChanged;
 
+    /// <summary>The fonts the theme in force gives, which a font Settings names wins over.</summary>
+    public static ThemeFonts Fonts { get; private set; } = ThemeFonts.None;
+
+    /// <summary>The theme in force gave other fonts.</summary>
+    public static event EventHandler? FontsChanged;
+
     /// <summary>Puts a theme and a scheme in force over those before, each fetched first where it is not kept.</summary>
     public static void Apply(Application app, SourcedTheme? look, SourcedTheme? scheme)
     {
@@ -68,7 +74,7 @@ public static class Themes
     /// it names again.</summary>
     public static void Wear(Application app, ThemeFile? theme, ThemeFile? scheme)
     {
-        Lay(app, theme, scheme);
+        Lay(app, theme, scheme, _ => null);
         applied = false;
     }
 
@@ -109,7 +115,9 @@ public static class Themes
         }
         ThemeFile? theme = Look is { } look ? Kept(false, look) ?? Fetched(false, look) : null;
         ThemeFile? scheme = Scheme is { } colours ? Kept(true, colours) ?? Fetched(true, colours) : null;
-        Lay(app, theme, scheme);
+        Func<string, byte[]?> images = theme is not null && Look is { From: { } source } shown && source != ThemeSource.BuiltIn
+            ? image => KeptThemes.Image(source, false, shown.Name, image) : _ => null;
+        Lay(app, theme, scheme, images);
         Say();
     }
 
@@ -184,7 +192,8 @@ public static class Themes
             ListedTheme file = await ThemeSourceReads.FileAsync(source, reached, path, code, kinds, CancellationToken.None);
             if (file.Read.Read?.Name == name && file.Bytes is { } whole)
             {
-                return KeptThemes.Keep(source, code, name, whole);
+                (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(file, reached, CancellationToken.None);
+                return unseen ?? KeptThemes.Keep(source, code, name, whole, images);
             }
         }
         return $"{source.Shown} lists no {(code ? "code colour scheme" : "theme")} named {name} that reads whole";
@@ -220,7 +229,7 @@ public static class Themes
         SaidChanged?.Invoke(null, EventArgs.Empty);
     }
 
-    private static void Lay(Application app, ThemeFile? theme, ThemeFile? scheme)
+    private static void Lay(Application app, ThemeFile? theme, ThemeFile? scheme, Func<string, byte[]?> images)
     {
         // Made before those in force go; the scheme after the theme, so it wins.
         ResourceDictionary[] next = [.. ((ThemeFile?[])[theme, scheme]).OfType<ThemeFile>().Select(ThemeResources.Dictionary)];
@@ -236,6 +245,14 @@ public static class Themes
             merged.Add(tokens);
         }
         TakeAccentFromTokens(app);
+        ThemeLanguages.Use(theme, scheme);
+        ThemeBackdrops.Use(theme, images);
+        ThemeFonts fonts = theme?.Fonts ?? ThemeFonts.None;
+        if (fonts != Fonts)
+        {
+            Fonts = fonts;
+            FontsChanged?.Invoke(null, EventArgs.Empty);
+        }
     }
 
     /// <summary>Fluent's own accented parts (a ticked box, a chosen radio button, a focused drop-down) in the theme's
