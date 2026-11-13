@@ -12,7 +12,8 @@ namespace Passenger.Tests;
 /// template's Windows profile, and the target chosen beside it says where it runs. An Android emulator's plan builds
 /// the app's Android head with no Windows profile; on Windows, Windows chosen from the widget's menu runs the template's
 /// own profile on this machine, as it does with nothing chosen, where elsewhere a target must be chosen. Plans are worked
-/// out with no build, so no emulator is needed, but MAUI's workloads are: without them it skips, saying so.</summary>
+/// out with no build, so no emulator is needed; where MSBuild cannot say what the Android head builds for want of MAUI's
+/// workloads, it skips there, saying so.</summary>
 public sealed class MauiRunTargetTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
@@ -32,11 +33,6 @@ public sealed class MauiRunTargetTests
             Assert.Equal(["MauiApp1"], window.Configurations.Select(c => c.Name));
             Assert.Equal("MauiApp1", window.Session.Configurations.Chosen?.Name);
             ProjectModel app = window.Session.Projects.Single();
-            Ui.Await(window.MobileAsked(), "what the app's heads need to be asked", Slow);
-            if (window.MobileWant.Workloads.Count > 0)
-            {
-                Assert.Skip($"This .NET lacks the workloads {string.Join(", ", window.MobileWant.Workloads)}, without which MSBuild cannot say what the app's heads build");
-            }
 
             // With nothing chosen, Windows runs its own head here; elsewhere a target must be chosen.
             (LaunchPlan? unchosen, string? refused) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
@@ -56,7 +52,16 @@ public sealed class MauiRunTargetTests
 
             window.ChooseRunTarget(app, new DeviceTarget(TargetPlatform.Android, "emulator-5554", "Pixel 9", TargetKind.Emulator, true) { Avd = "Pixel_9" });
             Ui.Settle();
-            LaunchPlan android = Plan(window);
+            (LaunchPlan? planned, string? unplanned) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
+            if (planned is null)
+            {
+                Ui.Await(window.MobileAsked(), "what the app's heads need to be asked", Slow);
+                if (window.MobileWant.Workloads.Count > 0)
+                {
+                    Assert.Skip($"This .NET lacks the workloads {string.Join(", ", window.MobileWant.Workloads)}, without which MSBuild cannot say what the app's Android head builds ({unplanned})");
+                }
+            }
+            LaunchPlan android = planned ?? throw new Xunit.Sdk.XunitException($"MauiApp1 has no plan for the Android emulator: {unplanned}");
             Assert.Equal("MauiApp1", android.Name);
             Assert.Equal("Pixel 9", android.Device?.Target.Name);
             Assert.Equal("net11.0-android", android.Framework);
