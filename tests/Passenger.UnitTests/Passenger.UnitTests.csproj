@@ -255,8 +255,9 @@
   </ItemGroup>
 
   <!-- How a language server's messages are followed for the protocol trace, from their bytes alone, how a test host's
-       conversation is written, whether two of its URIs name one document, from their paths, and what an HTML server is
-       sent of Razor's files, against a stand-in, compiled in since their project carries the servers. -->
+       conversation is written, whether two of its URIs name one document, from their paths, what an HTML server is
+       sent of Razor's files, against a stand-in, and how a completion answer is read, from its JSON alone, compiled in
+       since their project carries the servers. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Lsp/TracedStream.cs" Link="Lsp/TracedStream.cs" />
     <Compile Include="../../src/Passenger.Lsp/EnvelopeFormatter.cs" Link="Lsp/EnvelopeFormatter.cs" />
@@ -265,6 +266,7 @@
     <Compile Include="../../src/Passenger.Lsp/LspLocation.cs" Link="Lsp/LspLocation.cs" />
     <Compile Include="../../src/Passenger.Lsp/RazorHtmlCopies.cs" Link="Lsp/RazorHtmlCopies.cs" />
     <Compile Include="../../src/Passenger.Lsp/LanguageServerFailed.cs" Link="Lsp/LanguageServerFailed.cs" />
+    <Compile Include="../../src/Passenger.Lsp/Protocol.cs" Link="Lsp/Protocol.cs" />
   </ItemGroup>
 
   <!-- Which argument of a JS interop call names its module, by the overload a compilation of the call binds it to,

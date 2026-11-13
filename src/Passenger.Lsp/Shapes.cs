@@ -8,13 +8,6 @@ namespace Passenger.Lsp;
 /// location or a link, a command or a code action, a string or marked-up content.</summary>
 public static class Shapes
 {
-    public static CompletionList? CompletionList(JsonElement result) => result.ValueKind switch
-    {
-        JsonValueKind.Array => new CompletionList { Items = result.Deserialize<List<CompletionItem>>(Json.Options) ?? [] },
-        JsonValueKind.Object => result.Deserialize<CompletionList>(Json.Options),
-        _ => null,
-    };
-
     /// <summary>A definition's answer as plain locations: one location, several, or links (whose
     /// target selection is the name itself).</summary>
     public static IReadOnlyList<LspLocation> Locations(JsonElement result)

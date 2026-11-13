@@ -38,7 +38,7 @@ public static class ClientCapabilities
             "labelDetailsSupport": true,
             "resolveSupport": { "properties": ["documentation", "detail", "additionalTextEdits"] }
           },
-          "completionList": { "itemDefaults": ["commitCharacters"] },
+          "completionList": { "itemDefaults": ["commitCharacters", "editRange", "insertTextFormat", "data"] },
           "contextSupport": true
         },
         "hover": { "dynamicRegistration": true, "contentFormat": ["markdown", "plaintext"] },

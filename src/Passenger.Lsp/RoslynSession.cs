@@ -670,9 +670,9 @@ public sealed class LspDocument : IDisposable
         CompletionContext context = incomplete ? new CompletionContext(CompletionTriggerKind.TriggerForIncompleteCompletions)
             : trigger is null ? new CompletionContext(CompletionTriggerKind.Invoked) : new CompletionContext(CompletionTriggerKind.TriggerCharacter, trigger);
         // Sent now, after the changes before it; read off the caller's thread: a list may hold every type in reach.
-        JsonElement result = await Read(Server.RequestAsync<JsonElement>(LspMethods.Completion,
+        CompletionAnswer? answer = await Read(Server.RequestAsync<CompletionAnswer>(LspMethods.Completion,
             new CompletionParams(Identifier, PositionOf(offset), context), cancel));
-        return (Shapes.CompletionList(result), version);
+        return (answer?.List, version);
     }
 
     public Task<CompletionItem?> ResolveAsync(CompletionItem item, CancellationToken cancel = default) =>

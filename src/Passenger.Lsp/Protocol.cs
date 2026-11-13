@@ -106,12 +106,54 @@ public sealed class CompletionList
     public bool IsIncomplete { get; init; }
     public List<CompletionItem> Items { get; init; } = [];
     public CompletionItemDefaults? ItemDefaults { get; init; }
+
+    /// <summary>Each item given what the list's defaults say of it and it does not say itself
+    /// (<see cref="CompletionItem.TakeDefaults"/>), as though the server had sent it whole.</summary>
+    public CompletionList WithDefaults()
+    {
+        if (ItemDefaults is { } defaults && (defaults.EditRange is not null || defaults.InsertTextFormat is not null || defaults.Data is not null))
+        {
+            foreach (CompletionItem item in Items)
+            {
+                item.TakeDefaults(defaults);
+            }
+        }
+        return this;
+    }
 }
 
-/// <summary>The commit characters alone: the one item default the client's capabilities say it reads.</summary>
+/// <summary>A completion answer read as it comes, once, as either of the protocol's shapes: a list, or its items alone.</summary>
+[JsonConverter(typeof(CompletionAnswerConverter))]
+public sealed record CompletionAnswer(CompletionList? List);
+
+internal sealed class CompletionAnswerConverter : JsonConverter<CompletionAnswer>
+{
+    public override CompletionAnswer Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.TokenType switch
+    {
+        JsonTokenType.StartArray => new(new CompletionList { Items = JsonSerializer.Deserialize<List<CompletionItem>>(ref reader, options) ?? [] }),
+        JsonTokenType.StartObject => new(JsonSerializer.Deserialize<CompletionList>(ref reader, options)?.WithDefaults()),
+        _ => Skipped(ref reader),
+    };
+
+    public override void Write(Utf8JsonWriter writer, CompletionAnswer value, JsonSerializerOptions options) =>
+        JsonSerializer.Serialize(writer, value.List, options);
+
+    private static CompletionAnswer Skipped(ref Utf8JsonReader reader)
+    {
+        reader.Skip();
+        return new(null);
+    }
+}
+
+/// <summary>The item defaults the client's capabilities say it reads: the commit characters, and what Roslyn's server
+/// says once for a list rather than for each item (the range an item's text replaces, the text's format, the data that
+/// resolving an item sends back), which <see cref="CompletionList.WithDefaults"/> gives each item.</summary>
 public sealed class CompletionItemDefaults
 {
     public List<string>? CommitCharacters { get; init; }
+    public LspRange? EditRange { get; init; }
+    public InsertTextFormat? InsertTextFormat { get; init; }
+    public JsonElement? Data { get; init; }
 }
 
 public sealed class CompletionItem
@@ -124,14 +166,30 @@ public sealed class CompletionItem
     public string? SortText { get; init; }
     public string? FilterText { get; init; }
     public string? InsertText { get; init; }
-    public InsertTextFormat? InsertTextFormat { get; init; }
-    public LspTextEdit? TextEdit { get; init; }
+    public InsertTextFormat? InsertTextFormat { get => insertTextFormat; init => insertTextFormat = value; }
+    public LspTextEdit? TextEdit { get => textEdit; init => textEdit = value; }
     public string? TextEditText { get; init; }
     public List<LspTextEdit>? AdditionalTextEdits { get; init; }
     public List<string>? CommitCharacters { get; init; }
     public bool? Preselect { get; init; }
     public LspCommand? Command { get; init; }
-    public JsonElement? Data { get; init; }
+    public JsonElement? Data { get => data; init => data = value; }
+
+    private InsertTextFormat? insertTextFormat;
+    private LspTextEdit? textEdit;
+    private JsonElement? data;
+
+    /// <summary>What a list's defaults say of the item that it does not say itself: its edit over the default range,
+    /// putting in its own edit text or its label, its text's format and its data, which resolving it sends back.</summary>
+    internal void TakeDefaults(CompletionItemDefaults defaults)
+    {
+        if (textEdit is null && defaults.EditRange is { } range)
+        {
+            textEdit = new LspTextEdit(range, TextEditText ?? Label);
+        }
+        insertTextFormat ??= defaults.InsertTextFormat;
+        data ??= defaults.Data;
+    }
 }
 
 public sealed record CompletionItemLabelDetails(string? Detail, string? Description);
