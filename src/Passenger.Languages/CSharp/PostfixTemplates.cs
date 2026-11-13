@@ -40,6 +40,7 @@ public static class PostfixTemplates
         new("null", "Checks expression to be null", "if (expr == null)", true, "if ($EXPR$ == null)\n{\n\t$END$\n}", D()),
         new("notnull", "Checks expression to be not-null", "if (expr != null)", true, "if ($EXPR$ != null)\n{\n\t$END$\n}", D()),
         new("var", "Introduces variable for expression", "var x = expr;", true, "var $NAME$ = $EXPR$;$END$", D(("NAME", "$name"))),
+        new("new", "Creates an instance", "new Type()", false, "new $EXPR$($END$)", D()),
         new("foreach", "Iterates over enumerable collection", "foreach (var x in expr)", true, "foreach (var $VARIABLE$ in $EXPR$)\n{\n\t$END$\n}", D(("VARIABLE", "item"))),
         new("for", "Iterates with index up to expression", "for (var i = 0; i < expr; i++)", true, "for (var $INDEX$ = 0; $INDEX$ < $EXPR$; $INDEX$++)\n{\n\t$END$\n}", D(("INDEX", "i"))),
         new("forr", "Iterates in reverse with index from expression", "for (var i = expr - 1; i >= 0; i--)", true,
