@@ -1370,10 +1370,8 @@ public sealed class ProjectSession : IAsyncDisposable
         WalkForProjects(ahead?.Read);
         // Once the files it opens with are open, so the one shown's project is evaluated first.
         UiThread.Post(Evaluate);
-        if (Workspace?.Solution is not null)
-        {
-            ReadBuildChoices();
-        }
+        // Its solution's configurations, or its projects' as the evaluations it opened with say them.
+        ReadBuildChoices();
     }
 
     /// <summary>Walks the folder for its projects off the window's thread, as background work, or takes the walk given

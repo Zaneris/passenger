@@ -38,6 +38,10 @@ public static class GodotLaunch
         return $"{version}, a .NET build, which runs C#{(setting is null ? $", from {found.From}" : string.Empty)}: {found.Executable}";
     }
 
+    /// <summary>The configuration whose build Godot's editor and a game it runs load, whatever another build made: ExportDebug
+    /// and ExportRelease are an export's.</summary>
+    public const string RunsConfiguration = "Debug";
+
     /// <summary>Why no Godot runs a Godot project's game, in words for the person.</summary>
     public static string NotFound =>
         $"no Godot was found to run it: install Godot's .NET build, then choose its executable in {SettingsDialog.PlaceOfPage(SettingsDialog.GodotPage)}, set {GodotExecutables.Variable} to it, or put it on the PATH";

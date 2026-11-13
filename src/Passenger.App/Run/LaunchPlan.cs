@@ -304,7 +304,7 @@ public sealed partial record LaunchPlan
             StringComparer.OrdinalIgnoreCase);
         if (project.GodotFolder is not null)
         {
-            names.Add(MSBuildNames.GodotSdkVersion);
+            names.UnionWith([MSBuildNames.GodotSdkVersion, MSBuildNames.Configuration]);
         }
         if (project.IsWeb)
         {
@@ -336,6 +336,11 @@ public sealed partial record LaunchPlan
             : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
         if ((configuration.Program.Length == 0 || configuration.NamesGodot) && project.GodotFolder is { } game)
         {
+            if (properties.GetValueOrDefault(MSBuildNames.Configuration) is { Length: > 0 } builtAs && !builtAs.Equals(GodotLaunch.RunsConfiguration, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new LaunchException($"{configuration.Name} cannot run: Godot loads a game's {GodotLaunch.RunsConfiguration} build alone, where the build configuration "
+                    + $"chosen builds {project.Name} as {builtAs} (as an export does): choose {GodotLaunch.RunsConfiguration} to run it");
+            }
             return await GodotLaunch.PlanAsync(configuration, project, game, target, framework, Expand, Passenger.App.Godot.GodotUserFolders.Into(Variables(), godotFolders), godot,
                 properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), headless, cancel, atHand);
         }

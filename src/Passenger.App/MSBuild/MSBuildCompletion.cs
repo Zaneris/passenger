@@ -416,13 +416,21 @@ public static class MSBuildCompletion
                 : [("net11.0", ".NET 11.0"), ("net10.0", ".NET 10.0"), ("net9.0", ".NET 9.0"), ("net8.0", ".NET 8.0"), ("netstandard2.1", ".NET Standard 2.1"), ("netstandard2.0", ".NET Standard 2.0"), ("net48", ".NET Framework 4.8")],
             "OutputType" => [("Exe", "Console application"), ("Library", "Class library"), ("WinExe", "Windows application"), ("Module", "Module")],
             "LangVersion" => [.. new[] { "latest", "latestMajor", "preview", "default", "15.0", "14.0", "13.0", "12.0", "11.0", "10.0", "9.0", "8.0", "7.3" }.Select(v => (v, (string?)null))],
-            "Configuration" => [("Debug", null), ("Release", null)],
-            "Platform" or "PlatformTarget" => [("AnyCPU", null), ("x64", null), ("x86", null), ("ARM64", null)],
+            "Configuration" => Declared(context, "Configurations") ?? [("Debug", null), ("Release", null)],
+            "Platform" => Declared(context, "Platforms") ?? [("AnyCPU", null), ("x64", null), ("x86", null), ("ARM64", null)],
+            "PlatformTarget" => [("AnyCPU", null), ("x64", null), ("x86", null), ("ARM64", null)],
             "RuntimeIdentifier" or "RuntimeIdentifiers" => [.. new[] { "win-x64", "win-x86", "win-arm64", "osx-arm64", "osx-x64", "linux-x64", "linux-arm64", "linux-musl-x64" }
                 .Select(v => (v, (string?)null))],
             _ => [],
         };
     }
+
+    /// <summary>The configurations or platforms the project declares as evaluated (Godot.NET.Sdk's Debug, ExportDebug and
+    /// ExportRelease), each once; null before an evaluation says.</summary>
+    private static IReadOnlyList<(string Value, string? Detail)>? Declared(MSBuildContext context, string list) =>
+        context.Insight?.Raw.Properties.FirstOrDefault(p => p.Name.Equals(list, StringComparison.OrdinalIgnoreCase))?.Value
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(v => (v, (string?)null)).ToList() is { Count: > 0 } declared ? declared : null;
 
     /// <summary>Inside <c>$(</c>, <c>@(</c> or <c>%(</c> before the caret: the names the evaluation knows, the closing
     /// bracket put in with the name unless it is there.</summary>
