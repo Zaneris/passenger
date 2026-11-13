@@ -570,7 +570,8 @@ a new name, and `just site-shots` retakes its images.
   through run-as and puts the build's link back after; `am set-debug-app` (kept only in the activity manager: clear only
   your own) keeps a long stop of the main thread from ending the app; the relay calls the DBI's `DllMain` itself, or
   `ICorDebug::Initialize` hangs; without the workload's platform (`platforms;android-37.0`) its device listing fails with
-  XA5207. AndroidDeviceTests needs that platform, a JDK in `JAVA_HOME` and an AVD, booted `-no-window`.
+  XA5207. AndroidDeviceTests needs that platform, a JDK in `JAVA_HOME`, an AVD (booted `-no-window`)
+  and the relays a build carries only after `just debug-relay android`.
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so hold a child whose descendants must end with it with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket with
