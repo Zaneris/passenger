@@ -800,7 +800,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         cancellation.ThrowIfCancellationRequested();
         ChildResult evaluated = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(
-            ["build", configuration.Project, "--output", output, "--no-restore", "--nologo", $"-getProperty:{Passenger.Host.CarriedProperties.TargetPath}"], folder), cancel: cancellation);
+            ["build", configuration.Project, "--output", output, "--no-restore", "--nologo", .. workspace.Workspace?.BuildArgumentsFor(configuration.Project) ?? [],
+                $"-getProperty:{Passenger.Host.CarriedProperties.TargetPath}"], folder), cancel: cancellation);
         string target = evaluated.Output.Trim();
         if (!evaluated.Succeeded || !Path.IsPathFullyQualified(target) || !await BackgroundWork.Run(() => File.Exists(target), cancellation))
         {

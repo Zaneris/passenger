@@ -45,6 +45,12 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         : chosen.ArgumentsFor(target, Solution is { } solution && PathNames.Same(solution.Path, target),
             Projects.FirstOrDefault(p => PathNames.Same(p.Path, target))?.Property(CarriedProperties.Platforms));
 
+    /// <summary>What a dotnet publish of a project is given to build it as its build does: <see cref="BuildArgumentsFor"/>'s,
+    /// else the configuration its build takes given none (<paramref name="builtAs"/>, as its evaluation says), which a
+    /// publish given none would take Release in place of.</summary>
+    public IReadOnlyList<string> PublishArgumentsFor(string project, string? builtAs) =>
+        BuildArgumentsFor(project) is { Count: > 0 } chosen ? chosen : builtAs is { Length: > 0 } ? ["-c", builtAs] : [];
+
     /// <summary>What it was opened as, which Recent Solutions keeps and reopens: the solution filter, the solution, the
     /// project, else the folder.</summary>
     public string OpenedAs => Filter?.Path ?? Solution?.Path ?? ProjectFile ?? Folder;

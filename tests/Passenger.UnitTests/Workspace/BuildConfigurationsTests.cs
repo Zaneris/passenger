@@ -88,6 +88,18 @@ public class BuildConfigurationsTests
         Assert.Equal("Release", chosen.BuildPropertiesOf(Game)["Configuration"]);
     }
 
+    /// <summary>A publish that builds as the folder builds (a container run's image) takes the choice's arguments, else the
+    /// configuration the project's build takes given none, which a publish given none would leave for Release.</summary>
+    [Fact]
+    public void A_publish_building_as_the_folder_builds_takes_the_choice_else_the_configuration_its_build_takes()
+    {
+        WorkspaceModel plain = new("/work", null, [Project(Game, "AnyCPU;x64")]);
+        Assert.Equal(["-c", "Debug"], plain.PublishArgumentsFor(Game, "Debug"));
+        Assert.Empty(plain.PublishArgumentsFor(Game, null));
+        WorkspaceModel chosen = plain with { Build = new BuildChoice(new BuildConfiguration("Release", "x64"), OfSolution: false) };
+        Assert.Equal(["-c", "Release", "-p:Platform=x64"], chosen.PublishArgumentsFor(Game, "Release"));
+    }
+
     [Fact]
     public void A_build_takes_the_configurations_arguments_before_its_logger_switches()
     {

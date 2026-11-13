@@ -28,6 +28,10 @@ public sealed record DotnetService(string Service, string Project, string Assemb
     /// marked Don't start, which its run refuses only when a start of it is asked later; null when it can run.</summary>
     public string? Unfit { get; init; }
 
+    /// <summary>The build configuration its project builds in under the folder's choice, as its evaluation says: what its
+    /// image built as deployed is given for a Dockerfile's BUILD_CONFIGURATION; null where the evaluation named none.</summary>
+    public string? Configuration { get; init; }
+
     string IRunService.Name => Service;
 }
 
@@ -127,6 +131,9 @@ public static class ContainerPlans
     /// <summary>Where fast mode mounts Passenger's build of a service's project inside its container.</summary>
     public const string AppFolder = "/passenger/app";
 
+    /// <summary>The argument a Dockerfile Visual Studio writes builds its project's configuration by.</summary>
+    public const string BuildConfigurationArgument = "BUILD_CONFIGURATION";
+
     public static async Task<ContainerPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace,
         string stateFolder, ContainerEngine engine, IReadOnlyList<string> labels, CancellationToken cancel)
     {
@@ -164,6 +171,7 @@ public static class ContainerPlans
                     CarriedProperties.TargetPath, MSBuildNames.TargetDir, MSBuildNames.AssemblyName, CarriedProperties.DockerfileContext, CarriedProperties.DockerfileFile,
                     CarriedProperties.DockerfileFastModeStage, CarriedProperties.ContainerDevelopmentMode, MSBuildNames.DockerfileBuildArguments, MSBuildNames.DockerfileRunArguments,
                     MSBuildNames.DockerfileTag, CarriedProperties.ContainerBaseImage, MSBuildNames.ContainerPort, MSBuildNames.RuntimeIdentifier, MSBuildNames.SelfContained,
+                    MSBuildNames.Configuration,
                 ],
                 workspace, cancel, configuration.Kind == RunKind.SdkContainer ? MSBuildNames.ComputeContainerBaseImage : null);
             if (configuration.Kind == RunKind.Dockerfile && string.Equals(properties.GetValueOrDefault(CarriedProperties.ContainerDevelopmentMode), "Regular", StringComparison.OrdinalIgnoreCase))
@@ -175,8 +183,7 @@ public static class ContainerPlans
             {
                 string repository = $"passenger-{Slug(configuration.Name)}-{ContainerLabels.FolderValue(workspace.Folder)[..8]}";
                 properties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase) { ["PassengerImage"] = $"{repository}:{SdkImageTag}" };
-                // Built as the folder's build configuration chosen gives the project, Debug where it gives nothing.
-                IReadOnlyList<string> configured = workspace.BuildArgumentsFor(single.Path) is { Count: > 0 } chosen ? chosen : ["-c", "Debug"];
+                IReadOnlyList<string> configured = workspace.PublishArgumentsFor(single.Path, properties.GetValueOrDefault(MSBuildNames.Configuration));
                 publish = ["publish", single.Path, $"-t:{MSBuildNames.PublishContainer}", .. configured, $"-p:{CarriedProperties.ContainerRepository}={repository}",
                     $"-p:{MSBuildNames.ContainerImageTag}={SdkImageTag}", "-nologo"];
             }
@@ -217,7 +224,7 @@ public static class ContainerPlans
                 : await LaunchPlan.EvaluateAsync(project, LaunchPlan.FrameworkOf(string.Empty, project),
                     [
                         CarriedProperties.TargetPath, MSBuildNames.TargetDir, MSBuildNames.AssemblyName, CarriedProperties.DockerfileFastModeStage,
-                        MSBuildNames.RuntimeIdentifier, MSBuildNames.SelfContained,
+                        MSBuildNames.RuntimeIdentifier, MSBuildNames.SelfContained, MSBuildNames.Configuration,
                     ],
                     workspace, cancel);
             string output = its.GetValueOrDefault(MSBuildNames.TargetDir) is { Length: > 0 } dir ? Path.TrimEndingDirectorySeparator(dir)
@@ -247,7 +254,11 @@ public static class ContainerPlans
                 }
             }
             ContainerPaths paths = stages is not null && service.Context is { } context ? ContainerPaths.For(stages, context) : ContainerPaths.None;
-            dotnet.Add(new DotnetService(service.Name, project.Path, assembly, output, action, stage, paths) { Unfit = unfit });
+            dotnet.Add(new DotnetService(service.Name, project.Path, assembly, output, action, stage, paths)
+            {
+                Unfit = unfit,
+                Configuration = its.GetValueOrDefault(MSBuildNames.Configuration) is { Length: > 0 } built ? built : null,
+            });
         }
         HashSet<string> dotnetNames = [.. dotnet.Select(d => d.Service)];
         bool dontStarts = configuration.ServiceActions.Values.Any(a => a == ServiceStart.DontStart);
@@ -514,7 +525,7 @@ public static class ContainerPlans
     /// <summary>The override Passenger lays over the files: its labels on every service, image and network it makes (an image
     /// built as deployed tagged apart from the one its files name); for each .NET service it starts, in fast mode its image's
     /// runtime stage running <c>dotnet /passenger/app/X.dll</c> as PID 1 over Passenger's build mounted read-only, in images
-    /// mode a Debug build where its Dockerfile takes BUILD_CONFIGURATION; the development certificate and user secrets where
+    /// mode its project's configuration for a Dockerfile's BUILD_CONFIGURATION; the development certificate and user secrets where
     /// they serve, read <see cref="RunsAs"/>; a service held for the debugger started held, its code open to Hot Reload.</summary>
     public static async Task<JsonObject> OverrideAsync(ComposeModel model, string project, IReadOnlyList<DotnetService> dotnet, ContainerMode mode, IReadOnlyList<string> labels,
         IReadOnlyList<ProjectModel> projects, string state, ChosenPorts? pinned, IReadOnlyCollection<string> held,
@@ -579,10 +590,11 @@ public static class ContainerPlans
                         environment[AspNetCoreVariables.StaticWebAssets] = assets.Manifest;
                     }
                 }
-                else if (service.DockerfilePath is { } dockerfile && File.Exists(dockerfile) && DockerfileStages.Read(File.ReadAllText(dockerfile)).Declares("BUILD_CONFIGURATION"))
+                else if (built.Configuration is { } configuration && service.DockerfilePath is { } dockerfile && File.Exists(dockerfile)
+                    && DockerfileStages.Read(File.ReadAllText(dockerfile)).Declares(BuildConfigurationArgument))
                 {
                     JsonObject build = (JsonObject)(entry["build"] ??= new JsonObject());
-                    build["args"] = new JsonObject { ["BUILD_CONFIGURATION"] = "Debug" };
+                    build["args"] = new JsonObject { [BuildConfigurationArgument] = configuration };
                 }
                 (string Folder, string Id)? secrets = development ? UserSecrets(projects.FirstOrDefault(p => PathNames.Same(p.Path, built.Project))) : null;
                 if (user is not null && (mode == ContainerMode.Fast || Serves(service) || secrets is not null))

@@ -99,6 +99,35 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         window.Close();
     }
 
+    /// <summary>Release chosen, a Compose solution's .NET services run from Passenger's Release build, mounted in their
+    /// containers, nothing built as Debug.</summary>
+    [AvaloniaFact]
+    public void A_compose_run_under_release_runs_its_dotnet_services_from_passengers_release_build()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        (string folder, string project) = Restored("release");
+        MainWindow window = Open(folder);
+        const string Name = "Compose: compose.yaml";
+        try
+        {
+            Ui.WaitFor(() => BuildConfigurationTests.Offered(window) == "Debug, Release",
+                () => $"Debug and Release offered, where the widget offers {BuildConfigurationTests.Offered(window)}");
+            BuildConfigurationTests.Choose(window, "Release");
+            Assert.True(window.SelectConfiguration(Name));
+            Launched(window, "the Compose application to come up under Release");
+            string mounted = Docker.Run("inspect", "-f", "{{range .Mounts}}{{.Source}} -> {{.Destination}};{{end}}", Container(project, "web")).Replace('\\', '/');
+            Assert.True(mounted.Contains($"/Web/bin/Release/{TestProjects.Framework} -> {ContainerPlans.AppFolder};", StringComparison.Ordinal),
+                $"web did not run from Passenger's Release build, its container mounting {mounted}");
+            Assert.Equal("web 1", Page(Published(project, "web")));
+            Assert.False(Directory.Exists(Path.Combine(folder, "Web", "bin", "Debug")), "The run under Release built web as Debug");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take every container down");
+            window.Close();
+        }
+    }
+
     /// <summary>A Rerun whose restart of web fails (the engine refuses Compose's restart once, through a docker over the real
     /// one) says so and leaves web on its old build, and the next Rerun restarts web, whose build has changed since it last
     /// started, rather than finding nothing changed.</summary>

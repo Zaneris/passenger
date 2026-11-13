@@ -129,6 +129,46 @@ public sealed class ContainerOverrideTests : IDisposable
         return (JsonObject)written["services"]!["web"]!;
     }
 
+    /// <summary>As deployed, a .NET service whose Dockerfile takes BUILD_CONFIGURATION builds its image in the configuration
+    /// its project builds in under the folder's choice (Release, or a solution's own Staging), never a fixed Debug; one
+    /// whose Dockerfile takes none, or one run from Passenger's build, is given none.</summary>
+    [Fact]
+    public async Task An_image_built_as_deployed_takes_its_projects_build_configuration_where_its_dockerfile_asks_for_one()
+    {
+        const string Takes = "FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base\nWORKDIR /app\n\nFROM mcr.microsoft.com/dotnet/sdk:10.0 AS build\n"
+            + "ARG BUILD_CONFIGURATION=Release\nWORKDIR /src\nCOPY . .\nRUN dotnet publish Web/Web.csproj -c $BUILD_CONFIGURATION -o /app/publish\n\n"
+            + "FROM base AS final\nCOPY --from=build /app/publish .\nENTRYPOINT [\"dotnet\", \"Web.dll\"]\n";
+        const string TakesNone = "FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base\nWORKDIR /app\nENTRYPOINT [\"dotnet\", \"Web.dll\"]\n";
+        foreach ((string dockerfile, ContainerMode mode, string configuration, string? given) in ((string, ContainerMode, string, string?)[])[
+            (Takes, ContainerMode.Images, "Release", "Release"), (Takes, ContainerMode.Images, "Staging", "Staging"), (Takes, ContainerMode.Images, "Debug", "Debug"),
+            (TakesNone, ContainerMode.Images, "Release", null), (Takes, ContainerMode.Fast, "Release", null)])
+        {
+            JsonObject web = await BuiltAsync(dockerfile, mode, configuration);
+            string? said = web["build"]?["args"]?[ContainerPlans.BuildConfigurationArgument]?.GetValue<string>();
+            Assert.True(said == given, $"Web built in {configuration} {(dockerfile == Takes ? "by a Dockerfile taking" : "by a Dockerfile taking no")} "
+                + $"BUILD_CONFIGURATION in {mode} mode was to be given {given ?? "none"}, but the override gives {said ?? "none"}: {web.ToJsonString()}");
+        }
+    }
+
+    /// <summary>The override's entry for a .NET service web whose project builds in a configuration, its image built from
+    /// the Dockerfile given.</summary>
+    private async Task<JsonObject> BuiltAsync(string dockerfile, ContainerMode mode, string configuration)
+    {
+        string project = TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web());
+        TestFolders.Write(folder, "Web/Dockerfile", dockerfile);
+        JsonObject service = new() { ["build"] = new JsonObject { ["context"] = folder, ["dockerfile"] = "Web/Dockerfile" } };
+        using JsonDocument read = JsonDocument.Parse(new JsonObject { ["name"] = "shop", ["services"] = new JsonObject { ["web"] = service } }.ToJsonString());
+        ComposeModel model = ComposeModel.Read(read.RootElement);
+        DotnetService web = new("web", project, "Web", Path.Combine(folder, "Web", "bin", configuration, TestProjects.Framework), ServiceStart.Run, "base", ContainerPaths.None)
+        {
+            Configuration = configuration,
+        };
+        ProjectModel loaded = new(project, "Web", null, [TestProjects.Framework], [], [], Exists: true);
+        JsonObject written = await ContainerPlans.OverrideAsync(model, "shop", [web], mode, [], [loaded], Directory.CreateDirectory(Path.Combine(folder, "state")).FullName,
+            null, [], [], null, Engine(podman: false, rootless: false), null, null, new Dictionary<string, IReadOnlyDictionary<string, string>>(), TestContext.Current.CancellationToken);
+        return (JsonObject)written["services"]!["web"]!;
+    }
+
     /// <summary>The run's dashboard is read on this machine's loopback where the engine is this machine's, by a socket, a
     /// loopback address or a name under localhost, and refused naming the engine where it is another machine's, whose
     /// loopback this one cannot reach.</summary>
