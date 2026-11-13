@@ -106,7 +106,12 @@ public sealed class ProjectBuilds
         reading = null;
         sdk = value.Sdk;
         builtUnder = value.Solution;
-        builtConfigured = value.Configured;
+        builtConfigured = workspace()?.Build?.Chosen.Key;
+        if (value.Configured != builtConfigured)
+        {
+            // Made under another build configuration (begun ahead of the window, or kept before a choice): none stands.
+            return;
+        }
         foreach ((string path, KeptBuild build) in value.Projects)
         {
             known[path] = build;
