@@ -27,7 +27,7 @@ public partial class MainWindow
     private void AddShutdown()
     {
         Closed += (_, _) => EndChildren();
-        actions!.Add(new IdeAction(AppActions.CloseSolution, "Close Solution", "IDE", _ => CloseSolution())
+        actions!.Add(new IdeAction(AppActions.CloseSolution, "Close Solution", "IDE", c => CloseSolution(asks: !c.ByAgent))
         {
             WhyNot = c => Folder is null ? Refusals.NoFolder : c.ByAgent ? WhyNotLeave(ClosingSolution) : null,
             Menus = [new MenuPlace("File", 0, 5)],
@@ -44,11 +44,11 @@ public partial class MainWindow
     }
 
     /// <summary>Close Solution: its changed files saved as closing the window saves them (one that cannot be keeps it
-    /// open, with why), its editors and layout kept with it and the solution at the top of the recent ones, everything
-    /// it runs ended (programs, builds, the debugger, tests, its terminals, the language server), and the Welcome
-    /// screen in the editors' place; a program Hot Reload changed that this would stop is asked about first, the solution
-    /// closed once it has stopped (<see cref="StopHeldAskedAsync"/>). Null once it is closed, else why not.</summary>
-    public string? CloseSolution()
+    /// open), its editors and layout kept with it, all it runs ended, and the Welcome screen in the editors' place; a
+    /// program Hot Reload changed that this would stop is asked about first, the solution closed once it has stopped
+    /// (<see cref="StopHeldAskedAsync"/>), and where the person <paramref name="asks"/>, the containers of runs Detach let
+    /// go of (<see cref="LetGoAskedAsync"/>). Null once it is closed, else why not.</summary>
+    public string? CloseSolution(bool asks = true)
     {
         UiThread.Check();
         if (Folder is null)
@@ -59,6 +59,11 @@ public partial class MainWindow
         {
             IdeErrors.Observe(CloseSolutionAskedAsync(held));
             return HeldWords(held, ClosingSolution);
+        }
+        if (asks && AsksOfLetGo)
+        {
+            IdeErrors.Observe(CloseSolutionLetGoAsync());
+            return "The solution closes once you answer whether to stop the containers of the runs Detach let go of";
         }
         if (!Autosave())
         {

@@ -971,8 +971,32 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     /// <summary>Where the container tools come from that are put in a service's container to reach its program: its session's.</summary>
     public required ContainerToolsSource Tools { get; init; }
 
-    /// <summary>Whether it was taken down (or is being).</summary>
+    /// <summary>Whether it was taken down (or is being), or let go of.</summary>
     public override bool IsStopped => stopping is not null;
+
+    /// <summary>Whether Detach let go of it (<see cref="LetGo"/>), its containers left running.</summary>
+    public bool IsLetGo { get; private set; }
+
+    /// <summary>Whether an <c>up</c> of it is under way, its start's or a restart's.</summary>
+    public bool IsComingUp => !UpsEnded.IsCompleted;
+
+    /// <summary>Detach: it is no longer under way, as Stop leaves it, taking nothing down: Compose's watch ended, and its
+    /// containers left running as the folder's (<see cref="FolderContainers"/>), which the folder's end takes down.</summary>
+    public void LetGo()
+    {
+        if (stopping is not null)
+        {
+            return;
+        }
+        if (watching is { } watch)
+        {
+            ChildProcesses.Kill(watch);
+            watching = null;
+        }
+        IsLetGo = true;
+        stopping = Task.CompletedTask;
+        ending.Cancel();
+    }
 
     /// <summary>Done once <see cref="StopAsync"/> has had the engine take it down.</summary>
     public Task Stopped => stopping ?? Task.CompletedTask;

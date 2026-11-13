@@ -64,8 +64,8 @@ public partial class MainWindow
     /// <summary>Saves before anything else hears of the close, so the language server and the rest go only once the
     /// edits are on disk; a file that cannot be written keeps the window open, its edits with it, and asks whether to make
     /// it writable or close without it (<see cref="CloseUnsavedAsync"/>). A save still landing holds the close until it
-    /// has (<see cref="CloseLandedAsync"/>), and a program Hot Reload changed that it would stop is asked about (<see
-    /// cref="CloseHeldAsync"/>).</summary>
+    /// has (<see cref="CloseLandedAsync"/>), a program Hot Reload changed that it would stop is asked about (<see
+    /// cref="CloseHeldAsync"/>), and so are the containers of runs Detach let go of (<see cref="CloseLetGoAsync"/>).</summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         // Passenger's quit (File, Exit; Restart to Update) and the system's (the application menu's Quit) keep each solution.
@@ -87,6 +87,13 @@ public partial class MainWindow
         {
             e.Cancel = true;
             IdeErrors.Observe(CloseHeldAsync(held, quit));
+            return;
+        }
+        // The containers of runs Detach let go of: stopped with the folder, or left running as the person's.
+        if (e.CloseReason != WindowCloseReason.OSShutdown && AsksOfLetGo)
+        {
+            e.Cancel = true;
+            IdeErrors.Observe(CloseLetGoAsync(quit));
             return;
         }
         quitting = quit;

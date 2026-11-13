@@ -175,6 +175,8 @@ public sealed partial class BuildRunController
         {
             plan = await ContainerPlans.ResolveAsync(chosen, session.Projects, session.Workspace, parts.StateFolder(), engine, session.Containers.Labels, work.Stopping);
             later = [.. later.Where(s => plan.Dotnet.Any(d => d.Service == s && d.Action == ServiceStart.DontStart && d.Unfit is null))];
+            // A run let go of whose Compose project this one brings up again is this one's now.
+            session.RunsLetGo.RemoveAll(r => r.Plan.ProjectName == plan.ProjectName);
             plan = later.Count > 0 ? plan.StartingLater(later) : plan;
             parts.Views.Problems.ShowContainers([]);
         }
@@ -494,9 +496,71 @@ public sealed partial class BuildRunController
     /// <summary>When a container run's log was last followed again.</summary>
     private DateTime? followedAgainAt;
 
-    /// <summary>How a container run whose log stopped is said: taken down by Stop, its backing services kept, or its
-    /// services all ended by themselves.</summary>
-    private string ContainersEnded(ContainerRun run) => !run.IsStopped ? $"{ran}'s services have all ended"
+    /// <summary>Whether Detach acts on the container run under way: one is under way, and Detach is the run's whole (see
+    /// <see cref="DetachesWhole"/>) or the chosen session is one of its services'.</summary>
+    public bool DetachesContainers(ActionContext context, DebugSession? chosen) =>
+        Containers is { } run && IsRunning && (DetachesWhole(context, chosen) || ServiceDebuggedBy(chosen!)?.Run == run);
+
+    /// <summary>Whether Detach lets go of the container run whole: asked from the Run window, the run's own, or with no session
+    /// of a program chosen; else, a service's debug tab chosen, it lets go of that service's program alone.</summary>
+    private static bool DetachesWhole(ActionContext context, DebugSession? chosen) =>
+        context.ToolWindow?.Id == ToolWindowIds.Run || chosen is not { State: not DebugState.Ended };
+
+    /// <summary>Why Detach cannot act on the container run under way now: none is; let go of whole, it is still coming up,
+    /// the profiler records one of its services (Stop ends the recording), or Hot Reload changed one, which no debugger is
+    /// let go of; of one service, what the debugger says of its session.</summary>
+    public string? WhyNotDetachContainers(ActionContext context, DebugSession? chosen) =>
+        Containers is not { } run || !IsRunning ? NoContainerRun
+        : !DetachesWhole(context, chosen) ? session.Debug.WhyNotDetachOf(chosen!)
+        : run.IsComingUp ? $"{run.Name} is still coming up"
+        : run.Profiled is { } profiled ? $"The profiler records {profiled.Name} of {run.Name}: Stop ends the recording, and Detach lets go of a run nothing records"
+        : run.Services.FirstOrDefault(s => run.HotReloadChanged(session.Debug, s)) is { } changed ? DebugController.LetsNoDebuggerGo(run.SessionName(changed))
+        : null;
+
+    /// <summary>Detach of the container run under way, said in the Run window and the status. Whole (from the Run window, or
+    /// with no service's debug tab chosen): the debugger lets go of each service it holds (running on), Compose's watch ends,
+    /// and its log is no longer followed; Run, Debug and Stop no longer act on it, the Containers window still lists its
+    /// containers to stop there, and the folder's end takes them down as it takes all it started. Of the service whose tab is
+    /// chosen: the debugger lets go of its program alone, the run going on as it was. Null once done, else why not.</summary>
+    public async Task<string?> DetachContainersAsync(ActionContext context, DebugSession? chosen)
+    {
+        UiThread.Check();
+        if (WhyNotDetachContainers(context, chosen) is { } why)
+        {
+            return Said(why);
+        }
+        ContainerRun run = Containers!;
+        if (!DetachesWhole(context, chosen) && ServiceDebuggedBy(chosen!) is ({ } of, { } service))
+        {
+            if (await session.Debug.DetachAsync(chosen) is { } refused)
+            {
+                return Said(refused);
+            }
+            string one = $"Detached from {service.Name} of {of.Name}: the debugger let go of it alone, and the run goes on as it was";
+            parts.Views.Run.Append($"{one}\n");
+            parts.Say(one, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
+            return null;
+        }
+        foreach (IRunService each in run.Services)
+        {
+            await session.Debug.DetachAsync(run.SessionName(each));
+        }
+        run.LetGo();
+        session.RunsLetGo.Add(run);
+        parts.Views.Run.Append($"{LetGoSaid(run.Name)}\n");
+        // Its log's end is said as the run's (RunLogEnded): what Detach did.
+        session.Runner.Stop();
+        RunningChanged?.Invoke(this, EventArgs.Empty);
+        return null;
+    }
+
+    /// <summary>What Detach of a container run whole says.</summary>
+    private static string LetGoSaid(string name) => $"Detached from {name}: its containers run on until the Containers window stops them or the folder closes";
+
+    /// <summary>How a container run whose log stopped is said: let go of by Detach, taken down by Stop, its backing services
+    /// kept, or its services all ended by themselves.</summary>
+    private string ContainersEnded(ContainerRun run) => run.IsLetGo ? LetGoSaid(ran)
+        : !run.IsStopped ? $"{ran}'s services have all ended"
         : run.Plan.KeepBacking && run.Plan.Backing.Count > 0 ? $"{ran} stopped: its .NET services were taken down, {string.Join(", ", run.Plan.Backing)} kept running"
         : $"{ran} stopped: its containers were taken down";
 

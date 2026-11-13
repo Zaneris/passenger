@@ -573,6 +573,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// down (or the next run comes); its containers are the folder's (<see cref="Containers"/>) until then.</summary>
     public Containers.ContainerRun? ContainerRun { get; set; }
 
+    /// <summary>The container runs Detach let go of, their containers the folder's (taken down as it ends) until the person
+    /// chooses to leave them running as theirs as Passenger quits or the folder closes.</summary>
+    public List<Containers.ContainerRun> RunsLetGo { get; } = [];
+
     /// <summary>The dashboards of the project runs that collect their logs and traces, each from its start's bringing it up
     /// until it is taken down with its program; its containers are the folder's (<see cref="Containers"/>) until then.</summary>
     public List<Telemetry.RunDashboard> Dashboards { get; } = [];
@@ -585,11 +589,12 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>Stop of a container run (the one under way, or <paramref name="which"/>, one a start made): its log no longer
     /// followed, and its containers taken down (the .NET services alone when backing services are kept, which then go with
     /// the folder); done once the engine has answered. A run another has replaced is only taken down, its own containers
-    /// alone, the one under way left as it is.</summary>
+    /// alone, the one under way left as it is; one Detach let go of is left to the folder.</summary>
     public Task StopContainersAsync(Containers.ContainerRun? which = null)
     {
         UiThread.Check();
-        if ((which ?? ContainerRun) is not { } run)
+        // One Detach let go of is no run's to take down: its containers are the folder's.
+        if ((which ?? ContainerRun) is not { IsLetGo: false } run)
         {
             return Task.CompletedTask;
         }

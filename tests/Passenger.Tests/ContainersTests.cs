@@ -1205,6 +1205,183 @@ public sealed class ContainersTests
         }
     }
 
+    /// <summary>Detach lets go of a Docker Compose project's run, taking nothing down: its log no longer followed, the Run
+    /// window and the status saying its containers run on, Stop and Detach then greyed. Closing the window then asks, its
+    /// containers still running, whether to stop them or leave them running: Stop takes them down with the folder. The
+    /// engine is a stand-in, whose every command is written down, its project's container and network listed while up.</summary>
+    [AvaloniaFact]
+    public void Detach_lets_go_of_a_Docker_Compose_projects_run_and_the_windows_close_asks_and_stops_its_containers()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        (MainWindow window, string engineFolder) = LetGoOf("ctr-dcdetach-", unseen: false);
+        try
+        {
+            Assert.False(window.IsRunning, "The run was still followed once let go of");
+            Assert.Null(window.Builds.Containers);
+            Assert.Equal("Nothing is running", window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()));
+            Assert.NotNull(window.Actions.WhyNot(AppActions.Detach, window.Actions.Context()));
+            Assert.False(TakenDown(engineFolder), "Detach took the run's containers down");
+
+            window.Close();
+            ChoiceDialog asked = AskedOfLetGo(window);
+            Assert.Contains("Detach let go of docker-compose, and its containers still run", Said(asked), StringComparison.Ordinal);
+            Ui.ClickButton(asked, "Stop");
+            Ui.WaitFor(() => !window.IsVisible, "the window to close once Stop was chosen");
+        }
+        finally
+        {
+            window.Close();
+            File.WriteAllText(Path.Combine(engineFolder, "down"), string.Empty);
+        }
+        Ui.WaitFor(() => TakenDown(engineFolder), "the folder's close to take down the containers of the run let go of");
+    }
+
+    /// <summary>Close Solution over a run Detach let go of asks too: Cancel keeps the solution open, and Leave Running closes it
+    /// leaving the containers running as the person's, never taken down, recorded so the next start's clean-up passes them
+    /// over; the window's close after asks nothing more.</summary>
+    [AvaloniaFact]
+    public void Leave_Running_keeps_a_runs_containers_let_go_of_as_the_solution_closes_and_records_them_as_the_persons()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        (MainWindow window, string engineFolder) = LetGoOf("ctr-dcleave-", unseen: false);
+        try
+        {
+            string folder = window.Folder!;
+            Assert.NotNull(window.CloseSolution());
+            Ui.ClickButton(AskedOfLetGo(window), "Cancel");
+            Assert.Equal(folder, window.Folder);
+            Assert.NotNull(window.CloseSolution());
+            Ui.ClickButton(AskedOfLetGo(window), "Leave Running");
+            Ui.WaitFor(() => window.Folder is null, "the solution to close once Leave Running was chosen");
+            Assert.False(TakenDown(engineFolder), "Leave Running took the containers down");
+            Assert.Contains("c0ffee000001", ContainerLabels.LeftIn(TestRun.Settings));
+            Assert.Contains("beef00000001", ContainerLabels.LeftIn(TestRun.Settings));
+            window.Close();
+            Ui.WaitFor(() => !window.IsVisible, "the window to close asking nothing more");
+            Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
+            Assert.False(TakenDown(engineFolder), "The window's close took down the containers left running");
+        }
+        finally
+        {
+            window.Close();
+            File.WriteAllText(Path.Combine(engineFolder, "down"), string.Empty);
+        }
+    }
+
+    /// <summary>The system's quit over a run Detach let go of asks too: Cancel gives the quit up, the window open, and Stop
+    /// carries it on, the window closed and the containers taken down.</summary>
+    [AvaloniaFact]
+    public void A_quit_over_a_run_let_go_of_asks_Cancel_gives_it_up_and_Stop_carries_it_on_taking_its_containers_down()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        (MainWindow window, string engineFolder) = LetGoOf("ctr-dcquit-", unseen: false);
+        try
+        {
+            Ui.CloseAsQuit(window);
+            ChoiceDialog asked = AskedOfLetGo(window);
+            Assert.Contains("as Passenger quits", Said(asked), StringComparison.Ordinal);
+            Ui.ClickButton(asked, "Cancel");
+            Assert.True(window.IsVisible, "Cancel carried the quit on");
+            Assert.False(TakenDown(engineFolder), "Cancel took the containers down");
+            Ui.CloseAsQuit(window);
+            Ui.ClickButton(AskedOfLetGo(window), "Stop");
+            Ui.WaitFor(() => !window.IsVisible, "the quit to carry on once Stop was chosen");
+        }
+        finally
+        {
+            window.Close();
+            File.WriteAllText(Path.Combine(engineFolder, "down"), string.Empty);
+        }
+        Ui.WaitFor(() => TakenDown(engineFolder), "the quit to take down the containers of the run let go of");
+    }
+
+    /// <summary>A Passenger nobody sees never asks: its window's close takes the containers of a run let go of down, as the
+    /// folder's close takes all it started.</summary>
+    [AvaloniaFact]
+    public void A_Passenger_nobody_sees_asks_nothing_and_its_close_stops_a_runs_containers_let_go_of()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        (MainWindow window, string engineFolder) = LetGoOf("ctr-dcunseen-", unseen: true);
+        try
+        {
+            window.Close();
+            Ui.WaitFor(() => !window.IsVisible, "the window to close asking nothing");
+            Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
+        }
+        finally
+        {
+            window.Close();
+            File.WriteAllText(Path.Combine(engineFolder, "down"), string.Empty);
+        }
+        Ui.WaitFor(() => TakenDown(engineFolder), "the close to take down the containers of the run let go of");
+    }
+
+    /// <summary>The clean-up of what a Passenger that is gone left passes over what the person chose to leave running as
+    /// theirs: of two containers such a Passenger labelled, the one recorded as left runs on, the other is removed.</summary>
+    [AvaloniaFact]
+    public void The_clean_up_of_what_a_gone_Passenger_left_passes_over_what_the_person_chose_to_leave_running()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-leftkept-"), languageServer: false);
+        string[] labels = [.. window.Session.Containers.Labels.Where(word => word != "--label")];
+        ContainerLabels.Flush();
+        string state = labels.Single(l => l.StartsWith(ContainerLabels.State, StringComparison.Ordinal));
+        string machine = labels.Single(l => l.StartsWith(ContainerLabels.Machine, StringComparison.Ordinal));
+        string gone = $"{ContainerLabels.Process}={ContainerLabels.Of(int.MaxValue - 9, 1)}";
+        string kept = Docker.Container("leftkept", "sleep 600", state, machine, gone);
+        string removed = Docker.Container("leftremoved", "sleep 600", state, machine, gone);
+        try
+        {
+            ContainerLabels.LeaveToPerson(ContainerEngine.Shared, [Docker.Run("inspect", "-f", "{{.Id}}", kept)[..12]]);
+            IReadOnlyList<string> cleaned = Ui.Await(Waiting.Apart(() => ContainerLabels.RemoveLeftoversAsync(ContainerEngine.Shared)), "the clean-up of what a gone Passenger left");
+            Assert.Equal("running", Docker.State(kept));
+            Assert.True(Docker.State(removed) is null, $"The clean-up left {removed}, which nobody chose to leave running: it removed [{string.Join(", ", cleaned)}]");
+        }
+        finally
+        {
+            Docker.Ask(["rm", "-f", kept, removed]);
+            window.Close();
+        }
+    }
+
+    /// <summary>A window on a .dcproj's solution run on a stand-in engine that lists its container and network while up, the
+    /// run let go of by Detach: said in the Run window and the status.</summary>
+    private static (MainWindow Window, string EngineFolder) LetGoOf(string prefix, bool unseen)
+    {
+        string engineFolder = TestFolders.Create(prefix);
+        string cli = StandInComposeEngine(engineFolder, "tcp://127.0.0.1:2376", 1);
+        File.WriteAllText(Path.Combine(engineFolder, "up"), string.Empty);
+        string folder = ComposeProject($"{prefix}window-", "<DockerComposeProjectName>my-shop</DockerComposeProjectName>");
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli), Unseen = unseen };
+        window.Show();
+        window.OpenFolder(Path.Combine(folder, "Shop.slnx"));
+        Ui.Settle();
+        Assert.True(window.SelectConfiguration("docker-compose"), $"No configuration of the .dcproj: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+        Ui.Launched(window, window.RunAsync(), "the Docker Compose project's run to come up");
+        Assert.Null(window.Actions.WhyNot(AppActions.Detach, window.Actions.Context()));
+        Assert.True(window.Perform(AppActions.Detach), "Detach did not run");
+        Ui.WaitFor(() => window.Status?.StartsWith("Detached from docker-compose", StringComparison.Ordinal) == true, () => $"Detach to be said, not \"{window.Status}\"");
+        Assert.Equal("Detached from docker-compose: its containers run on until the Containers window stops them or the folder closes", window.Status);
+        window.BottomPanel.Run.Flush();
+        Assert.Contains("Detached from docker-compose: its containers run on", window.BottomPanel.Run.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        return (window, engineFolder);
+    }
+
+    /// <summary>Whether the stand-in was told to remove the project's container, as a take-down by its labels does.</summary>
+    private static bool TakenDown(string engineFolder) => File.ReadAllLines(Path.Combine(engineFolder, "calls")).Any(c => c == "rm -f c0ffee000001");
+
+    /// <summary>The question leaving the folder asks of runs Detach let go of, held to the dialogs' rules.</summary>
+    internal static ChoiceDialog AskedOfLetGo(MainWindow window)
+    {
+        Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(), "the window to ask whether to stop the containers of the run let go of");
+        ChoiceDialog asked = DialogButtonsTests.Check(window.OwnedWindows.OfType<ChoiceDialog>().Single());
+        Assert.Equal("Containers Left Running", asked.Title);
+        return asked;
+    }
+
+    /// <summary>What a question says, its paragraphs joined.</summary>
+    private static string Said(Window asked) => string.Join('\n', asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).OfType<string>());
+
     /// <summary>A folder of a solution naming a Docker Compose project (.dcproj) alone, whose docker-compose.yml runs a busybox
     /// web publishing its port 80, the .dcproj's properties those given.</summary>
     private static string ComposeProject(string prefix, string properties)
@@ -1228,8 +1405,9 @@ public sealed class ContainersTests
 
     /// <summary>A docker of the test's own for a compose run: a Linux server at <paramref name="host"/> with Compose v2, whose
     /// model of any compose files is a project "remote" of one service web (busybox, its port 80 published on 8080), which
-    /// comes up at once, publishes 80 on <paramref name="port"/>, and lists, logs and follows nothing until a file
-    /// <c>down</c> is made beside it; every command it is given written to <c>calls</c>. The CLI.</summary>
+    /// comes up at once, publishes 80 on <paramref name="port"/>, and logs and follows nothing until a file <c>down</c> is
+    /// made beside it, and lists one container's and one network's id (c0ffee000001, beef00000001) to <c>ps -q</c> and
+    /// <c>network ls -q</c> while a file <c>up</c> is, else none; every command it is given written to <c>calls</c>. The CLI.</summary>
     private static string StandInComposeEngine(string folder, string host, int port)
     {
         const string Model = """{"name":"remote","services":{"web":{"image":"busybox:1.37","ports":[{"mode":"ingress","target":80,"published":"8080","protocol":"tcp"}],"networks":{"default":null}}},"networks":{"default":{"name":"remote_default"}}}""";
@@ -1244,6 +1422,7 @@ public sealed class ContainersTests
             $"  context) echo '[{{\"Name\":\"remote\",\"Endpoints\":{{\"docker\":{{\"Host\":\"{host}\"}}}}}}]'; exit 0 ;;",
             "  info) echo '{\"SecurityOptions\":[\"name=seccomp,profile=builtin\"]}'; exit 0 ;;",
             $"  events) {Wait} ;;",
+            "  ps|network) if [ -f \"$here/up\" ]; then case \" $* \" in *\" -q \"*|*\" -aq \"*) if [ \"$1\" = ps ]; then echo c0ffee000001; else echo beef00000001; fi ;; esac; fi; exit 0 ;;",
             "  compose) ;;",
             "  *) exit 0 ;;",
             "esac",

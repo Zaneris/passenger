@@ -120,7 +120,8 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
     /// <summary>A Docker Compose project's (.dcproj) services built from a Dockerfile of their own, outside their projects'
     /// folders, are its .NET services: one whose shared Dockerfile publishes and runs the assembly its build's arguments name
     /// (internal-api, Api), one its compose file labels with its project (web), so Debug Service on the Containers window's
-    /// row restarts internal-api held and stops in its Main; one no project is known for says how to name it.</summary>
+    /// row restarts internal-api held and stops in its Main; one no project is known for says how to name it. Detach with
+    /// internal-api's tab chosen lets go of it alone, the run going on, and with none chosen lets go of the run whole.</summary>
     [AvaloniaFact]
     public void A_Docker_Compose_projects_services_built_from_a_shared_Dockerfile_or_labelled_with_their_project_are_debugged_from_the_Containers_window()
     {
@@ -187,6 +188,8 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             Ui.Launched(window, window.RunAsync(), "the Docker Compose project's services to come up", TimeSpan.FromMinutes(5));
             Assert.Equal([("internal-api", "Api.csproj"), ("web", "Web.csproj")],
                 window.Builds.Containers!.Plan.Dotnet.Select(d => (d.Service, Path.GetFileName(d.Project))).OrderBy(d => d.Service, StringComparer.Ordinal));
+            Assert.StartsWith("worker is not a .NET service of docker-compose-api: no project of the solution is known to run it; choose its project in a copy of docker-compose-api",
+                window.Builds.WhyNotOnService(AppActions.ServiceDebug, "worker"), StringComparison.Ordinal);
             ContainersView view = Shown(window);
 
             Act(window, view, project, "internal-api", AppActions.ServiceDebug);
@@ -194,15 +197,28 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             ContainerRunDebuggingTests.StoppedAt(window, api, Source(folder, "Api"), InMain, "internal-api, made again held, to stop in Main");
             ContainerRunDebuggingTests.Resume(window, api);
 
-            Assert.StartsWith("worker is not a .NET service of docker-compose-api: no project of the solution is known to run it; choose its project in a copy of docker-compose-api",
-                window.Builds.WhyNotOnService(AppActions.ServiceDebug, "worker"), StringComparison.Ordinal);
+            // Its debug tab chosen, Detach lets go of internal-api alone, the run going on; with none chosen, of the run whole.
+            string apiStarted = ContainerRunsTests.Started(project, "internal-api");
+            Assert.True(window.Perform(AppActions.Detach), "Detach did not run on internal-api's tab");
+            Ui.WaitFor(() => !api.IsLive, "internal-api's session to be let go of");
+            Assert.Equal("Detached from internal-api of docker-compose-api: the debugger let go of it alone, and the run goes on as it was", window.Status);
+            Assert.Contains("Detached from internal-api of docker-compose-api", ContainerRunsTests.Run(window), StringComparison.Ordinal);
+            Assert.True(window.IsRunning && window.Builds.Containers is not null, "Detach of one service let go of the run");
+            Assert.Equal(apiStarted, ContainerRunsTests.Started(project, "internal-api"));
+            Assert.True(window.Perform(AppActions.Detach), "Detach did not run on the run");
+            Ui.WaitFor(() => !window.IsRunning, "the run to be let go of whole");
+            Assert.Equal("Detached from docker-compose-api: its containers run on until the Containers window stops them or the folder closes", window.Status);
+            Assert.All(ContainerRunsTests.States(project).Values, state => Assert.Equal("running", state));
+
         }
-        finally
+        catch
         {
             Docker.Stopped(window, project, "Stop to take every container down");
+            throw;
         }
-        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the sessions to end with Stop");
+        // Let go of, its containers are the folder's: the close of a window nobody sees takes them down unasked.
         window.Close();
+        Docker.TakenDown(project, "the window's close to take down the containers of the run let go of");
     }
 
     /// <summary>A container run's .NET services followed by the Requests window through Passenger's tools in their

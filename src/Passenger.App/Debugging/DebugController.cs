@@ -1636,6 +1636,14 @@ public sealed class DebugController : IDisposable
     private Task EndAsync(DebugTab tab) =>
         tab.Session is { Attached: true, State: DebugState.Running or DebugState.Paused } attached && !HotReloadChanged(attached) ? attached.DetachAsync() : StopAsync(tab);
 
+    /// <summary>The run of services Detach acts on (a container run: whole, its containers left running, or the chosen one of
+    /// its services), the window's: whether it takes Detach given where it runs and the session chosen, why it cannot now,
+    /// and the letting go; null for none.</summary>
+    public RunDetaching? RunDetach { get; set; }
+
+    /// <summary>Why one session's program cannot be let go now, as Detach asks of the chosen one.</summary>
+    public string? WhyNotDetachOf(DebugSession session) => WhyNotDetach(session);
+
     /// <summary>Detach: the debugger lets go of the program it attached to, which runs on. Null once it has, else why it
     /// could not (nothing attached to).</summary>
     public Task<string?> DetachAsync() => DetachAsync(Session);
@@ -1759,7 +1767,8 @@ public sealed class DebugController : IDisposable
             (d, c) => d.NotPaused() ?? (c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression), null);
         Add(AppActions.QuickEvaluate, "Quick Evaluate Expression", (d, c) => IdeErrors.Observe(d.QuickEvaluateAsync(c)),
             (d, c) => d.NotPaused() ?? (c.File is null ? Refusals.NoFile : c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression), new("Run", 1, 10));
-        Add(AppActions.Detach, "Detach", (d, c) => IdeErrors.Observe(d.DetachAsync()), (d, _) => d.WhyNotDetach(), new("Run", 0, 8));
+        Add(AppActions.Detach, "Detach", (d, c) => IdeErrors.Observe(d.RunDetach is { } run && run.Takes(c, d.Session) ? run.Detach(c, d.Session) : d.DetachAsync()),
+            (d, c) => d.RunDetach is { } run && run.Takes(c, d.Session) ? run.WhyNot(c, d.Session) : d.WhyNotDetach(), new("Run", 0, 8));
         // Every breakpoint stays as it is, and none stops the program until it is chosen again.
         actions.Add(new IdeAction(AppActions.MuteBreakpoints, "Mute Breakpoints", "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
         {
@@ -3298,3 +3307,8 @@ public sealed record BindingStop(BindingProblem Problem, string Value, string? T
     /// log message read it by the same name.</summary>
     public const string Name = "$bindingError";
 }
+
+/// <summary>A run Detach acts on: whether it takes Detach where it runs, given the session chosen (null for none), why it
+/// cannot now, and the letting go, null once done.</summary>
+public sealed record RunDetaching(Func<ActionContext, DebugSession?, bool> Takes, Func<ActionContext, DebugSession?, string?> WhyNot,
+    Func<ActionContext, DebugSession?, Task<string?>> Detach);

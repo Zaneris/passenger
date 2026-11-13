@@ -1164,6 +1164,46 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         window.Close();
     }
 
+    /// <summary>Detach lets go of a Docker Compose project's run on a real engine: its containers run on, the run no longer
+    /// followed nor Stop's; the close of a window nobody sees asks nothing and takes them down, as it takes all the folder
+    /// started.</summary>
+    [AvaloniaFact]
+    public void Detach_leaves_a_Docker_Compose_projects_containers_running_until_the_window_closes()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        (string folder, string project) = Restored("dcdetach");
+        TestFolders.Write(folder, "docker-compose.dcproj", """
+            <Project ToolsVersion="15.0" Sdk="Microsoft.Docker.Sdk">
+              <PropertyGroup>
+                <DockerComposeBaseFilePath>compose</DockerComposeBaseFilePath>
+              </PropertyGroup>
+            </Project>
+
+            """);
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n  <Project Path=\"Api/Api.csproj\" />\n  <Project Path=\"docker-compose.dcproj\" />\n</Solution>\n");
+        MainWindow window = Open(folder);
+        Assert.True(window.SelectConfiguration("docker-compose"), $"No configuration of the .dcproj: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+        try
+        {
+            Launched(window, "the Docker Compose project to come up");
+            Assert.True(window.Perform(AppActions.Detach), "Detach did not run");
+            Ui.WaitFor(() => !window.IsRunning, "the run to be let go of");
+            Assert.StartsWith("Detached from docker-compose", window.Status, StringComparison.Ordinal);
+            Assert.Equal("Nothing is running", window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()));
+            Assert.Equal(["api", "cache", "web"], States(project).Keys.Order(StringComparer.Ordinal));
+            Assert.All(States(project).Values, state => Assert.Equal("running", state));
+            Assert.Equal("web 1", Served(window, project, "web"));
+        }
+        catch
+        {
+            Docker.Stopped(window, project, "Stop to take every container down");
+            throw;
+        }
+        // A window nobody sees asks nothing: its close takes them down.
+        window.Close();
+        Docker.TakenDown(project, "the window's close to take down the containers of the run let go of");
+    }
+
     private static void Press(Avalonia.Controls.Button button)
     {
         Ui.Click(button);

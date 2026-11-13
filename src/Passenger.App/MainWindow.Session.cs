@@ -136,6 +136,10 @@ public partial class MainWindow
             {
                 return OpenHeldAsync(held, path, opening, opened);
             }
+            if (opener is null && AsksOfLetGo)
+            {
+                return OpenLetGoAsync(path, opening, opened);
+            }
             if (!LeaveFolder())
             {
                 return Task.CompletedTask;
@@ -268,6 +272,9 @@ public partial class MainWindow
         session = next;
         ForgetRunMarks();
         buildRun = new BuildRunController(next, BuildRunParts());
+        BuildRunController runs = buildRun;
+        // Detach acts on the container run under way: whole from the Run window or with nothing chosen, else the chosen service alone.
+        next.Debug.RunDetach = new(runs.DetachesContainers, runs.WhyNotDetachContainers, runs.DetachContainersAsync);
         BindAspire(next);
         buildRun.RunningChanged += (_, _) =>
         {
