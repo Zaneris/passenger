@@ -656,6 +656,31 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>An Aspire AppHost's row stands apart from the projects beside it: once MSBuild evaluates it as one, the
+    /// Solution view draws it with the Aspire window's icon, in its project file's tint, and a library keeps its project
+    /// file's icon.</summary>
+    [AvaloniaFact]
+    public void An_Aspire_AppHost_is_drawn_with_the_Aspire_windows_icon_and_a_library_with_its_project_files()
+    {
+        Write("Shop.AppHost/Shop.AppHost.csproj", TestProjects.Console("<IsAspireHost>true</IsAspireHost>"));
+        Write("Shop.AppHost/Program.cs", "System.Console.WriteLine(\"Host\");\n");
+        Write("Shop.Core/Shop.Core.csproj", TestProjects.Library());
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop.AppHost/Shop.AppHost.csproj\" />\n  <Project Path=\"Shop.Core/Shop.Core.csproj\" />\n</Solution>\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.Projects.Count(p => p.IsEvaluated) == 2, "MSBuild to evaluate Shop.AppHost and Shop.Core");
+        Assert.True(window.Projects.Single(p => p.Name == "Shop.AppHost").IsAspireHost, "Shop.AppHost, setting IsAspireHost, is not evaluated as an AppHost");
+
+        object projectTint = Resource(TokenKeys.FileIcon_Blue);
+        Ui.WaitFor(() => ReferenceEquals(Resource(IconKeys.Aspire), Drawn(window, Row(window, NodeKind.Project, "Shop.AppHost")).Data),
+            "The Solution view to draw Shop.AppHost with the Aspire window's icon");
+        Assert.True(ReferenceEquals(projectTint, Drawn(window, Row(window, NodeKind.Project, "Shop.AppHost")).Foreground),
+            "The Solution view draws Shop.AppHost in another colour than a .csproj's");
+        (Avalonia.Media.Geometry? Data, Avalonia.Media.IBrush? Foreground) library = Drawn(window, Row(window, NodeKind.Project, "Shop.Core"));
+        Assert.True(ReferenceEquals(Resource("FileIcon.Stack"), library.Data), "The Solution view no longer draws Shop.Core, a library, with a project file's icon");
+        Assert.True(ReferenceEquals(projectTint, library.Foreground), "The Solution view draws Shop.Core in another colour than a .csproj's");
+        window.Close();
+    }
+
     /// <summary>A web project's Properties and wwwroot, and a class library's Properties, are the folders the SDK reads: listed
     /// before the project's other folders, drawn with their own icons in the Solution view and the File System view, and
     /// refusing Rename, Delete and Cut and a drag saying why, by the row's menu, by keys and for an agent, while a file inside
