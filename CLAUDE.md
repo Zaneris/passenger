@@ -399,6 +399,10 @@ a new name, and `just site-shots` retakes its images.
   second each, before any answer needing the compilation (dotnet/roslyn#86236). A reload adds new files before it drops
   those gone, and the solution finds a path's documents ignoring case: a file renamed in letter case alone loads first
   without it (`Recased`), and a document found by path is checked with `PathNames.Same`.
+- **Roslyn's server reruns every project's generators** a second after its projects load and for each 5 s batch of
+  `.dll` changes under .NET's packs folders, which moves every project's version: solution-wide analysis drops a pull
+  under way at the server's diagnostic refresh (`CSharpService.SolutionMoved`), and its first round ends at the
+  extension's word that it analysed everything, never at the answer.
 - **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
   references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`, which moves
   `LanguageServer.Changes` itself (`AnswersMoved`).
