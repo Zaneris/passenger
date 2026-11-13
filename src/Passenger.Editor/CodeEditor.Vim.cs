@@ -57,8 +57,9 @@ public sealed partial class CodeEditor
     /// <summary>Vim's mode now, or null with Vim mode off: for the status bar.</summary>
     public VimMode? VimModeShown => vim?.Mode;
 
-    /// <summary>The keys of a Vim command typed so far ("2d"), empty with none or Vim mode off.</summary>
-    public string VimPending => vim?.Pending ?? string.Empty;
+    /// <summary>The keys of a Vim command typed so far ("2d"), and the register q records into, empty with none or Vim
+    /// mode off.</summary>
+    public string VimPending => vim is null ? string.Empty : vim.Recording is { } register ? $"{vim.Pending} recording @{register}".TrimStart() : vim.Pending;
 
     /// <summary>Vim's mode or its half-typed command changed.</summary>
     public event EventHandler? VimModeChanged;
@@ -76,12 +77,12 @@ public sealed partial class CodeEditor
             return false;
         }
         VimMode was = vim.Mode;
-        string pendingWas = vim.Pending;
+        string pendingWas = VimPending;
         VimResult result = vim.Press(VimKey(e), document.Snapshot, selections, VimView);
         FollowVim(result, was);
         action = result.Action;
         repeat = action is null ? 0 : result.Repeat;
-        if (vim.Mode == was && vim.Pending != pendingWas)
+        if (vim?.Mode == was && VimPending != pendingWas)
         {
             VimModeChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -123,7 +124,7 @@ public sealed partial class CodeEditor
             // Undo puts back carets at the visual stretches' starts, never the stretches themselves.
             Selections = selections.With(s => Selection.At(s.Start));
         }
-        bool entering = was != VimMode.Insert && vim?.Mode == VimMode.Insert;
+        bool entering = was is not (VimMode.Insert or VimMode.Replace) && vim?.Mode is VimMode.Insert or VimMode.Replace;
         if (entering)
         {
             FollowVimMode();
@@ -158,6 +159,46 @@ public sealed partial class CodeEditor
         {
             BackgroundWork.Track(PutFromClipboardAsync());
         }
+        if (result.Replay is { } keys)
+        {
+            ReplayVim(keys);
+        }
+    }
+
+    /// <summary>A macro's keys pressed in turn as typed, insert mode's typing done as the keymap's Enter, Backspace and
+    /// Tab do; a macro's own @ pressing its keys in their place, up to <see cref="Vim.MostReplayed"/> keys in all.</summary>
+    private void ReplayVim(IReadOnlyList<string> keys)
+    {
+        List<string> queue = [.. keys];
+        for (int i = 0; vim is not null && i < queue.Count && i < Vim.MostReplayed; i++)
+        {
+            string key = queue[i];
+            VimMode was = vim.Mode;
+            VimResult result = vim.Press(key, document.Snapshot, selections, VimView);
+            if (result.Replay is { } more)
+            {
+                queue.InsertRange(i + 1, more.Take(Vim.MostReplayed - queue.Count));
+                result = result with { Replay = null };
+            }
+            FollowVimResult(result, was);
+            for (int r = 0; result.Action is { } action && r < result.Repeat; r++)
+            {
+                TryExecute(action);
+            }
+            if (!result.Taken && vim.Mode == VimMode.Insert)
+            {
+                string? action = key switch { "<CR>" => EditorActions.NewLine, "<BS>" => EditorActions.Backspace, "<Tab>" => EditorActions.Indent, _ => null };
+                if (action is not null)
+                {
+                    TryExecute(action);
+                }
+                else if (key.Length <= 2 && !key.StartsWith('<'))
+                {
+                    Type(key);
+                }
+            }
+        }
+        VimModeChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>A put from + or *: the system clipboard's text, read as Paste reads it, put as Vim puts it.</summary>

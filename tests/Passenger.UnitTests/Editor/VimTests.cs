@@ -391,6 +391,34 @@ public class VimTests
     public void A_block_is_a_selection_on_each_line_and_its_operators_act_line_by_line_as_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    [Theory]
+    [InlineData("one t|wo three\nfour five\nsix", "qaxq", "one t|o three\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaxqj@a", "one to three\nfour |ive\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaxqj2@a", "one to three\nfour |ve\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaxqj@a@@", "one to three\nfour |ve\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaA!<Esc>jqj@a", "one two three!\nfour five\nsix|!")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaA!<Esc>jq@a@@", "one two three!\nfour five!\nsix|!")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaxqqAxq@a", "one t|hree\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaciwX<Esc>wq@a", "one X X\n|four five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaviwUq0@a", "|ONE TWO three\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaxq\"ap", "one to|x three\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "qaRXY<Esc>jq@a", "one tXY three\nfour fXYe\nsi|x")]
+    public void Q_records_keys_into_a_register_and_at_presses_them_again_as_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    [Theory]
+    [InlineData("one t|wo three\nfour five\nsix", "RXY<Esc>", "one tX|Y three\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "RXYZWVU<Esc>", "one tXYZWV|Uee\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "$RXYZ<Esc>", "one two threXY|Z\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "RXY<BS><Esc>", "one t|Xo three\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "RXY<BS><BS><BS><Esc>", "one| two three\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "2RXY<Esc>", "one tXYX|Yhree\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "RXY<Esc>j.", "one tXY three\nfour fX|Ye\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "RX<CR>Y<Esc>", "one tX\n|Y three\nfour five\nsix")]
+    [InlineData("one t|wo three\nfour five\nsix", "RX<CR><BS><Esc>", "one t|Xo three\nfour five\nsix")]
+    public void Replace_mode_types_over_the_text_and_backspace_puts_it_back_as_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_repeated_change_is_edits_of_one_step_and_a_plain_change_one_edit()
     {
@@ -445,7 +473,7 @@ public class VimTests
         (TextSnapshot text, SelectionSet carets) = Marked.Parse("a|b");
         Assert.False(vim.Press("<D-s>", text, carets).Taken);
         Assert.False(vim.Press("<Esc>", text, carets).Taken);
-        Assert.True(vim.Press("q", text, carets).Taken);
+        Assert.True(vim.Press("Q", text, carets).Taken);
         vim.Press("i", text, carets);
         Assert.False(vim.Press("x", text, carets).Taken);
     }
@@ -537,11 +565,19 @@ public class VimTests
 
     /// <summary>The keys through Vim as an editor takes them: what Vim does done, and in insert mode each key typed as
     /// the editor types it, Enter carrying its line's indent and Backspace taking a character back.</summary>
-    public static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, string keys, bool stopAtFailure = false)
+    public static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, string keys, bool stopAtFailure = false) =>
+        Drive(vim, text, carets, Keys(keys), stopAtFailure);
+
+    private static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, IEnumerable<string> keys, bool stopAtFailure)
     {
-        foreach (string key in Keys(keys))
+        foreach (string key in keys)
         {
             VimResult result = vim.Press(key, text, carets);
+            if (result.Replay is { } replay)
+            {
+                (text, carets) = Drive(vim, text, carets, replay, stopAtFailure);
+                continue;
+            }
             if (stopAtFailure && ReferenceEquals(result, VimResult.Held) && vim.Pending.Length == 0 && vim.Mode == VimMode.Normal && key != Vim.Escape)
             {
                 // A command that fails ends the keys, as Vim's beep flushes what was typed ahead.

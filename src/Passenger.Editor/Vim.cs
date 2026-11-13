@@ -26,6 +26,9 @@ public sealed record VimResult(bool Taken, SelectionSet? Selections = null, IRea
     /// <summary>A put from + or *: the editor reads the system clipboard and hands it to <see cref="Vim.PutClipboard"/>.</summary>
     public bool ReadsClipboard { get; init; }
 
+    /// <summary>Keys for the editor to press in turn, as typed (a macro's): insert mode's typing its own to do.</summary>
+    public IReadOnlyList<string>? Replay { get; init; }
+
     /// <summary>The last of <see cref="Edits"/>, or null with none.</summary>
     public EditPlan? Edit => Edits is { Count: > 0 } edits ? edits[^1] : null;
 }
@@ -88,6 +91,14 @@ public sealed partial class Vim(VimRegisters registers)
     public VimResult Press(string key, TextSnapshot text, SelectionSet selections, IVimView? view = null)
     {
         view ??= PlainView;
+        if (!replaying && Recorded(key))
+        {
+            return VimResult.Held;
+        }
+        if (Mode == VimMode.Replace)
+        {
+            return PressReplace(key, text, selections, view);
+        }
         if (Mode == VimMode.Insert)
         {
             return key == Escape ? LeaveInsert(text, selections, view) : VimResult.Left;
@@ -333,6 +344,14 @@ public sealed partial class Vim(VimRegisters registers)
             foreach (string key in typed.Concat(keys))
             {
                 Follow(Press(key, text, carets, view));
+            }
+            if (Mode == VimMode.Replace)
+            {
+                foreach (string over in KeysOf(change.Inserted))
+                {
+                    Follow(Press(over, text, carets, view));
+                }
+                Follow(Press(Escape, text, carets, view));
             }
             if (Mode == VimMode.Insert)
             {

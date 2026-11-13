@@ -84,6 +84,17 @@ public sealed partial class Vim
             {
                 (name, used) = (first, 1);
             }
+            if (name is null && !incomplete && first is "q" or "@")
+            {
+                if (i + 1 >= keys.Count)
+                {
+                    incomplete = true;
+                    return null;
+                }
+                string which = keys[i + 1];
+                bool fits = which.Length == 1 && (char.IsAsciiLetterOrDigit(which[0]) || which[0] == '"' || (first == "@" && which[0] == '@'));
+                (name, argument, used) = fits ? (first, which, 2) : (null, null, 0);
+            }
             if (name is null && !incomplete && first == "g" && i + 1 < keys.Count && GCommands.Contains(keys[i + 1]))
             {
                 (name, used) = ("g" + keys[i + 1], 2);
@@ -195,6 +206,10 @@ public sealed partial class Vim
                 return Reselect(text, view);
             case "gJ":
                 return Changed(command, Join(text, selections, n, spaced: false));
+            case "R":
+                return EnterReplace(command, selections);
+            case "q" or "@":
+                return Macro(command);
             case "j" or "k" or "gj" or "gk" when command.Operator is null:
                 return Vertically(text, selections, command.Name is "j" or "gj" ? n : -n, command.Name.StartsWith('g'), view);
             case "x":

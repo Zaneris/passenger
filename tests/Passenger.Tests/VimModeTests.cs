@@ -51,11 +51,11 @@ public sealed class VimModeTests : IDisposable
             Key(window, "shift G", "G");
             Assert.Equal(("NORMAL", "2:1"), Status(window));
 
-            Key(window, "Q", "q");
+            Key(window, "shift Q", "Q");
             Ui.Press(window, "ENTER");
             Ui.Press(window, "TAB");
             Key(window, "K", "k");
-            Assert.True(Text(editor) == "one wo\nthree\nfour\n", "normal mode's q, Enter or Tab typed into the text");
+            Assert.True(Text(editor) == "one wo\nthree\nfour\n", "normal mode's Q, Enter or Tab typed into the text");
             Assert.Equal(("NORMAL", "2:1"), Status(window));
 
             Key(window, "I", "i");
@@ -354,6 +354,59 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>R types over the text until Escape, Backspace putting back what it typed over, the status bar saying
+    /// REPLACE, and the whole session is one step of undo.</summary>
+    [AvaloniaFact]
+    public void Replace_mode_types_over_the_text_as_one_step_of_undo()
+    {
+        (MainWindow window, CodeEditor editor) = Open("one two\nthree\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "wR");
+            Assert.Equal("REPLACE", Status(window).Mode);
+            Keys(window, "XYZ!<BS>");
+            Assert.Equal("one XYZ\nthree\n", Text(editor));
+            Keys(window, "<BS><Esc>");
+            Assert.Equal(("one XYo\nthree\n", "NORMAL"), (Text(editor), Status(window).Mode));
+            Keys(window, "u");
+            Ui.WaitFor(() => Text(editor) == "one two\nthree\n", () => $"u took back part of the replace session, leaving \"{Text(editor)}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>q records the keys typed, insert mode's typing too, into a register, the status bar saying so, and @
+    /// presses them again, @@ the last again, each change one step of undo.</summary>
+    [AvaloniaFact]
+    public void A_macro_recorded_with_q_is_pressed_again_by_at()
+    {
+        (MainWindow window, CodeEditor editor) = Open("one\ntwo\nthree\nfour\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "qa");
+            Assert.Equal("NORMAL recording @a", Status(window).Mode);
+            Keys(window, "A!<Esc>j");
+            Keys(window, "q");
+            Assert.Equal(("one!\ntwo\nthree\nfour\n", "NORMAL"), (Text(editor), Status(window).Mode));
+            Keys(window, "@a");
+            Assert.Equal("one!\ntwo!\nthree\nfour\n", Text(editor));
+            Keys(window, "2@@");
+            Assert.Equal("one!\ntwo!\nthree!\nfour!\n", Text(editor));
+            Keys(window, "u");
+            Ui.WaitFor(() => Text(editor) == "one!\ntwo!\nthree!\nfour\n", () => $"u after a macro left \"{Text(editor)}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A long session of normal mode's keys in an editor, seeded, checked after each key against a model of what
     /// Vim does with them: counts, h l j k 0 $, x X D dd, yy p P, J, ~ and u, and visual mode's v d, v y, V d, V j d and
     /// V y; the model knows a string, a caret, the column j and k aim for, the unnamed register and the text before each
@@ -423,6 +476,8 @@ public sealed class VimModeTests : IDisposable
                 '~' => "shift BACK_QUOTE",
                 '_' => "shift MINUS",
                 '+' => "shift EQUALS",
+                '!' => "shift 1",
+                '@' => "shift 2",
                 _ => throw new ArgumentException($"No key types '{c}' here", nameof(keys)),
             };
             Key(window, key, c.ToString());

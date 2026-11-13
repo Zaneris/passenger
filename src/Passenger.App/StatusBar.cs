@@ -239,7 +239,7 @@ public sealed class StatusBar
             VimMode.Replace => "REPLACE",
             _ => string.Empty,
         };
-        vimMode.Text = now.Pending.Length > 0 && now.Mode is not (VimMode.Insert or VimMode.Replace) ? $"{words} {now.Pending}" : words;
+        vimMode.Text = now.Pending.Length > 0 ? $"{words} {now.Pending}" : words;
     }
 
     /// <summary>The Vim mode and command the status bar words.</summary>

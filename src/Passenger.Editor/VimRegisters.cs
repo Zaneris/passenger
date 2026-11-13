@@ -73,6 +73,14 @@ public sealed class VimRegisters
         Unnamed = written;
     }
 
+    /// <summary>Keys q recorded, kept as text in the register named (appended to with a capital); the unnamed register
+    /// stays as it was.</summary>
+    public void Record(char name, string keys)
+    {
+        char lower = char.ToLowerInvariant(name);
+        held[lower] = new VimRegister([char.IsAsciiLetterUpper(name) && held.TryGetValue(lower, out VimRegister? before) ? before.Text + keys : keys], false);
+    }
+
     /// <summary>Text the system clipboard held, for p from + or *: whole lines where it ends with a line break.</summary>
     public static VimRegister FromClipboard(string text)
     {
