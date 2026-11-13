@@ -155,6 +155,30 @@ public sealed class MarkdownBlocks : Panel
         return (tops[index] + margin.Top, Math.Max(0, entry.Height - margin.Top - margin.Bottom));
     }
 
+    /// <summary>The line of the file (from zero) drawn at a place down the page: a long block's line as far down it as the
+    /// place is, the next block's first in the space after a block.</summary>
+    internal int LineAt(double y)
+    {
+        if (entries.Length == 0)
+        {
+            return 0;
+        }
+        Tops();
+        int index = IndexAt(y);
+        Entry entry = entries[index];
+        Thickness margin = entry.Control?.Margin ?? default;
+        double top = tops[index] + margin.Top;
+        double height = Math.Max(0, entry.Height - margin.Top - margin.Bottom);
+        if (y >= top + height && index + 1 < entries.Length)
+        {
+            return entries[index + 1].Placed.Line;
+        }
+        int lines = Math.Max(1, entry.Placed.End - entry.Placed.Line);
+        double within = height <= 0 ? 0 : Math.Clamp((y - top) / height, 0, 1);
+        // Past the rounding of a place worked out from a line, so that place reads back as the line.
+        return entry.Placed.Line + Math.Min(lines - 1, (int)Math.Floor((within * lines) + 1e-6));
+    }
+
     private void OnSight(object? sender, EffectiveViewportChangedEventArgs e)
     {
         if (arriving)

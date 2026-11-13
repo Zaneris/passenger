@@ -13,14 +13,16 @@ using Passenger.App.Navigation;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Text;
 using SkiaSharp;
 
 namespace Passenger.Tests;
 
 /// <summary>A Markdown file's live preview beside its editor: each kind of block a README has, GitHub's tables and task
 /// lists, fenced code coloured as the editor colours it, the images of files inside the open folder and none from outside
-/// it; following the typing and the editor's scroll; its links opening the browser, another file or a heading; the
-/// choice to show it kept for the next window; and the file's headings as its outline in Structure and File Structure.</summary>
+/// it; following the typing and the editor's scroll, the editor following the wheel over it; its links opening the
+/// browser, another file or a heading; the choice to show it kept for the next window; and the file's headings as its
+/// outline in Structure and File Structure.</summary>
 public sealed class MarkdownPreviewTests
 {
     /// <summary>A shop folder with a README of every kind of block, an image inside it and one beside it, outside.</summary>
@@ -174,8 +176,10 @@ public sealed class MarkdownPreviewTests
         Control prices = preview.Heading("prices") ?? throw new Xunit.Sdk.XunitException("The Prices heading has no anchor 'prices'");
         Assert.True(Math.Abs(preview.Offset.Y - preview.TopOf(prices)) < 1,
             $"The link to #prices left the preview at {preview.Offset.Y:0}, not its heading's {preview.TopOf(prices):0}");
-
         CodeEditor editor = group.Editor;
+        Assert.True(editor.Document.Snapshot.GetLineText(editor.LinesShown.First) == "#### Prices",
+            $"The link to #prices left the editor's top line at '{editor.Document.Snapshot.GetLineText(editor.LinesShown.First)}', not its heading");
+
         int line = editor.Document.Snapshot.ToString().Split('\n').ToList().IndexOf("## Section 12");
         Scroll(editor, line);
         Assert.Equal(line, editor.LinesShown.First);
@@ -501,6 +505,162 @@ public sealed class MarkdownPreviewTests
             $"A pause in typing in one heading of a {lines.Length}-line file read {preview.LinesRead} lines again, so a long file costs every pause its whole text");
         window.Close();
     }
+
+    /// <summary>The wheel turned over the preview of a long note, its benchmark tables wider than the preview, moves what it
+    /// shows one way only, by a step each turn, to the note's end and back to its start, the editor's top line following
+    /// the line at the preview's top: a block laid out as it comes into sight never pulls the preview back to the editor.</summary>
+    [AvaloniaFact]
+    public void The_wheel_over_a_long_notes_preview_moves_it_a_step_at_a_time_to_its_end_and_back_the_editor_following()
+    {
+        (MainWindow window, MarkdownPreview preview, CodeEditor editor) = Verifying();
+        double step = double.NaN;
+        int turns = 0;
+        foreach (int down in (ReadOnlySpan<int>)[1, -1])
+        {
+            int line = editor.LinesShown.First;
+            while (down > 0 ? preview.Offset.Y < Bottom(preview) - 0.5 : preview.Offset.Y > 0.5)
+            {
+                Assert.True(++turns < 1000, $"The preview never came to the note's {(down > 0 ? "end" : "start")}, standing at {preview.Offset.Y:0} of {Bottom(preview):0}");
+                (Control seen, double was) = Nearest(preview);
+                double offset = preview.Offset.Y;
+                Wheel(window, preview, down);
+                double moved = (was - (seen.TranslatePoint(default, preview)?.Y ?? double.NaN)) * down;
+                Assert.True(down > 0 ? preview.Offset.Y > offset : preview.Offset.Y < offset,
+                    $"Turn {turns} of the wheel {(down > 0 ? "down" : "up")} took the preview from {offset:0} to {preview.Offset.Y:0}: what was read jumped away");
+                if (double.IsNaN(step))
+                {
+                    step = moved;
+                    Assert.True(step > 0, $"The wheel's first turn moved the block at the preview's top {moved:0.0}");
+                }
+                bool atEnd = down > 0 ? preview.Offset.Y >= Bottom(preview) - 0.5 : preview.Offset.Y <= 0.5;
+                Assert.True(Math.Abs(moved - step) < 1 || (atEnd && moved > 0 && moved < step + 1),
+                    $"Turn {turns} of the wheel {(down > 0 ? "down" : "up")} moved the block at the preview's top {moved:0.0}, not a step's {step:0.0}: the reader loses their place");
+                Assert.True(editor.LinesShown.First == preview.TopLine,
+                    $"With line {preview.TopLine} at the preview's top the editor's top line is {editor.LinesShown.First}: the editor does not follow the preview");
+                Together(preview, editor, $"after turn {turns} of the wheel over the preview");
+                Assert.True(down > 0 ? editor.LinesShown.First >= line : editor.LinesShown.First <= line,
+                    $"Turn {turns} took the editor's top line from {line} to {editor.LinesShown.First}, against the wheel");
+                line = editor.LinesShown.First;
+            }
+        }
+        window.Close();
+    }
+
+    /// <summary>Once the wheel has moved the preview, the editor scrolled by its own wheel leads again, the preview following
+    /// it to the block at its top line.</summary>
+    [AvaloniaFact]
+    public void The_editor_scrolled_after_its_preview_was_leads_the_preview_again()
+    {
+        (MainWindow window, MarkdownPreview preview, CodeEditor editor) = Verifying();
+        for (int turn = 0; turn < 20; turn++)
+        {
+            Wheel(window, preview, 1);
+        }
+        int was = editor.LinesShown.First;
+        Assert.True(was > 0, "Twenty turns of the wheel over the preview left the editor at its top");
+        Point over = editor.TranslatePoint(new Point(editor.Bounds.Width / 2, editor.Bounds.Height / 2), window)!.Value;
+        for (int turn = 0; turn < 10; turn++)
+        {
+            window.MouseWheel(over, new Vector(0, -1));
+            Ui.Settle();
+            Together(preview, editor, $"after turn {turn + 1} of the wheel over the editor");
+        }
+        Assert.True(editor.LinesShown.First > was, $"Ten turns of the wheel down over the editor took its top line from {was} to {editor.LinesShown.First}");
+        window.Close();
+    }
+
+    /// <summary>A key typed in the editor, the preview moved by the wheel, leaves the preview standing where the wheel left
+    /// it once the typing is drawn, and the editor where it was.</summary>
+    [AvaloniaFact]
+    public void A_key_typed_in_the_editor_leaves_the_preview_where_the_wheel_left_it()
+    {
+        (MainWindow window, MarkdownPreview preview, CodeEditor editor) = Verifying();
+        for (int turn = 0; turn < 30; turn++)
+        {
+            Wheel(window, preview, 1);
+        }
+        (int first, int last) = editor.LinesShown;
+        TextSnapshot text = editor.Document.Snapshot;
+        int line = Enumerable.Range(first + 2, Math.Max(0, last - first - 4)).FirstOrDefault(l => text.GetLineText(l).StartsWith("What check", StringComparison.Ordinal), -1);
+        Assert.True(line >= 0, $"No check's words stand in the editor's lines {first} to {last}");
+        double offset = preview.Offset.Y;
+        Ui.Click(editor, editor.PointOf(text.GetLineStart(line) + text.GetLineText(line).Length) + new Point(-2, editor.LineHeight / 2));
+        window.KeyTextInput(" Typed.");
+        Ui.Settle();
+        Assert.True(preview.Text.Contains(" Typed.", StringComparison.Ordinal), $"The preview does not show what was typed:\n{preview.Text}");
+        Assert.True(Math.Abs(preview.Offset.Y - offset) < 0.5,
+            $"A key typed in the editor moved the preview from {offset:0} to {preview.Offset.Y:0}, away from where the wheel left it");
+        Assert.True(editor.LinesShown.First == first, $"A key typed in the editor's sight moved its top line from {first} to {editor.LinesShown.First}");
+        window.Close();
+    }
+
+    /// <summary>A note open with its preview, in a window narrow enough that its benchmark tables are wider than the preview.</summary>
+    private static (MainWindow Window, MarkdownPreview Preview, CodeEditor Editor) Verifying()
+    {
+        string folder = TestFolders.Create("markdown-scroll-");
+        File.WriteAllText(Path.Combine(folder, "VERIFICATION.md"), Verification());
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700, languageServer: false);
+        Assert.Null(window.OpenFile("VERIFICATION.md"));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        return (window, Shown(group), group.Editor);
+    }
+
+    /// <summary>A release's verification note: each check a heading, its words, a list with code spans, now and then a fence,
+    /// and every third a table of benchmarks with more columns than a narrow preview has room for.</summary>
+    private static string Verification()
+    {
+        StringBuilder text = new("# Verification\n\nWhat was checked before the release, and how it was checked.\n\n");
+        for (int check = 1; check <= 24; check++)
+        {
+            text.Append($"## Check {check}\n\nWhat check {check} looked at, written at some length so that its words wrap over a line or two of the preview.\n\n");
+            text.Append($"- Ran `dotnet test --filter Check{check}` on each system\n- Read the log for `warning` and `error`\n- Compared the times with the last release\n\n");
+            if (check % 4 == 0)
+            {
+                text.Append($"```sh\njust test Check{check} --gate\njust test Check{check} --report\n```\n\n");
+            }
+            if (check % 3 == 0)
+            {
+                text.Append("| Benchmark | Method | Runtime | Mean | Error | StdDev | Median | Ratio | Gen0 | Allocated |\n| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+                for (int row = 0; row < 6; row++)
+                {
+                    text.Append($"| Parse{row} | ReadEveryBlockOfTheFile | .NET 11.0 | {row}.123 ms | 0.0{row}1 ms | 0.0{row}2 ms | {row}.120 ms | 1.0{row} | 12.{row} | 1,024.{row} KB |\n");
+                }
+                text.Append('\n');
+            }
+        }
+        return text.ToString();
+    }
+
+    /// <summary>A turn of the wheel over the preview's middle, down or up, and what it starts let land.</summary>
+    private static void Wheel(MainWindow window, MarkdownPreview preview, int down)
+    {
+        window.MouseWheel(preview.TranslatePoint(new Point(preview.Bounds.Width / 2, preview.Bounds.Height / 2), window)!.Value, new Vector(0, -down));
+        Ui.Settle();
+    }
+
+    /// <summary>Fails unless the block drawing the editor's top line (or, for a blank line, the block after it) is the first
+    /// to reach below the preview's top.</summary>
+    private static void Together(MarkdownPreview preview, CodeEditor editor, string when)
+    {
+        int top = editor.LinesShown.First;
+        Control? first = preview.Blocks.FirstOrDefault(b => b.TranslatePoint(default, preview)!.Value.Y + b.Bounds.Height > 0.5);
+        Control? at = preview.BlockAt(top);
+        TextSnapshot text = editor.Document.Snapshot;
+        bool blankBefore = at is null && first is not null && preview.LineOf(first) > top
+            && Enumerable.Range(top, preview.LineOf(first) - top).All(l => string.IsNullOrWhiteSpace(text.GetLineText(l)));
+        Assert.True(first is not null && (at == first || blankBefore),
+            $"{when} the editor's top line is {top} ('{text.GetLineText(top)}') while the block at the preview's top begins at line {(first is null ? -1 : preview.LineOf(first))}: the two do not stand together");
+    }
+
+    /// <summary>The farthest the preview scrolls.</summary>
+    private static double Bottom(MarkdownPreview preview) => Math.Max(0, preview.Extent.Height - preview.Viewport.Height);
+
+    /// <summary>The block drawn in the preview's sight whose top stands nearest the preview's top, and where it stands.</summary>
+    private static (Control Block, double Y) Nearest(MarkdownPreview preview) =>
+        preview.Blocks.Select(b => (Block: b, Y: b.TranslatePoint(default, preview)!.Value.Y))
+            .Where(s => s.Y < preview.Viewport.Height && s.Y + s.Block.Bounds.Height > 0)
+            .MinBy(s => Math.Abs(s.Y));
 
     /// <summary>A changelog of about a size, as a long project's grows: each version a heading, its fixes in a list, and now
     /// and then a fence of code and a table.</summary>
