@@ -1,0 +1,179 @@
+using Passenger.Core;
+
+namespace Passenger.App.Mobile;
+
+/// <summary>What the folder's mobile projects need that this machine lacks, from what their workloads answered
+/// (<see cref="ProjectNeeds"/>): the .NET workloads to install, the Android SDK, its packages and the JDK to install
+/// through the Android workload's installer, the Xcode the Apple workloads want, the projects on a .NET whose mobile apps
+/// run on Mono, and those whose Apple apps build only on a Mac. Said once, in the banner over the window.</summary>
+public sealed record MobileWant
+{
+    public static MobileWant Nothing { get; } = new();
+
+    /// <summary>The projects needing what is lacking, by name, in the folder's order.</summary>
+    public IReadOnlyList<string> Projects { get; init; } = [];
+
+    /// <summary>The workload ids to install, each once.</summary>
+    public IReadOnlyList<string> Workloads { get; init; } = [];
+
+    /// <summary>The Android SDK's folder, the one found or the one it would be installed into; null where no project's
+    /// Android app was asked of.</summary>
+    public string? AndroidSdk { get; init; }
+
+    /// <summary>Whether there is no Android SDK at <see cref="AndroidSdk"/>.</summary>
+    public bool NoAndroidSdk { get; init; }
+
+    /// <summary>The SDK packages a build needs that the SDK lacks, as sdkmanager names them.</summary>
+    public IReadOnlyList<string> AndroidPackages { get; init; } = [];
+
+    /// <summary>The Java version the workload wants, where it found no JDK; null where it found one.</summary>
+    public string? Java { get; init; }
+
+    /// <summary>Why the Apple workload cannot build with the Xcode it found, in its words; null where it can.</summary>
+    public string? Xcode { get; init; }
+
+    /// <summary>An Xcode in Applications that none chose, where the workload found none.</summary>
+    public string? UnchosenXcode { get; init; }
+
+    /// <summary>The projects on .NET 10 or earlier, each with its first such framework.</summary>
+    public IReadOnlyList<(string Project, string Framework)> OnMono { get; init; } = [];
+
+    /// <summary>The projects whose every app is an Apple platform's, off a Mac.</summary>
+    public IReadOnlyList<string> AppleOffMac { get; init; } = [];
+
+    /// <summary>Whether the Android workload's installer has something to install.</summary>
+    public bool AndroidLacks => NoAndroidSdk || AndroidPackages.Count > 0 || Java is not null;
+
+    /// <summary>Whether anything is said.</summary>
+    public bool Says => Workloads.Count > 0 || AndroidLacks || Xcode is not null || OnMono.Count > 0 || AppleOffMac.Count > 0;
+
+    /// <summary>What the folder's projects need, from their answers: <paramref name="usualSdk"/> is where the Android SDK
+    /// is looked for where the workload found none, <paramref name="exists"/> whether a file or folder is there.</summary>
+    public static MobileWant Of(IReadOnlyList<ProjectNeeds> projects, bool onMac, Func<string, string?> environment, string usualSdk, Func<string, bool> exists)
+    {
+        List<string> needing = [];
+        List<string> workloads = [];
+        List<(string, string)> mono = [];
+        List<string> offMac = [];
+        string? sdk = null;
+        bool noSdk = false;
+        List<string> packages = [];
+        string? java = null;
+        string? xcode = null;
+        string? unchosen = null;
+        foreach (ProjectNeeds project in projects)
+        {
+            bool needs = false;
+            IReadOnlyList<string> mobile = MobilePlatforms.FrameworksOf(project.Frameworks);
+            foreach (WorkloadLacked workload in project.Workloads.Where(w => !workloads.Contains(w.Id)))
+            {
+                workloads.Add(workload.Id);
+            }
+            needs |= project.Workloads.Count > 0;
+            if (mobile.FirstOrDefault(f => MobilePlatforms.DotnetOf(f) is < MobilePlatforms.FirstOnCoreClr) is { } old)
+            {
+                mono.Add((project.Name, old));
+                needs = true;
+            }
+            if (!onMac && mobile.Count > 0 && mobile.All(f => MobilePlatforms.IsApple(MobilePlatforms.Of(f)!)))
+            {
+                offMac.Add(project.Name);
+                needs = true;
+            }
+            if (project.Android is { } android)
+            {
+                string folder = AndroidFolders.Of(android, environment, usualSdk);
+                bool none = android.Sdk is null && !exists(Path.Combine(folder, "platform-tools")) && !exists(Path.Combine(folder, "platforms"));
+                IReadOnlyList<string> lacked = none ? [.. android.Packages.Where(p => !p.StartsWith("cmdline-tools", StringComparison.Ordinal))]
+                    : AndroidFolders.Lacked(folder, android.Packages, exists);
+                string? wanted = android.JavaUnfound && android.Java is null ? android.JavaVersion ?? "17 or later" : null;
+                sdk ??= folder;
+                noSdk |= none;
+                packages.AddRange(lacked.Where(p => !packages.Contains(p)));
+                java ??= wanted;
+                needs |= none || lacked.Count > 0 || wanted is not null;
+            }
+            if (onMac && project.Apple is { Problem: { } problem } apple)
+            {
+                xcode ??= problem;
+                unchosen ??= apple.Unchosen;
+                needs = true;
+            }
+            if (needs)
+            {
+                needing.Add(project.Name);
+            }
+        }
+        return new MobileWant
+        {
+            Projects = needing,
+            Workloads = workloads,
+            AndroidSdk = sdk,
+            NoAndroidSdk = noSdk,
+            AndroidPackages = packages,
+            Java = java,
+            Xcode = xcode,
+            UnchosenXcode = unchosen,
+            OnMono = mono,
+            AppleOffMac = offMac,
+        };
+    }
+
+    /// <summary>The banner's words: what the projects need that is lacking, then what Passenger cannot run of them; null
+    /// with nothing to say.</summary>
+    public string? Said
+    {
+        get
+        {
+            List<string> sentences = [];
+            List<string> lacks = [];
+            if (Workloads.Count > 0)
+            {
+                lacks.Add($"the .NET {Plural.Noun(Workloads.Count, "workload")} {Plural.Listed([.. Workloads])}");
+            }
+            if (Java is not null)
+            {
+                lacks.Add($"a JDK (Java {Java})");
+            }
+            if (NoAndroidSdk)
+            {
+                lacks.Add("the Android SDK");
+            }
+            else if (AndroidPackages.Count > 0)
+            {
+                lacks.Add($"the Android SDK's {Plural.Listed([.. AndroidPackages])}");
+            }
+            if (Xcode is not null)
+            {
+                lacks.Add(UnchosenXcode is { } found
+                    ? $"Xcode, which is in {found} but not chosen (sudo xcode-select -s {found})"
+                    : $"Xcode ({Xcode.TrimEnd('.')})");
+            }
+            List<string> needing = [.. Projects.Where(p => !OnMono.Any(m => m.Project == p) && !AppleOffMac.Contains(p))];
+            if (lacks.Count > 0 && needing.Count > 0)
+            {
+                sentences.Add($"{Plural.Listed([.. needing])} {Plural.Agreeing(needing.Count, "needs", "need")} {Plural.Listed([.. lacks])}");
+            }
+            foreach ((string project, string framework) in OnMono)
+            {
+                sentences.Add($"{project} targets {framework}, whose mobile apps run on Mono: Passenger builds, runs and debugs mobile apps from .NET {MobilePlatforms.FirstOnCoreClr}, on CoreCLR");
+            }
+            if (AppleOffMac.Count > 0)
+            {
+                sentences.Add($"{Plural.Listed([.. AppleOffMac])} {Plural.Agreeing(AppleOffMac.Count, "builds", "build")} only on a Mac, with Xcode");
+            }
+            return sentences.Count == 0 ? null : string.Join(". ", sentences);
+        }
+    }
+
+    /// <summary>Whether a load problem's words are of what a want says plainly: a workload, the Android SDK, a JDK or Xcode
+    /// that a project's workloads could not find, or Mono.</summary>
+    public static bool Explains(string message) => Lacking.Any(words => message.Contains(words, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>What the SDK and the workloads say when what this want names is lacking.</summary>
+    private static readonly string[] Lacking =
+    [
+        "workloads must be installed", "NETSDK1147", "NETSDK1178", "Java SDK", "JDK", "Android SDK", "android.jar", "XA5300", "XA5207", "Xcode",
+        "MonoRuntimeNotSupportedForPlatform", "Mono runtime",
+    ];
+}

@@ -442,6 +442,21 @@ public static class Refusals
         $"The Android SDK lacks {package}, the platform the .NET android workload builds against: install it with the SDK's sdkmanager "
         + $"(sdkmanager \"{package}\") or Android Studio's SDK Manager";
 
+    /// <summary>An agent's install of what a mobile project needs: the person installs it, accepting what it asks.</summary>
+    public const string AgentInstallsMobile = "Only the person installs what a mobile project needs (a workload downloads from NuGet, the Android SDK asks them to accept "
+        + "its licences): ask them to, with the banner over Passenger's window";
+
+    /// <summary>Install Workloads with every workload the projects need installed.</summary>
+    public const string NoWorkloadLacking = "No project of the folder lacks a .NET workload";
+
+    /// <summary>Install Android SDK and Java with nothing of Android's lacking.</summary>
+    public const string NothingAndroidLacking = "No Android project of the folder lacks the Android SDK, its packages or a JDK";
+
+    /// <summary>A .NET installed for every user, which a workload installs into only with an administrator's rights.</summary>
+    public static string WorkloadsNeedAdministrator(string root, string command) =>
+        $"The .NET in {PathNames.Shown(root, null)} was installed for every user, so its workloads install only with an administrator's rights: run "
+        + (OperatingSystem.IsWindows() ? $"{command} in a terminal run as administrator" : $"sudo {command} in a terminal");
+
     /// <summary>The project has no device chosen to run on, where the chooser lists none.</summary>
     public const string NoTargets = "No device, emulator or simulator is listed for this project: connect a device, or make an emulator with Android Studio's Device Manager";
 }

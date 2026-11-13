@@ -132,6 +132,8 @@
         <DockPanel Grid.Row="1">
             <!-- What .NET the machine or the folder lacks, with its fix (MainWindow.Dotnet.cs). -->
             <app:Banner Name="DotnetBanner" />
+            <!-- What the folder's mobile projects need that the machine lacks, with how to get it (MainWindow.Mobile.cs). -->
+            <app:Banner Name="MobileBanner" />
             <!-- A Godot project's offer of Passenger as Godot's script editor, made once (MainWindow.GodotEditor.cs). -->
             <app:Banner Name="GodotBanner" />
             <!-- Tool windows round the editor: stripes of their buttons down both edges. -->

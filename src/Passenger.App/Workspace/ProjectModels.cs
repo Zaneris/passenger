@@ -134,6 +134,14 @@ public sealed class ProjectModels
         }
     }
 
+    /// <summary>Has every project evaluated again at the next round, as another SDK's MSBuild would: what the SDK resolves
+    /// changed under it (a workload installed).</summary>
+    public void EvaluateAll()
+    {
+        UiThread.Check();
+        sdk = null;
+    }
+
     /// <summary>Lets the folder go: what is still being evaluated for it is dropped as it lands.</summary>
     public void Close()
     {

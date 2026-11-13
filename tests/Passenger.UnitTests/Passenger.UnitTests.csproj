@@ -326,6 +326,14 @@
     <Compile Include="../../src/Passenger.App/Run/Devices/AndroidEnvironment.cs" Link="App/AndroidEnvironment.cs" />
   </ItemGroup>
 
+  <!-- What a mobile project needs, from its workloads' answers and what is on disk, and the Android SDK's licences of
+       what is to be installed, as text alone, compiled in since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Mobile/MobileNeeds.cs" Link="App/MobileNeeds.cs" />
+    <Compile Include="../../src/Passenger.App/Mobile/MobileWant.cs" Link="App/MobileWant.cs" />
+    <Compile Include="../../src/Passenger.App/Mobile/AndroidLicences.cs" Link="App/AndroidLicences.cs" />
+  </ItemGroup>
+
   <!-- Whether a plan starts a project's apphost and with which variable of its .NET, from an evaluation's properties alone,
        compiled in since its project is the app's. -->
   <ItemGroup>

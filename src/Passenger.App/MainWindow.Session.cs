@@ -492,6 +492,7 @@ public partial class MainWindow
         BindXamlWorkspace(next);
         BindTargetFrameworks(next);
         BindRunTargets(next);
+        BindMobile(next);
     }
 
     /// <summary>A session's debugger in the window: what it asks to run, what it says, where it stops and the toolbar's
@@ -594,6 +595,11 @@ public partial class MainWindow
                 if (said.Problem is not null && session.Models.MissingSdk is { } missing)
                 {
                     SaySdk(missing);
+                    return;
+                }
+                // A mobile project's load problem for want of a workload, the Android SDK, a JDK or Xcode: the banner's words say what to get.
+                if (SayMobile(said))
+                {
                     return;
                 }
                 status.Say(said.Text, said.Severity, said.Problem is { } problem ? LoadProblemPlace(problem) : null);
