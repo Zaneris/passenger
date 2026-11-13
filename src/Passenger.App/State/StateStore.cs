@@ -14,7 +14,8 @@ using Passenger.App.Workspace;
 namespace Passenger.App.State;
 
 /// <summary>The IDE's own state, in one folder: the app's documents at its top (the settings, the layout a folder
-/// without its own opens on, the recent solutions, the release last announced, Find in Files' mask, Rename's options),
+/// without its own opens on, where the window last stood, the recent solutions, the release last announced, Find in
+/// Files' mask, Rename's options),
 /// and each folder's under <c>workspaces/&lt;name&gt;-&lt;hash&gt;/</c>, held only while a window has the folder open. Only
 /// the windows a person uses keep one, all of a process's windows over the same folder sharing it (<see cref="Open"/>), so
 /// each document is held once and what one window keeps another reads at once; a headless IDE starts on the defaults.</summary>
@@ -38,6 +39,7 @@ public sealed class StateStore
         this.key = key;
         Settings = SettingsStore.Kept(new StateDocument<AppSettings>(Path.Combine(root, SettingsFile)));
         Layout = new(Path.Combine(root, "layout.json"));
+        Placement = new(Path.Combine(root, "windowPlacement.json"));
         Recent = new(Path.Combine(root, "recentSolutions.json"));
         Updates = new(Path.Combine(root, "updates.json"));
         Find = new(Path.Combine(root, "find.json"));
@@ -103,6 +105,9 @@ public sealed class StateStore
     /// <summary>The tool windows' layout as it was changed last, which a folder with none of its own opens on.</summary>
     public StateDocument<DockLayout> Layout { get; }
 
+    /// <summary>Where the person's window last stood, which the next start's window opens at.</summary>
+    public StateDocument<WindowPlacementState> Placement { get; }
+
     /// <summary>The folders and solutions opened lately, which a start reopens.</summary>
     public StateDocument<RecentSolutionsState> Recent { get; }
 
@@ -161,6 +166,7 @@ public sealed class StateStore
     {
         Settings.Flush();
         Layout.Flush();
+        Placement.Flush();
         Recent.Flush();
         Updates.Flush();
         Find.Flush();

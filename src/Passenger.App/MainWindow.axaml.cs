@@ -818,6 +818,7 @@ public partial class MainWindow : IdeWindow
                     KeepDock();
                     KeepWorkspace();
                 }
+                TakePlacement();
                 state.Flush();
             };
             Action news = () => UiThread.Post(SayStateNews);

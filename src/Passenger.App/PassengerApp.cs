@@ -160,6 +160,7 @@ public static class PassengerApp
         if (like.KeepsLayout)
         {
             window.KeepLayout();
+            window.KeepPlacement();
         }
         if (like.KeepsSettings)
         {

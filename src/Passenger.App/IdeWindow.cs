@@ -33,10 +33,12 @@ public abstract class IdeWindow : Window
         }
     }
 
-    /// <summary>Fits the window to the screen under its place when it keeps one, else the primary, before it is shown.</summary>
+    /// <summary>Fits the window to the screen most of it stands on when it keeps its place, else the primary, before it is
+    /// shown: a frame whose top-left edge lies over a neighbouring screen stays on its own.</summary>
     public void FitToScreen(bool keepPlace)
     {
-        Screen? screen = (keepPlace ? Screens.ScreenFromPoint(Position) : null) ?? Screens.Primary;
+        Screen? screen = (keepPlace ? Screens.ScreenFromBounds(new PixelRect(Position, PixelSize.FromSize(Asked(), Screens.ScreenFromPoint(Position)?.Scaling ?? 1))) : null)
+            ?? Screens.Primary;
         if (screen is not null)
         {
             FitWithin(screen.WorkingArea, screen.Scaling, keepPlace);
@@ -134,6 +136,11 @@ public abstract class IdeWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         opened = true;
+        // Opened maximized or full screen, it keeps the bounds it was fitted to for when it is restored.
+        if (WindowState != WindowState.Normal)
+        {
+            following = null;
+        }
         if (following is { } fitting)
         {
             Fit(fitting, ClientSize);
