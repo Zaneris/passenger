@@ -1,10 +1,10 @@
 // Written by tools/unicode-widths.py from the Unicode Character Database 16.0.0 (EastAsianWidth.txt and
 // emoji-data.txt, under the Unicode License v3; see THIRD_PARTY_NOTICES.md). Run it again rather than edit this.
-namespace Passenger.Terminal;
+namespace Passenger.Text;
 
-/// <summary>The characters a terminal draws two columns wide: East Asian Wide and Fullwidth, and those presented as
+/// <summary>The characters drawn two columns wide: East Asian Wide and Fullwidth, and those presented as
 /// emoji (the regional indicators besides).</summary>
-internal static partial class WideCharacters
+public static partial class WideCharacters
 {
     /// <summary>The first and last code point of each range, in order.</summary>
     private static ReadOnlySpan<int> Ranges =>

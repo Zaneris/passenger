@@ -1,8 +1,8 @@
 using Passenger.Core;
 
-namespace Passenger.Terminal;
+namespace Passenger.Text;
 
-internal static partial class WideCharacters
+public static partial class WideCharacters
 {
     /// <summary>Whether a character is drawn two columns wide: within one of the ranges, found by halving their firsts.</summary>
     public static bool Contains(int rune)

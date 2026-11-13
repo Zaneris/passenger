@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Passenger.Text;
 
 namespace Passenger.Terminal;
 

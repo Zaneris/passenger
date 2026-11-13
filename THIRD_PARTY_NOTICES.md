@@ -696,7 +696,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## Unicode Character Database
 
-`src/Passenger.Terminal/WideCharacters.cs`, the characters the terminal draws two columns wide, is derived from the
+`src/Passenger.Text/WideCharacters.cs`, the characters the terminal and Vim mode count two columns wide, is derived from the
 Unicode Character Database 16.0.0's `EastAsianWidth.txt` and `emoji/emoji-data.txt`
 (https://www.unicode.org/Public/16.0.0/ucd/), written by `tools/unicode-widths.py`.
 `src/Passenger.Workspace/GDScript/UnicodeIdentifiers.cs`, what a GDScript identifier's spoof check reads, is derived from
