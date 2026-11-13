@@ -907,6 +907,26 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         return true;
     }
 
+    /// <summary>How long func is given to start a Functions app's worker once it has started, longer on a slower machine.</summary>
+    private static readonly TimeSpan FunctionsWorkerLimit = TimeSpan.FromMinutes(1);
+
+    /// <summary>The launch profile a Functions app runs in, as its AppHost takes one for it: the AppHost's own profile's name
+    /// where the app has one of it, else its first that runs a program; null for none.</summary>
+    private static LaunchProfile? FunctionsProfile(IReadOnlyList<LaunchProfile> profiles, string? appHosts) =>
+        profiles.FirstOrDefault(p => p.Name == appHosts)
+        ?? profiles.FirstOrDefault(p => string.IsNullOrEmpty(p.Command) || p.RunsProject || p.Is(LaunchProfile.ExecutableCommand));
+
+    /// <summary>The worker func started for a Functions app, off the window's thread, while func runs and within its limit;
+    /// null where none came.</summary>
+    private static async Task<int?> FunctionsWorkerAsync(int func, CancellationToken cancellation)
+    {
+        using CancellationTokenSource within = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        within.CancelAfter(Waits.Of(FunctionsWorkerLimit));
+        int? worker = await BackgroundWork.Run(() => FunctionsHost.WorkerAsync(func, within.Token), cancellation);
+        cancellation.ThrowIfCancellationRequested();
+        return worker;
+    }
+
     private async Task<AspireProjectSession> StartRequestedAsync(AspireAppRun app, AspireProjectLaunch request, bool profiling, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
@@ -929,7 +949,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         string? profileName = request.DisableLaunchProfile ? null : request.LaunchProfile ?? app.Configuration.LaunchProfile;
         // The project and its launch profiles are read off the UI thread.
         (bool exists, LaunchProfile? profile) = await BackgroundWork.Run(() => (File.Exists(path),
-            profileName is null ? null : LaunchProfile.Read(project).FirstOrDefault(candidate => candidate.Name == profileName)), cancellation);
+            request.Functions ? FunctionsProfile(LaunchProfile.Read(project), profileName)
+            : profileName is null ? null : LaunchProfile.Read(project).FirstOrDefault(candidate => candidate.Name == profileName)), cancellation);
         if (!exists)
         {
             throw new LaunchException("DCP requested a project outside this workspace and its project references");
@@ -961,6 +982,11 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             ? [.. plan.Arguments.Take(plan.Leading), .. given]
             : plan.Arguments;
         plan = plan with { Name = $"{app.Configuration.Name} / {project.Name}", Environment = environment, Arguments = arguments };
+        if (request.Functions)
+        {
+            string func = await BackgroundWork.Run(FunctionsHost.Func, cancellation) ?? throw new LaunchException(Refusals.NoFunc(project.Name));
+            plan = FunctionsHost.Plan(plan, func, [.. plan.Arguments.Skip(plan.Leading)]);
+        }
         LaunchPlan stamped = plan;
         string stamp = await BackgroundWork.Run(() => AspireResourceRun.ReadBuiltStamp(stamped), cancellation);
         cancellation.ThrowIfCancellationRequested();
@@ -988,15 +1014,24 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             // Held as the run decides from its first start (FirstHold); the one Profile records, for the profiler.
             RunStart? chosen = app.Starting(resource, () => FirstHold(app, resource, request));
             RunStart? held = profiling ? RunStart.Profile : chosen;
-            resource.Inspection = LiveApp.For(plan, workspace.Overlays);
+            if (request.Functions)
+            {
+                // A Functions app's worker, which func starts, is debugged alone: never recorded, nor attached to quietly.
+                held = held == RunStart.Profile ? throw new LaunchException(Refusals.FunctionsUnprofiled(serviceName)) : held == RunStart.Debug ? held : null;
+            }
+            resource.Inspection = request.Functions ? null : LiveApp.For(plan, workspace.Overlays);
             if (resource.Inspection is { } inspection)
             {
                 inspection.BindingFailed += (_, _) => BindingsFailed();
                 Inspected?.Invoke(inspection);
             }
             LaunchPlan inspected = resource.Inspection?.Plan ?? plan;
+            if (request.Functions && held is not null)
+            {
+                inspected = FunctionsHost.Debugged(inspected);
+            }
             // Held until what attaches lets it go, never where nothing can; the profiler's gets no changeable code to measure.
-            if (held is not null && AspireAppRun.DiagnosticsOff(inspected.Environment) is null)
+            else if (held is not null && AspireAppRun.DiagnosticsOff(inspected.Environment) is null)
             {
                 Dictionary<string, string> holding = new(inspected.Environment, StringComparer.Ordinal);
                 foreach ((string name, string value) in HeldStart.Variables(changeable: held != RunStart.Profile))
@@ -1036,8 +1071,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             }
             resource.ProcessId = runner.ProcessId;
             resource.Held = held == RunStart.Profile ? null : held;
-            // The run of services' one attach to this start, whose session (or recording) lets it go.
-            if (held is { } purpose && await (AttachStart ?? throw new LaunchException("The debugger is unavailable"))(app, resource, purpose, cancellation) is { } unattached)
+            // The run of services' one attach to this start, whose session (or recording) lets it go: a Functions app's to its worker.
+            if (held is { } purpose && (request.Functions && (resource.Worker = await FunctionsWorkerAsync(resource.ProcessId ?? throw new LaunchException(BuildRunController.StoppedStarting(serviceName)), cancellation)) is null
+                ? Refusals.NoFunctionsWorker(Waits.Of(FunctionsWorkerLimit))
+                : await (AttachStart ?? throw new LaunchException("The debugger is unavailable"))(app, resource, purpose, cancellation)) is { } unattached)
             {
                 if (purpose == RunStart.Profile)
                 {
@@ -1624,13 +1661,13 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>Nothing to write: a service's next start reads its hold.</summary>
     protected override Task HoldsChangedAsync(CancellationToken cancel) => Task.CompletedTask;
 
-    /// <summary>A service's program on this machine: the newest start of its replica (<see cref="Newest"/>), with its
-    /// inspected app, open to Hot Reload when it started held (with DOTNET_MODIFIABLE_ASSEMBLIES=debug).</summary>
+    /// <summary>A service's program on this machine: the newest start of its replica (<see cref="Newest"/>), a Functions
+    /// app's worker, with its inspected app, open to Hot Reload when it started held (with DOTNET_MODIFIABLE_ASSEMBLIES=debug).</summary>
     public override Task<ServiceProgram?> ProgramAsync(IRunService service, Task up, CancellationToken stop) =>
         Newest(service) is { ProcessId: int id } running
-            ? Task.FromResult<ServiceProgram?>(new ServiceProgram(id, null, null)
+            ? Task.FromResult<ServiceProgram?>(new ServiceProgram(running.Worker ?? id, null, null)
             {
-                HotReload = running.Held is not null,
+                HotReload = running.Held is not null && running.Worker is null,
                 App = running.Inspection,
                 Handlers = running.Handlers,
                 Browser = running.Browser,
@@ -1854,6 +1891,11 @@ public sealed class AspireResourceRun(string id, string instanceId, string proje
     internal string? SessionName { get; set; }
 
     public int? ProcessId { get; internal set; }
+
+    /// <summary>For a Functions app, its worker, which func (<see cref="ProcessId"/>) started and a debugger attaches to;
+    /// null for any other start, and before func started it.</summary>
+    public int? Worker { get; internal set; }
+
     public DebugTab? DebugTab { get; internal set; }
 
     /// <summary>The session attached to this start (in its tab, or quietly for Hot Reload), which its end lets go.</summary>

@@ -28,7 +28,8 @@ public sealed class AspireExecutionServer : IAsyncDisposable
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         MaxDepth = 16
     };
-    private static readonly AspireEndpointInfo Info = new([BaselineProtocol], ["project"]);
+    private const string ProjectLaunch = "project";
+    private static readonly AspireEndpointInfo Info = new([BaselineProtocol], [ProjectLaunch, FunctionsHost.LaunchType]);
     private readonly object sync = new();
     private readonly Dictionary<string, Instance> instances = new(StringComparer.Ordinal);
     private readonly List<Exception> cleanupErrors = [];
@@ -453,7 +454,7 @@ public sealed class AspireExecutionServer : IAsyncDisposable
         {
             return null;
         }
-        AspireProjectConfiguration? project = payload.LaunchConfigurations.FirstOrDefault(configuration => configuration?.Type == "project");
+        AspireProjectConfiguration? project = payload.LaunchConfigurations.FirstOrDefault(configuration => configuration?.Type is ProjectLaunch or FunctionsHost.LaunchType);
         if (project is null || string.IsNullOrWhiteSpace(project.ProjectPath) ||
             !Path.IsPathFullyQualified(project.ProjectPath) || project.ProjectPath.Contains('\0') ||
             project.Mode is not (null or "Debug" or "NoDebug"))
@@ -485,7 +486,7 @@ public sealed class AspireExecutionServer : IAsyncDisposable
             arguments = values.ToImmutable();
         }
         return new(instanceId, sessionId, project.ProjectPath, project.Mode ?? "Debug", project.LaunchProfile,
-            project.DisableLaunchProfile, environment.ToImmutable(), arguments);
+            project.DisableLaunchProfile, environment.ToImmutable(), arguments) { Functions = project.Type == FunctionsHost.LaunchType };
     }
 
     private async Task DeleteAsync(AspireExecutionConnection context, string instanceId, string sessionId)

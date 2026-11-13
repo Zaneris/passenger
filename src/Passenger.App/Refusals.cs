@@ -490,6 +490,19 @@ public static class Refusals
         $"The .NET in {PathNames.Shown(root, null)} was installed for every user, so its workloads install only with an administrator's rights: run "
         + (OperatingSystem.IsWindows() ? $"{command} in a terminal run as administrator" : $"sudo {command} in a terminal");
 
+    /// <summary>A Functions app an AppHost asks for, with no Azure Functions Core Tools' func on the PATH to host it.</summary>
+    public static string NoFunc(string project) =>
+        $"{project} is an Azure Functions app, which Azure Functions Core Tools' func runs, and none is on the PATH: install them "
+        + "(https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools)";
+
+    /// <summary>Profile of an AppHost's Functions app, whose worker func starts and the profiler does not reach.</summary>
+    public static string FunctionsUnprofiled(string service) =>
+        $"{service} is an Azure Functions app, whose worker Azure Functions Core Tools start: Passenger does not profile it yet";
+
+    /// <summary>A debugged Functions app whose host started no worker within its time.</summary>
+    public static string NoFunctionsWorker(TimeSpan limit) =>
+        $"Azure Functions Core Tools started no worker for it within {limit.TotalSeconds:0} s";
+
     /// <summary>The project has no device chosen to run on, where the chooser lists none.</summary>
     public const string NoTargets = "No device, emulator or simulator is listed for this project: connect a device, or make an emulator with Android Studio's Device Manager";
 }

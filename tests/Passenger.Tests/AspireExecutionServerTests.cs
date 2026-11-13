@@ -185,6 +185,36 @@ public sealed class AspireExecutionServerTests
     }
 
     [Fact]
+    public async Task An_azure_functions_launch_is_offered_and_reaches_the_launch_callback_as_a_functions_app_with_its_overlays()
+    {
+        TaskCompletionSource<AspireProjectLaunch> launched = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using AspireExecutionServer server = await AspireExecutionServer.StartAsync((launch, _) =>
+        {
+            launched.TrySetResult(launch);
+            return Task.FromResult(new AspireProjectSession(launch.SessionId, 42));
+        }, (_, _) => Task.CompletedTask, Cancel);
+        using (JsonDocument info = JsonDocument.Parse(server.SessionInfo))
+        {
+            Assert.Equal(["project", FunctionsHost.LaunchType], JsonMembers.Items(info.RootElement, "supported_launch_configurations").Select(e => e.GetString()));
+        }
+        string functions = JsonSerializer.Serialize(new
+        {
+            launch_configurations = new[] { new { type = FunctionsHost.LaunchType, project_path = Path.GetFullPath("Fn.csproj"), mode = "Debug" } },
+            env = new[] { new { name = "FUNCTIONS_WORKER_RUNTIME", value = "dotnet-isolated" } },
+            args = new[] { "--port", "7071" },
+        });
+        using ClientWebSocket notifications = await Subscribe(server);
+        await Create(server, body: functions);
+        AspireProjectLaunch launch = await launched.Task.WaitAsync(Limit, Cancel);
+        notifications.Abort();
+        Assert.True(launch.Functions, "An azure-functions launch reached the callback as a project's");
+        Assert.Equal(Path.GetFullPath("Fn.csproj"), launch.ProjectPath);
+        Assert.Equal("Debug", launch.Mode);
+        Assert.Equal(["--port", "7071"], launch.Arguments);
+        Assert.Equal("dotnet-isolated", Assert.Single(launch.Environment).Value);
+    }
+
+    [Fact]
     public async Task Committed_201_survives_normal_HTTP_close_and_remains_instance_owned()
     {
         ConcurrentQueue<string> stopped = new();

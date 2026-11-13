@@ -12,7 +12,12 @@ public sealed record AspireProjectLaunch(
     string? LaunchProfile,
     bool DisableLaunchProfile,
     ImmutableArray<AspireEnvironmentVariable> Environment,
-    ImmutableArray<string>? Arguments);
+    ImmutableArray<string>? Arguments)
+{
+    /// <summary>Whether the AppHost asks for an Azure Functions app (<see cref="FunctionsHost.LaunchType"/>), which Azure
+    /// Functions Core Tools host, rather than a project that runs as itself.</summary>
+    public bool Functions { get; init; }
+}
 
 public sealed record AspireEnvironmentVariable(string Name, string Value);
 
