@@ -18,6 +18,9 @@ public sealed partial class SettingsDialog
     /// <summary>The code colour scheme's drop-down and Add from File.</summary>
     public ThemePicker SchemePicker { get; private set; } = null!;
 
+    /// <summary>The explorer of VS Code colour themes from Open VSX.</summary>
+    public ThemeExplorer ThemeExplorer { get; private set; } = null!;
+
     /// <summary>The theme sources listed: Passenger's themes repository, then the person's.</summary>
     public ListBox ThemeSourceList { get; } = new() { Classes = { StyleClasses.Tree }, Height = 96 };
 
@@ -43,6 +46,10 @@ public sealed partial class SettingsDialog
         Add(Declared.Look, ThemePicker);
         Add(Declared.Theme);
         Add(Declared.ColourScheme, SchemePicker);
+        ThemeExplorer = new ThemeExplorer(() => Working, Change, () => ThemePicker.Refill());
+        Add(Appearance, "VS Code themes", ThemeExplorer, "theme themes vscode vs code visual studio code open vsx openvsx extension vsix colour color dracula monokai one dark solarized github",
+            "Colour themes made for VS Code, from Open VSX, most downloaded first. Passenger reaches Open VSX only while this is open; a theme "
+            + "you choose is shown at once, kept so it works offline, and follows the window and the code's colours at AA contrast.");
 
         void List()
         {

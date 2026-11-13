@@ -42,7 +42,7 @@ scheme file of your own.
 
 `name` is required, at most 64 characters; `description` is optional, at most 1,000. `tokens` holds values for both
 variants, `dark` and `light` for one each; a token goes in `tokens` or in `dark` and `light`, never both. Any of the
-three may be left out, as may `background`, `fonts`, `languages` and `layout` below.
+three may be left out, as may `background`, `fonts`, `languages`, `layout` and `vscode` below.
 
 A token is named as its key in [Tokens.axaml](../src/Passenger.App/Theme/Tokens.axaml) without `Passenger.`:
 `Frame`, `Editor.Background`, `Syntax.Keyword`, `SyntaxStyle.Comment`, `ControlRadius`, and the margins
@@ -163,6 +163,173 @@ theme's is the default there, and the place you choose wins over it whatever the
 default again.
 
 A window or place this Passenger does not have is passed over and named.
+
+## A VS Code colour theme
+
+Settings | Appearance | VS Code themes searches [Open VSX](https://open-vsx.org), the Eclipse Foundation's open registry of
+VS Code extensions, for colour themes: the most downloaded first, by rating, the newest or by name on request, or by words
+naming a theme, its extension or its publisher. Passenger asks Open VSX only while the explorer is open, or as you choose
+or refresh a theme. Each row is a colour theme an extension contributes (icon themes and the rest are left out), with its
+extension, publisher, downloads and rating. Choosing one fetches the extension's `.vsix` and reads only its `package.json`
+and the theme's files: data held to their limits (a `.vsix` of at most 32 MB and 5,000 files, each theme file 1 MB, eight
+files a theme through `include`), nothing of the extension run. It shows at once, before Apply, and is kept so it draws
+offline; one that cannot be read is said, changing nothing.
+
+A VS Code theme is one variant, dark or light (its `uiTheme`), and shows in it whatever Dark or light says. Passenger reads
+its JSON as VS Code does, comments and trailing commas allowed, a file it `include`s laid first. Its token colours
+(`tokenColors`, matched to TextMate scopes as VS Code matches them) and semantic token colours (`semanticTokenColors`,
+where it turns `semanticHighlighting` on) colour the code; its workbench colours (`colors`) colour the window where they
+correspond; everything else is worked out from what it gives, its grounds kept a step apart. Every word and mark is held
+to WCAG AA on what it is drawn on (text 4.5:1, icons, focus rings and the caret 3:1): a colour the theme gives too faint
+is moved in lightness, its hue kept, only as far as it must. A theme whose token colours are a TextMate `.tmTheme` file is
+refused, saying so.
+
+| The code's kind | Semantic token type | TextMate scope |
+|---|---|---|
+| `Syntax.Keyword` | `keyword` | `keyword.other`, `storage.modifier`, `keyword` |
+| `Syntax.ControlKeyword` | `controlKeyword` | `keyword.control`, else `Syntax.Keyword` |
+| `Syntax.Comment` | `comment` | `comment.line.double-slash`, `comment` |
+| `Syntax.DocComment` | – | `comment.block.documentation`, `comment.documentation`, else `Syntax.Comment` |
+| `Syntax.String` | `string` | `string.quoted.double`, `string` |
+| `Syntax.StringEscape` | `stringEscapeCharacter` | `constant.character.escape`, else `Syntax.String` |
+| `Syntax.Number` | `number` | `constant.numeric` |
+| `Syntax.Preprocessor` | `preprocessorKeyword` | `keyword.preprocessor`, `meta.preprocessor`, else `Syntax.Keyword` |
+| `Syntax.Class` | `class` | `entity.name.type.class`, `entity.name.type`, `support.class` |
+| `Syntax.Interface` | `interface` | `entity.name.type.interface`, else `Syntax.Class` |
+| `Syntax.Struct` | `struct` | `entity.name.type.struct`, else `Syntax.Class` |
+| `Syntax.Enum` | `enum` | `entity.name.type.enum`, else `Syntax.Class` |
+| `Syntax.Delegate` | `delegate` | `entity.name.type.delegate`, else `Syntax.Class` |
+| `Syntax.TypeParameter` | `typeParameter` | `entity.name.type.type-parameter`, `entity.name.type.parameter`, else `Syntax.Class` |
+| `Syntax.Method` | `method`, `function` | `entity.name.function`, `support.function` |
+| `Syntax.Property` | `property` | `variable.other.property`, `variable.other.object.property`, `support.variable.property` |
+| `Syntax.Event` | `event` | `variable.other.event`, else `Syntax.Property` |
+| `Syntax.Field` | `field` | `entity.name.variable.field`, `variable.other.object.property`, else `Syntax.Property` |
+| `Syntax.Constant` | `constant` | `variable.other.constant`, `constant.other`, else `Syntax.Field` |
+| `Syntax.EnumMember` | `enumMember` | `variable.other.enummember`, `constant.other.enum`, else `Syntax.Constant` |
+| `Syntax.Tag` | – | `entity.name.tag.xml`, `entity.name.tag.html` |
+| `Syntax.AttributeName` | – | `entity.other.attribute-name.localname.xml`, `entity.other.attribute-name.html` |
+| `Syntax.AttributeValue` | – | `string.quoted.double.xml`, `string.quoted.double.html`, else `Syntax.String` |
+| `Syntax.Entity` | – | `constant.character.entity.xml`, `constant.character.entity`, else `Syntax.StringEscape` |
+| `Syntax.JsonKey` | – | `support.type.property-name.json`, else `Syntax.Property` |
+| `Syntax.YamlKey` | – | `entity.name.tag.yaml`, else `Syntax.Tag` |
+| `Syntax.Heading` | – | `entity.name.section.markdown`, `markup.heading.markdown`, else `Syntax.Keyword` |
+| `Syntax.Code` | – | `markup.inline.raw.string.markdown`, `markup.fenced_code.block.markdown`, else `Syntax.String` |
+| `Syntax.Quote` | – | `markup.quote.markdown`, else `Syntax.Comment` |
+| `Syntax.LinkDestination` | – | `markup.underline.link.markdown` |
+
+A kind a theme colours no way takes the one after "else", then Passenger's palette from the theme's own colours.
+
+| Passenger's token | VS Code's colours, the first given winning |
+|---|---|
+| `Frame` | `editorGroupHeader.tabsBackground`, `statusBar.background`, `activityBar.background` |
+| `Panel` | `sideBar.background`, `panel.background` |
+| `Field` | `input.background`, `dropdown.background` |
+| `FieldBorder` | `input.border`, `dropdown.border` |
+| `Popup` | `menu.background`, `editorWidget.background`, `quickInput.background` |
+| `PopupBorder` | `menu.border`, `editorWidget.border`, `widget.border` |
+| `Separator` | `menu.separatorBackground`, `sideBarSectionHeader.border` |
+| `Text` | `foreground`, `sideBar.foreground` |
+| `TextMuted` | `descriptionForeground` |
+| `Icon` | `icon.foreground` |
+| `Link` | `textLink.foreground` |
+| `LinkHover` | `textLink.activeForeground` |
+| `Error` | `errorForeground`, `editorError.foreground` |
+| `Warning` | `editorWarning.foreground`, `list.warningForeground` |
+| `TextSelection` | `selection.background`, `editor.selectionBackground` |
+| `RowSelected` | `list.activeSelectionBackground`, `list.inactiveSelectionBackground` |
+| `Accent` | `button.background`, `focusBorder`, `activityBarBadge.background` |
+| `AccentText` | `button.foreground`, `activityBarBadge.foreground` |
+| `AccentHover` | `button.hoverBackground` |
+| `Focus` | `focusBorder` |
+| `ScrollThumb` | `scrollbarSlider.background` |
+| `ScrollThumbHover` | `scrollbarSlider.hoverBackground` |
+| `Menu.Selected` | `menu.selectionBackground`, `list.activeSelectionBackground` |
+| `Menu.SelectedText` | `menu.selectionForeground`, `list.activeSelectionForeground` |
+| `TitleBar` | `titleBar.activeBackground` |
+| `TitleBar.Text` | `titleBar.activeForeground` |
+| `Stripe.Selected` | `activityBar.activeBackground` |
+| `Stripe.SelectedIcon` | `activityBar.foreground` |
+| `Tab.Active` | `tab.activeBackground` |
+| `Tab.ActiveText` | `tab.activeForeground` |
+| `Modified` | `editorCursor.foreground` |
+| `Run` | `debugIcon.startForeground`, `testing.iconPassed` |
+| `Test.Passed` | `testing.iconPassed` |
+| `Test.Failed` | `testing.iconFailed` |
+| `Test.Skipped` | `testing.iconSkipped` |
+| `Vcs.Added` | `editorGutter.addedBackground` |
+| `Vcs.Modified` | `editorGutter.modifiedBackground` |
+| `Vcs.Deleted` | `editorGutter.deletedBackground` |
+| `Vcs.File.Modified` | `gitDecoration.modifiedResourceForeground` |
+| `Vcs.File.Added` | `gitDecoration.addedResourceForeground`, `gitDecoration.untrackedResourceForeground` |
+| `Vcs.File.Deleted` | `gitDecoration.deletedResourceForeground` |
+| `Vcs.File.Unversioned` | `gitDecoration.untrackedResourceForeground` |
+| `Vcs.File.Conflicted` | `gitDecoration.conflictingResourceForeground` |
+| `Terminal.Background` | `terminal.background`, `panel.background` |
+| `Terminal.Foreground` | `terminal.foreground` |
+| `Terminal.Cursor` | `terminalCursor.foreground`, `editorCursor.foreground` |
+| `Terminal.Selection` | `terminal.selectionBackground` |
+| `Terminal.Ansi0` | `terminal.ansiBlack` |
+| `Terminal.Ansi1` | `terminal.ansiRed` |
+| `Terminal.Ansi2` | `terminal.ansiGreen` |
+| `Terminal.Ansi3` | `terminal.ansiYellow` |
+| `Terminal.Ansi4` | `terminal.ansiBlue` |
+| `Terminal.Ansi5` | `terminal.ansiMagenta` |
+| `Terminal.Ansi6` | `terminal.ansiCyan` |
+| `Terminal.Ansi7` | `terminal.ansiWhite` |
+| `Terminal.Ansi8` | `terminal.ansiBrightBlack` |
+| `Terminal.Ansi9` | `terminal.ansiBrightRed` |
+| `Terminal.Ansi10` | `terminal.ansiBrightGreen` |
+| `Terminal.Ansi11` | `terminal.ansiBrightYellow` |
+| `Terminal.Ansi12` | `terminal.ansiBrightBlue` |
+| `Terminal.Ansi13` | `terminal.ansiBrightMagenta` |
+| `Terminal.Ansi14` | `terminal.ansiBrightCyan` |
+| `Terminal.Ansi15` | `terminal.ansiBrightWhite` |
+| `Editor.Gutter` | `editorGutter.background` |
+| `Editor.PopupBorder` | `editorWidget.border`, `editorHoverWidget.border` |
+| `Editor.Text` | `editor.foreground` |
+| `Editor.LineNumber` | `editorLineNumber.foreground` |
+| `Editor.LineNumberCurrent` | `editorLineNumber.activeForeground` |
+| `Editor.CurrentLine` | `editor.lineHighlightBackground` |
+| `Editor.Selection` | `editor.selectionBackground` |
+| `Editor.SelectionInactive` | `editor.inactiveSelectionBackground` |
+| `Editor.Caret` | `editorCursor.foreground` |
+| `Editor.SearchMatch` | `editor.findMatchHighlightBackground` |
+| `Editor.SearchCurrent` | `editor.findMatchBackground` |
+| `Editor.Error` | `editorError.foreground` |
+| `Editor.Warning` | `editorWarning.foreground` |
+| `Editor.Info` | `editorInfo.foreground` |
+| `Editor.Breakpoint` | `debugIcon.breakpointForeground` |
+| `Editor.ExecutionLine` | `editor.stackFrameHighlightBackground` |
+| `Editor.InlayHint` | `editorInlayHint.foreground` |
+| `Editor.InlayHintBack` | `editorInlayHint.background` |
+| `Editor.UsageRead` | `editor.wordHighlightBackground` |
+| `Editor.UsageWrite` | `editor.wordHighlightStrongBackground` |
+| `Editor.MatchedBrace` | `editorBracketMatch.background` |
+| `Editor.Whitespace` | `editorWhitespace.foreground` |
+| `Editor.LinkUnderline` | `editorLink.activeForeground` |
+| `Diff.Added` | `diffEditor.insertedLineBackground`, `diffEditor.insertedTextBackground` |
+| `Diff.Deleted` | `diffEditor.removedLineBackground`, `diffEditor.removedTextBackground` |
+| `Diff.AddedWord` | `diffEditor.insertedTextBackground` |
+| `Diff.DeletedWord` | `diffEditor.removedTextBackground` |
+
+## A theme over a VS Code theme
+
+```json
+{
+  "format": 1,
+  "name": "Dusk over Dracula",
+  "vscode": { "id": "dracula-theme.theme-dracula", "theme": "Dracula Theme", "version": "2.25.1" },
+  "tokens": { "ControlRadius": 0, "Accent": "#FF79C6" },
+  "fonts": { "code": { "family": "Fira Code" } }
+}
+```
+
+`vscode` names a VS Code colour theme as the theme's base: `id` is its extension's Open VSX id (`publisher.name`), `theme`
+its label in that extension, and `version`, which may be left out, pins the extension's version. The VS Code theme gives
+every colour as above, and the theme's own tokens, background, fonts, languages and layout are laid over it, so a theme
+gives only what it changes; it shows in the base's variant. The base is fetched from Open VSX with the theme and kept
+beside it (`vscode/` in its folder), so it draws offline; Refresh takes the extension's newest version unless `version`
+pins one.
 
 ## A code colour scheme
 
