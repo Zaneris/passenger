@@ -12,8 +12,9 @@ namespace Passenger.App;
 /// its installer, disk image or archive put in place downloads a newer one in the background, saying so in the status
 /// bar, checks it, offers Restart to Update and installs it as Passenger ends (or says the command that installs it);
 /// any other copy says once per version that one is out, linking this system's download, or, for a package manager's
-/// copy, that the package manager updates it. Help, Check for Updates asks when a person wants. Every answer is logged;
-/// only one a person asked for, or a download that did not land, is said.</summary>
+/// copy, that the package manager updates it. Help, Check for Updates asks when a person wants. The window watching
+/// does it all once for the process, and every window shows its notice and offers Restart to Update, one opened later
+/// too. Every answer is logged; only one a person asked for, or a download that did not land, is said.</summary>
 public partial class MainWindow
 {
     /// <summary>The words when there is nothing newer.</summary>
@@ -55,6 +56,9 @@ public partial class MainWindow
     /// <summary>What the status bar's notice offers, which its click does.</summary>
     private UpdateNotice notice;
 
+    /// <summary>What the watching window's notice says, which every window shows; null while it says nothing.</summary>
+    private NoticeSaid? said;
+
     /// <summary>Where this window asks for the latest release: GitHub's, or the one PASSENGER_RELEASES names, unless
     /// one is given.</summary>
     public ReleaseFeed Releases { get; init; } = ReleaseFeed.Default;
@@ -72,34 +76,47 @@ public partial class MainWindow
 
     /// <summary>The newer release the status bar shows, its version and what its link opens, or null while it shows
     /// none.</summary>
-    public LatestRelease? UpdateShown { get; private set; }
+    public LatestRelease? UpdateShown => UpdatesOwner.shownRelease;
+
+    private LatestRelease? shownRelease;
 
     /// <summary>The release downloaded and checked, which installs as Passenger ends, or null.</summary>
-    public LatestRelease? UpdateReady => readyRelease;
+    public LatestRelease? UpdateReady => UpdatesOwner.readyRelease;
 
     /// <summary>The command that installs the release downloaded and checked where this copy cannot install it itself,
     /// which the notice's click copies; or null.</summary>
-    public string? UpdateByHand { get; private set; }
+    public string? UpdateByHand => UpdatesOwner.byHand;
+
+    private string? byHand;
+
+    /// <summary>The window that checks, downloads and installs for every window, whose notice each shows: the one
+    /// watching for updates while it is open, else this one.</summary>
+    private MainWindow UpdatesOwner => PassengerApp.UpdatesWatcher is { } watcher && watcher != this && watcher.IsVisible ? watcher : this;
 
     private void AddUpdates()
     {
         actions!.Add(new IdeAction(AppActions.CheckForUpdates, "Check for Updates…", "Help",
-            context => IdeErrors.Observe(CheckForUpdatesAsync(asked: true)))
+            context => IdeErrors.Observe(UpdatesOwner.CheckForUpdatesAsync(asker: this)))
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("Help", 3, 1)],
         });
-        actions.Add(new IdeAction(AppActions.RestartToUpdate, "Restart to Update", "Help", _ => IdeErrors.Observe(RestartToUpdateAsync()))
+        actions.Add(new IdeAction(AppActions.RestartToUpdate, "Restart to Update", "Help", _ => IdeErrors.Observe(UpdatesOwner.RestartToUpdateAsync()))
         {
-            WhyNot = _ => readyRelease is null ? "No update is downloaded and ready to install" : null,
+            WhyNot = _ => UpdatesOwner.readyRelease is null ? "No update is downloaded and ready to install" : null,
         });
         // The agents an install would cut off come and go: the notice says who, as the pointer comes to it.
         UpdateButton.PointerEntered += (_, _) =>
         {
-            if (notice == UpdateNotice.Ready && readyRelease is { } ready)
+            if (UpdatesOwner is { notice: UpdateNotice.Ready, readyRelease: { } ready } owner)
             {
-                ShowReady(ready);
+                owner.ShowReady(ready);
             }
         };
+        // A window opened while a release is said says it too.
+        if (UpdatesOwner is { said: { } shown } watching && watching != this)
+        {
+            ShowNotice(shown);
+        }
         Closed += (_, _) =>
         {
             updateTimer?.Stop();
@@ -154,6 +171,13 @@ public partial class MainWindow
             return;
         }
         selfUpdate ??= from.selfUpdate;
+        if (said is null && from.said is not null)
+        {
+            (said, notice) = (from.said, from.notice);
+        }
+        shownRelease ??= from.shownRelease;
+        byHand ??= from.byHand;
+        announcedHere ??= from.announcedHere;
         if (from.readyRelease is { } ready && selfUpdate is not null)
         {
             readyRelease = ready;
@@ -226,18 +250,20 @@ public partial class MainWindow
         {
             return;
         }
-        ownCheck = CheckForUpdatesAsync(asked: false);
+        ownCheck = CheckForUpdatesAsync(asker: null);
         IdeErrors.Observe(ownCheck);
     }
 
     /// <summary>Asks for the latest release, off the UI thread. A newer one downloads when this copy installs updates
     /// and the setting is on; otherwise it is shown when a person asked or it is newer than the one announced last. A
-    /// person who asked is told the rest too, while a check of the window's own only logs it.</summary>
-    private async Task CheckForUpdatesAsync(bool asked)
+    /// person who asked is told the rest too, in the window they asked in, while a check of the window's own only logs
+    /// it.</summary>
+    private async Task CheckForUpdatesAsync(MainWindow? asker)
     {
-        if (asked)
+        bool asked = asker is not null;
+        if (asker is not null)
         {
-            status.Text = "Checking for updates…";
+            asker.status.Text = "Checking for updates…";
         }
         ReleaseFeed feed = Releases;
         CancellationToken end = updatesEnd.Token;
@@ -275,16 +301,16 @@ public partial class MainWindow
                 if (readyRelease?.Version == release.Version)
                 {
                     ShowReady(release);
-                    if (asked)
+                    if (asker is not null)
                     {
-                        status.Text = $"Passenger {release.Version} is ready: restart to update";
+                        asker.status.Text = $"Passenger {release.Version} is ready: restart to update";
                     }
                 }
                 else
                 {
-                    if (asked)
+                    if (asker is not null)
                     {
-                        status.Text = $"Passenger {release.Version} is available, and downloading";
+                        asker.status.Text = $"Passenger {release.Version} is available, and downloading";
                     }
                     if (downloadingRelease?.Version != release.Version)
                     {
@@ -302,16 +328,16 @@ public partial class MainWindow
                 {
                     Announced = release.Version;
                 }
-                if (asked)
+                if (asker is not null)
                 {
-                    status.Text = $"Passenger {release.Version} is available";
+                    asker.status.Text = $"Passenger {release.Version} is available";
                 }
                 break;
-            case ReleaseAnswer.Failed { Reason: var reason } when asked:
-                status.Text = $"Could not check for updates: {reason}";
+            case ReleaseAnswer.Failed { Reason: var reason } when asker is not null:
+                asker.status.Text = $"Could not check for updates: {reason}";
                 break;
-            case ReleaseAnswer.Current when asked:
-                status.Text = UpToDate;
+            case ReleaseAnswer.Current when asker is not null:
+                asker.status.Text = UpToDate;
                 break;
         }
     }
@@ -326,7 +352,7 @@ public partial class MainWindow
         downloading = mine;
         downloadingRelease = release;
         readyRelease = null;
-        UpdateByHand = null;
+        byHand = null;
         ShowDownloading(release, 0);
         CancellationToken cancel = mine.Token;
         // Progress posted before the download ended can land after its outcome, which it must not cover.
@@ -380,7 +406,7 @@ public partial class MainWindow
                 ShowReady(release);
                 break;
             case UpdateOutcome.ByHand { Command: var command }:
-                UpdateByHand = command;
+                byHand = command;
                 ShowByHand(release, command);
                 break;
             case UpdateOutcome.Refused { Reason: var reason }:
@@ -437,12 +463,12 @@ public partial class MainWindow
         {
             return;
         }
-        if (notice is UpdateNotice.Downloading or UpdateNotice.Ready or UpdateNotice.Blocked or UpdateNotice.ByHand && UpdateShown is { } shown)
+        if (notice is UpdateNotice.Downloading or UpdateNotice.Ready or UpdateNotice.Blocked or UpdateNotice.ByHand && shownRelease is { } shown)
         {
             ShowUpdate(shown, shown.Link);
         }
         readyRelease = null;
-        UpdateByHand = null;
+        byHand = null;
         // Once the download stopped has let go of its files. Not drawn: removing hundreds of megabytes is the disk's work.
         Task? stopping = downloadTask;
         IdeErrors.Observe(BackgroundWork.Unheld(async () =>
@@ -494,7 +520,7 @@ public partial class MainWindow
     /// <summary>The release as a link to this system's download (or its page, for a release without one).</summary>
     private void ShowUpdate(LatestRelease release, Uri link, string? why = null)
     {
-        UpdateShown = release with { Link = link };
+        shownRelease = release with { Link = link };
         string opens = link == release.Link && release.Asset is { } asset ? $"Download {asset}" : $"Open the release page of {release.Tag}";
         Notice(UpdateNotice.Available, IconKeys.ArrowDown, TokenKeys.Link, $"Passenger {release.Version} available",
             $"{(why is null ? string.Empty : why + "\n")}{opens}\n{link}");
@@ -503,7 +529,7 @@ public partial class MainWindow
     /// <summary>The download's progress, then, once it has all come (100), its check, which takes a while for a disk image.</summary>
     private void ShowDownloading(LatestRelease release, int percent)
     {
-        UpdateShown = release;
+        shownRelease = release;
         Notice(UpdateNotice.Downloading, IconKeys.ArrowDown, TokenKeys.Link,
             percent < 100 ? $"Downloading Passenger {release.Version}: {percent}%" : $"Checking Passenger {release.Version}…",
             $"Passenger {release.Version} is downloading from GitHub, to be checked and installed when Passenger restarts.\nClick to open its release page.");
@@ -511,7 +537,7 @@ public partial class MainWindow
 
     private void ShowReady(LatestRelease release)
     {
-        UpdateShown = release;
+        shownRelease = release;
         string how = SelfUpdate?.Asks is { } asks
             ? $"Click to restart into it.\n{asks}, and only Restart to Update installs it."
             : "Click to restart into it;\notherwise it installs when Passenger closes.";
@@ -523,7 +549,7 @@ public partial class MainWindow
     /// click copies.</summary>
     private void ShowByHand(LatestRelease release, string command)
     {
-        UpdateShown = release with { Link = release.Page };
+        shownRelease = release with { Link = release.Page };
         Notice(UpdateNotice.ByHand, IconKeys.ArrowDown, TokenKeys.Link, $"Passenger {release.Version} ready to install",
             $"Passenger {release.Version} is downloaded and checked, but this user cannot write {SelfUpdate?.Installed}, where it is installed for everyone.\n"
             + $"To install it, run this in a terminal, then start Passenger again:\n{command}\nClick to copy the command.");
@@ -552,7 +578,7 @@ public partial class MainWindow
     /// tries again.</summary>
     private void ShowBlocked(LatestRelease release, string installed, IReadOnlyList<string> named)
     {
-        UpdateShown = release;
+        shownRelease = release;
         bool one = named.Count == 1;
         Notice(UpdateNotice.Blocked, IconKeys.Error, TokenKeys.Warning, $"Passenger {release.Version} waits for {Plural.Of(named.Count, "program")} to close",
             $"Passenger {release.Version} cannot be installed while {(one ? "this runs" : "these run")} from {installed}:\n"
@@ -564,37 +590,49 @@ public partial class MainWindow
     /// that did not match.</summary>
     private void ShowRefused(LatestRelease release, string why)
     {
-        UpdateShown = release with { Link = release.Page };
+        shownRelease = release with { Link = release.Page };
         Notice(UpdateNotice.Refused, IconKeys.Error, TokenKeys.Warning, $"Passenger {release.Version} not installed",
             $"{why}\nOpen the release page of {release.Tag}\n{release.Page}");
     }
 
+    /// <summary>The notice as it now stands, said in every window.</summary>
     private void Notice(UpdateNotice now, string icon, string brush, string text, string tip)
     {
         notice = now;
-        UpdateText.Text = text;
-        ToolTip.SetTip(UpdateButton, tip);
-        UpdateIcon.Bind(PathIcon.DataProperty, UpdateIcon.GetResourceObservable(icon));
-        UpdateIcon.Bind(PathIcon.ForegroundProperty, UpdateIcon.GetResourceObservable(brush));
-        UpdateText.Bind(TextBlock.ForegroundProperty, UpdateText.GetResourceObservable(brush));
+        said = new NoticeSaid(icon, brush, text, tip);
+        foreach (MainWindow window in PassengerApp.Windows.Where(w => w != this).Append(this))
+        {
+            window.ShowNotice(said);
+        }
+    }
+
+    private void ShowNotice(NoticeSaid shown)
+    {
+        UpdateText.Text = shown.Text;
+        ToolTip.SetTip(UpdateButton, shown.Tip);
+        UpdateIcon.Bind(PathIcon.DataProperty, UpdateIcon.GetResourceObservable(shown.Icon));
+        UpdateIcon.Bind(PathIcon.ForegroundProperty, UpdateIcon.GetResourceObservable(shown.Brush));
+        UpdateText.Bind(TextBlock.ForegroundProperty, UpdateText.GetResourceObservable(shown.Brush));
         UpdateButton.IsVisible = true;
     }
 
-    /// <summary>The notice's click: the download (or the release's page) in the person's browser, through the system's
-    /// own launcher as a link anywhere opens; Restart to Update once the update is ready.</summary>
+    /// <summary>The notice's click, in whichever window shows it: the download (or the release's page) in the person's
+    /// browser, through the system's own launcher as a link anywhere opens; Restart to Update once the update is
+    /// ready.</summary>
     private void OnUpdateClicked(object? sender, RoutedEventArgs e)
     {
-        if (notice is UpdateNotice.Ready or UpdateNotice.Blocked)
+        MainWindow owner = UpdatesOwner;
+        if (owner.notice is UpdateNotice.Ready or UpdateNotice.Blocked)
         {
             Request(AppActions.RestartToUpdate);
         }
-        else if (notice == UpdateNotice.ByHand && UpdateByHand is { } command && UpdateShown is { } ready)
+        else if (owner.notice == UpdateNotice.ByHand && owner.byHand is { } command && owner.shownRelease is { } ready)
         {
             IdeErrors.Observe(CopyCommandAsync(command, ready.Version));
         }
-        else if (UpdateShown is { } shown)
+        else if (owner.shownRelease is { } shown)
         {
-            Browse(notice == UpdateNotice.Downloading ? shown.Page : shown.Link);
+            Browse(owner.notice == UpdateNotice.Downloading ? shown.Page : shown.Link);
         }
     }
 
@@ -607,6 +645,9 @@ public partial class MainWindow
         }
         status.Text = $"Copied the command that installs Passenger {version}: paste it into a terminal";
     }
+
+    /// <summary>What a notice shows: its icon and colour by their keys, its words and its tip.</summary>
+    private sealed record NoticeSaid(string Icon, string Brush, string Text, string Tip);
 
     private enum UpdateNotice
     {

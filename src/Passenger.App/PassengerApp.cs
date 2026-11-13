@@ -326,6 +326,9 @@ public static class PassengerApp
     /// <summary>The window watching for updates, which hands it on as it closes.</summary>
     internal static void WatchUpdatesIn(MainWindow window) => updates = window;
 
+    /// <summary>The window watching for updates, or null before one does.</summary>
+    internal static MainWindow? UpdatesWatcher => updates;
+
     /// <summary>Once every window has closed: waits, for at most each one's limit, for what they started to end
     /// (<see cref="MainWindow.Ended"/>), then installs an update made ready, last of all. It needs no UI thread.</summary>
     public static void End()

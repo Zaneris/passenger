@@ -348,6 +348,72 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
+    /// <summary>The window watching for updates may stand behind the person's others: what it finds, its download and
+    /// Restart to Update are said in every window, the one in front and one opened afterwards, from its one check and
+    /// one download; Check for Updates in another window is answered there, downloading nothing again.</summary>
+    [AvaloniaFact]
+    public void A_newer_release_its_download_and_Restart_to_Update_are_said_in_every_window_from_one_check_and_one_download()
+    {
+        using IDisposable theme = TestsTheme();
+        InstalledCopy copy = InstalledCopy.Make(images, TestFolders.Create("installed-"));
+        string newer = Bumped(1, 0);
+        IReadOnlyDictionary<string, byte[]> update = copy.Update(newer);
+        github.Answer = Release($"v{newer}", files: update);
+        github.Hold(copy.Package(newer));
+        string shop = TestFolders.Create("updates-shop-");
+        string bank = TestFolders.Create("updates-bank-");
+        string till = TestFolders.Create("updates-till-");
+        MainWindow window = Started(copy.Updater());
+        MainWindow? frontWindow = null;
+        MainWindow? laterWindow = null;
+        try
+        {
+            window.OpenFolder(shop);
+            window.ApplySettings(window.Settings with { OpenProjectIn = Passenger.App.Settings.OpenProjectIn.NewWindow });
+            // Another solution reopened as Passenger starts, in a window of its own in front of the one that watches.
+            Assert.Null(window.Open(bank));
+            Ui.Settle();
+            MainWindow front = frontWindow = Assert.Single(PassengerApp.Windows, w => w != window);
+            window.WatchForUpdates();
+
+            Ui.PumpUntil(() => Notice(front) is { } shown && shown.StartsWith($"Downloading Passenger {newer}: ", StringComparison.Ordinal),
+                $"the window in front, not the one watching, to say v{newer} is downloading");
+            github.Let();
+            Ui.WaitFor(() => Notice(front) == $"Restart to update to Passenger {newer}",
+                () => $"the window in front to offer Restart to Update once v{newer} had downloaded, where {UpdatesSaid(front)}");
+            Assert.True(Notice(window) == Notice(front), $"The window watching says '{Notice(window)}', the one in front '{Notice(front)}'");
+            Assert.True(front.Actions.WhyNot(AppActions.RestartToUpdate, front.Actions.Context()) is null,
+                "The window in front shows the update ready, but its Restart to Update cannot run");
+            Assert.True(front.UpdateReady?.Version == newer, $"The window in front has {front.UpdateReady?.Version ?? "nothing"} ready, not {newer}");
+
+            Assert.Null(window.Open(till));
+            Ui.Settle();
+            MainWindow later = laterWindow = Assert.Single(PassengerApp.Windows, w => w != window && w != front);
+            Assert.True(Notice(later) == $"Restart to update to Passenger {newer}",
+                $"A window opened after v{newer} was made ready does not offer Restart to Update: {UpdatesSaid(later)}");
+            Assert.True(later.Actions.WhyNot(AppActions.RestartToUpdate, later.Actions.Context()) is null,
+                "A window opened after the update was made ready cannot run Restart to Update");
+            Assert.True(github.Requests.Count == update.Count + 1,
+                $"Three windows made {github.Requests.Count} requests, not one for the release and one for each of the {update.Count} files of this system's update");
+
+            later.Perform(AppActions.CheckForUpdates);
+            Ui.WaitFor(() => later.Status == $"Passenger {newer} is ready: restart to update",
+                () => $"Check for Updates in the window opened later to say there that v{newer} is ready, where {UpdatesSaid(later)}");
+            Assert.True(github.Requests.Count == update.Count + 2,
+                $"Check for Updates in a window that does not watch made {github.Requests.Count - update.Count - 1} requests, not one for the release alone");
+            Assert.True(github.RequestsFor(copy.Package(newer)).Length == 1, $"{copy.Package(newer)} was downloaded again for another window");
+        }
+        finally
+        {
+            laterWindow?.Close();
+            frontWindow?.Close();
+            window.Close();
+            TestFolders.Delete(shop);
+            TestFolders.Delete(bank);
+            TestFolders.Delete(till);
+        }
+    }
+
     [AvaloniaFact]
     public void A_download_that_does_not_match_the_SHA_256_its_release_gives_is_refused_and_the_person_told_why()
     {
