@@ -86,6 +86,17 @@ public sealed record AttachArguments
 
     /// <summary>Passenger's own: how the values of types that carry no debugger attributes of their own are shown.</summary>
     public IReadOnlyList<DapTypePresentation>? Presentations { get; init; }
+
+    /// <summary>Passenger's own: an app on a device or simulator, reached through Passenger's relay inside it at this
+    /// host:port, in place of <see cref="ProcessId"/>.</summary>
+    public string? Relay { get; init; }
+
+    /// <summary>Passenger's own: the host's folder of the assemblies (and their PDBs) the app on the device loads.</summary>
+    public string? RelayModules { get; init; }
+
+    /// <summary>Passenger's own: the token the relay at <see cref="Relay"/> takes a client by, which the app's environment
+    /// gave it.</summary>
+    public string? RelayToken { get; init; }
 }
 
 /// <summary>Passenger's own: how the debugger shows the values of a type (<see cref="Type"/>, its full name, declared in

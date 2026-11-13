@@ -48,6 +48,7 @@ public partial class ManagedDebugger
     internal int ModuleSet_Version { get; private set; }
     private bool _isAttached;
     private int? _pendingAttachProcessId;
+    private (string Relay, string? Modules, string? Token)? _pendingRelay;
 
     /// <summary>The process attached to, by its id where the adapter runs, while held; 0 for none.</summary>
     private int _attachedId;
@@ -559,6 +560,38 @@ public partial class ManagedDebugger
                 throw;
             }
         }
+    }
+
+    /// <summary>Takes hold of an app through Passenger's relay in it: the relay's ICorDebug, the app's own runtime's, is
+    /// driven as a local one is, and the app's start goes on once the attach is made.</summary>
+    private void PerformRelayAttach(string relay, string? modules, string? token)
+    {
+        _logger?.Invoke($"Attaching through the relay at {relay}");
+        Relay.RelayConnection connection = Relay.RelayConnection.Connect(relay, token, TimeSpan.FromSeconds(60), _logger);
+        _exited.Reset();
+        ICorDebug corDebug = Relay.RemoteObjects.Start(connection, new Relay.DeviceModules(modules), _logger);
+        corDebug.Initialize();
+        corDebug.SetManagedHandler(_callbacks);
+        int processId = (int)connection.ProcessId;
+        ICorDebugProcess process = corDebug.DebugActiveProcess(processId, false);
+        _process = process;
+        _corDebug = corDebug;
+        // The app's process is on its device: its end is its runtime's word, else its relay's stream ending with it.
+        connection.WhenGone(() =>
+        {
+            if (!_exited.IsSet)
+            {
+                _logger?.Invoke("The relay's stream ended before the runtime said the process exited: its end is the process's");
+                QueueEvent(this, new ExitProcessCorDebugManagedCallbackEventArgs(process));
+            }
+        });
+        connection.Go();
+        _isAttached = true;
+        _attachedId = processId;
+        ConfigureExceptionCallbacks();
+        _logger?.Invoke($"Attached through the relay to process {processId}");
+        OnAttached?.Invoke(processId);
+        SendAllBreakpointEvents();
     }
 
     private void SendAllBreakpointEvents()

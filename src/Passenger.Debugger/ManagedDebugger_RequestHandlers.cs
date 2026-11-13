@@ -259,6 +259,21 @@ public partial class ManagedDebugger
         _launched = false;
     }
 
+    /// <summary>An app on a device or simulator to attach to through Passenger's relay inside it, at
+    /// <paramref name="relay"/> (host:port, adb's forward on Android), its modules read from the host's copies in
+    /// <paramref name="modules"/>, the relay taking it by <paramref name="token"/>; taken hold of by configurationDone once the
+    /// client's breakpoints are set.</summary>
+    public void AttachThroughRelay(string relay, string? modules, string? token, bool justMyCode, bool hotReload)
+    {
+        EnsureNoProcessBeingDebugged();
+        _logger?.Invoke($"Storing relay attach target: {relay}");
+        _justMyCode = justMyCode;
+        _stopAtEntry = false;
+        _hotReload = hotReload;
+        _pendingRelay = (relay, modules, token);
+        _launched = false;
+    }
+
     /// <summary>Lets go the runtime of a process an attach was to take hold of and did not (the session ended first, or the
     /// attach failed), should it be held at its start: it runs on undebugged rather than wait for good for a debugger that
     /// is not coming. A runtime already running takes the word as done; one still starting is waited for, within
@@ -308,6 +323,11 @@ public partial class ManagedDebugger
         {
             _pendingAttachProcessId = null;
             await PerformAttach(processId, DiagnosticClientHelper.LetGoIfHeld);
+        }
+        else if (_pendingRelay is { } relayed)
+        {
+            _pendingRelay = null;
+            PerformRelayAttach(relayed.Relay, relayed.Modules, relayed.Token);
         }
     }
 

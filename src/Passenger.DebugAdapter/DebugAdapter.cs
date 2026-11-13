@@ -394,9 +394,14 @@ public sealed class DebugAdapter
     {
         try
         {
-            int processId = arguments.ProcessId ?? throw new InvalidOperationException("Missing process ID");
             bool justMyCode = arguments.JustMyCode ?? true;
             debugger.Present(arguments.Presentations ?? []);
+            if (arguments.Relay is { } relay)
+            {
+                await Locked(() => debugger.AttachThroughRelay(relay, arguments.RelayModules, arguments.RelayToken, justMyCode, arguments.HotReload ?? false));
+                return;
+            }
+            int processId = arguments.ProcessId ?? throw new InvalidOperationException("Missing process ID");
             await Locked(() => debugger.Attach(processId, justMyCode, arguments.HotReload ?? false));
         }
         catch (Exception error)
