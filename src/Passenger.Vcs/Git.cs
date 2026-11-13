@@ -1431,12 +1431,23 @@ public sealed partial class Git
         signing ??= CommitSigning.AsConfigured;
         string[] relative = [.. paths.Select(Relative).Distinct()];
         // No paths is an amend of the message alone: "add -A --" with none would add the whole tree.
-        if (relative.Length > 0)
+        string[] there = [.. relative.Where(StillThere)];
+        if (there.Length > 0)
         {
-            GitResult add = await OnFilesAsync(["add", "-A"], relative);
+            GitResult add = await OnFilesAsync(["add", "-A"], there);
             if (!add.Succeeded)
             {
                 return add;
+            }
+        }
+        // A rename staged already leaves its old name in HEAD alone, which "add" refuses as matching no file.
+        string[] gone = [.. relative.Except(there)];
+        if (gone.Length > 0)
+        {
+            GitResult removed = await OnFilesAsync(["rm", "--cached", "-r", "-q", "--ignore-unmatch"], gone);
+            if (!removed.Succeeded)
+            {
+                return removed;
             }
         }
         string[] left = merging ? [.. (excluded ?? []).Select(Relative).Distinct().Except(relative)] : [];
@@ -1462,6 +1473,13 @@ public sealed partial class Git
         {
             File.Delete(file);
         }
+    }
+
+    /// <summary>Whether a path is on the disk: a file, a folder or a link, a broken one too, which git tracks as itself.</summary>
+    private bool StillThere(string relative)
+    {
+        string full = Full(relative);
+        return System.IO.Path.Exists(full) || new FileInfo(full).LinkTarget is not null;
     }
 
     /// <summary>Whether the branch checked out tracks a remote's branch (its upstream), which a push goes to.</summary>
