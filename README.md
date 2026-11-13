@@ -45,7 +45,7 @@ under MIT, for work and personal projects alike, with no account, no licence key
 
 Coming from Visual Studio? Its keys are the default, and VS Code's and IntelliJ IDEA's are a setting away, each as
 Rider's keymaps have it. On a Mac, where Visual Studio for Mac was retired in August 2024, Passenger is a full .NET IDE
-that runs natively on Apple Silicon.
+that runs natively on Apple Silicon and Intel Macs.
 
 What comes next is in the [milestones](https://github.com/Zaneris/passenger/milestones), the release in progress among
 them. The pictures here are of sample projects committed to this repository, in your system's light or dark.
@@ -260,7 +260,7 @@ in each look's colours.
 
 [passenger-ide.net](https://passenger-ide.net/#download) has each system's download:
 
-- **macOS:** a disk image for Macs with Apple Silicon. Drag Passenger onto Applications.
+- **macOS:** a disk image for Macs with Apple Silicon, or one for Intel Macs. Drag Passenger onto Applications.
 - **Windows:** an installer for x64 or Arm64, which installs for you alone, with no administrator.
 - **Linux:** an archive for x64 or Arm64. Unpack it and run its `install.sh`, for you alone or with `--system` for
   everyone; the command is `passenger-ide`, so it never meets Phusion Passenger's `passenger`. Its
@@ -371,8 +371,9 @@ just test [FILTER]         # every test, the IDE driven whole on Avalonia's head
                            # the results in artifacts/test-results
 just screenshot shell.png  # draw the main window to a PNG off-screen (--size 1600x1000 --scale 2)
 just mcp [FOLDER]          # Passenger as an MCP server over a folder, from a clone of the last build
-just publish osx-arm64     # a self-contained Release build (win-x64, win-arm64, linux-x64, linux-arm64 too)
-just package-mac           # the macOS disk image, Apple Silicon; signed with PASSENGER_SIGN_IDENTITY, else ad hoc
+just publish osx-arm64     # a self-contained Release build (osx-x64, win-x64, win-arm64, linux-x64, linux-arm64 too)
+just package-mac           # the macOS disk image, Apple Silicon (or osx-x64, Intel); signed with
+                           # PASSENGER_SIGN_IDENTITY, else ad hoc
 just package-win win-x64   # the Windows installer (or win-arm64), unsigned unless tools/package-win.sh's variables sign it
 just package-linux         # the Linux archive with its install.sh (linux-x64, or linux-arm64), as site/linux.html uses it
 just container-tools       # the tools Passenger debugs and profiles with inside a Linux container, where a build finds them

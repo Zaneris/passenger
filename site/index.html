@@ -506,7 +506,7 @@
                 <p><strong>Coming from Visual Studio?</strong> Visual Studio's keys are the default, chords included.
                     Coming from VS Code or IntelliJ IDEA, choose its keymap in Settings.</p>
                 <p><strong>A full .NET IDE on the Mac.</strong> Visual Studio for Mac was retired in August 2024. Passenger
-                    runs natively on Apple Silicon, and its debugger attaches with nothing to set up.</p>
+                    runs natively on Apple Silicon and Intel Macs, and its debugger attaches with nothing to set up.</p>
             </div>
 
             <div class="feature">
@@ -786,7 +786,7 @@
                 </details>
                 <details>
                     <summary>Which systems and projects does it run on?</summary>
-                    <p>Windows (x64 and Arm64), macOS on Apple Silicon, and Linux (x64 and Arm64), with a .NET SDK from 8 for your projects.
+                    <p>Windows (x64 and Arm64), macOS (Apple Silicon and Intel), and Linux (x64 and Arm64), with a .NET SDK from 8 for your projects.
                         It works with modern .NET (CoreCLR): console, ASP.NET Core, Blazor, Avalonia and WPF projects, Godot 4
                         games in C# and GDScript, and the services of a compose file or an Aspire AppHost. .NET Framework, Mono and Unity aren't
                         Passenger's.</p>
@@ -821,9 +821,11 @@
                     <h3>macOS</h3>
                     <ul>
                         <li><a data-asset="Passenger-macos-arm64.dmg" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-macos-arm64.dmg">Apple Silicon <span class="kind">.dmg</span></a></li>
+                        <li><a data-asset="Passenger-macos-x64.dmg" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-macos-x64.dmg">Intel <span class="kind">.dmg</span></a></li>
                     </ul>
-                    <p class="note">For Macs with Apple Silicon. Drag Passenger onto Applications. Each new release
-                        downloads in the background and installs as Passenger closes.</p>
+                    <p class="note">Apple Silicon for a Mac with an M chip, Intel for one with an Intel processor (About
+                        This Mac says which). Drag Passenger onto Applications. Each new release downloads in the
+                        background and installs as Passenger closes.</p>
                 </div>
                 <div class="platform">
                     <h3>Windows</h3>
