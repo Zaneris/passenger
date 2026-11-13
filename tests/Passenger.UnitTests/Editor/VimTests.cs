@@ -4,11 +4,12 @@ using Passenger.UnitTests.Text;
 
 namespace Passenger.UnitTests.Editor;
 
-/// <summary>Vim mode's keys as the carets and text they leave (<see cref="Marked"/>), checked against what Vim 9.1 does
-/// with the same keys (each expected text is Vim's own, settings shiftwidth=4 tabstop=4 expandtab autoindent): motions
-/// with counts, operators with motions and text objects, registers and puts, . repeating a change, Backspace, Enter,
-/// Delete and Tab, entering and leaving insert mode, and the keys it leaves to the keymap; then what an editor needs of
-/// it alone: every caret acted at, one step of undo, the system clipboard's registers.</summary>
+/// <summary>Vim mode's keys as the carets and text they leave (<see cref="Marked"/>, visual mode's stretches as the
+/// selections shown), checked against what Vim 9.1 does with the same keys (each expected text is Vim's own, settings
+/// shiftwidth=4 tabstop=4 expandtab autoindent, but J's one space after a sentence's end, nojoinspaces, as Neovim and
+/// code have it): motions, operators, text objects, registers and puts, . repeating a change, visual modes, entering
+/// and leaving insert mode, and the keys it leaves to the keymap; then what an editor needs of it alone: every caret
+/// acted at, one step of undo, the system clipboard's registers.</summary>
 public class VimTests
 {
     [Theory]
@@ -183,7 +184,7 @@ public class VimTests
     [InlineData("a|bc\ndef", "Yjp", "abc\ndef\n|abc")]
     [InlineData("a|bcd", "2rx", "ax|xd")]
     [InlineData("a|bcd", "5rx", "a|bcd")]
-    [InlineData("a|b.\n   cd\n)x", "3J", "ab.  cd|)x")]
+    [InlineData("a|b.\n   cd\n)x", "3J", "ab. cd|)x")]
     [InlineData("a|b \n   cd", "J", "ab |cd")]
     [InlineData("a|bCd", "3~", "aBc|D")]
     public void Operators_and_the_commands_that_edit_alone_change_what_vims_do(string before, string keys, string after) =>
@@ -265,6 +266,129 @@ public class VimTests
     [InlineData("a|b\nc|d", ">>", "    |ab\n    |cd")]
     [InlineData("|ab\n|cd", "yyP", "|ab\nab\n|cd\ncd")]
     public void Each_caret_takes_the_command_and_a_register_keeps_a_piece_for_each(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    [Theory]
+    [InlineData("one t|wo three\nfour", "v", "one t«w|o three\nfour")]
+    [InlineData("one t|wo three\nfour", "vl", "one t«wo| three\nfour")]
+    [InlineData("one t|wo three\nfour", "vlh", "one t«w|o three\nfour")]
+    [InlineData("one t|wo three\nfour", "vh", "one |tw»o three\nfour")]
+    [InlineData("one t|wo three\nfour", "ve", "one t«wo| three\nfour")]
+    [InlineData("one t|wo three\nfour", "vb", "one |tw»o three\nfour")]
+    [InlineData("one t|wo three\nfour", "v$", "one t«wo three\n|four")]
+    [InlineData("one t|wo three\nfour", "vj", "one t«wo three\nfour|")]
+    [InlineData("one t|wo three\nfour", "vjo", "one t|wo three\nfour»")]
+    [InlineData("one t|wo three\nfour", "v3l", "one t«wo t|hree\nfour")]
+    [InlineData("one t|wo three\nfour", "viw", "one «two| three\nfour")]
+    [InlineData("one t|wo three\nfour", "vaw", "one «two |three\nfour")]
+    [InlineData("one t|wo three\nfour", "viwiw", "one «two |three\nfour")]
+    [InlineData("one t|wo three\nfour", "vfe", "one t«wo thre|e\nfour")]
+    [InlineData("one t|wo three\nfour", "vG", "one t«wo three\nf|our")]
+    [InlineData("one t|wo three\nfour", "V", "«one two three\n|four")]
+    [InlineData("one t|wo three\nfour", "Vj", "«one two three\nfour|")]
+    [InlineData("one t|wo three\nfour", "Vjo", "|one two three\nfour»")]
+    [InlineData("one\nt|wo\nthree", "Vk", "|one\ntwo\n»three")]
+    [InlineData("one t|wo three\nfour", "2v", "one t«wo| three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjV", "«one two three\nfour|")]
+    [InlineData("one t|wo three\nfour", "Vjv", "one t«wo three\nfour|")]
+    [InlineData("one t|wo three\nfour", "vl<Esc>", "one tw|o three\nfour")]
+    [InlineData("one t|wo three\nfour", "vlv", "one tw|o three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjoV", "|one two three\nfour»")]
+    [InlineData("x (a [b|] c) y", "vi(", "x («a [b] c|) y")]
+    [InlineData("x (a [b|] c) y", "va[", "x (a «[b]| c) y")]
+    [InlineData("a\n|b\nc\n\nd", "vip", "«a\nb\nc\n|\nd")]
+    public void Visual_mode_selects_from_where_it_began_to_its_cursor_as_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    [Theory]
+    [InlineData("one t|wo three\nfour", "vld", "one t| three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjd", "one |t")]
+    [InlineData("one t|wo three\nfour", "v$d", "one t|four")]
+    [InlineData("one t|wo three\nfour", "vex", "one t| three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjX", "|")]
+    [InlineData("one t|wo three\nfour", "vlD", "|four")]
+    [InlineData("one t|wo three\nfour", "vecX<Esc>", "one t|X three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjcX<Esc>", "one t|X")]
+    [InlineData("one t|wo three\nfour", "VcX<Esc>", "|X\nfour")]
+    [InlineData("  one t|wo\n  three\nfour", "VjcX<Esc>", "  |X\nfour")]
+    [InlineData("one t|wo three\nfour", "vlsX<Esc>", "one t|X three\nfour")]
+    [InlineData("one t|wo three\nfour", "vlSX<Esc>", "|X\nfour")]
+    [InlineData("one t|wo three\nfour", "vlCX<Esc>", "|X\nfour")]
+    [InlineData("one t|wo three\nfour", "vly", "one t|wo three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjy", "one t|wo three\nfour")]
+    [InlineData("one t|wo three\nfour", "Vjy", "|one two three\nfour")]
+    [InlineData("one t|wo three\nfour", "vlY", "|one two three\nfour")]
+    [InlineData("one t|wo three\nfour", "veyP", "one tw|owo three\nfour")]
+    [InlineData("one t|wo three\nfour", "vey$p", "one two threew|o\nfour")]
+    [InlineData("one t|wo three\nfour", "Vjyp", "one two three\n|one two three\nfour\nfour")]
+    [InlineData("one t|wo three\nfour", "vjU", "one t|WO THREE\nFOUR")]
+    [InlineData("one t|wo three\nfour", "veU", "one t|WO three\nfour")]
+    [InlineData("one t|wo three\nfour", "VU", "|ONE TWO THREE\nfour")]
+    [InlineData("ONE T|WO three\nfour", "veu", "ONE T|wo three\nfour")]
+    [InlineData("one t|wo three\nfour", "ve~", "one t|WO three\nfour")]
+    [InlineData("one t|wo three\nfour", "veg~", "one t|WO three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjgU", "one t|WO THREE\nFOUR")]
+    [InlineData("one t|wo three\nfour", "ver-", "one t|-- three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjr-", "one t|--------\n----")]
+    [InlineData("one t|wo three\nfour", "Vr-", "|-------------\nfour")]
+    [InlineData("one t|wo three\nfour", "vj>", "    |one two three\n    four")]
+    [InlineData("one t|wo three\nfour", "V2>", "        |one two three\nfour")]
+    [InlineData("    one t|wo three\nfour", "vj<", "|one two three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjJ", "one two three| four")]
+    [InlineData("one t|wo three\n  four", "vjgJ", "one two three|  four")]
+    [InlineData("one t|wo three\nfour", "VJ", "one two three| four")]
+    [InlineData("one t|wo three\nfour", "yiwwviwp", "one two tw|o\nfour")]
+    [InlineData("one t|wo three\nfour", "yiwwviwP", "one two tw|o\nfour")]
+    [InlineData("one t|wo three\nfour", "yiwwviwp$p", "one two twothre|e\nfour")]
+    [InlineData("one t|wo three\nfour", "yyjviwp", "one two three\n\n|one two three\n")]
+    [InlineData("one t|wo three\nfour", "yiwjVp", "one two three\n|two")]
+    [InlineData("one t|wo three\nfour", "yyjVp", "one two three\n|one two three")]
+    [InlineData("one t|wo three\nfour", "yyVp", "|one two three\nfour")]
+    [InlineData("one t|wo three\nfour", "vlIX<Esc>", "|Xone two three\nfour")]
+    [InlineData("one t|wo three\nfour", "vlAX<Esc>", "one two|X three\nfour")]
+    [InlineData("one t|wo three\nfour", "VAX<Esc>", "one tw|Xo three\nfour")]
+    [InlineData("one t|wo three\nfour", "vjAX<Esc>", "one two three\nfour|X")]
+    [InlineData("one t|wo three\nfour", "vld.", "one t|hree\nfour")]
+    [InlineData("one t|wo three\nfour", "Vd.", "|")]
+    [InlineData("one t|wo three\nfour", "vlyjgvd", "one t| three\nfour")]
+    [InlineData("one t|wo three\nfour", "vl<Esc>gvd", "one t| three\nfour")]
+    [InlineData("one t|wo three\nfour", "vl\"ad\"ap", "one t w|othree\nfour")]
+    [InlineData("one t|wo three\nfour", "vlvd", "one tw|o three\nfour")]
+    public void Visual_modes_operators_take_what_is_selected_as_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    [Theory]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>", "ab«c|d\nefgh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jl", "ab«cd|\nef«gh|\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jh", "a|bc»d\ne|fg»h\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>j$", "ab«cd|\nef«gh|\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlo", "ab|cd»\nef|gh»\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlO", "ab|cd»\nef|gh»\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jld", "a|b\nef\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlx", "a|b\nef\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlD", "a|b\nef\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlcX<Esc>", "ab|X\nefX\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlCX<Esc>", "ab|X\nefX\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jIX<Esc>", "ab|Xcd\nefXgh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jAX<Esc>", "ab|cXd\nefgXh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>j$AX<Esc>", "ab|cdX\nefghX\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jly", "ab|cd\nefgh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlyP", "ab|cdcd\nefghgh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlyp", "abc|cdd\nefgghh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlyGp", "abcd\nefgh\ni|cdjkl\n gh")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jly$p", "abcd|cd\nefghgh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jly2P", "ab|cdcdcd\nefghghgh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlU", "ab|CD\nefGH\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlr-", "ab|--\nef--\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jl>", "ab|    cd\nef    gh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlJ", "abcd| efgh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jl<Esc>", "abcd\nefg|h\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jlv", "ab«cd\nefgh|\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", "<C-v>jld.", "|a\ne\nijkl")]
+    [InlineData("ab|cd\nx\nijkl", "<C-v>jjIX<Esc>", "ab|Xcd\nx\nijXkl")]
+    [InlineData("    |{\n        int\n    }", "<C-v>jjl", "    «{|\n    «  |  int\n    «}|")]
+    [InlineData("ab|cd\nx\nijkl", "<C-v>jjAX<Esc>", "ab|cXd\nx  X\nijkXl")]
+    public void A_block_is_a_selection_on_each_line_and_its_operators_act_line_by_line_as_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
     [Fact]
@@ -457,7 +581,7 @@ public class VimTests
     /// <summary>The keys of Vim's notation one by one: a named key ("&lt;Esc&gt;") whole, any other character alone.</summary>
     public static IEnumerable<string> Keys(string keys)
     {
-        string[] named = ["<Esc>", "<CR>", "<BS>", "<Tab>", "<Del>", "<C-r>", "<D-s>"];
+        string[] named = ["<Esc>", "<CR>", "<BS>", "<Tab>", "<Del>", "<C-r>", "<C-v>", "<C-o>", "<C-i>", "<D-s>"];
         for (int i = 0; i < keys.Length; i++)
         {
             string? name = keys[i] == '<' ? Array.Find(named, n => string.CompareOrdinal(keys, i, n, 0, n.Length) == 0) : null;

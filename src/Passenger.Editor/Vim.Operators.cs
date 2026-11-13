@@ -37,8 +37,15 @@ public sealed partial class Vim
         {
             return VimResult.Held;
         }
+        return Act(command, op, stretches, text, selections, view);
+    }
+
+    /// <summary>An operator done over the stretches it takes at the carets, the text it took kept in the registers; a
+    /// block's (<paramref name="block"/>) kept as one.</summary>
+    private VimResult Act(Command command, string op, List<Stretch> stretches, TextSnapshot text, SelectionSet selections, IVimView view, bool block = false)
+    {
         stretches.Sort((a, b) => a.Start.CompareTo(b.Start));
-        VimRegister taken = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines);
+        VimRegister taken = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
         VimResult result = op switch
         {
             "d" => Delete(text, selections, stretches),
@@ -56,9 +63,9 @@ public sealed partial class Vim
         {
             Registers.Yank(command.Register, taken);
         }
-        if (op is not ("y" or "c") && !replaying)
+        if (op is not ("y" or "c"))
         {
-            lastChange = (command.Keys, command.Count, string.Empty);
+            Remember(command);
         }
         return VimRegisters.IsClipboard(command.Register) && op is "d" or "c" or "y" ? result with { Clipboard = taken } : result;
     }
@@ -198,7 +205,7 @@ public sealed partial class Vim
         return new VimResult(true, carets);
     }
 
-    private static VimResult Shift(TextSnapshot text, SelectionSet selections, List<Stretch> stretches, bool right, IVimView view)
+    private static VimResult Shift(TextSnapshot text, SelectionSet selections, List<Stretch> stretches, bool right, IVimView view, int times = 1)
     {
         IndentOptions indent = view.Indent;
         SortedSet<int> lines = [];
@@ -219,7 +226,7 @@ public sealed partial class Vim
             }
             int end = TextNavigation.IndentEnd(text, line);
             int width = VimMotions.ColumnOf(text, end, indent.TabWidth);
-            int wanted = right ? width + indent.Size : Math.Max(0, width - indent.Size);
+            int wanted = right ? width + (indent.Size * times) : Math.Max(0, width - (indent.Size * times));
             string now = text.GetText(line.Start, end - line.Start);
             string made = IndentOf(wanted, indent);
             if (made != now)
@@ -287,27 +294,31 @@ public sealed partial class Vim
 
     private VimResult Put(Command command, TextSnapshot text, SelectionSet selections, IVimView view)
     {
-        if (!replaying)
-        {
-            lastChange = (command.Keys, command.Count, string.Empty);
-        }
+        Remember(command);
         if (VimRegisters.IsClipboard(command.Register))
         {
             if (replaying)
             {
                 return VimResult.Held;
             }
-            clipboardPut = (command.Name == "P", command.Count);
+            clipboardPut = (command.Name is "P" or "gP", command.Count, command.Name.StartsWith('g'));
             return new VimResult(true) { ReadsClipboard = true };
         }
         // An empty register puts nothing, and the keys after it go on.
-        return Registers.Get(command.Register) is { } value ? Put(value, command.Name == "P", command.Count, text, selections, view) : new VimResult(true);
+        return Registers.Get(command.Register) is { } value
+            ? Put(value, command.Name is "P" or "gP", command.Count, text, selections, view, cursorAfter: command.Name.StartsWith('g'))
+            : new VimResult(true);
     }
 
     /// <summary>p and P: the register's text after (or before) each caret, or its lines below (or above) the caret's line,
-    /// <paramref name="count"/> times; each caret its own piece where the register holds one for each.</summary>
-    private static VimResult Put(VimRegister value, bool before, int count, TextSnapshot text, SelectionSet selections, IVimView view)
+    /// <paramref name="count"/> times; each caret its own piece where the register holds one for each. gp and gP
+    /// (<paramref name="cursorAfter"/>) leave the caret just after what they put.</summary>
+    private static VimResult Put(VimRegister value, bool before, int count, TextSnapshot text, SelectionSet selections, IVimView view, bool cursorAfter = false)
     {
+        if (value.Blockwise)
+        {
+            return PutBlock(value, before, count, text, selections, view, cursorAfter);
+        }
         string eol = view.LineEnding;
         bool dealt = selections.Count > 1 && value.Parts.Count == selections.Count;
         List<(int At, string Text, int Caret)> puts = [];
@@ -365,11 +376,13 @@ public sealed partial class Vim
             {
                 edits.Add(new TextEdit(at, 0, put));
             }
-            landed.Add(at + shift + caret);
+            landed.Add(at + shift + (cursorAfter ? put.Length : caret));
             shift += put.Length;
         }
         TextSnapshot after = text.Apply(edits);
-        List<Selection> carets = [.. landed.Select(p => Selection.At(value.Linewise ? VimMotions.FirstNonBlank(after, after.GetLineFromOffset(p)) : Settled(after, p)))];
+        List<Selection> carets = [.. landed.Select(p => Selection.At(!value.Linewise ? Settled(after, p)
+            : cursorAfter ? after.GetLineStart(Math.Min(after.GetLineFromOffset(p), VimMotions.LastLine(after)))
+            : VimMotions.FirstNonBlank(after, after.GetLineFromOffset(p))))];
         return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Create(carets, Math.Min(selections.PrimaryIndex, carets.Count - 1)), EditKind.Other)]);
     }
 
@@ -424,9 +437,9 @@ public sealed partial class Vim
     }
 
     /// <summary>J: each caret's line joined with the <paramref name="n"/> - 1 after it (at least one): the next line's
-    /// indent goes and one space comes between, two after a sentence's end, none after white, before a ')' or with an
-    /// empty side; the caret stands where the last join met.</summary>
-    private static EditPlan? Join(TextSnapshot text, SelectionSet selections, int n)
+    /// indent goes and one space comes between, none after white, before a ')' or with an empty side; gJ
+    /// (<paramref name="spaced"/> false) joins them as they are. The caret stands where the last join met.</summary>
+    private static EditPlan? Join(TextSnapshot text, SelectionSet selections, int n, bool spaced = true)
     {
         int lastLine = VimMotions.LastLine(text);
         List<TextEdit> edits = [];
@@ -447,9 +460,10 @@ public sealed partial class Vim
             {
                 LineSpan here = text.GetLine(line);
                 LineSpan next = text.GetLine(line + 1);
-                int body = TextNavigation.IndentEnd(text, next);
+                int body = spaced ? TextNavigation.IndentEnd(text, next) : next.Start;
                 bool empty = body >= next.End;
-                string space = empty || joinedLength == 0 || end is ' ' or '\t' || text[body] == ')' ? string.Empty : end is '.' or '!' or '?' ? "  " : " ";
+                // One space even after a sentence's end, as most editors and code's comments have it.
+                string space = !spaced || empty || joinedLength == 0 || end is ' ' or '\t' || text[body] == ')' ? string.Empty : " ";
                 edits.Add(new TextEdit(here.End, body - here.End, space));
                 landing = joinedLength;
                 joinedLength += space.Length + (next.End - body);

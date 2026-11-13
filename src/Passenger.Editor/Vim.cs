@@ -6,6 +6,10 @@ public enum VimMode
 {
     Normal,
     Insert,
+    Visual,
+    VisualLine,
+    VisualBlock,
+    Replace,
 }
 
 /// <summary>What a key did in Vim mode: taken, or left to the keymap; and what the editor is to do with it: carets to set,
@@ -54,15 +58,15 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>The last f, F, t or T, for ; and , to repeat.</summary>
     private (string Target, bool Back, bool Till)? lastFind;
 
-    /// <summary>The last change, for . to make again: its keys after the count, the count, and what its insert typed.</summary>
-    private (IReadOnlyList<string> Keys, int Count, string Inserted)? lastChange;
+    /// <summary>The last change, for . to make again.</summary>
+    private ChangeMade? lastChange;
 
     /// <summary>The insert session under way: the command that began it and how, where its first caret began, the text's
     /// length and the carets then, and the count to repeat its text by.</summary>
     private (IReadOnlyList<string> Keys, int Count, string How, int First, int Length, int Carets)? inserting;
 
     /// <summary>A put from + or * waiting for the clipboard's text.</summary>
-    private (bool Before, int Count)? clipboardPut;
+    private (bool Before, int Count, bool CursorAfter)? clipboardPut;
 
     /// <summary>Set while . makes the last change again, which records nothing.</summary>
     private bool replaying;
@@ -87,6 +91,10 @@ public sealed partial class Vim(VimRegisters registers)
         if (Mode == VimMode.Insert)
         {
             return key == Escape ? LeaveInsert(text, selections, view) : VimResult.Left;
+        }
+        if (IsVisual(Mode))
+        {
+            return PressVisual(key, text, selections, view);
         }
         if (key == Escape)
         {
@@ -139,7 +147,7 @@ public sealed partial class Vim(VimRegisters registers)
             return VimResult.Held;
         }
         clipboardPut = null;
-        return Put(VimRegisters.FromClipboard(clipboard), put.Before, put.Count, text, selections, view ?? PlainView);
+        return Put(VimRegisters.FromClipboard(clipboard), put.Before, put.Count, text, selections, view ?? PlainView, put.CursorAfter);
     }
 
     /// <summary>Where a normal-mode caret may stand nearest the offset: on a character of its line, never past its last
@@ -162,7 +170,7 @@ public sealed partial class Vim(VimRegisters registers)
     }
 
     private static bool IsVimKey(string key) =>
-        key.Length == 1 || (key.Length == 2 && char.IsSurrogatePair(key[0], key[1])) || key is "<BS>" or "<CR>" or "<Del>" or "<Tab>";
+        key.Length == 1 || (key.Length == 2 && char.IsSurrogatePair(key[0], key[1])) || key is "<BS>" or "<CR>" or "<Del>" or "<Tab>" or "<C-v>";
 
     /// <summary>The count typed so far where nothing else is, 0 with none.</summary>
     private int CountOnly()
@@ -243,9 +251,13 @@ public sealed partial class Vim(VimRegisters registers)
         }
         if (session is { } begun && !replaying)
         {
-            lastChange = (begun.Keys, begun.Count, typed ?? string.Empty);
+            lastChange = new ChangeMade(begun.Keys, begun.Count, typed ?? string.Empty, changeExtent);
         }
-        SelectionSet back = selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start))));
+        changeExtent = null;
+        SelectionSet back = blockCorner is { } corner && corner <= text.Length
+            ? SelectionSet.Single(Settled(text, corner))
+            : selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start))));
+        blockCorner = null;
         if (plans.Count == 0)
         {
             return new VimResult(true, back);
@@ -298,7 +310,7 @@ public sealed partial class Vim(VimRegisters registers)
         {
             // A put from a numbered register puts the next one up each time it is repeated.
             keys[1] = ((char)(digit[0] + 1)).ToString();
-            lastChange = (keys, change.Count, change.Inserted);
+            lastChange = change with { Keys = keys };
         }
         int times = count > 0 ? count : change.Count;
         List<EditPlan> plans = [];
@@ -306,6 +318,17 @@ public sealed partial class Vim(VimRegisters registers)
         replaying = true;
         try
         {
+            if (change.Visual is { } extent)
+            {
+                // A visual change takes as much again from each caret, its count its own.
+                times = extent.Mode == VimMode.VisualBlock || keys.Contains(">") || keys.Contains("<") ? change.Count : 0;
+                Mode = extent.Mode;
+                IReadOnlyList<Selection> from = extent.Mode == VimMode.VisualBlock ? [carets.Primary] : carets.Items;
+                regions = [.. from.Select(c => FromExtent(text, c.Caret, extent, view))];
+                visualPrimary = extent.Mode == VimMode.VisualBlock ? 0 : carets.PrimaryIndex;
+                visualAims = [.. regions.Select(_ => -1)];
+                carets = ShowVisual(text, view).Selections!;
+            }
             List<string> typed = times > 0 ? [.. times.ToString(System.Globalization.CultureInfo.InvariantCulture).Select(c => c.ToString())] : [];
             foreach (string key in typed.Concat(keys))
             {

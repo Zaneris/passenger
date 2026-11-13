@@ -15,7 +15,10 @@ public sealed partial class Vim
 
     private static readonly HashSet<string> GMotions = ["g", "e", "E", "j", "k", "_"];
 
-    private static readonly HashSet<string> Simple = ["x", "X", "s", "S", "C", "D", "Y", "J", "~", "i", "a", "I", "A", "o", "O", "u", "p", "P", "."];
+    private static readonly HashSet<string> Simple = ["x", "X", "s", "S", "C", "D", "Y", "J", "~", "i", "a", "I", "A", "o", "O", "u", "p", "P", ".", "v", "V", "<C-v>", "R"];
+
+    /// <summary>The commands g begins that are neither motions nor operators.</summary>
+    private static readonly HashSet<string> GCommands = ["v", "J", "p", "P"];
 
     /// <summary>The command the keys make, null where they make none; <paramref name="incomplete"/> while more keys may
     /// still make one.</summary>
@@ -80,6 +83,10 @@ public sealed partial class Vim
             if (name is null && !incomplete && Simple.Contains(first))
             {
                 (name, used) = (first, 1);
+            }
+            if (name is null && !incomplete && first == "g" && i + 1 < keys.Count && GCommands.Contains(keys[i + 1]))
+            {
+                (name, used) = ("g" + keys[i + 1], 2);
             }
             if (name is null && !incomplete && first == "r")
             {
@@ -171,12 +178,23 @@ public sealed partial class Vim
             // Any other command sets the column j and k aim for afresh, even where the caret stays.
             wantedFor = null;
         }
+        changeExtent = null;
         if (command.Operator is { } op)
         {
             return Operate(command, op, text, selections, view);
         }
         switch (command.Name)
         {
+            case "v":
+                return EnterVisual(VimMode.Visual, command.Count, text, selections, view);
+            case "V":
+                return EnterVisual(VimMode.VisualLine, command.Count, text, selections, view);
+            case "<C-v>":
+                return EnterVisual(VimMode.VisualBlock, command.Count, text, selections, view);
+            case "gv":
+                return Reselect(text, view);
+            case "gJ":
+                return Changed(command, Join(text, selections, n, spaced: false));
             case "j" or "k" or "gj" or "gk" when command.Operator is null:
                 return Vertically(text, selections, command.Name is "j" or "gj" ? n : -n, command.Name.StartsWith('g'), view);
             case "x":
@@ -205,7 +223,7 @@ public sealed partial class Vim
                 return InsertAfter(text, TextEditing.StartNewLine(text, selections, view.LineEnding, view.Indent, above: command.Name == "O", view.Markup), command, command.Name);
             case "u":
                 return new VimResult(true, Action: EditorActions.Undo, Repeat: Math.Min(n, MostRepeated));
-            case "p" or "P":
+            case "p" or "P" or "gp" or "gP":
                 return Put(command, text, selections, view);
             case ".":
                 return Again(command.Count, text, selections, view);
@@ -226,10 +244,7 @@ public sealed partial class Vim
         {
             return VimResult.Held;
         }
-        if (!replaying)
-        {
-            lastChange = (command.Keys, command.Count, string.Empty);
-        }
+        Remember(command);
         return new VimResult(true, Edits: [plan]);
     }
 

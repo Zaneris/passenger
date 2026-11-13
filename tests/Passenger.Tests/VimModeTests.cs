@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -282,9 +283,81 @@ public sealed class VimModeTests : IDisposable
         Assert.Equal("X two three\nX five six\n", rig.Text);
     }
 
+    /// <summary>v, V and Ctrl+V select as the editor's own selections, a block one selection per line, and the status
+    /// bar says which; an operator takes what is selected as one step of undo, which puts back carets in normal mode; a
+    /// block's I types on every line it crosses and leaves one caret at its corner.</summary>
+    [AvaloniaFact]
+    public void Visual_modes_select_as_the_editors_own_selections_and_their_changes_are_one_step_of_undo()
+    {
+        (MainWindow window, CodeEditor editor) = Open("one two\nthree four\nfive six\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "wvj");
+            Assert.Equal("VISUAL", Status(window).Mode);
+            Assert.Equal([new Selection(4, 13)], editor.Selections.Items);
+            Keys(window, "d");
+            Assert.Equal(("one  four\nfive six\n", "NORMAL"), (Text(editor), Status(window).Mode));
+            Keys(window, "u");
+            Ui.WaitFor(() => Text(editor) == "one two\nthree four\nfive six\n", () => $"u left \"{Text(editor)}\"");
+            Assert.True(editor.Selections.Items is [{ IsEmpty: true, Caret: 4 }] && Status(window).Mode == "NORMAL",
+                $"Undo of a visual change put back {string.Join(", ", editor.Selections.Items)} in {Status(window).Mode}, not a caret where the change began in normal mode");
+
+            Keys(window, "V");
+            Assert.Equal("VISUAL LINE", Status(window).Mode);
+            Assert.Equal([new Selection(0, 8)], editor.Selections.Items);
+            Ui.Press(window, "ESCAPE");
+            Assert.Equal("NORMAL", Status(window).Mode);
+
+            Ui.Press(window, "control V");
+            Keys(window, "jjl");
+            Assert.Equal("VISUAL BLOCK", Status(window).Mode);
+            Assert.Equal([new Selection(4, 6), new Selection(12, 14), new Selection(23, 25)], editor.Selections.Items);
+            Keys(window, "IX<Esc>");
+            Assert.Equal("one Xtwo\nthreXe four\nfiveX six\n", Text(editor));
+            Assert.True(editor.Selections.Items is [{ IsEmpty: true, Caret: 4 }], $"A block's insert left {string.Join(", ", editor.Selections.Items)}, not one caret at its corner");
+            Keys(window, "u");
+            Ui.WaitFor(() => Text(editor) == "one two\nthree four\nfive six\n", () => $"u took back part of the block's insert, leaving \"{Text(editor)}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A drag of the mouse in normal mode enters visual mode over what it selected, whose operators then act on it,
+    /// and a click leaves visual mode again.</summary>
+    [AvaloniaFact]
+    public void A_drag_enters_visual_mode_and_a_click_leaves_it()
+    {
+        (MainWindow window, CodeEditor editor) = Open("alpha beta\ngamma\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Point At(int offset) => editor.TranslatePoint(editor.PointOf(offset) + new Point(1, editor.LineHeight / 2), window)!.Value;
+            Ui.Drag(window, At(0), At(5));
+            Assert.Equal("VISUAL", Status(window).Mode);
+            Assert.Equal([new Selection(0, 5)], editor.Selections.Items);
+            Keys(window, "d");
+            Assert.Equal((" beta\ngamma\n", "NORMAL"), (Text(editor), Status(window).Mode));
+            Ui.Drag(window, At(1), At(4));
+            Assert.Equal("VISUAL", Status(window).Mode);
+            Ui.Click(editor, editor.PointOf(8) + new Point(1, editor.LineHeight / 2));
+            Assert.True(Status(window).Mode == "NORMAL" && editor.Selections.Items is [{ IsEmpty: true }],
+                $"A click left {Status(window).Mode} with {string.Join(", ", editor.Selections.Items)}, not normal mode with a caret");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A long session of normal mode's keys in an editor, seeded, checked after each key against a model of what
-    /// Vim does with them: counts, h l j k 0 $, x X D dd, yy p P, J, ~ and u; the model knows a string, a caret, the column
-    /// j and k aim for, the unnamed register and the text before each change.</summary>
+    /// Vim does with them: counts, h l j k 0 $, x X D dd, yy p P, J, ~ and u, and visual mode's v d, v y, V d, V j d and
+    /// V y; the model knows a string, a caret, the column j and k aim for, the unnamed register and the text before each
+    /// change.</summary>
     [AvaloniaTheory]
     [InlineData(1)]
     [InlineData(2)]
@@ -296,7 +369,7 @@ public sealed class VimModeTests : IDisposable
         rig.Window.Height = 300;
         rig.Editor.UsesVim = true;
         Assert.True(rig.Editor.VimRegisters.Unnamed is null, "Vim mode began with something to put, where Vim begins with its registers empty");
-        string[] commands = ["h", "l", "j", "k", "0", "$", "x", "X", "D", "dd", "yy", "p", "P", "J", "~", "u"];
+        string[] commands = ["h", "l", "j", "k", "0", "$", "x", "X", "D", "dd", "yy", "p", "P", "J", "~", "u", "vd", "vy", "Vd", "Vjd", "Vy"];
         for (int step = 0; step < 400; step++)
         {
             string command = commands[random.Next(commands.Length)];
@@ -412,6 +485,28 @@ public sealed class VimModeTests : IDisposable
             int length = lines[line].Length;
             switch (command)
             {
+                case "vd" or "vy" when length == 0:
+                    // On an empty line visual mode takes the line break, which the model leaves aside.
+                    return false;
+                case "vd":
+                    return Press("x", 1);
+                case "vy":
+                    register = (lines[line][column].ToString(), false);
+                    Move(lines, line, column);
+                    break;
+                case "Vd" or "Vjd":
+                    int caretWas = Caret;
+                    bool done = Press("dd", command == "Vjd" && line < lines.Count - 1 ? 2 : 1);
+                    if (done && undo.TryPop(out (string Text, int Caret) was))
+                    {
+                        // Undo puts the caret back at the start of the lines visual mode took.
+                        undo.Push((was.Text, caretWas - column));
+                    }
+                    return done;
+                case "Vy":
+                    Press("yy", 1);
+                    Move(lines, line, 0);
+                    break;
                 case "h":
                     Move(lines, line, Math.Max(0, column - n));
                     break;

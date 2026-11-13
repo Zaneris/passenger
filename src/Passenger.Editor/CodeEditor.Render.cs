@@ -87,6 +87,20 @@ public sealed partial class CodeEditor
     private void DrawCarets(DrawingContext context, TextSnapshot text, int start, int end, int first, int last, double left)
     {
         IReadOnlyList<Selection> items = selections.Items;
+        IReadOnlyList<int> cursors = VisualCursors;
+        if (cursors.Count > 0)
+        {
+            // Visual mode's cursors are blocks inside what it selects, as normal mode's caret is.
+            foreach (int cursor in cursors)
+            {
+                (int cursorRow, double cursorX) = CaretPlace(text, cursor);
+                if (cursor >= start && cursor <= end && cursorRow >= first && cursorRow <= last)
+                {
+                    DrawBlockCaret(context, text, cursor, cursorRow, cursorX, (cursorRow * metrics.LineHeight) - scroll.Y, left);
+                }
+            }
+            return;
+        }
         for (int i = FirstCaretFrom(start); i < items.Count && items[i].Caret <= end; i++)
         {
             (int row, double x) = CaretPlace(text, items[i].Caret);

@@ -26,12 +26,21 @@ public interface IVimView
     /// <summary>H, M and L: the line of the row <paramref name="count"/> - 1 rows below the top shown whole (above the
     /// bottom one), or of the middle row shown.</summary>
     int LineShown(TextSnapshot text, VimScreenLine at, int count);
+
+    /// <summary>Where the mark <paramref name="name"/> stands in the text now, carried through the edits since it was
+    /// set; null where it was never set.</summary>
+    int? Mark(char name, TextSnapshot text);
+
+    /// <summary>Sets the mark <paramref name="name"/> at an offset of the text shown.</summary>
+    void SetMark(char name, int offset);
 }
 
 /// <summary>A view of the text with no screen: every line one row and every line shown, for Vim mode's tests and any
 /// host without an editor.</summary>
 public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", MarkupKind markup = MarkupKind.None) : IVimView
 {
+    private readonly Dictionary<char, int> marks = [];
+
     public IndentOptions Indent { get; } = indent;
 
     public string LineEnding { get; } = lineEnding;
@@ -57,4 +66,8 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
             _ => last / 2,
         };
     }
+
+    public int? Mark(char name, TextSnapshot text) => marks.TryGetValue(name, out int at) ? Math.Min(at, text.Length) : null;
+
+    public void SetMark(char name, int offset) => marks[name] = offset;
 }

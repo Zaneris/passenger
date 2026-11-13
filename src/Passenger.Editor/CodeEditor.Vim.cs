@@ -15,6 +15,9 @@ public sealed partial class CodeEditor
 {
     private Vim? vim;
 
+    /// <summary>Set while the editor does what Vim asked, so the selections it sets are Vim's own.</summary>
+    private bool followingVim;
+
     private VimRegisters vimRegisters = new();
 
     private EditorVimView? vimView;
@@ -102,13 +105,31 @@ public sealed partial class CodeEditor
     /// or read for + and *.</summary>
     private void FollowVim(VimResult result, VimMode was)
     {
-        bool entering = was == VimMode.Normal && vim?.Mode == VimMode.Insert;
+        followingVim = true;
+        try
+        {
+            FollowVimResult(result, was);
+        }
+        finally
+        {
+            followingVim = false;
+        }
+    }
+
+    private void FollowVimResult(VimResult result, VimMode was)
+    {
+        if (Vim.IsVisual(was) && result.Edits is { Count: > 0 })
+        {
+            // Undo puts back carets at the visual stretches' starts, never the stretches themselves.
+            Selections = selections.With(s => Selection.At(s.Start));
+        }
+        bool entering = was != VimMode.Insert && vim?.Mode == VimMode.Insert;
         if (entering)
         {
             FollowVimMode();
         }
         IReadOnlyList<EditPlan> edits = result.Edits ?? [];
-        bool oneStep = !entering && was == VimMode.Normal && edits.Count > 1;
+        bool oneStep = !entering && was is not (VimMode.Insert or VimMode.Replace) && edits.Count > 1;
         if (oneStep)
         {
             document.BreakUndoGroup();
@@ -163,6 +184,7 @@ public sealed partial class CodeEditor
             KeyModifiers.None when e.Key == Key.Delete => "<Del>",
             KeyModifiers.None when e.Key == Key.Tab => "<Tab>",
             KeyModifiers.Control when e.Key == Key.R => "<C-r>",
+            KeyModifiers.Control when e.Key == Key.V => "<C-v>",
             KeyModifiers.None when e.KeySymbol is { Length: 1 } typed && !char.IsControl(typed[0]) => typed,
             _ when KeymapDispatcher.IsAltGrTyping(e) && e.KeySymbol is { Length: 1 } typed => typed,
             // A press whose platform gives no symbol: letters and digits by their key, as punctuation's differs by layout.
@@ -179,7 +201,7 @@ public sealed partial class CodeEditor
     private void FollowVimMode()
     {
         document.BreakUndoGroup();
-        Avalonia.Input.InputMethod.SetIsInputMethodEnabled(this, vim is not { Mode: VimMode.Normal });
+        Avalonia.Input.InputMethod.SetIsInputMethodEnabled(this, vim is null or { Mode: VimMode.Insert });
         VimModeChanged?.Invoke(this, EventArgs.Empty);
         RedrawOverlay();
     }
@@ -188,9 +210,24 @@ public sealed partial class CodeEditor
     private EditKind StepOf(EditKind kind) => vim is { Mode: VimMode.Insert } ? EditKind.Joined : kind;
 
     /// <summary>Carets as normal mode lets them stand, on a character, wherever they were put (a click, the keymap's End,
-    /// an undo); a selection stays as it is.</summary>
-    private SelectionSet VimSettled(SelectionSet carets) =>
-        vim is { Mode: VimMode.Normal } ? Vim.Settled(document.Snapshot, carets) : carets;
+    /// an undo); a selection put there from outside Vim's keys (a drag, Select All) begins visual mode, and visual mode
+    /// ends where its selections went.</summary>
+    private SelectionSet VimSettled(SelectionSet carets)
+    {
+        if (vim is null)
+        {
+            return carets;
+        }
+        if (!followingVim && vim.FollowSelections(document.Snapshot, carets, VimView))
+        {
+            VimModeChanged?.Invoke(this, EventArgs.Empty);
+            Avalonia.Input.InputMethod.SetIsInputMethodEnabled(this, vim.Mode == VimMode.Insert);
+        }
+        return vim.Mode == VimMode.Normal ? Vim.Settled(document.Snapshot, carets) : carets;
+    }
+
+    /// <summary>Where visual mode's block carets stand: its cursors, while the selections shown are its own.</summary>
+    private IReadOnlyList<int> VisualCursors => vim is { } v && Vim.IsVisual(v.Mode) ? v.VisualCursors(selections) : [];
 
     /// <summary>Normal mode's block over the character at the caret, as wide as it is drawn (a tab's stretch, a wide
     /// character's two cells), one cell at a line's end.</summary>
@@ -215,6 +252,9 @@ public sealed partial class CodeEditor
     /// for H, M and L.</summary>
     private sealed class EditorVimView(CodeEditor editor) : IVimView
     {
+        /// <summary>Each document's marks, held by anchors so edits carry them, shared by every editor showing it.</summary>
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextDocument, Dictionary<char, Anchor>> Marks = new();
+
         public IndentOptions Indent => editor.Indent;
 
         public string LineEnding => editor.document.LineEnding;
@@ -226,6 +266,21 @@ public sealed partial class CodeEditor
             (int row, double x) = editor.Place(text, offset, editor.LeansBack(offset));
             int target = Math.Clamp(row + rows, 0, Math.Max(0, editor.RowCount - 1));
             return target == row ? offset : editor.OffsetAtRow(text, target, x, out _);
+        }
+
+        public int? Mark(char name, TextSnapshot text) =>
+            Marks.TryGetValue(editor.document, out Dictionary<char, Anchor>? held) && held.TryGetValue(name, out Anchor? anchor) && anchor.IsLive
+                ? Math.Min(anchor.Offset, text.Length)
+                : null;
+
+        public void SetMark(char name, int offset)
+        {
+            Dictionary<char, Anchor> held = Marks.GetOrCreateValue(editor.document);
+            if (held.TryGetValue(name, out Anchor? before))
+            {
+                before.Remove();
+            }
+            held[name] = editor.document.AnchorAt(Math.Clamp(offset, 0, editor.document.Snapshot.Length), AnchorGravity.Before);
         }
 
         public int LineShown(TextSnapshot text, VimScreenLine at, int count)

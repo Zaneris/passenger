@@ -229,13 +229,17 @@ public sealed class StatusBar
         }
         shownMode = now;
         vimMode.IsVisible = now.Mode is not null;
-        vimMode.Text = now.Mode switch
+        string words = now.Mode switch
         {
-            VimMode.Normal when now.Pending.Length > 0 => $"NORMAL {now.Pending}",
             VimMode.Normal => "NORMAL",
             VimMode.Insert => "INSERT",
+            VimMode.Visual => "VISUAL",
+            VimMode.VisualLine => "VISUAL LINE",
+            VimMode.VisualBlock => "VISUAL BLOCK",
+            VimMode.Replace => "REPLACE",
             _ => string.Empty,
         };
+        vimMode.Text = now.Pending.Length > 0 && now.Mode is not (VimMode.Insert or VimMode.Replace) ? $"{words} {now.Pending}" : words;
     }
 
     /// <summary>The Vim mode and command the status bar words.</summary>

@@ -65,9 +65,9 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        if (vim is { Mode: Editor.VimMode.Normal })
+        if (vim is { Mode: not Editor.VimMode.Insert })
         {
-            // Normal mode's keys are commands, taken at the key press; their text must not type.
+            // Keys outside insert mode are commands, taken at the key press; their text must not type.
             e.Handled = true;
             return;
         }
