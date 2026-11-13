@@ -29,6 +29,8 @@ just package-mac [RID]     # the .dmg (osx-arm64, or osx-x64 checked under Roset
                            # signed by PASSENGER_SIGN_IDENTITY and notarized by PASSENGER_NOTARY_PROFILE when set,
                            # else ad hoc (--dry-run needs an identity)
 just package-win [RID]     # Velopack's per-user installer; just package-linux [RID]: the .tar.gz with install.sh
+just debug-relay [android] [apple]  # the debugger's relay into artifacts/debug-relay/<rid>/ (macOS: clang, the Android
+                           # workload's linker, Xcode's SDKs); the app carries Android's under debugger/relay/<rid>/
 just container-tools [RID] [--archive]  # the in-container tools (linux[-musl]-x64/arm64) into artifacts/container-tools
 just notices               # fail naming any carried package the notices miss
 just mcp [FOLDER]          # Passenger as an MCP server over a folder, from a clone of the last build
@@ -246,7 +248,11 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `GpgPrograms`); signatures read for the rows shown, never by `%G?` in a read; a git that may ask ends with its folder
   (`GitQuestions`); a partial commit's own index starts from `read-tree -m --index-output` (the real index's stats), never
   a plain `read-tree`, which reads every file again.
-- `Passenger.Dap`, `Passenger.Debugger`, `Passenger.DebugAdapter`: Passenger's own debugger behind its own DAP.
+- `Passenger.Dap`, `Passenger.Debugger`, `Passenger.DebugAdapter`: Passenger's own debugger behind its own DAP. On a
+  device it runs through `Passenger.DebugRelay` (relay.c), loaded by the Debug app as its profiler, which knows only the
+  callbacks' argument kinds: `Passenger.Debugger/Relay` plans each interface from the interop declarations, keeps answers
+  in `RelayAnswers` keyed by the interface declaring the method (ICorDebug's interfaces reuse slot numbers), and answers
+  or refuses a raw pointer no plan can size on the host.
   `Passenger.ContainerTools` runs inside a Linux container, carried only in the release's archives.
 - `Passenger.Profiler`: EventPipe and ClrMD (its Azure packages stay carried; its DAC stays loaded once used: unloading
   it crashed on Linux); recording in a container trusts nothing in a frame. A heap dump is Passenger's own (`DumpTool`):
@@ -325,7 +331,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   solution build's output is evaluated with them (the host's `SolutionBuild`, `WorkspaceModel.BuiltSolution`). A
   solution's multi-project launch profiles live only in Visual Studio's `.slnLaunch`/`.slnLaunch.user` beside it
   (`SolutionLaunch`, written as text where each stands), each project started as its own configuration
-  (`RunConfigurations.ProjectOf`).
+  (`RunConfigurations.ProjectOf`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`), its target chosen per project;
+  Android's only through the workload's `ComputeAvailableDevices`, `DeployToDevice` and `ComputeRunArguments`, adb through
+  `ChildProcesses`.
 - **Runs of services.** `ServiceRun` is the one model: Debug, Attach, Restart and Profile written once; one start at a
   time; Stop ends every session and recording before the programs go.
 - **Containers.** The person's `docker` CLI and context only, never the Engine API or a Docker package; a service's name
@@ -557,6 +565,12 @@ a new name, and `just site-shots` retakes its images.
   counts as held; reload only a scene Godot has open and saved. A static function named after an Object virtual (`_set`)
   fails the whole script; `remove_child` clears owners outside the branch, so a move or undone remove sets them again.
   `PASSENGER_ADDON_TRACE` prints each scene act.
+- **Android**: .NET for Android turns an app's OutputType Exe into Library (`AndroidApplication` true, which runnability
+  reads); its Debug host reads `files/.__override__/<abi>/environment`, where a Debug start puts the relay's variables
+  through run-as and puts the build's link back after; `am set-debug-app` (kept only in the activity manager: clear only
+  your own) keeps a long stop of the main thread from ending the app; the relay calls the DBI's `DllMain` itself, or
+  `ICorDebug::Initialize` hangs; without the workload's platform (`platforms;android-37.0`) its device listing fails with
+  XA5207. AndroidDeviceTests needs that platform, a JDK in `JAVA_HOME` and an AVD, booted `-no-window`.
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so hold a child whose descendants must end with it with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket with
