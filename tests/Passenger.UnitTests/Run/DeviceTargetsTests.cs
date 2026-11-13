@@ -164,7 +164,7 @@ public class DeviceTargetsTests
 
         Assert.Null(problem);
         Assert.Equal(("com.shop", "crc64.MainActivity", "/sdk/platform-tools/adb"), (app!.Package, app.Activity, app.Adb));
-        Assert.Equal(Path.Combine("/src/Shop", "obj", "Debug", "net11.0-android"), app.Intermediate.TrimEnd('/', '\\'));
+        Assert.Equal(PathNames.Canonical(Path.Combine("/src/Shop", "obj", "Debug", "net11.0-android")), app.Intermediate.TrimEnd('/', '\\'));
         Assert.Equal(Path.Combine(app.Intermediate, "android", "assets", "arm64-v8a"), app.Deployed("arm64-v8a"));
 
         (AndroidApp? none, string? why) = AndroidApp.Read("""

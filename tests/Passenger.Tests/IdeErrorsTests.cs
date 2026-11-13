@@ -226,8 +226,8 @@ public sealed class IdeErrorsTests : IDisposable
 
     /// <summary>Every place src's code lets go of a task it started (DroppedTasks): a discard, a call as a statement, a
     /// lambda for a delegate that returns nothing, a continuation that only marks a fault seen among them (that is
-    /// UnawaitedWork.Dismiss's). Passed over: a project not built, the container tools (only the solution's build and the
-    /// release make them).</summary>
+    /// UnawaitedWork.Dismiss's). Passed over: a folder of no .NET project (the debugger's relay is C), a project not built,
+    /// the container tools (only the solution's build and the release make them).</summary>
     [Gate]
     [AvaloniaFact]
     public void Nothing_in_src_leaves_a_fault_in_the_work_it_starts_for_the_garbage_collector_to_find()
@@ -238,7 +238,12 @@ public sealed class IdeErrorsTests : IDisposable
         foreach (string project in Directory.GetDirectories(Path.Combine(root, "src")).Order(StringComparer.Ordinal))
         {
             string name = Path.GetFileName(project);
-            Match named = Regex.Match(File.ReadAllText(Path.Combine(project, $"{name}.csproj")), "<AssemblyName>([^<]+)</AssemblyName>");
+            string projectFile = Path.Combine(project, $"{name}.csproj");
+            if (!File.Exists(projectFile))
+            {
+                continue;
+            }
+            Match named = Regex.Match(File.ReadAllText(projectFile), "<AssemblyName>([^<]+)</AssemblyName>");
             string assembly = Path.Combine(root, "artifacts", "bin", name, "debug", $"{(named.Success ? named.Groups[1].Value : name)}.dll");
             if (!File.Exists(assembly))
             {
