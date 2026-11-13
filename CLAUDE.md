@@ -171,7 +171,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 - **State is a `StateDocument`** in the one `StateStore` (versioned, `Clamped`, debounced, merged, a bad file set aside
   as `.bad`), read off the UI thread, never a file of its own; per-folder state under `workspaces/<name>-<hash>/`, held
   by each window with it open; writes hold a lock every process honours (`StateFile.Hold`); a renamed key moves in
-  `IStateDocument.Renamed`; a value of the wrong kind is passed over alone. A new setting: an `AppSettings` property,
+  `IStateDocument.Renamed`; a value of the wrong kind is passed over alone. A Settings row is an `OptionRow` (its label above its editor on a narrow page), an editor narrowing by `MaxWidth` and a drop-down with its button through `NarrowingField`, never a fixed `Width`. A new setting: an `AppSettings` property,
   its row and range in `Declared` (refused values `Refused`, which Settings and `settings_set` ask), `Add`ed in
   `SettingsDialog`, a line in `MainWindow.Follow` or `SettingsStore.InForce`, a look's in `SettingsPreview.Over` and
   `MainWindow.OnPreviewChanged` (`VisualsInForce`) instead, so Settings shows it before Apply; a row another setting
@@ -411,7 +411,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   it (`CentralWrites`), never dotnet add package, which drops a props file's blank lines and turns a property to a literal;
   EF Core's own packages move as one set, another maker's provider only when asked (`MigrationsController.UpdateAsync`);
   `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
-  templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); only an installed copy
+  templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); updates are checked and downloaded once, by the watching window, and said in every window (`MainWindow.UpdatesOwner`); only an installed copy
   updates itself, a package manager's left to it; What's New from `docs/release-notes/X.Y.Z.md`.
 - **MCP.** `PassengerTools` (every tool on the UI thread), `McpHost`, `McpProxy`, `AgentConnection`. A relay follows an
   update or, on Windows, ends, signalling the relay alone, never its agent's process group; `godot_editor` makes each
