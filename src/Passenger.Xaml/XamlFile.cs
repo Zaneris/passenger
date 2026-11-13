@@ -105,22 +105,26 @@ public sealed class XamlFile
 
     public ClrType? ClassType => ClassName is { } name ? Types.Find(name) : null;
 
-    /// <summary>The URI a prefix means at an element (the empty prefix, the default namespace).</summary>
-    public string? UriOf(XmlElement? scope, string prefix) => DeclaredUri(scope, prefix);
+    /// <summary>The URI a prefix means at an element (the empty prefix, the default namespace): as declared, else as the
+    /// dialect declares it for every file (MAUI's implicit prefixes).</summary>
+    public string? UriOf(XmlElement? scope, string prefix) => DeclaredUri(scope, prefix) ?? Dialect.ImplicitUri(Types, prefix);
 
     /// <summary>The URI a prefix is declared for at an element, read from the markup alone: what <see cref="UriOf"/> says
-    /// where no file is at hand.</summary>
+    /// where no file is at hand. In a file whose root declares no default namespace, which only MAUI's XAML may leave
+    /// out, a prefix none declares is MAUI's implicit one.</summary>
     public static string? DeclaredUri(XmlElement? scope, string prefix)
     {
         string name = prefix.Length == 0 ? "xmlns" : "xmlns:" + prefix;
+        XmlElement? root = scope;
         for (XmlElement? at = scope; at is not null; at = at.Parent)
         {
             if (at.Attribute(name) is { } declared)
             {
                 return declared.Value;
             }
+            root = at;
         }
-        return null;
+        return root is not null && root.Attribute("xmlns") is null ? MauiDialect.ImplicitlyDeclared(prefix) : null;
     }
 
     /// <summary>Every prefix in scope at an element, the nearest declaration of each, the default one's as empty.</summary>
@@ -141,6 +145,10 @@ public sealed class XamlFile
                 }
             }
         }
+        foreach ((string prefix, string uri) in Dialect.ImplicitPrefixes)
+        {
+            found.TryAdd(prefix, uri);
+        }
         return [.. found.Select(f => (f.Key, f.Value))];
     }
 
@@ -154,11 +162,11 @@ public sealed class XamlFile
         {
             return XamlNamespaceKind.Unknown;
         }
-        if (uri == XamlDialect.XamlUri)
+        if (XamlDialect.IsLanguageUri(uri))
         {
             return XamlNamespaceKind.Language;
         }
-        if (uri is XamlDialect.DesignerUri or XamlDialect.CompatibilityUri)
+        if (uri is XamlDialect.DesignerUri or XamlDialect.CompatibilityUri or MauiDialect.DesignUri)
         {
             return XamlNamespaceKind.Ignorable;
         }
@@ -225,9 +233,24 @@ public sealed class XamlFile
 
     /// <summary>The type an object element makes; null for a property element, an x: directive's element, or a name
     /// nothing resolves. A <c>&lt;Binding&gt;</c> makes what the compiler makes of it: a compiled binding where bindings
-    /// compile, a reflection binding where they do not.</summary>
+    /// compile, a reflection binding where they do not; an element given <c>x:TypeArguments</c> makes the generic type of
+    /// its name and that many type parameters (MAUI's <c>&lt;OnPlatform x:TypeArguments="x:Double"&gt;</c>).</summary>
     public ClrType? TypeOf(XmlElement element) =>
-        element.IsPropertyElement ? null : types.GetOrAdd(element, e => (IsBindingElement(e) ? ResolveType(e, BindingMade(e), extension: true) : null) ?? ResolveType(e, e.Name));
+        element.IsPropertyElement ? null : types.GetOrAdd(element, e => (IsBindingElement(e) ? ResolveType(e, BindingMade(e), extension: true) : null)
+            ?? (Directive(e, "TypeArguments") is { } generic ? ResolveType(e, $"{e.Name}`{Arity(generic.Value)}") : null) ?? ResolveType(e, e.Name));
+
+    /// <summary>How many type arguments an <c>x:TypeArguments</c> value gives, a nested generic's own not counted.</summary>
+    private static int Arity(string arguments)
+    {
+        int count = 1;
+        int depth = 0;
+        foreach (char c in arguments)
+        {
+            depth += c == '(' ? 1 : c == ')' ? -1 : 0;
+            count += c == ',' && depth == 0 ? 1 : 0;
+        }
+        return count;
+    }
 
     private string BindingMade(XmlElement binding) =>
         (binding.Prefix.Length > 0 ? binding.Prefix + ":" : string.Empty) + (CompilesBindingsAt(binding) ? "CompiledBinding" : "ReflectionBinding");
@@ -638,6 +661,10 @@ public sealed class XamlFile
     /// (Avalonia's own, on since 11), unless the nearest <c>x:CompileBindings</c> says otherwise.</summary>
     public bool CompilesBindingsAt(XmlElement element)
     {
+        if (Dialect.CompilesBindingsByDataType)
+        {
+            return CompilingDataType(element);
+        }
         for (XmlElement? at = element; at is not null; at = at.Parent)
         {
             if (Directive(at, "CompileBindings") is { } set)
@@ -648,10 +675,25 @@ public sealed class XamlFile
         return Project.CompilesBindings;
     }
 
+    /// <summary>Whether the nearest <c>x:DataType</c> at or above an element names a type, not <c>{x:Null}</c>, where
+    /// bindings compile by the data type in scope (MAUI's).</summary>
+    private bool CompilingDataType(XmlElement element)
+    {
+        for (XmlElement? at = element; at is not null; at = at.Parent)
+        {
+            if (Directive(at, "DataType") is { } named)
+            {
+                string value = named.Value.Trim();
+                return value.Length > 0 && !(value.StartsWith('{') && MarkupExtension.Parse(value, 0, value.Length) is { LocalName: "Null" });
+            }
+        }
+        return false;
+    }
+
     /// <summary>Whether an element is the framework's <c>&lt;Binding&gt;</c>, which the compiler reads as <c>{Binding}</c>
     /// is read where bindings compile.</summary>
     public bool IsBindingElement(XmlElement element) =>
-        Dialect.CompilesBindings && !element.IsPropertyElement && element.LocalName == "Binding" && UriOf(element, element.Prefix) == Dialect.PresentationUri;
+        Dialect.CompilesBindingElements && !element.IsPropertyElement && element.LocalName == "Binding" && UriOf(element, element.Prefix) == Dialect.PresentationUri;
 
     /// <summary>The path a binding element writes as text, its <c>Path</c> attribute's or its <c>&lt;Binding.Path&gt;</c>
     /// element's, with where it starts; null for none, an extension, or text whose character references or CDATA sections
@@ -891,7 +933,7 @@ public sealed class XamlFile
     /// <summary>The directive attribute of XAML's language with a name on an element (<c>x:Key</c>), by the namespace its
     /// prefix is declared for, whatever the prefix.</summary>
     public static XmlAttribute? Directive(XmlElement element, string name) =>
-        element.Attributes.FirstOrDefault(a => a.LocalName == name && a.Prefix.Length > 0 && DeclaredUri(element, a.Prefix) == XamlDialect.XamlUri);
+        element.Attributes.FirstOrDefault(a => a.LocalName == name && a.Prefix.Length > 0 && XamlDialect.IsLanguageUri(DeclaredUri(element, a.Prefix)));
 
     /// <summary>The root's <c>x:Class</c> attribute, its prefix whatever the file declares XAML's language with.</summary>
     public static XmlAttribute? ClassAttribute(XmlTree tree) => tree.Root is { } root ? Directive(root, "Class") : null;

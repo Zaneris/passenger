@@ -19,7 +19,10 @@ public sealed class TypeSystem
     private readonly Dictionary<string, CSharpParseOptions> parsing = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<string> globalUsings;
 
-    public TypeSystem(IReadOnlyList<AssemblyTypes> assemblies, IReadOnlyList<SourceTypes> sources, string assemblyName, IReadOnlyList<string>? implicitUsings = null)
+    /// <summary>The types of the assemblies and C# given; <paramref name="implied"/> are the xmlns definitions a dialect's
+    /// compiler adds to the project's own assembly (<see cref="Dialects.XamlDialect.ImpliedDefinitions"/>).</summary>
+    public TypeSystem(IReadOnlyList<AssemblyTypes> assemblies, IReadOnlyList<SourceTypes> sources, string assemblyName, IReadOnlyList<string>? implicitUsings = null,
+        IReadOnlyList<XmlnsDefinition>? implied = null)
     {
         AssemblyName = assemblyName;
         Assemblies = assemblies;
@@ -33,7 +36,7 @@ public sealed class TypeSystem
                     Index(type);
                 }
             }
-            Definitions(assembly.Attributes, assembly.Name);
+            Definitions(assembly.Attributes, assembly.Name, own: false);
         }
         List<string> usings = [.. implicitUsings ?? []];
         foreach (IGrouping<string, ClrType> parts in sources.SelectMany(s => s.Types).GroupBy(t => t.FullName, StringComparer.Ordinal))
@@ -50,12 +53,14 @@ public sealed class TypeSystem
         foreach (SourceTypes source in sources)
         {
             usings.AddRange(source.GlobalUsings);
-            Definitions(source.Attributes, assemblyName);
+            Definitions(source.Attributes, assemblyName, own: true);
             if (source.Parsing is { } options)
             {
                 parsing[source.Path] = options;
             }
         }
+        definitions.AddRange(implied ?? []);
+        Aggregate();
         globalUsings = [.. usings.Distinct(StringComparer.Ordinal)];
         Namespaces = [.. byNamespace.Keys.Where(n => n.Length > 0).Order(StringComparer.Ordinal)];
     }
@@ -298,17 +303,49 @@ public sealed class TypeSystem
         }
     }
 
-    private void Definitions(IReadOnlyList<ClrAttribute> attributes, string assembly)
+    /// <summary>An assembly's xmlns definitions and prefixes: each in the assembly its <c>AssemblyName</c> names, else its
+    /// own; MAUI's global namespace is mapped by the project's own assembly alone (<paramref name="own"/>), as MAUI's
+    /// compiler reads it.</summary>
+    private void Definitions(IReadOnlyList<ClrAttribute> attributes, string assembly, bool own)
     {
         foreach (ClrAttribute attribute in attributes)
         {
             if (attribute.ShortName == "XmlnsDefinition" && attribute.StringArgument(0) is { } uri && attribute.StringArgument(1) is { } clr)
             {
-                definitions.Add(new XmlnsDefinition(uri, clr, assembly));
+                if (uri == Dialects.MauiDialect.GlobalUri && !own)
+                {
+                    continue;
+                }
+                string named = attribute.Named.FirstOrDefault(n => n.Key == "AssemblyName").Value is string full && full.Length > 0 ? full.Split(',')[0].Trim() : assembly;
+                definitions.Add(new XmlnsDefinition(uri, clr, named));
             }
             else if (attribute.ShortName == "XmlnsPrefix" && attribute.StringArgument(0) is { } prefixed && attribute.StringArgument(1) is { } prefix)
             {
                 prefixes.TryAdd(prefixed, prefix);
+            }
+        }
+    }
+
+    /// <summary>A definition that maps a namespace to another xmlns URI rather than a CLR namespace (MAUI's global one to
+    /// MAUI's own) maps it to that URI's CLR namespaces, each in its own assembly.</summary>
+    private void Aggregate()
+    {
+        List<XmlnsDefinition> pointers = [.. definitions.Where(d => d.ClrNamespace.Contains("://", StringComparison.Ordinal))];
+        if (pointers.Count == 0)
+        {
+            return;
+        }
+        definitions.RemoveAll(d => d.ClrNamespace.Contains("://", StringComparison.Ordinal));
+        HashSet<XmlnsDefinition> known = [.. definitions];
+        foreach (XmlnsDefinition pointer in pointers)
+        {
+            foreach (XmlnsDefinition pointed in definitions.Where(d => d.Uri == pointer.ClrNamespace).ToList())
+            {
+                XmlnsDefinition aggregated = new(pointer.Uri, pointed.ClrNamespace, pointed.AssemblyName);
+                if (known.Add(aggregated))
+                {
+                    definitions.Add(aggregated);
+                }
             }
         }
     }

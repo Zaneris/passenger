@@ -108,7 +108,7 @@ public static class XamlDiagnostics
             {
                 BindingElement(file, element, found);
             }
-            if (XamlFile.NameAttribute(element) is { Value.Length: > 0 } name && !InTemplate(element))
+            if (XamlFile.NameAttribute(element) is { Value.Length: > 0 } name && !InTemplate(element) && !InStyle(element))
             {
                 if (named.TryGetValue(name.Value, out XmlAttribute? first))
                 {
@@ -148,6 +148,9 @@ public static class XamlDiagnostics
 
     /// <summary>Whether an element is inside a template, whose names are a namescope of their own.</summary>
     private static bool InTemplate(XmlElement element) => XamlNavigation.NameScopeOf(element) is not null;
+
+    /// <summary>Whether an element is a style's setter's value (MAUI's visual states), made again for each element styled.</summary>
+    private static bool InStyle(XmlElement element) => element.Ancestors().Any(a => !a.IsPropertyElement && a.LocalName == "Style");
 
     private static void PropertyElement(XamlFile file, XmlElement element, List<XamlDiagnostic> found)
     {
@@ -213,6 +216,10 @@ public static class XamlDiagnostics
         {
             return;
         }
+        if (file.Dialect.IsExpression(attribute.Value, name => file.ResolveType(element, name, extension: true) is { } made && file.Dialect.IsMarkupExtension(file.Types, made)))
+        {
+            return;
+        }
         if (MarkupExtension.Parse(file.Text, attribute.ValueStart, attribute.ValueEnd) is { } extension)
         {
             Extension(file, attribute, extension, found);
@@ -244,6 +251,10 @@ public static class XamlDiagnostics
     /// its #).</summary>
     private static void Asset(XamlFile file, XmlAttribute attribute, List<XamlDiagnostic> found)
     {
+        if (!file.Dialect.NamesFile(attribute))
+        {
+            return;
+        }
         string value = attribute.Value.Trim();
         bool named = value.StartsWith("avares://", StringComparison.Ordinal) || value.StartsWith("pack://application:", StringComparison.OrdinalIgnoreCase)
             || (attribute.Name is "Source" or "Icon" && value.Length > 0 && !value.Contains("://", StringComparison.Ordinal));
@@ -430,8 +441,8 @@ public static class XamlDiagnostics
         {
             return;
         }
-        // A library's merged dictionary may define it unread, and a WPF library takes its resources from its application.
-        if (project.ResourceScopes(own).Any(s => s.ForeignIncludes) || (file.Dialect is WpfDialect && project.Application is null))
+        // A library's merged dictionary may define it unread, and a WPF or MAUI library takes its resources from its application.
+        if (project.ResourceScopes(own).Any(s => s.ForeignIncludes) || (file.Dialect.ResourcesFromApplication && project.Application is null))
         {
             return;
         }
@@ -531,7 +542,8 @@ public static class XamlDiagnostics
 
     /// <summary>A path read from a type (<see cref="XamlFile.Walk"/>): the step its type lacks, or the cast nothing
     /// resolves, is marked, with a fix creating the step where the binding is an attribute's; a path not read whole
-    /// otherwise is left to the compiler.</summary>
+    /// otherwise is left to the compiler. A compiled binding's step is an error where its compiler refuses it, else (MAUI's,
+    /// which binds it as the app runs instead) a warning.</summary>
     private static void Steps(XamlFile file, XmlElement scope, ClrType type, string path, int start, bool compiled, XmlAttribute? attribute, bool converted, List<XamlDiagnostic> found)
     {
         BindingPath read = file.Walk(scope, type, path, start);
@@ -548,7 +560,10 @@ public static class XamlDiagnostics
             ? [create]
             : [];
         found.Add(compiled
-            ? new XamlDiagnostic(stop.Range, XamlSeverity.Error, $"Cannot resolve property '{stop.Name}' on {stop.On.Name}") { Fixes = fixes }
+            ? new XamlDiagnostic(stop.Range, file.Dialect.RefusesUnknownPaths ? XamlSeverity.Error : XamlSeverity.Warning, $"Cannot resolve property '{stop.Name}' on {stop.On.Name}")
+            {
+                Fixes = fixes,
+            }
             : new XamlDiagnostic(stop.Range, XamlSeverity.Warning, $"Cannot resolve property '{stop.Name}' in data context of type {stop.On.Name}") { Fixes = fixes });
     }
 

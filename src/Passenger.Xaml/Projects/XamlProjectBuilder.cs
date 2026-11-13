@@ -53,7 +53,7 @@ public sealed class XamlProjectBuilder
 
     public string Folder => inputs.Folder;
 
-    /// <summary>A builder for a project whose XAML Passenger reads (an Avalonia or WPF project), or null for another;
+    /// <summary>A builder for a project whose XAML Passenger reads (an Avalonia, WPF or MAUI project), or null for another;
     /// <paramref name="failed"/> hears of a file a load could not read, which it leaves out, <paramref name="evaluations"/>
     /// answers what MSBuild's evaluation says of a project (where its restore and build put things, what its C# is parsed
     /// with), from any thread, and a project it says nothing of has its C# parsed with <paramref name="unevaluated"/>.</summary>
@@ -64,11 +64,16 @@ public sealed class XamlProjectBuilder
         return DialectOf(inputs) is { } dialect ? new XamlProjectBuilder(inputs, dialect, dotnetRoot, unevaluated, failed, evaluations) : null;
     }
 
-    /// <summary>The dialect a project's XAML is in, by the framework it references: Avalonia's for a project that references
-    /// its package, WPF's for one whose restore references WPF's shared framework (<c>UseWPF</c>, which the project file
-    /// says before a restore); null for any other (MAUI, WinUI), whose XAML Passenger does not read.</summary>
+    /// <summary>The dialect a project's XAML is in, by the framework it references: MAUI's for a project that says
+    /// <c>UseMaui</c> or references MAUI's controls (whose Avalonia handlers bring Avalonia's package too), Avalonia's for
+    /// one that references its package, WPF's for one whose restore references WPF's shared framework (<c>UseWPF</c>, which
+    /// the project file says before a restore); null for any other (WinUI), whose XAML Passenger does not read.</summary>
     public static XamlDialect? DialectOf(ProjectInputs inputs)
     {
+        if (inputs.Uses("Microsoft.Maui.Controls") || string.Equals(inputs.PropertyValue("UseMaui"), "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return MauiDialect.Instance;
+        }
         if (inputs.Uses("Avalonia"))
         {
             return AvaloniaDialect.Instance;
@@ -80,7 +85,8 @@ public sealed class XamlProjectBuilder
 
     /// <summary>Whether a file is one of the project's XAML files.</summary>
     public bool Owns(string path) =>
-        Dialect.Extensions.Contains(Path.GetExtension(path).ToLowerInvariant()) && ProjectFolders.Holds(Folder, path);
+        Dialect.Extensions.Contains(Path.GetExtension(path).ToLowerInvariant()) && ProjectFolders.Holds(Folder, path)
+        && !Dialect.LeavesOut(Path.GetRelativePath(Folder, path).Replace('\\', '/'));
 
     /// <summary>Reads everything: the assemblies, every C# and XAML file (an open file's text from <paramref name="open"/>
     /// rather than disk), the assets.</summary>
@@ -211,10 +217,11 @@ public sealed class XamlProjectBuilder
 
     private XamlProject Make()
     {
-        TypeSystem types = new(assemblies, [.. sources.Values], inputs.AssemblyName, inputs.ImplicitUsings);
+        IReadOnlyList<XmlnsDefinition> implied = Dialect.ImpliedDefinitions(inputs.AssemblyName);
+        TypeSystem types = new(assemblies, [.. sources.Values], inputs.AssemblyName, inputs.ImplicitUsings, implied);
         if (XamlClasses(types) is { Count: > 0 } declared)
         {
-            types = new TypeSystem(assemblies, [.. sources.Values, .. declared], inputs.AssemblyName, inputs.ImplicitUsings);
+            types = new TypeSystem(assemblies, [.. sources.Values, .. declared], inputs.AssemblyName, inputs.ImplicitUsings, implied);
         }
         classes = ClassesSaid();
         return With(types);
@@ -327,7 +334,8 @@ public sealed class XamlProjectBuilder
 
     /// <summary>The project's own XAML files: those in its own folders (<see cref="ProjectFolders.Under"/>).</summary>
     private IEnumerable<string> XamlFilesUnder(string folder) =>
-        ProjectFolders.Under(folder).SelectMany(f => ProjectInputs.FilesIn(f, "*")).Where(f => Dialect.Extensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
+        ProjectFolders.Under(folder).SelectMany(f => ProjectInputs.FilesIn(f, "*")).Where(f => Dialect.Extensions.Contains(Path.GetExtension(f).ToLowerInvariant())
+            && !Dialect.LeavesOut(Path.GetRelativePath(folder, f).Replace('\\', '/')));
 
     private static string ReadText(string path)
     {

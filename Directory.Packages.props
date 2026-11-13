@@ -22,6 +22,9 @@
          for the tests' local feed so the WPF app they make restores off Windows; another SDK's fails WpfXamlTests naming
          the version to pin. -->
     <WindowsDesktopRefVersion>11.0.0</WindowsDesktopRefVersion>
+    <!-- .NET MAUI's controls at the release of global.json's SDK, for the MAUI XAML tests' app (tests/MauiGraphs): its
+         package graph builds a plain net11.0 project without MAUI's workload, which CI has not. -->
+    <MauiVersion>11.0.0</MauiVersion>
     <!-- EF Core and the dotnet-ef tool for the Migrations window's tests, downloaded for the tests' local feed: at its
          version, and at the one before for a tool that does not match and a stand-in provider that trails it. -->
     <EfCoreVersion>10.0.14</EfCoreVersion>
@@ -173,6 +176,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.15" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEfVersion)" />

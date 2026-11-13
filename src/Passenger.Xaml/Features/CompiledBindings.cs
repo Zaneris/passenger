@@ -198,7 +198,7 @@ public static class CompiledBindings
             return [];
         }
         List<TextEdit> declared = [];
-        string x = XamlRefactorings.Prefix(text, tree, XamlDialect.XamlUri, "x", declared);
+        string x = XamlRefactorings.Prefix(text, tree, dialect.LanguageUri, "x", declared);
         if (target.Attributes.Any(a => a.Prefix == x && a.LocalName == "DataType"))
         {
             return [];

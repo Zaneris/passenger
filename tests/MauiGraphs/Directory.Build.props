@@ -1,0 +1,15 @@
+<Project>
+  <!-- The package graph of the .NET MAUI app the MAUI XAML tests write (MauiXamlTests): MAUI's controls at MauiVersion for
+       a plain net11.0 project, which restores and builds without MAUI's workload, restored with the solution so the
+       package cache holds it: a test folder restores from the run's local feed alone, never nuget.org. Built as an empty
+       library, never run, under none of the repo's rules, which are for Passenger's code. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)../../artifacts</ArtifactsPath>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+</Project>

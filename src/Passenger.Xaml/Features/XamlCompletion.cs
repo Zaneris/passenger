@@ -158,7 +158,7 @@ public static class XamlCompletion
         if (scope is not null && file.ObjectOf(scope) is { } parentType && !scope.IsPropertyElement)
         {
             string owner = scope.Name;
-            foreach (XamlProperty property in file.Dialect.PropertiesOf(file.Types, parentType).Where(p => !p.IsReadOnly))
+            foreach (XamlProperty property in file.Dialect.PropertiesOf(file.Types, parentType).Where(p => !p.IsReadOnly && !p.IsHidden))
             {
                 if (property.IsCollection || !IsSimple(file, property))
                 {
@@ -279,7 +279,7 @@ public static class XamlCompletion
         {
             foreach (XamlProperty property in file.Dialect.PropertiesOf(file.Types, type))
             {
-                if (!present.Contains(property.Name) && !property.IsReadOnly && !(property.IsCollection && property.Name is not "Classes"))
+                if (!present.Contains(property.Name) && !property.IsReadOnly && !property.IsHidden && !(property.IsCollection && property.Name is not "Classes"))
                 {
                     items.Add(Attribute(property.Name, XamlItemKind.Property, property.ValueType.Display, hasValue, Reopens(file, property)));
                 }
@@ -572,7 +572,7 @@ public static class XamlCompletion
         {
             return file.Dialect.Attached(file.Types, owner, value[(dot + 1)..]) ?? file.Dialect.Property(file.Types, owner, value[(dot + 1)..]);
         }
-        return file.SetterTargetAt(setter) is { } target ? file.Dialect.Property(file.Types, target, value) : null;
+        return file.SetterTargetAt(setter) is { } target ? file.Dialect.SetterProperty(file.Types, target, value) : null;
     }
 
     /// <summary>The properties a setter sets, or a trigger watches (a read-only one too, <c>IsMouseOver</c>).</summary>
@@ -583,8 +583,8 @@ public static class XamlCompletion
             return null;
         }
         bool watched = setter.LocalName != "Setter";
-        // WPF's setters and triggers name dependency properties alone.
-        bool registered = file.Dialect is WpfDialect;
+        // WPF's and MAUI's setters and triggers name their registered properties alone.
+        bool registered = file.Dialect.SettersNameRegisteredProperties;
         List<XamlItem> items = [.. file.Dialect.PropertiesOf(file.Types, target).Where(p => !p.IsCollection && (watched || !p.IsReadOnly) && !(registered && p.Kind == XamlPropertyKind.Clr))
             .Select(p => new XamlItem(p.Name, XamlItemKind.Property, p.Name, p.ValueType.Display))];
         return new XamlCompletionList(start, items);

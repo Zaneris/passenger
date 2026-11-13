@@ -125,14 +125,15 @@ public sealed record XamlFileSummary(string Path, string? Class, IReadOnlyList<R
             }
             foreach (XmlAttribute attribute in at.Attributes)
             {
-                if (attribute.Prefix == "xmlns" && attribute.Value == XamlDialect.XamlUri)
+                if (attribute.Prefix == "xmlns" && XamlDialect.IsLanguageUri(attribute.Value))
                 {
                     known[element] = attribute.LocalName;
                     return attribute.LocalName;
                 }
             }
         }
-        return null;
+        // MAUI's implicit x:, in a file that declares no namespace.
+        return XamlDialect.IsLanguageUri(XamlFile.DeclaredUri(element, "x")) ? "x" : null;
     }
 
     /// <summary>The theme variant a keyed element is for: the key of the dictionary it is in under a

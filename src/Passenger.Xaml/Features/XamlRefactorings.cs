@@ -229,7 +229,7 @@ public static partial class XamlRefactorings
         Func<string, IReadOnlyList<TextEdit>> entry = text => Insert(text, Container.Resources, tree =>
         {
             List<TextEdit> declared = [];
-            string x = Prefix(text, tree, XamlDialect.XamlUri, "x", declared);
+            string x = Prefix(text, tree, file.Dialect.LanguageUri, "x", declared);
             string type = Qualified(Prefix(text, tree, value.Shape.Uri, value.Shape.SuggestedPrefix, declared), value.Shape.TypeName);
             char quote = value.Shape.Quote;
             string made = value.Shape.ColorAttribute
@@ -341,7 +341,7 @@ public static partial class XamlRefactorings
             {
                 target = Qualified(Prefix(text, tree, uri, target[..colon], declared), target[(colon + 1)..]);
             }
-            string x = source.ByClass ? string.Empty : Prefix(text, tree, XamlDialect.XamlUri, "x", declared);
+            string x = source.ByClass ? string.Empty : Prefix(text, tree, file.Dialect.LanguageUri, "x", declared);
             string opening = source.ByClass
                 ? $"<Style Selector=\"{target.Replace(':', '|')}.{name}\">"
                 : $"<Style {x}:Key=\"{name}\" TargetType=\"{target}\"{(basedOn is { } based ? $" BasedOn=\"{based}\"" : string.Empty)}>";
@@ -572,6 +572,12 @@ public static partial class XamlRefactorings
         {
             return Regex.Match(made, @"xmlns:(?<p>[\w.-]+)=").Groups["p"].Value;
         }
+        // A file that declares no namespace has MAUI's implicit ones, its global default holding MAUI's own.
+        if (root.Attribute("xmlns") is null && XamlFile.DeclaredUri(root, wanted) is { } implicitUri
+            && (implicitUri == uri || (wanted.Length == 0 && implicitUri == MauiDialect.GlobalUri && uri == MauiDialect.Uri)))
+        {
+            return wanted;
+        }
         string prefix = wanted;
         for (int n = 2; root.Attributes.Any(a => a.Name == "xmlns:" + prefix) || declared.Any(d => d.Text.Contains($"xmlns:{prefix}=", StringComparison.Ordinal)); n++)
         {
@@ -640,8 +646,8 @@ public static partial class XamlRefactorings
         string full = type.FullName == "System.Object" ? "System.String" : type.FullName;
         if (XamlFile.LanguageTypes.FirstOrDefault(t => t.Value == full) is { Key: { } language })
         {
-            return file.Dialect is AvaloniaDialect
-                ? new ResourceShape(XamlDialect.XamlUri, language, "x", false, quote)
+            return file.Dialect is AvaloniaDialect or MauiDialect
+                ? new ResourceShape(file.Dialect.LanguageUri, language, "x", false, quote)
                 : new ResourceShape("clr-namespace:System;assembly=mscorlib", language, "sys", false, quote);
         }
         if (type.Kind is ClrTypeKind.Interface || type.IsAbstract || type.Arity > 0 || type.IsNested)

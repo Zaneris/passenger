@@ -49,6 +49,9 @@
   <Folder Name="/tests/AvaloniaGraphs/">
     <Project Path="tests/AvaloniaGraphs/Avalonia11/AvaloniaGraphs.Avalonia11.csproj" />
   </Folder>
+  <Folder Name="/tests/MauiGraphs/">
+    <Project Path="tests/MauiGraphs/Controls/MauiGraphs.Controls.csproj" />
+  </Folder>
   <Folder Name="/tests/GodotGraphs/">
     <Project Path="tests/GodotGraphs/GdUnit4/GodotGraphs.GdUnit4.csproj" />
     <Project Path="tests/GodotGraphs/GoDotTest/GodotGraphs.GoDotTest.csproj" />

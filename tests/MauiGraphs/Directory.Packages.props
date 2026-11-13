@@ -1,0 +1,4 @@
+<Project>
+  <!-- The repo's own versions, whose tests' section pins MAUI's controls at MauiVersion. -->
+  <Import Project="../../Directory.Packages.props" />
+</Project>

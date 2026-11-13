@@ -26,6 +26,8 @@ public sealed class AvaloniaDialect : XamlDialect
 
     public override bool CompilesBindings => true;
 
+    public override bool CompilesBindingElements => true;
+
     public override IReadOnlyList<string> AssetItems { get; } = ["AvaloniaResource"];
 
     /// <summary>Avalonia's own form, <c>using:</c>, whatever assembly holds the namespace.</summary>
