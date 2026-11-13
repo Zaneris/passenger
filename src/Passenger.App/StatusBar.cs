@@ -192,7 +192,8 @@ public sealed class StatusBar
     /// <summary>The file's language, with the language server's state or work beside it as the window words it.</summary>
     public void ShowLanguage(string label) => language.Text = label;
 
-    /// <summary>The caret's line and column, the carets there are, or what is selected; nothing with no file shown.</summary>
+    /// <summary>The caret's line and column, the carets there are, or what is selected, after Vim's mode and the keys of a
+    /// command half typed while Vim mode is on; nothing with no file shown.</summary>
     public void ShowCaret(CodeEditor? editor)
     {
         caretButton.IsVisible = editor is not null;
@@ -205,15 +206,21 @@ public sealed class StatusBar
         TextPosition at = editor.CaretPosition;
         int carets = editor.Selections.Count;
         int selected = carets > 1 ? 0 : editor.Selections.Primary.Length;
-        if (shownCaret == (at, carets, selected) && caret.Text is { Length: > 0 })
+        string vim = editor.VimModeShown switch
+        {
+            Passenger.Editor.VimMode.Normal => $"NORMAL {editor.VimPending}".TrimEnd() + "  ",
+            Passenger.Editor.VimMode.Insert => "INSERT  ",
+            _ => "",
+        };
+        if (shownCaret == (at, carets, selected, vim) && caret.Text is { Length: > 0 })
         {
             return;
         }
-        shownCaret = (at, carets, selected);
+        shownCaret = (at, carets, selected, vim);
         string position = $"{at.Line + 1}:{at.Column + 1}";
-        caret.Text = carets > 1 ? $"{carets} carets" : selected > 0 ? $"{position} ({selected} chars)" : position;
+        caret.Text = vim + (carets > 1 ? $"{carets} carets" : selected > 0 ? $"{position} ({selected} chars)" : position);
     }
 
     /// <summary>What the caret's words say: a move that changes none of it words nothing again.</summary>
-    private (TextPosition At, int Carets, int Selected) shownCaret;
+    private (TextPosition At, int Carets, int Selected, string Vim) shownCaret;
 }

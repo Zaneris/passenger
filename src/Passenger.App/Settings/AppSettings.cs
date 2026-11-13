@@ -54,6 +54,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Rainbow braces: brackets coloured by how deeply they nest.</summary>
     public bool RainbowBraces { get; init; } = true;
 
+    /// <summary>Vim mode: the code editors take keys by Vim's normal and insert modes before the keymap.</summary>
+    public bool VimMode { get; init; }
+
     /// <summary>In XAML, XML, MSBuild's files and HTML, a start tag's '>' writes its end tag after the caret, and "&lt;/"
     /// the open element's name.</summary>
     public bool CloseTags { get; init; } = true;

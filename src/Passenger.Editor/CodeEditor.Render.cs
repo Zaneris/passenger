@@ -95,6 +95,12 @@ public sealed partial class CodeEditor
                 continue;
             }
             double y = (row * metrics.LineHeight) - scroll.Y;
+            if (vim is { Mode: VimMode.Normal })
+            {
+                // ponytail: a block one CharWidth wide, so a wide character or a tab shows a narrow block; measure the character when it matters.
+                context.DrawRectangle(null, palette.PenOf(palette.Caret, 1), new Rect(Math.Round(left + x) + 0.5, y + 0.5, metrics.CharWidth - 1, metrics.LineHeight - 1));
+                continue;
+            }
             context.FillRectangle(palette.Caret, new Rect(Math.Round(left + x), y, 2, metrics.LineHeight));
         }
     }

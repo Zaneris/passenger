@@ -88,6 +88,9 @@ public static class Declared
     public static readonly ToggleSetting RainbowBraces = new(s => s.RainbowBraces, (s, v) => s with { RainbowBraces = v },
         new(D.EditorPage, "Rainbow braces", "brackets parentheses colour color nesting"));
 
+    public static readonly ToggleSetting VimMode = new(s => s.VimMode, (s, v) => s with { VimMode = v },
+        new(D.EditorPage, "Vim mode", "vim vi modal normal insert keys emulation"));
+
     public static readonly ToggleSetting CloseTags = new(s => s.CloseTags, (s, v) => s with { CloseTags = v },
         new(D.EditorPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html razor blazor msbuild elements"));
 

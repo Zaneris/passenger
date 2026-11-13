@@ -170,6 +170,7 @@ public partial class MainWindow : IdeWindow
             }
         };
         Editors.CaretMoved += (_, _) => UpdateCaret();
+        Editors.ForEachEditor(editor => editor.VimModeChanged += (_, _) => UpdateCaret());
         Editors.SaveFailed += (_, problem) => status.Text = problem;
         Editors.OpenFailed += (_, problem) => status.Text = problem;
         Editors.Refused += (_, problem) => status.Text = problem;
@@ -422,6 +423,15 @@ public partial class MainWindow : IdeWindow
         {
             return;
         }
+        if (EditorWithKeys(window, focused) is { } vimEditor && vimEditor.PressVim(e, out string? vimAction, out int repeat))
+        {
+            for (int i = 0; vimAction is not null && i < repeat; i++)
+            {
+                RunVimAction(vimEditor, vimAction);
+            }
+            e.Handled = true;
+            return;
+        }
         string? action = keys.Press(e, out bool consumed, out bool shifted);
         if (action is null)
         {
@@ -488,6 +498,15 @@ public partial class MainWindow : IdeWindow
     /// <summary>Escape in one of the IDE's windows with no popup over it: whether it closed the code's list of choices or
     /// rename box there.</summary>
     private bool OnEscape(TopLevel window) => assist.Dismiss(window);
+
+    /// <summary>An editor action Vim mode asks for, run as the keymap runs it: undo and redo the window's commands first.</summary>
+    private void RunVimAction(CodeEditor editor, string action)
+    {
+        if (!(editor == Editors.CodeEditor && action is EditorActions.Undo or EditorActions.Redo && UndoCommand(action == EditorActions.Redo, Editors.Active)))
+        {
+            editor.TryExecute(action);
+        }
+    }
 
     /// <summary>The editor a window's editor actions go to while it has the keys: a side of a diff or a merge, or the
     /// shown file's (the active group's, in this window or an editor window); none in a window whose keys are elsewhere.</summary>
