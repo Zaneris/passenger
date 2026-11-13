@@ -514,9 +514,12 @@ public sealed partial class PassengerTools
 
     // Problems and the Build window
 
-    /// <summary>What the Problems window lists beyond a file's diagnostics, as diagnostics with no path answers it.</summary>
-    private Task<ProblemsInfo> Problems(CancellationToken cancel) => OnUi(cancel, async () =>
+    /// <summary>What the Problems window lists beyond a file's diagnostics, as diagnostics with no path or a folder's answers
+    /// it: within the folder, of the severity and project asked, each list's severest first, by file and place, held to
+    /// <see cref="AgentAnswers.MostFindings"/> in all, saying what it left out.</summary>
+    private Task<ProblemsInfo> Problems(string? within, string? severity, string? project, CancellationToken cancel) => OnUi(cancel, async () =>
     {
+        global::Passenger.Workspace.ProjectModel? named = project is null ? null : Project(project);
         if (Session.CSharp is { SolutionWide: true })
         {
             // Its first answers come once the server has loaded the solution and analysed it.
@@ -525,10 +528,30 @@ public sealed partial class PassengerTools
             await Until(() => Session.CSharp is not { IsAnalysing: true }, ServerLimit, cancel);
         }
         ToolWindows.ProblemsModel view = window.BottomPanel.Problems;
-        return new ProblemsInfo([.. view.ToolsetProblems.Select(Found)], [.. view.Problems.Select(Found)],
-            Session.CSharp?.SolutionProblems is { } solution ? [.. solution.Where(p => p.Diagnostic.Severity is Lsp.DiagnosticSeverity.Error or Lsp.DiagnosticSeverity.Warning)
+        List<Finding> toolset = Asked(view.ToolsetProblems.Where(p => Within(p.Path, p.Project)).Select(Found));
+        List<Finding> build = Asked(view.Problems.Where(p => Within(p.Path, p.Project)).Select(Found));
+        List<Finding>? solution = Session.CSharp?.SolutionProblems is { } all
+            ? Asked(all.Where(p => p.Diagnostic.Severity is Lsp.DiagnosticSeverity.Error or Lsp.DiagnosticSeverity.Warning && Within(p.Path, null))
                 .Select(p => new Finding(p.Diagnostic.Severity == Lsp.DiagnosticSeverity.Error ? "error" : "warning", p.Diagnostic.Code,
-                p.Diagnostic.Message, Relative(p.Path), p.At.Line + 1, p.At.Column + 1))] : null);
+                p.Diagnostic.Message, Relative(p.Path), p.At.Line + 1, p.At.Column + 1)))
+            : null;
+        (IReadOnlyList<Finding>[] kept, int[] left) = AgentAnswers.Severest<Finding>([toolset, build, .. solution is null ? [] : (IReadOnlyList<Finding>[])[solution]],
+            f => Rank(f.Severity) ?? 2, 4, AgentAnswers.MostFindings);
+        string[] nouns = ["error", "warning", "message", "hint"];
+        string[] counts = [.. left.Select((count, rank) => count == 0 ? null
+            : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{count:N0} {Plural.Noun(count, nouns[rank])}")).OfType<string>()];
+        int leftOut = left.Sum();
+        string? more = leftOut == 0 ? null : AgentAnswers.More(leftOut, "finding",
+            $"{Plural.Listed(counts)}; diagnostics with severity, project or a folder's path lists fewer at once, with a file's path that file's own");
+        return new ProblemsInfo(kept[0], kept[1], solution is null ? null : kept[2]) { More = more };
+
+        bool Within(string? path, string? owner) =>
+            (within is null || (path is not null && PathNames.Within(path, within)))
+            && (named is null || (path is not null ? PathNames.Same(path, named.Path) || (Session.ProjectOf(path) is { } owning && PathNames.Same(owning.Path, named.Path)) : owner == named.Name));
+
+        // Of the severity asked, the severest first, then by file and place.
+        List<Finding> Asked(IEnumerable<Finding> found) => [.. found.Where(f => severity is null || f.Severity == severity)
+            .OrderBy(f => Rank(f.Severity) ?? 2).ThenBy(f => f.Path, StringComparer.Ordinal).ThenBy(f => f.Line).ThenBy(f => f.Column)];
 
         Finding Found(Problem p) => new(p.Severity switch { ProblemSeverity.Error => "error", ProblemSeverity.Warning => "warning", _ => "info" }, p.Code, p.Message,
             p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1);
@@ -577,4 +600,8 @@ public sealed record HistoryRowInfo(long Set, string Time, string Title, bool La
 
 /// <summary>What the Problems window lists beyond a file's diagnostics: the projects' load problems, the last build's, and the
 /// solution's with solution-wide analysis on (null while it is off).</summary>
-public sealed record ProblemsInfo(IReadOnlyList<Finding> Toolset, IReadOnlyList<Finding> Build, IReadOnlyList<Finding>? Solution);
+public sealed record ProblemsInfo(IReadOnlyList<Finding> Toolset, IReadOnlyList<Finding> Build, IReadOnlyList<Finding>? Solution)
+{
+    /// <summary>How many findings past those listed were left out, of which severities, and how to read them.</summary>
+    public string? More { get; init; }
+}

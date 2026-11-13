@@ -205,11 +205,38 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.Diagnostics, Title = "Errors and warnings", ReadOnly = true), Description(
         "A file's errors, warnings and notes as the editor marks them, fresh: C#'s from the language server (its messages too), any " +
         "other's once its checks have run (XAML's, an MSBuild file's evaluation and NuGet advisories, a web language's server " +
-        "and ESLint). With no path, what the Problems window lists beyond a file's: toolset (each project's load warnings and " +
-        "errors), build (the last build's, whoever started it) and solution (every file's, while settings' solutionWideAnalysis " +
-        "is on).")]
-    public async Task<object> Diagnostics(string? path = null, CancellationToken cancel = default) =>
-        path is null ? await Problems(cancel) : await FileDiagnostics(path, cancel);
+        "and ESLint). With no path, or a folder's, what the Problems window lists beyond a file's (within it): toolset (each " +
+        "project's load warnings and errors), build (the last build's, whoever started it) and solution (every file's, while " +
+        "settings' solutionWideAnalysis is on), errors first, by file, at most 200 in all; project (a name) narrows these. " +
+        "severity (error, warning, info, hint) narrows either.")]
+    public async Task<object> Diagnostics(string? path = null, string? severity = null, string? project = null, CancellationToken cancel = default)
+    {
+        if (severity is not null && Rank(severity) is null)
+        {
+            throw new ArgumentException($"severity takes error, warning, info or hint, not '{severity}'");
+        }
+        string? full = path is null ? null : await OnUi(cancel, () => Task.FromResult(Resolve(path)));
+        if (path is not null && !Directory.Exists(full))
+        {
+            if (project is not null)
+            {
+                throw new ArgumentException("project narrows the Problems window's lists, which diagnostics answers with no path or a folder's; a file's are its own");
+            }
+            IReadOnlyList<Finding> found = await FileDiagnostics(path, cancel);
+            return severity is null ? found : [.. found.Where(f => f.Severity == severity)];
+        }
+        return await Problems(full, severity, project, cancel);
+    }
+
+    /// <summary>A finding's severity as diagnostics orders them, the severest first; null for no severity it names.</summary>
+    private static int? Rank(string severity) => severity switch
+    {
+        "error" => 0,
+        "warning" => 1,
+        "info" => 2,
+        "hint" => 3,
+        _ => null,
+    };
 
     private Task<IReadOnlyList<Finding>> FileDiagnostics(string path, CancellationToken cancel) => OnUi(cancel, async () =>
     {

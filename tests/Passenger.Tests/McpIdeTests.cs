@@ -36,6 +36,52 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A solution of thousands of warnings and an error answers Problems' lists within their limit, the error first,
+    /// saying how many warnings it left out and how to ask for them: severity error gives the error alone, a folder's path the
+    /// lists within it, and each file's path its own, which together reach every warning.</summary>
+    [Fact]
+    public async Task Problems_of_thousands_of_warnings_answer_within_the_limit_errors_first_and_a_path_or_severity_reaches_the_rest()
+    {
+        await TakeFolderAsync();
+        const int Files = 12;
+        const int Each = 250;
+        Write("Bad.cs", "class Bad\n{\n    public int Count = \"none\";\n}\n");
+        for (int file = 0; file < Files; file++)
+        {
+            Write($"Warnings/W{file}.cs", $"static class W{file}\n{{\n    static void M()\n    {{\n{string.Concat(Enumerable.Range(0, Each).Select(i => $"        int v{i} = {i};\n"))}    }}\n}}\n");
+        }
+        await using McpClient client = await Start(["--mcp", Folder]);
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["solutionWideAnalysis"] = true } });
+
+        JsonElement answer = await Call(client, McpTools.Diagnostics);
+        Assert.True(answer.GetRawText().Length < 64 * 1024, $"Problems' lists of thousands of warnings answered {answer.GetRawText().Length:N0} characters");
+        JsonElement[] solution = [.. answer.GetProperty("solution").EnumerateArray()];
+        int listed = solution.Length + answer.GetProperty("build").GetArrayLength() + answer.GetProperty("toolset").GetArrayLength();
+        Assert.True(listed == AgentAnswers.MostFindings && solution[0].GetProperty("code").GetString() == "CS0029",
+            $"The lists held {listed} findings, the solution's first {solution[0].GetRawText()}, where {AgentAnswers.MostFindings} were to be listed, the error first");
+        string more = answer.GetProperty("more").GetString()!;
+        int warnings = Files * Each;
+        System.Text.RegularExpressions.Match said = System.Text.RegularExpressions.Regex.Match(more, @"^([\d,]+) more findings left out: ([\d,]+) warnings; .*severity.*a folder's path");
+        int left = said.Success ? int.Parse(said.Groups[1].Value, System.Globalization.NumberStyles.AllowThousands, System.Globalization.CultureInfo.InvariantCulture) : 0;
+        Assert.True(said.Success && said.Groups[1].Value == said.Groups[2].Value && left + listed - 1 >= warnings,
+            $"What the lists left out, every warning past the {listed - 1} listed of at least {warnings}, was said as: {more}");
+
+        JsonElement errors = await Call(client, McpTools.Diagnostics, new() { ["severity"] = "error" });
+        Assert.Equal(["CS0029 Bad.cs:3"], errors.GetProperty("solution").EnumerateArray().Select(p => $"{p.GetProperty("code").GetString()} {p.GetProperty("path").GetString()}:{p.GetProperty("line").GetInt32()}"));
+        Assert.False(errors.TryGetProperty("more", out _), "The errors alone were said to leave some out");
+
+        JsonElement folder = await Call(client, McpTools.Diagnostics, new() { ["path"] = "Warnings" });
+        Assert.True(folder.GetProperty("solution").EnumerateArray().All(p => p.GetProperty("path").GetString()!.StartsWith("Warnings", StringComparison.Ordinal)),
+            $"A folder's lists named a file outside it: {folder.GetProperty("solution").GetRawText()[..Math.Min(400, folder.GetProperty("solution").GetRawText().Length)]}");
+
+        int reached = 0;
+        for (int file = 0; file < Files; file++)
+        {
+            reached += (await Call(client, McpTools.Diagnostics, new() { ["path"] = $"Warnings/W{file}.cs", ["severity"] = "warning" })).GetArrayLength();
+        }
+        Assert.Equal(warnings, reached);
+    }
+
     /// <summary>An agent's Passenger whose state PASSENGER_SETTINGS names opens on the settings.json kept there, as a person's
     /// window would: solution-wide analysis on there is on from its start, listing an error of a file nobody opened, and the
     /// settings stay its own, kept nowhere, so a change it makes leaves the file as it was.</summary>

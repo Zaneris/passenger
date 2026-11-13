@@ -25,6 +25,25 @@ public sealed class AgentAnswersTests : IDisposable
         Assert.Equal("1,200 more files left out: read on", AgentAnswers.More(1200, "file", "read on"));
     }
 
+    /// <summary>Lists of findings held to a total keep every list's errors before any list's warnings, each list in its own
+    /// order, and count what each severity left out: two errors of the second list come before the first list's warnings.</summary>
+    [Fact]
+    public void Lists_of_findings_held_to_a_total_keep_every_lists_errors_before_any_warning_and_count_what_was_left_out()
+    {
+        string[] build = ["error a", "warning b", "warning c"];
+        string[] solution = ["error d", "error e", "warning f", "message g"];
+        (IReadOnlyList<string>[] kept, int[] left) = AgentAnswers.Severest<string>([build, solution], Rank, 3, 4);
+        Assert.Equal(["error a", "warning b"], kept[0]);
+        Assert.Equal(["error d", "error e"], kept[1]);
+        Assert.Equal([0, 2, 1], left);
+
+        (kept, left) = AgentAnswers.Severest<string>([build, solution], Rank, 3, 100);
+        Assert.Equal([build, solution], kept);
+        Assert.Equal([0, 0, 0], left);
+
+        static int Rank(string finding) => finding.Split(' ')[0] switch { "error" => 0, "warning" => 1, _ => 2 };
+    }
+
     [Fact]
     public void A_short_value_is_shown_whole_and_says_no_cut()
     {

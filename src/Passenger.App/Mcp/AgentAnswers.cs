@@ -18,6 +18,9 @@ public static class AgentAnswers
     /// <summary>How many files a sentence names.</summary>
     public const int MostNamed = 100;
 
+    /// <summary>How many errors and warnings the Problems window's lists hold in all.</summary>
+    public const int MostFindings = 200;
+
     /// <summary>A value as a debug answer shows it: whole when short, else its first characters and "…", with words saying
     /// its length and the debug_evaluate that reads on, of <paramref name="expression"/> or, where none is given, of the
     /// value. A string's literal is cut between its escapes, its length and places the string's own.</summary>
@@ -104,6 +107,39 @@ public static class AgentAnswers
     /// them (<paramref name="how"/>), null when it left none.</summary>
     public static (IReadOnlyList<T> Kept, string? More) Listed<T>(IReadOnlyList<T> items, int most, string noun, string how) =>
         items.Count <= most ? (items, null) : ([.. items.Take(most)], More(items.Count - most, noun, how));
+
+    /// <summary>Lists of findings held to <paramref name="most"/> in all, the severest first: every list's of the first rank
+    /// (an error's, 0) before any list's of the next, the lists' own order kept within a rank and each list's within itself.
+    /// Gives each list's kept, and how many of each rank were left out.</summary>
+    public static (IReadOnlyList<T>[] Kept, int[] Left) Severest<T>(IReadOnlyList<IReadOnlyList<T>> lists, Func<T, int> rank, int ranks, int most)
+    {
+        List<T>[] kept = [.. lists.Select(_ => new List<T>())];
+        int[] left = new int[ranks];
+        int room = most;
+        for (int r = 0; r < ranks; r++)
+        {
+            for (int at = 0; at < lists.Count; at++)
+            {
+                foreach (T item in lists[at])
+                {
+                    if (rank(item) != r)
+                    {
+                        continue;
+                    }
+                    if (room > 0)
+                    {
+                        kept[at].Add(item);
+                        room--;
+                    }
+                    else
+                    {
+                        left[r]++;
+                    }
+                }
+            }
+        }
+        return ([.. kept], left);
+    }
 
     /// <summary>Names in a sentence, at most <see cref="MostNamed"/>, then how many more were left out and how to read them.</summary>
     public static string Named(IReadOnlyList<string> names, string noun, string how)
