@@ -7,13 +7,13 @@ using Passenger.Packages;
 
 namespace Passenger.App;
 
-/// <summary>The check for updates, and the update: the person's window asks for the latest release as it starts and
-/// once a day while Check for updates is on. A copy its installer, disk image or archive put in place downloads a newer
-/// one in the background, saying so in the status bar, checks it, offers Restart to Update and installs it as Passenger
-/// ends (or says the command that installs it); any other copy says once per version that one is out, linking this
-/// system's download, or, for a package manager's copy, that the package manager updates it. Help, Check for Updates
-/// asks when a person wants. Every answer is logged; only one a person asked for, or a download that did not land, is
-/// said.</summary>
+/// <summary>The check for updates, and the update: the person's window asks for the latest release as it starts and a
+/// day after each answer by the wall clock (an hour after a check that failed) while Check for updates is on. A copy
+/// its installer, disk image or archive put in place downloads a newer one in the background, saying so in the status
+/// bar, checks it, offers Restart to Update and installs it as Passenger ends (or says the command that installs it);
+/// any other copy says once per version that one is out, linking this system's download, or, for a package manager's
+/// copy, that the package manager updates it. Help, Check for Updates asks when a person wants. Every answer is logged;
+/// only one a person asked for, or a download that did not land, is said.</summary>
 public partial class MainWindow
 {
     /// <summary>The words when there is nothing newer.</summary>
@@ -25,6 +25,20 @@ public partial class MainWindow
     private readonly CancellationTokenSource updatesEnd = new();
     private DispatcherTimer? updateTimer;
     private bool watchesUpdates;
+
+    /// <summary>The window's own check under way, or its last.</summary>
+    private Task? ownCheck;
+
+    /// <summary>When the last check was answered, by <see cref="UpdateClock"/>; null before any was, and after one that
+    /// failed.</summary>
+    private DateTimeOffset? answeredAt;
+
+    /// <summary>The clock a day between checks is counted on: the wall clock, which goes on while the machine sleeps, where
+    /// a timer's own time does not.</summary>
+    public TimeProvider UpdateClock { get; init; } = TimeProvider.System;
+
+    /// <summary>How often the window looks whether a check is due, in the time the machine is awake.</summary>
+    public TimeSpan UpdateLook { get; init; } = TimeSpan.FromHours(1);
 
     /// <summary>The release announced, for a window that keeps no state; the person's keeps it in the store.</summary>
     private string? announcedHere;
@@ -177,7 +191,8 @@ public partial class MainWindow
     }
 
     /// <summary>Starts the checks, the first now, as the setting comes on, and stops them (and drops a download made or
-    /// under way) as it goes off.</summary>
+    /// under way) as it goes off. A look after asks once a check is due: a day after the last answer, after a check that
+    /// failed, or with the clock set back before the last answer.</summary>
     private void WatchUpdates(bool on)
     {
         if (!watchesUpdates || on == (updateTimer is not null))
@@ -191,10 +206,28 @@ public partial class MainWindow
             Discard();
             return;
         }
-        updateTimer = new DispatcherTimer { Interval = UpdateInterval };
-        updateTimer.Tick += (_, _) => IdeErrors.Observe(CheckForUpdatesAsync(asked: false));
+        updateTimer = new DispatcherTimer { Interval = UpdateLook };
+        updateTimer.Tick += (_, _) =>
+        {
+            DateTimeOffset now = UpdateClock.GetUtcNow();
+            if (answeredAt is not { } at || now - at >= UpdateInterval || now < at)
+            {
+                AskForUpdates();
+            }
+        };
         updateTimer.Start();
-        IdeErrors.Observe(CheckForUpdatesAsync(asked: false));
+        AskForUpdates();
+    }
+
+    /// <summary>The window's own check, unless one is under way (its download included).</summary>
+    private void AskForUpdates()
+    {
+        if (ownCheck is { IsCompleted: false })
+        {
+            return;
+        }
+        ownCheck = CheckForUpdatesAsync(asked: false);
+        IdeErrors.Observe(ownCheck);
     }
 
     /// <summary>Asks for the latest release, off the UI thread. A newer one downloads when this copy installs updates
@@ -213,6 +246,7 @@ public partial class MainWindow
         {
             return;
         }
+        answeredAt = answer is ReleaseAnswer.Failed ? null : UpdateClock.GetUtcNow();
         IdeErrors.Write($"Updates: {answer.Said}");
         UpdatedElsewhere? elsewhere = null;
         if (answer is ReleaseAnswer.Newer && SelfUpdate is { } installs && settings.CheckForUpdates)

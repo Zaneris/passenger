@@ -129,9 +129,8 @@ public static class PassengerApp
     }
 
     /// <summary>A window made as another is: its state folder, its layout and settings kept or not, its agents, its
-    /// Discord, its updates' feed and release notes, whether it starts the language server and whether anyone sees it,
-    /// beside it at its size;
-    /// shown with nothing open.</summary>
+    /// Discord, its updates' feed, clock and release notes, whether it starts the language server and whether anyone
+    /// sees it, beside it at its size; shown with nothing open.</summary>
     public static MainWindow NewWindow(MainWindow like)
     {
         UiThread.Check();
@@ -145,6 +144,8 @@ public static class PassengerApp
             StartsLanguageServer = like.StartsLanguageServer,
             Unseen = like.Unseen,
             Releases = like.Releases,
+            UpdateClock = like.UpdateClock,
+            UpdateLook = like.UpdateLook,
             Notes = like.Notes,
             DiscordIpc = like.DiscordIpc,
             DiscordIdleAfter = like.DiscordIdleAfter,

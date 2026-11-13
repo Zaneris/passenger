@@ -262,6 +262,44 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
+    /// <summary>After the start a check comes a day after the last answer by the wall clock, which goes on while the
+    /// machine sleeps where a window's timer waits, so a Passenger left open across nights still asks daily; one that
+    /// failed (no network yet, GitHub refusing) is asked again at the next look rather than a day later.</summary>
+    [AvaloniaFact]
+    public void A_failed_check_is_asked_again_at_the_next_look_and_an_answered_one_a_day_later_by_the_wall_clock_however_long_the_machine_slept()
+    {
+        using IDisposable theme = TestsTheme();
+        WallClock clock = new();
+        TimeSpan look = TimeSpan.FromMilliseconds(400);
+        github.Answer = new StandIn.Reply(500, """{"message":"Server Error"}""");
+        MainWindow window = Started(clock: clock, look: look);
+        window.WatchForUpdates();
+        Ui.Settle();
+        Assert.True(github.Requests.Count >= 1, "The window did not ask for the latest release as it started");
+        Assert.True(Notice(window) is null, $"A check that failed was shown, where it is only logged: {UpdatesSaid(window)}");
+
+        // GitHub answers again: the next look asks, where a day's wait would leave the release unsaid until tomorrow.
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}");
+        Ui.WaitFor(() => Notice(window) == $"Passenger {newer} available",
+            () => $"v{newer} is out and the check before failed, yet the window's next looks did not ask again: {UpdatesSaid(window)}");
+        int asked = github.Requests.Count;
+
+        string later = Bumped(1, 1);
+        github.Answer = Release($"v{later}");
+        clock.Advance(TimeSpan.FromHours(23));
+        Ui.Hold(look * 4, "several looks less than a day after the last answer");
+        Assert.True(github.Requests.Count == asked,
+            $"The window asked for the latest release {github.Requests.Count - asked} more time(s) within a day of its answer, where it asks once a day");
+
+        // A night asleep: the wall clock passed the day while the window's timer counted nothing of it.
+        clock.Advance(TimeSpan.FromHours(1));
+        Ui.WaitFor(() => Notice(window) == $"Passenger {later} available",
+            () => $"A day passed on the wall clock since the window's last answer, yet its next looks did not ask for v{later}: {UpdatesSaid(window)}");
+        Assert.True(github.Requests.Count == asked + 1, $"The window asked {github.Requests.Count - asked} times a day after its answer, not once");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void An_installed_Passenger_downloads_a_newer_release_in_the_background_checks_it_and_offers_Restart_to_Update()
     {
@@ -940,13 +978,15 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>The person's window as the app makes it, its settings kept in the test's state folder, asking the stand-in
     /// within the limit a person's Passenger gives GitHub, scaled to the run, or the test's own (a stand-in held to not
-    /// answering); with the updater of a copy installed in a test folder, or, as every window but the person's own, none.</summary>
-    private MainWindow Started(Updater? updater = null, TimeSpan? feedLimit = null)
+    /// answering); with the updater of a copy installed in a test folder, or, as every window but the person's own, none;
+    /// counting a day between checks on the test's clock, looking whether one is due as often as the test says.</summary>
+    private MainWindow Started(Updater? updater = null, TimeSpan? feedLimit = null, TimeProvider? clock = null, TimeSpan? look = null)
     {
         ReleaseFeed feed = new(github.Latest, feedLimit ?? ReleaseFeed.ShortTimeout.Scaled());
         MainWindow window = new()
         {
             Width = 1200, Height = 800, StateFolder = settings, Releases = feed, SelfUpdate = updater,
+            UpdateClock = clock ?? TimeProvider.System, UpdateLook = look ?? TimeSpan.FromHours(1),
         };
         window.Show();
         window.KeepSettings();
@@ -1057,6 +1097,16 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     }
 
     private static IDisposable TestsTheme() => new ThemeBack(Avalonia.Application.Current!.RequestedThemeVariant);
+
+    /// <summary>A wall clock the test moves, as a night's sleep moves the machine's while the window's timers wait.</summary>
+    private sealed class WallClock : TimeProvider
+    {
+        private long ticks = new DateTimeOffset(2026, 11, 13, 4, 15, 0, TimeSpan.Zero).UtcTicks;
+
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
+
+        public void Advance(TimeSpan by) => Interlocked.Add(ref ticks, by.Ticks);
+    }
 
     private sealed class ThemeBack(Avalonia.Styling.ThemeVariant? theme) : IDisposable
     {
