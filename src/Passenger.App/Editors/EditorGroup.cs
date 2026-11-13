@@ -62,6 +62,9 @@ public sealed class EditorGroup : DockPanel
     /// <summary>At the strip's end, shown while tabs are out of its sight: the list of them.</summary>
     private readonly Button hiddenTabs;
     private readonly Grid body;
+
+    /// <summary>The body with the theme's picture over it: the group's own child, before which the bars over the body go.</summary>
+    private readonly Panel bodyLayer;
     private HairlineDivider? divider;
     private Control? side;
     private readonly Banner banner = new();
@@ -134,7 +137,8 @@ public sealed class EditorGroup : DockPanel
         body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,0,0") };
         body.Children.Add(Editor);
         // The picture over the body, whatever it holds, in a panel of their own.
-        Children.Add(new Panel { Children = { body, new ThemeBackdrop(BackgroundPlaces.Editor) } });
+        bodyLayer = new Panel { Children = { body, new ThemeBackdrop(BackgroundPlaces.Editor) } };
+        Children.Add(bodyLayer);
         // The group the person works in is the area's active one; while a table lies over the editor, the table takes its focus.
         Editor.GotFocus += (_, _) =>
         {
@@ -588,7 +592,7 @@ public sealed class EditorGroup : DockPanel
         if (tables is null)
         {
             tables = new TableViewer();
-            Children.Insert(Children.IndexOf(body), tables.Bar);
+            Children.Insert(Children.IndexOf(bodyLayer), tables.Bar);
             // Over the editor in its own column, so a XAML-like pane beside it is never covered.
             body.Children.Add(tables.Body);
             tables.Switched += (_, _) =>
@@ -620,7 +624,7 @@ public sealed class EditorGroup : DockPanel
         if (godotPage is null)
         {
             godotPage = new Godot.GodotPageViewer();
-            Children.Insert(Children.IndexOf(body), godotPage.Bar);
+            Children.Insert(Children.IndexOf(bodyLayer), godotPage.Bar);
             body.Children.Add(godotPage.Body);
             godotPage.Switched += (_, _) =>
             {
