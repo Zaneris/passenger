@@ -102,8 +102,10 @@ public sealed class TerminalSession : IAsyncDisposable
 
     /// <summary>Starts the shell in a folder. <paramref name="shell"/> names one other than the user's own, or a program
     /// to run in the terminal in place of a shell; <paramref name="variables"/> are set over the IDE's environment, an
-    /// empty value taking one away, and the outer terminal's are taken out (<see cref="WithoutOuterTerminal"/>).</summary>
-    public async Task StartAsync(string folder, string? shell = null, IReadOnlyList<string>? arguments = null, IReadOnlyDictionary<string, string>? variables = null)
+    /// empty value taking one away, and the outer terminal's are taken out (<see cref="WithoutOuterTerminal"/>);
+    /// <paramref name="first"/> is a folder the shell finds programs in before any other, its startup files' say aside.</summary>
+    public async Task StartAsync(string folder, string? shell = null, IReadOnlyList<string>? arguments = null, IReadOnlyDictionary<string, string>? variables = null,
+        FirstOnPath? first = null)
     {
         (string app, string[] args) = shell is null ? DefaultShell() : (shell, [.. arguments ?? []]);
         Shell = ShellWords.KindOf(app);
@@ -119,6 +121,7 @@ public sealed class TerminalSession : IAsyncDisposable
             environment["LANG"] = "en_US.UTF-8";
         }
         WithoutOuterTerminal(environment, Environment.GetEnvironmentVariable);
+        first?.Give(app, environment, Inherited().ToDictionary(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal));
         string cwd = Directory.Exists(folder) ? folder : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (!OperatingSystem.IsWindows())
         {

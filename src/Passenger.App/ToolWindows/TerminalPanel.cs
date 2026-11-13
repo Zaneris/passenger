@@ -182,14 +182,19 @@ public sealed class TerminalPanel : DockPanel
     }
 
     /// <summary>Starts a shell in a session: the one Settings gives (<see cref="Shell"/>), else the system's; throws saying
-    /// why where Settings names no program.</summary>
+    /// why where Settings names no program. Where the folder's projects take another .NET installation than the one found
+    /// for every folder (<see cref="Dotnet.Apart"/>), the shell finds its dotnet first and has it as DOTNET_ROOT; elsewhere
+    /// its environment is the IDE's.</summary>
     private static async Task StartShellAsync(TerminalSession session, string at, (string App, string[] Arguments)? shell)
     {
         if (shell is { } given && string.IsNullOrWhiteSpace(given.App))
         {
             throw new InvalidOperationException($"the Shell path in {SettingsDialog.PlaceOfPage(SettingsDialog.TerminalPage)} names no program to start");
         }
-        await session.StartAsync(at, shell?.App, shell?.Arguments);
+        FirstOnPath? first = await BackgroundWork.Run(() => Dotnet.Apart(at) is { } root
+            ? new FirstOnPath(root, RuntimeVariables.Root, FirstOnPath.ZshFolder(Path.Combine(State.StateStore.DefaultRoot, "cache", "terminal")))
+            : null);
+        await session.StartAsync(at, shell?.App, shell?.Arguments, first: first);
     }
 
     /// <summary>The name of the tab agents' commands run in.</summary>
