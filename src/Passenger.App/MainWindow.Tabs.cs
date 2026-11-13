@@ -113,6 +113,16 @@ public partial class MainWindow
         string? NotSplit(ActionContext c) => Editors.IsSplit(GroupOf(c)) ? null : "The editor is not split";
     }
 
+    /// <summary>The theme's default layout as the dock's default, once every tool window is added: what the window opens on
+    /// where no layout is kept, and what Restore Default Layout goes back to.</summary>
+    private void FollowThemeLayout()
+    {
+        EventHandler follow = (_, _) => Dock.UseDefault(Themes.Layout);
+        follow(null, EventArgs.Empty);
+        Themes.LayoutChanged += follow;
+        Closed += (_, _) => Themes.LayoutChanged -= follow;
+    }
+
     /// <summary>The tab an action acts on: the one whose menu it was chosen from, else the one the active group shows.</summary>
     private (EditorGroup Group, OpenDocument File)? TabOf(ActionContext context) =>
         context.Tab ?? (context.File is { } file ? (Editors.ActiveGroup, file) : null);

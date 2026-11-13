@@ -38,8 +38,11 @@ public sealed class DockHost : Grid
     private const double DefaultRight = 300;
     private const double DefaultBottom = 280;
 
-    /// <summary>Each window's place as it was added, which Restore Default Layout puts it back in.</summary>
+    /// <summary>Each window's place as it was added, which Restore Default Layout puts it back in unless the theme places it.</summary>
     private readonly Dictionary<string, DockedWindow> firstPlaces = [];
+
+    /// <summary>The theme's default layout, over <see cref="firstPlaces"/>; null for Passenger's own.</summary>
+    private ThemeLayout? themed;
 
     /// <summary>The sizes the areas were last given, fitted to the frame: a definition no longer its size was dragged.</summary>
     private (double Left, double Right, double Bottom) given;
@@ -176,8 +179,8 @@ public sealed class DockHost : Grid
         }
     }
 
-    /// <summary>Restore Default Layout: every window back where it was added, docked, open only if it opens at first,
-    /// and the areas at their first sizes, halves shared alike.</summary>
+    /// <summary>Restore Default Layout: every window back in its default place (<see cref="Default"/>), docked, open only
+    /// if the default opens it, and the areas at their default sizes, halves shared alike.</summary>
     public void RestoreDefault()
     {
         foreach (Grid area in (Grid[])[leftArea, rightArea])
@@ -185,8 +188,68 @@ public sealed class DockHost : Grid
             area.RowDefinitions[0].Height = area.RowDefinitions[2].Height = new GridLength(1, GridUnitType.Star);
         }
         bottomArea.ColumnDefinitions[0].Width = bottomArea.ColumnDefinitions[2].Width = new GridLength(1, GridUnitType.Star);
-        Apply(new DockLayout { Windows = new(firstPlaces), LeftWidth = DefaultLeft, RightWidth = DefaultRight, BottomHeight = DefaultBottom });
+        Apply(Default());
         LayoutChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The default layout: the theme's (<see cref="UseDefault"/>) laid over each window's place as it was added,
+    /// the theme's windows first at each place it names, then the rest in their order; one window open in each place, the
+    /// first in its order.</summary>
+    public DockLayout Default()
+    {
+        Dictionary<string, DockedWindow> places = new(firstPlaces);
+        if (themed is { } theme)
+        {
+            foreach (ToolAnchor anchor in Enum.GetValues<ToolAnchor>())
+            {
+                IEnumerable<string> placed = theme.Places.Where(p => p.Anchor == anchor && firstPlaces.ContainsKey(p.Id)).Select(p => p.Id);
+                IEnumerable<string> rest = firstPlaces.Where(p => p.Value.Anchor == anchor && !theme.Places.Any(t => t.Id == p.Key)).OrderBy(p => p.Value.Order).Select(p => p.Key);
+                int order = 0;
+                foreach (string id in placed.Concat(rest))
+                {
+                    places[id] = new DockedWindow(anchor, order++, theme.Open is { } open ? open.Contains(id) : firstPlaces[id].Shown);
+                }
+            }
+        }
+        foreach (IGrouping<ToolAnchor, KeyValuePair<string, DockedWindow>> place in places.Where(p => p.Value.Shown).GroupBy(p => p.Value.Anchor).ToList())
+        {
+            foreach (KeyValuePair<string, DockedWindow> extra in place.OrderBy(p => p.Value.Order).Skip(1))
+            {
+                places[extra.Key] = extra.Value with { Shown = false };
+            }
+        }
+        return new DockLayout
+        {
+            Windows = places,
+            LeftWidth = themed?.LeftWidth ?? DefaultLeft,
+            RightWidth = themed?.RightWidth ?? DefaultRight,
+            BottomHeight = themed?.BottomHeight ?? DefaultBottom,
+        };
+    }
+
+    /// <summary>Takes a theme's layout as the default (null for Passenger's own); where the windows stand as the default
+    /// before had them, which nobody arranged, they go where the new one puts them, a change the layout kept follows.</summary>
+    public void UseDefault(ThemeLayout? layout)
+    {
+        if (ReferenceEquals(layout, themed))
+        {
+            return;
+        }
+        bool unarranged = Stands(Default());
+        themed = layout;
+        if (unarranged)
+        {
+            RestoreDefault();
+        }
+    }
+
+    /// <summary>Whether every window stands docked where a layout puts it, open as it says, the areas at its sizes.</summary>
+    private bool Stands(DockLayout layout)
+    {
+        DockLayout now = Capture();
+        return now.LeftWidth == layout.LeftWidth && now.RightWidth == layout.RightWidth && now.BottomHeight == layout.BottomHeight
+            && windows.All(w => layout.Windows.TryGetValue(w.Id, out DockedWindow? placed) && now.Windows[w.Id] is { Mode: ToolMode.Docked } standing
+                && (standing.Anchor, standing.Order, standing.Shown) == (placed.Anchor, placed.Order, placed.Shown));
     }
 
     /// <summary>Shows a window in its place, hiding the one that was there; for an attached agent's call, behind

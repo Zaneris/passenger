@@ -42,7 +42,7 @@ scheme file of your own.
 
 `name` is required, at most 64 characters; `description` is optional, at most 1,000. `tokens` holds values for both
 variants, `dark` and `light` for one each; a token goes in `tokens` or in `dark` and `light`, never both. Any of the
-three may be left out, as may `background`, `fonts` and `languages` below.
+three may be left out, as may `background`, `fonts`, `languages` and `layout` below.
 
 A token is named as its key in [Tokens.axaml](../src/Passenger.App/Theme/Tokens.axaml) without `Passenger.`:
 `Frame`, `Editor.Background`, `Syntax.Keyword`, `SyntaxStyle.Comment`, `ControlRadius`, and the margins
@@ -114,6 +114,33 @@ A language is named by its id as Passenger knows it (`csharp`, `xaml`, `msbuild`
 `css`, `markdown`, …), and gives the code's tokens (`Editor.*`, `Syntax.*`, `SyntaxStyle.*`, `Diff.*`) in `tokens`,
 `dark` and `light` as a theme gives its own. They are laid over the file's own tokens in that language's editors. A
 language this Passenger does not know is passed over and named.
+
+### Its default layout
+
+```json
+"layout": {
+  "places": { "rightTop": ["explorer", "commit"], "bottomLeft": ["build", "run"], "bottomRight": ["problems"] },
+  "open": ["explorer", "build", "problems"],
+  "sizes": { "left": 260, "right": 320, "bottom": 220 }
+}
+```
+
+Where the tool windows dock when nobody has arranged them: what a window opens on before any layout is kept, and what
+Window | Layout Settings | Restore Default Layout goes back to. A layout you arrange yourself always wins, and is kept as
+yours whatever theme you choose; choosing another theme moves the windows only while they still stand where the theme
+before put them.
+
+- `places` names, for any of `leftTop`, `leftBottom`, `rightTop`, `rightBottom`, `bottomLeft` and `bottomRight`, the tool
+  windows docked there in their order, before those the theme leaves where Passenger puts them. A window docks in one
+  place. The windows are named by their ids: `explorer`, `structure`, `bookmarks`, `commit`, `run`, `debug`, `tests`,
+  `build`, `problems`, `find`, `git`, `nuget`, `terminal`, `localHistory`, `containers`, `profiler`, `hierarchy`,
+  `endpoints`, `requests`, `liveTree`, `game`, `aspire` and `migrations`.
+- `open` lists the windows open at the start, every other closed; left out, Passenger's own open (the Explorer). A place
+  shows one window, the first in its order.
+- `sizes` gives the left and right areas' widths and the bottom one's height, each 100 to 2000 pixels; one left out is
+  Passenger's own.
+
+A window or place this Passenger does not have is passed over and named.
 
 ## A code colour scheme
 

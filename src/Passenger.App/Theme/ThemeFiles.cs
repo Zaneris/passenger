@@ -58,7 +58,7 @@ public sealed record TextStyleValue(string Words) : TokenValue;
 
 /// <summary>A theme or a code colour scheme as its file gives it: its name, its words for a person, and its tokens for both
 /// variants and for Dark or Light alone, each named as its key without <c>Passenger.</c>; a theme's fonts and background
-/// picture for each variant, and the code's tokens for a language over the file's own.</summary>
+/// picture for each variant, the code's tokens for a language over the file's own, and its default layout.</summary>
 public sealed record ThemeFile(string Name, string Description, IReadOnlyDictionary<string, TokenValue> Both,
     IReadOnlyDictionary<string, TokenValue> Dark, IReadOnlyDictionary<string, TokenValue> Light)
 {
@@ -73,6 +73,9 @@ public sealed record ThemeFile(string Name, string Description, IReadOnlyDiction
 
     /// <summary>The code's tokens for a language by its id (<c>csharp</c>), laid over the file's own for that language's files.</summary>
     public IReadOnlyDictionary<string, LanguageColours> Languages { get; init; } = new Dictionary<string, LanguageColours>(StringComparer.Ordinal);
+
+    /// <summary>The default layout the theme gives, or null for Passenger's own.</summary>
+    public ThemeLayout? Layout { get; init; }
 
     /// <summary>The picture drawn under a variant, or null for none.</summary>
     public BackgroundValue? BackgroundOf(bool dark) => dark ? DarkBackground : LightBackground;
@@ -191,6 +194,7 @@ public static partial class ThemeFiles
             DarkBackground = dark,
             LightBackground = light,
             Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, problems),
+            Layout = code ? null : Layout(file, JsonMembers.Value(root, "layout"), problems),
         };
     }
 

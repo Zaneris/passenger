@@ -57,7 +57,7 @@ public sealed record ThemeFonts(string? CodeFamily, double? CodeSize, string? Wi
 public sealed record LanguageColours(IReadOnlyDictionary<string, TokenValue> Both, IReadOnlyDictionary<string, TokenValue> Dark,
     IReadOnlyDictionary<string, TokenValue> Light);
 
-/// <summary>A theme's members beyond its tokens: <c>fonts</c>, <c>background</c> and <c>languages</c> (docs/themes.md).</summary>
+/// <summary>A theme's members beyond its tokens: <c>fonts</c>, <c>background</c>, <c>languages</c> and <c>layout</c> (docs/themes.md).</summary>
 public static partial class ThemeFiles
 {
     /// <summary>The most of a background picture that shows: every glyph keeps at least the rest of its difference from its
@@ -82,7 +82,7 @@ public static partial class ThemeFiles
     private const double OwnOpacity = 0.15;
     private const int LongestLanguage = 40;
 
-    private static readonly string[] Beyond = ["fonts", "background", "languages"];
+    private static readonly string[] Beyond = ["fonts", "background", "languages", "layout"];
     private static readonly string[] PictureTypes = [".png", ".jpg", ".jpeg", ".webp"];
     private static readonly (string Word, BackgroundPlaces Place)[] PlaceWords =
         [("editor", BackgroundPlaces.Editor), ("toolWindows", BackgroundPlaces.ToolWindows), ("frame", BackgroundPlaces.Frame), ("welcome", BackgroundPlaces.Welcome)];

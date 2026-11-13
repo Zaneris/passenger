@@ -45,6 +45,12 @@ public static class Themes
     /// <summary>The theme in force gave other fonts.</summary>
     public static event EventHandler? FontsChanged;
 
+    /// <summary>The default layout the theme in force gives, or null for Passenger's own.</summary>
+    public static ThemeLayout? Layout { get; private set; }
+
+    /// <summary>The theme in force gave another default layout.</summary>
+    public static event EventHandler? LayoutChanged;
+
     /// <summary>Puts a theme and a scheme in force over those before, each fetched first where it is not kept.</summary>
     public static void Apply(Application app, SourcedTheme? look, SourcedTheme? scheme)
     {
@@ -253,6 +259,11 @@ public static class Themes
         {
             Fonts = fonts;
             FontsChanged?.Invoke(null, EventArgs.Empty);
+        }
+        if (!ReferenceEquals(theme?.Layout, Layout))
+        {
+            Layout = theme?.Layout;
+            LayoutChanged?.Invoke(null, EventArgs.Empty);
         }
     }
 

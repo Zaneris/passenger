@@ -28,4 +28,8 @@ public static class ToolWindowIds
     public const string Game = "game";
     public const string Aspire = "aspire";
     public const string Migrations = "migrations";
+
+    /// <summary>Every id above, which a theme's layout names windows by.</summary>
+    public static IReadOnlySet<string> All { get; } = typeof(ToolWindowIds).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+        .Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!).ToHashSet(StringComparer.Ordinal);
 }

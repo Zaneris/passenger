@@ -86,6 +86,9 @@
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.cs" Link="App/ThemeFiles.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.Beyond.cs" Link="App/ThemeFiles.Beyond.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.Layout.cs" Link="App/ThemeFiles.Layout.cs" />
+    <Compile Include="../../src/Passenger.App/Docking/ToolAnchor.cs" Link="App/ToolAnchor.cs" />
+    <Compile Include="../../src/Passenger.App/ToolWindowIds.cs" Link="App/ToolWindowIds.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeImages.cs" Link="App/ThemeImages.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeSources.cs" Link="App/ThemeSources.cs" />
   </ItemGroup>

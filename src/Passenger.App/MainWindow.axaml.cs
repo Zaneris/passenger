@@ -130,6 +130,7 @@ public partial class MainWindow : IdeWindow
         AddPreview();
         AddXamlWorkspace();
         AddMarkdownPreview();
+        FollowThemeLayout();
         Explorer.FileOpened += (_, path) => OpenFile(path);
         Explorer.IndexedFiles = IndexedFiles;
         Explorer.FileClicked += (_, path) =>
