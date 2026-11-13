@@ -186,7 +186,9 @@ public static class ContainerPlans
             files = [composed];
             runsIn = single.Folder;
         }
-        List<string> compose = Words(files, configuration, runsIn);
+        // A .dcproj's name is given before Compose reads the files, so its model takes that name over the files' own.
+        string? ownName = ContainerConfigurations.ProjectNameOf(configuration);
+        List<string> compose = Words(files, configuration, runsIn, ownName);
         ComposeModel model;
         try
         {
@@ -196,8 +198,11 @@ public static class ContainerPlans
         {
             throw new ComposeModelException(configuration.Name, said.Message);
         }
-        string projectName = model.Name.Length > 0 ? model.Name : Slug(Path.GetFileName(runsIn));
-        compose.InsertRange(1, ["-p", projectName]);
+        string projectName = ownName ?? (model.Name.Length > 0 ? model.Name : Slug(Path.GetFileName(runsIn)));
+        if (ownName is null)
+        {
+            compose.InsertRange(1, ["-p", projectName]);
+        }
 
         List<DotnetService> dotnet = [];
         foreach (ComposeService service in model.Services)
@@ -367,25 +372,9 @@ public static class ContainerPlans
     /// <summary>The tag of an SDK container's image Passenger has the SDK make, as deployed.</summary>
     public const string SdkImageTag = "passenger";
 
-    /// <summary>The <c>compose -f … --env-file … --profile … --project-directory …</c> words of files and a configuration.</summary>
-    private static List<string> Words(IReadOnlyList<string> files, RunConfiguration configuration, string runsIn)
-    {
-        List<string> compose = ["compose"];
-        foreach (string each in files)
-        {
-            compose.AddRange(["-f", each]);
-        }
-        foreach (string env in configuration.EnvFiles)
-        {
-            compose.AddRange(["--env-file", env]);
-        }
-        foreach (string profile in configuration.Profiles)
-        {
-            compose.AddRange(["--profile", profile]);
-        }
-        compose.AddRange(["--project-directory", runsIn]);
-        return compose;
-    }
+    /// <summary>The <c>compose [-p NAME] -f … --env-file … --profile … --project-directory …</c> words of files and a configuration.</summary>
+    private static List<string> Words(IReadOnlyList<string> files, RunConfiguration configuration, string runsIn, string? project = null) =>
+        ComposeFiles.Words(project, files, configuration.EnvFiles, configuration.Profiles, runsIn);
 
     /// <summary>A Compose configuration's services as Compose's own model has them (Edit Configurations' table), each with
     /// the project it runs as a run would find it, and whether it is built from a Dockerfile here (whose project a person

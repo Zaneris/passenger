@@ -1119,6 +1119,63 @@ public sealed class ContainersTests
         }
     }
 
+    /// <summary>A Docker Compose project (.dcproj) naming its Compose project (DockerComposeProjectName) runs under that name
+    /// over the one Compose's model of its files gives: every command of its run takes it, from reading its files to its
+    /// up, and Stop takes down the containers that carry it. The engine is a stand-in, whose every command is written down.</summary>
+    [AvaloniaFact]
+    public void A_Docker_Compose_projects_own_project_name_is_its_runs_from_reading_its_files_to_its_take_down()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        using StandInHttp web = new(exchange => exchange.ReplyAsync(200, "text/plain", "web"));
+        string engineFolder = TestFolders.Create("ctr-dcname-");
+        string cli = StandInComposeEngine(engineFolder, "tcp://127.0.0.1:2376", web.Port);
+        string folder = ComposeProject("ctr-dcname-window-", "<DockerComposeProjectName>my-shop</DockerComposeProjectName>");
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
+        window.Show();
+        window.OpenFolder(Path.Combine(folder, "Shop.slnx"));
+        Ui.Settle();
+        string calls = Path.Combine(engineFolder, "calls");
+        try
+        {
+            Assert.True(window.SelectConfiguration("docker-compose"), $"No configuration of the .dcproj: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+            Ui.Launched(window, window.RunAsync(), "the Docker Compose project's run to come up");
+            string[] run = [.. File.ReadAllLines(calls).Where(c => c.Contains(" -f ", StringComparison.Ordinal))];
+            Assert.Contains(run, c => c.Contains(" config", StringComparison.Ordinal));
+            Assert.Contains(run, c => c.Contains(" up ", StringComparison.Ordinal));
+            Assert.True(run.All(c => c.StartsWith("compose -p my-shop -f ", StringComparison.Ordinal)),
+                $"A command of the run took another project name than the .dcproj's my-shop:\n{string.Join('\n', run.Where(c => !c.StartsWith("compose -p my-shop -f ", StringComparison.Ordinal)))}");
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => File.ReadAllLines(calls).Any(c => c.StartsWith("ps -aq ", StringComparison.Ordinal) && c.Contains($"label={ComposeLabels.Project}=my-shop", StringComparison.Ordinal)),
+                "Stop to take down the containers carrying the .dcproj's project name");
+        }
+        finally
+        {
+            window.Close();
+            File.WriteAllText(Path.Combine(engineFolder, "down"), string.Empty);
+        }
+    }
+
+    /// <summary>A folder of a solution naming a Docker Compose project (.dcproj) alone, whose docker-compose.yml runs a busybox
+    /// web publishing its port 80, the .dcproj's properties those given.</summary>
+    private static string ComposeProject(string prefix, string properties)
+    {
+        string folder = PathNames.Canonical(TestFolders.Create(prefix));
+        TestFolders.Write(folder, "docker-compose.yml", $"services:\n  web:\n    image: {Docker.Image}\n    ports: [\"8080:80\"]\n");
+        TestFolders.Write(folder, "docker-compose.dcproj", $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <Project ToolsVersion="15.0" Sdk="Microsoft.Docker.Sdk">
+              <PropertyGroup Label="Globals">
+                <ProjectVersion>2.1</ProjectVersion>
+                <DockerTargetOS>Linux</DockerTargetOS>
+                {properties}
+              </PropertyGroup>
+            </Project>
+
+            """);
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"docker-compose.dcproj\" />\n</Solution>\n");
+        return folder;
+    }
+
     /// <summary>A docker of the test's own for a compose run: a Linux server at <paramref name="host"/> with Compose v2, whose
     /// model of any compose files is a project "remote" of one service web (busybox, its port 80 published on 8080), which
     /// comes up at once, publishes 80 on <paramref name="port"/>, and lists, logs and follows nothing until a file

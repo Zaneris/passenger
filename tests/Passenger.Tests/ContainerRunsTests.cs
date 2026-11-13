@@ -1121,6 +1121,45 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
+    /// <summary>A Docker Compose project (.dcproj) naming its Compose project (DockerComposeProjectName) runs its services under
+    /// that name, over the one its compose file gives: Compose lists the project by it, its containers carry it and none the
+    /// file's name, and Stop takes them down.</summary>
+    [AvaloniaFact]
+    public void A_Docker_Compose_projects_DockerComposeProjectName_names_the_Compose_project_its_run_brings_up_and_Stop_takes_down()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        (string folder, string files) = Restored("dcfile");
+        string project = ProjectNamed("dcproj");
+        TestFolders.Write(folder, "docker-compose.dcproj", $"""
+            <Project ToolsVersion="15.0" Sdk="Microsoft.Docker.Sdk">
+              <PropertyGroup Label="Globals">
+                <DockerComposeProjectName>{project}</DockerComposeProjectName>
+                <DockerComposeBaseFilePath>compose</DockerComposeBaseFilePath>
+                <DockerServiceName>web</DockerServiceName>
+              </PropertyGroup>
+            </Project>
+
+            """);
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n  <Project Path=\"Api/Api.csproj\" />\n  <Project Path=\"docker-compose.dcproj\" />\n</Solution>\n");
+        MainWindow window = Open(folder);
+        Assert.True(window.SelectConfiguration("docker-compose"), $"No configuration of the .dcproj: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+        try
+        {
+            Launched(window, "the Docker Compose project to come up");
+            Assert.Equal(["api", "cache", "web"], States(project).Keys.Order(StringComparer.Ordinal));
+            Assert.All(States(project).Values, state => Assert.Equal("running", state));
+            Assert.Contains($"\"Name\":\"{project}\"", Docker.Run("compose", "ls", "--all", "--format", "json"), StringComparison.Ordinal);
+            Assert.True(States(files).Count == 0, $"The compose file's own project {files} was brought up beside the .dcproj's {project}");
+            Assert.Equal("web 1", Served(window, project, "web"));
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take the Docker Compose project's containers down");
+        }
+        Ui.WaitFor(() => !window.IsRunning, "the log to stop being followed");
+        window.Close();
+    }
+
     private static void Press(Avalonia.Controls.Button button)
     {
         Ui.Click(button);

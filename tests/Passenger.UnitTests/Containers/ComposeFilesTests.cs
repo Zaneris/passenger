@@ -56,6 +56,15 @@ public sealed class ComposeFilesTests : IDisposable
             + $"would {(compose ? "be missing" : "be read from a file Compose never runs")}");
     }
 
+    [Fact]
+    public void A_configurations_compose_words_name_its_project_first_where_one_is_given_and_leave_it_to_compose_where_none_is()
+    {
+        string[] files = ["/shop/docker-compose.yml", "/shop/docker-compose.override.yml"];
+        Assert.Equal(["compose", "-p", "my-shop", "-f", files[0], "-f", files[1], "--env-file", "/shop/.env", "--profile", "debug", "--project-directory", "/shop"],
+            ComposeFiles.Words("my-shop", files, ["/shop/.env"], ["debug"], "/shop"));
+        Assert.Equal(["compose", "-f", files[0], "-f", files[1], "--project-directory", "/shop"], ComposeFiles.Words(null, files, [], [], "/shop"));
+    }
+
     private void Write(params string[] names)
     {
         foreach (string name in names)

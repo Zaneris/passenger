@@ -40,6 +40,7 @@
        project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Containers/ComposeFiles.cs" Link="App/ComposeFiles.cs" />
+    <Compile Include="../../src/Passenger.App/Containers/ComposeProjectFile.cs" Link="App/ComposeProjectFile.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ContainerPaths.cs" Link="App/ContainerPaths.cs" />
     <Compile Include="../../src/Passenger.App/Containers/DockerRunWords.cs" Link="App/DockerRunWords.cs" />
     <Compile Include="../../src/Passenger.App/Containers/EngineVariables.cs" Link="App/EngineVariables.cs" />

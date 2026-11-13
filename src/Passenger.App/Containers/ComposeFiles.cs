@@ -64,5 +64,12 @@ public static class ComposeFiles
     public static IReadOnlyList<string> Unasked(string folder) =>
         In(folder) is { } file ? OverrideIn(folder) is { } over ? [file, over] : [file] : [];
 
+    /// <summary>The <c>compose</c> words every command of a configuration takes before its own: its project's name where one
+    /// is given (else Compose names the project from its files and folder), each file, env file and profile, and the folder
+    /// their paths are read from.</summary>
+    public static List<string> Words(string? project, IEnumerable<string> files, IEnumerable<string> envFiles, IEnumerable<string> profiles, string runsIn) =>
+        ["compose", .. project is null ? Array.Empty<string>() : ["-p", project], .. files.SelectMany(f => (string[])["-f", f]),
+            .. envFiles.SelectMany(e => (string[])["--env-file", e]), .. profiles.SelectMany(p => (string[])["--profile", p]), "--project-directory", runsIn];
+
     private static string? First(string folder, IReadOnlyList<string> names) => names.Select(name => Path.Combine(folder, name)).FirstOrDefault(File.Exists);
 }
