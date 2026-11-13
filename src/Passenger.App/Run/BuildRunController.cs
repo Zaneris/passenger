@@ -1240,7 +1240,7 @@ public sealed partial class BuildRunController
                 WatchBindings(inspected, null);
                 string program = GodotConsole.Program(plan, plan.Program);
                 // What the run says of itself goes with its status, the terminal's tab being the program's own.
-                string? refused = await RunInTerminalAsync(chosen.Name, watched ? DotnetStart(Watch(plan), plan.WorkingDirectory) : ChildProcesses.Command(program, plan.Arguments, plan.WorkingDirectory), variables,
+                string? refused = await RunInTerminalAsync(chosen.Name, watched ? DotnetStart(Watch(plan, session.Workspace), plan.WorkingDirectory) : ChildProcesses.Command(program, plan.Arguments, plan.WorkingDirectory), variables,
                     string.Join("; ", [running, .. plan.Notes]));
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
@@ -1282,7 +1282,7 @@ public sealed partial class BuildRunController
             }
             // Its fork off the window's thread (#441): the program runs from now as Stop and IsRunning see it, its id known once started.
             string? notStarted = Started(watched
-                ? await session.Runner.StartDotnetAsync(Watch(plan), plan.WorkingDirectory, variables, plan.Placed)
+                ? await session.Runner.StartDotnetAsync(Watch(plan, session.Workspace), plan.WorkingDirectory, variables, plan.Placed)
                 : await session.Runner.StartAsync(plan.Start(), variables));
             if (notStarted is null)
             {
@@ -1728,13 +1728,17 @@ public sealed partial class BuildRunController
     /// <summary>dotnet watch's command line for a plan: the project (a file-based program's C# file) for its framework, no
     /// launch profile (the plan has its values already), the program's own arguments after <c>--</c>, but none that are the
     /// project's RunArguments (its RunCommand's program's too), which dotnet watch gives it itself. It runs the program in
-    /// its own working folder, which is the plan's.</summary>
-    private static List<string> Watch(LaunchPlan plan)
+    /// its own working folder, which is the plan's; the configuration the folder's build configuration gives the project.</summary>
+    private static List<string> Watch(LaunchPlan plan, WorkspaceModel? workspace)
     {
         List<string> watch = ["watch", "--non-interactive", "run", Passenger.Host.ProgramFiles.IsProgram(plan.Project!) ? "--file" : "--project", plan.Project!, "--no-launch-profile"];
         if (plan.Framework is { } framework)
         {
             watch.AddRange(["--framework", framework]);
+        }
+        if (workspace?.BuildPropertiesOf(plan.Project!).GetValueOrDefault(MSBuildNames.Configuration) is { } configuration)
+        {
+            watch.AddRange(["--configuration", configuration]);
         }
         watch.Add("--");
         if (!plan.ArgumentsOfProject)

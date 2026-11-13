@@ -71,8 +71,10 @@ public sealed class BuildConfigurationChoices
         BuildConfiguration? wanted = Chosen;
         if (workspace.Solution is not { } solution)
         {
-            IReadOnlyList<BuildConfiguration> declared = BuildConfigurations.Declared(workspace.Projects.Where(p => p.IsEvaluated)
-                .Select(p => (p.Property(CarriedProperties.Configurations), p.Property(CarriedProperties.Platforms))));
+            // Nothing is offered before a project's evaluation says what it declares, nor for a folder of none.
+            List<ProjectModel> evaluatedProjects = [.. workspace.Projects.Where(p => p.IsEvaluated)];
+            IReadOnlyList<BuildConfiguration> declared = evaluatedProjects.Count == 0 ? []
+                : BuildConfigurations.Declared(evaluatedProjects.Select(p => (p.Property(CarriedProperties.Configurations), p.Property(CarriedProperties.Platforms))));
             Take(declared, BuildConfigurations.DefaultOf(declared), ofSolution: false, problem: null);
             if (evaluated || wanted is null || declared.Any(d => d.Is(wanted)))
             {
@@ -149,6 +151,10 @@ public sealed class BuildConfigurationChoices
         catch (ProjectHostFailed failed)
         {
             return (null, $"MSBuild could not read {Path.GetFileName(solution)}: {failed.Reason}");
+        }
+        catch (Exception unread) when (unread is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            return (null, $"MSBuild could not read {Path.GetFileName(solution)}: {unread.Message}");
         }
     }
 
