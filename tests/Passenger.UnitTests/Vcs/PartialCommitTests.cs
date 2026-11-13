@@ -47,4 +47,38 @@ public sealed class PartialCommitTests
         FileDiff other = FileDiff.Compare("a\nb\nc\nd\nf\n", diff.Text);
         Assert.Empty(new PartialCommit(diff, [diff.Hunks[0]]).Following(other));
     }
+    /// <summary>"a".."h" with line 2 changed, lines 4 and 5 changed, and "g" deleted from between "f" and "h".</summary>
+    private static FileDiff Changed() => FileDiff.Compare("a\nb\nc\nd\ne\nf\ng\nh\n", new TextDocument("a\nB\nc\nD\nE\nf\nh\n").Snapshot);
+
+    [Theory]
+    [InlineData("2", "2")]
+    [InlineData("4-5", "4")]
+    [InlineData("5", "4")]
+    [InlineData("1-3", "2")]
+    [InlineData(" 2 , 5 ", "2 4")]
+    [InlineData("6", "7")]
+    [InlineData("7", "7")]
+    [InlineData("1-7", "2 4 7")]
+    public void Lines_of_the_file_now_take_each_change_they_touch_whole(string ranges, string starts)
+    {
+        FileDiff diff = Changed();
+        (IReadOnlyList<DiffHunk> hunks, string? why) = PartialCommit.Touched(diff, ranges);
+        Assert.Null(why);
+        // Each change named by the line of the file now where it starts (a deletion's by the line after it).
+        Assert.Equal(starts, string.Join(' ', hunks.Select(h => h.NewStart + 1)));
+    }
+
+    [Theory]
+    [InlineData("3", "no change is at line 3: its changes are at line 2, lines 4-5 and between lines 6 and 7")]
+    [InlineData("8-9", "no change is at lines 8-9: its changes are at line 2, lines 4-5 and between lines 6 and 7")]
+    [InlineData("2,x", "x is not a line or a range of lines, as 3 or 12-14")]
+    [InlineData("5-4", "5-4 is not a line or a range of lines, as 3 or 12-14")]
+    [InlineData("0", "0 is not a line or a range of lines, as 3 or 12-14")]
+    [InlineData(" ", "no lines are named")]
+    public void Lines_touching_no_change_or_not_read_as_lines_are_refused_saying_where_the_changes_are(string ranges, string expected)
+    {
+        (IReadOnlyList<DiffHunk> hunks, string? why) = PartialCommit.Touched(Changed(), ranges);
+        Assert.Empty(hunks);
+        Assert.Equal(expected, why);
+    }
 }

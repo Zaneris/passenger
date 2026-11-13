@@ -4,6 +4,7 @@ using Passenger.App.Migrations;
 using Passenger.App.Packages;
 using Passenger.App.Profiling;
 using Passenger.App.Vcs;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Packages;
 using Passenger.Terminal;
@@ -126,18 +127,37 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(
         "Commits the paths given, else every changed file but the unversioned (saved first), with message; amend changes the " +
         "last commit (with paths [], its message alone), push pushes after; signed as git's config says and signed off as the Commit window's Sign-off is, " +
-        "as the window commits. Returns the commit and how the push went; a push the remote refuses is an error with " +
+        "as the window commits. lines maps a modified file to the lines of the changes of it to commit (\"3,12-14\", as vcs_status's diff " +
+        "numbers it now), each change they touch whole, the rest left uncommitted; with lines and no paths, only its files. Returns the commit and how the push went; a push the remote refuses is an error with " +
         "git's reason, the commit made all the same.")]
-    public Task<string> VcsCommit(string message, IReadOnlyList<string>? paths = null, bool amend = false, bool push = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
+    public Task<string> VcsCommit(string message, IReadOnlyList<string>? paths = null, Dictionary<string, string>? lines = null, bool amend = false, bool push = false,
+        CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
         await vcs.RefreshAsync();
-        IReadOnlyList<FileChange> chosen = paths is null
-            ? [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is null)]
+        List<FileChange> chosen = paths is null
+            ? lines is { Count: > 0 } ? [] : [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is null)]
             : [.. paths.Select(Resolve).Select(p => vcs.Changes.FirstOrDefault(c => c.Path == p) ?? throw new ArgumentException($"{Relative(p)} has no changes to commit"))];
+        Dictionary<string, PartialCommit> partial = new(PathNames.Comparer);
+        List<string> left = [];
+        foreach ((string given, string ranges) in lines ?? [])
+        {
+            string full = Resolve(given);
+            FileChange change = vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, full)) ?? throw new ArgumentException($"{Relative(full)} has no changes to commit");
+            if (!chosen.Contains(change))
+            {
+                chosen.Add(change);
+            }
+            if (await ChosenChangesAsync(vcs, change, ranges) is { } some)
+            {
+                partial[full] = some;
+                int rest = some.Diff.Hunks.Count - some.Hunks.Count;
+                left.Add($"{Plural.Of(rest, "change")} of {Relative(full)}");
+            }
+        }
         AgentCall.Say($"Committing {Plural.Of(chosen.Count, "file")}{(push ? " and pushing" : string.Empty)}");
-        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false, signing: new CommitSigning(SignOff: vcs.SignOff));
+        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false, signing: new CommitSigning(SignOff: vcs.SignOff), partial: partial);
         if (!result.Commit.Succeeded)
         {
             // A rebase stopped for conflicts goes on by its own action, which an agent runs by its id.
@@ -146,6 +166,10 @@ public sealed partial class PassengerTools
                 : result.Commit.Message);
         }
         string made = result.Made is { } head ? $"{head.Short} {head.Subject}" : result.Commit.Message;
+        if (left.Count > 0)
+        {
+            made = $"{made}; left uncommitted: {Plural.Listed(left)}";
+        }
         return result.Push switch
         {
             null => made,
@@ -153,6 +177,31 @@ public sealed partial class PassengerTools
             { } refused => throw new InvalidOperationException($"Committed {made}, but the push did not go: {refused.Message}"),
         };
     });
+
+    /// <summary>The changes of a file that vcs_commit's lines touch, as the Commit window's partial commit chooses them, of
+    /// the file's text as the editor holds it (saved before the commit): null where they touch all of them. Refused, saying
+    /// why, where the file's changes cannot go in apart or the lines touch none of them.</summary>
+    private async Task<PartialCommit?> ChosenChangesAsync(VcsController vcs, FileChange change, string ranges)
+    {
+        string name = Relative(change.Path);
+        if (change.Kind is not (ChangeKind.Modified or ChangeKind.Renamed) || change.Mode is not null || change.Submodule != SubmoduleChange.None
+            || await vcs.BinaryChangeAsync(change.Path) is not null)
+        {
+            throw new ArgumentException($"{name} is {change.Kind.ToString().ToLowerInvariant()}{(change.Mode is null ? string.Empty : ", its mode changed")}: "
+                + "only a modified text file's changes go in apart; commit it whole with paths");
+        }
+        OpenDocument? open = Editors.Find(change.Path) is { HoldsText: true } held ? held : null;
+        FileDiff? diff = open is null ? null : await vcs.DiffAsync(open);
+        if (diff is null)
+        {
+            string head = await vcs.HeadTextAsync(change.Path) ?? string.Empty;
+            TextSnapshot text = open?.Text.Snapshot ?? new TextDocument(Passenger.App.Editors.EditorArea.ReadText(change.Path) ?? string.Empty).Snapshot;
+            diff = await BackgroundWork.Run(() => FileDiff.Compare(head, text));
+        }
+        (IReadOnlyList<DiffHunk> hunks, string? why) = PartialCommit.Touched(diff, ranges);
+        return why is not null ? throw new ArgumentException($"{name}: {why} (vcs_status {name} shows them)")
+            : hunks.Count == diff.Hunks.Count ? null : new PartialCommit(diff, hunks, change.From);
+    }
 
     [McpServerTool(Name = McpTools.VcsLog, Title = "The history", ReadOnly = true), Description(
         "The newest commits (count of them, at most 500) of every branch, with their branches and tags and a signed one's signature (good, unverified, bad or " +

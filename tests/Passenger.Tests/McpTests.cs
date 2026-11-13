@@ -1551,6 +1551,38 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"telemetry with nothing running answered: {Text(refused)}");
     }
 
+    /// <summary>vcs_commit commits the changes of a file its lines touch, through the Commit window's partial commit: one of
+    /// two changes goes in, the other stays in the working tree; lines that no longer name a change, as once the file moved on
+    /// since vcs_status numbered it, are refused saying where its changes are now, and nothing is committed.</summary>
+    [Fact]
+    public async Task An_agents_commit_of_one_of_a_files_two_changes_leaves_the_other_and_refuses_lines_that_name_none()
+    {
+        string repository = TestFolders.Create("mcp-partial-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\ntwo\nthree\nfour\nfive\nsix\nseven\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(notes, "ONE\ntwo\nthree\nfour\nfive\nsix\nSEVEN\n");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        string diff = Text(await Call(client, McpTools.VcsStatus, new() { ["path"] = "Notes.txt" }));
+        Assert.True(diff.Contains("+SEVEN", StringComparison.Ordinal) && diff.Contains("+ONE", StringComparison.Ordinal), $"vcs_status of Notes.txt answered: {diff}");
+        // The file moves on after the agent read its diff, so line 7 is no longer SEVEN's.
+        await Call(client, McpTools.Edit, new() { ["path"] = "Notes.txt", ["oldText"] = "ONE\n", ["newText"] = "zero\nONE\n" });
+        CallToolResult refused = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Capital seven", ["lines"] = new Dictionary<string, string> { ["Notes.txt"] = "7" } });
+        Assert.True(refused.IsError == true && Text(refused).Contains("Notes.txt: no change is at line 7: its changes are at lines 1-2 and line 8", StringComparison.Ordinal),
+            $"vcs_commit of line 7, which no longer names a change, answered: {Text(refused)}");
+        Assert.Equal("First", (await TestGit.RunAsync(repository, "log", "-1", "--format=%s")).Trim());
+
+        string made = Text(await Call(client, McpTools.VcsCommit, new() { ["message"] = "Capital seven", ["lines"] = new Dictionary<string, string> { ["Notes.txt"] = "8" } }));
+        Assert.EndsWith(" Capital seven; left uncommitted: 1 change of Notes.txt", made, StringComparison.Ordinal);
+        Assert.Equal("one\ntwo\nthree\nfour\nfive\nsix\nSEVEN\n", await TestGit.RunAsync(repository, "show", "HEAD:Notes.txt"));
+        Assert.Equal("zero\nONE\ntwo\nthree\nfour\nfive\nsix\nSEVEN\n", File.ReadAllText(notes));
+        string left = await TestGit.RunAsync(repository, "diff", "--no-color", "-U0", "--", "Notes.txt");
+        Assert.True(left.Contains("-one\n+zero\n+ONE\n", StringComparison.Ordinal) && !left.Contains("SEVEN", StringComparison.Ordinal),
+            $"What the working tree holds beyond the commit is not the change left out: {left}");
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]
