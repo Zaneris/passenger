@@ -115,8 +115,9 @@ public static class Themes
         }
         ThemeFile? theme = Look is { } look ? Kept(false, look) ?? Fetched(false, look) : null;
         ThemeFile? scheme = Scheme is { } colours ? Kept(true, colours) ?? Fetched(true, colours) : null;
-        Func<string, byte[]?> images = theme is not null && Look is { From: { } source } shown && source != ThemeSource.BuiltIn
-            ? image => KeptThemes.Image(source, false, shown.Name, image) : _ => null;
+        Func<string, byte[]?> images = theme is null || Look is not { From: { } source } shown ? _ => null
+            : source == ThemeSource.BuiltIn ? image => BuiltInThemes.Image(false, shown.Name, image)
+            : image => KeptThemes.Image(source, false, shown.Name, image);
         Lay(app, theme, scheme, images);
         Say();
     }

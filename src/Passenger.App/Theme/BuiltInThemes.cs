@@ -27,6 +27,23 @@ public static class BuiltInThemes
     public static byte[]? Bytes(bool code, string name) =>
         Listed(ThemeResources.Kinds).Listed.FirstOrDefault(l => l.Code == code && l.Read.Read?.Name == name)?.Bytes;
 
+    /// <summary>A picture a built-in theme names, beside its file among the app's resources, or null where none is carried
+    /// or it is no picture a background may be.</summary>
+    public static byte[]? Image(bool code, string name, string image)
+    {
+        if (Listed(ThemeResources.Kinds).Listed.FirstOrDefault(l => l.Code == code && l.Read.Read?.Name == name) is not { } listed)
+        {
+            return null;
+        }
+        Uri place = new(Root, ThemeImages.Beside(listed.Path, image));
+        if (!AssetLoader.Exists(place))
+        {
+            return null;
+        }
+        byte[] bytes = Read(ThemeImages.Beside(listed.Path, image));
+        return ThemeImages.WhyNot(image, bytes) is null ? bytes : null;
+    }
+
     private static ListedTheme File(string path, bool code, IReadOnlyDictionary<string, ThemeTokenKind> kinds)
     {
         byte[] bytes = Read(path);

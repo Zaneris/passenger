@@ -366,7 +366,7 @@ Building needs the .NET 11 SDK (11.0.100 or a later 11.0 SDK, as [`global.json`]
 
 ```sh
 just build                 # Debug build; warnings are errors
-just run [PATH]            # run it on a folder or solution (--theme dark|light, --look passenger, harbour, sorbet…)
+just run [PATH]            # run it on a folder or solution (--theme dark|light, --look passenger, harbour… or SOURCE::NAME)
 just test [FILTER]         # every test, the IDE driven whole on Avalonia's headless platform, or those matching;
                            # the results in artifacts/test-results
 just screenshot shell.png  # draw the main window to a PNG off-screen (--size 1600x1000 --scale 2)

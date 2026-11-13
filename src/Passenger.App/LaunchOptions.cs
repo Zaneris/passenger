@@ -8,7 +8,7 @@ using Passenger.Workspace;
 
 namespace Passenger.App;
 
-/// <summary>The command line: <c>passenger [PATH] [--file F]... [--caret L:C [--zero-based]] [--theme T] [--look L] [--scheme S]
+/// <summary>The command line: <c>passenger [PATH] [--file F]... [--caret L:C [--zero-based]] [--theme T] [--look L|SOURCE::NAME] [--scheme S|SOURCE::NAME]
 /// [--run [NAME] | --debug [NAME]]</c>, PATH a folder, a file, or a solution or project opened as the workspace, whose run
 /// configuration NAME (as Edit Configurations names it; the one chosen without) Run or Debug starts once its projects are
 /// read, a name none has fatal; a screenshot with the steps before it, <c>--run</c> and <c>--debug</c> steps too; or the
@@ -19,6 +19,24 @@ namespace Passenger.App;
 /// range, or one the mode does not take is fatal, never ignored.</summary>
 public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, TextPosition? Caret, ThemeChoice? Theme, ScreenshotOptions? Screenshot)
 {
+    /// <summary>What sets a theme's source apart from its name on the command line.</summary>
+    private const string SourceAndName = "::";
+
+    /// <summary>A theme or scheme as <c>SOURCE::NAME</c> names it: its source as Settings | Appearance takes one (a folder's
+    /// full path, owner/name, an address), then its name; fetched and kept as a person's choice is where not kept yet.</summary>
+    private static NamedTheme Sourced(string flag, string text)
+    {
+        int split = text.LastIndexOf(SourceAndName, StringComparison.Ordinal);
+        string name = text[(split + SourceAndName.Length)..].Trim();
+        if (split <= 0 || name.Length == 0)
+        {
+            throw new FormatException($"{flag} takes SOURCE::NAME, a source and a theme's name, not '{text}'");
+        }
+        ThemeSource source = ThemeSource.Of(text[..split], out string? why)
+            ?? throw new FormatException($"{flag} '{text}' names no source Passenger reads: {why}");
+        return new NamedTheme(new SourcedTheme(source.Name, name));
+    }
+
     /// <summary>The flags that may be given more than once: each is one more file or one more step.</summary>
     private static readonly HashSet<string> Repeatable = ["--file", "--type", "--key", "--click", "--click-name", "--double-click", "--right-click", "--drag", "--drag-hold", "--hover", "--wait", "--open", "--agent"];
 
@@ -46,12 +64,12 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     /// <see cref="Folder"/>, its own folder.</summary>
     public string? Workspace { get; init; }
 
-    /// <summary>The theme <c>--look</c> names over the one kept, or null for that one: Passenger's own, or one Passenger
-    /// carried before its themes moved to its themes repository, read from there.</summary>
+    /// <summary>The theme <c>--look</c> names over the one kept, or null for that one: Passenger's own, one Passenger
+    /// carried before its themes moved to its themes repository, read from there, or any by <c>SOURCE::NAME</c>.</summary>
     public NamedTheme? Look { get; init; }
 
-    /// <summary>The code's colours <c>--scheme</c> names over the ones kept, or null for those: the theme's own, or the
-    /// scheme Passenger carried before, read from its themes repository.</summary>
+    /// <summary>The code's colours <c>--scheme</c> names over the ones kept, or null for those: the theme's own, the
+    /// scheme Passenger carried before, read from its themes repository, or any by <c>SOURCE::NAME</c>.</summary>
     public NamedTheme? Scheme { get; init; }
 
     /// <summary>The run configuration <c>--run</c> or <c>--debug</c> starts in the window once the folder opened has read
@@ -149,14 +167,16 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     string lookText = Value(args, ref i, flag);
                     look = lookText == "passenger" ? new NamedTheme(null)
                         : ThemeSource.FormerlyCarried.FirstOrDefault(n => n.ToLowerInvariant() == lookText) is { } carried ? new NamedTheme(SourcedTheme.Repository(carried))
-                        : throw new FormatException($"--look takes passenger, {string.Join(", ", ThemeSource.FormerlyCarried.Select(n => n.ToLowerInvariant()))}, not '{lookText}'");
+                        : lookText.Contains(SourceAndName, StringComparison.Ordinal) ? Sourced(flag, lookText)
+                        : throw new FormatException($"--look takes passenger, {string.Join(", ", ThemeSource.FormerlyCarried.Select(n => n.ToLowerInvariant()))} or SOURCE::NAME, not '{lookText}'");
                     break;
                 case "--scheme":
                     string schemeText = Value(args, ref i, flag);
                     // "rider" is the word 0.3 took for the same scheme.
                     scheme = schemeText == "theme" ? new NamedTheme(null)
                         : schemeText == ThemeSource.FormerScheme.ToLowerInvariant() || schemeText == "rider" ? new NamedTheme(SourcedTheme.Repository(ThemeSource.FormerScheme))
-                        : throw new FormatException($"--scheme takes theme or {ThemeSource.FormerScheme.ToLowerInvariant()}, not '{schemeText}'");
+                        : schemeText.Contains(SourceAndName, StringComparison.Ordinal) ? Sourced(flag, schemeText)
+                        : throw new FormatException($"--scheme takes theme, {ThemeSource.FormerScheme.ToLowerInvariant()} or SOURCE::NAME, not '{schemeText}'");
                     break;
                 case "--screenshot":
                     shot = Value(args, ref i, flag);

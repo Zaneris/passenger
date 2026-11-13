@@ -64,9 +64,11 @@ public sealed class DiffPanes(Func<DiffHighlighting> chosen, Action<DiffHighligh
         };
     }
 
-    /// <summary>A pane's colours: the open file's own as they change, else a highlighter of its own, each let go by <paramref name="letGo"/>.</summary>
+    /// <summary>A pane's colours: the open file's own as they change, else a highlighter of its own, each let go by <paramref name="letGo"/>;
+    /// the theme's for the file's language over them.</summary>
     private static void ColourPane(CodeEditor pane, string path, OpenDocument? open, List<Action> letGo)
     {
+        ThemeLanguages.Follow(pane, (open?.Language ?? Languages.Language.ForPath(path)).Id);
         if (open is not null && ReferenceEquals(pane.Document, open.Text))
         {
             pane.Highlighter = open.Highlighter;

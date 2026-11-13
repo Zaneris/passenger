@@ -64,6 +64,10 @@ public sealed class CommandLineTests : IDisposable
     [InlineData("--mcp-attach --theme light", "--mcp-attach joins a running Passenger's window and takes only its process id and a folder, not --theme")]
     [InlineData("--mcp-attach 99999999999 .", "--mcp-attach takes the process id of a running Passenger, not '99999999999'")]
     [InlineData("--headless --mcp", "--headless is a person's window with nobody at it, a test run's")]
+    [InlineData("--screenshot out.png --look sakura", "--look takes passenger, harbour")]
+    [InlineData("--screenshot out.png --look ::Sakura", "--look takes SOURCE::NAME, a source and a theme's name, not '::Sakura'")]
+    [InlineData("--screenshot out.png --look Zaneris/passenger-themes::", "--look takes SOURCE::NAME, a source and a theme's name, not 'Zaneris/passenger-themes::'")]
+    [InlineData("--screenshot out.png --scheme relative/../folder::Dusk", "--scheme 'relative/../folder::Dusk' names no source Passenger reads")]
     public async Task A_malformed_value_or_a_flag_its_mode_does_not_take_ends_Passenger_with_exit_code_2_and_the_reason(string arguments, string reason)
     {
         (int code, string error) = await Run(arguments);
