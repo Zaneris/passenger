@@ -57,6 +57,15 @@ public class XamlFileTests
     }
 
     [Fact]
+    public void A_property_with_an_init_accessor_is_one_xaml_sets_and_one_with_only_a_getter_is_not()
+    {
+        string text = "public class C { public int Placed { get; init; } public int Set { get; set; } public int Read { get; } }";
+        ClrType type = Assert.Single(SourceTypes.Read("/App/C.cs", text, "App", CSharpParsing.Default).Types);
+        Assert.Equal(["Placed", "Set"], type.Members.Where(m => m.CanWrite).Select(m => m.Name).Order(StringComparer.Ordinal));
+        Assert.False(type.Members.Single(m => m.Name == "Read").CanWrite);
+    }
+
+    [Fact]
     public void A_file_whose_strings_leave_brackets_open_still_declares_its_types()
     {
         string text = "class C { string[] x = { " + string.Concat(Enumerable.Repeat("\"(\", ", 5_000)) + "}; }";
