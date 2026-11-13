@@ -24,9 +24,10 @@ just test [filter] [N] [--gate|--report]  # tests whose name matches (one lane, 
                            # Alone classes (tools/test-run.py); results and logs in artifacts/test-results/local;
                            # --plan shows the deal
 just test-times RUN...     # rewrite tests/Passenger.Tests/TestTimes.json from CI runs (it deals CI's shards)
-just publish RID           # self-contained Release build: osx-arm64, win-x64, win-arm64, linux-x64, linux-arm64
-just package-mac [RID]     # the .dmg (Apple Silicon), signed by PASSENGER_SIGN_IDENTITY and notarized by
-                           # PASSENGER_NOTARY_PROFILE when set, else ad hoc (--dry-run needs an identity)
+just publish RID           # self-contained Release build: osx-arm64, osx-x64, win-x64, win-arm64, linux-x64, linux-arm64
+just package-mac [RID]     # the .dmg (osx-arm64, or osx-x64 checked under Rosetta with DOTNET_ROOT_X64's Intel SDK),
+                           # signed by PASSENGER_SIGN_IDENTITY and notarized by PASSENGER_NOTARY_PROFILE when set,
+                           # else ad hoc (--dry-run needs an identity)
 just package-win [RID]     # Velopack's per-user installer; just package-linux [RID]: the .tar.gz with install.sh
 just container-tools [RID] [--archive]  # the in-container tools (linux[-musl]-x64/arm64) into artifacts/container-tools
 just notices               # fail naming any carried package the notices miss
