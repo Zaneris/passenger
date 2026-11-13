@@ -618,7 +618,7 @@ a new name, and `just site-shots` retakes its images.
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener`); a folder can't be renamed
   while any file under it is open, however it is shared, where a file opened sharing deletion can be (`DotnetMerge`
   moves what others may read file by file); what holds a file is `FileHolders`.
-- **macOS**: an x64 Passenger under Rosetta loads MSBuild only from an x64 SDK (`DOTNET_ROOT_X64`,
+- **macOS**: Avalonia takes the application's menu once, as setup ends and before any window, showing its own About where none is set: App sets the one menu in `Initialize`, windows only fill it (`MainWindow.FollowApplicationMenu`). A `DispatcherTimer` or `Stopwatch` counts only time awake on macOS and Linux, so a wait of hours or days is measured on the wall clock (`MainWindow.UpdateClock`). An x64 Passenger under Rosetta loads MSBuild only from an x64 SDK (`DOTNET_ROOT_X64`,
   `/usr/local/share/dotnet/x64`), and MSBuildLocator finds its SDK by DOTNET_ROOT, so the host is given the chosen root;
   a zombie gives no process info (`DotnetProcesses.Runs` counts it gone); `SystemFonts` lists the hidden
   `.AppleSystemUIFont` only once loaded and `TryGetGlyphTypeface` answers an unknown name with Helvetica (`WindowFonts`
