@@ -47,7 +47,7 @@ public partial class MainWindow
     {
         TitleBarMerged = merged;
         ExtendClientAreaToDecorationsHint = merged;
-        ExtendClientAreaTitleBarHeightHint = merged ? Toolbar.Height : -1;
+        ExtendClientAreaTitleBarHeightHint = merged ? Toolbar.Height * settings.DisplayScale : -1;
         // Windows handles a caption's press itself; X11 would take it first, so Linux's goes through OnToolbarPressed.
         WindowDecorationProperties.SetElementRole(Toolbar, merged && OperatingSystem.IsWindows() ? WindowDecorationsElementRole.TitleBar : WindowDecorationsElementRole.None);
         // What shows of the window round its content: Linux's edge where Passenger draws the frame.
@@ -62,6 +62,7 @@ public partial class MainWindow
         {
             MergeTitleBar(!TitleBarMerged);
         }
+        ExtendClientAreaTitleBarHeightHint = TitleBarMerged ? Toolbar.Height * next.DisplayScale : -1;
     }
 
     /// <summary>Whether macOS's traffic lights stand on the bar: but in full screen, where macOS hides them.</summary>

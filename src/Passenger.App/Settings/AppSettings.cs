@@ -41,6 +41,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// font, or null for the Inter Passenger carries.</summary>
     public string? WindowFontFamily { get; init; }
 
+    /// <summary>The whole interface's scale, on top of the screen's own DPI scaling.</summary>
+    public double DisplayScale { get; init; } = 1;
+
     /// <summary>The code font by its family's name, or null for the one Passenger carries.</summary>
     public string? EditorFontFamily { get; init; }
     public double EditorFontSize { get; init; } = 13;

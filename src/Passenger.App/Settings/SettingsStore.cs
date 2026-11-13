@@ -259,6 +259,10 @@ public sealed class SettingsStore : IDisposable
         {
             WindowFonts.Use(framed, WindowFonts.Named(after.WindowFontFamily) ?? WindowFonts.Carried);
         }
+        if (Avalonia.Application.Current is { } scaled && (before is null || before.DisplayScale != after.DisplayScale))
+        {
+            InterfaceScale.Use(scaled, after.DisplayScale);
+        }
     }
 
     /// <summary>What belongs to the process, put in force once for every window: its share of the look, the keymap and the

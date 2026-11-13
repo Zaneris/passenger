@@ -25,6 +25,11 @@ public static class Declared
             "The font of the window's words: menus, tool windows, tabs, dialogs and popups. The system font is Segoe UI on Windows, "
             + "San Francisco on macOS and the desktop's sans-serif on Linux. Code keeps the editor's font."));
 
+    public static readonly NumberSetting DisplayScale = new(s => s.DisplayScale, (s, v) => s with { DisplayScale = double.IsFinite(v) ? v : 1 }, 1, 3, 0.1,
+        new(D.Appearance, "Display scale", "display scale zoom font size bigger larger interface ui accessibility dpi hidpi 4k monitor",
+            "Scales the entire interface, including menus, tool windows, tabs, dialogs, popups, editors and icons. "
+            + "1.0 is the normal size; try 1.2 or 1.5 on a high-resolution screen. Applies on top of your system's display scaling."), unit: "×");
+
     public static readonly ToggleSetting MainMenuBar = new(s => s.MainMenuBar, (s, v) => s with { MainMenuBar = v },
         new(D.Appearance, "Show main menu as a menu bar", "main menu bar hamburger file edit view toolbar ribbon menus",
             "File, Edit, View and the rest side by side on the toolbar rather than behind its button. Those the toolbar has no room for go behind the button after them."));
