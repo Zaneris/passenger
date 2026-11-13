@@ -286,7 +286,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   one `InterfaceScale` transform per window, which its popups take from it.
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; every editor through `ForEachEditor`; the one
   close `CloseTab`). A diff is an `OpenDocument.OfDiff` of no file, never in `Documents`, every one through
-  `MainWindow.ShowDiff`. An SVG preview is a drawing (`ZoomedPicture`), never a bitmap; an HTML preview is never made in
+  `MainWindow.ShowDiff`. A tool window as an editor tab is an `OpenDocument.OfTool` of no file, never in `Documents`,
+  shown in one place at a time (splitting refused), opened and closed only through `DockHost.EditorTabs`; code treating
+  `Editors.Active` as a file passes over `Tool` as it passes over `Diff`. An SVG preview is a drawing (`ZoomedPicture`), never a bitmap; an HTML preview is never made in
   a window nobody sees (WebView2 refuses a non-STA thread), on Windows is served (`ServedPage`, `WebView2Pages`),
   `NavigateToString` only where WebView2 refuses, and its white is the web view's own (`DrawGround`), never CSS: a
   background on html stops a body's reaching the canvas. Convert Indentation has one refusal
