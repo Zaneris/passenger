@@ -102,9 +102,14 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
 
     /// <summary>The project a file is evaluated through: a project itself; else the workspace's project whose evaluation
     /// imported it, the nearest; a Directory.*.props or .targets the nearest project under its folder; else the project Go
-    /// to Declaration came from into it; null for none.</summary>
+    /// to Declaration came from into it; null for none, and for a Docker Compose project (.dcproj), whose SDK is Visual
+    /// Studio's alone, so an evaluation could only fail on it.</summary>
     public string? ProjectFor(string path)
     {
+        if (WorkspaceModel.IsComposeProject(path))
+        {
+            return null;
+        }
         if (WorkspaceModel.IsProjectFile(path))
         {
             return path;

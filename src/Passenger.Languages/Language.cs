@@ -168,7 +168,8 @@ public sealed class Language
     /// <summary>XAML, MSBuild's files and the rest of XML are one markup to the editor, each named and answered as its own.</summary>
     public static readonly Language Xaml = XmlKind("xaml", "XAML", ["*.axaml", "*.paml", "*.xaml"], LanguageService.Xaml);
 
-    public static readonly Language MSBuild = XmlKind("msbuild", "MSBuild", ["*.csproj", "*.fsproj", "*.vbproj", "*.proj", "*.props", "*.targets"], LanguageService.MSBuild);
+    public static readonly Language MSBuild = XmlKind("msbuild", "MSBuild", ["*.csproj", "*.fsproj", "*.vbproj", "*.proj", "*.props", "*.targets", "*.dcproj"],
+        LanguageService.MSBuild);
 
     public static readonly Language Xml = XmlKind("xml", "XML",
         ["*.xml", "*.slnx", "*.resx", "*.config", "*.nuspec", "*.manifest", "*.runsettings", "*.xsd", "*.xslt", "*.xsl", "*.svg", "*.plist", "*.storyboard"],

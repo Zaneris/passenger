@@ -9,7 +9,7 @@ public static class MSBuildFiles
 {
     private static readonly HashSet<string> Installed = new(StringComparer.Ordinal);
 
-    /// <summary>Whether a path is an MSBuild file the code help reads: a project, or a .props or .targets.</summary>
+    /// <summary>Whether a path is an MSBuild file the code help reads: a project (a Docker Compose project too), or a .props or .targets.</summary>
     public static bool Is(string path) => Languages.Language.ForPath(path) == Languages.Language.MSBuild;
 
     /// <summary>The folders an evaluation named as installed, each made canonical.</summary>
