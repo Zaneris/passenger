@@ -222,7 +222,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   read as Roslyn's lexer reads strings and comments (`Brackets.ReadCode`), a key's around what it changed
   (`TypedMayGoDeep`), and a `?[` is read ahead to its expression's end, so 11 of them at once are too deep.
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
-  binding's path is read once (`BindingPath`) for the check, Go to Declaration, uses and completion.
+  binding's path is read once (`BindingPath`) for the check, Go to Declaration, uses and completion. MAUI's XAML is a
+  dialect of it (`MauiDialect`, its implied namespaces in `XamlFile`); a `{…}` a dialect reads as a C# expression is the
+  compiler's to check (`XamlDialect.IsExpression`).
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project), `LspDocument` (never a change
   between a "\r\n"'s halves), Roslyn's server (`RoslynServer.targets`), the web servers under `web/` (to move a pin:
   edit `WebServers/package.json`, `npm install --package-lock-only --ignore-scripts`, the notices' "Inside web/").
