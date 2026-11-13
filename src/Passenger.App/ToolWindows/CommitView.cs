@@ -169,6 +169,13 @@ public sealed class CommitView : DockPanel, IOwnKeys
             new Separator(),
             ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Change.Path))),
         ]);
+        list.SelectionChanged += (_, _) =>
+        {
+            if (list.SelectedItems is [CommitRow { Change.Kind: not ChangeKind.Conflicted } chosen])
+            {
+                ChoiceMoved?.Invoke(this, chosen.Change.Path);
+            }
+        };
         // Double-click shows the diff and F4 the file.
         list.DoubleTapped += (_, _) =>
         {
@@ -466,6 +473,9 @@ public sealed class CommitView : DockPanel, IOwnKeys
             DiffRequested?.Invoke(this, change.Path);
         }
     }
+
+    /// <summary>One changed file chosen in the list, which a diff following the choice shows (<see cref="Vcs.DiffTab.Follows"/>).</summary>
+    public event EventHandler<string>? ChoiceMoved;
 
     /// <summary>A file to open in the editor.</summary>
     public event EventHandler<string>? OpenRequested;

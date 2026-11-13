@@ -19,7 +19,7 @@ namespace Passenger.Tests;
 /// double-click on a row) opens a tab titled as its window would be and no window, asked again it shows the same tab, and
 /// the tab is no file's own; its file's side edits the file, which Save from the tab writes; it steps and puts changes
 /// back; it goes with its file's tab; it splits and moves to a window of its own, and the folder opens again without it;
-/// and a change of the setting moves the diffs open.</summary>
+/// and a change of the setting moves the diffs open; the Commit window's tab follows the file chosen there until kept.</summary>
 public sealed class DiffTabsTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";
@@ -91,6 +91,71 @@ public sealed class DiffTabsTests : IDisposable
         Assert.Single(window.EditorArea.Diffs);
         Assert.Equal(1, group.Tabs.Count(t => t.Document.Diff is not null));
         Assert.True(window.OwnedWindows.Count == windows, "Show Diff from the editor opened a window with diffs set to open as tabs");
+        window.Close();
+    }
+
+    /// <summary>The diff tab the Commit window opens follows the file chosen there: Show Diff on another file's row shows
+    /// that file's diff in the same tab, named for it and drawn aslant, and a row chosen by a click or the keys does too, the
+    /// keys staying in the list. Pinned, or its file edited in it, the tab is kept, showing its own file, and the next file's
+    /// diff the Commit window opens comes in a tab of its own, which follows from then on; one a kept tab shows brings it forward.</summary>
+    [AvaloniaFact]
+    public void The_Commit_windows_diff_tab_follows_the_file_chosen_there_until_it_is_kept()
+    {
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes, edited\n");
+        File.WriteAllText(Path.Combine(folder, "Draft.txt"), "draft\n");
+        MainWindow window = Open();
+        string shop = window.EditorArea.Active!.Path;
+        DiffTab first = Assert.IsType<DiffTab>(DiffFromCommit(window, byEnter: true));
+        Assert.True(first.Follows && Drawn(window, first).Classes.Contains(StyleClasses.Follows), "The Commit window's diff tab is not drawn as one that follows its choice");
+        Assert.Contains("Follows the file chosen in the Commit window", ToolTip.GetTip(Drawn(window, first)) as string ?? string.Empty, StringComparison.Ordinal);
+
+        Ui.DoubleClick(CommitRowOf(window, "Notes.txt"));
+        Ui.Landed(() => first.Shown.Path.EndsWith("Notes.txt", StringComparison.Ordinal), "Notes.txt's diff taken by the tab that follows the Commit window");
+        OpenDocument diff = Assert.Single(window.EditorArea.Diffs);
+        Assert.Same(first.Document, diff);
+        Assert.Equal(("Notes.txt: HEAD and your version", "Notes.txt"), (diff.Title, diff.Name));
+        Assert.Equal("Notes.txt: HEAD and your version", Drawn(window, first).GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains(StyleClasses.TabName)).Text);
+        Assert.Equal("notes, edited\n", Assert.IsType<DiffView>(window.EditorArea.ActiveGroup.Diff).Right.Document.Snapshot.ToString());
+
+        // A row chosen by a click, then by the keys, is followed once the choice rests, the keys left in the list.
+        ListBox changes = ChangesList(window);
+        Ui.Click(CommitRowOf(window, "Shop.cs"));
+        Ui.Landed(() => first.Shown.Path == shop, "Shop.cs's diff taken as its row is chosen");
+        Assert.True(changes.IsKeyboardFocusWithin, "Following the choice took the keys from the Commit window's list");
+        bool notesBelow = window.CommitView.Rows.ToList().IndexOf(window.CommitView.Rows.OfType<CommitRow>().First(r => r.Change.Name == "Notes.txt"))
+            > window.CommitView.Rows.ToList().IndexOf(window.CommitView.Rows.OfType<CommitRow>().First(r => r.Change.Name == "Shop.cs"));
+        Ui.Press(window, notesBelow ? "DOWN" : "UP");
+        Ui.Landed(() => first.Shown.Path.EndsWith("Notes.txt", StringComparison.Ordinal), "Notes.txt's diff taken as the keys choose its row");
+        Assert.True(changes.IsKeyboardFocusWithin && window.EditorArea.Diffs.Count == 1, "Following the keys' choice took the keys or opened another tab");
+
+        // Pinned, it is kept: the next file's diff comes in a tab of its own, which follows.
+        window.EditorArea.ActiveGroup.Pin(first.Document, true);
+        Ui.Settle();
+        Assert.False(first.Follows || Drawn(window, first).Classes.Contains(StyleClasses.Follows), "A pinned diff tab still follows the Commit window's choice");
+        Ui.DoubleClick(CommitRowOf(window, "Shop.cs"));
+        Ui.Landed(() => window.EditorArea.Diffs.Count == 2, "Shop.cs's diff in a tab of its own beside the kept one");
+        DiffTab second = window.EditorArea.Diffs.Select(d => d.Diff!).Single(d => d != first);
+        Assert.True(second.Follows && second.Shown.Path == shop && first.Shown.Path.EndsWith("Notes.txt", StringComparison.Ordinal),
+            $"The kept tab shows {first.Shown.Path} and the new one {second.Shown.Path}, following: {second.Follows}");
+
+        // Edited in, it is kept too.
+        DiffView view = second.View!;
+        view.Right.Focus();
+        view.Right.GoTo(new TextPosition(0, 0));
+        window.KeyTextInput("sealed ");
+        Ui.Settle();
+        Assert.False(second.Follows, "A diff tab whose file was edited in it still follows the Commit window's choice");
+        Ui.DoubleClick(CommitRowOf(window, "Draft.txt"));
+        Ui.Landed(() => window.EditorArea.Diffs.Count == 3, "Draft.txt's diff in a third tab once the second was edited in");
+        Assert.Equal(shop, second.Shown.Path);
+
+        // Show Diff on a file a kept tab shows brings that tab forward, opening none.
+        DiffTab third = window.EditorArea.Diffs.Select(d => d.Diff!).Single(d => d != first && d != second);
+        Ui.DoubleClick(CommitRowOf(window, "Notes.txt"));
+        Ui.WaitFor(() => window.EditorArea.Active == first.Document, () => $"the kept tab of Notes.txt's diff brought forward, where {window.EditorArea.Active?.Title} is shown, "
+            + $"the diff tabs being [{string.Join("; ", window.EditorArea.Diffs.Select(d => $"{d.Title}{(d.Follows ? ", following" : string.Empty)}"))}] "
+            + $"and the Commit window's chosen rows [{string.Join(", ", ChangesList(window).SelectedItems?.OfType<CommitRow>().Select(r => r.Change.Name) ?? [])}]");
+        Assert.True(window.EditorArea.Diffs.Count == 3 && third.Follows, $"Show Diff on a file a kept tab shows left {window.EditorArea.Diffs.Count} diff tabs");
         window.Close();
     }
 
@@ -360,6 +425,18 @@ public sealed class DiffTabsTests : IDisposable
         }
         return window;
     }
+
+    /// <summary>The Commit window's list of changed files.</summary>
+    private static ListBox ChangesList(MainWindow window) =>
+        window.CommitView.GetVisualDescendants().OfType<ListBox>().First(l => ReferenceEquals(l.ItemsSource, window.CommitView.Rows));
+
+    /// <summary>A changed file's row in the Commit window.</summary>
+    private static Control CommitRowOf(MainWindow window, string name) =>
+        Ui.Row(ChangesList(window), window.CommitView.Rows.OfType<CommitRow>().First(r => r.Change.Name == name));
+
+    /// <summary>The tab drawn for a diff on the active group's strip.</summary>
+    private static Border Drawn(MainWindow window, DiffTab diff) => window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<Border>()
+        .First(b => b.Classes.Contains(StyleClasses.Tab) && b.DataContext is EditorTab { } tab && tab.Document == diff.Document);
 
     /// <summary>Show Diff on Shop.cs's row of the Commit window, by Enter on it or a double-click.</summary>
     private static IDiffHost DiffFromCommit(MainWindow window, bool byEnter)

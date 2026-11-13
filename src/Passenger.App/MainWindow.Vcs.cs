@@ -123,7 +123,8 @@ public partial class MainWindow
         ToolWindows.CommitView view = commitView = new ToolWindows.CommitView(session.Vcs);
         view.OpenRequested += (_, path) => OpenFile(path);
         view.ActionRequested += (_, action) => Request(action);
-        view.DiffRequested += (_, path) => IdeErrors.Observe(ShowDiffAsync(path));
+        view.DiffRequested += (_, path) => IdeErrors.Observe(ShowChosenDiffAsync(path));
+        view.ChoiceMoved += (_, path) => FollowCommitChoice(path);
         view.RollbackRequested += (_, changes) => IdeErrors.Observe(RollbackAsync(changes));
         view.RollbackRefused += (_, why) => status.Text = why;
         view.DeleteRequested += (_, path) => IdeErrors.Observe(DeleteAsync(path));
@@ -434,7 +435,15 @@ public partial class MainWindow
     /// The right side is the open file's own text when it is open, so an edit or a change put back there is the file's, in
     /// the file's colours as they change; a change of the file's encoding, byte order mark or mode is said over them. A
     /// binary file has no lines to compare: the status bar says how it differs.</summary>
-    public async Task<IDiffHost?> ShowDiffAsync(string path)
+    public async Task<IDiffHost?> ShowDiffAsync(string path) => await HeadDiffAsync(path) is { } shown ? ShowDiff(shown) : null;
+
+    /// <summary>Show Diff from the Commit window: the file's diff in the tab that follows the Commit window's choice, made
+    /// where none does (<see cref="DiffTab.Follows"/>), unless a tab the person kept shows that diff already.</summary>
+    public async Task<IDiffHost?> ShowChosenDiffAsync(string path) => await HeadDiffAsync(path) is { } shown ? ShowDiff(shown, follows: true) : null;
+
+    /// <summary>The last commit's text beside the file's, as Show Diff shows it; null, said in the status bar, where the
+    /// folder is in no working tree or the file is binary.</summary>
+    private async Task<DiffContent?> HeadDiffAsync(string path)
     {
         if (session.Vcs.Repository is null)
         {
@@ -458,13 +467,17 @@ public partial class MainWindow
             diff = await BackgroundWork.Run(() => FileDiff.Compare(head, text));
         }
         string[] besides = [.. new[] { await encoding, mode?.Said }.OfType<string>()];
-        return OpenLocalDiff(path, open, mine, diff, "HEAD", note: besides.Length == 0 ? null : string.Join("; ", besides), again: () => ShowDiffAsync(path));
+        return LocalDiff(path, open, mine, diff, "HEAD", note: besides.Length == 0 ? null : string.Join("; ", besides), again: () => ShowDiffAsync(path));
     }
 
     /// <summary>A version's text (the last commit's, a branch's, a revision's), or another file's (Compare With, named by
-    /// <paramref name="other"/>), beside the file's where Settings opens diffs, the right side the open file's own text when
-    /// it is still open, <paramref name="note"/> said after the differences, <paramref name="again"/> how it is asked for afresh.</summary>
+    /// <paramref name="other"/>), beside the file's where Settings opens diffs (<see cref="LocalDiff"/>).</summary>
     private IDiffHost OpenLocalDiff(string path, OpenDocument? open, TextDocument mine, FileDiff diff, string version, string? other = null, string? note = null,
+        Func<Task<IDiffHost?>>? again = null) => ShowDiff(LocalDiff(path, open, mine, diff, version, other, note, again));
+
+    /// <summary>A version's text beside the file's, the right side the open file's own text when it is still open,
+    /// <paramref name="note"/> said after the differences, <paramref name="again"/> how it is asked for afresh.</summary>
+    private DiffContent LocalDiff(string path, OpenDocument? open, TextDocument mine, FileDiff diff, string version, string? other = null, string? note = null,
         Func<Task<IDiffHost?>>? again = null)
     {
         // Closed while the differences were read, the file's text is one nothing would save: it is shown, not edited.
@@ -475,7 +488,7 @@ public partial class MainWindow
         string mineTitle = other is null ? "Your version" : InFolder(path);
         string title = other is null ? $"{Path.GetFileName(path)}: {version} and your version" : $"{Path.GetFileName(other)} vs {Path.GetFileName(path)}";
         (string Left, string Right) titles = (version, open is not null ? mineTitle : $"{mineTitle} (read-only)");
-        return ShowDiff(new DiffContent(title, $"{version}\n{other ?? path}\n{path}", path, open, () =>
+        return new DiffContent(title, $"{version}\n{other ?? path}\n{path}", path, open, () =>
         {
             DiffView view = Diffs.ForFile(other is null ? Path.GetFileName(path) : title, diff, mine, open, titles, other ?? path, path);
             view.Note = note;
@@ -485,7 +498,7 @@ public partial class MainWindow
             }
             return view;
         })
-        { Again = again });
+        { Again = again };
     }
 
     /// <summary>A text's differences from another, worked out off the window's thread in a closure of their own, so a way of
@@ -515,18 +528,21 @@ public partial class MainWindow
     }
 
     /// <summary>Shows a diff where Settings opens them (Open diffs in): in a window of its own over this one, or in a tab of
-    /// the active group, the tab open for the same versions taking it afresh (<see cref="DiffTab.Take"/>).</summary>
-    private IDiffHost ShowDiff(DiffContent shown)
+    /// the active group, the tab open for the same versions taking it afresh (<see cref="DiffTab.Take"/>), one the person
+    /// kept before one that follows; one the Commit window <paramref name="follows"/> with takes the following tab's place
+    /// where no tab shows it.</summary>
+    private IDiffHost ShowDiff(DiffContent shown, bool follows = false)
     {
         if (settings.OpenDiffsIn == DiffPlace.Tab)
         {
-            if (Editors.Diffs.Select(d => d.Diff!).FirstOrDefault(d => d.Shown.Key == shown.Key) is { } open)
+            if ((Editors.Diffs.Select(d => d.Diff!).Where(d => d.Shown.Key == shown.Key).OrderBy(d => d.Follows).FirstOrDefault()
+                ?? (follows ? FollowingDiff : null)) is { } open)
             {
                 open.Take(shown);
                 Editors.Activate(open.Document);
                 return open;
             }
-            DiffTab tab = new(Editors, shown, WireDiff);
+            DiffTab tab = new(Editors, shown, WireDiff, follows);
             Editors.Activate(tab.Document);
             return tab;
         }
@@ -553,6 +569,45 @@ public partial class MainWindow
         }
         ShowOwn(window);
         return window;
+    }
+
+    /// <summary>The diff tab that follows the file chosen in the Commit window, while one does.</summary>
+    public DiffTab? FollowingDiff => Editors.Diffs.Select(d => d.Diff!).FirstOrDefault(d => d.Follows);
+
+    /// <summary>The file chosen in the Commit window that the following diff tab is to show next; null once it does.</summary>
+    private string? diffChosen;
+
+    /// <summary>How long the Commit window's choice rests before the following diff tab takes its file, so keys held down
+    /// through the list read the diff of the file they stop at alone.</summary>
+    private static readonly TimeSpan ChoiceRests = TimeSpan.FromMilliseconds(80);
+
+    private Debounce? diffFollowing;
+
+    /// <summary>Another file chosen in the Commit window: the diff tab that follows it, while one shows, takes that file's
+    /// diff once the choice rests, the keys left in the list.</summary>
+    private void FollowCommitChoice(string path)
+    {
+        if (FollowingDiff is not { View: not null } following || PathNames.Same(following.Shown.Path, path))
+        {
+            diffChosen = null;
+            return;
+        }
+        diffChosen = path;
+        (diffFollowing ??= new Debounce(ChoiceRests, FollowChoiceAsync)).Restart();
+    }
+
+    private async Task FollowChoiceAsync()
+    {
+        if (diffChosen is not { } path || await HeadDiffAsync(path) is not { } shown)
+        {
+            return;
+        }
+        // Chosen again meanwhile, or the tab kept or closed: the later choice, or none, is followed.
+        if (diffChosen is { } now && PathNames.Same(now, path) && FollowingDiff is { } following)
+        {
+            diffChosen = null;
+            following.Take(shown);
+        }
     }
 
     /// <summary>A diff's view as its host shows it: its Jump to Source opens the file here (<see cref="JumpToSource"/>).</summary>

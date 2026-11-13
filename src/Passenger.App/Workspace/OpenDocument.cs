@@ -157,8 +157,24 @@ public sealed class OpenDocument : Observable
     /// <summary>What Save saves with this tab shown: the file, or the open file a diff's tab edits (itself where it edits none).</summary>
     public OpenDocument Saves => Diff?.Shown.File ?? this;
 
-    /// <summary>The diff its tab shows was asked for again, for its groups to show what it is now.</summary>
-    internal void DiffChanged() => Raise(nameof(Diff));
+    /// <summary>The diff its tab shows was asked for again, or another file's taken in its place, for its groups to show
+    /// what it is now and its tab to name the file it is of.</summary>
+    internal void DiffChanged()
+    {
+        if (Diff is { } diff && Path != diff.Shown.Path)
+        {
+            Path = diff.Shown.Path;
+            Raise(nameof(Path));
+            Raise(nameof(Name));
+        }
+        Raise(nameof(Diff));
+    }
+
+    /// <summary>Whether its diff's tab follows the file chosen in the Commit window (<see cref="Vcs.DiffTab.Follows"/>).</summary>
+    public bool Follows => Diff?.Follows == true;
+
+    /// <summary>Its diff's tab was kept, for the tab to be drawn as one that follows no more.</summary>
+    internal void FollowsChanged() => Raise(nameof(Follows));
 
     /// <summary>The file's length and last write time as found just before the editor last read all of it, with the version of
     /// the text it then held: while both hold, the editor holds what the disk does (<see cref="TakeDiskTextAsync"/>).</summary>

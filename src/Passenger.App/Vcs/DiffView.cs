@@ -276,6 +276,12 @@ public sealed class DiffView : DockPanel, IOwnKeys
 
     public bool IsEditable { get; }
 
+    /// <summary>The file changed from this view: typed in on its side, or a difference put back by its band.</summary>
+    public event EventHandler? Edited;
+
+    /// <summary>A difference is being put back by the band, an edit of this view's own whatever has the keys.</summary>
+    private bool reverting;
+
     /// <summary>How differences are highlighted (Highlighting Differences), Words at first.</summary>
     public DiffHighlighting Highlighting
     {
@@ -313,7 +319,15 @@ public sealed class DiffView : DockPanel, IOwnKeys
         {
             return;
         }
-        Right.ApplyEdits([shown.Restore(hunk)]);
+        reverting = true;
+        try
+        {
+            Right.ApplyEdits([shown.Restore(hunk)]);
+        }
+        finally
+        {
+            reverting = false;
+        }
         IdeErrors.Observe(CompareAsync());
     }
 
@@ -331,7 +345,14 @@ public sealed class DiffView : DockPanel, IOwnKeys
         Right.GoTo(new TextPosition(Math.Min(target.NewStart, Right.Document.Snapshot.LineCount - 1), 0));
     }
 
-    private void OnMineChanged(object? sender, DocumentChangedEventArgs e) => rediff.Restart();
+    private void OnMineChanged(object? sender, DocumentChangedEventArgs e)
+    {
+        rediff.Restart();
+        if (reverting || Right.IsKeyboardFocusWithin)
+        {
+            Edited?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     /// <summary>Compares the file's text as it is now, off the window's thread, unless the differences shown are of it;
     /// a newer text's answer wins.</summary>

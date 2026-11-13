@@ -434,6 +434,11 @@ public sealed class EditorGroup : DockPanel
         }
         tab.IsPinned = pinned;
         tabs.Move(tabs.IndexOf(tab), tabs.Count(t => t.IsPinned && t != tab));
+        // A pinned diff is one the person keeps, so it no longer follows the Commit window's choice.
+        if (pinned)
+        {
+            document.Diff?.Keep();
+        }
     }
 
     /// <summary>A hidden tab's kept carets follow what changes its text meanwhile (a reload, a rename), as the shown one's do;
@@ -918,7 +923,9 @@ public sealed class EditorGroup : DockPanel
             name.Text = document.Title;
             icon.Data = document.Icon;
             icon.Foreground = document.IconBrush;
-            ToolTip.SetTip(border, document.Tool is null ? document.Path : document.Title);
+            ToolTip.SetTip(border, document.Tool is not null ? document.Title
+                : document.Follows ? $"{document.Path}\n\nFollows the file chosen in the Commit window; pin the tab or edit in it to keep it" : document.Path);
+            border.Classes.Set(StyleClasses.Follows, document.Follows);
             modified.IsVisible = document.IsModified;
             border.Classes.Set(StyleClasses.Active, tab.IsActive);
             border.Classes.Set(StyleClasses.Elsewhere, !IsCurrent);
@@ -935,7 +942,7 @@ public sealed class EditorGroup : DockPanel
             {
                 modified.IsVisible = tab.Document.IsModified;
             }
-            else if (e.PropertyName == nameof(OpenDocument.Path))
+            else if (e.PropertyName is nameof(OpenDocument.Path) or nameof(OpenDocument.Diff) or nameof(OpenDocument.Follows))
             {
                 Paint(tab);
             }

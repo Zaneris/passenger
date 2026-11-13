@@ -778,6 +778,10 @@
     <Style Selector="Border.tab TextBlock.tabName">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
     </Style>
+    <!-- A diff's tab that follows the file chosen in the Commit window, until it is kept. -->
+    <Style Selector="Border.tab.follows TextBlock.tabName">
+        <Setter Property="FontStyle" Value="Italic" />
+    </Style>
     <Style Selector="Border.tab.active TextBlock.tabName">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Tab.ActiveText}" />
     </Style>
