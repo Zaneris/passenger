@@ -1430,8 +1430,8 @@ public sealed partial class Git
     {
         signing ??= CommitSigning.AsConfigured;
         string[] relative = [.. paths.Select(Relative).Distinct()];
-        // No paths is an amend of the message alone: "add -A --" with none would add the whole tree.
         string[] there = [.. relative.Where(StillThere)];
+        // No paths is an amend of the message alone: "add -A --" with none would add the whole tree.
         if (there.Length > 0)
         {
             GitResult add = await OnFilesAsync(["add", "-A"], there);
