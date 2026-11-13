@@ -1516,6 +1516,46 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>A toolbar button that cannot run is dimmed in the title bar's own icon colour, whatever colour its action
+    /// takes while it can: a disabled Stop reads as unavailable just as a disabled Settings does, under Passenger's own theme,
+    /// every theme it carries and every theme of its themes repository, Dark and Light.</summary>
+    [AvaloniaFact]
+    public void A_disabled_Stop_is_drawn_as_every_disabled_toolbar_button_under_every_look_dark_and_light()
+    {
+        MainWindow window = Open(1200, 800);
+        Button stop = Named<Button>(window, "StopButton");
+        Button settings = Named<Button>(window, "SettingsButton");
+        try
+        {
+            Assert.False(stop.IsEnabled, "Stop can run with nothing running");
+            settings.IsEnabled = false;
+            List<string> unlike = [];
+            foreach (string look in (string[])[CarriedThemes.Own, .. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames])
+            {
+                using IDisposable worn = CarriedThemes.Wearing(look);
+                foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
+                {
+                    window.RequestedThemeVariant = variant;
+                    Ui.Settle();
+                    (Color, double) drawn = Drawn(stop);
+                    if (drawn != Drawn(settings))
+                    {
+                        unlike.Add($"{look} {variant}: Stop is {drawn}, a disabled Settings {Drawn(settings)}");
+                    }
+                }
+            }
+            Assert.True(unlike.Count == 0, $"A disabled Stop is not drawn as a disabled toolbar button is, so it reads as one that runs:\n{string.Join("\n", unlike)}");
+        }
+        finally
+        {
+            settings.IsEnabled = true;
+            window.RequestedThemeVariant = null;
+            window.Close();
+        }
+
+        static (Color, double) Drawn(Button button) => button.Content is PathIcon { Foreground: ISolidColorBrush ink } icon ? (ink.Color, icon.Opacity) : default;
+    }
+
     /// <summary>Passenger's own theme, every theme it carries and every theme of its themes repository, for a rule held of
     /// its tokens alone, which costs no window.</summary>
     public static TheoryData<string> EveryLook => [CarriedThemes.Own, .. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames];

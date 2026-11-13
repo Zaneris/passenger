@@ -559,6 +559,10 @@
     <Style Selector="Border.titleBar PathIcon.toolbarHotReload">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TitleBar.HotReload}" />
     </Style>
+    <!-- An action's own colour says it can run: disabled, its icon dims in the bar's icon colour, as every other's does. -->
+    <Style Selector="Border.titleBar Button.tool:disabled PathIcon">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TitleBar.Icon}" />
+    </Style>
     <!-- A menu of the main menu's bar: its title alone, as a widget's words. -->
     <Style Selector="Button.menuBarItem">
         <Setter Property="Padding" Value="8,0" />
