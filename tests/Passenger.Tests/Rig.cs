@@ -24,10 +24,15 @@ namespace Passenger.Tests;
 /// a desktop.</summary>
 public static class TestApp
 {
+    /// <summary>The application's menu as the test's app ended its setup, where macOS's platform takes it before any
+    /// window is made, showing Avalonia's own About in place of none.</summary>
+    public static NativeMenu? ApplicationMenuAtSetup { get; private set; }
+
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<Passenger.App.App>()
         .UseSkia()
         .UseHarfBuzz()
-        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+        .AfterSetup(built => ApplicationMenuAtSetup = NativeMenu.GetMenu(built.Instance!));
 }
 
 /// <summary>What the whole run shares, set before anything reads it and never changed: a folder of the run's own in the

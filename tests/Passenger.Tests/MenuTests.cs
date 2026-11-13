@@ -39,6 +39,49 @@ public sealed class MenuTests : IDisposable
         window.Close();
     }
 
+    /// <summary>macOS's application menu is the one the application holds as its setup ends, where the platform takes it
+    /// before any window (with none, macOS shows Avalonia's own About): About Passenger, Check for Updates… and Settings…
+    /// on ⌘,, each running its action in the window in front, a second window adding none of them again.</summary>
+    [AvaloniaFact]
+    public void The_application_menu_macOS_takes_at_start_holds_About_Passenger_Check_for_Updates_and_Settings_each_run_in_the_window_in_front()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The application menu is macOS's");
+        NativeMenu taken = TestApp.ApplicationMenuAtSetup
+            ?? throw new Xunit.Sdk.XunitException("The application had no menu as its setup ended, where macOS takes it, so macOS's menu bar shows Avalonia's About and none of Passenger's");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Assert.True(ReferenceEquals(taken, MainWindow.ApplicationMenu),
+            "The window gave the application another menu than the one macOS took as Passenger started, which macOS never shows");
+        string[] Shown() => [.. taken.Items.Select(i => (i as NativeMenuItem)?.Header ?? "-")];
+        Assert.Equal(["About Passenger", "Check for Updates…", "-", "Settings…"], Shown());
+        NativeMenuItem Item(string title) => taken.Items.OfType<NativeMenuItem>().Single(i => i.Header == title);
+        Assert.True(new KeyGesture(Key.OemComma, KeyModifiers.Meta).Equals(Item("Settings…").Gesture),
+            $"Settings… shows {Item("Settings…").Gesture?.ToString() ?? "no keys"} in the application menu, not ⌘,");
+
+        Item("About Passenger").Command!.Execute(null);
+        Ui.Settle();
+        Assert.IsType<AboutDialog>(window.Frontmost).Close();
+        Ui.Settle();
+        Item("Settings…").Command!.Execute(null);
+        Ui.Settle();
+        Assert.IsType<Passenger.App.Settings.SettingsDialog>(window.Frontmost).Close();
+        Ui.Settle();
+        Item("Check for Updates…").Command!.Execute(null);
+        Ui.Settle();
+        // The run's release feed is a closed port, so the check that ran says it could not ask.
+        Assert.StartsWith("Could not check for updates: ", window.Status);
+
+        MainWindow second = PassengerApp.NewWindow(window);
+        Ui.Settle();
+        Assert.Equal(["About Passenger", "Check for Updates…", "-", "Settings…"], Shown());
+        Item("About Passenger").Command!.Execute(null);
+        Ui.Settle();
+        Assert.True(second.Frontmost is AboutDialog && window.Frontmost is not AboutDialog,
+            "About Passenger chosen from the application menu did not open over the window in front, the newer one");
+        second.Frontmost.Close();
+        second.Close();
+        window.Close();
+    }
+
     /// <summary>An editor tab's menu offers what the Explorer's row offers for its file: Copy Path, and Open In's file
     /// manager and terminal, an HTML page's browser too.</summary>
     [AvaloniaFact]

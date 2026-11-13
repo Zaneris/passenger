@@ -23,6 +23,11 @@ public partial class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+        if (OperatingSystem.IsMacOS())
+        {
+            // macOS takes the application's menu as setup ends, before any window: none set, it shows Avalonia's About.
+            NativeMenu.SetMenu(this, new NativeMenu());
+        }
         Themes.TakeAccentFromTokens(this);
         Passenger.Editor.FallbackFonts.Install(PlatformFallback.Named);
         Passenger.Editor.CodeFonts.Install(PlatformWidths.Monospaced);
@@ -88,10 +93,6 @@ public partial class App : Application
                 window.ShowActivityInDiscord();
             };
             desktop.MainWindow = window;
-            if (OperatingSystem.IsMacOS())
-            {
-                NativeMenu.SetMenu(this, window.ApplicationMenu());
-            }
             // macOS hands the running Passenger what the Finder or the Dock's icon opens, rather than starting another.
             if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime activatable)
             {

@@ -114,7 +114,7 @@ public sealed partial class AboutTests : IDisposable
         if (OperatingSystem.IsMacOS())
         {
             Assert.DoesNotContain(help.Items.OfType<NativeMenuItem>(), i => i.Header == "About");
-            NativeMenuItem first = window.ApplicationMenu().Items.OfType<NativeMenuItem>().First();
+            NativeMenuItem first = MainWindow.ApplicationMenu!.Items.OfType<NativeMenuItem>().First();
             Assert.Equal("About Passenger", first.Header);
             first.Command!.Execute(null);
         }

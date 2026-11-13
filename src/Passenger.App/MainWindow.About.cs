@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 
 namespace Passenger.App;
@@ -6,8 +7,11 @@ namespace Passenger.App;
 /// Updates.</summary>
 public partial class MainWindow
 {
+    /// <summary>The actions of macOS's application menu, in order, a separator where null.</summary>
+    private static readonly string?[] ApplicationActions = [AppActions.About, AppActions.CheckForUpdates, null, AppActions.ShowSettings];
+
     private void AddAbout() =>
-        actions!.Add(new IdeAction(AppActions.About, "About", "Help", _ => ShowAbout())
+        actions!.Add(new IdeAction(AppActions.About, OperatingSystem.IsMacOS() ? "About Passenger" : "About", "Help", _ => ShowAbout())
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("Help", 3, 2)],
         });
@@ -21,21 +25,48 @@ public partial class MainWindow
         return dialog;
     }
 
-    /// <summary>macOS's application menu: About Passenger and Check for Updates, then Settings (Cmd+,); the system adds
-    /// Services, Hide and Quit after them. The process has the one, made from its first window, and each item runs in
-    /// the window in front.</summary>
-    public NativeMenu ApplicationMenu()
-    {
-        // macOS's application menu names the application after About.
-        NativeMenuItem about = new(NativeWords($"{actions![AppActions.About]!.Title} Passenger")) { Command = new MenuCommand(() => InFront().Request(AppActions.About)) };
-        NativeMenuItem updates = new(NativeWords(actions[AppActions.CheckForUpdates]!.Title)) { Command = new MenuCommand(() => InFront().Request(AppActions.CheckForUpdates)) };
-        NativeMenuItem settings = new(NativeWords(actions[AppActions.ShowSettings]!.Title))
-        {
-            Gesture = actions.MenuBarGesture(AppActions.ShowSettings),
-            Command = new MenuCommand(() => InFront().Request(AppActions.ShowSettings)),
-        };
-        return new NativeMenu { Items = { about, updates, new NativeMenuItemSeparator(), settings } };
+    /// <summary>macOS's application menu, the process's one, which App gives the application before the platform takes
+    /// it: About Passenger and Check for Updates, then Settings…, before what the system adds (Services, Hide, Quit).
+    /// Null on other systems.</summary>
+    public static NativeMenu? ApplicationMenu =>
+        OperatingSystem.IsMacOS() && Application.Current is { } app ? NativeMenu.GetMenu(app) : null;
 
-        MainWindow InFront() => PassengerApp.Front is { IsVisible: true } front ? front : this;
+    /// <summary>The application menu's items, made at its top by the first window, since the platform keeps the menu it
+    /// took, then given the titles and keys in force by each window as it builds its menu bar; each runs in the window
+    /// in front.</summary>
+    private void FollowApplicationMenu()
+    {
+        if (ApplicationMenu is not { } menu)
+        {
+            return;
+        }
+        if (!menu.Items.OfType<NativeMenuItem>().Any(OfApplication))
+        {
+            for (int at = 0; at < ApplicationActions.Length; at++)
+            {
+                menu.Items.Insert(at, ApplicationActions[at] is { } id ? new NativeMenuItem(NativeWords(actions![id]!.Title))
+                {
+                    Command = new MenuCommand(() => RunInFront(id)),
+                    CommandParameter = id,
+                } : new NativeMenuItemSeparator());
+            }
+        }
+        ActionContext context = actions!.Context();
+        foreach (NativeMenuItem item in menu.Items.OfType<NativeMenuItem>().Where(OfApplication))
+        {
+            string id = (string)item.CommandParameter!;
+            item.Header = NativeWords(actions[id]!.TitleWhere(context));
+            item.Gesture = actions.MenuBarGesture(id);
+        }
+
+        static bool OfApplication(NativeMenuItem item) => item.CommandParameter is string id && ApplicationActions.Contains(id);
+
+        static void RunInFront(string id)
+        {
+            if (PassengerApp.Front is { IsVisible: true } front)
+            {
+                front.RunFromMenu(id);
+            }
+        }
     }
 }

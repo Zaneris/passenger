@@ -293,9 +293,9 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>The menus again, with the shortcuts in force now (after Settings changed the keymap). The window keeps
-    /// the one menu bar it was first given and only its items change, since macOS's menu exporter refuses a second
-    /// NativeMenu for the same window.</summary>
+    /// <summary>The menus again, with the shortcuts in force now (after Settings changed the keymap), the application
+    /// menu's too. The window keeps the one menu bar it was first given and only its items change, since macOS's menu
+    /// exporter refuses a second NativeMenu for the same window.</summary>
     private void BuildMenuBar()
     {
         bool first = menuBar is null;
@@ -310,6 +310,7 @@ public partial class MainWindow
         {
             NativeMenu.SetMenu(this, menuBar);
         }
+        FollowApplicationMenu();
     }
 
     private NativeMenuItemBase NativeEntry(MenuEntry entry, ActionContext context)

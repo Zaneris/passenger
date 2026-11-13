@@ -964,9 +964,9 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         if (OperatingSystem.IsMacOS())
         {
             Assert.DoesNotContain("Check for Updates…", helpItems);
-            string[] application = [.. window.ApplicationMenu().Items.Select(i => (i as NativeMenuItem)?.Header ?? "-")];
+            string[] application = [.. MainWindow.ApplicationMenu!.Items.Select(i => (i as NativeMenuItem)?.Header ?? "-")];
             Assert.Equal(["About Passenger", "Check for Updates…", "-", "Settings…"], application);
-            item = window.ApplicationMenu().Items.OfType<NativeMenuItem>().First(i => i.Header == "Check for Updates…");
+            item = MainWindow.ApplicationMenu!.Items.OfType<NativeMenuItem>().First(i => i.Header == "Check for Updates…");
         }
         else
         {
