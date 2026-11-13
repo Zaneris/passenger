@@ -253,7 +253,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   decodes a directive's text once and writes it unescaped: `#:ref`'s metadata is the real file, a Compile's Include is
   read again by MSBuild.
 - `Passenger.Vcs`, `Passenger.Workspace`, `Passenger.Packages`: UI-free Git, folder and NuGet code. A revision's text
-  `Git.BytesAtAsync` in the open file's encoding, never `git show` decoded as UTF-8; every git call but a clone through
+  `Git.BytesAtAsync` in the open file's encoding, never `git show` decoded as UTF-8; a git asked for in a folder that is gone answers `Git.Gone`, never "git is not installed"; every git call but a clone through
   `Git.RunAsync<T>`; paths on git's input, never its command line; git's questions only through `GitAskPass`, GPG's
   through Passenger's own gpg (`GpgLoopback`; gpgsm's for X.509; Git for Windows' MSYS gpg given its home as MSYS reads
   one, `MsysGpg`, its agent inheriting none of Passenger's handles, `StandardHandles.NotInherited`; every gpg found by
@@ -637,7 +637,7 @@ a new name, and `just site-shots` retakes its images.
   image whose file was replaced (`just package-mac` ejects one first) or a bundle written into (#450). Tests never start
   a program inside an unsigned bundle, and a run's folder ends in `.noindex`, so Spotlight reads none of it.
 - **Linux**: file systems tell letter case apart, so a test of another letter case skips there.
-- **MSBuild**: its locator takes DOTNET_ROOT's installation, then a process named dotnet, before DOTNET_HOST_PATH, and lists SDKs only of the first holding any: a helper loading another installation's MSBuild is given it as DOTNET_ROOT (`Dotnet.Apart`). A Remove glob (by its source an Include's or Update's too) is unescaped twice, an Exclude's or Import's
+- **MSBuild**: on Windows it takes the SDK through DOTNET_ROOT's links as they stand (its packs the link folder's), where off Windows the locator resolves the link. Its locator takes DOTNET_ROOT's installation, then a process named dotnet, before DOTNET_HOST_PATH, and lists SDKs only of the first holding any: a helper loading another installation's MSBuild is given it as DOTNET_ROOT (`Dotnet.Apart`). A Remove glob (by its source an Include's or Update's too) is unescaped twice, an Exclude's or Import's
   once, and one escaped wildcard makes a whole glob a plain name fitting no file (`ItemPaths`); a build through another
   spelling of a project's path deletes what the first wrote (IncrementalClean; a shell or MSBuild takes an inherited PWD
   for its folder, #413, #537), and a reused node carries a project's earlier spelling and NuGet home into the next

@@ -30,6 +30,40 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-13
 
+- `ThemeSourcesTests`' `A_theme_chosen_in_0_3_is_the_same_from_the_themes_repository_said_while_it_is_fetched_and_one_out_of_reach_is_said_never_dropped`,
+  CI 43489332630 (Windows, shard 4) and 43502088783 (Linux, shard 4): "Nightjar and the code colour scheme fetched are
+  not kept, so the next start would fetch them again". **The test waited wrong** (it started from the wrong state): it
+  deleted the kept copies of Nightjar and Reef and laid Passenger's own, but `Themes` still held what an earlier test in
+  the same process had read of them; where `FileColoursTests`' Reef test ran first in that shard, Reef was drawn from
+  that read, nothing was fetched and nothing kept. The test now lets go of what was read (`Themes.Reload`), as the
+  class's other next-start steps do; with Reef read first in one process it failed on the Mac as on CI and passes now
+  (aa045560c).
+- `McpTests`' `An_assembly_written_into_the_packs_folder_that_no_project_references_never_reaches_the_language_server`,
+  CI 43489332630 and 43502088783 (Windows, both runs): "The app referencing the pack's assembly has errors: CS0518
+  Predefined type 'System.Object' is not defined". **Neither: a runner's difference.** The test's .NET is a folder of
+  links to the machine's but for a packs folder of its own holding only the test's pack; off Windows MSBuild's locator
+  resolves DOTNET_ROOT's dotnet link to the machine's installation, but on Windows it takes the SDK through the links
+  as they stand (a probe on the Windows VM through junctions: NetCoreRoot and NetCoreTargetingPackRoot under the
+  test's folder), so the targeting pack Microsoft.NETCore.App.Ref was looked for in the test's packs folder and the
+  project had no framework. The test's packs folder now also links each of the machine's packs (10c2f865f). The
+  Windows VM cannot make symbolic links (the test skips there), and its junction stand-in passed both ways, so the fix
+  is checked on CI's runners.
+- `MobileNeedsWindowTests`' `A_project_whose_workload_is_missing_says_so_and_Install_Workloads_asks_installs_and_loads_it_again`,
+  CI 43489332630 and 43502088783 (Linux, both runs: "Expected: tvos, Actual: wasm-tools"; Windows, both runs:
+  "Expected: Tv needs the .NET workload tvos, Actual: Tv builds only on a Mac, with Xcode"). **Neither: the test held a
+  tvOS project to a Mac's answers on every system**, and it showed a bug: off a Mac the banner said a tvOS app builds
+  only on a Mac while its Install Workloads offered what the SDK named for it, wasm-tools on Linux (no tvos workload
+  there; the SDK names the one Linux workload holding the Mono packs the app's toolchain asks for) and tvos on Windows,
+  neither of which builds it. Off a Mac an app only of Apple platforms is offered only the workloads naming its frameworks (Windows' tvos, to
+  load it for editing; none on Linux), and the test takes an Android project off a Mac (6142b8170, 144ef648a).
+- `TerminalTests`' `The_terminal_draws_the_configured_cursor_shape(Underline)`, the Ubuntu VM under load (testing
+  #1574): "The IDE caught 1 error: Win32Exception: An error occurred trying to start process '/usr/bin/git' with working
+  directory '…/terminal-cdb46b88'. No such file or directory", only the start's own frames. **A race in the IDE**
+  (#1585): every git call catches its start's error once its await comes back, so the error reached the IDE only as a
+  fault nobody observed, the finalizer's, from the start's task whose caller's thread (a window test's, over) never ran
+  again; and the folder of the test before was gone, as a git start there fails on macOS and Linux as a program not
+  found, which the window also said as "git is not installed". Git now starts nothing in a folder that is gone and says
+  so, and a start's fault is seen as it is thrown (f0015c0f6); the finalizer's path was not made to happen again here.
 - `TerminalTests`' `Enter_with_each_modifier_and_Ctrl_J_reach_a_program_as_it_asked_for_them_in_every_keymap(VSCode)`,
   the Ubuntu VM (testing #1551): "Waited 60 s for a command Enter runs once the program has ended", the screen showing
   `echo after` on a row of its own and then `$ after`. **The test waited wrong**: it typed `echo after` once the program
