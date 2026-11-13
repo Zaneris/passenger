@@ -91,7 +91,7 @@ public sealed partial class CodeEditor
         return span.Start + column;
     }
 
-    /// <summary>The pointer moved: over a link, if no drag is under way, it takes the hand.</summary>
+    /// <summary>Tracks the link under the pointer, unless a drag is under way.</summary>
     private void FollowLinks(Point position, bool dragging)
     {
         if (links is null)
@@ -99,10 +99,6 @@ public sealed partial class CodeEditor
             return;
         }
         hovered.Hold(document, dragging ? null : LinkAt(position));
-        if (HoveredLink is not null)
-        {
-            Cursor = HandCursor;
-        }
     }
 
     /// <summary>A press with no keys held, once: the link it is on, which its release opens.</summary>

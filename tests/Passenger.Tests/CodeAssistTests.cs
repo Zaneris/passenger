@@ -54,7 +54,25 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             window.KeyPress(key, modifier, PhysicalKey.None, null);
         }
         Ui.WaitFor(() => editor.Cursor?.ToString() == "Hand", "the hand over a navigable method");
-        window.MouseMove(point + new Point(1, 0), modifier);
+        List<string?> cursors = [];
+        void CursorChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+        {
+            if (e.Property == InputElement.CursorProperty)
+            {
+                cursors.Add(editor.Cursor?.ToString());
+            }
+        }
+        editor.PropertyChanged += CursorChanged;
+        try
+        {
+            window.MouseMove(point + new Point(1, 0), modifier);
+            window.MouseMove(editor.TranslatePoint(editor.PointOf(offset + 2) + new Point(2, editor.LineHeight / 2), window)!.Value, modifier);
+        }
+        finally
+        {
+            editor.PropertyChanged -= CursorChanged;
+        }
+        Assert.Empty(cursors);
         Assert.Equal("Hand", editor.Cursor?.ToString());
         window.KeyRelease(key, RawInputModifiers.None, PhysicalKey.None, null);
         Assert.Equal("Ibeam", editor.Cursor?.ToString());

@@ -92,7 +92,7 @@ public sealed partial class CodeEditor
         if (navigationAsked is { } asked && asked.Action == action && (asked.Offset == offset ||
             navigationRange is { } range && range.Start <= offset && offset < range.End))
         {
-            NavigationCursor();
+            UpdatePointerCursor();
             return;
         }
         StopNavigationHover();
@@ -116,7 +116,7 @@ public sealed partial class CodeEditor
             if (!cancel.IsCancellationRequested && ReferenceEquals(text, document.Snapshot) && navigationAsked == asked)
             {
                 navigationRange = range;
-                NavigationCursor();
+                UpdatePointerCursor();
             }
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
@@ -138,10 +138,11 @@ public sealed partial class CodeEditor
         navigationCancel = null;
         navigationAsked = null;
         navigationRange = null;
-        NavigationCursor();
+        UpdatePointerCursor();
     }
 
-    private void NavigationCursor()
+    /// <summary>Applies the cursor after links and navigation have both followed the pointer.</summary>
+    private void UpdatePointerCursor()
     {
         if (navigationPoint is { } point)
         {
