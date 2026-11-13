@@ -202,7 +202,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 
 Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer's "never" is a rule.
 - `Passenger.Core` (no UI), where each of these is the one way: a PATH search `Programs.OnPath`; .NET's folder
-  `Dotnet.Root`, never `Dotnet.Host()`'s folder, for a folder's work `Dotnet.Root(folder)`/`Host(folder)` (the first installation holding the SDK its global.json takes, `Dotnet.Find(folder)`), which `DotnetCommand(args, folder)` and `NamingDotnet(start, folder)` take; a request of a host `OutboundHttp`; a Unix socket `SocketFolders`; a C
+  `Dotnet.Root`, never `Dotnet.Host()`'s folder, for a folder's work `Dotnet.Root(folder)`/`Host(folder)` (the first installation holding the SDK its global.json takes, its `sdk.paths` searched as the muxer does, `Dotnet.Find(folder)`), which `DotnetCommand(args, folder)` and `NamingDotnet(start, folder)` take; a request of a host `OutboundHttp`; a Unix socket `SocketFolders`; a C
   call made in more than one place `Libc`; whether a process runs `DotnetProcesses.Runs`, a `Process` held too, never
   `HasExited` (PSG0007): ended, one Passenger started has an `ExitCode` to read, one found by id none; a PASSENGER_*_MS
   `EnvironmentValues.Milliseconds`; a Windows command line `WindowsCommandLine`; the version `Product`; a log below the
@@ -270,7 +270,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   it crashed on Linux); recording in a container trusts nothing in a frame. A heap dump is Passenger's own (`DumpTool`):
   the runtime's createdump writes into the program's stdout, and Windows' dumps only its parent.
 - `Passenger.UpdateHandlers`, `Passenger.Inspector` (+`.Wpf`; `Protocol.cs` in both ends), `Passenger.WpfPreview`,
-  `Passenger.TestFrames`, `Passenger.Terminal` (Porta.Pty); `Passenger.Analyzers` (`Rules.cs`; a rule goes on only where
+  `Passenger.TestFrames`, `Passenger.Terminal` (Porta.Pty; a folder's shell finds its dotnet first through `FirstOnPath`, given again after the startup files, as a login shell's reorder PATH); `Passenger.Analyzers` (`Rules.cs`; a rule goes on only where
   nothing it flags is left); `tools/` (notices, the test runner, packaging, site shots).
 
 `src/Passenger.App`, by area:
