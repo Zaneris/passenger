@@ -318,6 +318,32 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
+    /// <summary>With Vim mode on, completion opens as insert mode types, and one Escape closes it and leaves insert mode, as
+    /// Vim's Escape does, where a second press would be needed if the list took the key alone.</summary>
+    [AvaloniaFact]
+    public void With_vim_mode_one_escape_closes_completion_and_leaves_insert_mode()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.PlaceAfter(editor, "static void Main()\n    {\n");
+            Ui.Type(window, "I", "i");
+            Assert.Equal(VimMode.Insert, editor.VimModeShown);
+            window.KeyTextInput("        System.");
+            Ui.WaitFor(() => window.Assist.IsCompletionOpen, "System's members");
+            Ui.Press(window, "ESCAPE");
+            Assert.False(window.Assist.IsCompletionOpen, "Escape left completion open");
+            Assert.True(editor.VimModeShown == VimMode.Normal, "Escape closed completion but left Vim in insert mode");
+            Assert.Equal('.', editor.Document.Snapshot[editor.Selections.Primary.Caret]);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_commit_character_types_the_chosen_item_before_it_and_the_items_documentation_shows_beside_the_list()
     {

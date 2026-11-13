@@ -155,6 +155,36 @@ public class VimTests
     }
 
     [Fact]
+    public void Carets_settle_on_a_character_keeping_their_aim_and_a_selection_stays_whole()
+    {
+        (TextSnapshot text, _) = Marked.Parse("a|b\n\ncd");
+        SelectionSet put = SelectionSet.Create([new Selection(2, 2, 40), new Selection(3, 3), new Selection(4, 6)], 0);
+        SelectionSet settled = Vim.Settled(text, put);
+        Assert.Equal([new Selection(1, 1, 40), new Selection(3, 3), new Selection(4, 6)], settled.Items);
+        Assert.Same(settled, Vim.Settled(text, settled));
+    }
+
+    [Fact]
+    public void An_insert_sessions_edits_are_one_step_of_undo_whatever_they_type_until_a_break()
+    {
+        TextDocument document = new("ab");
+        SelectionSet carets = SelectionSet.Single(2);
+        foreach (string typed in new[] { " one", "\n", "two  ", "three" })
+        {
+            TextEdit edit = new(document.Snapshot.Length, 0, typed);
+            SelectionSet after = SelectionSet.Single(document.Snapshot.Length + typed.Length);
+            document.Edit([edit], carets, after, EditKind.Joined);
+            carets = after;
+        }
+        document.BreakUndoGroup();
+        document.Edit([new TextEdit(document.Snapshot.Length, 0, "!")], carets, SelectionSet.Single(document.Snapshot.Length + 1), EditKind.Joined);
+        Assert.NotNull(document.Undo());
+        Assert.Equal("ab one\ntwo  three", document.Snapshot.ToString());
+        Assert.Equal(SelectionSet.Single(2).Items, document.Undo()!.Items);
+        Assert.Equal("ab", document.Snapshot.ToString());
+    }
+
+    [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
         Assert.Equal("a b |c", Run("|a b c", "99999999999w"));

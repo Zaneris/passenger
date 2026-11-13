@@ -261,7 +261,7 @@ public sealed partial class CodeEditor
         editing = true;
         try
         {
-            document.Edit(plan.Edits, selections, plan.Selections, plan.Kind);
+            document.Edit(plan.Edits, selections, plan.Selections, StepOf(plan.Kind));
         }
         finally
         {

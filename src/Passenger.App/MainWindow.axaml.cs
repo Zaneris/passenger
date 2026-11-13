@@ -62,8 +62,8 @@ public partial class MainWindow : IdeWindow
         UiThread.Own();
         InitializeComponent();
         session = ProjectSession.None(Setup());
-        status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton, LineEndingText,
-            EncodingButton, EncodingText);
+        status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, VimModeText, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton,
+            LineEndingText, EncodingButton, EncodingText);
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
         navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf)
         {
@@ -423,7 +423,8 @@ public partial class MainWindow : IdeWindow
         {
             return;
         }
-        if (EditorWithKeys(window, focused) is { } vimEditor && vimEditor.PressVim(e, out string? vimAction, out int repeat))
+        // A chord the keymap began takes its second key, whatever Vim would make of it.
+        if (!keys.IsPending && EditorWithKeys(window, focused) is { } vimEditor && vimEditor.PressVim(e, out string? vimAction, out int repeat))
         {
             for (int i = 0; vimAction is not null && i < repeat; i++)
             {
@@ -496,8 +497,16 @@ public partial class MainWindow : IdeWindow
     }
 
     /// <summary>Escape in one of the IDE's windows with no popup over it: whether it closed the code's list of choices or
-    /// rename box there.</summary>
-    private bool OnEscape(TopLevel window) => assist.Dismiss(window);
+    /// rename box there, leaving Vim's insert mode too in the editor with the keys, as one Escape does in Vim.</summary>
+    private bool OnEscape(TopLevel window)
+    {
+        if (!assist.Dismiss(window))
+        {
+            return false;
+        }
+        EditorWithKeys(window, window.FocusManager?.GetFocusedElement())?.EndVimInsert();
+        return true;
+    }
 
     /// <summary>An editor action Vim mode asks for, run as the keymap runs it: undo and redo the window's commands first.</summary>
     private void RunVimAction(CodeEditor editor, string action)

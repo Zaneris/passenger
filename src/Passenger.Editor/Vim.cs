@@ -22,9 +22,10 @@ public sealed record VimResult(bool Taken, SelectionSet? Selections = null, Edit
 /// doesn't take (a shortcut with Cmd, an arrow) is left to the keymap, so the IDE's own keys keep working.</summary>
 public sealed class Vim
 {
-    private const string Escape = "<Esc>";
+    /// <summary>Escape in Vim's notation.</summary>
+    public const string Escape = "<Esc>";
 
-    // ponytail: a count of undos or redos past this is cut to it, each queued apart in the window; one deep undo if that's too few.
+    /// <summary>The most undos or redos a count asks for at once: the window queues each apart.</summary>
     private const int MostRepeated = 1000;
 
     private string pending = string.Empty;
@@ -153,6 +154,21 @@ public sealed class Vim
         return line.Length == 0 || offset < line.End ? Math.Max(offset, line.Start) : Math.Max(StepBack(text, line.End), line.Start);
     }
 
+    /// <summary>The carets as normal mode lets them stand, each on a character (<see cref="Settled(TextSnapshot, int)"/>)
+    /// with the column it aims for kept; a selection stays as it is, and the set itself where every caret already stands.</summary>
+    public static SelectionSet Settled(TextSnapshot text, SelectionSet carets)
+    {
+        IReadOnlyList<Selection> items = carets.Items;
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (items[i].IsEmpty && Settled(text, items[i].Caret) != items[i].Caret)
+            {
+                return carets.With(s => s.IsEmpty ? s with { Anchor = Settled(text, s.Caret), Caret = Settled(text, s.Caret) } : s);
+            }
+        }
+        return carets;
+    }
+
     /// <summary>The count typed before a command and the command after it; 0 when none was typed (a leading 0 is the
     /// command), the largest int when it overflows.</summary>
     private static int Count(string typed, out string command)
@@ -186,7 +202,7 @@ public sealed class Vim
             int from = text.GetLineFromOffset(selections.Items[i].Caret);
             int to = (int)Math.Clamp((long)from + lines, 0, LastLine(text));
             LineSpan line = text.GetLine(to);
-            // ponytail: columns count UTF-16 chars, not cells, so a tab or wide character above shifts the column; count cells when it matters.
+            // Columns count UTF-16 chars, so a tab or a wide character before the caret lands it off the column drawn.
             moved.Add(Selection.At(Settled(text, line.Start + Math.Min(columns[i], line.Length))));
         }
         return Aimed(SelectionSet.Create(moved, selections.PrimaryIndex), columns);

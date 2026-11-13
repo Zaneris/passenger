@@ -168,6 +168,7 @@
                     <!-- The file's widgets: a click on the caret's place goes to a line, on the line separator, encoding or
                          indent offers the others. Their frames reach into the spacing, so their words stand where the
                          other items' do. -->
+                    <TextBlock Name="VimModeText" Classes="status" IsVisible="False" ToolTip.Tip="Vim mode's mode, and a command typed so far (Settings › Editor › Vim mode)" />
                     <Button Name="CaretButton" Classes="statusItem" Margin="-6,0" Focusable="False" IsVisible="False" Click="OnCaretClicked">
                         <TextBlock Name="CaretText" Classes="status" />
                     </Button>

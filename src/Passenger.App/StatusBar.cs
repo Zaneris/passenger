@@ -39,6 +39,7 @@ public sealed class StatusBar
     private readonly TextBlock text;
     private readonly PathIcon icon;
     private readonly WorkingRing working;
+    private readonly TextBlock vimMode;
     private readonly Button caretButton;
     private readonly TextBlock caret;
     private readonly Button indentButton;
@@ -56,13 +57,14 @@ public sealed class StatusBar
     /// <summary>The file and folder the message line last followed (<see cref="ShowFile"/>); null before the first.</summary>
     private (OpenDocument? File, string? Folder)? shownFile;
 
-    public StatusBar(Button message, TextBlock text, PathIcon icon, WorkingRing working, Button caretButton, TextBlock caret, Button indentButton, TextBlock indent,
-        TextBlock language, Button lineSeparator, TextBlock lineEnding, Button encoding, TextBlock encodingText)
+    public StatusBar(Button message, TextBlock text, PathIcon icon, WorkingRing working, TextBlock vimMode, Button caretButton, TextBlock caret, Button indentButton,
+        TextBlock indent, TextBlock language, Button lineSeparator, TextBlock lineEnding, Button encoding, TextBlock encodingText)
     {
         this.message = message;
         this.text = text;
         this.icon = icon;
         this.working = working;
+        this.vimMode = vimMode;
         this.caretButton = caretButton;
         this.caret = caret;
         this.indentButton = indentButton;
@@ -192,10 +194,11 @@ public sealed class StatusBar
     /// <summary>The file's language, with the language server's state or work beside it as the window words it.</summary>
     public void ShowLanguage(string label) => language.Text = label;
 
-    /// <summary>The caret's line and column, the carets there are, or what is selected, after Vim's mode and the keys of a
-    /// command half typed while Vim mode is on; nothing with no file shown.</summary>
+    /// <summary>The caret's line and column, the carets there are, or what is selected, with Vim's mode before it while Vim
+    /// mode is on; nothing with no file shown.</summary>
     public void ShowCaret(CodeEditor? editor)
     {
+        ShowVimMode(editor);
         caretButton.IsVisible = editor is not null;
         if (editor is null)
         {
@@ -206,21 +209,38 @@ public sealed class StatusBar
         TextPosition at = editor.CaretPosition;
         int carets = editor.Selections.Count;
         int selected = carets > 1 ? 0 : editor.Selections.Primary.Length;
-        string vim = editor.VimModeShown switch
-        {
-            Passenger.Editor.VimMode.Normal => $"NORMAL {editor.VimPending}".TrimEnd() + "  ",
-            Passenger.Editor.VimMode.Insert => "INSERT  ",
-            _ => "",
-        };
-        if (shownCaret == (at, carets, selected, vim) && caret.Text is { Length: > 0 })
+        if (shownCaret == (at, carets, selected) && caret.Text is { Length: > 0 })
         {
             return;
         }
-        shownCaret = (at, carets, selected, vim);
+        shownCaret = (at, carets, selected);
         string position = $"{at.Line + 1}:{at.Column + 1}";
-        caret.Text = vim + (carets > 1 ? $"{carets} carets" : selected > 0 ? $"{position} ({selected} chars)" : position);
+        caret.Text = carets > 1 ? $"{carets} carets" : selected > 0 ? $"{position} ({selected} chars)" : position;
     }
 
+    /// <summary>Vim's mode in the editor shown, with the keys of a command typed so far ("NORMAL 2d"); nothing with Vim mode
+    /// off. Worded again only when either changes.</summary>
+    private void ShowVimMode(CodeEditor? editor)
+    {
+        (VimMode? Mode, string Pending) now = (editor?.VimModeShown, editor?.VimPending ?? string.Empty);
+        if (now == shownMode)
+        {
+            return;
+        }
+        shownMode = now;
+        vimMode.IsVisible = now.Mode is not null;
+        vimMode.Text = now.Mode switch
+        {
+            VimMode.Normal when now.Pending.Length > 0 => $"NORMAL {now.Pending}",
+            VimMode.Normal => "NORMAL",
+            VimMode.Insert => "INSERT",
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>The Vim mode and command the status bar words.</summary>
+    private (VimMode? Mode, string Pending) shownMode = (null, string.Empty);
+
     /// <summary>What the caret's words say: a move that changes none of it words nothing again.</summary>
-    private (TextPosition At, int Carets, int Selected, string Vim) shownCaret;
+    private (TextPosition At, int Carets, int Selected) shownCaret;
 }

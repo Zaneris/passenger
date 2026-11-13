@@ -95,10 +95,9 @@ public sealed partial class CodeEditor
                 continue;
             }
             double y = (row * metrics.LineHeight) - scroll.Y;
-            if (vim is { Mode: VimMode.Normal })
+            if (vim is { Mode: VimMode.Normal } && items[i].IsEmpty)
             {
-                // ponytail: a block one CharWidth wide, so a wide character or a tab shows a narrow block; measure the character when it matters.
-                context.DrawRectangle(null, palette.PenOf(palette.Caret, 1), new Rect(Math.Round(left + x) + 0.5, y + 0.5, metrics.CharWidth - 1, metrics.LineHeight - 1));
+                DrawBlockCaret(context, text, items[i].Caret, row, x, y, left);
                 continue;
             }
             context.FillRectangle(palette.Caret, new Rect(Math.Round(left + x), y, 2, metrics.LineHeight));
@@ -584,6 +583,9 @@ public sealed partial class CodeEditor
         public IBrush Selection { get; private init; } = None;
         public IBrush SelectionInactive { get; private init; } = None;
         public IBrush Caret { get; private init; } = None;
+
+        /// <summary>Normal mode's block caret: the caret's colour, faded so the character under it shows through.</summary>
+        public IBrush BlockCaret { get; private init; } = None;
         public IBrush Preedit { get; private init; } = None;
         public IBrush SearchMatch { get; private init; } = None;
         public IBrush Error { get; private init; } = None;
@@ -674,12 +676,13 @@ public sealed partial class CodeEditor
                 Selection = F(TokenKeys.Editor_Selection) ?? defaults.Selection,
                 SelectionInactive = F(TokenKeys.Editor_SelectionInactive) ?? defaults.SelectionInactive,
                 Caret = F(TokenKeys.Editor_Caret) ?? defaults.Caret,
+                BlockCaret = Fade(F(TokenKeys.Editor_Caret), 0.35) ?? defaults.BlockCaret,
                 Preedit = F(TokenKeys.Editor_Text) ?? defaults.Preedit,
                 SearchMatch = F(TokenKeys.Editor_SearchMatch) ?? defaults.SearchMatch,
                 Error = F(TokenKeys.Editor_Error) ?? defaults.Error,
                 Warning = F(TokenKeys.Editor_Warning) ?? defaults.Warning,
                 Info = F(TokenKeys.Editor_Info) ?? defaults.Info,
-                Faded = Fade(F(TokenKeys.Editor_Background)) ?? defaults.Faded,
+                Faded = Fade(F(TokenKeys.Editor_Background), 0.5) ?? defaults.Faded,
                 SearchCurrent = F(TokenKeys.Editor_SearchCurrent) ?? defaults.SearchCurrent,
                 Annotation = F(TokenKeys.Editor_InlineValue) ?? defaults.Annotation,
                 Passed = F(TokenKeys.Test_Passed) ?? defaults.Passed,
@@ -738,8 +741,8 @@ public sealed partial class CodeEditor
         /// <summary>Whether another palette was read from the very resources this one was, so nothing need be drawn again.</summary>
         public bool SameAs(Palette other) => found.SequenceEqual(other.found, ReferenceEqualityComparer.Instance);
 
-        private static IBrush? Fade(IBrush? background) =>
-            background is ISolidColorBrush solid ? new SolidColorBrush(solid.Color, 0.5).ToImmutable() : null;
+        private static IBrush? Fade(IBrush? brush, double opacity) =>
+            brush is ISolidColorBrush solid ? new SolidColorBrush(solid.Color, opacity).ToImmutable() : null;
 
         private static Geometry? Icon(Control control, string key) =>
             control.TryFindResource(key, control.ActualThemeVariant, out object? value) ? value as Geometry : null;

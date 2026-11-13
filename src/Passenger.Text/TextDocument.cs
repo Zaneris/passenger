@@ -10,6 +10,10 @@ public enum EditKind
     Typing,
     DeleteBackward,
     DeleteForward,
+
+    /// <summary>An edit of a run kept as one step of undo (Vim's insert session): it joins the step before while that is
+    /// one too and nothing broke the run (<see cref="TextDocument.BreakUndoGroup"/>), whatever it types and however late.</summary>
+    Joined,
 }
 
 public enum ChangeReason
@@ -438,7 +442,7 @@ public sealed class TextDocument
 
     private bool Continues(UndoEntry last, EditKind kind, SelectionSet selectionsBefore, TextEdit[] edits, long now)
     {
-        if (mergeBroken || kind == EditKind.Other || last.Kind != kind || now - last.Time > MergeWindow.TotalMilliseconds)
+        if (mergeBroken || kind == EditKind.Other || last.Kind != kind || (kind != EditKind.Joined && now - last.Time > MergeWindow.TotalMilliseconds))
         {
             return false;
         }

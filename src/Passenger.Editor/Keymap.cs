@@ -654,6 +654,6 @@ public sealed class KeymapDispatcher(Keymap keymap, Func<long>? milliseconds = n
         && (e.KeyModifiers & ~KeyModifiers.Shift) == (KeyModifiers.Control | KeyModifiers.Alt)
         && e.KeySymbol is { Length: > 0 } symbol && !char.IsControl(symbol[0]) && !char.IsWhiteSpace(symbol[0]);
 
-    private static bool IsModifierOnly(Key key) => key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
+    internal static bool IsModifierOnly(Key key) => key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
         or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
 }

@@ -30,71 +30,21 @@ public sealed partial class CodeEditor
 
     private EditorInputMethod InputMethod => inputMethod ??= new EditorInputMethod(this);
 
-    private Vim? vim;
-
-    /// <summary>A key through Vim mode before any keymap: true when Vim took it, with <paramref name="action"/> (one of
-    /// <see cref="EditorActions"/>) for the host to run <paramref name="repeat"/> times as its keymap would, so undo stays
-    /// the window's. Escape leaving insert mode is passed on, so it closes completion and what sits over the editor.</summary>
-    public bool PressVim(KeyEventArgs e, out string? action, out int repeat)
-    {
-        action = null;
-        repeat = 0;
-        if (vim is null || e.Key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin)
-        {
-            // A modifier pressed on its own comes before the key it changes, so it must not end a count or operator.
-            return false;
-        }
-        VimMode was = vim.Mode;
-        string pendingWas = vim.Pending;
-        string key = VimKey(e);
-        VimResult result = vim.Press(key, document.Snapshot, selections);
-        if (result.Edit is { } edit)
-        {
-            Apply(edit);
-        }
-        else if (result.Selections is { } moved)
-        {
-            Selections = moved;
-        }
-        action = result.Action;
-        repeat = action is null ? 0 : result.Repeat;
-        if (vim.Mode != was || vim.Pending != pendingWas)
-        {
-            VimModeChanged?.Invoke(this, EventArgs.Empty);
-            InvalidateVisual();
-        }
-        return result.Taken && !(was == Editor.VimMode.Insert && key == "<Esc>");
-    }
-
-    /// <summary>A key press in Vim's notation: a character typed with no modifier but Shift, Escape, Backspace, Enter,
-    /// Delete, Tab, Ctrl+R; anything else a name Vim mode leaves to the keymap.</summary>
-    private static string VimKey(KeyEventArgs e)
-    {
-        KeyModifiers held = e.KeyModifiers & ~KeyModifiers.Shift;
-        return held switch
-        {
-            KeyModifiers.None when e.Key == Key.Escape => "<Esc>",
-            // Named so normal mode takes them: on to the keymap they would type a line break or a tab, or delete.
-            KeyModifiers.None when e.Key == Key.Back => "<BS>",
-            KeyModifiers.None when e.Key == Key.Enter => "<CR>",
-            KeyModifiers.None when e.Key == Key.Delete => "<Del>",
-            KeyModifiers.None when e.Key == Key.Tab => "<Tab>",
-            KeyModifiers.Control when e.Key == Key.R => "<C-r>",
-            KeyModifiers.None when e.KeySymbol is { Length: 1 } typed && !char.IsControl(typed[0]) => typed,
-            // A press with no symbol (a headless one): letters and digits by their key; punctuation needs the symbol, whose key differs by layout.
-            KeyModifiers.None when e.KeySymbol is null && e.Key is >= Key.A and <= Key.Z =>
-                ((char)((e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 'A' : 'a') + (e.Key - Key.A))).ToString(),
-            KeyModifiers.None when e.KeySymbol is null && e.Key is >= Key.D0 and <= Key.D9 && !e.KeyModifiers.HasFlag(KeyModifiers.Shift) =>
-                ((char)('0' + (e.Key - Key.D0))).ToString(),
-            _ => "<Other>",
-        };
-    }
-
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
         if (e.Handled || ownKeys is null)
         {
+            return;
+        }
+        if (!ownKeys.IsPending && PressVim(e, out string? asked, out int repeat))
+        {
+            ownKeys.Heard(e);
+            for (int i = 0; asked is not null && i < repeat; i++)
+            {
+                TryExecute(asked);
+            }
+            e.Handled = true;
             return;
         }
         string? action = ownKeys.Press(e, out bool consumed, out bool shifted);
