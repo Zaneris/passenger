@@ -113,6 +113,43 @@ public sealed class DotnetInstallationTests : IDisposable
     }
 
     [Fact]
+    public void A_global_jsons_sdk_paths_are_searched_in_their_order_a_relative_one_from_its_folder_host_being_each_dotnet_found()
+    {
+        DotnetFound system = Installation("system", "10.0.403");
+        DotnetFound home = Installation(Path.Join("home", ".dotnet"), "11.0.100");
+        DotnetFound own = Installation(Path.Join("work", ".dotnet"), "11.0.100") with { Place = DotnetPlace.GlobalJson };
+        DotnetFound elsewhere = Installation("elsewhere", "11.0.100") with { Place = DotnetPlace.GlobalJson };
+        string folder = Directory.CreateDirectory(Path.Join(root, "work", "src")).FullName;
+        (DotnetFound?, bool) Asking(string paths)
+        {
+            File.WriteAllText(Path.Join(root, "work", "global.json"), $$"""{ "sdk": { "version": "11.0.100", "rollForward": "disable", "paths": {{paths}} } }""");
+            return Dotnet.Choose([system, home], folder, DotnetInstallation.Read);
+        }
+
+        Assert.Equal((own, true), Asking("""[ ".dotnet", "$host$" ]"""));
+        Assert.Equal((home, true), Asking("""[ "$host$", ".dotnet" ]"""));
+        Assert.Equal((own, true), Asking("""[ 7, "missing", ".dotnet" ]"""));
+        Assert.Equal((elsewhere, true), Asking($"[ \"{Path.Join(root, "elsewhere").Replace("\\", "\\\\", StringComparison.Ordinal)}\" ]"));
+        Assert.Equal((home, true), Asking("null"));
+
+        // Without $host$ the installations found are never looked in, the one holding the SDK neither: dotnet finds none.
+        Assert.Equal((system, false), Asking("""[ "missing" ]"""));
+        Assert.Equal((system, false), Asking("[]"));
+    }
+
+    [Fact]
+    public void A_global_jsons_paths_and_error_message_are_read_as_dotnet_reads_them()
+    {
+        string path = Path.Join(root, "global.json");
+        GlobalJsonSdk read = GlobalJsonSdk.Of(path, """{ "sdk": { "version": "11.0.100", "paths": [ ".dotnet", 3, "$host$" ], "errorMessage": "Run ./build.sh to install the SDK." } }""")!;
+        Assert.True(read.Paths is [".dotnet", GlobalJsonSdk.HostPath] && read.ErrorMessage == "Run ./build.sh to install the SDK.",
+            $"global.json's paths read as [{string.Join(", ", read.Paths ?? [])}], its errorMessage as {read.ErrorMessage}");
+        Assert.Equal(Path.Join(root, ".dotnet"), read.Place(".dotnet"));
+        Assert.Null(GlobalJsonSdk.Of(path, """{ "sdk": { "paths": null } }""")!.Paths);
+        Assert.Null(GlobalJsonSdk.Of(path, """{ "sdk": { "version": "11.0.100" } }""")!.Paths);
+    }
+
+    [Fact]
     public void The_homes_own_dotnet_is_looked_for_after_DOTNET_ROOT_the_PATH_and_the_installers_places()
     {
         DotnetFound home = Installation(Path.Join("home", ".dotnet"), "11.0.100");

@@ -8,6 +8,20 @@ namespace Passenger.Core;
 /// what it asks for, and its allowPrerelease, null where it does not say.</summary>
 public sealed partial record GlobalJsonSdk(string Path, string? Version, string? RollForward, int Line, bool? AllowPrerelease = null)
 {
+    /// <summary>Its sdk section's paths, the places dotnet looks for an SDK in, in order, its string items as written
+    /// ("$host$" for the installation of the dotnet running); null where it names none, so dotnet looks in its own.</summary>
+    public IReadOnlyList<string>? Paths { get; init; }
+
+    /// <summary>Its sdk section's errorMessage, which dotnet says in place of its own words where it finds no SDK.</summary>
+    public string? ErrorMessage { get; init; }
+
+    /// <summary>The value of <see cref="Paths"/> naming the installation of the dotnet running.</summary>
+    public const string HostPath = "$host$";
+
+    /// <summary>The folder one of <see cref="Paths"/> other than <see cref="HostPath"/> names: a full path as it is, any
+    /// other from this global.json's folder.</summary>
+    public string Place(string path) => System.IO.Path.IsPathFullyQualified(path) ? path : System.IO.Path.Join(System.IO.Path.GetDirectoryName(Path), path);
+
     /// <summary>The SDK wanted as this global.json has dotnet take it: a version as its rollForward and allowPrerelease let it
     /// go, a channel by its allowPrerelease, and the newest, which no one has asked dotnet about yet, the version it asks
     /// for, where it asks for one, so one install gives the folder an SDK it will use.</summary>
@@ -96,7 +110,12 @@ public sealed partial record GlobalJsonSdk(string Path, string? Version, string?
                 return null;
             }
             JsonElement? sdk = JsonMembers.Object(read.RootElement, "sdk");
-            return new GlobalJsonSdk(path, JsonMembers.Text(sdk, "version"), JsonMembers.Text(sdk, "rollForward"), VersionLine(bytes), JsonMembers.Bool(sdk, "allowPrerelease"));
+            return new GlobalJsonSdk(path, JsonMembers.Text(sdk, "version"), JsonMembers.Text(sdk, "rollForward"), VersionLine(bytes), JsonMembers.Bool(sdk, "allowPrerelease"))
+            {
+                // An array, null or absent, as dotnet reads it, its items other than strings passed over.
+                Paths = JsonMembers.Value(sdk, "paths") is { ValueKind: JsonValueKind.Array } ? JsonMembers.Texts(sdk, "paths") : null,
+                ErrorMessage = JsonMembers.Text(sdk, "errorMessage"),
+            };
         }
         catch (JsonException)
         {

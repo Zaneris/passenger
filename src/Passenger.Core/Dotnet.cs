@@ -147,27 +147,42 @@ public static partial class Dotnet
     /// <summary>The dotnet each folder takes, by the folder, its global.json and the first dotnet found.</summary>
     private static readonly ConcurrentDictionary<string, DotnetFound> Taken = new(StringComparer.Ordinal);
 
-    /// <summary>The first of <paramref name="candidates"/> whose installation (read by <paramref name="read"/>, once each)
-    /// holds an SDK the global.json over <paramref name="folder"/> takes, any SDK without one; a process the system
-    /// translates passes over one with no x64 dotnet. With none, the first, or null for no candidate; and whether it takes it.</summary>
+    /// <summary>The first installation dotnet's search for the folder's SDK reaches (<see cref="Searched"/>) that holds an
+    /// SDK the global.json over <paramref name="folder"/> takes, any SDK without one, each read by <paramref name="read"/>
+    /// once; a process the system translates passes over one with no x64 dotnet. With none, the first of
+    /// <paramref name="candidates"/>, or null for none; and whether it takes it.</summary>
     internal static (DotnetFound? Found, bool Takes) Choose(IEnumerable<DotnetFound> candidates, string folder, Func<string, DotnetInstallation> read)
     {
         GlobalJsonSdk? asked = GlobalJsonSdk.Read(GlobalJsonIn(folder)?.FullName);
-        DotnetFound? first = null;
+        List<DotnetFound> found = [.. candidates];
+        DotnetFound? first = found.FirstOrDefault();
         HashSet<string> seen = new(PathNames.Comparer);
-        foreach (DotnetFound found in candidates)
+        foreach (DotnetFound each in Searched(found, asked))
         {
-            first ??= found;
-            if (!seen.Add(found.Root) || (Translated && found != first && !ProgramProcessors.Of(found.Host).Contains(Architecture.X64)))
+            if (!seen.Add(each.Root) || (Translated && each != first && !ProgramProcessors.Of(each.Host).Contains(Architecture.X64)))
             {
                 continue;
             }
-            if (read(found.Root).Sdks.Any(sdk => asked?.Takes(sdk) ?? true))
+            if (read(each.Root).Sdks.Any(sdk => asked?.Takes(sdk) ?? true))
             {
-                return (found, true);
+                return (each, true);
             }
         }
         return (first, false);
+    }
+
+    /// <summary>The dotnets whose installations dotnet looks for an SDK in, in its order: each of global.json's paths in
+    /// turn, its <see cref="GlobalJsonSdk.HostPath"/> the installation of whichever dotnet runs, so every one
+    /// <paramref name="found"/>, and each other folder the dotnet installed there, where there is one; without paths, every
+    /// one found.</summary>
+    private static IEnumerable<DotnetFound> Searched(IReadOnlyList<DotnetFound> found, GlobalJsonSdk? asked)
+    {
+        if (asked?.Paths is not { } paths)
+        {
+            return found;
+        }
+        return paths.SelectMany(path => path == GlobalJsonSdk.HostPath ? found
+            : Path.Join(asked.Place(path), HostName) is { } host && File.Exists(host) ? [new DotnetFound(host, DotnetPlace.GlobalJson)] : []);
     }
 
     /// <summary>Every dotnet there is, in the order <see cref="Find()"/> takes them, the installers' places under
@@ -298,7 +313,7 @@ public static partial class Dotnet
 
 /// <summary>How <see cref="Dotnet.Find()"/> found a dotnet: the one running this app, DOTNET_ROOT's, the PATH's, or one
 /// neither names, where an installer puts it or <see cref="Dotnet.Use"/> chose it; or, for a process the system translates,
-/// the x64 one beside the system's own.</summary>
+/// the x64 one beside the system's own; or, for a folder, where its global.json's sdk paths say.</summary>
 public enum DotnetPlace
 {
     Runtime,
@@ -306,6 +321,9 @@ public enum DotnetPlace
     Path,
     Installed,
     Translated,
+
+    /// <summary>Installed in a folder a global.json's sdk paths name.</summary>
+    GlobalJson,
 }
 
 /// <summary>A <c>dotnet</c> found, and how.</summary>
