@@ -134,6 +134,12 @@ public static partial class DeviceTargets
     /// <summary>The platform whose apps run on this machine, where the system has one: Windows' on Windows.</summary>
     public static TargetPlatform? OfThisMachine => OperatingSystem.IsWindows() ? TargetPlatform.Windows : null;
 
+    /// <summary>Where a project of these frameworks runs with no target chosen: this machine, where its apps run here
+    /// (<paramref name="here"/>, <see cref="OfThisMachine"/>) and the project has a head of that platform, as a MAUI app's
+    /// Windows head on Windows; null where a target must be chosen.</summary>
+    public static KeptTarget? Unchosen(IReadOnlyList<string> frameworks, TargetPlatform? here) =>
+        here is { } platform && FrameworkFor(frameworks, platform) is not null ? KeptTarget.Of(Here(platform)) : null;
+
     /// <summary>The one platform a launch profile running the project names, as a multi-platform app's template names its
     /// Windows profile ("Windows Machine"): that platform's own, taken where it is the target (<see cref="ProfileFor"/>);
     /// null for a profile naming none or several, or running another program.</summary>

@@ -63,7 +63,7 @@ public partial class MainWindow
         {
             return;
         }
-        KeptTarget? chosen = session.Targets.Of(project);
+        KeptTarget? chosen = session.Targets.InForce(project);
         DeviceTarget? found = session.Targets.Found(project);
         string? gone = session.Targets.WasListed(project) ? DeviceTargets.Gone(chosen, session.Targets.Listed(project), project.Name) : null;
         RunTargetName.Text = found?.Shown ?? chosen?.Name ?? "Choose a device";
@@ -125,7 +125,7 @@ public partial class MainWindow
     private void ShowRunTargets(ProjectModel project)
     {
         ContextMenu menu = new();
-        KeptTarget? chosen = session.Targets.Of(project);
+        KeptTarget? chosen = session.Targets.InForce(project);
         foreach (DeviceTarget target in session.Targets.Listed(project))
         {
             menu.Items.Add(MenuChoice.Of(target.Shown, chosen?.Platform == target.Platform && chosen.Key == target.Key, () => ChooseRunTarget(project, target)));
@@ -189,7 +189,7 @@ public partial class MainWindow
         string offered = listed.Count == 0 ? targetsUnlisted ?? Refusals.NoTargets : Plural.Listed([.. listed.Select(t => t.Shown)]);
         if (input is not { Length: > 0 } named)
         {
-            return $"{project.Name} runs on {session.Targets.Of(project)?.Name ?? "nothing chosen yet"}; it can run on {offered}";
+            return $"{project.Name} runs on {session.Targets.InForce(project)?.Name ?? "nothing chosen yet"}; it can run on {offered}";
         }
         DeviceTarget target = listed.FirstOrDefault(t => t.Name.Equals(named, StringComparison.OrdinalIgnoreCase) || t.Id.Equals(named, StringComparison.Ordinal)
             || t.Avd is { } avd && avd.Equals(named, StringComparison.Ordinal))
