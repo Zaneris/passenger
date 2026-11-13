@@ -42,6 +42,7 @@ public partial class App : Application
         InterfaceScale.Install();
         MenuShadow.Install();
         AgentAsks.Install();
+        DropDownSearch.Install();
         // In-window menus write keys as the keymap does (⇧⌘R), not as Fluent writes a KeyGesture (Shift+Cmd+R).
         TemplatedControl.TemplateAppliedEvent.AddClassHandler<MenuItem>((item, e) =>
         {
