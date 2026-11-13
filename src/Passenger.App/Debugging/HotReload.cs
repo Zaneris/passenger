@@ -315,6 +315,7 @@ public sealed class HotReload
             Problems = problems,
             Files = files,
             Modules = [.. emitted.Updates.Select(u => u.Name)],
+            UpdatedTypes = emitted.Updates.ToDictionary(u => u.Module, u => u.UpdatedTypes),
             Methods = methods,
             Took = took.Elapsed,
         };

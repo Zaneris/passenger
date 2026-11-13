@@ -10,8 +10,21 @@ internal static class Wire
     [IdentifierHome]
     public const string SocketVariable = "PASSENGER_UPDATE_HANDLERS";
 
-    /// <summary>Passenger's line: the debugger applied an update, every type of which may have changed.</summary>
+    /// <summary>Ends a batch of changed type lines: the debugger applied the update.</summary>
     public const string Updated = "updated";
+
+    /// <summary>A changed type's module identity and metadata token; one per line keeps each line bounded.</summary>
+    public static string TypeLine(Guid module, int token) => $"type {module:D} {token:X8}";
+
+    /// <summary>Reads one changed type line.</summary>
+    public static bool TryType(string line, out Guid module, out int token)
+    {
+        module = default;
+        token = default;
+        return line.Split(' ') is ["type", var id, var number]
+            && Guid.TryParse(id, out module)
+            && int.TryParse(number, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out token);
+    }
 
     /// <summary>How a line of the hook's answer begins that says a handler failed, its words after it.</summary>
     public const string Failed = "failed ";

@@ -4,15 +4,15 @@ using System.Reflection.Metadata;
 namespace Passenger.UpdateHandlers;
 
 /// <summary>The program's MetadataUpdateHandlers, called as the runtime's own Hot Reload agent calls them after an update:
-/// every ClearCache, then every UpdateApplication, each given no types (any may have changed), the handlers of an assembly
+/// every ClearCache, then every UpdateApplication, each given the changed types, the handlers of an assembly
 /// another references before that other's, so a framework's caches are cleared before an app's handler reads them.</summary>
 internal static class Handlers
 {
     /// <summary>Calls every handler, answering each failure in words: its type, its method and what it threw.</summary>
-    public static IReadOnlyList<string> Run() => Run(AppDomain.CurrentDomain.GetAssemblies());
+    public static IReadOnlyList<string> Run(Type[]? updatedTypes) => Run(AppDomain.CurrentDomain.GetAssemblies(), updatedTypes);
 
-    /// <summary>Calls the handlers of these assemblies, as <see cref="Run()"/> does those of every one loaded.</summary>
-    public static IReadOnlyList<string> Run(IEnumerable<Assembly> assemblies)
+    /// <summary>Calls the handlers of these assemblies, as <see cref="Run(Type[])"/> does those of every one loaded.</summary>
+    public static IReadOnlyList<string> Run(IEnumerable<Assembly> assemblies, Type[]? updatedTypes = null)
     {
         List<string> failures = [];
         List<Type> handlers = [];
@@ -37,7 +37,7 @@ internal static class Handlers
                 }
                 try
                 {
-                    called.Invoke(null, [null]);
+                    called.Invoke(null, [updatedTypes]);
                 }
                 catch (TargetInvocationException error)
                 {
