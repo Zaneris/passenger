@@ -174,7 +174,8 @@ public sealed class DockHost : Grid
     }
 
     /// <summary>Whether a window closed by its × leaves its stripe (and its place's tabs) until it is opened again, rather
-    /// than keeping its icon as a hidden window does; while not, the windows closed before keep theirs.</summary>
+    /// than keeping its icon as a hidden window does. It governs only ×: a window off its stripe, however it went, stays
+    /// off until it is opened or checked on its stripe's checklist again.</summary>
     public bool ClosesOffStripe
     {
         get => closesOffStripe;
@@ -216,7 +217,7 @@ public sealed class DockHost : Grid
     internal Rect EditorBounds => center.Bounds;
 
     /// <summary>The windows the stripes and the places' tabs name: all but those closed off them.</summary>
-    private List<ToolWindow> OnStripes => [.. windows.Where(w => !closesOffStripe || !w.IsClosed)];
+    private List<ToolWindow> OnStripes => [.. windows.Where(w => !w.IsClosed)];
 
     /// <summary>The window shown last, which Shift+Escape hides.</summary>
     public ToolWindow? Active { get; private set; }
@@ -413,15 +414,36 @@ public sealed class DockHost : Grid
     /// stripe and its place's tabs until it is opened again (its place kept for then).</summary>
     public void Close([IdentifierOf(typeof(ToolWindowIds))] string id)
     {
-        ToolWindow window = this[id];
-        Hide(id);
-        if (closesOffStripe && !window.IsClosed)
+        if (closesOffStripe)
         {
-            window.IsClosed = true;
-            Layout();
-            LayoutChanged?.Invoke(this, EventArgs.Empty);
+            SetOnStripe(id, false);
+        }
+        else
+        {
+            Hide(id);
         }
     }
+
+    /// <summary>A window's stripe icon, as its stripe's checklist sets it whatever <see cref="ClosesOffStripe"/> says: taken
+    /// off as a window is closed off it (hidden, its place and its keys kept), or put back, hidden as it was.</summary>
+    public void SetOnStripe([IdentifierOf(typeof(ToolWindowIds))] string id, bool on)
+    {
+        ToolWindow window = this[id];
+        if (!on)
+        {
+            Hide(id);
+        }
+        if (window.IsClosed == !on)
+        {
+            return;
+        }
+        window.IsClosed = !on;
+        Layout();
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The checklist a stripe opened of its windows at a place, while it is open.</summary>
+    public ContextMenu? StripeMenu { get; internal set; }
 
     public void Hide([IdentifierOf(typeof(ToolWindowIds))] string id)
     {

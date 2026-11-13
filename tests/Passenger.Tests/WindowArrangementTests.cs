@@ -148,7 +148,7 @@ public sealed class WindowArrangementTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void A_tool_window_closed_by_its_x_leaves_its_stripe_through_a_restart_until_its_action_opens_it_and_keeping_icons_brings_it_back()
+    public void A_tool_window_closed_by_its_x_leaves_its_stripe_through_a_restart_until_its_action_opens_it_and_keeping_icons_changes_only_the_x()
     {
         string state = TestFolders.Create("arrangement-state-");
         try
@@ -188,8 +188,9 @@ public sealed class WindowArrangementTests : IDisposable
                 Assert.True(StripeButton(again, ToolWindowIds.Debug) is null, "Close Active Tool Window left Debug's stripe icon");
                 again.ApplySettings(again.Settings with { ClosedToolWindows = ClosedToolWindows.KeepIcons });
                 Ui.Settle();
-                Assert.True(StripeButton(again, ToolWindowIds.Debug) is not null && again.Actions.WhyNot(AppActions.CloseToolWindow, again.Actions.Context()) == Refusals.ClosedKeepIcons,
-                    "Keeping icons chosen, the closed Debug window did not get its stripe icon back, or Close was not greyed for it");
+                // The setting says what × does: a window off its stripe stays off until opened or checked on the stripe again.
+                Assert.True(StripeButton(again, ToolWindowIds.Debug) is null && again.Actions.WhyNot(AppActions.CloseToolWindow, again.Actions.Context()) == Refusals.ClosedKeepIcons,
+                    "Keeping icons chosen, the closed Debug window came back to its stripe unasked, or Close was not greyed for it");
                 Assert.DoesNotContain(again.DockHost.GetVisualDescendants().OfType<Button>(), b => b.Name == AppActions.CloseToolWindow && b.IsEffectivelyVisible);
             }
             finally

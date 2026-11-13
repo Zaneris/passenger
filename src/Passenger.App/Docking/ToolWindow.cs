@@ -222,8 +222,9 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
         internal set => Set(ref isShown, value);
     }
 
-    /// <summary>Closed off its stripe while the dock takes closed windows off (<see cref="DockHost.ClosesOffStripe"/>), until
-    /// it is opened again.</summary>
+    /// <summary>Off its stripe and its place's tabs, closed by its × while the dock takes closed windows off
+    /// (<see cref="DockHost.ClosesOffStripe"/>) or unchecked on its stripe's checklist, until it is opened or checked
+    /// again.</summary>
     public bool IsClosed { get; internal set; }
 
     /// <summary>The name a menu gives a place: "Left Top", "Bottom Right".</summary>

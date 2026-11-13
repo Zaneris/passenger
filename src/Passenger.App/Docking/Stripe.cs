@@ -3,15 +3,18 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.VisualTree;
 using Passenger.Editor;
 
 namespace Passenger.App.Docking;
 
 /// <summary>A stripe of buttons down one edge: the side's upper and lower windows at its top (a gap between them), the
 /// bottom area's half at its foot. A button shows or hides its window, and drags it elsewhere. Each window keeps its
-/// button from one layout to the next, moved where its window went.</summary>
+/// button from one layout to the next, moved where its window went. A right click lists a place's windows to take off the
+/// stripe or put back.</summary>
 internal sealed class Stripe : Border
 {
     private readonly DockHost host;
@@ -57,6 +60,7 @@ internal sealed class Stripe : Border
         Child = new Panel { Children = { new DockPanel { Margin = new Thickness(0, 6), Children = { sides, groups[bottom] } }, new ThemeBackdrop(BackgroundPlaces.Frame) } };
         SizeChanged += (_, _) => FitButtons();
         Classes.Add(StyleClasses.StripeBar);
+        AddHandler(ContextRequestedEvent, OnContextRequested);
     }
 
     /// <summary>Styled as a Border of its own class (Shell.axaml's stripeBar), its look the theme's.</summary>
@@ -221,6 +225,72 @@ internal sealed class Stripe : Border
             more.IsVisible = overflowing;
         }
     }
+
+    /// <summary>A right click on a window's button, or the menu key on it, opens its place's checklist; one on the stripe's
+    /// empty space, that of the place whose shown button is nearest the pointer (where none shows, the place a drop there
+    /// would go to).</summary>
+    private void OnContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        e.Handled = true;
+        bool pointed = e.TryGetPosition(this, out Point at);
+        ToolAnchor anchor = (e.Source as Visual)?.FindAncestorOfType<ToggleButton>(includeSelf: true) is { Tag: string id } ? host[id].Anchor
+            : pointed ? GroupNear(at) : upper;
+        ShowChecklist(anchor, pointed);
+    }
+
+    /// <summary>The place a point on the stripe's empty space is nearest: that of the shown button whose centre is nearest it
+    /// up or down, so each boundary lies halfway between two places' buttons; with none shown, <see cref="AnchorAt"/>'s.</summary>
+    private ToolAnchor GroupNear(Point at)
+    {
+        ToolAnchor? nearest = null;
+        double distance = double.PositiveInfinity;
+        foreach ((ToolAnchor anchor, StackPanel group) in groups)
+        {
+            foreach (Control button in group.Children.Where(b => b.IsVisible))
+            {
+                double away = Math.Abs(Placed(button).Center.Y - at.Y);
+                if (away < distance)
+                {
+                    (nearest, distance) = (anchor, away);
+                }
+            }
+        }
+        return nearest ?? AnchorAt(at);
+    }
+
+    /// <summary>A place's windows in their order, each checked while it is on the stripe: unchecked, it is taken off as a
+    /// window closed off it is, open or not; checked, it is put back. After them, each other place of this stripe whose
+    /// windows are all off it, so none is out of reach. Opened at the pointer, or beside the stripe for the menu key.</summary>
+    private void ShowChecklist(ToolAnchor anchor, bool atPointer)
+    {
+        ContextMenu menu = new() { ItemsSource = Checklist(anchor) };
+        List<ToolAnchor> emptied = [.. groups.Keys.Where(a => a != anchor && host.Windows.Any(w => w.Anchor == a) && host.Windows.Where(w => w.Anchor == a).All(w => w.IsClosed))];
+        if (emptied.Count > 0)
+        {
+            menu.ItemsSource = (Control[])[.. Checklist(anchor), new Separator(), .. emptied.Select(a => new MenuItem { Header = ToolWindow.Name(a), ItemsSource = Checklist(a) })];
+        }
+        if (!atPointer)
+        {
+            bool left = upper == ToolAnchor.LeftTop;
+            menu.Placement = left ? PlacementMode.RightEdgeAlignedTop : PlacementMode.LeftEdgeAlignedTop;
+        }
+        host.StripeMenu?.Close();
+        host.StripeMenu = menu;
+        menu.Closed += (_, _) => host.StripeMenu = host.StripeMenu == menu ? null : host.StripeMenu;
+        menu.Open(this);
+    }
+
+    private List<Control> Checklist(ToolAnchor anchor) =>
+        [.. host.Windows.Where(w => w.Anchor == anchor).OrderBy(w => w.Order).Select(window =>
+        {
+            PathIcon glyph = new();
+            glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(window.Icon));
+            bool on = !window.IsClosed;
+            MenuItem item = new() { Header = window.Title, Icon = glyph, ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
+            string id = window.Id;
+            item.Click += (_, _) => host.SetOnStripe(id, !on);
+            return item;
+        })];
 
     /// <summary>More's menu: the windows the stripe has no room for, each shown or hidden by a click as its button would.</summary>
     private void ShowMore()
