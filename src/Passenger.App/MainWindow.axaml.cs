@@ -891,6 +891,7 @@ public partial class MainWindow : IdeWindow
         GodotEditorOffered = godotEditorOffered,
         GodotTemplatesStyle = godotTemplatesStyle,
         ExplorerView = explorerView,
+        AttachScope = attachScope.Where == Debugging.AttachWhere.Anywhere ? null : attachScope,
     });
 
     /// <summary>The open folder's state as the store kept it, once the window keeps state: its layout (else the one
@@ -932,6 +933,7 @@ public partial class MainWindow : IdeWindow
         // A folder open before the window kept state comes back to its view here; one just begun shows it already.
         explorerView = kept.ExplorerView;
         Explorer.ShowView(explorerView);
+        attachScope = kept.AttachScope ?? Debugging.AttachScope.Anywhere;
         Editors.Restore(kept.Editors, kept.EditorWindows);
         if (Editors.Active is { } shown)
         {

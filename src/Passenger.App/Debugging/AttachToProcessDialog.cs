@@ -13,6 +13,40 @@ namespace Passenger.App.Debugging;
 /// <summary>A row of Attach to Process: a .NET program, or the heading over a group of them.</summary>
 public sealed record AttachRow(DotnetProcess? Process, string? Heading = null);
 
+/// <summary>Where the programs Attach to Process lists run: anywhere, on this machine, in any container, or in one
+/// container (<see cref="AttachScope.Container"/>).</summary>
+public enum AttachWhere
+{
+    Anywhere,
+    ThisMachine,
+    Containers,
+    Container,
+}
+
+/// <summary>Attach to Process's choice of where the programs it lists run, the container named for one container's.</summary>
+public sealed record AttachScope(AttachWhere Where, string? Container = null)
+{
+    public static AttachScope Anywhere { get; } = new(AttachWhere.Anywhere);
+
+    /// <summary>Whether a program runs where the choice says.</summary>
+    public bool Holds(DotnetProcess process) => Where switch
+    {
+        AttachWhere.ThisMachine => process.Container is null,
+        AttachWhere.Containers => process.Container is not null,
+        AttachWhere.Container => process.Container == Container,
+        _ => true,
+    };
+
+    /// <summary>Where, as the list says it when nothing runs there.</summary>
+    public string Said => Where switch
+    {
+        AttachWhere.ThisMachine => "on this machine",
+        AttachWhere.Containers => "in a container",
+        AttachWhere.Container => $"in container {Container}",
+        _ => string.Empty,
+    };
+}
+
 /// <summary>What the program chosen in Attach to Process's dialog is for: the debugger (Attach to Process), or the
 /// profiler (Attach Profiler's choice among the containers' programs).</summary>
 public enum AttachPurpose
@@ -25,7 +59,8 @@ public enum AttachPurpose
 /// executable, process id, user and command line, those attached to before in this window first under Recently
 /// attached, then those in the engine's running containers under each container (what to know first after the command
 /// line; one no debugger can attach to says why, and Attach stays off for it). The search box narrows them by any of
-/// those as it is typed, the arrow keys choose among the rows left, and Enter, a double-click or Attach with .NET
+/// those or a container's name as it is typed, its Sort and Filter to those of this machine, of the containers or of one
+/// container (<see cref="Scope"/>), the arrow keys choose among the rows left, and Enter, a double-click or Attach with .NET
 /// Debugger closes it with the program chosen (null when cancelled). Refresh lists them again, for a program started
 /// since it opened. For the profiler it is titled and its button named Attach Profiler
 /// (<see cref="AttachPurpose"/>).</summary>
@@ -42,12 +77,15 @@ public sealed class AttachToProcessDialog : IdeWindow
     private readonly TextBlock empty;
     private readonly Button attach;
     private IReadOnlyList<DotnetProcess>? listed;
+    private AttachScope scope;
 
+    /// <param name="scope">Where the programs listed at first run, as the window last chose.</param>
     public AttachToProcessDialog(Func<Task<IReadOnlyList<DotnetProcess>>> list, Func<DotnetProcess, bool> recent, string search = "",
-        AttachPurpose purpose = AttachPurpose.Debugger)
+        AttachPurpose purpose = AttachPurpose.Debugger, AttachScope? scope = null)
     {
         this.list = list;
         this.recent = recent;
+        this.scope = scope ?? AttachScope.Anywhere;
         Purpose = purpose;
         Title = purpose == AttachPurpose.Profiler ? "Attach Profiler" : "Attach to Process";
         Width = 900;
@@ -56,13 +94,16 @@ public sealed class AttachToProcessDialog : IdeWindow
         MinHeight = 300;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        Search = new TextBox { Classes = { StyleClasses.Search }, Text = search, PlaceholderText = "Search by name, process ID, user or command line" };
+        Search = new TextBox { Classes = { StyleClasses.Search }, Text = search, PlaceholderText = "Search by name, process ID, user, command line or container" };
         Search.TextChanged += (_, _) => ShowRows();
         Search.AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
         Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(RefreshAsync()));
         refresh.Margin = new Thickness(6, 0, 0, 0);
         refresh.VerticalAlignment = VerticalAlignment.Center;
         DockPanel.SetDock(refresh, Dock.Right);
+        Places = new ToolWindows.FilterMenu("Show Processes Running…", PlaceItems);
+        Places.Narrowed = this.scope.Where != AttachWhere.Anywhere;
+        Places.Inside(Search);
         DockPanel top = new() { [DockPanel.DockProperty] = Dock.Top, Margin = new Thickness(0, 0, 0, 10), Children = { refresh, Search } };
 
         ColumnTitles titles = ColumnTitles.Of(Columns, ["Executable", "Process ID", "User", "Command Line"], ColumnTitles.OverList, CellInset);
@@ -101,6 +142,25 @@ public sealed class AttachToProcessDialog : IdeWindow
 
     /// <summary>The search box, which narrows the rows as it is typed.</summary>
     public TextBox Search { get; }
+
+    /// <summary>The choice of where the programs listed run, beside the search.</summary>
+    public ToolWindows.FilterMenu Places { get; }
+
+    /// <summary>Where the programs listed run; a change lists them again at once.</summary>
+    public AttachScope Scope
+    {
+        get => scope;
+        set
+        {
+            scope = value;
+            Places.Narrowed = value.Where != AttachWhere.Anywhere;
+            ShowRows();
+            ScopeChanged?.Invoke(this, value);
+        }
+    }
+
+    /// <summary>Raised as the person chooses where the programs listed run, for the window to open with next time.</summary>
+    public event EventHandler<AttachScope>? ScopeChanged;
 
     /// <summary>What the program chosen is attached to.</summary>
     public AttachPurpose Purpose { get; }
@@ -155,7 +215,7 @@ public sealed class AttachToProcessDialog : IdeWindow
             return;
         }
         string typed = Search.Text?.Trim() ?? string.Empty;
-        List<DotnetProcess> found = [.. listed.Where(p => p.Matches(typed))];
+        List<DotnetProcess> found = [.. listed.Where(p => scope.Holds(p) && p.Matches(typed))];
         List<DotnetProcess> before = [.. found.Where(recent)];
         List<DotnetProcess> local = [.. found.Except(before).Where(p => p.Container is null)];
         List<IGrouping<string, DotnetProcess>> containers = [.. found.Except(before).Where(p => p.Container is not null).GroupBy(p => p.Container!)];
@@ -184,7 +244,9 @@ public sealed class AttachToProcessDialog : IdeWindow
         rows.SelectedItem = shown.FirstOrDefault(r => r.Process is { } p && kept is not null && p.Id == kept.Id && p.Container == kept.Container && p.CommandLine == kept.CommandLine)
             ?? shown.FirstOrDefault(r => r.Process is { WhyNot: null });
         attach.IsEnabled = Chosen is { WhyNot: null };
-        empty.Text = listed.Count > 0 ? $"No .NET process matches '{typed}'"
+        bool there = listed.Any(scope.Holds);
+        empty.Text = there && typed.Length > 0 ? $"No .NET process {(scope.Where == AttachWhere.Anywhere ? string.Empty : scope.Said + " ")}matches '{typed}'"
+            : listed.Count > 0 ? $"No .NET process runs {scope.Said}"
             : Purpose == AttachPurpose.Profiler ? "Nothing of the folder's runs, and no .NET program runs in a container, to profile"
             : "No .NET processes to attach to";
         empty.IsVisible = found.Count == 0;
@@ -192,6 +254,30 @@ public sealed class AttachToProcessDialog : IdeWindow
         {
             rows.ScrollIntoView(selected);
         }
+    }
+
+    /// <summary>The choices of where the programs listed run: anywhere, this machine, any container, then each container
+    /// running a program (the one chosen too, while none of its programs is listed).</summary>
+    private IReadOnlyList<Control> PlaceItems()
+    {
+        List<Control> items =
+        [
+            MenuChoice.Of("All Processes", scope.Where == AttachWhere.Anywhere, () => Scope = AttachScope.Anywhere),
+            MenuChoice.Of("This Machine", scope.Where == AttachWhere.ThisMachine, () => Scope = new AttachScope(AttachWhere.ThisMachine)),
+            MenuChoice.Of("All Containers", scope.Where == AttachWhere.Containers, () => Scope = new AttachScope(AttachWhere.Containers)),
+        ];
+        string[] containers = [.. (listed ?? []).Select(p => p.Container).OfType<string>()
+            .Concat(scope.Container is { } chosen ? [chosen] : []).Distinct(StringComparer.Ordinal).Order(StringComparer.OrdinalIgnoreCase)];
+        if (containers.Length > 0)
+        {
+            items.Add(new Separator());
+        }
+        foreach (string container in containers)
+        {
+            items.Add(MenuChoice.Of($"Container {container}", scope.Where == AttachWhere.Container && scope.Container == container,
+                () => Scope = new AttachScope(AttachWhere.Container, container)));
+        }
+        return items;
     }
 
     /// <summary>The arrows move among the programs from the search box as in the list, past the headings; Enter attaches.</summary>

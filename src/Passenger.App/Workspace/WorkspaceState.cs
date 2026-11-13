@@ -7,7 +7,8 @@ namespace Passenger.App.Workspace;
 
 /// <summary>What a folder's window had open, kept in the folder's place in the store: the editors' splits, tabs (pinned
 /// or not) and carets, the editor windows, the recent files, the projects unloaded, the target frameworks chosen, the
-/// files' folds, the Explorer's view and whether Godot's script editor was offered, so opening the folder again brings them
+/// files' folds, the Explorer's view, where Attach to Process's programs run and whether Godot's script editor was offered,
+/// so opening the folder again brings them
 /// back. Only the window a person uses keeps it, as with the layout.</summary>
 public sealed record WorkspaceState : IStateDocument<WorkspaceState>
 {
@@ -46,6 +47,9 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
     /// Files view.</summary>
     public Explorer.ExplorerViewKind ExplorerView { get; init; }
 
+    /// <summary>Where the programs Attach to Process lists run, as the person last chose; null for anywhere.</summary>
+    public Debugging.AttachScope? AttachScope { get; init; }
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
     /// <summary>A tab or a path without its file is left out, and a window without editors; the editors bring the rest (a
@@ -54,6 +58,7 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
     public WorkspaceState Clamped() => this with
     {
         ExplorerView = Enum.IsDefined(ExplorerView) ? ExplorerView : Explorer.ExplorerViewKind.Solution,
+        AttachScope = AttachScope is { } scope && Enum.IsDefined(scope.Where) && (scope.Where == Debugging.AttachWhere.Container) == scope.Container is { Length: > 0 } ? scope : null,
         Folds = [.. (Folds ?? []).Where(f => f is { Path.Length: > 0 }).Take(FoldMemory.Kept).Select(f => f with
         {
             Folded = [.. (f.Folded ?? []).Where(r => r is [>= 0 and var start, var end] && end > start)],

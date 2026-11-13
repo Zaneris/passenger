@@ -18,6 +18,9 @@ public partial class MainWindow
     /// one started again under another process id is found again.</summary>
     private readonly List<DotnetProcess> attachedTo = [];
 
+    /// <summary>Where the programs Attach to Process lists run, as last chosen in the folder (kept with it).</summary>
+    private AttachScope attachScope = AttachScope.Anywhere;
+
     /// <summary>The last session Attach to Process or Reattach opened, which Rerun reattaches.</summary>
     private Debugging.DebugSession? attachSession;
 
@@ -62,7 +65,12 @@ public partial class MainWindow
     /// <summary>The dialog over the window, searched for what is given; the program chosen there is attached to.</summary>
     public AttachToProcessDialog ShowAttachToProcess(string search = "")
     {
-        AttachToProcessDialog dialog = new(AttachableAsync, WasAttached, search);
+        AttachToProcessDialog dialog = new(AttachableAsync, WasAttached, search, scope: attachScope);
+        dialog.ScopeChanged += (_, chosen) =>
+        {
+            attachScope = chosen;
+            KeepWorkspace();
+        };
         AttachToProcessDialog = dialog;
         dialog.Closed += (_, _) =>
         {
