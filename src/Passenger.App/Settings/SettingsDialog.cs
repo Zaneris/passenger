@@ -478,6 +478,7 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             TextBox { AcceptsReturn: true } => 5,
             StackPanel { Orientation: Orientation.Vertical, Children: [TextBox, ..] } => 5,
+            global::Passenger.App.Settings.ThemeExplorer => 5,
             StackPanel { Orientation: Orientation.Vertical, Children: [RadioButton or Border { Classes: [StyleClasses.Framed] }, ..] } => 6,
             _ => -1,
         };
