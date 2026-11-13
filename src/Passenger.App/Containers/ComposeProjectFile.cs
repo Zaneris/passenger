@@ -17,10 +17,11 @@ public sealed record ComposeProjectFile
     /// <summary>The service its run launches (DockerServiceName); empty when it names none.</summary>
     public string ServiceName { get; init; } = string.Empty;
 
-    /// <summary>The address its browser opens (DockerServiceUrl), its service's scheme, host and port as tokens; empty for none.</summary>
+    /// <summary>The address its browser opens (DockerServiceUrl), with the tokens <see cref="ServiceUrls"/> fills; empty for none.</summary>
     public string ServiceUrl { get; init; } = string.Empty;
 
-    /// <summary>Whether its run opens the browser: DockerLaunchAction LaunchBrowser.</summary>
+    /// <summary>Whether its run opens the browser: DockerLaunchAction LaunchBrowser, or with no DockerLaunchAction,
+    /// DockerLaunchBrowser true.</summary>
     public bool LaunchesBrowser { get; init; }
 
     /// <summary>Its Compose project's name (DockerComposeProjectName), which every compose command takes; null where it names
@@ -52,7 +53,9 @@ public sealed record ComposeProjectFile
             AdditionalFiles = (Property(MSBuildNames.AdditionalComposeFilePaths) ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             ServiceName = Property(MSBuildNames.DockerServiceName) ?? string.Empty,
             ServiceUrl = Property(MSBuildNames.DockerServiceUrl) ?? string.Empty,
-            LaunchesBrowser = string.Equals(Property(MSBuildNames.DockerLaunchAction), LaunchBrowserAction, StringComparison.OrdinalIgnoreCase),
+            LaunchesBrowser = Property(MSBuildNames.DockerLaunchAction) is { } action
+                ? string.Equals(action, LaunchBrowserAction, StringComparison.OrdinalIgnoreCase)
+                : bool.TryParse(Property(MSBuildNames.DockerLaunchBrowser), out bool launch) && launch,
             ProjectName = Property(MSBuildNames.DockerComposeProjectName),
         };
     }

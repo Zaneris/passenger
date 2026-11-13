@@ -775,10 +775,10 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     }
 
     /// <summary>A run whose service serves HTTPS with no trusted development certificate asks first, in a window that
-    /// lets no agent in (--no-mcp): Run over HTTP serves it over HTTP; a failed export is said in the status bar;
-    /// Create and Trust has dev-certs trust it and export it as PEM with no password, the person's alone to read, again
-    /// once dev-certs names another certificate (an earlier Passenger's open folder and .pfx put right); Run and
-    /// Profile stopped as dev-certs checks say so and leave nothing. dev-certs is a stand-in.</summary>
+    /// lets no agent in (--no-mcp): Run over HTTP serves it over HTTP, its page opened over HTTP; a failed export is said
+    /// in the status bar; Create and Trust has dev-certs trust it and export it as PEM with no password, the person's alone
+    /// to read, again once dev-certs names another certificate (an earlier Passenger's open folder and .pfx put right); Run
+    /// and Profile stopped as dev-certs checks say so and leave nothing. dev-certs is a stand-in.</summary>
     [AvaloniaFact]
     public void A_run_that_serves_HTTPS_with_no_trusted_certificate_asks_to_create_and_trust_it_or_run_over_HTTP_and_says_an_export_that_fails()
     {
@@ -847,6 +847,10 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Assert.Contains("\"ASPNETCORE_HTTP_PORTS=8081\"", Env(), StringComparison.Ordinal);
             Assert.DoesNotContain("/https", Mounts(), StringComparison.Ordinal);
             Assert.Equal("web 1", Page(Published(project, "web", 8081)));
+            // Its HTTPS port serves HTTP this run, so the page opens over HTTP, once web answers there.
+            Ui.WaitFor(() => window.Browsed.Any(), "the browser to open at web's port", TimeSpan.FromMinutes(1));
+            int served = Published(project, "web", 8081);
+            Assert.True(window.Browsed is [{ Scheme: "http" } page] && page.Port == served, $"The browser opened [{string.Join(", ", window.Browsed)}], where web serves HTTP on {served}");
             Stopped(window, project);
 
             File.WriteAllText(Path.Combine(standIn, "check"), "0");

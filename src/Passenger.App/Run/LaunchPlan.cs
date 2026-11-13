@@ -92,6 +92,11 @@ public sealed partial record LaunchPlan
     /// <summary>Where the browser opens once the program listens, or null when the configuration opens none.</summary>
     public string? BrowserUrl { get; init; }
 
+    /// <summary>The container's service whose HTTP answer at <see cref="BrowserUrl"/> opens the browser, since the engine
+    /// takes connections on its published port before its program listens; null for a program whose port taking a connection
+    /// opens it.</summary>
+    public string? BrowserService { get; init; }
+
     /// <summary>A web app's build, which its browser refresh needs; null for any other program.</summary>
     public WebBuild? Web { get; init; }
 

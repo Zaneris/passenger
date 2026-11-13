@@ -180,7 +180,9 @@ public partial class MainWindow
     }
 
     /// <summary>Open browser after launch: the plan's browser URL opens once its program listens there (its port takes
-    /// a connection); never once the program ended, nor for a launch that came after it.</summary>
+    /// a connection), or a container's service answers HTTP there, the status adding to what it says meanwhile that it
+    /// waits, and saying what it said alone once the page opens; never once the program ended, nor for a launch that came
+    /// after it.</summary>
     private void OpenBrowserOnceListening(LaunchPlan plan, Task ended)
     {
         browserWait?.Cancel();
@@ -191,27 +193,36 @@ public partial class MainWindow
         }
         CancellationTokenSource waiting = browserWait = new CancellationTokenSource();
         IdeErrors.Observe(ended.ContinueWith(_ => waiting.Cancel(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default));
+        string? service = plan.BrowserService;
+        TimeSpan limit = Waits.Of(BrowserLaunch.AnswerLimit);
+        (string? Text, ProblemSeverity? Severity, StatusPlace? Place) before = status.Said;
+        string? saying = service is null ? null : BrowserLaunch.Waiting(before.Text, service, address);
+        if (saying is not null)
+        {
+            status.Say(saying, before.Severity, before.Place);
+        }
         // Not background work: it lasts as long as the program takes to listen, which no screenshot or settling test waits for.
         IdeErrors.Observe(BackgroundWork.Unheld(async () =>
         {
-            bool? listening = await BrowserLaunch.ListeningAsync(address, waiting.Token);
-            if (listening is null)
-            {
-                return;
-            }
+            bool? up = service is null ? await BrowserLaunch.ListeningAsync(address, waiting.Token) : await BrowserLaunch.AnsweringAsync(address, limit, waiting.Token);
             UiThread.Post(() =>
             {
-                if (waiting.IsCancellationRequested)
+                // The wait's words give way to those before, unless anything since (a later launch's wait too) took their place.
+                if (saying is not null && ReferenceEquals(browserWait, waiting) && status.Text == saying && up != false)
+                {
+                    status.SayAgain(before);
+                }
+                if (up is null || waiting.IsCancellationRequested)
                 {
                     return;
                 }
-                if (listening == true)
+                if (up == true)
                 {
                     Browse(address);
                 }
                 else
                 {
-                    status.Text = BrowserLaunch.NotResponding(address);
+                    status.Text = service is null ? BrowserLaunch.NotResponding(address) : BrowserLaunch.NotAnswered(service, address, limit);
                 }
             });
         }));

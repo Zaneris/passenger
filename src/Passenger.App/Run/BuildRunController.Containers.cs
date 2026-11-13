@@ -7,10 +7,11 @@ namespace Passenger.App.Run;
 
 /// <summary>Run of a container configuration: Compose's model of its files read, Passenger's override written, its .NET
 /// services built on the host (fast mode), its services brought up and waited for, their merged log followed in the Run
-/// console, the browser opened once the launched service's published port answers, and the Containers window shown its
-/// project; Stop takes it down, and Rerun builds again and restarts only the services whose build changed. Debug brings it
-/// up the same way with the services it debugs held at their start, and attaches a session to each in its container (the
-/// adapter there over docker exec), its tab's console its container's log; Run with Hot Reload attaches to each quietly.</summary>
+/// console, the browser opened once the launched service answers HTTP at its published port, and the Containers window
+/// shown its project; Stop takes it down, and Rerun builds again and restarts only the services whose build changed. Debug
+/// brings it up the same way with the services it debugs held at their start, and attaches a session to each in its
+/// container (the adapter there over docker exec), its tab's console its container's log; Run with Hot Reload attaches to
+/// each quietly.</summary>
 public sealed partial class BuildRunController
 {
     /// <summary>The container run under way, if any (its services up, its log followed).</summary>
@@ -389,7 +390,8 @@ public sealed partial class BuildRunController
         if (plan.BrowserUrl is not null && await run.BrowserUrlAsync(CancellationToken.None) is { } url)
         {
             run.Address = url;
-            parts.OpenBrowser(new LaunchPlan { Name = chosen.Name, Program = engine.Cli!, WorkingDirectory = plan.Folder, BrowserUrl = url }, session.Runner.Ended);
+            parts.OpenBrowser(new LaunchPlan { Name = chosen.Name, Program = engine.Cli!, WorkingDirectory = plan.Folder, BrowserUrl = url, BrowserService = plan.LaunchService ?? chosen.Name },
+                session.Runner.Ended);
         }
         return null;
     }

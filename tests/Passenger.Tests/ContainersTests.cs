@@ -1155,6 +1155,56 @@ public sealed class ContainersTests
         }
     }
 
+    /// <summary>A Docker Compose project that opens the browser (DockerLaunchBrowser, with no DockerLaunchAction) opens its
+    /// service's address (DockerServiceUrl, its {ServiceIPAddress} the host the published port is reached on) only once the
+    /// service answers HTTP there, the status adding meanwhile that it waits: the engine takes a connection on a published
+    /// port from its container's start, before its program listens, which a port here that takes each request and lets it go
+    /// unanswered stands in for; once it answers, the page opens and the status says what the run said alone.</summary>
+    [AvaloniaFact]
+    public void A_Docker_Compose_projects_browser_opens_once_its_service_answers_HTTP_the_status_saying_meanwhile_that_it_waits()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        int asked = 0;
+        int answering = 0;
+        using StandInHttp web = new(exchange =>
+        {
+            Interlocked.Increment(ref asked);
+            return Volatile.Read(ref answering) == 1 ? exchange.ReplyAsync(200, "text/plain", "web") : Task.CompletedTask;
+        });
+        string engineFolder = TestFolders.Create("ctr-dcwait-");
+        string cli = StandInComposeEngine(engineFolder, "tcp://127.0.0.1:2376", web.Port);
+        string folder = ComposeProject("ctr-dcwait-window-", """
+            <DockerLaunchBrowser>true</DockerLaunchBrowser>
+            <DockerServiceUrl>{Scheme}://{ServiceIPAddress}:{ServicePort}/swagger</DockerServiceUrl>
+            <DockerServiceName>web</DockerServiceName>
+            """);
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
+        window.Show();
+        window.OpenFolder(Path.Combine(folder, "Shop.slnx"));
+        Ui.Settle();
+        Uri page = new($"http://127.0.0.1:{web.Port.ToString(CultureInfo.InvariantCulture)}/swagger");
+        try
+        {
+            Assert.True(window.SelectConfiguration("docker-compose"), $"No configuration of the .dcproj: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+            Ui.Launched(window, window.RunAsync(), "the Docker Compose project's run to come up");
+            Ui.WaitFor(() => Volatile.Read(ref asked) >= 2, "web asked twice, its requests let go unanswered");
+            Assert.True(window.Browsed.Count == 0, $"The browser opened at {string.Join(", ", window.Browsed)} before web answered");
+            string waiting = window.Status ?? string.Empty;
+            Assert.True(waiting.StartsWith("Running docker-compose", StringComparison.Ordinal) && waiting.EndsWith($"; waiting for web to answer at {page} before opening the browser…", StringComparison.Ordinal),
+                $"While web let its requests go, the status said: {waiting}");
+            Volatile.Write(ref answering, 1);
+            Ui.WaitFor(() => window.Browsed.Count > 0, "the browser to open once web answered");
+            Assert.Equal([page], window.Browsed);
+            Assert.Equal(waiting[..waiting.LastIndexOf("; waiting for web", StringComparison.Ordinal)], window.Status);
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            window.Close();
+            File.WriteAllText(Path.Combine(engineFolder, "down"), string.Empty);
+        }
+    }
+
     /// <summary>A folder of a solution naming a Docker Compose project (.dcproj) alone, whose docker-compose.yml runs a busybox
     /// web publishing its port 80, the .dcproj's properties those given.</summary>
     private static string ComposeProject(string prefix, string properties)

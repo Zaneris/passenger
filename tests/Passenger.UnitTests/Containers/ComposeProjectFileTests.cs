@@ -54,6 +54,20 @@ public sealed class ComposeProjectFileTests
         Assert.Equal(("docker-compose", 0, string.Empty, false), (read.BaseFilePath, read.AdditionalFiles.Count, read.ServiceName, read.LaunchesBrowser));
     }
 
+    [Theory]
+    [InlineData("<DockerLaunchBrowser>True</DockerLaunchBrowser>", true)]
+    [InlineData("<DockerLaunchBrowser>false</DockerLaunchBrowser>", false)]
+    [InlineData("<DockerLaunchAction>None</DockerLaunchAction><DockerLaunchBrowser>true</DockerLaunchBrowser>", false)]
+    [InlineData("<DockerLaunchAction>launchbrowser</DockerLaunchAction><DockerLaunchBrowser>false</DockerLaunchBrowser>", true)]
+    [InlineData("<DockerLaunchAction>LaunchWCFTestClient</DockerLaunchAction>", false)]
+    [InlineData("", false)]
+    public void DockerLaunchAction_says_whether_the_browser_opens_and_DockerLaunchBrowser_says_only_where_it_is_not_set(string properties, bool opens)
+    {
+        ComposeProjectFile read = ComposeProjectFile.Read($"<Project Sdk=\"Microsoft.Docker.Sdk\"><PropertyGroup>{properties}</PropertyGroup></Project>")
+            ?? throw new Xunit.Sdk.XunitException("The .dcproj did not read");
+        Assert.True(read.LaunchesBrowser == opens, $"A .dcproj of {properties} {(opens ? "opened no browser" : "opened the browser")}");
+    }
+
     [Fact]
     public void Text_that_is_no_XML_and_an_entity_a_DTD_declares_read_as_no_project()
     {

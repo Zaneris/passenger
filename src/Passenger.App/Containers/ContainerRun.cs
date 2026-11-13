@@ -1580,16 +1580,16 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         return chosen?.LinkOn(endpoint)?.GetLeftPart(UriPartial.Authority);
     }
 
-    /// <summary>The address the browser opens: the plan's, its <c>{Scheme}</c>, <c>{ServiceHost}</c> and
-    /// <c>{ServicePort}</c> filled from the port the engine published for the launched service, on the engine's machine
-    /// (<see cref="ContainerPort.LinkOn"/>); null without one.</summary>
+    /// <summary>The address the browser opens: the plan's, its tokens (<see cref="ServiceUrls"/>) filled from the port the
+    /// engine published for the launched service, on the engine's machine (<see cref="ContainerPort.LinkOn"/>), over HTTPS where
+    /// that port serves it this run; null without one.</summary>
     public async Task<string?> BrowserUrlAsync(CancellationToken cancel)
     {
         if (Plan.BrowserUrl is not { } url)
         {
             return null;
         }
-        if (!url.Contains('{', StringComparison.Ordinal))
+        if (!ServiceUrls.HasTokens(url))
         {
             return url;
         }
@@ -1602,12 +1602,12 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             return null;
         }
         string on = published.ToString(CultureInfo.InvariantCulture);
-        string scheme = ContainerPlans.HttpsPort(port) || url.StartsWith("https", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
+        // A .NET service that serves HTTPS serves HTTP on the same port for a run with no development certificate.
+        bool overHttp = Certificate is null && Plan.Https.Contains(service);
+        string scheme = (ContainerPlans.HttpsPort(port) && !overHttp) || url.StartsWith("https", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
         string host = new ContainerPort(on, port.ToString(CultureInfo.InvariantCulture), "tcp").LinkOn((await engine.StateAsync(cancel: cancel)).Endpoint)?.Host
             ?? "localhost";
-        return url.Replace("{Scheme}", scheme, StringComparison.OrdinalIgnoreCase)
-            .Replace("{ServiceHost}", host, StringComparison.OrdinalIgnoreCase)
-            .Replace("{ServicePort}", on, StringComparison.OrdinalIgnoreCase);
+        return ServiceUrls.Filled(url, scheme, host, on);
     }
 
     /// <summary>Runs a docker command to its end, its output streamed into the console, its words first.</summary>

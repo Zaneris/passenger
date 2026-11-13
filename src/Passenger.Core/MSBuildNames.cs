@@ -126,6 +126,7 @@ public static class MSBuildNames
     public const string DockerServiceName = "DockerServiceName";
     public const string DockerServiceUrl = "DockerServiceUrl";
     public const string DockerLaunchAction = "DockerLaunchAction";
+    public const string DockerLaunchBrowser = "DockerLaunchBrowser";
     public const string DockerComposeProjectName = "DockerComposeProjectName";
 
     // A publish and its profile's (.pubxml).
