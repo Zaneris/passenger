@@ -1760,7 +1760,7 @@ public static class Ui
         for (int i = 0; i < path.Length; i++)
         {
             string step = path[i];
-            MenuItem item = items.FirstOrDefault(m => (string?)m.Header == step)
+            MenuItem item = items.FirstOrDefault(m => m.Header as string == step)
                 ?? throw new InvalidOperationException($"{where} has no {step}: [{string.Join(", ", items.Select(m => $"{m.Header}{(m.IsEnabled ? "" : " (disabled)")}"))}]");
             if (!item.IsEffectivelyEnabled)
             {
