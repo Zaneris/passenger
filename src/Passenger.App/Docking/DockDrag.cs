@@ -57,8 +57,18 @@ internal sealed class DockDrag
         return stripe?.IndexAt(anchor, host.TranslatePoint(at, stripe) ?? at);
     }
 
+    /// <summary>Where a window dragged from elsewhere (its editor tab) would dock at a point, lit in the frame's overlay.</summary>
+    public DropZone? ZoneFor(ToolWindow window, Point at) => Zone(window, at) is { } zone ? zone with { Overlay = Overlay } : null;
+
+    /// <summary>Whether a point is over the editors' middle, where a window dropped goes into an editor tab.</summary>
+    private bool OverEditors(Point at) => host.EditorBounds is { Width: > 0 } editors && editors.Contains(at) && Target(at) is null;
+
     private DropZone? Zone(ToolWindow window, Point at)
     {
+        if (OverEditors(at) && window.Mode != ToolMode.Editor)
+        {
+            return new DropZone(host.EditorBounds.Deflate(4), $"{window.Title}: Editor Tab");
+        }
         if (Target(at) is not { } place)
         {
             return null;
@@ -81,10 +91,23 @@ internal sealed class DockDrag
         return new DropZone(zone, $"{window.Title}: {ToolWindow.Name(place)}");
     }
 
-    private void Drop(ToolWindow window, Point at)
+    /// <summary>Docks a window where it was let go: in the place under the point, among its buttons on a stripe, or in an
+    /// editor tab, open, over the editors' middle.</summary>
+    public void Drop(ToolWindow window, Point at)
     {
+        if (OverEditors(at))
+        {
+            // Dropped among the editors, it opens there as a tab, the one it then stands as.
+            host.SetMode(window, ToolMode.Editor);
+            host.Show(window.Id);
+            return;
+        }
         if (Target(at) is { } anchor)
         {
+            if (window.Mode == ToolMode.Editor)
+            {
+                host.SetMode(window, ToolMode.Docked);
+            }
             host.Move(window, anchor, StripeIndex(anchor, at));
         }
     }

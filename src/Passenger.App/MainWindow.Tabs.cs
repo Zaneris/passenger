@@ -40,7 +40,9 @@ public partial class MainWindow
 
     /// <summary>A tab's menu items, in their order: the file's path and Open In as the Explorer's row has them, an HTML
     /// page's browser too.</summary>
-    private static MenuEntry[] TabMenuItems(OpenDocument file) =>
+    private static MenuEntry[] TabMenuItems(OpenDocument file) => file.Tool is not null
+        ? Items(A.CloseTab, A.CloseOtherTabs, A.CloseAllTabs, null, A.MoveToOppositeGroup, null, A.DockToolWindow)
+        :
     [
         .. Items(A.CloseTab, A.CloseOtherTabs, A.CloseAllTabs, A.CloseUnpinned, A.CloseTabsLeft, A.CloseTabsRight, null,
             A.SplitRight, A.SplitDown, A.MoveToOppositeGroup, A.Unsplit, A.UnsplitAll, null,
@@ -91,8 +93,8 @@ public partial class MainWindow
             }
         }, _ => Editors.CanReopen ? null : "No tab has been closed", (2, 0));
         // Found by older names too.
-        Tab(A.SplitRight, "Split Right", c => Editors.Split(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, Orientation.Horizontal, move: false), Refusals.NeedsFile, (2, 1), ["Split Vertically"]);
-        Tab(A.SplitDown, "Split Down", c => Editors.Split(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, Orientation.Vertical, move: false), Refusals.NeedsFile, (2, 2), ["Split Horizontally"]);
+        Tab(A.SplitRight, "Split Right", c => Editors.Split(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, Orientation.Horizontal, move: false), Splits, (2, 1), ["Split Vertically"]);
+        Tab(A.SplitDown, "Split Down", c => Editors.Split(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, Orientation.Vertical, move: false), Splits, (2, 2), ["Split Horizontally"]);
         Tab(A.Unsplit, "Unsplit", c => Editors.Unsplit(GroupOf(c), all: false), NotSplit, (2, 3));
         Tab(A.UnsplitAll, "Unsplit All", c => Editors.Unsplit(GroupOf(c), all: true), NotSplit, (2, 4));
 
@@ -112,6 +114,9 @@ public partial class MainWindow
         int IndexOf(ActionContext c) => TabOf(c)!.Value.Group.Tabs.Select(t => t.Document).ToList().IndexOf(TabOf(c)!.Value.File);
 
         string? NotSplit(ActionContext c) => Editors.IsSplit(GroupOf(c)) ? null : "The editor is not split";
+
+        // A tool window's view stands in one place, so its tab moves between groups but is never shown twice.
+        string? Splits(ActionContext c) => Refusals.NeedsFile(c) ?? (TabOf(c)?.File.Tool is { } tool ? $"{tool.Window.Title} shows in one place at a time" : null);
     }
 
     /// <summary>The theme's default layout as the dock's default, once every tool window is added: what the window opens on

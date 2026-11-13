@@ -13,6 +13,9 @@ public sealed record PlacedWindow(string Id, ToolAnchor Anchor);
 /// Settings wins over the theme's (each null where the theme keeps Passenger's own).</summary>
 public sealed record ThemeLayout(IReadOnlyList<PlacedWindow> Places, IReadOnlyList<string>? Open, double? LeftWidth, double? RightWidth, double? BottomHeight)
 {
+    /// <summary>The tool windows it shows as tabs among the editors, by their ids, each kept off the places.</summary>
+    public IReadOnlyList<string> InEditor { get; init; } = [];
+
     /// <summary>Where the editor's tabs stand.</summary>
     public EditorTabsPlace? EditorTabs { get; init; }
 
@@ -53,14 +56,20 @@ public static partial class ThemeFiles
         }
         PassOver(file, layout.Value, ["places", "open", "sizes", "editorTabs", "toolWindows", "closedWindows", "findResults"], "layout", problems);
         List<PlacedWindow> places = [];
+        List<string> inEditor = [];
         if (Part(layout.Value, "places") is { } placed)
         {
             foreach (JsonProperty place in placed.EnumerateObject())
             {
+                if (place.Name == "editor")
+                {
+                    inEditor.AddRange(Windows(file, place.Value, "layout's places' editor", problems));
+                    continue;
+                }
                 int found = Array.FindIndex(AnchorWords, a => a.Word == place.Name);
                 if (found < 0)
                 {
-                    problems.Add($"{file}: {place.Name} in layout's places is no place this Passenger knows ({Listed(AnchorWords.Select(a => a.Word))}), so it was passed over");
+                    problems.Add($"{file}: {place.Name} in layout's places is no place this Passenger knows ({Listed([.. AnchorWords.Select(a => a.Word), "editor"])}), so it was passed over");
                     continue;
                 }
                 foreach (string id in Windows(file, place.Value, $"layout's places' {place.Name}", problems))
@@ -73,11 +82,16 @@ public static partial class ThemeFiles
                 }
             }
         }
+        if (inEditor.FirstOrDefault(id => places.Any(p => p.Id == id)) is { } twice)
+        {
+            throw new FormatException($"places {twice} in layout's {AnchorWords.First(a => a.Anchor == places.First(p => p.Id == twice).Anchor).Word} and in editor: a tool window docks in one place");
+        }
         List<string>? open = JsonMembers.Value(layout.Value, "open") is { } opened ? [.. Windows(file, opened, "layout's open", problems).Distinct(StringComparer.Ordinal)] : null;
         JsonElement? sizes = Part(layout.Value, "sizes");
         PassOver(file, sizes ?? default, ["left", "right", "bottom"], "layout's sizes", problems);
         return new ThemeLayout(places, open, Area(sizes, "left"), Area(sizes, "right"), Area(sizes, "bottom"))
         {
+            InEditor = [.. inEditor.Distinct(StringComparer.Ordinal)],
             EditorTabs = Word(layout.Value, "editorTabs", [("top", EditorTabsPlace.Top), ("left", EditorTabsPlace.Left), ("right", EditorTabsPlace.Right)]),
             ToolWindows = Word(layout.Value, "toolWindows", [("icons", ToolWindowLook.StripeIcons), ("tabs", ToolWindowLook.TitledTabs)]),
             ClosedWindows = Word(layout.Value, "closedWindows", [("keep", ClosedToolWindows.KeepIcons), ("leave", ClosedToolWindows.LeaveStripe)]),

@@ -57,6 +57,8 @@ public sealed class DockHost : Grid
     /// <summary>The IDE's window the frame is in, once it is.</summary>
     private Window? host;
 
+    private readonly DockDrag drag;
+
     private bool titledTabs;
     private bool closesOffStripe;
 
@@ -103,7 +105,7 @@ public sealed class DockHost : Grid
         leftArea.Children.Add(new HairlineDivider(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 });
         rightArea.Children.Add(new HairlineDivider(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 });
         bottomArea.Children.Add(new HairlineDivider(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 });
-        DockDrag drag = new(this, leftStripe, rightStripe);
+        drag = new(this, leftStripe, rightStripe);
         Drag = drag.Gesture;
         Place(drag.Overlay, 0, 0, rowSpan: 3, columnSpan: 7);
         Layout();
@@ -170,6 +172,33 @@ public sealed class DockHost : Grid
         }
     }
 
+    /// <summary>Where a window shown as an editor tab (<see cref="ToolMode.Editor"/>) goes: Show opens its tab among the
+    /// editors, given the keys when brought forward, and Close closes it; its tab closed there tells
+    /// <see cref="EditorTabClosed"/>.</summary>
+    public (Action<ToolWindow, bool> Show, Action<ToolWindow> Close)? EditorTabs { get; set; }
+
+    /// <summary>A window's editor tab closed among the editors: the window is hidden, its icon kept.</summary>
+    public void EditorTabClosed(ToolWindow window)
+    {
+        if (window is { Mode: ToolMode.Editor, IsShown: true })
+        {
+            window.IsShown = false;
+            PassActive(window);
+            Layout();
+            LayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>The place a window dragged at a point on the screen would dock in, lit in the frame's overlay; null where
+    /// it would dock nowhere.</summary>
+    public DropZone? ZoneFor(ToolWindow window, PixelPoint at) => drag.ZoneFor(window, this.PointToClient(at));
+
+    /// <summary>Docks a window where it was let go, at a point on the screen, as a drag of its icon docks it.</summary>
+    public void DropAt(ToolWindow window, PixelPoint at) => drag.Drop(window, this.PointToClient(at));
+
+    /// <summary>The editor area's place in the frame, where a window dropped goes into an editor tab.</summary>
+    internal Rect EditorBounds => center.Bounds;
+
     /// <summary>The windows the stripes and the places' tabs name: all but those closed off them.</summary>
     private List<ToolWindow> OnStripes => [.. windows.Where(w => !closesOffStripe || !w.IsClosed)];
 
@@ -229,8 +258,9 @@ public sealed class DockHost : Grid
     }
 
     /// <summary>The default layout: the theme's (<see cref="UseDefault"/>) laid over each window's place as it was added,
-    /// the theme's windows first at each place it names, then the rest in their order; one window open in each place, the
-    /// first in its order.</summary>
+    /// the theme's windows first at each place it names, then the rest in their order, those it puts among the editors
+    /// as editor tabs, their icons where Passenger puts them; one window docked open in each place, the first in its
+    /// order.</summary>
     public DockLayout Default()
     {
         Dictionary<string, DockedWindow> places = new(firstPlaces);
@@ -246,8 +276,12 @@ public sealed class DockHost : Grid
                     places[id] = new DockedWindow(anchor, order++, theme.Open is { } open ? open.Contains(id) : firstPlaces[id].Shown);
                 }
             }
+            foreach (string id in theme.InEditor.Where(firstPlaces.ContainsKey))
+            {
+                places[id] = places[id] with { Mode = ToolMode.Editor };
+            }
         }
-        foreach (IGrouping<ToolAnchor, KeyValuePair<string, DockedWindow>> place in places.Where(p => p.Value.Shown).GroupBy(p => p.Value.Anchor).ToList())
+        foreach (IGrouping<ToolAnchor, KeyValuePair<string, DockedWindow>> place in places.Where(p => p.Value is { Shown: true, Mode: ToolMode.Docked }).GroupBy(p => p.Value.Anchor).ToList())
         {
             foreach (KeyValuePair<string, DockedWindow> extra in place.OrderBy(p => p.Value.Order).Skip(1))
             {
@@ -284,8 +318,8 @@ public sealed class DockHost : Grid
     {
         DockLayout now = Capture();
         return now.LeftWidth == layout.LeftWidth && now.RightWidth == layout.RightWidth && now.BottomHeight == layout.BottomHeight
-            && windows.All(w => layout.Windows.TryGetValue(w.Id, out DockedWindow? placed) && now.Windows[w.Id] is { Mode: ToolMode.Docked } standing
-                && (standing.Anchor, standing.Order, standing.Shown, standing.Closed) == (placed.Anchor, placed.Order, placed.Shown, placed.Closed));
+            && windows.All(w => layout.Windows.TryGetValue(w.Id, out DockedWindow? placed) && now.Windows[w.Id] is { } standing
+                && (standing.Anchor, standing.Order, standing.Shown, standing.Closed, standing.Mode) == (placed.Anchor, placed.Order, placed.Shown, placed.Closed, placed.Mode));
     }
 
     /// <summary>Shows a window in its place, hiding the one that was there; for an attached agent's call, behind
@@ -332,7 +366,11 @@ public sealed class DockHost : Grid
         }
         window.IsShown = true;
         Active = window;
-        if (window.Mode != ToolMode.Docked)
+        if (window.Mode == ToolMode.Editor)
+        {
+            EditorTabs?.Show(window, forward);
+        }
+        else if (window.Mode != ToolMode.Docked)
         {
             Float(window, forward);
         }
@@ -383,6 +421,10 @@ public sealed class DockHost : Grid
             {
                 window.WindowBounds = open.Placement;
                 open.CloseQuietly();
+            }
+            if (window.Mode == ToolMode.Editor)
+            {
+                EditorTabs?.Close(window);
             }
             PassActive(window);
             Layout();
@@ -624,6 +666,11 @@ public sealed class DockHost : Grid
     public void Apply(DockLayout layout)
     {
         CloseFloats();
+        foreach (ToolWindow tabbed in windows.Where(w => w is { Mode: ToolMode.Editor, IsShown: true }))
+        {
+            tabbed.IsShown = false;
+            EditorTabs?.Close(tabbed);
+        }
         Restore();
         hiddenAll = null;
         others = layout.Windows.Where(w => Find(w.Key) is null).ToDictionary();
@@ -653,14 +700,18 @@ public sealed class DockHost : Grid
         bottomHeight = Positive(layout.BottomHeight, bottomHeight);
         Active = windows.FirstOrDefault(w => w.IsShown);
         Layout();
+        foreach (ToolWindow tabbed in windows.Where(w => w is { Mode: ToolMode.Editor, IsShown: true }))
+        {
+            EditorTabs?.Show(tabbed, false);
+        }
         // A floating window kept open opens again once the IDE's own window is there to float over.
-        foreach (ToolWindow floating in windows.Where(w => w.IsShown && w.Mode != ToolMode.Docked))
+        foreach (ToolWindow floating in windows.Where(w => w.IsShown && w.Mode is ToolMode.Floating or ToolMode.Windowed))
         {
             if (TopLevel.GetTopLevel(this) is null)
             {
                 AttachedToVisualTree += (_, _) =>
                 {
-                    if (floating.IsShown && floating.Mode != ToolMode.Docked)
+                    if (floating.IsShown && floating.Mode is ToolMode.Floating or ToolMode.Windowed)
                     {
                         Float(floating, forward: true);
                     }

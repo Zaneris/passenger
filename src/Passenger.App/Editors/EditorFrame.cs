@@ -13,7 +13,7 @@ internal sealed class EditorFrame
 {
     private readonly ContentControl splits = new();
 
-    public EditorFrame(Node root, EditorGroup current, Func<EditorFrame, Point, DropZone?> zoneAt, Action<EditorFrame, EditorGroup, OpenDocument, Point> drop, Control? empty = null)
+    public EditorFrame(Node root, EditorGroup current, Func<EditorFrame, OpenDocument, Point, DropZone?> zoneAt, Action<EditorFrame, EditorGroup, OpenDocument, Point> drop, Control? empty = null)
     {
         Root = root;
         Current = current;
@@ -25,7 +25,7 @@ internal sealed class EditorFrame
         }
         Surface.Children.Add(Assist);
         Surface.Children.Add(Drop);
-        TabDrag = new DragGesture<(EditorGroup Group, OpenDocument Document)>(Surface, Drop, (_, at) => zoneAt(this, at), (tab, at) => drop(this, tab.Group, tab.Document, at));
+        TabDrag = new DragGesture<(EditorGroup Group, OpenDocument Document)>(Surface, Drop, (tab, at) => zoneAt(this, tab.Document, at), (tab, at) => drop(this, tab.Group, tab.Document, at));
     }
 
     public Node Root { get; set; }

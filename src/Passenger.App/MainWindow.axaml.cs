@@ -82,6 +82,7 @@ public partial class MainWindow : IdeWindow
         AddWelcome();
         AddChords();
         AddToolWindows();
+        AddToolTabs();
         ShowActionWork();
         AddVcs();
         AddTerminal();
@@ -1172,7 +1173,7 @@ public partial class MainWindow : IdeWindow
     {
         string? named = Folder is not { } folder ? null : session.Workspace?.Name ?? Path.GetFileName(folder);
         OpenDocument? shown = Editors.ShownInMain;
-        Title = shown is null ? named ?? "Welcome to Passenger" : $"{(named is null ? "" : named + " – ")}{shown.Name}";
+        Title = shown is null ? named ?? "Welcome to Passenger" : $"{(named is null ? "" : named + " – ")}{(shown.Tool is null ? shown.Name : shown.Title)}";
         FollowInDiscord();
     }
 
@@ -1180,9 +1181,9 @@ public partial class MainWindow : IdeWindow
     /// reports under way (its projects loading, and how far) whenever there is some.</summary>
     private string LanguageLabel()
     {
-        // A diff's tab names no language of its own.
-        string language = Editors.Active is { Diff: null } file ? file.Language.Name : string.Empty;
-        if (Editors.Active is { Diff: null } active && Web.WebLanguages.LanguageOf(active.Path) is not null)
+        // A diff's tab names no language of its own, nor a tool window's.
+        string language = Editors.Active is { Diff: null, Tool: null } file ? file.Language.Name : string.Empty;
+        if (Editors.Active is { Diff: null, Tool: null } active && Web.WebLanguages.LanguageOf(active.Path) is not null)
         {
             // A web file's server, not C#'s, is what it waits on; one named as its language is said once (TypeScript's TypeScript).
             return (session.Web?.StateOf(active) ?? session.Web?.DetailOf(active)) is { Length: > 0 } said

@@ -263,6 +263,103 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
+    [AvaloniaFact]
+    public void Unit_Tests_dragged_onto_the_editors_is_a_tab_among_the_files_through_a_restart_and_docks_again_by_its_menu_and_by_a_drag()
+    {
+        string state = TestFolders.Create("arrangement-state-");
+        try
+        {
+            MainWindow window = Keeping(state);
+            try
+            {
+                window.OpenFile(Path.Combine(folder, "One.cs"));
+                Ui.Settle();
+                DockHost dock = window.DockHost;
+                Ui.Drag(window, Ui.Centre(StripeButton(window, ToolWindowIds.Tests)!, window), Ui.Centre(window.EditorArea.CodeEditor, window));
+                Assert.True(dock[ToolWindowIds.Tests] is { Mode: ToolMode.Editor, IsShown: true } && window.EditorArea.ActiveGroup.Active?.Tool?.Window == dock[ToolWindowIds.Tests],
+                    $"Unit Tests dropped on the editors stands {dock[ToolWindowIds.Tests].Mode}, the editors showing {window.EditorArea.ActiveGroup.Active?.Title}");
+                Assert.True(dock[ToolWindowIds.Tests].Content.IsEffectivelyVisible && EditorTab(window, "Unit Tests") is not null,
+                    "Unit Tests' view is not shown among the editors under a tab of its name");
+                Assert.Contains(window.EditorArea.ActiveGroup.Tabs, t => t.Document.Name == "One.cs");
+            }
+            finally
+            {
+                window.Close();
+                Ui.Settle();
+            }
+
+            MainWindow again = Keeping(state);
+            try
+            {
+                DockHost dock = again.DockHost;
+                Assert.True(dock[ToolWindowIds.Tests].Mode == ToolMode.Editor && EditorTab(again, "Unit Tests") is not null,
+                    $"Unit Tests, an editor tab when the window closed, stands {dock[ToolWindowIds.Tests].Mode} at the next start, its tab {(EditorTab(again, "Unit Tests") is null ? "gone" : "there")}");
+
+                Ui.Click(EditorTab(again, "Unit Tests")!);
+                Assert.True(again.Perform(AppActions.DockToolWindow), "Dock Tool Window was refused on Unit Tests' tab");
+                Ui.Settle();
+                Assert.True(dock[ToolWindowIds.Tests] is { Mode: ToolMode.Docked, IsShown: true } && EditorTab(again, "Unit Tests") is null,
+                    $"Dock Tool Window left Unit Tests {dock[ToolWindowIds.Tests].Mode}, its editor tab {(EditorTab(again, "Unit Tests") is null ? "gone" : "still there")}");
+
+                dock.SetMode(dock[ToolWindowIds.Tests], ToolMode.Editor);
+                Ui.Settle();
+                Ui.Drag(again, Ui.Centre(EditorTab(again, "Unit Tests")!, again), new Point(again.Bounds.Width - 20, 120));
+                Assert.True(dock[ToolWindowIds.Tests] is { Mode: ToolMode.Docked, Anchor: ToolAnchor.RightTop, IsShown: true } && EditorTab(again, "Unit Tests") is null,
+                    $"Unit Tests' tab dragged to the right stripe left it {dock[ToolWindowIds.Tests].Mode} in {dock[ToolWindowIds.Tests].Anchor}");
+
+                Ui.Click(StripeButton(again, ToolWindowIds.Tests)!);
+                dock.SetMode(dock[ToolWindowIds.Tests], ToolMode.Editor);
+                Ui.Settle();
+                Assert.Null(EditorTab(again, "Unit Tests"));
+                Ui.Click(StripeButton(again, ToolWindowIds.Tests)!);
+                Assert.True(EditorTab(again, "Unit Tests") is not null && dock.IsShown(ToolWindowIds.Tests), "Unit Tests' icon did not open its editor tab");
+                Ui.Click(EditorTab(again, "Unit Tests")!.GetVisualDescendants().OfType<Button>().First(b => b.Classes.Contains(StyleClasses.TabClose)));
+                Assert.True(!dock.IsShown(ToolWindowIds.Tests) && StripeButton(again, ToolWindowIds.Tests) is { IsChecked: false },
+                    "Unit Tests' editor tab closed by its × left the window shown");
+            }
+            finally
+            {
+                again.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(state);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_themes_layout_places_a_tool_window_among_the_editors()
+    {
+        string name = Kept("""{"places": {"editor": ["tests"]}, "open": ["explorer", "tests"]}""");
+        string state = TestFolders.Create("arrangement-state-");
+        try
+        {
+            File.WriteAllText(Path.Combine(state, Passenger.App.State.StateStore.SettingsFile),
+                $$"""{ "version": 5, "look": { "source": "{{ThemeSource.Added.Name}}", "name": "{{name}}" } }""");
+            MainWindow window = Keeping(state);
+            try
+            {
+                Assert.True(window.DockHost[ToolWindowIds.Tests] is { Mode: ToolMode.Editor, IsShown: true } && EditorTab(window, "Unit Tests") is not null,
+                    $"The theme puts Unit Tests among the editors, where it stands {window.DockHost[ToolWindowIds.Tests].Mode}");
+            }
+            finally
+            {
+                window.ApplySettings(new AppSettings());
+                window.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(state);
+        }
+    }
+
+    /// <summary>An editor tab by its title, among every group's; null for none.</summary>
+    private static Border? EditorTab(MainWindow window, string title) =>
+        window.EditorArea.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.Classes.Contains(StyleClasses.Tab) && b.IsEffectivelyVisible
+            && b.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == title));
+
     /// <summary>A window that keeps its state, settings and layout in a folder, over the test's project.</summary>
     private MainWindow Keeping(string state)
     {

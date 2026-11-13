@@ -464,7 +464,7 @@ public sealed class EditorGroup : DockPanel
     /// <summary>What shows in the editor's place for a tab that is no text to edit: a diff, an asset's preview, or release
     /// notes rendered.</summary>
     private Control PreviewOf(OpenDocument document) =>
-        document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
+        document.Tool is { } tool ? tool.Make() : document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
 
     /// <summary>The diff this group shows while it shows a diff's tab, else null.</summary>
     public Vcs.DiffView? Diff => preview as Vcs.DiffView;
@@ -479,7 +479,7 @@ public sealed class EditorGroup : DockPanel
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
-    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null;
+    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null && document.Tool is null;
 
     /// <summary>Gives the keys to what shows the file: a diff's file's side, its preview or rendered notes, which its keys
     /// move through, else the editor.</summary>
@@ -488,6 +488,10 @@ public sealed class EditorGroup : DockPanel
         if (preview is Vcs.DiffView diff)
         {
             diff.Right.Focus();
+        }
+        else if (preview is ToolTabView tool)
+        {
+            tool.Window.TakeKeys();
         }
         else if (preview is not null)
         {
@@ -649,8 +653,8 @@ public sealed class EditorGroup : DockPanel
     /// does to how it is stored.</summary>
     private void ShowBanner(OpenDocument document)
     {
-        // A diff's own bar says what it is.
-        string[] said = [.. new[] { document.IsReadOnly && document.Diff is null ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
+        // A diff's own bar says what it is, and a tool window is no file.
+        string[] said = [.. new[] { document.IsReadOnly && document is { Diff: null, Tool: null } ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
         banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
         bannerLink.IsVisible = document.Notice is not null && document.NoticeAction is not null;
         bannerLink.Content = document.NoticeAction?.Text;
@@ -914,7 +918,7 @@ public sealed class EditorGroup : DockPanel
             name.Text = document.Title;
             icon.Data = document.Icon;
             icon.Foreground = document.IconBrush;
-            ToolTip.SetTip(border, document.Path);
+            ToolTip.SetTip(border, document.Tool is null ? document.Path : document.Title);
             modified.IsVisible = document.IsModified;
             border.Classes.Set(StyleClasses.Active, tab.IsActive);
             border.Classes.Set(StyleClasses.Elsewhere, !IsCurrent);

@@ -87,6 +87,16 @@ public class ThemeLayoutTests
     }
 
     [Fact]
+    public void A_layout_places_tool_windows_among_the_editors_each_in_one_place()
+    {
+        Assert.Equal([ToolWindowIds.Tests, ToolWindowIds.Problems], Read("""{"places": {"editor": ["tests", "problems"], "bottomLeft": ["build"]}}""").InEditor);
+        ThemeRead<ThemeFile> twice = Theme("""
+            "layout": {"places": {"bottomLeft": ["tests"], "editor": ["tests"]}}
+            """);
+        Assert.Contains("places tests in layout's bottomLeft and in editor", twice.Refused, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_layout_gives_where_the_editors_tabs_stand_and_one_that_gives_none_keeps_Passengers_own()
     {
         Assert.Equal([EditorTabsPlace.Top, EditorTabsPlace.Left, EditorTabsPlace.Right],

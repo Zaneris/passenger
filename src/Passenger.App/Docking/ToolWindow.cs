@@ -7,13 +7,14 @@ using Avalonia.VisualTree;
 
 namespace Passenger.App.Docking;
 
-/// <summary>How a tool window stands: in its place, in a window kept over the IDE's, or in a window of its own the
-/// system manages like any other.</summary>
+/// <summary>How a tool window stands: in its place, in a window kept over the IDE's, in a window of its own the
+/// system manages like any other, or as a tab among the editors.</summary>
 public enum ToolMode
 {
     Docked,
     Floating,
     Windowed,
+    Editor,
 }
 
 /// <summary>A tool window (Explorer, Debug, Unit Tests): its content, its button on a stripe, and where it docks.
@@ -205,7 +206,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
         internal set => Set(ref anchor, value);
     }
 
-    /// <summary>Docked, floating or windowed; its button stays on its anchor's stripe whatever the mode.</summary>
+    /// <summary>Docked, floating, windowed or an editor tab; its button stays on its anchor's stripe whatever the mode.</summary>
     public ToolMode Mode { get; internal set; }
 
     /// <summary>Where its own window last stood, floating or windowed, in screen pixels.</summary>

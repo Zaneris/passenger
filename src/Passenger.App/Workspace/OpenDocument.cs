@@ -145,6 +145,15 @@ public sealed class OpenDocument : Observable
     /// <summary>The diff this tab shows in the editor's place, for a diff's tab (<see cref="OfDiff"/>); null for a file's.</summary>
     public Vcs.DiffTab? Diff { get; private init; }
 
+    /// <summary>A tool window's tab among the editors (<see cref="Editors.ToolTab"/>): named by the window's id, as plain
+    /// text with no text of its own, which its group shows as the window in the editor's place.</summary>
+    public static OpenDocument OfTool(Editors.ToolTab tool) =>
+        new(tool.Window.Id, new FileText(string.Empty, new UTF8Encoding(false), false), Language.PlainText, null) { Tool = tool };
+
+    /// <summary>The tool window this tab shows in the editor's place, for a tool window's tab (<see cref="OfTool"/>); null
+    /// for a file's.</summary>
+    public Editors.ToolTab? Tool { get; private init; }
+
     /// <summary>What Save saves with this tab shown: the file, or the open file a diff's tab edits (itself where it edits none).</summary>
     public OpenDocument Saves => Diff?.Shown.File ?? this;
 
@@ -759,6 +768,7 @@ public sealed class OpenDocument : Observable
     {
         closed = true;
         Diff?.LetGo();
+        Tool?.LetGo();
         Asset?.Dispose();
         (Highlighter as IDisposable)?.Dispose();
         (finder as FoldScan)?.Dispose();
@@ -769,7 +779,7 @@ public sealed class OpenDocument : Observable
 
     /// <summary>What its tab is called: its name, a diff's title ("Shop.cs: HEAD and your version"), or for release notes the
     /// app carries what they are ("What's New in 0.2.0").</summary>
-    public string Title => Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
+    public string Title => Tool?.Window.Title ?? Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
 
     /// <summary>Whether this is release notes the app carries, which its tab shows rendered (What's New), read-only.</summary>
     public bool IsReleaseNotes => Updates.ReleaseNotes.VersionOf(Path) is not null;
@@ -1262,7 +1272,7 @@ public sealed class OpenDocument : Observable
     /// notes the app carries, a workbook, an asset preview, a diff's tab, a binary file shown as its bytes, an MSBuild file of the .NET
     /// SDK or any file of a package as NuGet restored it, a copy of a container's file or of what the engine says of one, a
     /// copy of a source generator's code, or a stylesheet a page links on the web as it was downloaded.</summary>
-    public bool IsReadOnly => Asset is not null || Diff is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
+    public bool IsReadOnly => Asset is not null || Diff is not null || Tool is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
         || MSBuild.MSBuildFiles.IsInstalled(Path) || Packages.PackageFolders.Holds(Path) || Containers.ContainerFilesPane.IsCopy(Path)
         || Endpoints.RequestLog.IsCommandCopy(Path) || CSharp.GeneratedCode.IsCopy(Path) || Web.RemoteStylesheets.IsCopy(Path);
 
@@ -1290,7 +1300,7 @@ public sealed class OpenDocument : Observable
     /// <summary>Whether its tab holds the file's text: an asset preview's and a workbook's hold an empty stand-in, a
     /// binary file's its bytes drawn as signs, release notes' their Markdown shown rendered and a diff's none, so nothing searches, reads,
     /// edits or writes it as the file's (<see cref="ShownAs"/> says what the file is instead).</summary>
-    public bool HoldsText => Asset is null && Diff is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
+    public bool HoldsText => Asset is null && Diff is null && Tool is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
 
     /// <summary>What a file whose tab holds no text is shown as, for what refuses its text to say; null for text.</summary>
     public string? ShownAs => Asset is { Kind: AssetKind.Image } ? "an image, shown as a read-only preview"
@@ -1329,7 +1339,9 @@ public sealed class OpenDocument : Observable
 
     /// <summary>Whether text has unsaved changes; a read-only asset is never considered modified.</summary>
     public bool IsModified => Asset is null && Text.IsModified;
-    public Avalonia.Media.Geometry Icon => Diff is not null ? Explorer.FileIcons.ForDiff : Explorer.FileIcons.ForFile(Path);
+    public Avalonia.Media.Geometry Icon => Tool is { } tool && Avalonia.Application.Current is { } app
+        && app.TryGetResource(tool.Window.Icon, app.ActualThemeVariant, out object? found) && found is Avalonia.Media.Geometry glyph ? glyph
+        : Diff is not null ? Explorer.FileIcons.ForDiff : Explorer.FileIcons.ForFile(Path);
     public Avalonia.Media.IBrush IconBrush => Explorer.FileIcons.BrushForFile(Path);
 
     /// <summary>The carets: the editor's while the file is shown there, as left otherwise, moved by every change to the text.</summary>

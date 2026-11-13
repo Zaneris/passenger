@@ -138,7 +138,8 @@ before put them.
   windows docked there in their order, before those the theme leaves where Passenger puts them. A window docks in one
   place. The windows are named by their ids: `explorer`, `structure`, `bookmarks`, `commit`, `run`, `debug`, `tests`,
   `build`, `problems`, `find`, `git`, `nuget`, `terminal`, `localHistory`, `containers`, `profiler`, `hierarchy`,
-  `endpoints`, `requests`, `liveTree`, `game`, `aspire` and `migrations`.
+  `endpoints`, `requests`, `liveTree`, `game`, `aspire` and `migrations`. `editor` names those shown as tabs among the
+  editors instead, their icons on the stripes where Passenger puts them.
 - `open` lists the windows open at the start, every other closed; left out, Passenger's own open (the Explorer). A place
   shows one window, the first in its order.
 - `sizes` gives the left and right areas' widths and the bottom one's height, each 100 to 2000 pixels; one left out is

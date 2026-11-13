@@ -341,7 +341,7 @@ internal sealed class ToolPane : DockPanel
             move.Items.Add(item);
         }
         MenuItem mode = new() { Header = "View Mode" };
-        foreach ((ToolMode each, string name) in new[] { (ToolMode.Docked, "Dock"), (ToolMode.Floating, "Float"), (ToolMode.Windowed, "Window") })
+        foreach ((ToolMode each, string name) in new[] { (ToolMode.Docked, "Dock"), (ToolMode.Floating, "Float"), (ToolMode.Windowed, "Window"), (ToolMode.Editor, "Editor Tab") })
         {
             MenuItem item = new() { Header = name, IsEnabled = Window?.Mode != each };
             item.Click += (_, _) =>

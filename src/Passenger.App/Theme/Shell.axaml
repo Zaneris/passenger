@@ -214,6 +214,10 @@
     <Style Selector="DockPanel.toolPane">
         <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
     </Style>
+    <!-- A tool window shown in an editor tab, on its own ground as in its place. -->
+    <Style Selector="ContentControl.toolTabView">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
+    </Style>
     <!-- Clear rather than empty, so the header takes the press that drags its window; taller than a toolbar's row and its
          title larger than the window's words, so a tool window reads as a place of its own. -->
     <Style Selector="Border.toolHeader">

@@ -577,7 +577,11 @@ public sealed partial class EditorArea : UserControl
         {
             return false;
         }
-        closedTabs.Add(document.Diff is { } diff ? closing with { Diff = diff.Shown.Kept } : closing);
+        // A tool window's tab opens again as the window does, never from a file.
+        if (document.Tool is null)
+        {
+            closedTabs.Add(document.Diff is { } diff ? closing with { Diff = diff.Shown.Kept } : closing);
+        }
         if (closedTabs.Count > ClosedTabsKept)
         {
             closedTabs.RemoveAt(0);
@@ -1043,7 +1047,7 @@ public sealed partial class EditorArea : UserControl
         }
         EditorGroup group = ((EditorFrame.Leaf)node).Group;
         // A diff's tab is not kept: what it compared may be gone by the next time, and the folder opens on its files.
-        List<EditorTab> kept = [.. group.Tabs.Where(t => t.Document.Diff is null)];
+        List<EditorTab> kept = [.. group.Tabs.Where(t => t.Document.Diff is null && t.Document.Tool is null)];
         return new EditorLayout
         {
             Tabs = [.. kept.Select(t =>
@@ -1261,6 +1265,12 @@ public sealed partial class EditorArea : UserControl
     {
         if (Target(frame, at) is not { } target)
         {
+            // A tool window's tab docks where it was let go, as its icon's drag docks it.
+            if (document.Tool is { } tool && TopLevel.GetTopLevel(frame.Surface) is not null)
+            {
+                ToolTabDropped?.Invoke(this, (tool, frame.Surface.PointToScreen(at)));
+                return;
+            }
             // Out of every window's editors: a window of its own where it was let go, its tab under the pointer.
             if (TopLevel.GetTopLevel(frame.Surface) is not null)
             {
@@ -1308,8 +1318,17 @@ public sealed partial class EditorArea : UserControl
         Bottom,
     }
 
-    /// <summary>The lit place a tab dragged from a frame is over, in the overlay of the window it would drop in.</summary>
-    private DropZone? ZoneAt(EditorFrame frame, Point at) => Target(frame, at) is { } target ? new DropZone(target.Zone, Overlay: target.Frame.Drop) : null;
+    /// <summary>The lit place a tab dragged from a frame is over, in the overlay of the window it would drop in; a tool
+    /// window's tab out of the editors, the place it would dock in.</summary>
+    private DropZone? ZoneAt(EditorFrame frame, OpenDocument document, Point at) => Target(frame, at) is { } target ? new DropZone(target.Zone, Overlay: target.Frame.Drop)
+        : document.Tool is { } tool && TopLevel.GetTopLevel(frame.Surface) is not null ? ToolZoneAt?.Invoke(tool, frame.Surface.PointToScreen(at)) : null;
+
+    /// <summary>Where a tool window's tab dragged out of the editors would dock, at a point on the screen, lit in the dock's
+    /// own overlay; null where it would not.</summary>
+    public Func<ToolTab, PixelPoint, DropZone?>? ToolZoneAt { get; set; }
+
+    /// <summary>A tool window's tab let go out of the editors, at a point on the screen.</summary>
+    public event EventHandler<(ToolTab Tool, PixelPoint At)>? ToolTabDropped;
 
     /// <summary>Where a tab dragged from a frame and let go at a point (in its surface's coordinates) goes: into the
     /// editors under the point, the window it came from first, then the editor windows, then the main window, which the
