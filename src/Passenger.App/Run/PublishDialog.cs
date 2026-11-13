@@ -502,7 +502,9 @@ public sealed class PublishDialog : IdeWindow
             return;
         }
         string? framework = multi ? said.GetValueOrDefault(MSBuildNames.TargetFramework) is { Length: > 0 } named ? named : project.TargetFrameworks[0] : null;
-        string? configuration = profile is null || !said.ContainsKey(MSBuildNames.Configuration) ? said.GetValueOrDefault(MSBuildNames.LastUsedBuildConfiguration) ?? "Release" : null;
+        IReadOnlyList<string> declared = PublishProfiles.DeclaredConfigurations(project);
+        string? configuration = profile is null || !said.ContainsKey(MSBuildNames.Configuration)
+            ? said.GetValueOrDefault(MSBuildNames.LastUsedBuildConfiguration) ?? PublishProfiles.ReleaseOf(declared) : null;
         PropertiesAnswer answer;
         try
         {
@@ -529,7 +531,7 @@ public sealed class PublishDialog : IdeWindow
         filling = true;
         try
         {
-            List<string> configurations = ["Release", "Debug"];
+            List<string> configurations = [.. declared];
             if (!configurations.Contains(options.Configuration, StringComparer.OrdinalIgnoreCase))
             {
                 configurations.Add(options.Configuration);

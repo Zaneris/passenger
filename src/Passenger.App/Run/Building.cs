@@ -106,9 +106,10 @@ public enum BuildCause
 public static partial class BuildOutput
 {
     /// <summary>The arguments a build, rebuild or clean runs with, ending in <see cref="Tail"/>. A framework given builds a
-    /// project for that one alone.</summary>
+    /// project for that one alone; <paramref name="configured"/> is what the build configuration chosen gives the target
+    /// (<see cref="WorkspaceModel.BuildArgumentsFor"/>).</summary>
     public static IReadOnlyList<string> Arguments(string target, BuildKind kind = BuildKind.Build, string? framework = null, bool windowsTargeting = false,
-        string? output = null)
+        string? output = null, IReadOnlyList<string>? configured = null)
     {
         List<string> arguments = kind switch
         {
@@ -124,6 +125,7 @@ public static partial class BuildOutput
         {
             arguments.AddRange(["--output", output]);
         }
+        arguments.AddRange(configured ?? []);
         arguments.AddRange(Tail(windowsTargeting));
         return arguments;
     }

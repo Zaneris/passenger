@@ -26,14 +26,16 @@ public static class UpToDate
     /// <summary>What a build of a project (a .csproj, or a file-based program's C# file, built where its own build puts it)
     /// would read now, asked of the host for the folder the build runs in, with whether its last build here stands; null for
     /// one that cannot be checked, or a host that could not say. On any thread.</summary>
-    public static async Task<Check?> CheckAsync(BuildStep step, IReadOnlyList<string> arguments, bool windowsTargeting, string folder, CancellationToken cancel) =>
-        (await CheckAsync([step], [arguments], windowsTargeting, folder, cancel))[0];
+    public static async Task<Check?> CheckAsync(BuildStep step, IReadOnlyList<string> arguments, bool windowsTargeting, string folder, CancellationToken cancel,
+        Func<string, IReadOnlyDictionary<string, string>>? configured = null) =>
+        (await CheckAsync([step], [arguments], windowsTargeting, folder, cancel, configured))[0];
 
     /// <summary>What builds of several projects of one framework (or none) would read now, as a build of each is checked
     /// (<see cref="CheckAsync(BuildStep, IReadOnlyList{string}, bool, string, CancellationToken)"/>), with each one's
-    /// command line: asked of the host at once, so each project they reach is evaluated once. On any thread.</summary>
+    /// command line: asked of the host at once, so each project they reach is evaluated once, those given the same build
+    /// configuration (<paramref name="configured"/>, the global properties each project takes for it) together. On any thread.</summary>
     public static async Task<IReadOnlyList<Check?>> CheckAsync(IReadOnlyList<BuildStep> steps, IReadOnlyList<IReadOnlyList<string>> arguments, bool windowsTargeting,
-        string folder, CancellationToken cancel)
+        string folder, CancellationToken cancel, Func<string, IReadOnlyDictionary<string, string>>? configured = null)
     {
         Check?[] checks = new Check?[steps.Count];
         List<int> asked = [.. Enumerable.Range(0, steps.Count).Where(i => steps[i].Output is null
@@ -42,8 +44,48 @@ public static class UpToDate
         {
             return checks;
         }
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        bounded.CancelAfter(Waits.Of(Answering));
+        foreach (IGrouping<string, (int Index, Dictionary<string, string> Properties)> together in asked
+            .Select(i => (Index: i, Properties: PropertiesOf(steps[i], windowsTargeting, configured)))
+            .GroupBy(each => string.Join('\n', each.Properties.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase).Select(p => $"{p.Key}={p.Value}"))))
+        {
+            Dictionary<string, string> properties = together.First().Properties;
+            List<int> indices = [.. together.Select(each => each.Index)];
+            IReadOnlyList<BuildInputs> inputs;
+            string sdk;
+            try
+            {
+                sdk = await Dotnet.SdkAsync(folder, bounded.Token);
+                ProjectHost host = await ProjectHosts.ForAsync(folder, bounded.Token);
+                inputs = await host.InputsAsync([.. indices.Select(i => steps[i].Project)], properties, bounded.Token);
+            }
+            catch (Exception unknown) when (unknown is ProjectHostFailed or InvalidOperationException or IOException or TimeoutException
+                || (unknown is OperationCanceledException && bounded.IsCancellationRequested))
+            {
+                return checks;
+            }
+            foreach ((int index, BuildInputs read) in indices.Zip(inputs))
+            {
+                string key = $"{sdk}\n{folder}\n{string.Join('\n', arguments[index])}";
+                bool holds = read.Unknown is null && Builds.TryGetValue(key, out (IReadOnlyList<Stamp> Reads, IReadOnlyList<Stamp> Made) last)
+                    && last.Reads.SequenceEqual(read.Reads) && last.Made.Count > 0 && last.Made.All(Stamps.Holds);
+                checks[index] = new Check(key, read, holds, folder, steps[index].Project, properties);
+            }
+        }
+        return checks;
+    }
+
+    /// <summary>The global properties a build of one step gives its project: its framework, Windows targeting, and the
+    /// configuration and platform chosen for it.</summary>
+    private static Dictionary<string, string> PropertiesOf(BuildStep step, bool windowsTargeting, Func<string, IReadOnlyDictionary<string, string>>? configured)
+    {
         Dictionary<string, string> properties = new(StringComparer.OrdinalIgnoreCase);
-        if (steps[asked[0]].Framework is { } framework)
+        foreach ((string name, string value) in configured?.Invoke(step.Project) ?? new Dictionary<string, string>())
+        {
+            properties[name] = value;
+        }
+        if (step.Framework is { } framework)
         {
             properties[MSBuildNames.TargetFramework] = framework;
         }
@@ -51,29 +93,7 @@ public static class UpToDate
         {
             properties[MSBuildNames.EnableWindowsTargeting] = "true";
         }
-        IReadOnlyList<BuildInputs> inputs;
-        string sdk;
-        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-        bounded.CancelAfter(Waits.Of(Answering));
-        try
-        {
-            sdk = await Dotnet.SdkAsync(folder, bounded.Token);
-            ProjectHost host = await ProjectHosts.ForAsync(folder, bounded.Token);
-            inputs = await host.InputsAsync([.. asked.Select(i => steps[i].Project)], properties, bounded.Token);
-        }
-        catch (Exception unknown) when (unknown is ProjectHostFailed or InvalidOperationException or IOException or TimeoutException
-            || (unknown is OperationCanceledException && bounded.IsCancellationRequested))
-        {
-            return checks;
-        }
-        foreach ((int index, BuildInputs read) in asked.Zip(inputs))
-        {
-            string key = $"{sdk}\n{folder}\n{string.Join('\n', arguments[index])}";
-            bool holds = read.Unknown is null && Builds.TryGetValue(key, out (IReadOnlyList<Stamp> Reads, IReadOnlyList<Stamp> Made) last)
-                && last.Reads.SequenceEqual(read.Reads) && last.Made.Count > 0 && last.Made.All(Stamps.Holds);
-            checks[index] = new Check(key, read, holds, folder, steps[index].Project, properties);
-        }
-        return checks;
+        return properties;
     }
 
     /// <summary>Keeps what a build that succeeded read before it began, but the restore's outputs its own restore wrote (read

@@ -114,6 +114,7 @@ public partial class MainWindow : IdeWindow
         AddFileProperties();
         AddTargetFramework();
         AddRunTargets();
+        AddBuildConfigurations();
         AddMobile();
         AddAutosave();
         AddReadOnly();

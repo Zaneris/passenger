@@ -339,6 +339,9 @@ public sealed partial class BuildRunController
     public void Build(BuildKind kind, IReadOnlyList<string>? projects = null, Action<BuildOutcome>? then = null, string? framework = null,
         BuildCause cause = BuildCause.Explicit, string? output = null) => Start(kind, projects, then, framework, cause, null, null, output);
 
+    /// <summary>What a dotnet build of a target is given for the build configuration chosen (none for the one MSBuild takes).</summary>
+    private IReadOnlyList<string> Configured(string target) => session.Workspace?.BuildArgumentsFor(target) ?? [];
+
     /// <summary>Starts a build, or the publish given (its work begun already, which the build holds until it ends), or the
     /// build of projects side by side given (its project the one in <paramref name="projects"/>).</summary>
     private void Start(BuildKind kind, IReadOnlyList<string>? projects, Action<BuildOutcome>? then, string? framework, BuildCause cause, PublishRequest? publish,
@@ -470,7 +473,8 @@ public sealed partial class BuildRunController
         parts.Say($"{verb} {what}…");
         buildWork?.Say($"{verb} {what}…");
         bool windows = WindowsTargeting(together?.Projects ?? [target]);
-        IReadOnlyList<string> arguments = publishing is { } publish ? publish.Arguments(windows) : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput);
+        IReadOnlyList<string> arguments = publishing is { } publish ? publish.Arguments(windows)
+            : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput, Configured(target));
         Func<CancellationToken, Task>? after = first ? BeforeFirstStepAsync : null;
         if (checking is { } checks)
         {
@@ -510,14 +514,15 @@ public sealed partial class BuildRunController
                     .SelectMany(p => Launched(p) is { } frameworks ? frameworks.Select(framework => new BuildStep(p.Path, framework)) : [new BuildStep(p.Path, null)])
                     .Select(step => (step, true))]
                 : [];
-        if (steps.Count == 0 || session.Folder is not { } folder || session.IsEnded)
+        if (steps.Count == 0 || session.Folder is not { } folder || session.IsEnded || session.Workspace is not { } configured)
         {
             return;
         }
         // The host is asked of one framework at a time, each framework's projects side by side.
         List<List<(BuildStep Step, bool MustShow)>> asked = [.. steps.GroupBy(step => step.Step.Framework).Select(group => group.ToList())];
         IReadOnlyList<UpToDate.Check?>[] found = await BackgroundWork.Run(() => Task.WhenAll(asked.Select(group => UpToDate.CheckAsync([.. group.Select(step => step.Step)],
-            [.. group.Select(step => BuildOutput.Arguments(step.Step.Project, BuildKind.Build, step.Step.Framework, windows, step.Step.Output))], windows, folder, stop))));
+            [.. group.Select(step => BuildOutput.Arguments(step.Step.Project, BuildKind.Build, step.Step.Framework, windows, step.Step.Output, configured.BuildArgumentsFor(step.Step.Project)))],
+            windows, folder, stop, configured.BuildPropertiesOf))));
         checks.AddRange(found.Zip(asked).SelectMany(each => each.First.Zip(each.Second)).Where(each => each.First is not null)
             .Select(each => new Checked(each.First!, each.Second.MustShow)));
     }
@@ -1030,9 +1035,11 @@ public sealed partial class BuildRunController
             }
             bool windows = WindowsTargeting(projects);
             string state = parts.StateFolder();
+            WorkspaceModel configured = session.Workspace ?? new WorkspaceModel(folder, null, []);
             (IReadOnlyList<UpToDate.Check?> found, side) = await BackgroundWork.Run(async () => (
                 await UpToDate.CheckAsync([.. projects.Select(project => new BuildStep(project, framework, output))],
-                    [.. projects.Select(project => BuildOutput.Arguments(project, BuildKind.Build, framework, windows, output))], windows, folder, stopping),
+                    [.. projects.Select(project => BuildOutput.Arguments(project, BuildKind.Build, framework, windows, output, configured.BuildArgumentsFor(project)))], windows, folder,
+                    stopping, configured.BuildPropertiesOf),
                 projects.Count > 1 ? TogetherBuild.Write(state, folder, projects) : null));
             if (stopping.IsCancellationRequested)
             {

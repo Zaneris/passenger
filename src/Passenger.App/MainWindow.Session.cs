@@ -492,6 +492,7 @@ public partial class MainWindow
         BindXamlWorkspace(next);
         BindTargetFrameworks(next);
         BindRunTargets(next);
+        BindBuildConfigurations(next);
         BindMobile(next);
     }
 

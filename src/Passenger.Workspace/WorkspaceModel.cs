@@ -29,6 +29,22 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// null for any other workspace.</summary>
     public UnreadSolution? Unread { get; init; }
 
+    /// <summary>The build configuration and platform chosen for its builds, evaluations and runs; null for what MSBuild takes
+    /// when given none, which nothing is given for.</summary>
+    public BuildChoice? Build { get; init; }
+
+    /// <summary>The global properties a project takes for <see cref="Build"/>, none for the configuration MSBuild takes.</summary>
+    public IReadOnlyDictionary<string, string> BuildPropertiesOf(string project) =>
+        Build is { } chosen ? chosen.PropertiesOf(project, Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.Property(CarriedProperties.Platforms))
+            : new Dictionary<string, string>();
+
+    /// <summary>What a dotnet build of a target (the solution, a project, a program) is given for <see cref="Build"/>; none
+    /// for the configuration MSBuild takes, or the folder itself.</summary>
+    public IReadOnlyList<string> BuildArgumentsFor(string target) =>
+        Build is not { } chosen || PathNames.Same(target, Folder) ? []
+        : chosen.ArgumentsFor(target, Solution is { } solution && PathNames.Same(solution.Path, target),
+            Projects.FirstOrDefault(p => PathNames.Same(p.Path, target))?.Property(CarriedProperties.Platforms));
+
     /// <summary>What it was opened as, which Recent Solutions keeps and reopens: the solution filter, the solution, the
     /// project, else the folder.</summary>
     public string OpenedAs => Filter?.Path ?? Solution?.Path ?? ProjectFile ?? Folder;

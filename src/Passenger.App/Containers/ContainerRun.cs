@@ -175,7 +175,9 @@ public static class ContainerPlans
             {
                 string repository = $"passenger-{Slug(configuration.Name)}-{ContainerLabels.FolderValue(workspace.Folder)[..8]}";
                 properties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase) { ["PassengerImage"] = $"{repository}:{SdkImageTag}" };
-                publish = ["publish", single.Path, $"-t:{MSBuildNames.PublishContainer}", "-c", "Debug", $"-p:{CarriedProperties.ContainerRepository}={repository}",
+                // Built as the folder's build configuration chosen gives the project, Debug where it gives nothing.
+                IReadOnlyList<string> configured = workspace.BuildArgumentsFor(single.Path) is { Count: > 0 } chosen ? chosen : ["-c", "Debug"];
+                publish = ["publish", single.Path, $"-t:{MSBuildNames.PublishContainer}", .. configured, $"-p:{CarriedProperties.ContainerRepository}={repository}",
                     $"-p:{MSBuildNames.ContainerImageTag}={SdkImageTag}", "-nologo"];
             }
             string service = DockerFiles.ServiceName(single.Name.Split(' ')[0]);

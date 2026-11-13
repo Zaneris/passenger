@@ -40,7 +40,7 @@ internal static class Evaluation
         // Load-balanced, so each worker takes the next project in the order asked: the active file's first.
         Parallel.ForEach(Partitioner.Create(asked.Projects.ToArray(), loadBalance: true), parallel, path =>
         {
-            (EvaluatedProject outer, IReadOnlyList<string> frameworks) = Outer(path, collection, context, asked.Properties);
+            (EvaluatedProject outer, IReadOnlyList<string> frameworks) = Outer(path, collection, context, asked.Of(path));
             evaluated(outer);
             if (!outer.Complete)
             {
@@ -50,7 +50,7 @@ internal static class Evaluation
         List<(EvaluatedProject Outer, IReadOnlyList<string> Frameworks)> inOrder =
             [.. asked.Projects.Distinct(PathNames.Comparer).Where(targeted.ContainsKey).Select(p => targeted[p])];
         Parallel.ForEach(Partitioner.Create(inOrder.ToArray(), loadBalance: true), parallel,
-            t => evaluated(Frameworks(t.Outer, t.Frameworks, collection, context, asked.Properties)));
+            t => evaluated(Frameworks(t.Outer, t.Frameworks, collection, context, asked.Of(t.Outer.Path))));
     }
 
     /// <summary>A project's outer evaluation: all of it for a project with one framework (or none), and for a

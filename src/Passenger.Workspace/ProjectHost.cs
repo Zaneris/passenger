@@ -220,11 +220,13 @@ public sealed class ProjectHost : IAsyncDisposable
     }
 
     /// <summary>Evaluates projects, handing each over as it is evaluated (a multi-targeted one twice: its outer evaluation,
-    /// then complete), on the reader's thread; done once every one has been.</summary>
-    public async Task<EvaluateDone> EvaluateAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<EvaluatedProject> evaluated, CancellationToken cancel = default)
+    /// then complete), on the reader's thread; done once every one has been. Some projects may take properties of their own
+    /// beyond those given all (<paramref name="each"/>, by path).</summary>
+    public async Task<EvaluateDone> EvaluateAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<EvaluatedProject> evaluated, CancellationToken cancel = default,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? each = null)
     {
         await GiveProgramsAsync(projects, cancel).ConfigureAwait(false);
-        return await AskAsync<EvaluateDone>(HostMethods.Evaluate, new EvaluateParams(projects, properties),
+        return await AskAsync<EvaluateDone>(HostMethods.Evaluate, new EvaluateParams(projects, properties) { Each = each },
             partial => evaluated(JsonSerializer.Deserialize<EvaluatedProject>(partial, HostJson.Options)!), cancel).ConfigureAwait(false)
             ?? throw new ProjectHostFailed("the project host gave no answer for its evaluation");
     }
@@ -274,14 +276,16 @@ public sealed class ProjectHost : IAsyncDisposable
     }
 
     /// <summary>Builds projects at design time, handing each over as its builds end, on the reader's thread; done once
-    /// every one has been.</summary>
-    public async Task<BuildDone> BuildAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<BuiltProject> built, CancellationToken cancel = default)
+    /// every one has been. Some projects may take properties of their own beyond those given all (<paramref name="each"/>,
+    /// by path).</summary>
+    public async Task<BuildDone> BuildAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<BuiltProject> built, CancellationToken cancel = default,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? each = null)
     {
         Interlocked.Increment(ref building);
         try
         {
             await GiveProgramsAsync(projects, cancel).ConfigureAwait(false);
-            return await AskAsync<BuildDone>(HostMethods.Build, new BuildParams(projects, properties),
+            return await AskAsync<BuildDone>(HostMethods.Build, new BuildParams(projects, properties) { Each = each },
                 partial => built(BuiltProject.Read(partial)), cancel).ConfigureAwait(false)
                 ?? throw new ProjectHostFailed("the project host gave no answer for its builds");
         }
@@ -311,10 +315,11 @@ public sealed class ProjectHost : IAsyncDisposable
             ?? throw new ProjectHostFailed("the project host gave no answer for the project's properties");
     }
 
-    /// <summary>Each project a build of a solution builds, with the configuration and platform it gives it; or why MSBuild
-    /// could not read the solution.</summary>
-    public async Task<SolutionBuild> SolutionBuildAsync(string solution, CancellationToken cancel = default) =>
-        await AskAsync<SolutionBuild>(HostMethods.Solution, new SolutionParams(solution), null, cancel).ConfigureAwait(false)
+    /// <summary>Each project a build of a solution builds under the solution configuration named (else the one a build given
+    /// none takes), with the configuration and platform it gives it, and the configurations the solution declares; or why
+    /// MSBuild could not read the solution.</summary>
+    public async Task<SolutionBuild> SolutionBuildAsync(string solution, CancellationToken cancel = default, SolutionConfiguration? chosen = null) =>
+        await AskAsync<SolutionBuild>(HostMethods.Solution, new SolutionParams(solution, chosen?.Configuration, chosen?.Platform), null, cancel).ConfigureAwait(false)
             ?? throw new ProjectHostFailed("the project host gave no answer for the solution's build");
 
     /// <summary>What a build of one project with these global properties reads and makes, as its evaluations say, or why a

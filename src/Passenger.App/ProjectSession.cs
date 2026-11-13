@@ -124,6 +124,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Snapshots = () => setup.Editors.Texts().Open;
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
         Frameworks.Changed += (_, project) => FollowFramework(project);
+        BuildChoices.Changed += (_, _) => FollowBuildChoice();
         GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), FilesWhole = () => Index.IsWhole, GameOf = GodotOf };
         // Where a GoDotTest game's tests start: read from its scenes and the C# their nodes run.
         Tests.GoDotStartOf = project => UiThread.InvokeAsync(async () => Godot.GodotScripts.ProjectOf(project) is { } folder
@@ -200,7 +201,7 @@ public sealed class ProjectSession : IAsyncDisposable
             Feed = () => Packages.FeedAsync(null),
             Vulnerabilities = () => Packages.VulnerabilitiesAsync(),
         };
-        DesignTimeBuilds = new ProjectBuilds(LoadOrderAsync, () => Workspace is { } open ? ProjectModels.Properties(open) : new Dictionary<string, string>());
+        DesignTimeBuilds = new ProjectBuilds(LoadOrderAsync, () => Workspace);
     }
 
     /// <summary>A window's session with no folder open: files may still be open, alone.</summary>
@@ -224,6 +225,11 @@ public sealed class ProjectSession : IAsyncDisposable
         };
         // Where the log's timing of the language server's start (CSharpService) begins.
         IdeErrors.Write($"Opened {folder}{(withSolution is { } read && read.OpenedAs != folder ? $" with {Path.GetFileName(read.OpenedAs)}" : string.Empty)}");
+        // The build configuration it kept, which its evaluations and design-time builds are made under from the start.
+        if (kept is not null)
+        {
+            session.BuildChoices.Take(kept.Workspace.Value);
+        }
         // A folder without a solution has no projects until the walk for them lands: none to load, run or build meanwhile.
         session.reads++;
         session.Models.Open(folder, kept?.ProjectModels, ahead?.Evaluations);
@@ -267,7 +273,7 @@ public sealed class ProjectSession : IAsyncDisposable
         get => workspace;
         private set
         {
-            workspace = value;
+            workspace = value is null ? null : value with { Build = BuildChoices.Choice };
             FollowEvaluations();
         }
     }
@@ -481,6 +487,36 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>Where each project of devices, emulators or simulators runs, and each one's targets as last listed.</summary>
     public Run.Devices.DeviceChoices Targets { get; } = new();
+
+    /// <summary>The build configuration and platform chosen for the folder, which every build, run, test and evaluation of it
+    /// takes (<see cref="WorkspaceModel.Build"/>).</summary>
+    public BuildConfigurationChoices BuildChoices { get; } = new();
+
+    /// <summary>The build configuration chosen changed, and the workspace with it: what shows it follows.</summary>
+    public event EventHandler? BuildChosen;
+
+    /// <summary>The configuration chosen given from now on: the workspace takes it, the design-time builds made under the one
+    /// before stand no more, and every project is evaluated again under it, the language server loading each again as it is.</summary>
+    private void FollowBuildChoice()
+    {
+        if (IsEnded || Workspace is not { } now)
+        {
+            return;
+        }
+        Workspace = now;
+        DesignTimeBuilds.Reconfigured();
+        Evaluate();
+        BuildChosen?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>What the folder offers to build as, read again: its solution's configurations, else its projects'.</summary>
+    public void ReadBuildChoices()
+    {
+        if (!IsEnded && Folder is { } folder && Workspace is { } now)
+        {
+            IdeErrors.Observe(BuildChoices.ReadAsync(folder, now, Models.IsComplete));
+        }
+    }
 
     /// <summary>A project's framework was chosen (by its path; null for every project's, as the folder's kept choices are
     /// taken), and its XAML and C# followed: what shows the choice, and the previews of its XAML, follow it.</summary>
@@ -1117,6 +1153,11 @@ public sealed class ProjectSession : IAsyncDisposable
         bool packages = before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && p.Second.Evaluated is not { Complete: false }
             && (p.First.Evaluated is { Complete: false } || !FrameworkPackages(p.First).SequenceEqual(FrameworkPackages(p.Second))));
         ProjectsEvaluated?.Invoke(this, new EvaluatedProjects([.. Workspace.Projects.Where(p => changed.Contains(p.Path))], tests, packages));
+        if (Workspace.Solution is null)
+        {
+            // With no solution, what the folder builds as is what its projects declare.
+            ReadBuildChoices();
+        }
         Web?.Checks.CodeChanged();
         MSBuild.ProjectsEvaluated();
         TimeSolutionView();
@@ -1161,6 +1202,7 @@ public sealed class ProjectSession : IAsyncDisposable
         State = kept;
         Frameworks.Keep(kept.Workspace);
         Targets.Keep(kept.Workspace);
+        BuildChoices.Keep(kept.Workspace);
         Configurations.Keep(kept.RunConfigurations, Projects);
         Folds.Restore(workspace.Folds);
         foreach (string file in workspace.RecentFiles.Where(File.Exists).Reverse())
@@ -1328,6 +1370,10 @@ public sealed class ProjectSession : IAsyncDisposable
         WalkForProjects(ahead?.Read);
         // Once the files it opens with are open, so the one shown's project is evaluated first.
         UiThread.Post(Evaluate);
+        if (Workspace?.Solution is not null)
+        {
+            ReadBuildChoices();
+        }
     }
 
     /// <summary>Walks the folder for its projects off the window's thread, as background work, or takes the walk given
@@ -1395,6 +1441,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotMarks.Changed();
         GodotShaders.Changed();
         WorkspaceChanged?.Invoke(this, EventArgs.Empty);
+        ReadBuildChoices();
         // Each project whose evaluation no longer stands (its file or an import changed) is evaluated again.
         Evaluate();
     }

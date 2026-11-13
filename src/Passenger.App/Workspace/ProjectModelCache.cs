@@ -14,12 +14,19 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
     /// <summary>The folder of the SDK whose MSBuild evaluated them.</summary>
     public string? Sdk { get; init; }
 
+    /// <summary>The build configuration they were evaluated under (Release|Any CPU), null for the one MSBuild takes given none.</summary>
+    public string? Configured { get; init; }
+
     /// <summary>Each project's evaluation, complete, by its path.</summary>
     public Dictionary<string, EvaluatedProject> Projects { get; init; } = [];
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeted, ForgetAll, ForgetUncarried, ForgetUnpublishable, ForgetAll,
         ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved, ForgetUncentral, ForgetGodotless,
-        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered, ForgetUnconfigured];
+        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered, ForgetUnconfigured, ForgetUndeclared];
+
+    /// <summary>Every evaluation, kept before they carried the configurations and platforms a project declares, which a
+    /// folder with no solution chooses its builds' from.</summary>
+    private static void ForgetUndeclared(JsonObject document) => document.Remove("projects");
 
     /// <summary>Every evaluation, kept before they stamped the .editorconfig and .globalconfig files looked for over a
     /// project's sources, whose coming or going since would leave the language server loading the project as it was.</summary>

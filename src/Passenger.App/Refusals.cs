@@ -189,6 +189,9 @@ public static class Refusals
     /// closed.</summary>
     public static string NoFolderTo(string verb) => $"Nothing to {verb}: no folder is open";
 
+    /// <summary>Why no build configuration can be chosen: the folder's solution or projects have not been read yet.</summary>
+    public const string NoBuildConfigurations = "The folder's build configurations are not read yet: its solution or projects are still being read";
+
     /// <summary>An action on a Godot project asked for in a folder that holds none.</summary>
     public const string NoGodotProject = "The open folder holds no Godot project (project.godot)";
 

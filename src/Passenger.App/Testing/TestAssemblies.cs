@@ -43,7 +43,8 @@ public static class TestAssemblies
         {
             throw new InvalidOperationException($"MSBuild could not say where the test projects build: {failed.Reason}", failed);
         }
-        IReadOnlyList<SolutionBuilt> built = solution is null ? [] : await BuiltByAsync(host, solution, log, cancel);
+        IReadOnlyList<SolutionBuilt> built = solution is null ? [] : await BuiltByAsync(host, solution, workspace?.Build is { OfSolution: true } chosen
+            ? new SolutionConfiguration(chosen.Chosen.Configuration, chosen.Chosen.Platform) : null, log, cancel);
         (IReadOnlyList<TestAssembly> Assemblies, string? Problem)[] each = await Task.WhenAll(projects.Select(p =>
             OfAsync(host, p, ProjectModels.Properties(workspace, p, built.FirstOrDefault(b => PathNames.Same(b.Project, p.Path))), cancel)));
         List<string> problems = [.. each.Select(e => e.Problem).OfType<string>()];
@@ -59,14 +60,16 @@ public static class TestAssemblies
         return found;
     }
 
-    /// <summary>Each project a build of the solution builds, with the configuration and platform it gives it; none, said,
+    /// <summary>Each project a build of the solution builds under the configuration chosen (else the one MSBuild takes), with
+    /// the configuration and platform it gives it; none, said,
     /// where MSBuild could not read the solution, whose projects are then asked as built alone.</summary>
-    private static async Task<IReadOnlyList<SolutionBuilt>> BuiltByAsync(ProjectHost host, string solution, Action<string> log, CancellationToken cancel)
+    private static async Task<IReadOnlyList<SolutionBuilt>> BuiltByAsync(ProjectHost host, string solution, SolutionConfiguration? chosen, Action<string> log,
+        CancellationToken cancel)
     {
         string? problem;
         try
         {
-            SolutionBuild build = await host.SolutionBuildAsync(solution, cancel);
+            SolutionBuild build = await host.SolutionBuildAsync(solution, cancel, chosen);
             if (build.Problem is null)
             {
                 return build.Projects;

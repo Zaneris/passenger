@@ -225,6 +225,8 @@ public static partial class PublishProfiles
         string? runtime = null)
     {
         Dictionary<string, string> globals = ProjectModels.Properties(workspace, project);
+        // A publish names its configuration alone, as its command line does: the platform is the project's own.
+        globals.Remove(MSBuildNames.Platform);
         globals[MSBuildNames.IsPublishing] = "true";
         if (profile is not null)
         {
@@ -307,7 +309,7 @@ public static partial class PublishProfiles
                 configuration ??= raw.ContainsKey(MSBuildNames.Configuration) ? read.Values.GetValueOrDefault(MSBuildNames.Configuration)
                     : raw.GetValueOrDefault(MSBuildNames.LastUsedBuildConfiguration) is { Length: > 0 } last ? last : null;
             }
-            configuration ??= "Release";
+            configuration ??= PublishProfiles.ReleaseOf(PublishProfiles.DeclaredConfigurations(project));
             if (!string.Equals(read.Values.GetValueOrDefault(MSBuildNames.Configuration), configuration, StringComparison.OrdinalIgnoreCase))
             {
                 read = await EvaluateAsync(open, project.Path, Globals(workspace, project, request.Profile, configuration, framework), cancel);

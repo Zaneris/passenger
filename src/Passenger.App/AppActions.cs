@@ -295,6 +295,9 @@ public static class AppActions
     // Where the chosen configuration's app runs (a device, an emulator or a simulator), the widget beside the configuration's.
     public const string ChooseRunTarget = "app.chooseRunTarget";
 
+    // The build configuration and platform every build takes, the widget before the run configuration's: no keys of Rider's.
+    public const string ChooseBuildConfiguration = "app.chooseBuildConfiguration";
+
     // One of the folder's own run configurations saved as a launch profile of its project: no keys of Rider's.
     public const string SaveAsLaunchProfile = "app.saveAsLaunchProfile";
     public const string ShowBuild = "app.showBuild";

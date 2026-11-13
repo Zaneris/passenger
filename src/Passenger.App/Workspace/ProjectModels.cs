@@ -21,6 +21,10 @@ public sealed class ProjectModels
     private string? folder;
     private string? sdk;
 
+    /// <summary>The configuration the evaluations known were made under (<see cref="BuildConfiguration.Key"/>), null for the
+    /// one MSBuild takes given none: under another, none stands.</summary>
+    private string? configured;
+
     /// <summary>Bumped as a folder is taken up or let go, so what lands for the one before is dropped.</summary>
     private int generation;
 
@@ -119,7 +123,9 @@ public sealed class ProjectModels
         {
             return;
         }
+        // Evaluations kept under another configuration are shown until the first round evaluates them all again.
         sdk = value.Sdk;
+        configured = value.Configured;
         foreach ((string path, EvaluatedProject project) in value.Projects)
         {
             known[path] = project;
@@ -156,6 +162,7 @@ public sealed class ProjectModels
         folder = null;
         kept = null;
         sdk = null;
+        configured = null;
         known.Clear();
         made.Clear();
         Problem = null;
@@ -261,8 +268,14 @@ public sealed class ProjectModels
                 before[path] = evaluated;
             }
         }
+        if (next.Workspace.Build?.Chosen.Key != configured)
+        {
+            // Evaluated under another configuration: none of it stands.
+            configured = next.Workspace.Build?.Chosen.Key;
+            sdk = null;
+        }
         BackgroundWork.Begin();
-        IdeErrors.Observe(RoundAsync(generation, folder, projects, before, Properties(next.Workspace), ending.Token));
+        IdeErrors.Observe(RoundAsync(generation, folder, projects, before, Properties(next.Workspace), Each(next.Workspace), ending.Token));
     }
 
     /// <summary>The workspace's projects, the active file's first and then those it references as last evaluated, through
@@ -307,16 +320,27 @@ public sealed class ProjectModels
     }
 
     /// <summary>The global properties one project is evaluated with for what a build of it makes (a launch's program, a test
-    /// run's assemblies, a publish): the solution's, and Windows targeting where the host loaded it with that.</summary>
+    /// run's assemblies, a publish): the solution's, the configuration and platform chosen for it
+    /// (<see cref="WorkspaceModel.Build"/>), and Windows targeting where the host loaded it with that.</summary>
     public static Dictionary<string, string> Properties(WorkspaceModel? workspace, ProjectModel project)
     {
         Dictionary<string, string> properties = workspace is null ? new(StringComparer.OrdinalIgnoreCase) : Properties(workspace);
+        foreach ((string name, string value) in workspace?.BuildPropertiesOf(project.Path) ?? new Dictionary<string, string>())
+        {
+            properties[name] = value;
+        }
         if (project.WindowsTargeting)
         {
             properties[MSBuildNames.EnableWindowsTargeting] = "true";
         }
         return properties;
     }
+
+    /// <summary>The global properties each project of a workspace takes beyond the solution's for the configuration and
+    /// platform chosen (<see cref="WorkspaceModel.Build"/>), by path; null for the configuration MSBuild takes.</summary>
+    public static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? Each(WorkspaceModel? workspace) =>
+        workspace?.Build is null ? null
+        : workspace.Projects.Select(p => p.Path).Distinct(StringComparer.Ordinal).ToDictionary(p => p, workspace.BuildPropertiesOf, StringComparer.Ordinal);
 
     /// <summary>The global properties one project is evaluated with for what a build of its solution makes of it
     /// (<see cref="Properties(WorkspaceModel?, ProjectModel)"/>), with the configuration and platform that build gives it
@@ -333,7 +357,7 @@ public sealed class ProjectModels
     }
 
     private async Task RoundAsync(int mine, string following, List<string> projects, Dictionary<string, EvaluatedProject> before, Dictionary<string, string> properties,
-        CancellationToken cancel)
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? each, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
         HashSet<string> evaluated = new(StringComparer.Ordinal);
@@ -436,7 +460,7 @@ public sealed class ProjectModels
             {
                 UiThread.Post(Land);
             }
-        }, cancel);
+        }, cancel, each);
     }
 
     private void SdkIs(MissingSdk? missing)
@@ -487,7 +511,7 @@ public sealed class ProjectModels
                 complete[path] = evaluated;
             }
         }
-        kept.Set(new ProjectModelCache { Sdk = sdk, Projects = complete });
+        kept.Set(new ProjectModelCache { Sdk = sdk, Configured = configured, Projects = complete });
     }
 
     /// <summary>Whether an evaluation stands: complete, and everything it read as it was then.</summary>

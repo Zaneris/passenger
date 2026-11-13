@@ -114,7 +114,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
         "The open folder and solution (or solution filter), its projects (output type, frameworks and the one chosen, unloaded marked), run " +
-        "configurations (the chosen one marked), the language server's state, the open files (unsaved marked) and the active " +
+        "configurations (the chosen one marked), the build configuration every build takes and the others, the language server's state, the open files (unsaved marked) and the active " +
         "one with its caret, and the Aspire AppHosts and container run under way, each resource with its state, hold, debug " +
         "session and target. routes adds the web projects' routes, read from their code.")]
     public Task<Workspace> GetWorkspace(bool routes = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -2341,7 +2341,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, waits " +
         "for the work it begins and says what it came to, or says why it cannot. input: app.migrations.add's name, updateTo's " +
         "target; app.saveAsLaunchProfile's configuration (else the chosen one); app.targetFramework's framework, as " +
-        "Project:net9.0 where several projects target several; app.chooseRunTarget's device or emulator by name (none lists them).")]
+        "Project:net9.0 where several projects target several; app.chooseRunTarget's device or emulator by name, " +
+        "app.chooseBuildConfiguration's configuration (Release, or Release|x64; none lists them for either).")]
     public Task<string> IdeAction(string action, string? input = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null)
@@ -2359,6 +2360,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (action == AppActions.ChooseRunTarget)
         {
             return await window.ChooseRunTargetForAgentAsync(input);
+        }
+        if (action == AppActions.ChooseBuildConfiguration)
+        {
+            return await window.ChooseBuildConfigurationForAgentAsync(input);
         }
         if (input is not null)
         {
@@ -3298,6 +3303,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                     : $"{lacking}. Install .NET SDK installs it: the person's, from the banner over Passenger's window, or an agent's ide_action {AppActions.InstallDotnetSdk}, which asks them first"
                 : session.Models.MissingSdk is { } missing ? Refusals.NoSdk(missing, session.Folder) : null,
             UnreadSolution = session.Workspace?.Unread is { } unread ? UnreadSolutionSaid(unread) : null,
+            BuildConfiguration = session.BuildChoices.Chosen is not { } built ? null
+                : session.BuildChoices.Offered.Where(o => !o.Is(built)).Select(o => o.Key).ToList() is { Count: > 0 } others
+                    ? $"{built.Key} (ide_action {AppActions.ChooseBuildConfiguration} switches it to {Plural.Listed(others)})"
+                    : built.Key,
             MultiProject = session.Configurations.Profiles.Count > 0 || session.Configurations.ProfileProblems.Count > 0
                 ? [.. session.Configurations.Profiles.Select(p => $"{p.Name}: {string.Join(", ", p.Starts.Select(s => $"{Path.GetFileNameWithoutExtension(s.Project)} {s.Action?.ToString() ?? "(unknown action)"}"
                     + (s.LaunchProfile.Length > 0 ? $" in {s.LaunchProfile}" : string.Empty)))}"),
@@ -3444,6 +3453,10 @@ public sealed record Workspace(
     /// with each project (Start debugs it when debugged) and its launch profile, then why a file of them did not read; null
     /// with none.</summary>
     public IReadOnlyList<string>? MultiProject { get; init; }
+
+    /// <summary>The build configuration every build, run and test takes (Release|Any CPU), then the others the solution or
+    /// projects declare; null before they are read.</summary>
+    public string? BuildConfiguration { get; init; }
 
     /// <summary>The web projects' routes, when asked for.</summary>
     public IReadOnlyList<RouteInfo>? Routes { get; init; }

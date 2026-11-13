@@ -55,6 +55,15 @@
                     <Button Name="BuildButton" Classes="tool" ToolTip.Tip="Build solution">
                         <PathIcon Data="{StaticResource Icon.Build}" />
                     </Button>
+                    <!-- The build configuration every build takes, shown once the folder offers any
+                         (MainWindow.BuildConfigurations.cs). -->
+                    <Button Name="BuildConfigButton" Classes="widget" MinWidth="52" ToolTip.Tip="Build configuration" IsVisible="False" Click="OnBuildConfigClicked">
+                        <DockPanel>
+                            <PathIcon DockPanel.Dock="Right" Margin="6,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
+                            <TextBlock Name="BuildConfigName" Text="Debug" VerticalAlignment="Center"
+                                       MaxWidth="160" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                    </Button>
                     <Button Name="RunConfigButton" Classes="widget" MinWidth="52" ToolTip.Tip="Run configuration" Click="OnRunConfigClicked">
                         <DockPanel>
                             <PathIcon DockPanel.Dock="Right" Margin="6,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />

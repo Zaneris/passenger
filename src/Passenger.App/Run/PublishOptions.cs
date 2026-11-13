@@ -1,5 +1,6 @@
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Workspace;
 
 namespace Passenger.App.Run;
 
@@ -43,6 +44,17 @@ public static partial class PublishProfiles
 {
     /// <summary>The method a profile that publishes the project's container image names (the SDK's DefaultContainer's).</summary>
     public const string ContainerMethod = "Container";
+
+    /// <summary>The configurations a project declares, as its build configurations are offered: the SDK's Debug and Release
+    /// where its evaluation is not in.</summary>
+    public static IReadOnlyList<string> DeclaredConfigurations(ProjectModel project) =>
+        [.. BuildConfigurations.Declared([(project.Property(CarriedProperties.Configurations), null)]).Select(c => c.Configuration)];
+
+    /// <summary>The configuration a publish takes unless told another: Release, else the one named for release (Godot's
+    /// ExportRelease), else the first declared.</summary>
+    public static string ReleaseOf(IReadOnlyList<string> declared) =>
+        declared.FirstOrDefault(c => c.Equals("Release", StringComparison.OrdinalIgnoreCase))
+        ?? declared.FirstOrDefault(c => c.Contains("Release", StringComparison.OrdinalIgnoreCase)) ?? declared.FirstOrDefault() ?? "Release";
 
     /// <summary>What a profile's evaluation makes of the dialog's options: its configuration (one it sets itself, else Release,
     /// as dotnet publish takes), framework, runtime, deployment and the SDK's options; the folder is what the file names.</summary>

@@ -28,6 +28,10 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
     /// <summary>Where each project of devices, emulators or simulators runs, by its path (<see cref="Run.Devices.DeviceChoices"/>).</summary>
     public Dictionary<string, Run.Devices.KeptTarget> RunTargets { get; init; } = [];
 
+    /// <summary>The build configuration and platform chosen, with what the solution mapped each project to under them
+    /// (<see cref="BuildConfigurationChoices"/>); null for the one MSBuild takes given none.</summary>
+    public KeptBuildChoice? Build { get; init; }
+
     /// <summary>The folds of the files opened lately, each as it closed, the latest first.</summary>
     public List<KeptFolds> Folds { get; init; } = [];
 
@@ -64,6 +68,9 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
         UnloadedProjects = [.. (UnloadedProjects ?? []).Where(p => !string.IsNullOrEmpty(p))],
         TargetFrameworks = (TargetFrameworks ?? []).Where(p => p.Key is { Length: > 0 } && p.Value is { Length: > 0 })
             .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
+        Build = Build is { Configuration.Length: > 0, Platform.Length: > 0 } build
+            ? build with { Mapped = [.. (build.Mapped ?? []).Where(m => m is { Project.Length: > 0, Configuration.Length: > 0, Platform.Length: > 0 })] }
+            : null,
         RunTargets = (RunTargets ?? []).Where(p => p.Key is { Length: > 0 } && p.Value is { Key.Length: > 0, Name.Length: > 0 } t
                 && Enum.IsDefined(t.Platform) && Enum.IsDefined(t.Kind))
             .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),

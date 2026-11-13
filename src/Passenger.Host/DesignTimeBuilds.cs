@@ -82,7 +82,7 @@ internal static class DesignTimeBuilds
             {
                 using CancellationTokenRegistration stopping = cancel.Register(BuildManager.DefaultBuildManager.CancelAllSubmissions);
                 await Parallel.ForEachAsync(asked.Projects, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = cancel },
-                    async (path, _) => built(await Build(path, collection, context, global, diagnostics, cancel).ConfigureAwait(false))).ConfigureAwait(false);
+                    async (path, _) => built(await Build(path, collection, context, Own(path), diagnostics, cancel).ConfigureAwait(false))).ConfigureAwait(false);
             }
             finally
             {
@@ -90,6 +90,9 @@ internal static class DesignTimeBuilds
                 // A referenced project's output or a file changed before the next request: nothing of this one is reused.
                 BuildManager.DefaultBuildManager.ResetCaches();
             }
+
+            Dictionary<string, string> Own(string path) => asked.Each?.ContainsKey(path) == true
+                ? new(HostProperties.Of(global, asked.Each, path), StringComparer.OrdinalIgnoreCase) : global;
         }
         finally
         {
