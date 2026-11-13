@@ -1491,7 +1491,8 @@ public sealed partial class Git
         Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index };
         try
         {
-            GitResult read = await RunAsync(Root, ["read-tree", "HEAD"], environment: environment);
+            // The real index's stats of the files unchanged since HEAD go along, or the commit would read every file again.
+            GitResult read = await RunAsync(Root, ["read-tree", "-m", $"--index-output={index}", "HEAD"]);
             if (!read.Succeeded)
             {
                 return read;

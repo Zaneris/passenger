@@ -65,6 +65,41 @@ public sealed class PartialCommitTests : IDisposable
     private static CheckBox[] Boxes(DiffView view) =>
         [.. view.GetVisualDescendants().OfType<CheckBox>().Where(b => ToolTip.GetTip(b) as string == "Include this change in commit")];
 
+    /// <summary>A clean filter (Git LFS's, say) runs as git reads a file of the working tree again: a partial commit reads
+    /// no file that is as the last commit has it, however many the tree holds.</summary>
+    [AvaloniaFact]
+    public void A_partial_commit_reads_no_file_unchanged_since_the_last_commit()
+    {
+        string cleaned = Path.Combine(TestFolders.Create("cleaned-"), "cleaned.txt");
+        File.WriteAllText(PathOf("Same.txt"), "same\n");
+        TestGit.Run(folder, "add", "Same.txt");
+        TestGit.Run(folder, "commit", "-q", "-m", "Same", "--", "Same.txt");
+        // Written before the index is, git trusts what it read of the file.
+        File.SetLastWriteTimeUtc(PathOf("Same.txt"), DateTime.UtcNow.AddHours(-1));
+        TestGit.Run(folder, "status", "--porcelain");
+        File.WriteAllText(PathOf(".git/info/attributes"), "*.txt filter=counted\n");
+        TestGit.Run(folder, "config", "filter.counted.clean", $"echo %f >>'{cleaned.Replace('\\', '/')}'; cat");
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.Perform(AppActions.ShowCommit);
+            Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 2, "the changed files");
+            IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
+            Ui.Click(Boxes(host.View!)[1]);
+            host.Close();
+            window.CommitView.Message = "The first change";
+            Assert.True(Ui.Landed(window.CommitView.CommitAsync(false), "the partial commit"), window.Status);
+            Assert.Equal("ONE\ntwo\nthree\nfour\nfive\n", TestGit.Run(folder, "show", "HEAD:Notes.txt"));
+            string read = File.ReadAllText(cleaned);
+            Assert.Contains("Notes.txt", read, StringComparison.Ordinal);
+            Assert.False(read.Contains("Same.txt", StringComparison.Ordinal), $"The partial commit read Same.txt again, as every file of the tree:\n{read}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Edits_in_the_diff_keep_the_changes_chosen_and_leave_a_new_change_out()
     {
