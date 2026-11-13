@@ -202,7 +202,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 
 Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer's "never" is a rule.
 - `Passenger.Core` (no UI), where each of these is the one way: a PATH search `Programs.OnPath`; .NET's folder
-  `Dotnet.Root`, never `Dotnet.Host()`'s folder; a request of a host `OutboundHttp`; a Unix socket `SocketFolders`; a C
+  `Dotnet.Root`, never `Dotnet.Host()`'s folder, for a folder's work `Dotnet.Root(folder)`/`Host(folder)` (the first installation holding the SDK its global.json takes, `Dotnet.Find(folder)`), which `DotnetCommand(args, folder)` and `NamingDotnet(start, folder)` take; a request of a host `OutboundHttp`; a Unix socket `SocketFolders`; a C
   call made in more than one place `Libc`; whether a process runs `DotnetProcesses.Runs`, a `Process` held too, never
   `HasExited` (PSG0007): ended, one Passenger started has an `ExitCode` to read, one found by id none; a PASSENGER_*_MS
   `EnvironmentValues.Milliseconds`; a Windows command line `WindowsCommandLine`; the version `Product`; a log below the
@@ -637,7 +637,7 @@ a new name, and `just site-shots` retakes its images.
   image whose file was replaced (`just package-mac` ejects one first) or a bundle written into (#450). Tests never start
   a program inside an unsigned bundle, and a run's folder ends in `.noindex`, so Spotlight reads none of it.
 - **Linux**: file systems tell letter case apart, so a test of another letter case skips there.
-- **MSBuild**: a Remove glob (by its source an Include's or Update's too) is unescaped twice, an Exclude's or Import's
+- **MSBuild**: its locator takes DOTNET_ROOT's installation, then a process named dotnet, before DOTNET_HOST_PATH, and lists SDKs only of the first holding any: a helper loading another installation's MSBuild is given it as DOTNET_ROOT (`Dotnet.Apart`). A Remove glob (by its source an Include's or Update's too) is unescaped twice, an Exclude's or Import's
   once, and one escaped wildcard makes a whole glob a plain name fitting no file (`ItemPaths`); a build through another
   spelling of a project's path deletes what the first wrote (IncrementalClean; a shell or MSBuild takes an inherited PWD
   for its folder, #413, #537), and a reused node carries a project's earlier spelling and NuGet home into the next
