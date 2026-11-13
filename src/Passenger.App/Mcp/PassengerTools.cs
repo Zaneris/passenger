@@ -983,6 +983,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             .OrderBy(s => NameMatch(s.Name, query))
             .ThenBy(s => SymbolKinds.Name(s.Kind) is "class" or "interface" or "struct" or "enum" ? 0 : 1)
             .Take(Math.Max(0, limit - indexers.Count))];
+        if (indexers.Count == 0 && kept.Count == 0 && FailedLoads() is { Count: > 0 } failed)
+        {
+            throw new InvalidOperationException(Refusals.NoneWhileUnloaded($"No {kind ?? "symbol"} of the solution's own code matches {query}", failed));
+        }
         IReadOnlyList<Place> places = await Places([.. kept.Select(s => s.Location)], cancel);
         return (IReadOnlyList<SymbolFound>)[.. indexers,
             .. kept.Select((s, i) => new SymbolFound(s.Name, SymbolKinds.Name(s.Kind), s.Owner, places[i].Path, places[i].Line, places[i].Column))];
@@ -1044,7 +1048,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (kept.Count == 0 && noneRefused)
         {
-            throw new InvalidOperationException($"No {kind ?? "symbol"} of the solution's own code is named {name}: find_symbol finds names like it");
+            string none = $"No {kind ?? "symbol"} of the solution's own code is named {name}";
+            throw new InvalidOperationException(FailedLoads() is { Count: > 0 } failed ? Refusals.NoneWhileUnloaded(none, failed) : $"{none}: find_symbol finds names like it");
         }
         IReadOnlyList<Place> places = await Lines([.. kept.Select(s => (DocumentUris.FromPath(s.Path!), new LspPosition(s.At!.Line, s.At.Character), true))], cancel);
         List<NamedPlace> named = [.. kept.Select((s, i) => new NamedPlace(s.Name, s.Shown, s.Kind, s.Id, s.Container, places[i].Path, places[i].Line, places[i].Column))];
@@ -2918,9 +2923,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return [.. actions.Where(a => a.Disabled is null)];
     }
 
-    /// <summary>The language server, once it has loaded the workspace.</summary>
+    /// <summary>The language server, once it has loaded the workspace; refused, saying why, while the folder's projects
+    /// have no SDK to load with (<see cref="Unloadable"/>) or are still loading after the wait.</summary>
     private async Task<RoslynSession> Server(CancellationToken cancel)
     {
+        if (Unloadable() is { } unloadable)
+        {
+            throw new InvalidOperationException(unloadable);
+        }
         if (Session.CSharp is null)
         {
             throw new InvalidOperationException(Refusals.NoCSharp);
@@ -2929,23 +2939,58 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (Session.CSharp is { IsReady: false })
         {
             AgentCall.Say("Waiting for the C# language server to load the solution");
-            await When(() => Session.CSharp is not { IsReady: false, IsStopped: false }, ServerLimit, cancel, ServerState());
+            await When(() => Session.CSharp is not { IsReady: false, IsStopped: false } || Unloadable() is not null, ServerLimit, cancel, ServerState(), SdkState());
             AgentCall.Say(null);
         }
-        return Session.CSharp is { IsReady: true, Session: { } server }
-            ? server
-            : Session.CSharp is { IsStopped: true }
-            ? throw new InvalidOperationException(Refusals.CSharpStopped)
-            : throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
+        return Unloadable() is { } found ? throw new InvalidOperationException(found)
+            : Session.CSharp is { IsReady: true, Session: { } server } ? server
+            : Session.CSharp is { IsStopped: true } ? throw new InvalidOperationException(Refusals.CSharpStopped)
+            : throw new TimeoutException(Refusals.StillLoading(ServerLimit, Session.CSharp?.State ?? "none"));
+    }
+
+    /// <summary>The folder's projects found to have no .NET SDK, or one again: what a wait for the server's load wakes on too.</summary>
+    private Wake SdkState()
+    {
+        ProjectModels models = Session.Models;
+        return On(h => models.SdkChanged += h, h => models.SdkChanged -= h);
+    }
+
+    /// <summary>The projects the C# language server met an error loading, each with the first it met, by name: what it may
+    /// hold none of the code of.</summary>
+    private IReadOnlyList<(string Project, string Error)> FailedLoads() =>
+        [.. (Session.CSharp?.ProjectProblems ?? []).Where(p => p.Severity == ProblemSeverity.Error).GroupBy(p => p.Project, PathNames.Comparer)
+            .Select(g => (Path.GetFileNameWithoutExtension(g.Key), g.First().Message))];
+
+    /// <summary>Why the server holds a C# file of one of the folder's projects in none: the project met an error loading,
+    /// said with it; null where it holds the file, or the project met none.</summary>
+    private async Task<string?> NotLoadedAsync(string path, CancellationToken cancel)
+    {
+        if (!path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || Session.CSharp is not { Session: { } server } csharp || Session.ProjectOf(path) is not { } project
+            || csharp.ProjectProblems.FirstOrDefault(p => p.Severity == ProblemSeverity.Error && PathNames.Same(p.Project, project.Path)) is not { } error)
+        {
+            return null;
+        }
+        try
+        {
+            return (await server.HeldTextsAsync([path], cancel)).Any(h => h.Hash is not null) ? null : Refusals.ProjectNotLoaded(project.Name, error.Message);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
     }
 
     /// <summary>Waits, once the language server has loaded the workspace, until it holds in their projects the C# files come
-    /// under the folder's projects since (an agent's just written looked for first) that the file asked about sees (<see
-    /// cref="CSharpService.SeenFrom"/>), else every one, for up to <see cref="Patience.Limit"/>: it answers without a file in
-    /// none, finding no name declared there. Refused, naming the first, when the time is up; whether it was waited for (false
-    /// while the server still loads the workspace).</summary>
+    /// under the folder's projects since (an agent's just written first) that the file asked about sees (<see
+    /// cref="CSharpService.SeenFrom"/>), else every one, up to <see cref="Patience.Limit"/>, as it answers without a file in none:
+    /// refused, naming the first, when the time is up, and at once while the projects have no SDK (<see cref="Unloadable"/>);
+    /// whether it was waited for (false while the server still loads the workspace).</summary>
     private async Task<bool> TakenInAsync(string? path, CancellationToken cancel)
     {
+        if ((path is null || Session.ProjectOf(Resolve(path)) is not null) && Unloadable() is { } unloadable)
+        {
+            throw new InvalidOperationException(unloadable);
+        }
         if (Session.CSharp is not { IsReady: true } csharp)
         {
             return false;
@@ -2967,6 +3012,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private async Task<(OpenDocument Document, LspDocument Lsp)> Code(string path, CancellationToken cancel, bool takenIn = false)
     {
         NotGenerated(path);
+        bool ofProject = Session.ProjectOf(Resolve(path)) is not null;
+        if (ofProject && Unloadable() is { } unloadable)
+        {
+            throw new InvalidOperationException(unloadable);
+        }
         takenIn = takenIn || await TakenInAsync(path, cancel);
         OpenDocument document = await DocumentAsync(path, cancel);
         if (Session.CSharp is null)
@@ -2992,8 +3042,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             await TakenInAsync(path, cancel);
         }
+        // Found meanwhile to have no SDK, the folder's projects are in no project the server holds either.
+        if ((ofProject && Unloadable() is { } found ? found : await NotLoadedAsync(document.Path, cancel)) is { } notLoaded)
+        {
+            throw new InvalidOperationException(notLoaded);
+        }
         return (document, Session.CSharp?.For(document)?.Lsp
-            ?? throw new TimeoutException($"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
+            ?? throw new TimeoutException(Session.CSharp is { IsReady: false } loading ? Refusals.StillLoading(ServerLimit, loading.State)
+                : $"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
     }
 
     /// <summary><see cref="Code"/>, or a source generator's code copied, as the document the server has now and only asked
@@ -3297,11 +3353,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             active is null ? null : $"{(active.Diff is null ? Relative(active.Path) : DiffNamed(active))}:{caret!.Value.Line + 1}:{caret.Value.Column + 1}",
             Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging")
         {
-            SdkMissing = window.DotnetWant is { Install: not null } wanted && Refusals.Dotnet(wanted, session.Folder) is { } lacking
-                ? window.AgentsOwn
-                    ? $"{lacking}. This Passenger, an agent's own, installs nothing: the person installs it with Install .NET SDK in the banner over their Passenger's window"
-                    : $"{lacking}. Install .NET SDK installs it: the person's, from the banner over Passenger's window, or an agent's ide_action {AppActions.InstallDotnetSdk}, which asks them first"
-                : session.Models.MissingSdk is { } missing ? Refusals.NoSdk(missing, session.Folder) : null,
+            SdkMissing = SdkMissingSaid(session),
             UnreadSolution = session.Workspace?.Unread is { } unread ? UnreadSolutionSaid(unread) : null,
             BuildConfiguration = session.BuildChoices.Chosen is not { } built ? null
                 : session.BuildChoices.Offered.Where(o => !o.Is(built)).Select(o => o.Key).ToList() is { Count: > 0 } others
@@ -3314,6 +3366,21 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 : null,
         };
     }
+
+    /// <summary>What .NET the machine or the folder lacks and how it is mended, as workspace says it; null lacking nothing.</summary>
+    private string? SdkMissingSaid(ProjectSession session) =>
+        window.DotnetWant is { Install: not null } wanted && Refusals.Dotnet(wanted, session.Folder) is { } lacking
+            ? window.AgentsOwn
+                ? $"{lacking}. This Passenger, an agent's own, installs nothing: the person installs it with Install .NET SDK in the banner over their Passenger's window"
+                : $"{lacking}. Install .NET SDK installs it: the person's, from the banner over Passenger's window, or an agent's ide_action {AppActions.InstallDotnetSdk}, which asks them first"
+            : session.Models.MissingSdk is { } missing ? Refusals.NoSdk(missing, session.Folder) : null;
+
+    /// <summary>Why the folder's projects cannot load for the C# code tools to search: they have no .NET SDK to load with,
+    /// said as workspace says it; null while they have one, or the folder has no project.</summary>
+    private string? Unloadable() =>
+        Session is { Projects.Count: > 0 } session && (window.DotnetWant.NoSdkAtAll || session.Models.MissingSdk is not null) && SdkMissingSaid(session) is { } lacking
+            ? Refusals.ProjectsUnloadable(lacking)
+            : null;
 
     /// <summary>A solution that does not read as an agent is told it: its path, where its reader stopped as the editor
     /// counts the file's lines, and why.</summary>

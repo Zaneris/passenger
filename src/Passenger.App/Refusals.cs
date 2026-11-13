@@ -134,6 +134,28 @@ public static class Refusals
         _ => $"No .NET SDK was found for this folder: {ChildResult.FirstLineOf(missing.Said)}",
     };
 
+    /// <summary>A C# code tool asked while the folder's projects have no .NET SDK to load with, as <paramref name="lacking"/>
+    /// says it: the language server holds none of their code to answer from.</summary>
+    public static string ProjectsUnloadable(string lacking) =>
+        $"The folder's projects are not loaded, so the C# language server has none of their code to search or read: {lacking}";
+
+    /// <summary>A C# code tool asked about a file of a project the language server met an error loading and holds no code
+    /// of, with what it met.</summary>
+    public static string ProjectNotLoaded(string project, string error) =>
+        $"{project} did not load into the C# language server, which holds none of its code to answer from: {error.TrimEnd('.')}. Mend that and it loads again; "
+        + "diagnostics with no path lists what each project met loading";
+
+    /// <summary>A C# code tool's answer, empty, while projects the language server met an error loading may hold what it
+    /// looked for.</summary>
+    public static string NoneWhileUnloaded(string none, IReadOnlyList<(string Project, string Error)> failed) =>
+        $"{none}, but the C# language server met errors loading {Plural.Listed([.. failed.Select(f => f.Project)])}, whose code it may not hold: "
+        + $"{string.Join("; ", failed.Select(f => $"{f.Project}: {f.Error}"))}";
+
+    /// <summary>A C# code tool asked while the language server is still loading the folder's projects after the wait.</summary>
+    public static string StillLoading(TimeSpan waited, string state) =>
+        $"The C# language server is still loading the folder's projects after {waited.TotalSeconds:0} s ({(state.Length > 0 ? state : "starting")}), "
+        + "so it has nothing of them to answer from yet: ask again once workspace says languageServer is ready";
+
     /// <summary>An x64 Passenger the system translates found only a .NET SDK of the system's own processor, whose MSBuild it
     /// cannot load (<see cref="MissingSdk.ForOtherProcessor"/>).</summary>
     public static string OnlyNativeSdk => OperatingSystem.IsMacOS()

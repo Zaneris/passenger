@@ -134,6 +134,72 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(run.IsError == true && Text(run).Contains(Missing, StringComparison.Ordinal), $"run without the SDK answered: {Text(run)}");
     }
 
+    /// <summary>The code tools asked of a folder whose projects have no SDK to load with, its language server ready with
+    /// none of their code: each says so, why and what mends it, as workspace does, never an empty answer.</summary>
+    [Fact]
+    public async Task An_agent_whose_projects_have_no_SDK_hears_why_from_each_code_tool_rather_than_nothing_found()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-no-sdk-code-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "global.json"), MissingSdkTests.Pinned);
+        File.WriteAllText(Path.Combine(folder, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(folder, "Greeter.cs"), Greeter);
+        File.WriteAllText(Path.Combine(folder, "Caller.cs"), Caller);
+        await using McpClient client = await Start(["--mcp", folder]);
+        JsonElement workspace = await Call(client, McpTools.Workspace);
+        Assert.True(workspace.TryGetProperty("sdkMissing", out _), $"workspace, where global.json asks for an SDK not installed, answered: {workspace}");
+        const string Missing = "The folder's projects are not loaded, so the C# language server has none of their code to search or read: "
+            + "The .NET SDK 1.0.100 that global.json asks for is not installed";
+        foreach ((string tool, Dictionary<string, object?> arguments) in CodeAsks("Greeter.cs", "Caller.cs"))
+        {
+            CallToolResult answer = await Result(client, tool, arguments);
+            Assert.True(answer.IsError == true && Text(answer).Contains(Missing, StringComparison.Ordinal),
+                $"{tool} {JsonSerializer.Serialize(arguments)}, of a project with no SDK to load with, answered: {Text(answer)}");
+        }
+    }
+
+    /// <summary>The code tools asked of a project the language server met an error loading (its file cut off before its
+    /// end) say it did not load and why, beside a project that loaded, which answers as ever.</summary>
+    [Fact]
+    public async Task An_agent_asking_of_a_project_that_did_not_load_hears_why_and_the_loaded_one_answers()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-unloaded-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Good/Good.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Good/Fine.cs", "namespace Good;\n\npublic class Fine\n{\n}\n");
+        TestFolders.Write(folder, "Bad/Bad.csproj", TestProjects.Library().Replace("</Project>", string.Empty, StringComparison.Ordinal));
+        TestFolders.Write(folder, "Bad/Greeter.cs", Greeter);
+        TestFolders.Write(folder, "Bad/Caller.cs", Caller);
+        await using McpClient client = await Start(["--mcp", folder]);
+        JsonElement fine = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Fine" })).EnumerateArray());
+        Assert.Equal("Good/Fine.cs", fine.GetProperty("path").GetString());
+        foreach ((string tool, Dictionary<string, object?> arguments) in CodeAsks("Bad/Greeter.cs", "Bad/Caller.cs"))
+        {
+            CallToolResult answer = await Result(client, tool, arguments);
+            string said = Text(answer);
+            string[] why = arguments.ContainsKey("query") || arguments.ContainsKey("symbol")
+                ? ["Greeter, but the C# language server met errors loading ", "whose code it may not hold: ", "Bad: "]
+                : ["Bad did not load into the C# language server, which holds none of its code to answer from: "];
+            Assert.True(answer.IsError == true && why.All(w => said.Contains(w, StringComparison.Ordinal)), $"{tool} {JsonSerializer.Serialize(arguments)}, of a project that did not load, answered: {said}");
+        }
+    }
+
+    private const string Greeter = "namespace Lib;\n\npublic class Greeter\n{\n    public string Greet(string name) => \"Hello, \" + name;\n}\n";
+
+    private const string Caller = "namespace Lib;\n\npublic static class Caller\n{\n    public static string Call() => new Greeter().Greet(\"you\");\n}\n";
+
+    /// <summary>Each code tool that reads a project's code, asked of <see cref="Greeter"/> and <see cref="Caller"/> in the files given.</summary>
+    private static IEnumerable<(string Tool, Dictionary<string, object?> Arguments)> CodeAsks(string greeter, string caller) =>
+    [
+        (McpTools.FindSymbol, new() { ["query"] = "Greeter" }),
+        (McpTools.Usages, new() { ["symbol"] = "Greeter" }),
+        (McpTools.Usages, new() { ["path"] = greeter, ["line"] = 3, ["column"] = 14 }),
+        (McpTools.Definition, new() { ["path"] = caller, ["line"] = 5, ["column"] = 42 }),
+        (McpTools.Outline, new() { ["path"] = greeter }),
+        (McpTools.Hierarchy, new() { ["path"] = greeter, ["line"] = 5, ["column"] = 19 }),
+        (McpTools.SymbolInfo, new() { ["path"] = greeter, ["line"] = 5, ["column"] = 19 }),
+    ];
+
     /// <summary>An agent holds modifiers by the keymap's words and the aliases agents write (command, opt, win, super), in
     /// any case, and primary; a word of none is refused naming those there are, before any key is pressed.</summary>
     [Fact]
@@ -448,8 +514,12 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"The language server's state past the limit was not that it is still loading but \"{state}\".{Said()}");
         string status = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#StatusText" }));
         Assert.True(status.Contains(still, StringComparison.Ordinal), $"The status bar did not warn that the load runs long: {status}");
+        // Asked while the projects load, the code tools wait for them rather than answer from none.
+        Task<JsonElement> twice = Call(client, McpTools.FindSymbol, new() { ["query"] = "Twice" });
 
         ReleaseDesignTimeBuilds(folder);
+        JsonElement found = Assert.Single((await twice).EnumerateArray());
+        Assert.True(found.GetProperty("path").GetString() == "Helper.cs", $"find_symbol asked as the projects loaded answered once they had: {found}");
         Assert.True(await Waiting.UntilAsync(async () => (state = await LanguageServerState(client)) == "ready", TimeSpan.FromMinutes(2), Cancel, TimeSpan.FromMilliseconds(100)),
             $"The language server was not ready once its load ended past the limit: \"{state}\".{Said()}");
         status = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#StatusText" }));
