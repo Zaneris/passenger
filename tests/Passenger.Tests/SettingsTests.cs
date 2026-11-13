@@ -169,7 +169,9 @@ public sealed class SettingsTests : IDisposable
             NumericUpDown factor = Editor<NumericUpDown>(dialog, "Display scale");
             Assert.Equal(1m, factor.Value);
             factor.Value = 1.5m;
+            Ui.Settle();
             Assert.Equal(1, window.Settings.DisplayScale);
+            Assert.True(Scale(window.EditorArea.CodeEditor) == 1.5, "Settings did not show the display scale chosen before Apply");
             dialog.Apply();
             Ui.Settle();
             Assert.Equal(1.5, window.Settings.DisplayScale);
@@ -229,6 +231,16 @@ public sealed class SettingsTests : IDisposable
             factor = Editor<NumericUpDown>(dialog, "Display scale");
             Assert.Equal(1.5m, factor.Value);
             Assert.Equal(1.5, Scale(factor));
+            factor.Value = 2m;
+            Ui.Settle();
+            Assert.Equal(2, Scale(window.EditorArea.CodeEditor));
+            dialog.Close();
+            Ui.Settle();
+            Assert.True(Scale(window.EditorArea.CodeEditor) == 1.5, "Settings closed unapplied, but the window keeps the display scale it showed");
+            dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.Appearance;
+            Ui.Settle();
+            factor = Editor<NumericUpDown>(dialog, "Display scale");
             factor.Value = 1.2m;
             dialog.Apply();
             Ui.Settle();
