@@ -841,6 +841,27 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(WindowFontNames.SystemUi, system.GetProperty("after").GetString());
     }
 
+    /// <summary>settings says how an agent names a theme, by its source and name, and some of Passenger's themes
+    /// repository's; settings_set takes one of them, which the windowless Passenger fetches and keeps.</summary>
+    [Fact]
+    public async Task Settings_names_a_theme_by_its_source_and_name_and_settings_set_takes_one_of_the_themes_repository()
+    {
+        string folder = TestFolders.Create("mcp-themes-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement look = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "look");
+        Assert.True(look.GetProperty("value").ValueKind == JsonValueKind.Null && look.GetProperty("kind").GetString() == "object"
+            && look.GetProperty("note").GetString()!.Contains($"{ThemeSource.RepositoryName} holds Harbour", StringComparison.Ordinal),
+            $"settings said of the theme: {look.GetRawText()}");
+        Dictionary<string, object> slate = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = "Slate" };
+        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = slate } })).EnumerateArray());
+        Assert.Equal("Slate", changed.GetProperty("after").GetProperty("name").GetString());
+        // Kept in the agent's Passenger's own state, as KeptThemes keeps one in the run's.
+        string kept = Path.Combine(OwnState, Path.GetRelativePath(Passenger.App.State.StateStore.DefaultRoot, KeptThemes.PathOf(ThemeSource.Repository, false, "Slate")));
+        Assert.True(await Waiting.UntilAsync(() => File.Exists(kept), TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken),
+            $"Slate set by an agent was not fetched from the themes repository and kept as {kept}");
+    }
+
     /// <summary>vcs_log gives each signed commit's signature as the Git log's details say it: a good one by its signer
     /// and key, one by a signer no allowed signers file lists with its key, and none for a commit unsigned.</summary>
     [Fact]

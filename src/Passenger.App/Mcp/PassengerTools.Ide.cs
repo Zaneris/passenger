@@ -46,7 +46,7 @@ public sealed partial class PassengerTools
             (double Min, double Max)? range = SettingRange(p.Key, p.Value);
             (IReadOnlyList<string> Choices, string? Note)? font = fonts.TryGetValue(p.Value.Name, out (IReadOnlyList<string>, string?) offered) ? offered : null;
             IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type) : font?.Choices;
-            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max) { Note = font?.Note };
+            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max) { Note = font?.Note ?? ThemeNote(p.Value.Name) };
         })]);
     });
 
@@ -99,6 +99,14 @@ public sealed partial class PassengerTools
             return new SettingChange(name, JsonSerializer.SerializeToElement(was[name]), JsonSerializer.SerializeToElement(now[name]), note);
         })]);
     });
+
+    /// <summary>How a theme or code colour scheme is named, with some of Passenger's themes repository's.</summary>
+    private static string? ThemeNote(string property) => property switch
+    {
+        nameof(AppSettings.Look) => $"null for Passenger's own, or {{\"source\", \"name\"}}: {ThemeSource.RepositoryName} holds {string.Join(", ", ThemeSource.FormerlyCarried)} among others; themeSources lists the person's sources",
+        nameof(AppSettings.ColourScheme) => $"null for the theme's own, or {{\"source\", \"name\"}}: {ThemeSource.RepositoryName} holds {ThemeSource.FormerScheme} among others",
+        _ => null,
+    };
 
     /// <summary>Every setting by its name in settings.json, as the settings store writes them.</summary>
     private static readonly IReadOnlyDictionary<string, PropertyInfo> SettingProperties = typeof(AppSettings)
@@ -532,7 +540,7 @@ public sealed record SettingsInfo(bool Kept, IReadOnlyList<SettingInfo> Settings
 /// <summary>A setting by its name in settings.json: its value, its kind, the choices it takes or the range it is brought into.</summary>
 public sealed record SettingInfo(string Name, JsonElement Value, string Kind, IReadOnlyList<string>? Choices, double? Min, double? Max)
 {
-    /// <summary>What its choices leave out and how to ask for it: a font's installed families.</summary>
+    /// <summary>What its choices leave out and how to ask for it: a font's installed families, how a theme is named.</summary>
     public string? Note { get; init; }
 }
 
