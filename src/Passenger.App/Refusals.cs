@@ -121,9 +121,18 @@ public static class Refusals
         { Asked: { } asked } => $"The .NET SDK {asked} that {(missing.GlobalJson is { } file ? PathNames.Shown(PathNames.Canonical(file), folder) : "global.json")} "
             + "asks for is not installed: install it, or have global.json name one that is",
         { NoHost: true } => NoDotnet,
+        { ForOtherProcessor: true } => OnlyNativeSdk,
         { NoneInstalled: true } => $"Only the .NET runtime is installed: {NeedsTheSdk}",
         _ => $"No .NET SDK was found for this folder: {ChildResult.FirstLineOf(missing.Said)}",
     };
+
+    /// <summary>An x64 Passenger the system translates found only a .NET SDK of the system's own processor, whose MSBuild it
+    /// cannot load (<see cref="MissingSdk.ForOtherProcessor"/>).</summary>
+    public static string OnlyNativeSdk => OperatingSystem.IsMacOS()
+        ? "This Intel build of Passenger, run by Rosetta, loads projects only with an Intel (x64) .NET SDK, and this Mac's is Apple Silicon's: "
+            + "download Passenger for Apple Silicon, which suits this Mac, or install the x64 .NET SDK beside it"
+        : "This x64 build of Passenger, run by emulation, loads projects only with an x64 .NET SDK, and this computer's is Arm64's: "
+            + "download Passenger for Arm64, which suits this computer, or install the x64 .NET SDK beside it";
 
     /// <summary>No dotnet at all, runtime or SDK, was found.</summary>
     public const string NoDotnet = $"No .NET is installed: files open and edit, and Git and the terminal work, but {NeedsTheSdk}";

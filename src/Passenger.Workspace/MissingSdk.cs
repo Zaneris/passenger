@@ -28,6 +28,13 @@ public sealed partial record MissingSdk(string? Asked, string? GlobalJson, bool 
     /// <summary>No dotnet was found at all, runtime or SDK.</summary>
     public bool NoHost { get; init; }
 
+    /// <summary>The dotnet found is the system's own processor's, whose SDK's MSBuild an x64 Passenger the system translates
+    /// cannot load (<see cref="Dotnet.Translated"/>), in the words of the check that found it so.</summary>
+    public static MissingSdk OtherProcessor(string said) => new(null, null, NoneInstalled: false, said) { ForOtherProcessor = true };
+
+    /// <summary>The SDK found is built for another processor than this Passenger's.</summary>
+    public bool ForOtherProcessor { get; init; }
+
     /// <summary>Where the SDK is downloaded: the page of the channel of the version asked for, else the page of them all.</summary>
     public Uri Download => Asked is { } asked && Channel().Match(asked) is { Success: true } channel
         ? new Uri($"https://dotnet.microsoft.com/download/dotnet/{channel.Groups[1].Value}")

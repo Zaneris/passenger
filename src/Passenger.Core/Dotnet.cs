@@ -116,6 +116,11 @@ public static partial class Dotnet
             return new DotnetFound(Path.Combine(own, name), DotnetPlace.Installed);
         }
         ShellEnvironment.Ready();
+        // Translated, this process loads MSBuild only from an x64 SDK: one installed beside the system's own comes first.
+        if (Translated && PlacesStandIn is null && TranslatedPlaces(name).FirstOrDefault(File.Exists) is { } x64)
+        {
+            return new DotnetFound(x64, DotnetPlace.Translated);
+        }
         string fromRuntime = Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", name));
         if (PlacesStandIn is null && File.Exists(fromRuntime))
         {
@@ -130,6 +135,31 @@ public static partial class Dotnet
             return new DotnetFound(onPath, DotnetPlace.Path);
         }
         return (PlacesStandIn ?? Installed(name)).FirstOrDefault(File.Exists) is { } installed ? new DotnetFound(installed, DotnetPlace.Installed) : null;
+    }
+
+    /// <summary>Whether the system translates this process: an x64 build on an Arm64 system (Rosetta on a Mac, Windows'
+    /// emulation), which loads only x64 code, an SDK's MSBuild among it.</summary>
+    public static bool Translated => TranslatedStandIn ?? (RuntimeInformation.ProcessArchitecture == Architecture.X64 && RuntimeInformation.OSArchitecture == Architecture.Arm64);
+
+    /// <summary>A test's stand-in for whether the system translates this process; null for the truth.</summary>
+    public static bool? TranslatedStandIn { get; set; }
+
+    /// <summary>Where an x64 .NET lies beside an Arm64 system's own: DOTNET_ROOT_X64's, then where Microsoft's x64 installer
+    /// puts it there.</summary>
+    private static IEnumerable<string> TranslatedPlaces(string name)
+    {
+        if (Environment.GetEnvironmentVariable(RuntimeVariables.RootFor("x64")) is { Length: > 0 } root)
+        {
+            yield return Path.Combine(root, name);
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            yield return Path.Combine("/usr/local/share/dotnet/x64", name);
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet", "x64", name);
+        }
     }
 
     /// <summary>The installation <see cref="Use"/> chose, which <see cref="Find"/> finds before any other for as long as its
@@ -200,13 +230,15 @@ public static partial class Dotnet
 }
 
 /// <summary>How <see cref="Dotnet.Find"/> found a dotnet: the one running this app, DOTNET_ROOT's, the PATH's, or one
-/// neither names, where an installer puts it or <see cref="Dotnet.Use"/> chose it.</summary>
+/// neither names, where an installer puts it or <see cref="Dotnet.Use"/> chose it; or, for a process the system translates,
+/// the x64 one beside the system's own.</summary>
 public enum DotnetPlace
 {
     Runtime,
     Root,
     Path,
     Installed,
+    Translated,
 }
 
 /// <summary>A <c>dotnet</c> found, and how.</summary>

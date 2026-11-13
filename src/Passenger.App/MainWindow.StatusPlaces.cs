@@ -56,8 +56,9 @@ public partial class MainWindow
     private StatusPlace LogPlace => new($"show the log in {FileManager.Name}", ShowLog);
 
     /// <summary>The download page of the .NET SDK the folder wants (<see cref="MissingSdk.Download"/>), in the browser.</summary>
-    private StatusPlace SdkPlace(MissingSdk missing) =>
-        new($"download the .NET SDK{(missing.Asked is { } asked ? $" {asked}" : string.Empty)}", () => Browse(missing.Download));
+    private StatusPlace SdkPlace(MissingSdk missing) => missing.ForOtherProcessor
+        ? new("download the Passenger built for this computer", () => Browse(new Uri(Updates.ReleaseFeed.GitHubReleases, "releases/latest")))
+        : new($"download the .NET SDK{(missing.Asked is { } asked ? $" {asked}" : string.Empty)}", () => Browse(missing.Download));
 
     /// <summary>Restart C# Language Server, run as its menu item runs it.</summary>
     private StatusPlace RestartCSharpPlace => StartAgainPlace(() => Request(AppActions.RestartCSharpServer));

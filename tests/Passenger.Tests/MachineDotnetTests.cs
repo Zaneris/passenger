@@ -27,6 +27,7 @@ public sealed class MachineDotnetTests : IDisposable
     public void Dispose()
     {
         Dotnet.HostSearch = null;
+        Dotnet.TranslatedStandIn = null;
         Environment.SetEnvironmentVariable("PATH", path);
         Environment.SetEnvironmentVariable(RuntimeVariables.Root, root);
         TestFolders.Delete(folder);
@@ -88,6 +89,42 @@ public sealed class MachineDotnetTests : IDisposable
         {
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+            window.Close();
+        }
+    }
+
+    /// <summary>An x64 Passenger the system translates (Rosetta, Windows' emulation) whose only .NET SDK is built for the
+    /// system's own processor, whose MSBuild its project host would end loading, says in the banner and the status bar that
+    /// it needs an x64 SDK and that the system's own build of Passenger suits the computer.</summary>
+    [AvaloniaFact]
+    public void A_translated_passenger_whose_only_sdk_is_the_systems_own_says_in_the_window_that_it_needs_an_x64_one()
+    {
+        string arm = Path.Combine(folder, "arm64");
+        byte[] program = new byte[64];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(program, 0xFEEDFACF);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(program.AsSpan(4), 0x0100000C);
+        Directory.CreateDirectory(arm);
+        File.WriteAllBytes(Path.Combine(arm, DotnetName), program);
+        TestFolders.Write(arm, "sdk/11.0.100/dotnet.dll", string.Empty);
+        TestFolders.Write(arm, "sdk/11.0.100/dotnet.runtimeconfig.json",
+            "{ \"runtimeOptions\": { \"tfm\": \"net11.0\", \"framework\": { \"name\": \"Microsoft.NETCore.App\", \"version\": \"11.0.0\" } } }\n");
+        Directory.CreateDirectory(Path.Combine(arm, "shared", "Microsoft.NETCore.App", "11.0.0"));
+        Find(Path.Combine(arm, DotnetName));
+        Dotnet.TranslatedStandIn = true;
+        string app = Path.Combine(folder, "app");
+        TestFolders.Write(app, "App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n"
+            + "    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+        TestFolders.Write(app, "Program.cs", "System.Console.WriteLine(1);\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        try
+        {
+            window.OpenFolder(app);
+            Ui.WaitFor(() => window.DotnetSaid == Refusals.OnlyNativeSdk && window.Status == Refusals.OnlyNativeSdk,
+                () => $"the banner and the status bar to say an x64 SDK is needed; the banner says \"{window.DotnetSaid}\" and the status bar \"{window.Status}\"");
+        }
+        finally
+        {
             window.Close();
         }
     }

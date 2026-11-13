@@ -120,6 +120,12 @@ public sealed class ProjectHost : IAsyncDisposable
         {
             throw new ProjectHostFailed(missing.Message, missing) { MissingSdk = MissingSdk.NoDotnet(missing.Message) };
         }
+        // Translated, the host is x64 code, and an Arm64 SDK's MSBuild would end it as it loads.
+        if (Dotnet.Translated && !ProgramProcessors.Of(dotnet).Contains(System.Runtime.InteropServices.Architecture.X64))
+        {
+            string said = $"{dotnet} is no x64 program, and this x64 Passenger loads MSBuild only from an x64 .NET SDK";
+            throw new ProjectHostFailed(said) { MissingSdk = MissingSdk.OtherProcessor(said) };
+        }
         ProcessStartInfo start;
         try
         {
@@ -132,6 +138,11 @@ public sealed class ProjectHost : IAsyncDisposable
         }
         // The installation MSBuild's SDK resolvers and tools take, which the helper host is no part of.
         start.Environment[RuntimeVariables.HostPath] = dotnet;
+        if (Dotnet.Translated)
+        {
+            // The locator finds its SDK where DOTNET_ROOT says, which may name the system's own rather than the x64 one chosen.
+            start.Environment[RuntimeVariables.Root] = Path.GetDirectoryName(PathNames.Canonical(dotnet));
+        }
         // The newest runtime there is, a prerelease too, for a host on the machine's and for what MSBuild starts.
         start.Environment[RuntimeVariables.RollForwardToPrerelease] = "1";
         start.RedirectStandardInput = true;
