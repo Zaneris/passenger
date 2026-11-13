@@ -32,7 +32,8 @@ public sealed partial class PassengerTools
         "PASSENGER_SETTINGS names).")]
     public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        JsonObject values = SettingsNode(window.Settings);
+        JsonObject own = SettingsNode(window.Settings);
+        JsonObject values = SettingsNode(Declared.InForce(window.Settings));
         // A font's own names alone: the families installed (hundreds) are said by their count, each taken by its name.
         Dictionary<string, (IReadOnlyList<string> Choices, string? Note)> fonts = [];
         foreach (FontSetting font in Declared.All.OfType<FontSetting>())
@@ -47,7 +48,7 @@ public sealed partial class PassengerTools
             (double Min, double Max)? range = SettingRange(p.Key, p.Value);
             (IReadOnlyList<string> Choices, string? Note)? font = fonts.TryGetValue(p.Value.Name, out (IReadOnlyList<string>, string?) offered) ? offered : null;
             IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type) : font?.Choices;
-            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max) { Note = font?.Note ?? ThemeNote(p.Value.Name) };
+            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max) { Note = font?.Note ?? ThemeNote(p.Value.Name) ?? ThemesUntilSet(own[p.Key], values[p.Key]) };
         })]);
     });
 
@@ -65,7 +66,7 @@ public sealed partial class PassengerTools
             throw new ArgumentException("Name at least one setting to change, with its new value; settings lists them");
         }
         AppSettings before = window.Settings;
-        JsonObject was = SettingsNode(before);
+        JsonObject was = SettingsNode(Declared.InForce(before));
         JsonObject next = SettingsNode(before);
         List<string> named = [];
         foreach ((string given, JsonElement value) in changes)
@@ -91,15 +92,20 @@ public sealed partial class PassengerTools
         }
         window.ApplySettings(asked);
         JsonObject now = SettingsNode(window.Settings);
+        JsonObject shown = SettingsNode(Declared.InForce(window.Settings));
         JsonObject wanted = SettingsNode(asked);
         return Task.FromResult<IReadOnlyList<SettingChange>>([.. named.Distinct().Select(name =>
         {
             (double Min, double Max)? range = SettingRange(name, SettingProperties[name]);
             string? note = JsonNode.DeepEquals(now[name], wanted[name]) ? null
                 : range is { } bounds ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"brought into its range, {bounds.Min} to {bounds.Max}") : "set back to what Settings allows";
-            return new SettingChange(name, JsonSerializer.SerializeToElement(was[name]), JsonSerializer.SerializeToElement(now[name]), note);
+            return new SettingChange(name, JsonSerializer.SerializeToElement(was[name]), JsonSerializer.SerializeToElement(shown[name]), note ?? ThemesUntilSet(now[name], shown[name]));
         })]);
     });
+
+    /// <summary>What says a value in force is the theme's, where the person's own is unset.</summary>
+    private static string? ThemesUntilSet(JsonNode? own, JsonNode? inForce) =>
+        own is null && inForce is not null ? "the theme's until set; null follows the theme again" : null;
 
     /// <summary>How a theme or code colour scheme is named, with some of Passenger's themes repository's.</summary>
     private static string? ThemeNote(string property) => property switch
@@ -135,7 +141,8 @@ public sealed partial class PassengerTools
     /// setting it leaves be.</summary>
     private static (double Min, double Max)? SettingRange(string name, PropertyInfo property)
     {
-        if (property.PropertyType != typeof(int) && property.PropertyType != typeof(double))
+        Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        if (type != typeof(int) && type != typeof(double))
         {
             return null;
         }

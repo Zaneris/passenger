@@ -13,6 +13,9 @@ public static class Declared
     /// <summary>Every declaration, each adding itself as it is made, so this comes before them.</summary>
     internal static readonly List<Setting> All = [];
 
+    /// <summary>The settings with every value a theme gives filled in as it stands where the person gave none.</summary>
+    public static AppSettings InForce(AppSettings settings) => All.Aggregate(settings, (filled, setting) => setting.FilledIn(filled));
+
     public static readonly ThemeSetting Look = new(code: false, s => s.Look, (s, v) => s with { Look = v },
         new(D.Appearance, "Theme", "colour color theme look palette source repository passenger-themes " + string.Join(" ", ThemeSource.FormerlyCarried.Select(n => n.ToLowerInvariant()))));
 

@@ -42,6 +42,9 @@ public abstract class Setting
     /// <summary>Why a change from <paramref name="was"/> to <paramref name="now"/> gives this setting a value Settings
     /// refuses, naming the setting; null where it leaves the value be or the new one is allowed.</summary>
     public virtual string? Refused(AppSettings was, AppSettings now) => null;
+
+    /// <summary>The settings with this one's value as it stands in force where a theme gives it and the person gave none.</summary>
+    public virtual AppSettings FilledIn(AppSettings settings) => settings;
 }
 
 /// <summary>A setting on or off, edited by a check box.</summary>
@@ -89,6 +92,8 @@ public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSetting
 
     public override AppSettings Clamp(AppSettings settings) =>
         given is not null && !given(settings) ? settings : set(settings, Math.Clamp(get(settings), min, max));
+
+    public override AppSettings FilledIn(AppSettings settings) => given is not null && !given(settings) ? set(settings, get(settings)) : settings;
 }
 
 /// <summary>A size chosen from a drop-down of <paramref name="sizes"/> (1.5 shown as 150%), from the least to the most: the
@@ -187,6 +192,8 @@ public sealed class ThemedChoiceSetting<T>(Func<AppSettings, T?> own, Func<AppSe
     public string NameOf(T value) => choices.FirstOrDefault(c => EqualityComparer<T>.Default.Equals(c.Value, value)).Name ?? value.ToString();
 
     public override AppSettings Clamp(AppSettings settings) => own(settings) is { } chosen && !Enum.IsDefined(chosen) ? set(settings, null) : settings;
+
+    public override AppSettings FilledIn(AppSettings settings) => own(settings) is null ? set(settings, inForce(settings)) : settings;
 }
 
 /// <summary>A program to start and its arguments, written as one command line (<see cref="Run.CommandLine"/>), or null for
