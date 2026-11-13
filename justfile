@@ -83,6 +83,13 @@ container-tools *args:
 container-tools *args:
     $sh = (Get-Command sh -ErrorAction SilentlyContinue).Source; if (-not $sh) { $sh = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'bin\sh.exe' }; & $sh tools/container-tools.sh {{args}}
 
+# Passenger's debug relay for Android (arm64, x64) and iOS (devices, Apple Silicon simulators) into
+# artifacts/debug-relay/<rid>/, which the app carries under debugger/relay/; macOS with Xcode and the Android workload.
+# just debug-relay [android] [apple]
+[unix]
+debug-relay *args:
+    tools/debug-relay.sh {{args}}
+
 # The app signed ad hoc, or with PASSENGER_SIGN_IDENTITY and then, with PASSENGER_NOTARY_PROFILE, the app and the image
 # notarized and stapled, and checked mounted; --dry-run writes what those two would run instead.
 # The macOS disk image, artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon) or -x64.dmg (Intel, checked under

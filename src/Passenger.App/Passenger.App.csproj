@@ -341,6 +341,13 @@
       <DebugAdapterFile Include="$(DebugAdapterFolder)**/*" />
       <None Include="@(DebugAdapterFile)" Link="debugger/%(DebugAdapterFile.RecursiveDir)%(DebugAdapterFile.Filename)%(DebugAdapterFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
+      <!-- The debug relay a Debug app on an Android device loads, for each of its processors, as tools/debug-relay.sh
+           built it (CI builds it on macOS for every system's package): carried whatever system this build runs on.
+           iOS's waits until a simulator proves it and the Mac's notarization is known to take another platform's
+           Mach-O in the bundle. -->
+      <DebugRelayFile Include="$([MSBuild]::EnsureTrailingSlash('$(ArtifactsPath)'))debug-relay/**/libpassenger-debug.so" />
+      <None Include="@(DebugRelayFile)" Link="debugger/relay/%(DebugRelayFile.RecursiveDir)%(DebugRelayFile.Filename)%(DebugRelayFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>
 </Project>

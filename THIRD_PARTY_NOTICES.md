@@ -362,6 +362,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## The debug relay's linked objects
+
+The debug relay under `debugger/relay/<rid>/` (`libpassenger-debug.so`, Passenger's own `src/Passenger.DebugRelay`,
+which a Debug app on an Android device loads) is linked by `tools/debug-relay.sh` with objects from .NET's Android
+workload, its runtime packs `Microsoft.Android.Runtime.CoreCLR.37.android-arm64` and
+`Microsoft.Android.Runtime.CoreCLR.37.android-x64` (MIT, © Microsoft Corporation. All rights reserved.), which carry
+them under their own notices:
+
+- `crtbegin_so.o` and `crtend_so.o`, Android's C library start and end of a shared library (google/bionic,
+  https://android.googlesource.com/platform/bionic/): Copyright (C) 2006 The Android Open Source Project, Apache-2.0.
+- `libclang_rt.builtins-aarch64-android.a` and `libclang_rt.builtins-x86_64-android.a`, LLVM's compiler-rt builtins
+  (https://github.com/llvm/llvm-project): Apache-2.0 WITH LLVM-exception, whose exception lets a binary carry them
+  without their notice; named here all the same.
+
 ## SharpDbg and ICorDebugSharp
 
 Passenger's debugger began as a copy of two MIT-licensed projects by Matthew Parker (MattParkerDev), and is

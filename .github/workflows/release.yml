@@ -92,14 +92,52 @@ jobs:
     with:
       report: false
 
+  # The debug relay a Debug app on an Android or iOS device loads, built once on macOS (Apple's clang and Xcode's SDKs,
+  # and two packs of the Android workload: its linker and its runtime's C objects and stubs) for every system's package,
+  # since Passenger on any system debugs a device.
+  debug-relay:
+    name: Debug relay
+    needs: version
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: The Android workload
+        run: dotnet workload install android
+
+      - name: Build the relays
+        run: |
+          tools/debug-relay.sh android apple
+          for part in android-arm64/libpassenger-debug.so android-x64/libpassenger-debug.so ios-arm64/libpassenger-debug.dylib iossimulator-arm64/libpassenger-debug.dylib; do
+            [ -s "artifacts/debug-relay/$part" ] || { echo "No $part" >&2; exit 1; }
+          done
+
+      - name: Upload the relays
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: debug-relay
+          path: artifacts/debug-relay/
+          if-no-files-found: error
+          retention-days: 1
+
   # Each system's package, with the Developer ID or the Windows signature when the secrets hold one. The Intel Mac's disk
   # image is cross-published on an Apple Silicon runner, its check run under Rosetta; the arm64 installer and archive on
   # x64 runners.
   package:
     name: Package (${{ matrix.rid }})
-    needs: [version, test]
+    needs: [version, test, debug-relay]
     # After the tests pass, or with none when the run was asked to skip them.
-    if: ${{ !cancelled() && needs.version.result == 'success' && (needs.test.result == 'success' || (inputs.skip_tests && needs.test.result == 'skipped')) }}
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.debug-relay.result == 'success' && (needs.test.result == 'success' || (inputs.skip_tests && needs.test.result == 'skipped')) }}
     strategy:
       # One system's failure never hides the other's result.
       fail-fast: false
@@ -275,6 +313,13 @@ jobs:
             'No signing secrets: the installer is unsigned, and SmartScreen asks once (More info > Run anyway)'
           }
 
+      # The app carries Android's relays from artifacts/debug-relay under debugger/relay/<rid>/.
+      - name: The debug relays
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: debug-relay
+          path: artifacts/debug-relay
+
       - name: Make and check the disk image
         if: runner.os == 'macOS'
         run: tools/package-mac.sh "$RID"
@@ -296,7 +341,12 @@ jobs:
 
       - name: Make and check the archive
         if: runner.os == 'Linux'
-        run: tools/package-linux.sh "$RID"
+        run: |
+          tools/package-linux.sh "$RID"
+          contents=$(tar -tzf artifacts/package/Passenger-linux-*.tar.gz)
+          for part in android-arm64 android-x64; do
+            echo "$contents" | grep -q "debugger/relay/$part/libpassenger-debug.so$" || { echo "The archive has no debug relay for $part" >&2; exit 1; }
+          done
 
       # The version the app reads is the tag's, stamped into the informational version with the commit
       # ("1.2.0+<commit>"), which FileVersionInfo gives as the product version.
