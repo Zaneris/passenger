@@ -105,7 +105,9 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   `tests/Passenger.Tests/Themes`, Harbour's and Reef by hand, the rest by `just themes FOLDER`); a theme file is read
   only through `ThemeFiles` (format 1, `docs/themes.md`) and laid through `ThemeResources`, so a token added to
   Tokens.axaml is one a theme may give. A theme is a `SourcedTheme`; a source is read only through `ThemeSourceReads` and
-  `ThemeListing`, never at a start whose themes are kept (`KeptThemes`); `PASSENGER_THEMES` names the repository's place;
+  `ThemeListing`, never at a start whose themes are kept (`KeptThemes`); `PASSENGER_THEMES` names the repository's place; a theme's picture is drawn only through `ThemeBackdrop`
+  (`ThemeBackdrops`), its colours by language reach an editor only through `ThemeLanguages.Follow`; the code's size in force
+  is `AppSettings.CodeSize()`, never `EditorFontSize`, the person's own and null until set;
   Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. The window's typeface
   is the resource `WindowFonts.Key` (macOS tracking `WindowTracking`), the code's `CodeFonts.Key`; a control drawing its
   own words takes `TextElement.GetFontFamily`, never a named family. UiRulesTests fails on a colour or non-zero
@@ -212,8 +214,11 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - `Passenger.Editor`: `CodeEditor`, `Keymap`, `EditorActions`; the code font is `CodeFonts.Key`, never a `FontFamily`
   written elsewhere; a family code or the window's words are drawn in is named through `FallbackFonts` (`Carry`, `Of`),
   so what it lacks takes the platform's own fallback; the editor names no debugger, test or VCS concept (`IGutterColumn`, EditorRulesTests); a file's
-  editors draw its one `DocumentDecorations`, never fed per split. Vim mode: `Vim` decides a key's meaning and `CodeEditor.PressVim` takes it
-  before any keymap; an insert session is one `EditKind.Joined` step; normal-mode carets settle in `SetSelections`.
+  editors draw its one `DocumentDecorations`, never fed per split. Vim mode: `Vim` decides a key's meaning purely over the editor's
+  `IVimView` (`Vim.Commands`, `Vim.Operators`, `VimMotions`, `VimTextObjects`) and `CodeEditor.PressVim` takes it before
+  any keymap; an insert session is one `EditKind.Joined` step, `.`'s edits one too (`FollowVim`); normal-mode carets
+  settle in `SetSelections`; registers are each window's own (`CodeEditor.VimRegisters`), `+`/`*` the clipboard;
+  `VimTests`' expected texts are the system Vim 9.1's. Wide characters are counted by `WideCharacters` (Passenger.Text).
 - **A key costs what it changed, not the file's size**: keep it so. Wraps, rows, folds, hints and built lines move only
   where an edit reaches; a highlighter keeps colours an edit didn't reach (`KeptColours`, `ChangedWithin`); a row is a
   retained visual (`CodeEditor.Rows.cs`) drawn again only where its key changed, the caret's blink only the overlay;
@@ -281,7 +286,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
   on attach (a split rebuilds the frame).
-- **C#.** `CSharpService`, `CodeAssist`; each language's answers a `LanguageAssist` in `LanguageAssists`' one order. A
+- **C#.** `CSharpService`, `CodeAssist`; completion ranks through `CompletionRanking` (its order held equal to scoring
+  afresh by `CompletionRankingTests`) and reads an answer once (`CompletionAnswer`, list defaults by `WithDefaults`); each language's answers a `LanguageAssist` in `LanguageAssists`' one order. A
   server's edit to a file written moments before waits for the server to read it (`WorkspaceEdits`); one written as it
   worked is refused. A generated document is never opened in the server (it would freeze its text into the compilation):
   its file (`RoslynSession.WrittenAsync`) or a read-only copy (`GeneratedCode`), asked about through
@@ -422,6 +428,9 @@ a new name, and `just site-shots` retakes its images.
 - **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
   references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`, which moves
   `LanguageServer.Changes` itself (`AnswersMoved`).
+- **Roslyn's server cuts a completion list at 1,000 items and marks it incomplete** (`dotnet_lsp_max_completion_list_size`,
+  never asked through `workspace/configuration`): Passenger's extension sets it uncut (`WholeCompletionLists`), so a name
+  asks once and each key narrows here; without the extension every key asks again.
 - **Roslyn's server passes over an option answered empty**, so an option goes back to its default only as the default's
   value (`CSharpService.OwnScope`), never null; a running server can't take an option left out.
 - **Roslyn's server writes its MEF caches beside its DLLs**, so in a macOS bundle (a file added breaks the seal, #450)
