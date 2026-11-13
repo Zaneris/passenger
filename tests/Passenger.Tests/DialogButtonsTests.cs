@@ -37,6 +37,7 @@ public sealed class DialogButtonsTests : IDisposable
     [AvaloniaTheory]
     [InlineData(CarriedThemes.Own)]
     [InlineData("Harbour")]
+    [InlineData("Cubicle")]
     public void Every_dialog_has_its_buttons_words_centred_and_its_text_buttons_alike_with_the_default_where_Rider_puts_it(string look)
     {
         using IDisposable worn = CarriedThemes.Wearing(look);

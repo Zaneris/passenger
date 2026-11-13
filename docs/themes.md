@@ -167,8 +167,10 @@ until then, and one that cannot be fetched is said, never dropped from your sett
 
 ## Passenger's themes
 
-Passenger carries only its own theme, `Tokens.axaml`; the built-in source (`src/Passenger.App/Theme/BuiltIn`) lists
-nothing beside it yet. Harbour, the ten generated themes and the Reef code colour scheme live in Passenger's themes
-repository, whose copy the tests carry in `tests/Passenger.Tests/Themes`. Harbour.json and Reef.json are written by hand;
-the ten are written by `tools/themes.py` from its palettes (`just themes FOLDER`, into a checkout of the repository or the
-tests' copy), so change a palette there rather than its file.
+Passenger carries its own theme, `Tokens.axaml`, and beside it Cubicle in its built-in source
+(`src/Passenger.App/Theme/BuiltIn`): square, dense and calm, a blue accent on cool greys, its own default layout and a
+smaller code size, to show what a theme can set. Harbour, the ten generated themes and the Reef code colour scheme live in
+Passenger's themes repository, whose copy the tests carry in `tests/Passenger.Tests/Themes`. Harbour.json and Reef.json
+are written by hand; Cubicle and the ten are written by `tools/themes.py` from its palettes (`just themes FOLDER`, the ten
+into a checkout of the repository or the tests' copy, Cubicle into the built-in source), so change a palette there rather
+than its file.

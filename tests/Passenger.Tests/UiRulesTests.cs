@@ -1516,9 +1516,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
-    /// <summary>Passenger's own theme and every theme of its themes repository, for a rule held of its tokens alone, which
-    /// costs no window.</summary>
-    public static TheoryData<string> EveryLook => [CarriedThemes.Own, .. CarriedThemes.ThemeNames];
+    /// <summary>Passenger's own theme, every theme it carries and every theme of its themes repository, for a rule held of
+    /// its tokens alone, which costs no window.</summary>
+    public static TheoryData<string> EveryLook => [CarriedThemes.Own, .. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames];
 
     [Gate]
     [AvaloniaTheory]
@@ -1544,10 +1544,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(below.Count == 0, $"In {look}, {below.Count} pairs fall below WCAG AA (text 4.5:1, icons, focus rings and the caret 3:1):\n" + string.Join("\n", below));
     }
 
-    /// <summary>Passenger's themes repository reads whole: each theme its index lists reads with no problem, named as its
-    /// file, giving every token Tokens.axaml gives in Dark and Light, and each code colour scheme every colour of the code
-    /// but the editor's ground, and no other; the source Passenger carries lists nothing, Passenger's own theme being
-    /// Tokens.axaml.</summary>
+    /// <summary>Passenger's themes repository and the source Passenger carries read whole: each theme an index lists reads
+    /// with no problem, named as its file, giving every token Tokens.axaml gives in Dark and Light, and each code colour
+    /// scheme every colour of the code but the editor's ground, and no other; the source Passenger carries lists the themes
+    /// it names (<see cref="ThemeSource.Carried"/>), Passenger's own theme being Tokens.axaml.</summary>
     [Gate]
     [AvaloniaFact]
     public void Every_theme_of_the_repository_reads_whole_and_gives_every_colour_in_Dark_and_Light_and_the_code_colour_scheme_only_the_codes()
@@ -1557,13 +1557,14 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         string[] shapes = [.. passenger.Keys.Select(k => k.ToString()!).Order(StringComparer.Ordinal)];
         Assert.Equal(keys, Keys(passenger, ThemeVariant.Light));
         ThemeRead<ThemeIndex> builtIn = BuiltInThemes.Index;
-        Assert.True(builtIn.Read is { Themes: [], CodeColours: [] } && builtIn.Problems.Count == 0, $"The built-in source does not read whole as listing nothing: {builtIn.Refused}");
+        Assert.True(builtIn.Read is { CodeColours: [] } && builtIn.Problems.Count == 0, $"The built-in source does not read whole: {builtIn.Refused}");
+        Assert.Equal([.. CarriedThemes.BuiltInNames.Select(n => $"{n}.json")], builtIn.Read.Themes);
         ThemeRead<ThemeIndex> index = CarriedThemes.Index;
         Assert.True(index.Read is not null && index.Problems.Count == 0, $"The themes repository's index does not read whole: {index.Refused}{string.Join("\n", index.Problems)}");
         Assert.Equal([.. ThemeSource.FormerlyCarried.Select(n => $"{n}.json")], index.Read.Themes);
         Assert.Equal([$"{ThemeSource.FormerScheme}.json"], index.Read.CodeColours);
         List<(string, ResourceDictionary)> files = [("Tokens.axaml", passenger)];
-        foreach (string look in CarriedThemes.ThemeNames)
+        foreach (string look in (string[])[.. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames])
         {
             ThemeRead<ThemeFile> read = CarriedThemes.ReadTheme(look);
             Assert.True(read.Read is not null && read.Problems.Count == 0 && read.Read.Name == look,
@@ -1642,7 +1643,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
         Assert.True(unmapped.Count == 0, $"Fluent gives {unmapped.Count} keys Passenger's controls can reach that no theme answers for, each showing Fluent's own colour "
             + $"under every look: name each in FluentKeys.axaml as the token it is, or say in this test why no control of Passenger's reads it:\n{string.Join("\n", unmapped)}");
-        foreach (string look in (string[])[CarriedThemes.Own, .. CarriedThemes.ThemeNames])
+        foreach (string look in (string[])[CarriedThemes.Own, .. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames])
         {
             using IDisposable worn = CarriedThemes.Wearing(look);
             foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])

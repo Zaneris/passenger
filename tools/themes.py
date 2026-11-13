@@ -7,7 +7,8 @@ Each theme is a few colours per variant (its grounds, words, accent and hues); e
 out from them here, then nudged in lightness until each pair UiRulesTests holds to WCAG AA passes, so a palette never
 has to be tuned token by token. The token list is read from Tokens.axaml, so a token added there and not here fails
 this script rather than leaving a theme without it. Adding a theme is a palette here, its file in that folder's index
-(passenger-themes.json beside them) and `just themes FOLDER`.
+(passenger-themes.json beside them) and `just themes FOLDER`. The themes Passenger carries (BUILT_IN) are written the
+same way into its built-in source, src/Passenger.App/Theme/BuiltIn, when that is the folder given.
 """
 import json
 import math
@@ -258,8 +259,32 @@ THEMES = {
     ),
 }
 
-# The shapes a theme draws its own way: Passenger's pills and crowned popups, or Harbour's cards joined to the editor;
-# and its margins, today Passenger's own in both.
+# The themes Passenger carries beside its own, each with its fonts and default layout (docs/themes.md) as well.
+BUILT_IN = {
+    "Cubicle": dict(
+        about="calm and dense for long working days: square corners, tight margins and a clear blue accent on cool greys, "
+              "the explorer docked right and the build's output and the problems below",
+        shape="square", italic=False,
+        fonts={"code": {"size": 12}},
+        layout={"places": {"rightTop": ["explorer", "commit"], "rightBottom": ["structure", "bookmarks"],
+                           "bottomLeft": ["build", "run", "debug", "tests", "terminal", "find"], "bottomRight": ["problems"]},
+                "open": ["explorer", "build", "problems"], "sizes": {"left": 260, "right": 280, "bottom": 200}},
+        dark=dict(ground="#1E1F24", text="#DCDEE3", muted="#A0A5AF", accent="#2D70D0", glance="#6AAAF5",
+                  red="#F07B7B", orange="#E8A272", yellow="#E6D9A2", green="#8CC97E", cyan="#62C9B5", blue="#7AAEEB",
+                  purple="#C6A0E6", pink="#E094C4", comment="#6EAA62", member="#A9CFF2", string="#E0A584",
+                  number="#B9D9A4", method="#E6DCAB"),
+        light=dict(ground="#FBFCFE", text="#1E2228", muted="#575E68", accent="#1F66C9", glance="#1F66C9",
+                   red="#C22B2B", orange="#A84A12", yellow="#806000", green="#2E7D32", cyan="#127A86", blue="#1A55C2",
+                   purple="#7442B8", pink="#A6327E", comment="#3E7B39", member="#22548F", string="#A3361B",
+                   number="#8A2F9E", method="#6E4E00"),
+        code=dict(keyword="blue", string="string", escape="yellow", number="number", type="cyan", struct="cyan",
+                  method="method", member="member", event="pink", tag="blue", attribute="cyan", heading="blue"),
+    ),
+}
+
+# The shapes a theme draws its own way: Passenger's pills and crowned popups, Harbour's cards joined to the editor, or
+# Cubicle's square, dense frame, its open tab joined to the editor under a line of blue; and its margins, Passenger's own
+# but in the square shape, which tightens them.
 SHAPES = {
     "pill": [("CornerRadius", "Passenger.ControlRadius", "6"), ("CornerRadius", "Passenger.ToolRadius", "8"),
              ("CornerRadius", "Passenger.PopupRadius", "10"), ("CornerRadius", "Passenger.CardRadius", "10"),
@@ -277,6 +302,14 @@ SHAPES = {
              ("BoxShadows", "Passenger.TabShadow", "0 0 0 0 #00000000"), ("Thickness", "Passenger.PopupEdge", "1"),
              ("x:Double", "Passenger.EditorTextPadding", "6"), ("x:Double", "Passenger.ToolHeaderHeight", "38"),
              ("Thickness", "Passenger.ToolTitleMargin", "14,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "16,10")],
+    "square": [("CornerRadius", "Passenger.ControlRadius", "2"), ("CornerRadius", "Passenger.ToolRadius", "2"),
+               ("CornerRadius", "Passenger.PopupRadius", "2"), ("CornerRadius", "Passenger.CardRadius", "2"),
+               ("CornerRadius", "Passenger.BadgeRadius", "2"), ("CornerRadius", "Passenger.ChipRadius", "2"),
+               ("x:Double", "Passenger.TabStripHeight", "30"), ("Thickness", "Passenger.TabMargin", "0"),
+               ("Thickness", "Passenger.TabPadding", "10,0,6,0"), ("CornerRadius", "Passenger.TabRadius", "0"),
+               ("BoxShadows", "Passenger.TabShadow", "inset 0 2 0 0 #FF2F74D6"), ("Thickness", "Passenger.PopupEdge", "1"),
+               ("x:Double", "Passenger.EditorTextPadding", "4"), ("x:Double", "Passenger.ToolHeaderHeight", "30"),
+               ("Thickness", "Passenger.ToolTitleMargin", "10,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "12,8")],
 }
 
 SYNTAX_KINDS = ["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number",
@@ -410,7 +443,7 @@ def variant(theme, p, dark):
     stripe = mix(frame, accent, 0.28 if dark else 0.2)
     t["Passenger.Stripe.Selected"] = stripe
     t["Passenger.Stripe.SelectedIcon"] = legible(mix(text, accent, 0.55), [stripe, row], 3.1, dark)
-    tab = editor if theme["shape"] == "card" else mix(panel, accent, 0.14 if dark else 0.0)
+    tab = editor if theme["shape"] in ("card", "square") else mix(panel, accent, 0.14 if dark else 0.0)
     if not dark and theme["shape"] == "pill":
         tab = editor
     t["Passenger.Tab.Active"] = tab
@@ -418,8 +451,8 @@ def variant(theme, p, dark):
     t["Passenger.Modified"] = legible(glance, [frame, panel], 3.1, dark)
 
     t["Passenger.Welcome.Tile"] = tile
-    t["Passenger.Welcome.TileBorder"] = mix(tile, text, 0.1) if theme["shape"] == "pill" else tile
-    t["Passenger.Welcome.TileShadow"] = "0 0 0 0 #00000000" if theme["shape"] == "pill" \
+    t["Passenger.Welcome.TileBorder"] = mix(tile, text, 0.1) if theme["shape"] in ("pill", "square") else tile
+    t["Passenger.Welcome.TileShadow"] = "0 0 0 0 #00000000" if theme["shape"] in ("pill", "square") \
         else ("0 2 10 0 #59000000" if dark else "0 2 10 0 #1F000000")
     t["Passenger.Welcome.Chip"] = row
     t["Passenger.Welcome.ChipIcon"] = t["Passenger.Stripe.SelectedIcon"]
@@ -642,6 +675,9 @@ def write(folder, name, theme):
     lines = ["{", '  "format": 1,', f'  "name": {json.dumps(name)},',
              f'  "description": {json.dumps(about[0].upper() + about[1:] + ".")},', '  "tokens": {',
              members((key, value_of(kind, value)) for kind, key, value in SHAPES[theme["shape"]]), "  },"]
+    for member in ("fonts", "layout"):
+        if member in theme:
+            lines.append(f'  "{member}": {json.dumps(theme[member])},')
     for which, dark in (("Dark", True), ("Light", False)):
         tokens = variant(theme, theme[which.lower()], dark)
         missing = [key for _, key in order if key not in tokens]
@@ -658,16 +694,18 @@ def write(folder, name, theme):
 def main():
     if len(sys.argv) != 2 or not os.path.isfile(os.path.join(sys.argv[1], "passenger-themes.json")):
         raise SystemExit("themes.py takes the folder of a source to write into, holding its passenger-themes.json: "
-                         "a checkout of Zaneris/passenger-themes, or tests/Passenger.Tests/Themes")
+                         "a checkout of Zaneris/passenger-themes, tests/Passenger.Tests/Themes or src/Passenger.App/Theme/BuiltIn")
     folder = sys.argv[1]
+    built_in = os.path.realpath(folder) == os.path.realpath(os.path.join(THEME, "BuiltIn"))
+    themes = BUILT_IN if built_in else THEMES
     with open(os.path.join(folder, "passenger-themes.json"), encoding="utf-8") as f:
         listed = json.load(f)["themes"]
-    unlisted = [name for name in THEMES if f"{name}.json" not in listed]
+    unlisted = [name for name in themes if f"{name}.json" not in listed]
     if unlisted:
         raise SystemExit(f"{folder}'s passenger-themes.json lists no {', '.join(unlisted)}: add each to its themes")
-    for name, theme in THEMES.items():
+    for name, theme in themes.items():
         write(folder, name, theme)
-    print(f"Wrote {len(THEMES)} themes into {folder}: {', '.join(THEMES)}")
+    print(f"Wrote {len(themes)} themes into {folder}: {', '.join(themes)}")
 
 
 if __name__ == "__main__":

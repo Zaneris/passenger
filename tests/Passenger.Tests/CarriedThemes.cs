@@ -5,7 +5,8 @@ using Passenger.App;
 namespace Passenger.Tests;
 
 /// <summary>Passenger's themes repository as the tests carry it (Themes/, which <see cref="ThemeSource.Variable"/> names
-/// for the run in the repository's place), each file read through <see cref="ThemeFiles"/> as a source's is.</summary>
+/// for the run in the repository's place), and the themes Passenger carries in its built-in source, each file read through
+/// <see cref="ThemeFiles"/> as a source's is.</summary>
 public static class CarriedThemes
 {
     /// <summary>Passenger's own theme, Tokens.axaml, by the name Settings lists it under.</summary>
@@ -20,13 +21,18 @@ public static class CarriedThemes
     /// <summary>The names of the themes it lists, each named as its file is, in its order.</summary>
     public static IReadOnlyList<string> ThemeNames => [.. Index.Read!.Themes.Select(Path.GetFileNameWithoutExtension).OfType<string>()];
 
-    /// <summary>A theme of the copy as read, by its file's name.</summary>
-    public static ThemeRead<ThemeFile> ReadTheme(string name) => ThemeFiles.ReadTheme($"{name}.json", File.ReadAllBytes(Path.Combine(Folder, $"{name}.json")), ThemeResources.Kinds);
+    /// <summary>The names of the themes Passenger carries beside its own.</summary>
+    public static IReadOnlyList<string> BuiltInNames => ThemeSource.Carried;
+
+    /// <summary>A theme of the copy or one Passenger carries, as read, by its file's name.</summary>
+    public static ThemeRead<ThemeFile> ReadTheme(string name) => BuiltInNames.Contains(name)
+        ? BuiltInThemes.Listed(ThemeResources.Kinds).Listed.Single(l => !l.Code && l.Path == $"{name}.json").Read
+        : ThemeFiles.ReadTheme($"{name}.json", File.ReadAllBytes(Path.Combine(Folder, $"{name}.json")), ThemeResources.Kinds);
 
     /// <summary>A code colour scheme of the copy as read, by its file's name.</summary>
     public static ThemeRead<ThemeFile> ReadScheme(string name) => ThemeFiles.ReadCodeColours($"{name}.json", File.ReadAllBytes(Path.Combine(Folder, $"{name}.json")), ThemeResources.Kinds);
 
-    /// <summary>A theme of the copy, whole; null for <see cref="Own"/>.</summary>
+    /// <summary>A theme of the copy or one Passenger carries, whole; null for <see cref="Own"/>.</summary>
     public static ThemeFile? Theme(string name) => name == Own ? null : ReadTheme(name).Read ?? throw new InvalidOperationException($"{name}.json does not read: {ReadTheme(name).Refused}");
 
     /// <summary>Wears a theme of the copy for a test, laid as Themes lays a kept one, Passenger's own put back after it, pass or fail.</summary>

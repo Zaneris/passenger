@@ -75,6 +75,10 @@ public sealed partial record ThemeSource(ThemeSourceKind Kind, string Name)
             : throw new FormatException($"{Variable} takes a folder, a GitHub repository (owner/name) or an https address, not '{named}': {why}")
         : this;
 
+    /// <summary>The themes Passenger carries in its built-in source beside its own, by name, which the command line's
+    /// <c>--look</c> names.</summary>
+    public static readonly IReadOnlyList<string> Carried = ["Cubicle"];
+
     /// <summary>The themes Passenger carried before they moved to its themes repository, which the command line's
     /// <c>--look</c> names and 0.3's settings kept by these names.</summary>
     public static readonly IReadOnlyList<string> FormerlyCarried =
@@ -222,6 +226,9 @@ public sealed record SourcedTheme(string Source, string Name)
 {
     /// <summary>A theme of Passenger's themes repository.</summary>
     public static SourcedTheme Repository(string name) => new(ThemeSource.RepositoryName, name);
+
+    /// <summary>A theme Passenger carries.</summary>
+    public static SourcedTheme BuiltIn(string name) => new(ThemeSource.BuiltIn.Name, name);
 
     /// <summary>Its source, or null where settings name none Passenger reads.</summary>
     [JsonIgnore]

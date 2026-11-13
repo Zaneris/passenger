@@ -64,8 +64,8 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     /// <see cref="Folder"/>, its own folder.</summary>
     public string? Workspace { get; init; }
 
-    /// <summary>The theme <c>--look</c> names over the one kept, or null for that one: Passenger's own, one Passenger
-    /// carried before its themes moved to its themes repository, read from there, or any by <c>SOURCE::NAME</c>.</summary>
+    /// <summary>The theme <c>--look</c> names over the one kept, or null for that one: Passenger's own, one it carries, one
+    /// it carried before its themes moved to its themes repository, read from there, or any by <c>SOURCE::NAME</c>.</summary>
     public NamedTheme? Look { get; init; }
 
     /// <summary>The code's colours <c>--scheme</c> names over the ones kept, or null for those: the theme's own, the
@@ -166,9 +166,11 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                 case "--look":
                     string lookText = Value(args, ref i, flag);
                     look = lookText == "passenger" ? new NamedTheme(null)
+                        : ThemeSource.Carried.FirstOrDefault(n => n.ToLowerInvariant() == lookText) is { } own ? new NamedTheme(SourcedTheme.BuiltIn(own))
                         : ThemeSource.FormerlyCarried.FirstOrDefault(n => n.ToLowerInvariant() == lookText) is { } carried ? new NamedTheme(SourcedTheme.Repository(carried))
                         : lookText.Contains(SourceAndName, StringComparison.Ordinal) ? Sourced(flag, lookText)
-                        : throw new FormatException($"--look takes passenger, {string.Join(", ", ThemeSource.FormerlyCarried.Select(n => n.ToLowerInvariant()))} or SOURCE::NAME, not '{lookText}'");
+                        : throw new FormatException($"--look takes passenger, {string.Join(", ", ThemeSource.Carried.Concat(ThemeSource.FormerlyCarried).Select(n => n.ToLowerInvariant()))} "
+                            + $"or SOURCE::NAME, not '{lookText}'");
                     break;
                 case "--scheme":
                     string schemeText = Value(args, ref i, flag);

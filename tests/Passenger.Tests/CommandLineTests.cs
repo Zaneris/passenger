@@ -64,7 +64,7 @@ public sealed class CommandLineTests : IDisposable
     [InlineData("--mcp-attach --theme light", "--mcp-attach joins a running Passenger's window and takes only its process id and a folder, not --theme")]
     [InlineData("--mcp-attach 99999999999 .", "--mcp-attach takes the process id of a running Passenger, not '99999999999'")]
     [InlineData("--headless --mcp", "--headless is a person's window with nobody at it, a test run's")]
-    [InlineData("--screenshot out.png --look sakura", "--look takes passenger, harbour")]
+    [InlineData("--screenshot out.png --look sakura", "--look takes passenger, cubicle, harbour")]
     [InlineData("--screenshot out.png --look ::Sakura", "--look takes SOURCE::NAME, a source and a theme's name, not '::Sakura'")]
     [InlineData("--screenshot out.png --look Zaneris/passenger-themes::", "--look takes SOURCE::NAME, a source and a theme's name, not 'Zaneris/passenger-themes::'")]
     [InlineData("--screenshot out.png --scheme relative/../folder::Dusk", "--scheme 'relative/../folder::Dusk' names no source Passenger reads")]
@@ -143,6 +143,17 @@ public sealed class CommandLineTests : IDisposable
         // A PNG's width and height are the IHDR chunk's first words, big-endian, after the signature and the chunk's head.
         byte[] png = await File.ReadAllBytesAsync(Path.Combine(folder, "out.png"), TestContext.Current.CancellationToken);
         Assert.Equal((400, 250), (BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16)), BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20))));
+    }
+
+    /// <summary>A theme Passenger carries is named on the command line by its own word, as Passenger's own is, and a
+    /// screenshot wears it.</summary>
+    [Fact]
+    public async Task Look_names_a_theme_Passenger_carries_by_its_word_and_a_screenshot_wears_it()
+    {
+        Assert.Equal(new NamedTheme(SourcedTheme.BuiltIn("Cubicle")), LaunchOptions.Parse(["--look", "cubicle", "--screenshot", "out.png"]).Look);
+
+        (int code, string error) = await Run(". --look cubicle --size 800x500 --scale 1 --screenshot cubicle.png");
+        Assert.True(code == 0 && File.Exists(Path.Combine(folder, "cubicle.png")), $"The screenshot in Cubicle was not taken: exit code {code}\n{error}");
     }
 
     [Gate]
