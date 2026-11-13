@@ -50,11 +50,11 @@ public sealed partial class Vim
         bool empty = stretches.All(t => !t.Lines && t.End == t.Start);
         if (op is "d" or "c" && !empty)
         {
-            registers.Delete(command.Register, taken, Jumps.Contains(command.Name));
+            Registers.Delete(command.Register, taken, Jumps.Contains(command.Name));
         }
         else if (op == "y" && !empty)
         {
-            registers.Yank(command.Register, taken);
+            Registers.Yank(command.Register, taken);
         }
         if (op is not ("y" or "c") && !replaying)
         {
@@ -301,7 +301,7 @@ public sealed partial class Vim
             return new VimResult(true) { ReadsClipboard = true };
         }
         // An empty register puts nothing, and the keys after it go on.
-        return registers.Get(command.Register) is { } value ? Put(value, command.Name == "P", command.Count, text, selections, view) : new VimResult(true);
+        return Registers.Get(command.Register) is { } value ? Put(value, command.Name == "P", command.Count, text, selections, view) : new VimResult(true);
     }
 
     /// <summary>p and P: the register's text after (or before) each caret, or its lines below (or above) the caret's line,

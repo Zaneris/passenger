@@ -8,7 +8,7 @@ public sealed record VimRegister(IReadOnlyList<string> Parts, bool Linewise)
     public string Text => Linewise ? string.Concat(Parts) : string.Join('\n', Parts);
 }
 
-/// <summary>Vim's registers, one set for every editor as Vim has one: the unnamed register, 0 for the last yank, 1 to 9
+/// <summary>Vim's registers, one set for the editors that share it as Vim's editing shares one: the unnamed register, 0 for the last yank, 1 to 9
 /// for deletes of a line or more shifting down, - for smaller deletes, a to z (A to Z appending), _ keeping nothing,
 /// and + and * standing for the system clipboard, whose text the editor writes and reads.</summary>
 public sealed class VimRegisters

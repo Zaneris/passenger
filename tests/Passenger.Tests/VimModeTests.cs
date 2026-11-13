@@ -239,6 +239,34 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>Each window keeps its own registers, as each is a session of its own: what one yanks, p in another never
+    /// puts, while + still crosses through the system clipboard.</summary>
+    [AvaloniaFact]
+    public void Each_window_keeps_its_own_registers_and_plus_crosses_between_them()
+    {
+        (MainWindow first, CodeEditor one) = Open("one\n");
+        (MainWindow second, CodeEditor two) = Open("two\n", TestFolders.Create("vim-other-"));
+        try
+        {
+            first.ApplySettings(first.Settings with { VimMode = true });
+            second.ApplySettings(second.Settings with { VimMode = true });
+            Ui.Settle();
+            one.Focus();
+            Keys(first, "yy\"ayy\"+yy");
+            Ui.WaitFor(() => Ui.Await(first.Clipboard!.TryGetTextAsync(), "the clipboard's text") == "one\n", () => "\"+yy put nothing on the system clipboard");
+            two.Focus();
+            Keys(second, "p\"ap");
+            Assert.True(Text(two) == "two\n", $"A put in one window took another window's yank, leaving \"{Text(two)}\"");
+            Keys(second, "\"+p");
+            Ui.WaitFor(() => Text(two) == "two\none\n", () => $"\"+p in the other window put \"{Text(two)}\", not the clipboard's line below");
+        }
+        finally
+        {
+            second.Close();
+            first.Close();
+        }
+    }
+
     /// <summary>. makes a change with what its insert typed again at every caret, as one step of undo.</summary>
     [AvaloniaFact]
     public void Dot_repeats_a_change_at_every_caret_as_one_step_of_undo()
@@ -267,6 +295,7 @@ public sealed class VimModeTests : IDisposable
         EditorRig rig = new(model.Text);
         rig.Window.Height = 300;
         rig.Editor.UsesVim = true;
+        Assert.True(rig.Editor.VimRegisters.Unnamed is null, "Vim mode began with something to put, where Vim begins with its registers empty");
         string[] commands = ["h", "l", "j", "k", "0", "$", "x", "X", "D", "dd", "yy", "p", "P", "J", "~", "u"];
         for (int step = 0; step < 400; step++)
         {
@@ -327,13 +356,13 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
-    private (MainWindow Window, CodeEditor Editor) Open(string text)
+    private (MainWindow Window, CodeEditor Editor) Open(string text, string? into = null)
     {
-        string path = Path.Combine(folder, "One.txt");
+        string path = Path.Combine(into ?? folder, "One.txt");
         File.WriteAllText(path, text);
         MainWindow window = new() { Width = 1200, Height = 800 };
         window.Show();
-        window.OpenFolder(folder);
+        window.OpenFolder(into ?? folder);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;

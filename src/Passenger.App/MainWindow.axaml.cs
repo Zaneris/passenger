@@ -32,6 +32,10 @@ public partial class MainWindow : IdeWindow
 
     private readonly KeymapDispatcher keys = new(AppActions.Keymap());
 
+    /// <summary>Vim mode's registers, one set for this window's editors as a window is a session of its own: another
+    /// window's yank never comes back in a put here, and + and * cross windows through the system clipboard.</summary>
+    private readonly VimRegisters vimRegisters = new();
+
     /// <summary>The popups over this window and the others it opens.</summary>
     private readonly PopupHost popups;
 
@@ -174,6 +178,7 @@ public partial class MainWindow : IdeWindow
         };
         Editors.CaretMoved += (_, _) => UpdateCaret();
         Editors.ForEachEditor(editor => editor.VimModeChanged += (_, _) => UpdateCaret());
+        Editors.ForEachEditor(editor => editor.VimRegisters = vimRegisters);
         Editors.SaveFailed += (_, problem) => status.Text = problem;
         Editors.OpenFailed += (_, problem) => status.Text = problem;
         Editors.Refused += (_, problem) => status.Text = problem;

@@ -77,7 +77,9 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>The count and keys typed toward a command not yet complete ("2d"), for the status bar.</summary>
     public string Pending => string.Concat(pending);
 
-    public VimRegisters Registers => registers;
+    /// <summary>The registers yanks, deletes and puts use: the set the editor's host gives, shared by the editors it
+    /// holds, and a set of the Vim's own where none is given.</summary>
+    public VimRegisters Registers { get; set; } = registers;
 
     public VimResult Press(string key, TextSnapshot text, SelectionSet selections, IVimView? view = null)
     {

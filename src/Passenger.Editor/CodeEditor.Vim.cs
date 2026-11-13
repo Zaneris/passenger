@@ -13,10 +13,9 @@ namespace Passenger.Editor;
 /// what insert mode types one step of undo.</summary>
 public sealed partial class CodeEditor
 {
-    /// <summary>Vim's registers, one set for every editor of every window, as Vim keeps one.</summary>
-    private static readonly VimRegisters Registers = new();
-
     private Vim? vim;
+
+    private VimRegisters vimRegisters = new();
 
     private EditorVimView? vimView;
 
@@ -30,9 +29,24 @@ public sealed partial class CodeEditor
         {
             if (UsesVim != value)
             {
-                vim = value ? new Vim(Registers) : null;
+                vim = value ? new Vim(vimRegisters) : null;
                 FollowVimMode();
                 SetSelections(selections, reveal: false);
+            }
+        }
+    }
+
+    /// <summary>The registers Vim mode yanks into and puts from: the editor's own until its host gives the set its editors
+    /// share (a window's), so what one editor yanks another of the same host puts.</summary>
+    public VimRegisters VimRegisters
+    {
+        get => vimRegisters;
+        set
+        {
+            vimRegisters = value;
+            if (vim is not null)
+            {
+                vim.Registers = value;
             }
         }
     }
