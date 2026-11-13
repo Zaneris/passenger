@@ -102,7 +102,8 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   person's own never.
 - **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`, the default theme every other is laid over), given in
   every theme (dark and light; the others live in Zaneris/passenger-themes, the tests' copy in
-  `tests/Passenger.Tests/Themes`, Harbour's and Reef by hand, the rest by `just themes FOLDER`); a theme file is read
+  `tests/Passenger.Tests/Themes`, Harbour's and Reef by hand, the rest by `just themes FOLDER`; Cubicle, carried in `Theme/BuiltIn`, by
+  `tools/themes.py`'s `BUILT_IN`, `ThemeSource.Carried` naming what is carried); a theme file is read
   only through `ThemeFiles` (format 1, `docs/themes.md`) and laid through `ThemeResources`, so a token added to
   Tokens.axaml is one a theme may give. A theme is a `SourcedTheme`; a source is read only through `ThemeSourceReads` and
   `ThemeListing`, never at a start whose themes are kept (`KeptThemes`); `PASSENGER_THEMES` names the repository's place; a theme's picture is drawn only through `ThemeBackdrop`
@@ -212,13 +213,15 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
   (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump.
 - `Passenger.Editor`: `CodeEditor`, `Keymap`, `EditorActions`; the code font is `CodeFonts.Key`, never a `FontFamily`
-  written elsewhere; a family code or the window's words are drawn in is named through `FallbackFonts` (`Carry`, `Of`),
+  written elsewhere; a family code or the window's words are drawn in is named through `FallbackFonts` (`Carry`, `Of`), an emoji's fallback asked in
+  `und-Zsye` (`FallbackFonts.LanguageOf`), never the culture's, or fontconfig names a text face,
   so what it lacks takes the platform's own fallback; the editor names no debugger, test or VCS concept (`IGutterColumn`, EditorRulesTests); a file's
   editors draw its one `DocumentDecorations`, never fed per split. Vim mode: `Vim` decides a key's meaning purely over the editor's
   `IVimView` (`Vim.Commands`, `Vim.Operators`, `VimMotions`, `VimTextObjects`) and `CodeEditor.PressVim` takes it before
   any keymap; an insert session is one `EditKind.Joined` step, `.`'s edits one too (`FollowVim`); normal-mode carets
   settle in `SetSelections`; registers are each window's own (`CodeEditor.VimRegisters`), `+`/`*` the clipboard; visual mode's stretches are the editor's selections, a selection made
-  otherwise entering it (`Vim.FollowSelections`); macros are pressed again by `CodeEditor.ReplayVim`;
+  otherwise entering it (`Vim.FollowSelections`); macros are pressed again by `CodeEditor.ReplayVim`; search and the ex command line are Vim's own (`Vim.Search`, `Vim.Ex`,
+  `VimPatterns`) over `TextSearch`, and what only the window can do comes as a `VimRequest` (`MainWindow.Vim.cs`);
   `VimTests`' expected texts are the system Vim 9.1's. Wide characters are counted by `WideCharacters` (Passenger.Text).
 - **A key costs what it changed, not the file's size**: keep it so. Wraps, rows, folds, hints and built lines move only
   where an edit reaches; a highlighter keeps colours an edit didn't reach (`KeptColours`, `ChangedWithin`); a row is a
@@ -283,7 +286,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   background on html stops a body's reaching the canvas. Convert Indentation has one refusal
   (`OpenDocument.WhyNotConverted`), a language's literals beyond its strings go in `Language.Literals`, Python's blocks
   through `Indentation.FirstBlockAtRisk`, `Language.BlockWords` and `Language.Continued`.
-- **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
+- **Docking.** A theme's default layout is the dock's default (`DockHost.UseDefault`/`Default`, `Themes.Layout`): what a
+  window with no kept layout opens on and what Restore Default Layout goes to, never laid over a kept layout. A kept
+  layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
   on attach (a split rebuilds the frame).
