@@ -155,7 +155,8 @@ before put them.
   or `leave` the stripe until the window is opened again from View | Tool Windows, Find Action or its keys; left out,
   keep.
 - `findResults` keeps Find in Files' matches in its `popup` alone, or in the Find `window` as well once one is gone to,
-  a tab to go back to; left out, the popup.
+  a tab to go back to, where the places Go to Declaration and the like find to choose from are listed too; left out, the
+  popup.
 
 What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `stripeIcons`, `closedWindows`, `findResults`) is each a setting of Settings | Appearance: the
 theme's is the default there, and the place you choose wins over it whatever theme you choose, until you choose Theme

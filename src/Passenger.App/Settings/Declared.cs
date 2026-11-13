@@ -65,7 +65,8 @@ public static class Declared
         [(Passenger.App.FindResults.Popup, "In its popup"), (Passenger.App.FindResults.FindWindow, "Kept in the Find window")],
         new(D.Appearance, "Find in Files results", "find in files search results matches occurrences find window docked keep kept popup tool window layout arrangement",
             "Where Find in Files' matches stay once one is gone to: in its popup, which closes, or kept in the Find window as well, "
-            + "a tab of their own to go back to. Open in Find Window in the popup puts them there either way."));
+            + "a tab of their own to go back to; kept there, the places Go to Declaration, Go to Implementation and the like find "
+            + "to choose from are listed there too. Open in Find Window in the popup puts the matches there either way."));
 
     public static readonly ToggleSetting ReopenProjectsOnStartup = new(s => s.ReopenProjectsOnStartup, (s, v) => s with { ReopenProjectsOnStartup = v },
         new(D.SystemPage, "Reopen projects on startup", "reopen last solution project folder startup start launch welcome screen recent"));

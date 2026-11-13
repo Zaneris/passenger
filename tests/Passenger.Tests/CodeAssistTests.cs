@@ -1025,6 +1025,27 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void Places_to_choose_from_are_kept_in_the_Find_window_where_Find_in_Files_results_are_kept()
+    {
+        MainWindow window = project.Open("Separated.cs");
+        try
+        {
+            window.ApplySettings(window.Settings with { FindResults = Passenger.App.FindResults.FindWindow });
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "    int Val");
+            Ui.Run(window, AppActions.GoToImplementation);
+            Ui.WaitFor(() => window.Find.Rows.Count(r => r.Usage is not null) == 2,
+                () => $"the two implementations listed in the Find window, where it shows {window.Find.Shown} with {window.Find.Rows.Count(r => r.Usage is not null)} rows");
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Find) && window.Assist.Offered.Count == 0 && window.Find.IsKeyboardFocusWithin,
+                "The implementations kept in the Find window were offered in a popup too, or the Find window, open, has not the keys");
+        }
+        finally
+        {
+            window.ApplySettings(new Passenger.App.Settings.AppSettings());
+            window.Close();
+        }
+    }
+
     /// <summary>The server counts a line at each break in Separators.cs's and Separated.cs's comments that the editor does
     /// not, so a place it names is read in the file's own text, a file not open as it is on disk: Go to Symbol's rows, Go to
     /// Declaration and Implementation, what an agent asks of the code, and the lines an agent's refactoring changed.</summary>

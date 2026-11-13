@@ -46,7 +46,8 @@ public partial class MainWindow
         assist.UsagesFound += (_, found) => IdeErrors.Observe(ShowUsagesAsync(found));
         actions!.Running += (_, running) =>
         {
-            if (running.Action.Id is AppActions.FindUsages or AppActions.ShowUsages)
+            if (running.Action.Id is AppActions.FindUsages or AppActions.ShowUsages or AppActions.GoToDeclaration or AppActions.GoToImplementation
+                or AppActions.GoToTypeDeclaration or AppActions.BaseSymbols or AppActions.DerivedSymbols)
             {
                 usagesAsked = running.Context is { ByAgent: false, Focused: Visual focused }
                     ? new UsagesAsked(focused, (focused as CodeEditor)?.Document.Snapshot, (focused as CodeEditor)?.Selections, popups.Shown)

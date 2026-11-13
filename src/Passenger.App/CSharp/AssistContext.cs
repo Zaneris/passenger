@@ -192,6 +192,10 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>A place to go: a file and a line and column (from zero).</summary>
     public void Navigate((string Path, TextPosition Position) place) => Navigated?.Invoke(this, place);
 
+    /// <summary>Whether places to choose from (several declarations, implementations, base or derived symbols) are kept in
+    /// the Find window rather than chosen in a popup.</summary>
+    public Func<bool> KeepsPlaces { get; set; } = () => false;
+
     /// <summary>Find Usages' answer, for the Find window, or Show Usages' for its popup at an offset: what was searched for,
     /// where it is used, and what the answer went without, when it did.</summary>
     public void ShowUsages(string title, IReadOnlyList<LspLocation> usages, int? popupAt, string? note = null) =>

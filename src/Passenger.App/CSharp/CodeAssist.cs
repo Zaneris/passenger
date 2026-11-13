@@ -164,6 +164,13 @@ public sealed class CodeAssist
         remove => context.Message -= value;
     }
 
+    /// <summary>Whether places to choose from are kept in the Find window rather than chosen in a popup.</summary>
+    public Func<bool> KeepsPlaces
+    {
+        get => context.KeepsPlaces;
+        set => context.KeepsPlaces = value;
+    }
+
     /// <summary>How a refactoring's change of files beyond the open ones is run: the window runs it and follows what it made,
     /// moved or deleted among the paths given, and the projects that read a text it changed.</summary>
     public Func<IReadOnlyCollection<string>, CommandHistory.Recording, Action, Task>? FilesChanging

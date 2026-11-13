@@ -139,8 +139,8 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         Go(declared.Places, offset, declared.Title, declared.None, declared.Names);
     }
 
-    /// <summary>Straight to the one place, else the places to choose from; the status bar says <paramref name="none"/>
-    /// when there are none.</summary>
+    /// <summary>Straight to the one place, else the places to choose from, in a popup or kept in the Find window; the status
+    /// bar says <paramref name="none"/> when there are none.</summary>
     public void Go(IReadOnlyList<LspLocation> locations, int offset, string title, string none, IReadOnlyList<string?>? names = null)
     {
         if (locations.Count == 0)
@@ -150,6 +150,10 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         else if (locations.Count == 1)
         {
             Arrive(locations[0]);
+        }
+        else if (context.KeepsPlaces())
+        {
+            context.ShowUsages(title, locations, popupAt: null);
         }
         else
         {

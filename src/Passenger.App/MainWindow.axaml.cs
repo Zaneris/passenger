@@ -274,6 +274,7 @@ public partial class MainWindow : IdeWindow
         assist.Browse += (_, page) => Browse(page);
         assist.Play += (_, file) => IdeErrors.Observe(PlaySoundAsync(file));
         assist.FilesChanging = FollowingAsync;
+        assist.KeepsPlaces = () => settings.FindResultsIn() == FindResults.FindWindow;
         assist.HttpRouteTargets = HttpRouteTargets;
         assist.RouteCallers = RouteCallers;
         usages =new UsageHighlighting(Editors, () => session.CSharp);
