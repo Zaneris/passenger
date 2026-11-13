@@ -156,6 +156,11 @@ public sealed class ExplorerTree
 
     private ProjectFiles? FilesOf(ProjectModel project)
     {
+        if (Containers.ContainerConfigurations.IsComposeProject(project.Path))
+        {
+            // Never evaluated: what it holds is read again from its text and its folder each time, as cheap as reading a folder.
+            return new ProjectFiles(project.Folder, Containers.ContainerConfigurations.ItemsOf(project.Path), onlyItems: true);
+        }
         if (!project.IsEvaluated)
         {
             return null;
@@ -609,12 +614,14 @@ public sealed class ExplorerTree
     private sealed record Nesting(ProjectModel Project, bool ByName, ProjectFiles? Files = null);
 
     /// <summary>A project's row: once MSBuild has evaluated it, its files are the ones it holds as evaluated
-    /// (<see cref="ProjectFiles"/>); until then, or when it could not be, the files in its folder.</summary>
+    /// (<see cref="ProjectFiles"/>); until then, or when it could not be, the files in its folder; a Docker Compose
+    /// project's, the files its text names.</summary>
     private ExplorerNode Project(ProjectModel given, int depth) => Unloaded.Contains(given.Path)
         ? new(NodeKind.Project, given.Name, given.Path, depth, dimmed: true, null, "(unloaded)")
         : new(NodeKind.Project, given.Name, given.Path, depth, !given.Exists, node =>
         {
-            List<ExplorerNode> children = [Dependencies(given, node.Depth + 1)];
+            // A Docker Compose project references nothing: it holds files alone.
+            List<ExplorerNode> children = Containers.ContainerConfigurations.IsComposeProject(given.Path) ? [] : [Dependencies(given, node.Depth + 1)];
             children.AddRange(HeldIn(given, string.Empty, node.Depth + 1));
             return children;
         }, DetailOf(Current(given))) { Tip = TipOf(Current(given)) };
@@ -771,7 +778,7 @@ public sealed class ExplorerTree
         List<(string Name, string Path)> held = [.. files.FilesIn(relative)
             .Where(f => !FileText.IsSaving(f.Name))
             .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)];
-        IReadOnlyDictionary<string, string> parents = FileNesting.Parents([.. held.Select(f => f.Path)], nesting.Project, nesting.ByName);
+        IReadOnlyDictionary<string, string> parents = FileNesting.Parents([.. held.Select(f => f.Path)], files.DependentUpon, nesting.ByName);
         ILookup<string, string> nestedUnder = NestedUnder(held.Select(f => f.Path), parents);
         foreach ((string name, string path) in held.Where(f => !parents.ContainsKey(f.Path)))
         {

@@ -9,12 +9,14 @@ namespace Passenger.App.Explorer;
 /// else at the project's top, and its Folder items; a file the project leaves out (a Remove, an Exclude) is not there,
 /// nor its folder unless something of the project is in it. A folder on disk with nothing in it at all shows too, since
 /// MSBuild has nothing to say of it and one just made would otherwise vanish; once shown, it shows until the project is
-/// evaluated again, a file come into it since being that evaluation's to judge, so its row stays the row it was.</summary>
+/// evaluated again, a file come into it since being that evaluation's to judge, so its row stays the row it was. A
+/// Docker Compose project's are the items its text names (<see cref="Containers.ContainerConfigurations.ItemsOf"/>).</summary>
 internal sealed class ProjectFiles
 {
     private readonly string root;
 
-    /// <summary>Whether it is a file-based program's, whose folder on disk is not its own.</summary>
+    /// <summary>Whether its folder on disk is not its own (a file-based program's, a Docker Compose project's), so it holds
+    /// only what it names.</summary>
     private readonly bool program;
 
     /// <summary>How the places in the project and the names in each compare, as its folder tells case.</summary>
@@ -29,17 +31,32 @@ internal sealed class ProjectFiles
     /// <summary>Where each file the project holds shows, by its path: the place's folders and its name there.</summary>
     private readonly Dictionary<string, (string Folder, string Name)> places = new(PathNames.Comparer);
 
+    /// <summary>The files it holds that say they depend on another (DependentUpon, relative to the file's own folder), each
+    /// with that file's path.</summary>
+    public Dictionary<string, string> DependentUpon { get; } = new(PathNames.Comparer);
+
     public ProjectFiles(ProjectModel project)
+        : this(project.Folder, project.Evaluated?.Items ?? [], project.IsProgram)
     {
-        root = project.Folder;
-        program = project.IsProgram;
+    }
+
+    /// <summary>The files of the items a project in a folder holds; <paramref name="onlyItems"/> where its folder on disk is
+    /// not its own.</summary>
+    public ProjectFiles(string projectFolder, IEnumerable<EvaluatedItem> items, bool onlyItems)
+    {
+        root = projectFolder;
+        program = onlyItems;
         names = PathNames.NamesIn(root);
         files = new(names);
         folders = new(names);
         shownEmpty = new(names);
         HashSet<string> seen = new(PathNames.Comparer);
-        foreach (EvaluatedItem item in project.Evaluated?.Items ?? [])
+        foreach (EvaluatedItem item in items)
         {
+            if (item.DependentUpon is { } parent)
+            {
+                DependentUpon.TryAdd(item.Path, Path.GetFullPath(Path.Combine(Path.GetDirectoryName(item.Path)!, parent.Replace('\\', '/'))));
+            }
             string logical = Logical(item);
             if (item.Type == "Folder")
             {

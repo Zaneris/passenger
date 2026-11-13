@@ -152,12 +152,7 @@ public static class ContainerConfigurations
             return [];
         }
         string folder = Path.GetDirectoryName(dcproj)!;
-        string file = new[] { ".yml", ".yaml" }.Select(e => Path.Combine(folder, read.BaseFilePath + e)).FirstOrDefault(File.Exists) ?? Path.Combine(folder, read.BaseFilePath + ".yml");
-        List<string> files = [PathNames.Canonical(file), .. ((string?[])[Override(file)]).OfType<string>().Select(PathNames.Canonical)];
-        foreach (string more in read.AdditionalFiles)
-        {
-            files.Add(PathNames.Canonical(Path.Combine(folder, more.Replace('\\', '/'))));
-        }
+        List<string> files = ComposeFilesOf(folder, read);
         string name = Path.GetFileNameWithoutExtension(dcproj);
         string service = read.ServiceName;
         string url = read.ServiceUrl;
@@ -196,6 +191,41 @@ public static class ContainerConfigurations
             });
         }
         return made;
+    }
+
+    /// <summary>A Docker Compose project's compose files, as its runs take them: its base file (DockerComposeBaseFilePath's,
+    /// .yml else .yaml), the override beside it where there is one, then its AdditionalComposeFilePaths.</summary>
+    private static List<string> ComposeFilesOf(string folder, ComposeProjectFile read)
+    {
+        string file = new[] { ".yml", ".yaml" }.Select(e => Path.Combine(folder, read.BaseFilePath.Replace('\\', '/') + e)).FirstOrDefault(File.Exists)
+            ?? Path.Combine(folder, read.BaseFilePath.Replace('\\', '/') + ".yml");
+        List<string> files = [PathNames.Canonical(file), .. ((string?[])[Override(file)]).OfType<string>().Select(PathNames.Canonical)];
+        files.AddRange(read.AdditionalFiles.Select(more => PathNames.Canonical(Path.Combine(folder, more.Replace('\\', '/')))));
+        return files;
+    }
+
+    /// <summary>What a Docker Compose project holds as the Solution view shows it, by path: the files its ItemGroups name, and
+    /// those its runs read that it names not, as Visual Studio's SDK adds them: its compose files, the override under the
+    /// file it overrides, and its launch profiles' file; none for one that is not there or does not read.</summary>
+    public static IReadOnlyList<EvaluatedItem> ItemsOf(string dcproj)
+    {
+        if (Text(dcproj) is not { } text || ComposeProjectFile.Read(text) is not { } read)
+        {
+            return [];
+        }
+        string folder = Path.GetDirectoryName(dcproj)!;
+        List<EvaluatedItem> items = [.. read.Items.Select(i => new EvaluatedItem(i.Type, PathNames.Canonical(Path.Combine(folder, i.Include.Replace('\\', '/'))), i.Link, i.DependentUpon))];
+        List<string> files = ComposeFilesOf(folder, read);
+        string? overriding = Override(files[0]) is { } beside ? PathNames.Canonical(beside) : null;
+        foreach (string file in files.Append(LaunchProfile.SettingsIn(folder)).Where(File.Exists))
+        {
+            if (!items.Any(i => PathNames.Same(i.Path, file)))
+            {
+                bool over = overriding is not null && PathNames.Same(file, overriding);
+                items.Add(new EvaluatedItem("None", PathNames.Canonical(file), DependentUpon: over ? Path.GetFileName(files[0]) : null));
+            }
+        }
+        return items;
     }
 
     /// <summary>The name a Docker Compose project's configuration gives its Compose project (its DockerComposeProjectName),

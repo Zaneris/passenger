@@ -110,14 +110,18 @@ public static partial class FileNesting
     /// <summary>The files of one folder shown under another of them, each to the file it goes under, by path: what the
     /// project says it depends on first, then the name rules when <paramref name="byName"/>, names compared as their folder
     /// tells letter case. Nesting is one level: a file whose parent is nested itself goes under that one's parent.</summary>
-    public static IReadOnlyDictionary<string, string> Parents(IReadOnlyCollection<string> files, ProjectModel? project, bool byName)
+    public static IReadOnlyDictionary<string, string> Parents(IReadOnlyCollection<string> files, ProjectModel? project, bool byName) =>
+        Parents(files, project?.DependentUpon() ?? [], byName);
+
+    /// <summary><see cref="Parents(IReadOnlyCollection{string}, ProjectModel?, bool)"/> with what the project's files depend
+    /// on given, each file's path to its parent's.</summary>
+    public static IReadOnlyDictionary<string, string> Parents(IReadOnlyCollection<string> files, IReadOnlyDictionary<string, string> dependentUpon, bool byName)
     {
         Dictionary<string, string> named = new(files.Count == 0 ? StringComparer.Ordinal : PathNames.NamesIn(Path.GetDirectoryName(files.First())!));
         foreach (string file in files)
         {
             named.TryAdd(Path.GetFileName(file), file);
         }
-        Dictionary<string, string> dependentUpon = project?.DependentUpon() ?? [];
         Dictionary<string, List<string>> candidates = new(StringComparer.Ordinal);
         foreach (string file in files)
         {

@@ -28,6 +28,13 @@ public sealed record ComposeProjectFile
     /// none and Compose names it as it would any other files.</summary>
     public string? ProjectName { get; init; }
 
+    /// <summary>The files it holds, as its ItemGroups name them (None, Content and the like, and Folder), each as written
+    /// from its folder; an item MSBuild would expand (a wildcard, a property) or hide (Visible false) is left out.</summary>
+    public IReadOnlyList<ComposeItem> Items { get; init; } = [];
+
+    /// <summary>The item types whose items are files a project holds, a folder of it too.</summary>
+    private static readonly HashSet<string> FileItems = new(StringComparer.Ordinal) { "None", "Content", "Compile", "EmbeddedResource", "Folder" };
+
     /// <summary>A .dcproj's text read; null where it is not XML.</summary>
     public static ComposeProjectFile? Read(string text)
     {
@@ -57,10 +64,37 @@ public sealed record ComposeProjectFile
                 ? string.Equals(action, LaunchBrowserAction, StringComparison.OrdinalIgnoreCase)
                 : bool.TryParse(Property(MSBuildNames.DockerLaunchBrowser), out bool launch) && launch,
             ProjectName = Property(MSBuildNames.DockerComposeProjectName),
+            Items = [.. root.Elements().Where(e => e.Name.LocalName == "ItemGroup").Elements().SelectMany(ItemsOf)],
         };
+    }
+
+    /// <summary>The files an item element names, its metadata written as an attribute or an element.</summary>
+    private static IEnumerable<ComposeItem> ItemsOf(XElement element)
+    {
+        string type = element.Name.LocalName;
+        if (!FileItems.Contains(type) || element.Attribute("Include")?.Value is not { } include)
+        {
+            return [];
+        }
+        string? Metadata(string name) =>
+            (element.Attribute(name)?.Value ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == name)?.Value)?.Trim() is { Length: > 0 } value ? value : null;
+        if (string.Equals(Metadata("Visible"), "false", StringComparison.OrdinalIgnoreCase))
+        {
+            return [];
+        }
+        string? link = Metadata("Link") is { } named ? ItemPaths.Unescaped(named) : null;
+        string? dependentUpon = Metadata("DependentUpon") is { } parent ? ItemPaths.Unescaped(parent) : null;
+        return include.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(written => written.IndexOfAny(['*', '?']) < 0 && !written.Contains("$(", StringComparison.Ordinal) && !written.Contains("@(", StringComparison.Ordinal)
+                && !written.Contains("%(", StringComparison.Ordinal))
+            .Select(written => new ComposeItem(type, ItemPaths.Unescaped(written), link, dependentUpon));
     }
 
     /// <summary>The launch action that opens the browser, a .dcproj's DockerLaunchAction or a Docker Compose launch profile's
     /// composeLaunchAction.</summary>
     public const string LaunchBrowserAction = "LaunchBrowser";
 }
+
+/// <summary>A file a Docker Compose project holds: its item type, its path, link and DependentUpon as written (from the
+/// project's folder, the DependentUpon from the file's).</summary>
+public sealed record ComposeItem(string Type, string Include, string? Link = null, string? DependentUpon = null);

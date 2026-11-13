@@ -4,7 +4,7 @@ namespace Passenger.UnitTests.Containers;
 
 /// <summary>A Docker Compose project's (.dcproj) properties are read from its text as written, each where a PropertyGroup
 /// sets it, under MSBuild's namespace or none: its compose files, the service it launches and that service's address, and
-/// its Compose project's name, which a project naming none leaves to Compose.</summary>
+/// its Compose project's name, which a project naming none leaves to Compose; and the files its ItemGroups name.</summary>
 public sealed class ComposeProjectFileTests
 {
     private const string Shop = """
@@ -66,6 +66,36 @@ public sealed class ComposeProjectFileTests
         ComposeProjectFile read = ComposeProjectFile.Read($"<Project Sdk=\"Microsoft.Docker.Sdk\"><PropertyGroup>{properties}</PropertyGroup></Project>")
             ?? throw new Xunit.Sdk.XunitException("The .dcproj did not read");
         Assert.True(read.LaunchesBrowser == opens, $"A .dcproj of {properties} {(opens ? "opened no browser" : "opened the browser")}");
+    }
+
+    [Fact]
+    public void Its_items_are_the_files_its_ItemGroups_name_with_their_metadata_and_none_MSBuild_would_expand_or_hide()
+    {
+        ComposeProjectFile read = ComposeProjectFile.Read("""
+            <Project Sdk="Microsoft.Docker.Sdk">
+              <ItemGroup>
+                <None Include="docker-compose.override.yml" DependentUpon="docker-compose.yml" />
+                <None Include="docker-compose.yml;.dockerignore" />
+                <Content Include="docker\api%20one\Dockerfile">
+                  <Link>Dockerfiles\api.Dockerfile</Link>
+                </Content>
+                <None Include="**\*.env" />
+                <None Include="$(SolutionDir)shared.yml" />
+                <None Include="hidden.yml" Visible="false" />
+                <PackageReference Include="Not.A.File" Version="1.0.0" />
+                <Folder Include="secrets\" />
+              </ItemGroup>
+            </Project>
+            """) ?? throw new Xunit.Sdk.XunitException("The .dcproj did not read");
+        Assert.Equal(
+            [
+                new ComposeItem("None", "docker-compose.override.yml", null, "docker-compose.yml"),
+                new ComposeItem("None", "docker-compose.yml"),
+                new ComposeItem("None", ".dockerignore"),
+                new ComposeItem("Content", @"docker\api one\Dockerfile", @"Dockerfiles\api.Dockerfile"),
+                new ComposeItem("Folder", @"secrets\"),
+            ],
+            read.Items);
     }
 
     [Fact]
