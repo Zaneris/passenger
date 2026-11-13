@@ -111,17 +111,19 @@ internal sealed class Stripe : Border
         return at.Y > boundary ? lower : upper;
     }
 
-    /// <summary>Where among a group's buttons a point falls, for a drop to keep its order.</summary>
-    public int IndexAt(ToolAnchor anchor, Point at)
+    /// <summary>Where a window dropped at a point goes among the place's others (<see cref="DockHost.Move"/>'s index): just
+    /// after the window of the last button shown above the point, however many off the stripe stand between, and never
+    /// counting the window's own button.</summary>
+    public int IndexAt(ToolAnchor anchor, Point at, ToolWindow moving)
     {
-        StackPanel group = groups[anchor];
+        List<ToolWindow> others = [.. host.Windows.Where(w => w.Anchor == anchor && w != moving).OrderBy(w => w.Order)];
         int index = 0;
-        foreach (Control button in group.Children)
+        foreach (Control button in groups[anchor].Children.Where(b => b.IsVisible))
         {
             Point centre = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), this) ?? default;
-            if (at.Y > centre.Y)
+            if (at.Y > centre.Y && buttons.FirstOrDefault(b => b.Value == button).Key is { } window && window != moving)
             {
-                index++;
+                index = others.IndexOf(window) + 1;
             }
         }
         return index;

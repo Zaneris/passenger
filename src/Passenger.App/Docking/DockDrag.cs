@@ -51,10 +51,10 @@ internal sealed class DockDrag
     }
 
     /// <summary>A drop on a stripe keeps the place among its buttons; anywhere else goes last.</summary>
-    private int? StripeIndex(ToolAnchor anchor, Point at)
+    private int? StripeIndex(ToolWindow window, ToolAnchor anchor, Point at)
     {
         Stripe? stripe = at.X < DockHost.StripeWidth ? left : at.X > host.Bounds.Width - DockHost.StripeWidth ? right : null;
-        return stripe?.IndexAt(anchor, host.TranslatePoint(at, stripe) ?? at);
+        return stripe?.IndexAt(anchor, host.TranslatePoint(at, stripe) ?? at, window);
     }
 
     /// <summary>Where a window dragged from elsewhere (its editor tab) would dock at a point, lit in the frame's overlay.</summary>
@@ -108,7 +108,7 @@ internal sealed class DockDrag
             {
                 host.SetMode(window, ToolMode.Docked);
             }
-            host.Move(window, anchor, StripeIndex(anchor, at));
+            host.Move(window, anchor, StripeIndex(window, anchor, at));
         }
     }
 }

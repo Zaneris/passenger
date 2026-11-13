@@ -831,6 +831,37 @@ public sealed class DockingTests
         }
     }
 
+    [AvaloniaFact]
+    public void A_stripe_button_dropped_between_two_of_its_places_lands_between_them_past_a_window_off_the_stripe_and_its_own_place()
+    {
+        MainWindow window = Open();
+        try
+        {
+            // Run, the place's first, goes down past its own place.
+            DropBetween(window, ToolWindowIds.Run, ToolWindowIds.Tests, ToolWindowIds.Build);
+            // Debug, off the stripe, stands before Aspire in the place's order; Problems comes from below.
+            window.DockHost.SetOnStripe(ToolWindowIds.Debug, false);
+            Ui.Settle();
+            DropBetween(window, ToolWindowIds.Problems, ToolWindowIds.Aspire, ToolWindowIds.Tests);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Drags a window's stripe button to halfway between two others' and checks it now stands between them.</summary>
+    private static void DropBetween(MainWindow window, string id, string above, string below)
+    {
+        Point to = (Ui.Centre(Button(window, above), window) + Ui.Centre(Button(window, below), window)) / 2;
+        Ui.Drag(window, Ui.Centre(Button(window, id), window), to);
+        DockHost dock = window.DockHost;
+        string[] shown = [.. PlaceButtons(window, dock, dock[above].Anchor).OrderBy(b => Ui.Centre(b, window).Y).Select(b => (string)b.Tag!)];
+        int at = Array.IndexOf(shown, id);
+        Assert.True(at > 0 && at < shown.Length - 1 && shown[at - 1] == above && shown[at + 1] == below,
+            $"{id} dropped between {above} and {below} stands in [{string.Join(", ", shown)}]");
+    }
+
     /// <summary>The titles of a place's windows in their order, as its checklist lists them.</summary>
     private static IEnumerable<string> Titles(DockHost dock, ToolAnchor place) =>
         dock.Windows.Where(w => w.Anchor == place).OrderBy(w => w.Order).Select(w => w.Title);
