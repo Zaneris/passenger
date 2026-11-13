@@ -195,6 +195,7 @@ internal sealed partial class CodeCompletion
         templatesFor = null;
         postfixOffered.Clear();
         open = list;
+        lastAsked = null;
         Filter();
     }
 
@@ -294,13 +295,18 @@ internal sealed partial class CodeCompletion
     }
 
     /// <summary>What a list is narrowed by: the text typed since it opened, what of it an item with no filter text of its
-    /// own is matched by, and how alike two scores must be to keep the list's own order.</summary>
-    private readonly record struct Narrowing(Completion List, string Typed, string Bare, int Alike);
+    /// own is matched by, how alike two scores must be to keep the list's own order, and the list's ranking.</summary>
+    private readonly record struct Narrowing(Completion List, string Typed, string Bare, int Alike, RankedList Ranked);
 
-    /// <summary>How many filters were asked for, the last the only one shown when it lands; and what the rows shown were
+    /// <summary>How many filters were asked for, the last the only one shown when it lands; what the last asked was for,
+    /// so the same name asked again (a key's caret move after its text) is not filtered twice; and what the rows shown were
     /// filtered by.</summary>
     private int filters;
+    private (Completion List, string Typed, int Filter)? lastAsked;
     private (Completion List, string Typed)? filtered;
+
+    /// <summary>The open list's ranking, made for it once.</summary>
+    private RankedList? ranked;
 
     /// <summary>What the open list is narrowed by with the name typed up to <paramref name="end"/> (the caret when not
     /// given); null, the list closed, once the caret has left the name or what is typed is no name.</summary>
@@ -331,7 +337,11 @@ internal sealed partial class CodeCompletion
             Close();
             return null;
         }
-        return new Narrowing(open, typed, led ? typed[skip..] : typed, open.Alike);
+        if (!ReferenceEquals(ranked?.List, open))
+        {
+            ranked = new RankedList(open);
+        }
+        return new Narrowing(open, typed, led ? typed[skip..] : typed, open.Alike, ranked);
     }
 
     /// <summary>The list narrowed to what has been typed since it opened: prefix matches first (an exact-case one first of
@@ -339,11 +349,12 @@ internal sealed partial class CodeCompletion
     /// statement's list is every type in reach, and shown as it lands unless a later key's filter was asked for since.</summary>
     private void Filter()
     {
-        if (NarrowedTo() is not { } narrowing)
+        if (NarrowedTo() is not { } narrowing || lastAsked == (narrowing.List, narrowing.Typed, filters))
         {
             return;
         }
-        IdeErrors.Observe(FilterAsync(narrowing, ++filters));
+        lastAsked = (narrowing.List, narrowing.Typed, ++filters);
+        IdeErrors.Observe(FilterAsync(narrowing, filters));
     }
 
     private async Task FilterAsync(Narrowing narrowing, int asked)
@@ -363,7 +374,7 @@ internal sealed partial class CodeCompletion
         {
             return;
         }
-        filters++;
+        lastAsked = (narrowing.List, narrowing.Typed, ++filters);
         ShowRows(narrowing, Rows(narrowing));
     }
 
@@ -392,74 +403,38 @@ internal sealed partial class CodeCompletion
         }
     }
 
-    /// <summary>The rows a list shows narrowed (<see cref="Shown"/>), each badged by its kind; reads nothing of the window's,
-    /// so it runs off the UI thread.</summary>
-    private static CompletionRow[] Rows(Narrowing narrowing)
-    {
-        CompletionItem[] shown = Shown(narrowing.List.Items, narrowing.Typed, narrowing.Bare, narrowing.Alike);
-        CompletionRow[] rows = new CompletionRow[shown.Length];
-        for (int i = 0; i < shown.Length; i++)
-        {
-            rows[i] = Row(shown[i]);
-        }
-        return rows;
-    }
+    /// <summary>The rows a list shows narrowed (<see cref="RankedList.Rows"/>); reads nothing of the window's, so it runs
+    /// off the UI thread.</summary>
+    private static CompletionRow[] Rows(Narrowing narrowing) => narrowing.Ranked.Rows(narrowing.Typed, narrowing.Bare, narrowing.Alike);
 
     /// <summary>The most rows the list shows.</summary>
     private const int MostShown = 200;
 
-    /// <summary>The items that match what was typed, the best first (the higher score over <paramref name="alike"/>,
-    /// then the one the server preselects, then by its sort text): only the best <see cref="MostShown"/> kept as the
-    /// items are scored, since a statement's list is every type in reach. An item with no filter text of its own is
-    /// matched by <paramref name="bare"/>, what was typed less a web server's lead.</summary>
-    private static CompletionItem[] Shown(IReadOnlyList<CompletionItem> items, string typed, string bare, int alike)
+    /// <summary>A list's ranking (<see cref="CompletionRanking"/>), made from its items the first time it is narrowed, off the
+    /// UI thread since a statement's list is every type in reach; and the row each item makes, made once it is first shown.
+    /// Its items that match what was typed are the best first, the higher score over the list's
+    /// <see cref="Completion.Alike"/>, then the one the server preselects, then by its sort text; only the best
+    /// <see cref="MostShown"/> kept. An item with no filter text of its own is matched by what was typed less a web
+    /// server's lead.</summary>
+    private sealed class RankedList(Completion list)
     {
-        PriorityQueue<CompletionItem, (int Score, CompletionItem Item, int Index)> best = new(MostShown + 1, WorstFirst.Instance);
-        for (int i = 0; i < items.Count; i++)
-        {
-            CompletionItem item = items[i];
-            if (FuzzyMatch.Label(item.FilterText is null ? bare : typed, item.FilterText ?? item.Label) is not { } score)
-            {
-                continue;
-            }
-            (int, CompletionItem, int) ranked = (score / alike, item, i);
-            if (best.Count < MostShown)
-            {
-                best.Enqueue(item, ranked);
-            }
-            else if (best.TryPeek(out _, out (int Score, CompletionItem Item, int Index) worst) && WorstFirst.Instance.Compare(ranked, worst) > 0)
-            {
-                best.DequeueEnqueue(item, ranked);
-            }
-        }
-        CompletionItem[] shown = new CompletionItem[best.Count];
-        for (int i = shown.Length - 1; i >= 0; i--)
-        {
-            shown[i] = best.Dequeue();
-        }
-        return shown;
-    }
+        private readonly Lazy<CompletionRanking> ranking = new(() => new CompletionRanking([.. list.Items.Select(item =>
+            new CompletionRanking.Entry(item.FilterText ?? item.Label, item.FilterText is not null, item.Preselect == true, item.SortText ?? item.Label))]));
 
-    /// <summary>Matches in the order they go from the list's best: a lower score, then not preselected, then later by sort
-    /// text, then later in the server's list.</summary>
-    private sealed class WorstFirst : IComparer<(int Score, CompletionItem Item, int Index)>
-    {
-        public static readonly WorstFirst Instance = new();
+        private readonly CompletionRow?[] rows = new CompletionRow?[list.Items.Count];
 
-        public int Compare((int Score, CompletionItem Item, int Index) x, (int Score, CompletionItem Item, int Index) y)
+        public Completion List => list;
+
+        public CompletionRow[] Rows(string typed, string bare, int alike)
         {
-            int byScore = x.Score.CompareTo(y.Score);
-            if (byScore != 0)
+            int[] shown = ranking.Value.Shown(typed, bare, alike, MostShown);
+            CompletionRow[] made = new CompletionRow[shown.Length];
+            for (int i = 0; i < shown.Length; i++)
             {
-                return byScore;
+                int at = shown[i];
+                made[i] = Volatile.Read(ref rows[at]) ?? Interlocked.CompareExchange(ref rows[at], Row(list.Items[at]), null) ?? rows[at]!;
             }
-            int byPreselect = (x.Item.Preselect == true).CompareTo(y.Item.Preselect == true);
-            if (byPreselect != 0)
-            {
-                return byPreselect;
-            }
-            int bySort = string.CompareOrdinal(y.Item.SortText ?? y.Item.Label, x.Item.SortText ?? x.Item.Label);
-            return bySort != 0 ? bySort : y.Index.CompareTo(x.Index);
+            return made;
         }
     }
 
@@ -628,6 +603,7 @@ internal sealed partial class CodeCompletion
         completing?.Cancel();
         describing?.Cancel();
         open = null;
+        lastAsked = null;
         completion.IsVisible = false;
         itemCard.IsVisible = false;
         Closed?.Invoke(this, EventArgs.Empty);
