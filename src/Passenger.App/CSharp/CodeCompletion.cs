@@ -562,9 +562,10 @@ internal sealed partial class CodeCompletion
         }
     }
 
+    /// <summary>A keyword a word always follows: new is left out, as new() and new[] follow it with none.</summary>
     private static bool DeclarationKeyword(string text) => text is
         "public" or "private" or "protected" or "internal" or "static" or "abstract" or "sealed"
-        or "virtual" or "override" or "new" or "readonly" or "volatile" or "const" or "extern"
+        or "virtual" or "override" or "readonly" or "volatile" or "const" or "extern"
         or "unsafe" or "async" or "partial" or "required" or "file" or "ref" or "scoped"
         or "class" or "struct" or "interface" or "enum" or "record" or "delegate" or "event" or "namespace";
 
