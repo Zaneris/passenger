@@ -368,9 +368,15 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>Done as the last of <see cref="filesPulling"/> ends; null while nothing waits for it.</summary>
     private TaskCompletionSource? filesPulled;
 
-    /// <summary>The analysis's pulls asked and unanswered, each with whether it may be let go: one the server has reported
-    /// nothing for since it was asked is held open for the next change, which an open file's change lets go.</summary>
+    /// <summary>The analysis's pulls asked and unanswered, each with whether an open file's change may let it go: one the
+    /// server has reported nothing for since it was asked is held open for the next change. The server's word that its
+    /// solution moved lets every one go (<see cref="SolutionMoved"/>).</summary>
     private readonly Dictionary<CancellationTokenSource, bool> askedPulls = [];
+
+    /// <summary>First rounds' pulls of a server with no word of when a pull has analysed every source (one without
+    /// Passenger's extension), which the server's word that its solution moved never lets go: one asked again then may be
+    /// held open for a change that came before it, and the round never answered.</summary>
+    private readonly HashSet<CancellationTokenSource> keptThroughMoves = [];
 
     /// <summary>How many pulls the analysis has asked of each source (none named: the empty name).</summary>
     private readonly Dictionary<string, int> pullsAsked = new(StringComparer.Ordinal);
@@ -391,6 +397,19 @@ public sealed partial class CSharpService : IAsyncDisposable
             held.Cancel();
         }
         return new FilePull(this);
+    }
+
+    /// <summary>The server said its solution moved other than by an open file's text (projects loaded, its generators asked
+    /// to run again, a file changed on disk): every analysis pull under way is let go and asked again at once, the first
+    /// round's too (but <see cref="keptThroughMoves"/>), since what it has yet to analyse is of a solution gone. The server
+    /// keeps each file's result by its project's version, so the pull asked again analyses only what the move reached.</summary>
+    private void SolutionMoved()
+    {
+        // Taken apart first: a pull let go may end at once, leaving the list as it does.
+        foreach (CancellationTokenSource asked in askedPulls.Keys.Where(p => !keptThroughMoves.Contains(p)).ToList())
+        {
+            asked.Cancel();
+        }
     }
 
     /// <summary>Done once no open file's pull is under way.</summary>
@@ -709,10 +728,10 @@ public sealed partial class CSharpService : IAsyncDisposable
     }
 
     /// <summary>One source's pulls, each asked again as the last answers and no open file's pull is under way, until the
-    /// analysis is turned off or the session ends (a server started again is analysed afresh once it has loaded), each pull's
-    /// reports listed as the server sends them rather than as it answers. A pull the server refuses or cuts short (Roslyn
-    /// cancels one a change made stale) is asked again after a pause that grows while it keeps refusing; one held open that
-    /// an open file's change let go, once that file's pull has ended.</summary>
+    /// analysis is turned off or the session ends (a server started again is analysed afresh once it has loaded), its reports
+    /// listed as the server sends them. A pull the server refuses or cuts short is asked again after a pause that grows while
+    /// it keeps refusing; one held open that an open file's change let go, once that file's pull has ended; one the server's
+    /// word that its solution moved let go (<see cref="SolutionMoved"/>), at once.</summary>
     private async Task AnalyseAsync(RoslynSession running, string? source, CancellationToken cancel)
     {
         bool first = true;
@@ -740,11 +759,16 @@ public sealed partial class CSharpService : IAsyncDisposable
                 Channel<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> streamed = Channel.CreateUnbounded<IReadOnlyList<WorkspaceDocumentDiagnosticReport>>(
                     new UnboundedChannelOptions { SingleReader = true });
                 using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-                // The first round is the analysis's start, never let go however long it takes.
+                // The first round is the analysis's start: no open file's change lets it go, however long it takes.
                 askedPulls[round] = !first;
+                if (first && frameworks is null)
+                {
+                    keptThroughMoves.Add(round);
+                }
                 pullsAsked[source ?? string.Empty] = PullsAsked(source) + 1;
+                TaskCompletionSource analysed = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 Task<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> pull = running.Server.WorkspaceDiagnosticsAsync(source, previous, reports => streamed.Writer.TryWrite(reports),
-                    round.Token, frameworks);
+                    round.Token, frameworks, () => analysed.TrySetResult());
                 waiting?.Dispose();
                 waiting = null;
                 IReadOnlyList<WorkspaceDocumentDiagnosticReport> answered = [];
@@ -755,8 +779,17 @@ public sealed partial class CSharpService : IAsyncDisposable
                 {
                     // Roslyn sends what a pull found and holds it open until the next change, which an earlier pull may have taken.
                     Task<bool> more = streamed.Reader.WaitToReadAsync(CancellationToken.None).AsTask();
-                    while (await Task.WhenAny(pull, more) == more)
+                    Task told = analysed.Task;
+                    while (await Task.WhenAny(pull, more, told) is Task done && done != pull)
                     {
+                        if (done == told)
+                        {
+                            // Every source analysed, and the pull held open: the first round has its answer, though the pull has none yet.
+                            told = pull;
+                            changed += await TakeAsync(Drain(streamed.Reader));
+                            Answered();
+                            continue;
+                        }
                         askedPulls[round] = false;
                         changed += await TakeAsync(Drain(streamed.Reader));
                         more = streamed.Reader.WaitToReadAsync(CancellationToken.None).AsTask();
@@ -774,6 +807,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 finally
                 {
                     askedPulls.Remove(round);
+                    keptThroughMoves.Remove(round);
                     streamed.Writer.TryComplete();
                     if (!pull.IsCompleted)
                     {
@@ -796,17 +830,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                     continue;
                 }
                 pause = RefusedPull;
-                if (first)
-                {
-                    if (!listed)
-                    {
-                        SolutionProblemsChanged?.Invoke(this, null);
-                        listed = true;
-                    }
-                    first = false;
-                    BackgroundWork.End();
-                    Unanswered(-1);
-                }
+                Answered();
                 // A source with nothing to hold a pull open on answers at once: it is asked again only now and then.
                 if (changed == 0 && DateTime.UtcNow - asked < TimeSpan.FromSeconds(1))
                 {
@@ -830,6 +854,23 @@ public sealed partial class CSharpService : IAsyncDisposable
                 BackgroundWork.End();
                 Unanswered(-1);
             }
+        }
+
+        // The first round answered: its problems listed, even none, and the analysis no longer under way.
+        void Answered()
+        {
+            if (!first)
+            {
+                return;
+            }
+            if (!listed)
+            {
+                SolutionProblemsChanged?.Invoke(this, null);
+                listed = true;
+            }
+            first = false;
+            BackgroundWork.End();
+            Unanswered(-1);
         }
 
         // The reports that changed placed off the UI thread and merged into each file's problems, which are said: how many.
@@ -1176,6 +1217,10 @@ public sealed partial class CSharpService : IAsyncDisposable
             });
             EventHandler onDiagnostics = (_, _) => UiThread.Post(() =>
             {
+                if (session == started)
+                {
+                    SolutionMoved();
+                }
                 foreach ((OpenDocument open, CSharpDocument features) in documents)
                 {
                     // A file no tab shows (one an agent's calls keep open) is pulled once shown or asked, not at each refresh.

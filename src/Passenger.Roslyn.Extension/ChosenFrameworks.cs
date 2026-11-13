@@ -20,18 +20,23 @@ namespace Passenger.Roslyn.Extension;
 /// with solution-wide analysis taking each multi-targeted project the client names in the one framework chosen for it, its
 /// other frameworks left unanalysed. Every report names its project and a previous result is read in the project it names,
 /// so a file several projects compile keeps a report for each, and a framework no longer chosen has its reports said to be
-/// gone.</summary>
+/// gone. A partial result of no reports says the pull has analysed every source and is held open from then on.</summary>
 [Method(ExtensionMethods.WorkspaceDiagnostic)]
 internal sealed class ChosenFrameworksHandler(LspWorkspaceManager workspaces, LspWorkspaceRegistrationService registrations, IDiagnosticSourceManager sources,
     IDiagnosticsRefresher refresher, IGlobalOptionService options)
     : AbstractWorkspacePullDiagnosticsHandler<ChosenFrameworksParams, WorkspacePartialReport, WorkspaceDiagnosticReport?>(workspaces, registrations, sources, refresher, options),
     ILspServiceRequestHandler<ChosenFrameworksParams, WorkspaceDiagnosticReport?>
 {
+    /// <summary>Where the pull handled on this flow streams its reports, which <see cref="WaitForChangesAsync"/> tells it has
+    /// analysed every source.</summary>
+    private static readonly AsyncLocal<IProgress<WorkspacePartialReport>?> Streamed = new();
+
     /// <summary>The pull, a previous result whose project no longer compiles its document (a framework no longer targeted, a
     /// project loaded anew) said to be gone first and passed over: read in the document of another project, it would never
     /// be said to be gone.</summary>
     public new async Task<WorkspaceDiagnosticReport?> HandleRequestAsync(ChosenFrameworksParams request, RequestContext context, CancellationToken cancellationToken)
     {
+        Streamed.Value = request.PartialResultToken;
         if (request.PartialResultToken is { } progress)
         {
             Solution solution = await context.GetRequiredSolutionAsync(cancellationToken).ConfigureAwait(false);
@@ -48,6 +53,14 @@ internal sealed class ChosenFrameworksHandler(LspWorkspaceManager workspaces, Ls
             request.PreviousResultIds = [.. held];
         }
         return await base.HandleRequestAsync(request, context, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Says the pull has analysed every source, by a partial result of no reports, before it waits for the next
+    /// change: its answer says nothing of when the analysis ended, a pull whose change another took waiting for one more.</summary>
+    public override async Task WaitForChangesAsync(string? category, RequestContext context, CancellationToken cancellationToken)
+    {
+        Streamed.Value?.Report(new WorkspaceDiagnosticReport { Items = [] });
+        await base.WaitForChangesAsync(category, context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Whether the server reads a document in the project a previous result names, as it finds the document of one:

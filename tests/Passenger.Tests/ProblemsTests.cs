@@ -124,6 +124,79 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
+    /// <summary>Solution-wide analysis's first round is over once the server has analysed every source, not once it answers,
+    /// which it may leave until the next change: a round's pull asked again as the solution moved, after the pull before it
+    /// had taken that change, is held open with nothing coming to end it. With the first pull's answer held, the round ends
+    /// and the Solution tab lists the closed file's error.</summary>
+    [AvaloniaFact]
+    public void The_first_round_ends_once_the_server_has_analysed_every_source_though_its_answer_waits()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Passenger.App.CSharp.CSharpService service = window.CSharpService!;
+        Passenger.Lsp.LanguageServer server = service.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Task holding = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic,
+                p => p is Passenger.Lsp.WorkspaceDiagnosticParams { Identifier: "WorkspaceDocumentsAndProject" }, answered.Task);
+            window.Perform(AppActions.ToggleSolutionAnalysis);
+            // Pumped, not settled: a held answer is work in flight.
+            bool Ended() => !service.IsAnalysing && problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true;
+            Assert.True(Ui.Pumped(Ended, TimeSpan.FromSeconds(90)),
+                $"Solution-wide analysis's first round {(service.IsAnalysing ? "was still under way" : "ended")} with its first pull "
+                + $"{(holding.IsCompleted ? "answered and its answer held" : "let go or unanswered")}, the closed file's error "
+                + $"{(problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true ? "listed" : "not listed")}{Ui.ServerLogTail()}");
+        }
+        finally
+        {
+            answered.TrySetResult();
+        }
+        window.Close();
+    }
+
+    /// <summary>A file nobody has open changed on disk while one of solution-wide analysis's pulls is under way has the pull
+    /// let go and asked again of the solution the change made, rather than waited for: the server would finish it on the
+    /// solution before the change, then analyse it whole again, as it did every session's first round, whose solution moves
+    /// as its projects' generators run again once they have loaded. With the pull's answer held, as by a server analysing a
+    /// large solution for minutes, the Solution tab lists the file's new error once the server says its solution moved.</summary>
+    [AvaloniaFact]
+    public void A_file_changed_on_disk_while_a_pull_is_under_way_has_it_asked_again_of_the_solution_the_change_made()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
+        Passenger.App.CSharp.CSharpService service = window.CSharpService!;
+        Passenger.Lsp.LanguageServer server = service.Session!.Server;
+        const string Analysed = "WorkspaceDocumentsAndProject";
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Task holding = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic,
+                p => p is Passenger.Lsp.WorkspaceDiagnosticParams { Identifier: Analysed }, answered.Task);
+            // A key lets go of the pull held open for a change; the one asked after the key's own pull is the one held.
+            int before = service.PullsAsked(Analysed);
+            Rename(window, "Twice", "Twice2");
+            Ui.WaitFor(() => service.PullsAsked(Analysed) > before, "the analysis to ask again once the key's own pull answered");
+            int asked = service.PullsAsked(Analysed);
+
+            project.Rewrite("Bad.cs", "class Bad\n{\n    public int Count = Missing;\n}\n");
+            bool Listed() => problems.SolutionProblems?.Any(p => p.Code == "CS0103" && p.Path?.EndsWith("Bad.cs", StringComparison.Ordinal) == true) == true;
+            // Pumped, not settled: the held pull's answer is work in flight until it is let go.
+            Assert.True(Ui.Pumped(Listed, TimeSpan.FromSeconds(90)),
+                $"Bad.cs's new error was not listed while a pull asked before Bad.cs changed went unanswered ({(holding.IsCompleted ? "its answer came and is held" : "unanswered")}): "
+                + $"the analysis asked {service.PullsAsked(Analysed) - asked} more pulls of every file's problems (listed: "
+                + $"{string.Join("; ", problems.SolutionProblems?.Select(p => $"{Path.GetFileName(p.Path)} {p.Code}") ?? [])}){Ui.ServerLogTail()}");
+            Assert.DoesNotContain(problems.SolutionProblems!, p => p.Code == "CS0029" && p.Path?.EndsWith("Bad.cs", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            answered.TrySetResult();
+        }
+        window.Close();
+    }
+
     /// <summary>A file's pull of what its project's whole analysis reports in it, which solution-wide analysis adds, is named
     /// by its source while it waits on the server, so a long wait (a large project's) says which pull it is.</summary>
     [AvaloniaFact]

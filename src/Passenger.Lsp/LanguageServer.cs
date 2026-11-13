@@ -364,13 +364,14 @@ public sealed class LanguageServer : IAsyncDisposable
         Notify(LspMethods.DidChangeConfiguration, new { settings = new { } });
     }
 
-    /// <summary>Every document's diagnostics from one source, as the solution-wide analysis has them, each report given to
-    /// <paramref name="streamed"/> as the server sends it, since Roslyn holds the pull open until the source next changes.
-    /// The answer's own reports are given back; none is given to <paramref name="streamed"/> after it. Given
-    /// <paramref name="frameworks"/>, Passenger's extension answers, each multi-targeted project named analysed in its
-    /// framework alone and every report naming its project.</summary>
+    /// <summary>Every document's diagnostics from one source, each report given to <paramref name="streamed"/> as the server
+    /// sends it, since Roslyn holds the pull open until the source next changes; the answer's own are given back. Given
+    /// <paramref name="frameworks"/>, Passenger's extension answers, each multi-targeted project analysed in its framework
+    /// alone and every report naming its project, and <paramref name="analysed"/> is called once it has analysed every
+    /// source, after the reports it found, before it holds the pull open.</summary>
     public async Task<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> WorkspaceDiagnosticsAsync(string? source, IReadOnlyList<PreviousResultId> previous,
-        Action<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> streamed, CancellationToken cancel = default, IReadOnlyDictionary<string, string>? frameworks = null)
+        Action<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> streamed, CancellationToken cancel = default, IReadOnlyDictionary<string, string>? frameworks = null,
+        Action? analysed = null)
     {
         string token = $"passenger-workspace-diagnostic-{Interlocked.Increment(ref partialResults)}";
         client.Partials[token] = report =>
@@ -378,6 +379,10 @@ public sealed class LanguageServer : IAsyncDisposable
             if (report is { Items.Count: > 0 })
             {
                 streamed(report.Items);
+            }
+            else if (report is not null && frameworks is not null)
+            {
+                analysed?.Invoke();
             }
         };
         try
