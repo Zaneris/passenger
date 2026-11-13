@@ -611,7 +611,8 @@ a new name, and `just site-shots` retakes its images.
 - **Svg.Skia stays at 5.1** while Avalonia's Skia is SkiaSharp 3 (5.2 needs SkiaSharp 4); its `SKSvg` disposes its
   picture, so a picture is never let go while a frame may still draw it.
 - **Avalonia renders a visual again when its Bounds, ZIndex or RenderTransform change**, and on `InvalidateArrange`:
-  retained content moves through its parent layer.
+  retained content moves through its parent layer. Two visuals invalidated in one frame draw again all that lies between
+  them: invalidate only what changed (`CodeEditor.RefreshStripe`).
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads its `FilterSpecs`, so a category takes no
   `:Level` there (`LiveRequests.LogsSpec`). Its sampler takes a thread only where it can stop it, so a test program's
   method that must own its samples spins in a loop that calls nothing. A program the debugger holds answers no session's
