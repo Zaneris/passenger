@@ -14,7 +14,7 @@ internal static class Wire
     public const string Updated = "updated";
 
     /// <summary>A changed type's module identity and metadata token; one per line keeps each line bounded.</summary>
-    public static string TypeLine(Guid module, int token) => $"type {module:D} {token:X8}";
+    public static string TypeLine(Guid module, int token) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"type {module:D} {token:X8}");
 
     /// <summary>Reads one changed type line.</summary>
     public static bool TryType(string line, out Guid module, out int token)
