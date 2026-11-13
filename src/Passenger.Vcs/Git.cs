@@ -1426,8 +1426,13 @@ public sealed partial class Git
     /// cherry-pick or a revert stopped for conflicts), which git commits only whole, the files
     /// <paramref name="excluded"/> are taken out of it and kept as changes.</summary>
     public async Task<GitResult> CommitAsync(IReadOnlyList<string> paths, string message, bool amend = false, bool merging = false, IReadOnlyList<string>? excluded = null,
-        CommitSigning? signing = null, GitAsker? asker = null)
+        CommitSigning? signing = null, GitAsker? asker = null, IReadOnlyDictionary<string, PartialCommit>? partial = null)
     {
+        if (partial is { Count: > 0 })
+        {
+            return merging ? new GitResult(1, string.Empty, "A merge commits whole files: choose whole files while it is under way")
+                : await CommitPartialAsync(paths, message, amend, signing ?? CommitSigning.AsConfigured, asker, partial);
+        }
         signing ??= CommitSigning.AsConfigured;
         string[] relative = [.. paths.Select(Relative).Distinct()];
         // No paths is an amend of the message alone: "add -A --" with none would add the whole tree.
@@ -1460,6 +1465,87 @@ public sealed partial class Git
         }
         finally
         {
+            File.Delete(file);
+        }
+    }
+
+    /// <summary>A private index keeps excluded changes out of the commit and leaves the real index untouched on failure.</summary>
+    private async Task<GitResult> CommitPartialAsync(IReadOnlyList<string> paths, string message, bool amend, CommitSigning signing, GitAsker? asker,
+        IReadOnlyDictionary<string, PartialCommit> partial)
+    {
+        Dictionary<string, byte[]> contents = new(PathNames.Comparer);
+        foreach ((string path, PartialCommit selection) in partial)
+        {
+            FileText? disk = await BackgroundWork.Run(() => File.Exists(path) ? FileText.Load(path) : null);
+            byte[]? before = await BytesAtAsync("HEAD", selection.From ?? path);
+            FileText? head = before is null ? null : FileText.FromBytes(before, disk?.Encoding);
+            if (!paths.Contains(path, PathNames.Comparer) || disk is null || head is null
+                || disk.Text != selection.Diff.Text.ToString() || head.Text != selection.Diff.Head)
+            {
+                return new GitResult(1, string.Empty, $"{System.IO.Path.GetFileName(path)} changed since its changes were selected; review its diff again");
+            }
+            contents[path] = FileText.Encoded(selection.Content(), disk.Encoding, disk.HasBom, disk.CrBreaks);
+        }
+        string index = System.IO.Path.Combine(GitDir, $"passenger-commit-{Guid.NewGuid():N}");
+        string file = System.IO.Path.GetTempFileName();
+        Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index };
+        try
+        {
+            GitResult read = await RunAsync(Root, ["read-tree", "HEAD"], environment: environment);
+            if (!read.Succeeded)
+            {
+                return read;
+            }
+            string[] relative = [.. paths.Select(Relative).Distinct()];
+            GitResult added = await OnFilesAsync(["add", "-A"], relative, environment: environment);
+            if (!added.Succeeded)
+            {
+                return added;
+            }
+            GitResult entries = await RunAsync(Root, ["ls-files", "--stage", "-z"], environment: environment);
+            if (!entries.Succeeded)
+            {
+                return entries;
+            }
+            bool composed = await ComposesAsync();
+            foreach ((string path, byte[] bytes) in contents)
+            {
+                string name = GitForm(Relative(path), composed);
+                string? entry = entries.Output.Split('\0').FirstOrDefault(e => e.IndexOf('\t') is > 0 and int tab && e[(tab + 1)..] == name);
+                if (entry is null || !entry.StartsWith("100", StringComparison.Ordinal))
+                {
+                    return new GitResult(1, string.Empty, "Only regular text files support partial commits");
+                }
+                // A path on git's command line, as hash-object takes none on stdin beside the bytes: --path picks their filters.
+                (GitResult Ran, string? Read) blob = await RunAsync(Root, ["hash-object", "-w", "--stdin", $"--path={name}"], TextAsync, bytes);
+                if (!blob.Ran.Succeeded)
+                {
+                    return blob.Ran;
+                }
+                GitResult updated = await RunAsync(Root, ["update-index", "-z", "--index-info"],
+                    $"{entry[..6]} {blob.Read!.Trim()}\t{name}\0", environment);
+                if (!updated.Succeeded)
+                {
+                    return updated;
+                }
+            }
+            AtomicFile.Write(file, Encoding.UTF8.GetBytes(message), UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            GitResult committed = await RunAsync(Root, [.. signing.Before, "commit", "-F", file, .. amend ? new[] { "--amend" } : [], .. signing.After],
+                environment: environment, asker: asker);
+            if (committed.Succeeded)
+            {
+                GitResult reset = await OnFilesAsync(["reset", "-q", "HEAD"], relative);
+                if (!reset.Succeeded)
+                {
+                    return committed with { Output = committed.Output + "\n" + reset.Message };
+                }
+            }
+            return committed;
+        }
+        finally
+        {
+            File.Delete(index);
+            File.Delete(index + ".lock");
             File.Delete(file);
         }
     }

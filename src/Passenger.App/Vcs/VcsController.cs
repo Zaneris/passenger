@@ -755,7 +755,7 @@ public sealed class VcsController : IDisposable
     /// config says where it is null), a signing key's passphrase asked in the window, then pushes when asked (Commit, and
     /// Commit and Push; the remote asked for as <see cref="PushAsync"/> asks): the commit's outcome with the commit made,
     /// and the push's once the commit is made and one was asked for. A commit not signed says why and how to mend it.</summary>
-    public async Task<CommitResult> CommitAsync(IReadOnlyList<FileChange> chosen, string message, bool amend, bool push, bool ask = true, CommitSigning? signing = null)
+    public async Task<CommitResult> CommitAsync(IReadOnlyList<FileChange> chosen, string message, bool amend, bool push, bool ask = true, CommitSigning? signing = null, IReadOnlyDictionary<string, PartialCommit>? partial = null)
     {
         UiThread.Check();
         if (git is not { } repository)
@@ -800,7 +800,7 @@ public sealed class VcsController : IDisposable
             string[] excluded = merging ? [.. Paths(Changes.Where(c => c.Kind is not ChangeKind.Unversioned && !chosen.Contains(c)))] : [];
             (Signer signer, SigningSetup setup) = await SignerAsync(repository, signing ?? CommitSigning.AsConfigured);
             CommitSigning given = signer.Signing;
-            GitResult commit = await repository.CommitAsync(paths, message, amend, merging, excluded, given, signer.Asker);
+            GitResult commit = await repository.CommitAsync(paths, message, amend, merging, excluded, given, signer.Asker, partial);
             commit = commit with { Output = ContainerSecrets.InSaid(commit.Output), Error = ContainerSecrets.InSaid(commit.Error) };
             if (!commit.Succeeded)
             {

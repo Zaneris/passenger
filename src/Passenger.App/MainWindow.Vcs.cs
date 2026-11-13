@@ -125,6 +125,7 @@ public partial class MainWindow
         view.ActionRequested += (_, action) => Request(action);
         view.DiffRequested += (_, path) => IdeErrors.Observe(ShowDiffAsync(path));
         view.RollbackRequested += (_, changes) => IdeErrors.Observe(RollbackAsync(changes));
+        view.RollbackRefused += (_, why) => status.Text = why;
         view.DeleteRequested += (_, path) => IdeErrors.Observe(DeleteAsync(path));
         view.IgnoreRequested += (_, path) => IdeErrors.Observe(IgnoreAsync(path));
         view.ResolveRequested += (_, _) => ShowConflicts();
@@ -477,6 +478,10 @@ public partial class MainWindow
         {
             DiffView view = Diffs.ForFile(other is null ? Path.GetFileName(path) : title, diff, mine, open, titles, other ?? path, path);
             view.Note = note;
+            if (version == "HEAD" && other is null && note is null)
+            {
+                CommitView.ConfigureDiff(path, view);
+            }
             return view;
         })
         { Again = again });

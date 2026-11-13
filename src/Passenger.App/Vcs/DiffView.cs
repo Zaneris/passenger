@@ -22,6 +22,11 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private static readonly TimeSpan RediffDelay = TimeSpan.FromMilliseconds(120);
 
     private readonly DiffStrip bands;
+    private readonly Canvas hunkBoxes = new() { Width = 28, ClipToBounds = true, IsVisible = false };
+    private Func<FileDiff, bool[]>? hunksChosen;
+    private Action<FileDiff, int, bool>? chooseHunk;
+    private bool settingHunkBoxes;
+
     private readonly TextBlock count;
     private readonly Button settings;
     private readonly Debounce rediff;
@@ -58,15 +63,18 @@ public sealed class DiffView : DockPanel, IOwnKeys
         Right.Show(mine, SelectionSet.Single(0), default);
         bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false, (band, _, _) => Revert(Hunks[band.Index])) { Width = 36 };
 
-        Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
+        Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
         named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
         sides.Children.Add(DiffLines.Title(named.Left, 0));
-        sides.Children.Add(DiffLines.Title(named.Right, 2));
+        sides.Children.Add(DiffLines.Title(named.Right, 3));
         Grid.SetRow(Left, 1);
         Grid.SetRow(bands, 1);
         Grid.SetColumn(bands, 1);
         Grid.SetRow(Right, 1);
-        Grid.SetColumn(Right, 2);
+        Grid.SetColumn(Right, 3);
+        Grid.SetColumn(hunkBoxes, 2);
+        Grid.SetRow(hunkBoxes, 1);
+        sides.Children.Add(hunkBoxes);
         sides.Children.Add(Left);
         sides.Children.Add(bands);
         sides.Children.Add(Right);
@@ -129,6 +137,71 @@ public sealed class DiffView : DockPanel, IOwnKeys
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Show(diff);
         IdeErrors.Observe(CompareAsync());
+    }
+
+    /// <summary>A box beside each change for whether it goes into the next commit: <paramref name="chosen"/> asked once for
+    /// each diff shown and each change of the choice, <paramref name="choose"/> told of a box the person turns.</summary>
+    public void ChooseForCommit(Func<FileDiff, bool[]> chosen, Action<FileDiff, int, bool> choose)
+    {
+        hunksChosen = chosen;
+        chooseHunk = choose;
+        hunkBoxes.IsVisible = true;
+        RefreshCommitChoices();
+    }
+
+    /// <summary>The boxes set again from the choice, after it changed.</summary>
+    public void RefreshCommitChoices()
+    {
+        if (hunksChosen is null || chooseHunk is null || settingHunkBoxes)
+        {
+            return;
+        }
+        settingHunkBoxes = true;
+        try
+        {
+            bool[] chosen = hunksChosen(shown);
+            while (hunkBoxes.Children.Count > Hunks.Count)
+            {
+                hunkBoxes.Children.RemoveAt(hunkBoxes.Children.Count - 1);
+            }
+            for (int i = 0; i < Hunks.Count; i++)
+            {
+                if (i == hunkBoxes.Children.Count)
+                {
+                    int index = i;
+                    CheckBox added = new() { MinHeight = 0, Height = 24 };
+                    ToolTip.SetTip(added, "Include this change in commit");
+                    Avalonia.Automation.AutomationProperties.SetName(added, $"Include change {i + 1} in commit");
+                    added.IsCheckedChanged += (_, _) =>
+                    {
+                        if (!settingHunkBoxes)
+                        {
+                            chooseHunk?.Invoke(shown, index, added.IsChecked == true);
+                        }
+                    };
+                    hunkBoxes.Children.Add(added);
+                }
+                ((CheckBox)hunkBoxes.Children[i]).IsChecked = chosen[i];
+            }
+        }
+        finally
+        {
+            settingHunkBoxes = false;
+        }
+        PlaceHunkBoxes();
+    }
+
+    /// <summary>Each box beside its change's first line, as the file's side scrolls.</summary>
+    private void PlaceHunkBoxes()
+    {
+        if (!hunkBoxes.IsVisible)
+        {
+            return;
+        }
+        for (int i = 0; i < hunkBoxes.Children.Count && i < Hunks.Count; i++)
+        {
+            Canvas.SetTop(hunkBoxes.Children[i], (Hunks[i].NewStart * Right.LineHeight) - Right.ScrollOffset.Y);
+        }
     }
 
     /// <summary>Find over the diff: it searches the side with the caret, the other side's matches marked too, F3 and Shift+F3
@@ -258,6 +331,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private void Show(FileDiff diff)
     {
         shown = diff;
+        RefreshCommitChoices();
         bool off = highlighting == DiffHighlighting.None;
         Left.SetChangeMarks(off ? [] : [.. Hunks.Select(h => h.OldCount == 0 ? new ChangeMark(h.OldStart, 0, ChangeMarkKind.Added)
             : h.NewCount == 0 ? new ChangeMark(h.OldStart, h.OldCount, ChangeMarkKind.Deleted)
@@ -360,6 +434,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private void Follow(CodeEditor from, CodeEditor to, bool toLeft)
     {
         bands.InvalidateVisual();
+        PlaceHunkBoxes();
         if (following)
         {
             return;
