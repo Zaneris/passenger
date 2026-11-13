@@ -57,11 +57,11 @@ artifacts/bin/Passenger.App/debug/Passenger . --file src/Passenger.App/App.axaml
     --screenshot out.png --size 1400x880 --scale 2 --crop 320,76,900,500 --theme light
 ```
 
-Steps: `--key`, `--type` (one input, so completion opens only on a trigger typed alone), `--click`, `--right-click`,
+Steps: `--key` (as a US keyboard types it: `shift+4` is `$`), `--type` (one input, so completion opens only on a trigger typed alone), `--click`, `--right-click`,
 `--hover X,Y` (logical units), `--click-name NAME` (exit 2 if none), `--drag[-hold]`, `--wait MS`, `--window-buttons`,
 `--agent COMMAND` (an agent in the Terminal's Agent tab, every tool allowed); a step after one that opens a dialog goes
-to the dialog. State is kept only where PASSENGER_SETTINGS names a folder (short on macOS: a socket path holds 103
-bytes). Headless, dispatcher timers fire only inside a running frame (`Screenshot.Pump`, `Ui.WaitFor`).
+to the dialog. State is kept only where PASSENGER_SETTINGS names a folder, whose settings.json a screenshot or `--mcp`
+Passenger opens on, keeping no change (short on macOS: a socket path holds 103 bytes). Headless, dispatcher timers fire only inside a running frame (`Screenshot.Pump`, `Ui.WaitFor`).
 
 **Build facts.** Everything builds under `artifacts/`. Package versions live only in `Directory.Packages.props` (each
 kept pin saying why), shared properties only in `Directory.Build.props` (the version too). Packages come from nuget.org
@@ -201,7 +201,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes `MSBuildNames`; another program's or a person's
   JSON `JsonMembers` (`Value` for a member of any kind), never a bare `TryGetProperty`/`GetProperty` (PSG0008); a search
   by halving `Sorted`, never a loop of your own; a primitive `PrimitiveTypes`; an SDK into an installation
-  `DotnetMerge`; a path in a project file `ItemPaths`; what a Mac program links `MachOFile`; work any thread asks for by
+  `DotnetMerge`; a path in a project file `ItemPaths`; what a Mac program links `MachOFile`; whether this process runs translated `Dotnet.Translated`, a program's processors
+  `ProgramProcessors`; work any thread asks for by
   key (a download), begun once however many ask, an ask that stops waiting never letting it go, `SharedWork`.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
@@ -563,7 +564,9 @@ a new name, and `just site-shots` retakes its images.
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener`); a folder can't be renamed
   while any file under it is open, however it is shared, where a file opened sharing deletion can be (`DotnetMerge`
   moves what others may read file by file); what holds a file is `FileHolders`.
-- **macOS**: a zombie gives no process info (`DotnetProcesses.Runs` counts it gone); `SystemFonts` lists the hidden
+- **macOS**: an x64 Passenger under Rosetta loads MSBuild only from an x64 SDK (`DOTNET_ROOT_X64`,
+  `/usr/local/share/dotnet/x64`), and MSBuildLocator finds its SDK by DOTNET_ROOT, so the host is given the chosen root;
+  a zombie gives no process info (`DotnetProcesses.Runs` counts it gone); `SystemFonts` lists the hidden
   `.AppleSystemUIFont` only once loaded and `TryGetGlyphTypeface` answers an unknown name with Helvetica (`WindowFonts`
   checks the face); Chrome waits for good on a keychain where HOME has none (`--use-mock-keychain`); a hardened-runtime
   program without `get-task-allow` (Godot's release build) can't be dumped, so its snapshot comes from its GC heap dump;
@@ -754,5 +757,6 @@ to the window's tests.
   `ToolWindows.FilterBox`; `ToolFlow`; `PaneSplit`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
   `ReusedRows` (`Use`, `Showing`); `RowIcon` and `RowGlyphs`, drawn as `PathIcon` draws for a fraction of its cost,
   never `PathIcon` (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
-- `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen; every window is an `IdeWindow`, which
-  fits its owner's screen as it shows.
+- `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, its least size that times the display
+  scale (`IdeWindow.HoldAtLeast`); every window is an `IdeWindow`, which fits its owner's screen as it shows and as it is
+  rescaled (`IdeWindow.Rescaled`).
