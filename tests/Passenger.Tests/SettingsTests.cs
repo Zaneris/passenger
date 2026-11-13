@@ -809,8 +809,8 @@ public sealed class SettingsTests : IDisposable
             Assert.Equal(0, theme.Box.SelectedIndex);
             Assert.Equal(["System", "Dark", "Light"], Editor<ComboBox>(dialog, "Dark or light").Items.Cast<string>());
             theme.Box.IsDropDownOpen = true;
-            // Themes another test added from a file, kept in the run's state, come after the repository's.
-            string[] repository = ["Passenger", .. ThemeSource.FormerlyCarried.Select(n => $"{n} ({ThemeSource.RepositoryName})")];
+            // Passenger's own, then those it carries, then the repository's; themes another test added from a file come after.
+            string[] repository = ["Passenger", .. ThemeSource.Carried, .. ThemeSource.FormerlyCarried.Select(n => $"{n} ({ThemeSource.RepositoryName})")];
             Ui.WaitFor(() => theme.Listed.Take(repository.Length).SequenceEqual(repository), () => $"every theme of the repository listed in its order, where it lists {string.Join(", ", theme.Listed)}");
             theme.Box.IsDropDownOpen = false;
             Border stripe = window.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.StripeBar) && b.IsEffectivelyVisible);
