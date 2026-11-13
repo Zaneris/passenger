@@ -237,7 +237,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   through Passenger's own gpg (`GpgLoopback`; gpgsm's for X.509; Git for Windows' MSYS gpg given its home as MSYS reads
   one, `MsysGpg`, its agent inheriting none of Passenger's handles, `StandardHandles.NotInherited`; every gpg found by
   `GpgPrograms`); signatures read for the rows shown, never by `%G?` in a read; a git that may ask ends with its folder
-  (`GitQuestions`).
+  (`GitQuestions`); a partial commit's own index starts from `read-tree -m --index-output` (the real index's stats), never
+  a plain `read-tree`, which reads every file again.
 - `Passenger.Dap`, `Passenger.Debugger`, `Passenger.DebugAdapter`: Passenger's own debugger behind its own DAP.
   `Passenger.ContainerTools` runs inside a Linux container, carried only in the release's archives.
 - `Passenger.Profiler`: EventPipe and ClrMD (its Azure packages stay carried; its DAC stays loaded once used: unloading
@@ -253,7 +254,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`; what a start
   runs read by `DesktopPrograms`, never `Built` alone), and plays no sound; a Linux display is taken by `NoDisplay`,
   never by unsetting `WAYLAND_DISPLAY`: a client named no socket connects to the session's `wayland-0`. Anything new on
-  the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's.
+  the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's. The display scale is
+  one `InterfaceScale` transform per window, which its popups take from it.
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; every editor through `ForEachEditor`; the one
   close `CloseTab`). A diff is an `OpenDocument.OfDiff` of no file, never in `Documents`, every one through
   `MainWindow.ShowDiff`. An SVG preview is a drawing (`ZoomedPicture`), never a bitmap; an HTML preview is never made in
