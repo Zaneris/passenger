@@ -228,7 +228,9 @@ public sealed class ThemeSourcesTests : IDisposable
         {
             TestFolders.Delete(Path.GetDirectoryName(KeptThemes.PathOf(ThemeSource.Repository, code, name))!);
         }
+        // A start with neither kept, holding nothing this process read of them before.
         Themes.Apply(Application.Current!, null, null);
+        Themes.Reload();
         File.WriteAllText(Path.Combine(settings, StateStore.SettingsFile), """{ "version": 3, "look": "Nightjar", "colourScheme": "Rider", "editorFontSize": 14 }""");
         MainWindow window = Open();
         try
