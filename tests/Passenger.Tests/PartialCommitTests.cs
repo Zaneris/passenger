@@ -42,7 +42,7 @@ public sealed class PartialCommitTests : IDisposable
             window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Other.txt").IsChosen = false;
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
             DiffView view = host.View!;
-            CheckBox[] boxes = [.. view.GetVisualDescendants().OfType<CheckBox>().Where(b => ToolTip.GetTip(b) as string == "Include this change in commit")];
+            CheckBox[] boxes = Boxes(view);
             Assert.Equal(2, boxes.Length);
             Ui.Click(boxes[1]);
             Assert.Null(row.CheckState);
@@ -63,7 +63,40 @@ public sealed class PartialCommitTests : IDisposable
     }
 
     private static CheckBox[] Boxes(DiffView view) =>
-        [.. view.GetVisualDescendants().OfType<CheckBox>().Where(b => ToolTip.GetTip(b) as string == "Include this change in commit")];
+        [.. view.GetVisualDescendants().OfType<CheckBox>().Where(b => b.IsVisible && ToolTip.GetTip(b) as string == "Include this change in commit")];
+
+    /// <summary>Only the changes in view have a box, so a diff of hundreds scrolls as lightly as one of a few, and a box
+    /// scrolled to chooses the change it stands beside.</summary>
+    [AvaloniaFact]
+    public void A_diff_of_many_changes_boxes_those_in_view_and_a_box_scrolled_to_chooses_its_own()
+    {
+        File.WriteAllText(PathOf("Many.txt"), string.Concat(Enumerable.Range(0, 2000).Select(i => $"line {i}\n")));
+        TestGit.Run(folder, "add", "Many.txt");
+        TestGit.Run(folder, "commit", "-q", "-m", "Many", "--", "Many.txt");
+        File.WriteAllText(PathOf("Many.txt"), string.Concat(Enumerable.Range(0, 2000).Select(i => i % 4 == 0 ? $"LINE {i}\n" : $"line {i}\n")));
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.Perform(AppActions.ShowCommit);
+            Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Many.txt"), "the changed files");
+            CommitRow row = window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Many.txt");
+            IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Many.txt")), "the diff")!;
+            DiffView view = host.View!;
+            Assert.Equal(500, view.Hunks.Count);
+            Assert.InRange(Boxes(view).Length, 1, 100);
+            view.Right.GoTo(new TextPosition(1999, 0));
+            Ui.Settle();
+            CheckBox last = Boxes(view).MaxBy(Canvas.GetTop)!;
+            Ui.Click(last);
+            Assert.True(row.Partial is { } partial && partial.Hunks.Count == 499 && !partial.Hunks.Contains(view.Hunks[^1]),
+                "The box beside the last change, scrolled to, did not leave that change alone out of the commit");
+            host.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 
     /// <summary>A clean filter (Git LFS's, say) runs as git reads a file of the working tree again: a partial commit reads
     /// no file that is as the last commit has it, however many the tree holds.</summary>
@@ -201,8 +234,7 @@ public sealed class PartialCommitTests : IDisposable
             window.Perform(AppActions.ShowCommit);
             Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 2, "the changes");
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
-            CheckBox[] boxes = [.. host.View!.GetVisualDescendants().OfType<CheckBox>().Where(b => ToolTip.GetTip(b) as string == "Include this change in commit")];
-            Ui.Click(boxes[1]);
+            Ui.Click(Boxes(host.View!)[1]);
             host.Close();
             File.Delete(PathOf("Notes.txt"));
             Ui.AwaitPumped(window.Vcs.RefreshAsync(), "the deletion read");

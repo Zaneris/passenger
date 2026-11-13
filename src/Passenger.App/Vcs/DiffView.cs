@@ -22,7 +22,11 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private static readonly TimeSpan RediffDelay = TimeSpan.FromMilliseconds(120);
 
     private readonly DiffStrip bands;
+    /// <summary>The boxes beside the changes in view for whether each goes into the next commit, the change each stands
+    /// beside, and whether each change of the diff shown goes in.</summary>
     private readonly Canvas hunkBoxes = new() { Width = 28, ClipToBounds = true, IsVisible = false };
+    private readonly List<int> boxedHunks = [];
+    private bool[] hunksTaken = [];
     private Func<FileDiff, bool[]>? hunksChosen;
     private Action<FileDiff, int, bool>? chooseHunk;
     private bool settingHunkBoxes;
@@ -74,6 +78,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
         Grid.SetColumn(Right, 3);
         Grid.SetColumn(hunkBoxes, 2);
         Grid.SetRow(hunkBoxes, 1);
+        hunkBoxes.SizeChanged += (_, _) => PlaceHunkBoxes();
         sides.Children.Add(hunkBoxes);
         sides.Children.Add(Left);
         sides.Children.Add(bands);
@@ -152,56 +157,74 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>The boxes set again from the choice, after it changed.</summary>
     public void RefreshCommitChoices()
     {
-        if (hunksChosen is null || chooseHunk is null || settingHunkBoxes)
+        if (hunksChosen is null || settingHunkBoxes)
         {
             return;
         }
+        hunksTaken = hunksChosen(shown);
+        PlaceHunkBoxes();
+    }
+
+    /// <summary>A box beside the first line of each change in view, as the file's side scrolls: only the changes in view
+    /// have one, so a diff of thousands of changes scrolls as lightly as one of a few.</summary>
+    private void PlaceHunkBoxes()
+    {
+        if (hunksChosen is null)
+        {
+            return;
+        }
+        double line = Right.LineHeight;
+        double scrolled = Right.ScrollOffset.Y;
+        int index = line > 0 ? Sorted.FirstAtOrAfter(Hunks, static h => h.NewStart, (int)(scrolled / line)) : Hunks.Count;
+        int used = 0;
         settingHunkBoxes = true;
         try
         {
-            bool[] chosen = hunksChosen(shown);
-            while (hunkBoxes.Children.Count > Hunks.Count)
+            for (; index < Hunks.Count && index < hunksTaken.Length; index++)
             {
-                hunkBoxes.Children.RemoveAt(hunkBoxes.Children.Count - 1);
-            }
-            for (int i = 0; i < Hunks.Count; i++)
-            {
-                if (i == hunkBoxes.Children.Count)
+                double top = (Hunks[index].NewStart * line) - scrolled;
+                if (top >= hunkBoxes.Bounds.Height)
                 {
-                    int index = i;
-                    CheckBox added = new() { MinHeight = 0, Height = 24 };
-                    ToolTip.SetTip(added, "Include this change in commit");
-                    Avalonia.Automation.AutomationProperties.SetName(added, $"Include change {i + 1} in commit");
-                    added.IsCheckedChanged += (_, _) =>
-                    {
-                        if (!settingHunkBoxes)
-                        {
-                            chooseHunk?.Invoke(shown, index, added.IsChecked == true);
-                        }
-                    };
-                    hunkBoxes.Children.Add(added);
+                    break;
                 }
-                ((CheckBox)hunkBoxes.Children[i]).IsChecked = chosen[i];
+                CheckBox box = used < hunkBoxes.Children.Count ? (CheckBox)hunkBoxes.Children[used] : HunkBox(used);
+                if (used == boxedHunks.Count)
+                {
+                    boxedHunks.Add(index);
+                }
+                boxedHunks[used] = index;
+                Avalonia.Automation.AutomationProperties.SetName(box, $"Include change {index + 1} in commit");
+                box.IsChecked = hunksTaken[index];
+                box.IsVisible = true;
+                Canvas.SetTop(box, top + ((line - box.Height) / 2));
+                used++;
+            }
+            for (int i = used; i < hunkBoxes.Children.Count; i++)
+            {
+                hunkBoxes.Children[i].IsVisible = false;
             }
         }
         finally
         {
             settingHunkBoxes = false;
         }
-        PlaceHunkBoxes();
     }
 
-    /// <summary>Each box beside its change's first line, as the file's side scrolls.</summary>
-    private void PlaceHunkBoxes()
+    /// <summary>A box for the changes in view, the <paramref name="slot"/>th from the top, which chooses whichever change it
+    /// stands beside.</summary>
+    private CheckBox HunkBox(int slot)
     {
-        if (!hunkBoxes.IsVisible)
+        CheckBox box = new() { MinHeight = 0, Height = 24 };
+        ToolTip.SetTip(box, "Include this change in commit");
+        box.IsCheckedChanged += (_, _) =>
         {
-            return;
-        }
-        for (int i = 0; i < hunkBoxes.Children.Count && i < Hunks.Count; i++)
-        {
-            Canvas.SetTop(hunkBoxes.Children[i], (Hunks[i].NewStart * Right.LineHeight) - Right.ScrollOffset.Y);
-        }
+            if (!settingHunkBoxes && slot < boxedHunks.Count)
+            {
+                chooseHunk?.Invoke(shown, boxedHunks[slot], box.IsChecked == true);
+            }
+        };
+        hunkBoxes.Children.Add(box);
+        return box;
     }
 
     /// <summary>Find over the diff: it searches the side with the caret, the other side's matches marked too, F3 and Shift+F3
