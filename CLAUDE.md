@@ -364,7 +364,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   file in the editor but never evaluated (its SDK is Visual Studio's); its properties are read as text (`ComposeProjectFile`). Its Solution-view files come from that text
   (`ContainerConfigurations.ItemsOf`), never its folder. A compose service's project is the person's choice, else Visual
   Studio's project-name label, else what its Dockerfile builds with the build's arguments filled in
-  (`DockerfileStages.Expanded`).
+  (`DockerfileStages.Expanded`). A run Detach let go of (`ContainerRun.LetGo`) is the folder's: Stop
+  passes it over, and leaving the folder asks whether to stop its containers or leave them running, those left the
+  person's from then on (`containers.json`'s `Left`, passed over by the clean-up); a Passenger nobody sees never asks.
   The person's `docker` CLI and context only, never the Engine API or a Docker package; a service's name
   always after `--`; Compose's own model is the plan, Passenger's override in the state; downloaded tools
   SHA256-checked; Podman both ways. A container publish (`-t:PublishContainer`; several platforms need
