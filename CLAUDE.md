@@ -206,7 +206,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - `Passenger.Editor`: `CodeEditor`, `Keymap`, `EditorActions`; the code font is `CodeFonts.Key`, never a `FontFamily`
   written elsewhere; a family code or the window's words are drawn in is named through `FallbackFonts` (`Carry`, `Of`),
   so what it lacks takes the platform's own fallback; the editor names no debugger, test or VCS concept (`IGutterColumn`, EditorRulesTests); a file's
-  editors draw its one `DocumentDecorations`, never fed per split.
+  editors draw its one `DocumentDecorations`, never fed per split. Vim mode: `Vim` decides a key's meaning and `CodeEditor.PressVim` takes it
+  before any keymap; an insert session is one `EditKind.Joined` step; normal-mode carets settle in `SetSelections`.
 - **A key costs what it changed, not the file's size**: keep it so. Wraps, rows, folds, hints and built lines move only
   where an edit reaches; a highlighter keeps colours an edit didn't reach (`KeptColours`, `ChangedWithin`); a row is a
   retained visual (`CodeEditor.Rows.cs`) drawn again only where its key changed, the caret's blink only the overlay;
