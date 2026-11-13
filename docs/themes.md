@@ -121,7 +121,8 @@ language this Passenger does not know is passed over and named.
 "layout": {
   "places": { "rightTop": ["explorer", "commit"], "bottomLeft": ["build", "run"], "bottomRight": ["problems"] },
   "open": ["explorer", "build", "problems"],
-  "sizes": { "left": 260, "right": 320, "bottom": 220 }
+  "sizes": { "left": 260, "right": 320, "bottom": 220 },
+  "editorTabs": "left"
 }
 ```
 
@@ -139,6 +140,12 @@ before put them.
   shows one window, the first in its order.
 - `sizes` gives the left and right areas' widths and the bottom one's height, each 100 to 2000 pixels; one left out is
   Passenger's own.
+- `editorTabs` stands each editor's tabs in a row across its `top`, or in a column down its `left` or `right` side; left
+  out, across the top.
+
+What the layout arranges beyond where the windows dock (`editorTabs`) is each a setting of Settings | Appearance: the
+theme's is the default there, and the place you choose wins over it whatever theme you choose, until you choose Theme
+default again.
 
 A window or place this Passenger does not have is passed over and named.
 

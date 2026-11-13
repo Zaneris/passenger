@@ -9,8 +9,13 @@ public sealed record PlacedWindow(string Id, ToolAnchor Anchor);
 
 /// <summary>The default layout a theme gives: where tool windows dock, in its order at each place before the windows it
 /// leaves where Passenger puts them; the windows open at the start, or null for Passenger's own; and the areas' sizes, each
-/// null where it keeps Passenger's own. A layout a person arranged always wins over it.</summary>
-public sealed record ThemeLayout(IReadOnlyList<PlacedWindow> Places, IReadOnlyList<string>? Open, double? LeftWidth, double? RightWidth, double? BottomHeight);
+/// null where it keeps Passenger's own. A layout a person arranged always wins over it, as their own arrangement in
+/// Settings wins over the theme's (each null where the theme keeps Passenger's own).</summary>
+public sealed record ThemeLayout(IReadOnlyList<PlacedWindow> Places, IReadOnlyList<string>? Open, double? LeftWidth, double? RightWidth, double? BottomHeight)
+{
+    /// <summary>Where the editor's tabs stand.</summary>
+    public EditorTabsPlace? EditorTabs { get; init; }
+}
 
 /// <summary>A theme's <c>layout</c> (docs/themes.md).</summary>
 public static partial class ThemeFiles
@@ -37,7 +42,7 @@ public static partial class ThemeFiles
         {
             throw new FormatException($"gives layout as {Shown(layout.Value)}: layout is {{\"places\": {{…}}, \"open\": […], \"sizes\": {{…}}}}");
         }
-        PassOver(file, layout.Value, ["places", "open", "sizes"], "layout", problems);
+        PassOver(file, layout.Value, ["places", "open", "sizes", "editorTabs"], "layout", problems);
         List<PlacedWindow> places = [];
         if (Part(layout.Value, "places") is { } placed)
         {
@@ -62,7 +67,22 @@ public static partial class ThemeFiles
         List<string>? open = JsonMembers.Value(layout.Value, "open") is { } opened ? [.. Windows(file, opened, "layout's open", problems).Distinct(StringComparer.Ordinal)] : null;
         JsonElement? sizes = Part(layout.Value, "sizes");
         PassOver(file, sizes ?? default, ["left", "right", "bottom"], "layout's sizes", problems);
-        return new ThemeLayout(places, open, Area(sizes, "left"), Area(sizes, "right"), Area(sizes, "bottom"));
+        return new ThemeLayout(places, open, Area(sizes, "left"), Area(sizes, "right"), Area(sizes, "bottom"))
+        {
+            EditorTabs = Word(layout.Value, "editorTabs", [("top", EditorTabsPlace.Top), ("left", EditorTabsPlace.Left), ("right", EditorTabsPlace.Right)]),
+        };
+    }
+
+    /// <summary>One of a member's words, as what it stands for; null where the layout gives none.</summary>
+    private static T? Word<T>(JsonElement layout, string member, (string Word, T Value)[] words) where T : struct
+    {
+        if (JsonMembers.Value(layout, member) is not { } given)
+        {
+            return null;
+        }
+        int found = given.ValueKind == JsonValueKind.String ? Array.FindIndex(words, w => w.Word == given.GetString()) : -1;
+        return found >= 0 ? words[found].Value
+            : throw new FormatException($"gives layout's {member} as {Shown(given)}: it is {Listed(words.Select(w => w.Word))}");
     }
 
     private static JsonElement? Part(JsonElement layout, string member)

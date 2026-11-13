@@ -87,6 +87,24 @@ public class ThemeLayoutTests
     }
 
     [Fact]
+    public void A_layout_gives_where_the_editors_tabs_stand_and_one_that_gives_none_keeps_Passengers_own()
+    {
+        Assert.Equal([EditorTabsPlace.Top, EditorTabsPlace.Left, EditorTabsPlace.Right],
+            ((string[])["top", "left", "right"]).Select(word => Read($$$"""{"editorTabs": "{{{word}}}"}""").EditorTabs));
+        Assert.Null(Read("""{"sizes": {"bottom": 180}}""").EditorTabs);
+    }
+
+    [Theory]
+    [InlineData("\"layout\": {\"editorTabs\": \"bottom\"}", "gives layout's editorTabs as \"bottom\": it is \"top\", \"left\" or \"right\"")]
+    [InlineData("\"layout\": {\"editorTabs\": 1}", "gives layout's editorTabs as 1")]
+    public void An_arrangement_word_a_layout_does_not_know_refuses_the_theme_naming_the_words_it_takes(string members, string why)
+    {
+        ThemeRead<ThemeFile> read = Theme(members);
+        Assert.Null(read.Read);
+        Assert.Contains(why, read.Refused, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_code_colour_scheme_has_no_layout_and_passes_one_over()
     {
         ThemeRead<ThemeFile> read = ThemeFiles.ReadCodeColours("Mine.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Mine", "layout": {"places": {}}}"""),

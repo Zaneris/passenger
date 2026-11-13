@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Passenger.App.Editors;
+using Passenger.App.Settings;
 using Passenger.App.Workspace;
 using A = Passenger.App.AppActions;
 
@@ -114,14 +115,23 @@ public partial class MainWindow
     }
 
     /// <summary>The theme's default layout as the dock's default, once every tool window is added: what the window opens on
-    /// where no layout is kept, and what Restore Default Layout goes back to.</summary>
+    /// where no layout is kept, and what Restore Default Layout goes back to; and the arrangement it gives where the person
+    /// set none.</summary>
     private void FollowThemeLayout()
     {
-        EventHandler follow = (_, _) => Dock.UseDefault(Themes.Layout);
+        EventHandler follow = (_, _) =>
+        {
+            Dock.UseDefault(Themes.Layout);
+            FollowArrangement(settingsStore.Effective);
+        };
         follow(null, EventArgs.Empty);
         Themes.LayoutChanged += follow;
         Closed += (_, _) => Themes.LayoutChanged -= follow;
     }
+
+    /// <summary>The window's arrangement in force, the person's where they set it, else the theme's: where the editor's tabs
+    /// stand.</summary>
+    private void FollowArrangement(AppSettings next) => Editors.TabsPlace = next.TabsPlace();
 
     /// <summary>The tab an action acts on: the one whose menu it was chosen from, else the one the active group shows.</summary>
     private (EditorGroup Group, OpenDocument File)? TabOf(ActionContext context) =>

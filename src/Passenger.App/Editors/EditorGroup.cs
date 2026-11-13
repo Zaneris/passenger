@@ -5,10 +5,12 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
+using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App.Tables;
 using Passenger.App.Workspace;
@@ -65,6 +67,7 @@ public sealed class EditorGroup : DockPanel
     private readonly Banner banner = new();
     private readonly Button bannerLink;
     private EditorTab? active;
+    private EditorTabsPlace tabsPlace;
 
     /// <summary>The table over the editor for a CSV or workbook, made as the group first shows one.</summary>
     private TableViewer? tables;
@@ -327,9 +330,62 @@ public sealed class EditorGroup : DockPanel
     {
         get
         {
-            double from = stripView.Offset.X;
-            double to = from + stripView.Viewport.Width;
-            return [.. tabs.Where(tab => strip.ContainerFromItem(tab) is not Control shown || shown.Bounds.X < from - 0.5 || shown.Bounds.Right > to + 0.5)];
+            bool down = tabsPlace != EditorTabsPlace.Top;
+            double from = down ? stripView.Offset.Y : stripView.Offset.X;
+            double to = from + (down ? stripView.Viewport.Height : stripView.Viewport.Width);
+            return [.. tabs.Where(tab => strip.ContainerFromItem(tab) is not Control shown
+                || (down ? shown.Bounds.Y : shown.Bounds.X) < from - 0.5 || (down ? shown.Bounds.Bottom : shown.Bounds.Right) > to + 0.5)];
+        }
+    }
+
+    /// <summary>Where its tabs stand: a row across its top that scrolls, or a column down its left or right side, each tab
+    /// as wide as the column.</summary>
+    public EditorTabsPlace TabsPlace
+    {
+        get => tabsPlace;
+        set
+        {
+            if (value == tabsPlace)
+            {
+                return;
+            }
+            tabsPlace = value;
+            bool down = value != EditorTabsPlace.Top;
+            tabBar[DockProperty] = value switch { EditorTabsPlace.Left => Dock.Left, EditorTabsPlace.Right => Dock.Right, _ => Dock.Top };
+            tabBar.Classes.Set(StyleClasses.SideTabs, down);
+            strip.ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = down ? Orientation.Vertical : Orientation.Horizontal });
+            stripView.HorizontalScrollBarVisibility = down ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Hidden;
+            stripView.VerticalScrollBarVisibility = down ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+            hiddenTabs[DockProperty] = down ? Dock.Bottom : Dock.Right;
+            PreviewToggle[DockProperty] = down ? Dock.Top : Dock.Right;
+            tabBar.Styles.Clear();
+            if (down)
+            {
+                tabBar.Styles.Add(SideShadows(value));
+            }
+            // Every tab made again for the new direction.
+            ReusedRows.Use(strip, Tab);
+            RevealActive();
+        }
+    }
+
+    /// <summary>The theme's open tab down a side: a line its shadow draws inside the tab along its top drawn along the
+    /// side toward the editor instead, so the tab still reads as joined to it; a shadow cast outside it stays as it is.</summary>
+    private Styles SideShadows(EditorTabsPlace place)
+    {
+        Style active = new(x => x.OfType<Border>().Class(StyleClasses.Tab).Class(StyleClasses.Active));
+        active.Setters.Add(new Setter(Border.BoxShadowProperty, tabBar.GetResourceObservable(TokenKeys.TabShadow, shadow => shadow is BoxShadows shadows ? Turned(shadows) : shadow).ToBinding()));
+        // A split the person is not working in draws its open tab plainly, as across the top.
+        Style elsewhere = new(x => x.OfType<Border>().Class(StyleClasses.Tab).Class(StyleClasses.Active).Class(StyleClasses.Elsewhere));
+        elsewhere.Setters.Add(new Setter(Border.BoxShadowProperty, new BoxShadows(default)));
+        return [active, elsewhere];
+
+        BoxShadows Turned(BoxShadows shadows)
+        {
+            BoxShadow[] each = [.. Enumerable.Range(0, shadows.Count).Select(i => shadows[i] is { IsInset: true } inset
+                ? inset with { OffsetX = place == EditorTabsPlace.Left ? -inset.OffsetY : inset.OffsetY, OffsetY = place == EditorTabsPlace.Left ? inset.OffsetX : -inset.OffsetX }
+                : shadows[i])];
+            return each.Length == 0 ? shadows : new BoxShadows(each[0], each[1..]);
         }
     }
 
@@ -671,10 +727,11 @@ public sealed class EditorGroup : DockPanel
     public int IndexAt(Point at)
     {
         int index = 0;
+        bool down = tabsPlace != EditorTabsPlace.Top;
         foreach (Control tab in tabBar.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.Tab)))
         {
-            Point centre = tab.TranslatePoint(new Point(tab.Bounds.Width / 2, 0), tabBar) ?? default;
-            if (at.X > centre.X)
+            Point centre = tab.TranslatePoint(new Point(tab.Bounds.Width / 2, tab.Bounds.Height / 2), tabBar) ?? default;
+            if (down ? at.Y > centre.Y : at.X > centre.X)
             {
                 index++;
             }
@@ -807,16 +864,28 @@ public sealed class EditorGroup : DockPanel
         RowIcon pinGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Pin };
         Button pin = new() { Classes = { StyleClasses.TabPin }, Content = pinGlyph };
         ToolButtons.Tip(pin, "Unpin Tab");
+        Panel ends = new() { Width = 16, Height = 16, Children = { modified, close } };
+        bool down = tabsPlace != EditorTabsPlace.Top;
         Border border = new()
         {
             Classes = { StyleClasses.Tab },
-            Child = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 6,
-                VerticalAlignment = VerticalAlignment.Center,
-                Children = { icon, name, pin, new Panel { Width = 16, Height = 16, Children = { modified, close } } },
-            },
+            // Down a side, the name takes the column's width left over, its close at the column's edge.
+            Child = down
+                ? new DockPanel
+                {
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Children =
+                    {
+                        Docked(icon, Dock.Left, 0), Docked(ends, Dock.Right, 6), Docked(pin, Dock.Right, 6), Docked(name, Dock.Left, 6),
+                    },
+                }
+                : new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Children = { icon, name, pin, ends },
+                },
         };
         OpenDocument? Shown() => (border.DataContext as EditorTab)?.Document;
         close.Click += (_, e) =>
@@ -934,7 +1003,21 @@ public sealed class EditorGroup : DockPanel
         };
         border.PointerMoved += (_, e) => area.TabDragOf(this)?.Continue(e);
         border.PointerReleased += (_, e) => area.TabDragOf(this)?.End(e);
-        return border.Showing<EditorTab>(Paint);
+        if (!down)
+        {
+            return border.Showing<EditorTab>(Paint);
+        }
+        // Each tab of a column as high as the strip is across the top, its margins inside it as there.
+        Panel slot = new() { Children = { border } };
+        slot.Bind(HeightProperty, slot.GetResourceObservable(TokenKeys.TabStripHeight));
+        return slot.Showing<EditorTab>(Paint);
+
+        static Control Docked(Control part, Dock side, double apart)
+        {
+            part[DockProperty] = side;
+            part.Margin = new Thickness(apart, 0, 0, 0);
+            return part;
+        }
     }
 
     /// <summary>What the editor's context switcher shows for a file in several of the server's projects: the target

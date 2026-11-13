@@ -231,6 +231,16 @@
         <Setter Property="Background" Value="{DynamicResource Passenger.Frame}" />
         <Setter Property="BorderThickness" Value="0" />
     </Style>
+    <!-- The tabs as a column down an editor's side: as wide as the longer names, each tab as high as the strip is across
+         the top. -->
+    <Style Selector="Border.tabStrip.sideTabs">
+        <Setter Property="Height" Value="NaN" />
+        <Setter Property="Width" Value="220" />
+        <Setter Property="Padding" Value="0,6" />
+    </Style>
+    <Style Selector="Border.sideTabs TextBlock.tabName">
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
     <Style Selector="Border.statusBar">
         <Setter Property="Height" Value="26" />
         <Setter Property="Background" Value="{DynamicResource Passenger.Frame}" />

@@ -60,6 +60,7 @@ public sealed class SettingsPreview : IDisposable
         Look = Shown(from.Look, to.Look, saved.Look),
         WindowFontFamily = Shown(from.WindowFontFamily, to.WindowFontFamily, saved.WindowFontFamily),
         DisplayScale = Shown(from.DisplayScale, to.DisplayScale, saved.DisplayScale),
+        EditorTabs = Shown(from.EditorTabs, to.EditorTabs, saved.EditorTabs),
         MainMenuBar = Shown(from.MainMenuBar, to.MainMenuBar, saved.MainMenuBar),
         MergeMainMenuWithWindowTitle = Shown(from.MergeMainMenuWithWindowTitle, to.MergeMainMenuWithWindowTitle, saved.MergeMainMenuWithWindowTitle),
         ColourScheme = Shown(from.ColourScheme, to.ColourScheme, saved.ColourScheme),

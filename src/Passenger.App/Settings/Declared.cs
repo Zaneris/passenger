@@ -34,6 +34,11 @@ public static class Declared
         new(D.Appearance, "Show main menu as a menu bar", "main menu bar hamburger file edit view toolbar ribbon menus",
             "File, Edit, View and the rest side by side on the toolbar rather than behind its button. Those the toolbar has no room for go behind the button after them."));
 
+    public static readonly ThemedChoiceSetting<EditorTabsPlace> EditorTabs = new(s => s.EditorTabs, s => s.TabsPlace(), (s, v) => s with { EditorTabs = v },
+        [(EditorTabsPlace.Top, "Top"), (EditorTabsPlace.Left, "Left"), (EditorTabsPlace.Right, "Right")],
+        new(D.Appearance, "Editor tabs", "editor tabs tab well strip placement position vertical side left right top layout arrangement",
+            "Where each editor's tabs stand: a row across its top, or a column down its left or right side, which fits more of them."));
+
     public static readonly ToggleSetting ReopenProjectsOnStartup = new(s => s.ReopenProjectsOnStartup, (s, v) => s with { ReopenProjectsOnStartup = v },
         new(D.SystemPage, "Reopen projects on startup", "reopen last solution project folder startup start launch welcome screen recent"));
 

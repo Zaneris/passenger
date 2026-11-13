@@ -118,6 +118,7 @@ public partial class MainWindow
             ApplyTo(group.Editor, next);
         }
         FollowViewSettings(visualSettings, next);
+        FollowArrangement(next);
         FollowTitleBar(next);
         // The layout's smallest at the scale shown: SmallestWidth units of content, however large they are drawn.
         HoldAtLeast(new Avalonia.Size(SmallestWidth * next.DisplayScale, SmallestHeight * next.DisplayScale));

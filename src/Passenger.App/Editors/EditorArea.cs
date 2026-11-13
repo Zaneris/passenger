@@ -112,6 +112,22 @@ public sealed partial class EditorArea : UserControl
     /// (<see cref="CSharp.CompilationSymbols"/>), as the window knows its projects. Asked on the UI thread.</summary>
     public Func<string, CSharpParseOptions> ParseOptions { get; set; } = _ => CSharpParsing.Default;
 
+    private EditorTabsPlace tabsPlace;
+
+    /// <summary>Where every group's tabs stand, in every editor window.</summary>
+    public EditorTabsPlace TabsPlace
+    {
+        get => tabsPlace;
+        set
+        {
+            tabsPlace = value;
+            foreach (EditorGroup group in AllGroups)
+            {
+                group.TabsPlace = value;
+            }
+        }
+    }
+
     private bool showsMarkdownPreview = true;
 
     /// <summary>Whether a Markdown file shows its preview beside its editor, in every group showing one.</summary>
@@ -1335,12 +1351,19 @@ public sealed partial class EditorArea : UserControl
             {
                 continue;
             }
-            Rect strip = new(origin, new Size(group.Bounds.Width, group.TabStrip.Bounds.Height));
+            Rect strip = group.TabsPlace == EditorTabsPlace.Top ? new Rect(origin, new Size(group.Bounds.Width, group.TabStrip.Bounds.Height))
+                : group.TabStrip.TranslatePoint(default, frame.Surface) is { } placed ? new Rect(placed, group.TabStrip.Bounds.Size) : default;
             if (strip.Contains(at))
             {
                 return (group, DropPlace.Strip, group.IndexAt(frame.Surface.TranslatePoint(at, group.TabStrip) ?? at), strip);
             }
-            Rect body = new(bounds.X, strip.Bottom, bounds.Width, bounds.Bottom - strip.Bottom);
+            // The body is the group but its strip, across its top or down a side.
+            Rect body = group.TabsPlace switch
+            {
+                EditorTabsPlace.Left => new Rect(strip.Right, bounds.Y, bounds.Right - strip.Right, bounds.Height),
+                EditorTabsPlace.Right => new Rect(bounds.X, bounds.Y, strip.X - bounds.X, bounds.Height),
+                _ => new Rect(bounds.X, strip.Bottom, bounds.Width, bounds.Bottom - strip.Bottom),
+            };
             double x = (at.X - body.X) / body.Width;
             double y = (at.Y - body.Y) / body.Height;
             return x < 0.25 ? (group, DropPlace.Left, 0, body.WithWidth(body.Width / 2))
@@ -1354,7 +1377,7 @@ public sealed partial class EditorArea : UserControl
 
     private EditorGroup NewGroup()
     {
-        EditorGroup group = new(this) { IsCurrent = false };
+        EditorGroup group = new(this) { IsCurrent = false, TabsPlace = tabsPlace };
         group.Editor.SelectionChanged += (_, _) =>
         {
             if (group == activeGroup)

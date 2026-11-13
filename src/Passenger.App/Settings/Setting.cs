@@ -163,6 +163,32 @@ public sealed class ChoiceSetting<T> : Setting where T : struct, Enum
     public override AppSettings Clamp(AppSettings settings) => Enum.IsDefined(get(settings)) ? settings : set(settings, fallback);
 }
 
+/// <summary>One of an enum's values that a theme may give and the person's own choice wins over, edited by a drop-down: its
+/// first choice follows the theme (naming what that gives now), then the values by the names Settings gives them. Left
+/// unchosen it stays unset, and a value this build does not know follows the theme again.</summary>
+public sealed class ThemedChoiceSetting<T>(Func<AppSettings, T?> own, Func<AppSettings, T> inForce, Func<AppSettings, T?, AppSettings> set,
+    IReadOnlyList<(T Value, string Name)> choices, SettingRow row) : Setting(row) where T : struct, Enum
+{
+    public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
+    {
+        T themes = inForce(set(now, null));
+        string[] names = [$"Theme default ({NameOf(themes)})", .. choices.Select(c => c.Name)];
+        ComboBox box = new()
+        {
+            ItemsSource = names,
+            SelectedIndex = own(now) is { } chosen ? 1 + choices.Select(c => c.Value).ToList().IndexOf(chosen) : 0,
+            Classes = { StyleClasses.Form },
+        };
+        box.SelectionChanged += (_, _) => change(s => set(s, box.SelectedIndex > 0 ? choices[box.SelectedIndex - 1].Value : null));
+        return box;
+    }
+
+    /// <summary>The name Settings gives a value.</summary>
+    public string NameOf(T value) => choices.FirstOrDefault(c => EqualityComparer<T>.Default.Equals(c.Value, value)).Name ?? value.ToString();
+
+    public override AppSettings Clamp(AppSettings settings) => own(settings) is { } chosen && !Enum.IsDefined(chosen) ? set(settings, null) : settings;
+}
+
 /// <summary>A program to start and its arguments, written as one command line (<see cref="Run.CommandLine"/>), or null for
 /// the one Passenger finds, <paramref name="found"/>'s, which an empty box shows; a line naming no program (quotes round
 /// nothing) is refused, saying why under the box. Where it is given <paramref name="described"/>, what the line in force
