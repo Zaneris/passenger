@@ -5,6 +5,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Vcs;
 
@@ -15,7 +16,7 @@ public sealed class PartialCommitTests : IDisposable
     private const string Before = "one\ntwo\nthree\nfour\nfive\n";
     private const string After = "ONE\ntwo\nthree\nfour\nFIVE\n";
     private readonly string folder = TestFolders.Create("partial-commit-");
-    private string PathOf(string name) => Path.Combine(folder, name);
+    private string PathOf(string name) => Path.Combine(PathNames.Canonical(folder), name);
 
     public PartialCommitTests() => TestFolders.Prepare(() =>
     {
