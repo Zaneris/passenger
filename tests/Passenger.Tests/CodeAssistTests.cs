@@ -255,6 +255,63 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Click(button);
     }
 
+    [AvaloniaTheory]
+    [InlineData("ENTER", "")]
+    [InlineData("TAB", "")]
+    [InlineData("ENTER", " ")]
+    [InlineData("TAB", "\t")]
+    public void Declaration_completion_leaves_the_caret_after_one_separator(string key, string existing)
+    {
+        string path = project.PathOf("Program.cs");
+        File.WriteAllText(path, existing + "\n" + File.ReadAllText(path));
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        editor.GoTo(new TextPosition(0, 0));
+        Type("pu");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "public", "public offered");
+        string before = editor.Document.Snapshot.ToString();
+        Ui.Press(window, key);
+        Ui.Settle();
+        string prefix = "public" + (existing.Length == 0 ? " " : existing);
+        Assert.StartsWith(prefix + "\nclass Program", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal(prefix.Length, editor.Selections.Primary.Caret);
+
+        Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
+        Assert.Equal(before, editor.Document.Snapshot.ToString());
+        Ui.Press(window, Ui.Shortcut(EditorActions.Redo));
+        Assert.StartsWith(prefix + "\nclass Program", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal(prefix.Length, editor.Selections.Primary.Caret);
+
+        Type("sta");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "static", "static offered after public");
+        Ui.Press(window, key);
+        Ui.Settle();
+        prefix += "static ";
+        Assert.StartsWith(prefix + "\nclass Program", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal(prefix.Length, editor.Selections.Primary.Caret);
+        Type("cla");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "class", "class offered after static");
+        Ui.Press(window, key);
+        Ui.Settle();
+        prefix += "class ";
+        Assert.StartsWith(prefix + "\nclass Program", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal(prefix.Length, editor.Selections.Primary.Caret);
+        window.KeyTextInput("Example {}");
+        Ui.Settle();
+        Assert.StartsWith(prefix + "Example {}", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+
+        void Type(string letters)
+        {
+            foreach (char letter in letters)
+            {
+                window.KeyTextInput(letter.ToString());
+                Ui.Settle();
+            }
+        }
+    }
+
     [AvaloniaFact]
     public void CamelHumps_typed_offer_the_names_they_start_after_the_prefix_matches_and_enter_writes_the_one_chosen()
     {
