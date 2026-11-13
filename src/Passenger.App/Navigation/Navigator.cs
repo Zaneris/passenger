@@ -98,6 +98,20 @@ public sealed class Navigator
         }
     }
 
+    /// <summary>A jump of the caret in the file shown (Vim mode's G, a search, a mark): the place it left goes behind for
+    /// Back where the jump changed the line.</summary>
+    public void Jumped(int from)
+    {
+        if (Editors.Active is { } active && Here() is { } to && active.Diff is null)
+        {
+            HistoryPlace left = PlaceOf(active, from);
+            if (left.Line != to.Line)
+            {
+                Places.Left(left);
+            }
+        }
+    }
+
     /// <summary>The caret's place in the file shown, as the navigation history keeps it: a diff's tab's in its file's side.</summary>
     private HistoryPlace? Here() => Editors.Active is { } active ? PlaceOf(active, Editors.CodeEditor.Selections.Primary.Caret) : null;
 

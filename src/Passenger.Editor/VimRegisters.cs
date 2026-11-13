@@ -11,12 +11,24 @@ public sealed record VimRegister(IReadOnlyList<string> Parts, bool Linewise)
     public string Text => Linewise ? string.Concat(Parts) : string.Join('\n', Parts);
 }
 
-/// <summary>Vim's registers, one set for the editors that share it as Vim's editing shares one: the unnamed register, 0 for the last yank, 1 to 9
+/// <summary>Vim's registers (and the last search, command and the options :set changes), one set for the editors that share it as Vim's editing shares one: the unnamed register, 0 for the last yank, 1 to 9
 /// for deletes of a line or more shifting down, - for smaller deletes, a to z (A to Z appending), _ keeping nothing,
 /// and + and * standing for the system clipboard, whose text the editor writes and reads.</summary>
 public sealed class VimRegisters
 {
     private readonly Dictionary<char, VimRegister> held = [];
+
+    /// <summary>The last search, the register /: its pattern, whether it went backward, and the offset after it.</summary>
+    public VimSearch? LastSearch { get; set; }
+
+    /// <summary>The last substitution's pattern, replacement and flags, for :s and &amp; with none.</summary>
+    public (string Pattern, string Replacement, string Flags)? LastSubstitute { get; set; }
+
+    /// <summary>The last command line run, the register :, for @:.</summary>
+    public string? LastCommand { get; set; }
+
+    /// <summary>The options :set changes, shared as the registers are.</summary>
+    public VimOptions Options { get; } = new();
 
     /// <summary>What p puts with no register named: the text of the last yank, delete or change.</summary>
     public VimRegister? Unnamed { get; private set; }
@@ -101,4 +113,27 @@ public sealed class VimRegisters
         held[lower] = text;
         return text;
     }
+}
+
+/// <summary>A search as / and ? leave it for n and N: its pattern in Vim's dialect, whether it went backward, and its
+/// offset ("e", "s-1", "+2"), empty with none.</summary>
+public sealed record VimSearch(string Pattern, bool Back, string Offset = "");
+
+/// <summary>The options Vim mode honours, as :set names them.</summary>
+public sealed class VimOptions
+{
+    public bool IgnoreCase { get; set; }
+
+    public bool SmartCase { get; set; }
+
+    /// <summary>Whether a search's matches are shown, as the editor's own find shows them; on, as Passenger's find has it.</summary>
+    public bool HighlightSearch { get; set; } = true;
+
+    public bool WrapScan { get; set; } = true;
+
+    /// <summary>Two spaces after a sentence's end for J; off, as Neovim and code have it.</summary>
+    public bool JoinSpaces { get; set; }
+
+    /// <summary>Whether :s replaces every match on a line without g (and g then only the first).</summary>
+    public bool GlobalDefault { get; set; }
 }

@@ -211,13 +211,13 @@ public sealed partial class Vim
         {
             return false;
         }
-        if (key == "q" && Mode == VimMode.Normal && pending.Count == 0)
+        if (key == "q" && Mode == VimMode.Normal && pending.Count == 0 && commandLine is null)
         {
             Registers.Record(r.Register, TextOf(r.Keys));
             recording = null;
             return true;
         }
-        if (key != "<Other>")
+        if (key is not ("<Other>" or "<Up>" or "<Down>"))
         {
             r.Keys.Add(key);
         }

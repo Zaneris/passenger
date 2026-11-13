@@ -253,6 +253,18 @@ public sealed partial class Vim
             pending.Clear();
             return VimResult.Left;
         }
+        if (key is "/" or "?" && TakesCommandLine(pending, search: false))
+        {
+            return OpenCommandLine(key[0], string.Empty);
+        }
+        if (key == ":")
+        {
+            // The command line takes the stretch's lines, visual mode ending as Vim's does.
+            pending.Clear();
+            VimResult left = LeaveVisual(text, view);
+            commandLine = (':', new System.Text.StringBuilder("'<,'>"), [], 0);
+            return left;
+        }
         pending.Add(key);
         if (ReadPrefix(pending, out int count, out char? register, out int at) is not true)
         {
@@ -317,7 +329,8 @@ public sealed partial class Vim
         {
             return VimResult.Held;
         }
-        return MoveVisual(command with { Name = motion, Argument = argument }, text, view);
+        searchSaid = null;
+        return Told(MoveVisual(command with { Name = motion, Argument = argument }, text, view), motion);
     }
 
     /// <summary>The count and register before a command's keys: true with <paramref name="at"/> its first key, null while

@@ -71,3 +71,6 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
 
     public void SetMark(char name, int offset) => marks[name] = offset;
 }
+
+/// <summary>Words Vim mode has for the status bar, and whether they tell of a failure.</summary>
+public sealed record VimMessage(string Text, bool Error);

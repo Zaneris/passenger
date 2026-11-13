@@ -180,6 +180,7 @@ public partial class MainWindow : IdeWindow
         Editors.CaretMoved += (_, _) => UpdateCaret();
         Editors.ForEachEditor(editor => editor.VimModeChanged += (_, _) => UpdateCaret());
         Editors.ForEachEditor(editor => editor.VimRegisters = vimRegisters);
+        Editors.ForEachEditor(FollowVim);
         Editors.SaveFailed += (_, problem) => status.Text = problem;
         Editors.OpenFailed += (_, problem) => status.Text = problem;
         Editors.Refused += (_, problem) => status.Text = problem;

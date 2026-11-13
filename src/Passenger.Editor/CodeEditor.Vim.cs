@@ -61,8 +61,20 @@ public sealed partial class CodeEditor
     /// mode off.</summary>
     public string VimPending => vim is null ? string.Empty : vim.Recording is { } register ? $"{vim.Pending} recording @{register}".TrimStart() : vim.Pending;
 
-    /// <summary>Vim's mode or its half-typed command changed.</summary>
+    /// <summary>Vim's mode, its half-typed command or its command line changed.</summary>
     public event EventHandler? VimModeChanged;
+
+    /// <summary>The command line Vim mode has open (":s/a/b", "/foo") for the host's status bar; null with none.</summary>
+    public string? VimCommandLine => vim?.CommandLine;
+
+    /// <summary>Vim mode has words for the host's status bar: a search's wrap or failure, an ex command's answer.</summary>
+    public event EventHandler<VimMessage>? VimSaid;
+
+    /// <summary>Vim mode asks what only the host can do: save, close or open a file, or step through its places.</summary>
+    public event EventHandler<VimRequest>? VimAsked;
+
+    /// <summary>A Vim jump left a place (the offset given), for the host's history of places.</summary>
+    public event EventHandler<int>? VimJumped;
 
     /// <summary>A key through Vim mode before any keymap: true when Vim took it, with <paramref name="action"/> (one of
     /// <see cref="EditorActions"/>) for the host to run <paramref name="repeat"/> times as its keymap would, so undo stays
@@ -78,11 +90,12 @@ public sealed partial class CodeEditor
         }
         VimMode was = vim.Mode;
         string pendingWas = VimPending;
+        string? lineWas = vim.CommandLine;
         VimResult result = vim.Press(VimKey(e), document.Snapshot, selections, VimView);
         FollowVim(result, was);
         action = result.Action;
         repeat = action is null ? 0 : result.Repeat;
-        if (vim?.Mode == was && VimPending != pendingWas)
+        if (vim?.Mode == was && (VimPending != pendingWas || vim.CommandLine != lineWas))
         {
             VimModeChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -159,10 +172,49 @@ public sealed partial class CodeEditor
         {
             BackgroundWork.Track(PutFromClipboardAsync());
         }
+        if (result.Highlight is { } search)
+        {
+            ShowVimSearch(search);
+        }
+        if (result.Message is { } said)
+        {
+            VimSaid?.Invoke(this, new VimMessage(said, result.MessageIsError));
+        }
+        if (result.JumpedFrom is { } from)
+        {
+            VimJumped?.Invoke(this, from);
+        }
         if (result.Replay is { } keys)
         {
             ReplayVim(keys);
         }
+        if (result.Request is { } asked)
+        {
+            VimAsked?.Invoke(this, asked);
+        }
+    }
+
+    /// <summary>A Vim search's matches shown as the editor's own find shows them, the one at the caret the current one;
+    /// none for an empty query.</summary>
+    private void ShowVimSearch(SearchQuery search)
+    {
+        if (search.IsEmpty)
+        {
+            SetHighlights([], -1);
+            return;
+        }
+        IReadOnlyList<TextRange> matches = TextSearch.FindAll(document.Snapshot, search, TextSearch.AtOnce).Matches;
+        int caret = selections.Primary.Caret;
+        int current = -1;
+        for (int i = 0; i < matches.Count; i++)
+        {
+            if (matches[i].Start == caret || (matches[i].Start <= caret && caret < matches[i].End))
+            {
+                current = i;
+                break;
+            }
+        }
+        SetHighlights(matches, current);
     }
 
     /// <summary>A macro's keys pressed in turn as typed, insert mode's typing done as the keymap's Enter, Backspace and
@@ -170,6 +222,26 @@ public sealed partial class CodeEditor
     private void ReplayVim(IReadOnlyList<string> keys)
     {
         List<string> queue = [.. keys];
+        if (vim is not null)
+        {
+            vim.Playing = true;
+        }
+        try
+        {
+            PressInTurn(queue);
+        }
+        finally
+        {
+            if (vim is not null)
+            {
+                vim.Playing = false;
+            }
+        }
+        VimModeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void PressInTurn(List<string> queue)
+    {
         for (int i = 0; vim is not null && i < queue.Count && i < Vim.MostReplayed; i++)
         {
             string key = queue[i];
@@ -198,7 +270,6 @@ public sealed partial class CodeEditor
                 }
             }
         }
-        VimModeChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>A put from + or *: the system clipboard's text, read as Paste reads it, put as Vim puts it.</summary>
@@ -226,6 +297,12 @@ public sealed partial class CodeEditor
             KeyModifiers.None when e.Key == Key.Tab => "<Tab>",
             KeyModifiers.Control when e.Key == Key.R => "<C-r>",
             KeyModifiers.Control when e.Key == Key.V => "<C-v>",
+            KeyModifiers.Control when e.Key == Key.O => "<C-o>",
+            KeyModifiers.Control when e.Key == Key.I => "<C-i>",
+            KeyModifiers.Control when e.Key == Key.U => "<C-u>",
+            KeyModifiers.Control when e.Key == Key.W => "<C-w>",
+            KeyModifiers.None when e.Key == Key.Up => "<Up>",
+            KeyModifiers.None when e.Key == Key.Down => "<Down>",
             KeyModifiers.None when e.KeySymbol is { Length: 1 } typed && !char.IsControl(typed[0]) => typed,
             _ when KeymapDispatcher.IsAltGrTyping(e) && e.KeySymbol is { Length: 1 } typed => typed,
             // A press whose platform gives no symbol: letters and digits by their key, as punctuation's differs by layout.

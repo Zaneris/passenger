@@ -11,11 +11,11 @@ public sealed partial class Vim
     private sealed record Command(IReadOnlyList<string> Keys, int Count, char? Register, string? Operator, string Name, string? Argument);
 
     private static readonly HashSet<string> SingleMotions =
-        ["h", "l", "j", "k", "0", "^", "$", "|", "w", "W", "b", "B", "e", "E", "G", ";", ",", "%", "{", "}", "(", ")", "H", "M", "L", "<BS>", "<CR>", " ", "+", "-", "_"];
+        ["h", "l", "j", "k", "0", "^", "$", "|", "w", "W", "b", "B", "e", "E", "G", ";", ",", "%", "{", "}", "(", ")", "H", "M", "L", "<BS>", "<CR>", " ", "+", "-", "_", "n", "N", "*", "#"];
 
-    private static readonly HashSet<string> GMotions = ["g", "e", "E", "j", "k", "_"];
+    private static readonly HashSet<string> GMotions = ["g", "e", "E", "j", "k", "_", "*", "#"];
 
-    private static readonly HashSet<string> Simple = ["x", "X", "s", "S", "C", "D", "Y", "J", "~", "i", "a", "I", "A", "o", "O", "u", "p", "P", ".", "v", "V", "<C-v>", "R"];
+    private static readonly HashSet<string> Simple = ["x", "X", "s", "S", "C", "D", "Y", "J", "~", "i", "a", "I", "A", "o", "O", "u", "p", "P", ".", "v", "V", "<C-v>", "R", "<C-o>", "<C-i>", "<Tab>"];
 
     /// <summary>The commands g begins that are neither motions nor operators.</summary>
     private static readonly HashSet<string> GCommands = ["v", "J", "p", "P"];
@@ -84,6 +84,15 @@ public sealed partial class Vim
             {
                 (name, used) = (first, 1);
             }
+            if (name is null && !incomplete && first == "m")
+            {
+                if (i + 1 >= keys.Count)
+                {
+                    incomplete = true;
+                    return null;
+                }
+                (name, argument, used) = keys[i + 1].Length == 1 ? (first, keys[i + 1], 2) : (null, null, 0);
+            }
             if (name is null && !incomplete && first is "q" or "@")
             {
                 if (i + 1 >= keys.Count)
@@ -92,7 +101,7 @@ public sealed partial class Vim
                     return null;
                 }
                 string which = keys[i + 1];
-                bool fits = which.Length == 1 && (char.IsAsciiLetterOrDigit(which[0]) || which[0] == '"' || (first == "@" && which[0] == '@'));
+                bool fits = which.Length == 1 && (char.IsAsciiLetterOrDigit(which[0]) || which[0] == '"' || (first == "@" && which[0] is '@' or ':'));
                 (name, argument, used) = fits ? (first, which, 2) : (null, null, 0);
             }
             if (name is null && !incomplete && first == "g" && i + 1 < keys.Count && GCommands.Contains(keys[i + 1]))
@@ -165,7 +174,7 @@ public sealed partial class Vim
         {
             return (key, null, 1);
         }
-        if (key is "g" or "f" or "F" or "t" or "T")
+        if (key is "g" or "f" or "F" or "t" or "T" or "'" or "`")
         {
             if (at + 1 >= keys.Count)
             {
@@ -175,6 +184,10 @@ public sealed partial class Vim
             if (key == "g")
             {
                 return GMotions.Contains(keys[at + 1]) ? ("g" + keys[at + 1], null, 2) : (null, null, 0);
+            }
+            if (key is "'" or "`")
+            {
+                return keys[at + 1].Length == 1 ? (key, keys[at + 1], 2) : (null, null, 0);
             }
             return VimMotions.Typed(keys[at + 1]) is { } typed ? (key, typed, 2) : (null, null, 0);
         }
@@ -208,8 +221,16 @@ public sealed partial class Vim
                 return Changed(command, Join(text, selections, n, spaced: false));
             case "R":
                 return EnterReplace(command, selections);
+            case "@" when command.Argument == ":":
+                return Registers.LastCommand is { } again ? Ex(again, text, selections, view) : Said("E30: No previous command line");
             case "q" or "@":
                 return Macro(command);
+            case "m":
+                return SetMark(command, selections, view);
+            case "<C-o>":
+                return Asked(VimRequestKind.Older) with { Request = new VimRequest(VimRequestKind.Older, Count: n) };
+            case "<C-i>" or "<Tab>":
+                return Asked(VimRequestKind.Newer) with { Request = new VimRequest(VimRequestKind.Newer, Count: n) };
             case "j" or "k" or "gj" or "gk" when command.Operator is null:
                 return Vertically(text, selections, command.Name is "j" or "gj" ? n : -n, command.Name.StartsWith('g'), view);
             case "x":
@@ -245,7 +266,7 @@ public sealed partial class Vim
             case "r":
                 return Changed(command, Replace(text, selections, n, command.Argument!, view));
             case "J":
-                return Changed(command, Join(text, selections, n));
+                return Changed(command, Join(text, selections, n, spaced: true, Options.JoinSpaces));
             case "~":
                 return Changed(command, Toggle(text, selections, n));
         }
@@ -279,7 +300,14 @@ public sealed partial class Vim
         {
             return VimResult.Held;
         }
-        return command.Name == "$" ? Aimed(moved, [.. Enumerable.Repeat(int.MaxValue, moved.Count)]) : new VimResult(true, moved);
+        VimResult result = command.Name == "$" ? Aimed(moved, [.. Enumerable.Repeat(int.MaxValue, moved.Count)]) : new VimResult(true, moved);
+        int from = selections.Primary.Caret;
+        if (Jumping.Contains(command.Name) && moved.Primary.Caret != from)
+        {
+            view.SetMark('\'', from);
+            result = result with { JumpedFrom = from };
+        }
+        return result;
     }
 
     /// <summary>Where a motion takes a caret, and how an operator takes the text to there; null where it cannot move.</summary>
@@ -356,6 +384,12 @@ public sealed partial class Vim
                 return VimMotions.Paragraph(text, caret, n, command.Name == "}");
             case "(" or ")":
                 return VimMotions.Sentence(text, caret, n, command.Name == ")");
+            case "n" or "N":
+                return SearchTarget(text, caret, n, reverse: command.Name == "N");
+            case "*" or "#" or "g*" or "g#":
+                return WordSearch(text, caret, n, back: command.Name.EndsWith('#'), whole: !command.Name.StartsWith('g'));
+            case "'" or "`":
+                return MarkTarget(text, argument!, exact: command.Name == "`", view);
             case "H" or "M" or "L":
                 VimScreenLine at = command.Name switch { "H" => VimScreenLine.Top, "L" => VimScreenLine.Bottom, _ => VimScreenLine.Middle };
                 return Line(text, Math.Clamp(view.LineShown(text, at, n), 0, VimMotions.LastLine(text)));

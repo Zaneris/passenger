@@ -222,6 +222,7 @@ public sealed class StatusBar
     /// off. Worded again only when either changes.</summary>
     private void ShowVimMode(CodeEditor? editor)
     {
+        ShowCommandLine(editor?.VimCommandLine);
         (VimMode? Mode, string Pending) now = (editor?.VimModeShown, editor?.VimPending ?? string.Empty);
         if (now == shownMode)
         {
@@ -241,6 +242,35 @@ public sealed class StatusBar
         };
         vimMode.Text = now.Pending.Length > 0 ? $"{words} {now.Pending}" : words;
     }
+
+    /// <summary>Vim mode's command line in the place of what the status bar says, what it said put back once the line
+    /// closes unless the command said something of its own.</summary>
+    private void ShowCommandLine(string? line)
+    {
+        if (line == shownLine)
+        {
+            return;
+        }
+        if (shownLine is null)
+        {
+            coveredBy = Said;
+        }
+        if (line is not null)
+        {
+            text.Text = line;
+            icon.IsVisible = false;
+        }
+        else if (text.Text == shownLine && coveredBy is { } covered)
+        {
+            SayAgain(covered);
+        }
+        shownLine = line;
+    }
+
+    /// <summary>The command line shown, and what the status bar said before it.</summary>
+    private string? shownLine;
+
+    private (string? Text, ProblemSeverity? Severity, StatusPlace? Place)? coveredBy;
 
     /// <summary>The Vim mode and command the status bar words.</summary>
     private (VimMode? Mode, string Pending) shownMode = (null, string.Empty);

@@ -54,7 +54,7 @@ public sealed partial class Vim
             Remember(acting);
             int n = Math.Max(2, taken.Max(r => text.GetLineFromOffset(r.High)) - taken.Min(r => text.GetLineFromOffset(r.Low)) + 1);
             SelectionSet starts = SelectionSet.Create([.. taken.Select(r => Selection.At(r.Low))], 0);
-            return Join(text, starts, block ? Math.Max(2, bottom - top + 1) : n, spaced: op == "J") is { } joined ? new VimResult(true, Edits: [joined]) : VimResult.Held;
+            return Join(text, starts, block ? Math.Max(2, bottom - top + 1) : n, spaced: op == "J", Options.JoinSpaces) is { } joined ? new VimResult(true, Edits: [joined]) : VimResult.Held;
         }
         (List<Stretch> stretches, SelectionSet carets) = block && !lines
             ? BlockStretches(text, top, bottom, left, right, tab, perLine: basic == "c")

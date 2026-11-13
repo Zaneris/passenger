@@ -29,6 +29,21 @@ public sealed record VimResult(bool Taken, SelectionSet? Selections = null, IRea
     /// <summary>Keys for the editor to press in turn, as typed (a macro's): insert mode's typing its own to do.</summary>
     public IReadOnlyList<string>? Replay { get; init; }
 
+    /// <summary>A search's matches for the editor to show by its own find; an empty query to show none (:noh); null to
+    /// leave what is shown.</summary>
+    public SearchQuery? Highlight { get; init; }
+
+    /// <summary>Words for the host's status bar: a search's wrap or failure, an ex command's answer or refusal.</summary>
+    public string? Message { get; init; }
+
+    public bool MessageIsError { get; init; }
+
+    /// <summary>What only the host can do: save, close or open a file, or step through its places.</summary>
+    public VimRequest? Request { get; init; }
+
+    /// <summary>Where the caret jumped from, for the host's places (Back and Forward).</summary>
+    public int? JumpedFrom { get; init; }
+
     /// <summary>The last of <see cref="Edits"/>, or null with none.</summary>
     public EditPlan? Edit => Edits is { Count: > 0 } edits ? edits[^1] : null;
 }
@@ -88,13 +103,32 @@ public sealed partial class Vim(VimRegisters registers)
     /// holds, and a set of the Vim's own where none is given.</summary>
     public VimRegisters Registers { get; set; } = registers;
 
+    /// <summary>Set while the host presses a macro's or :normal's keys, which q records none of.</summary>
+    public bool Playing { get; set; }
+
     public VimResult Press(string key, TextSnapshot text, SelectionSet selections, IVimView? view = null)
     {
         view ??= PlainView;
-        if (!replaying && Recorded(key))
+        if (!replaying && !Playing && Recorded(key))
         {
             return VimResult.Held;
         }
+        if (commandLine is not null)
+        {
+            return PressCommandLine(key, text, selections, view);
+        }
+        if (key.StartsWith(GoKey, StringComparison.Ordinal) && int.TryParse(key.AsSpan(GoKey.Length), System.Globalization.CultureInfo.InvariantCulture, out int goLine))
+        {
+            Mode = VimMode.Normal;
+            pending.Clear();
+            return new VimResult(true, SelectionSet.Single(text.GetLineStart(Math.Clamp(VimMotions.LastLine(text) - goLine, 0, VimMotions.LastLine(text)))));
+        }
+        return Take(key, text, selections, view);
+    }
+
+    /// <summary>A key in any mode but the command line's.</summary>
+    private VimResult Take(string key, TextSnapshot text, SelectionSet selections, IVimView view)
+    {
         if (Mode == VimMode.Replace)
         {
             return PressReplace(key, text, selections, view);
@@ -138,6 +172,10 @@ public sealed partial class Vim(VimRegisters registers)
             pending.Clear();
             return VimResult.Left;
         }
+        if (key is ":" or "/" or "?" && TakesCommandLine(pending, search: key != ":"))
+        {
+            return OpenCommandLine(key[0], string.Empty);
+        }
         pending.Add(key == "<Del>" ? "x" : key);
         Command? command = Parse(pending, out bool incomplete);
         if (incomplete)
@@ -145,8 +183,20 @@ public sealed partial class Vim(VimRegisters registers)
             return VimResult.Held;
         }
         pending.Clear();
+        searchSaid = null;
         // A command Vim mode doesn't know is swallowed whole, so its keys never type into the text.
-        return command is null ? VimResult.Held : Run(command, text, selections, view);
+        VimResult result = command is null ? VimResult.Held : Run(command, text, selections, view);
+        return Told(result, command?.Name);
+    }
+
+    /// <summary>A result with what a search asks shown: its matches, and its wrap or failure in words.</summary>
+    private VimResult Told(VimResult result, string? name)
+    {
+        if (name is "n" or "N" or "*" or "#" or "g*" or "g#" && result.Taken)
+        {
+            result = result with { Highlight = SearchShown() };
+        }
+        return searchSaid is { } said && result.Message is null ? result with { Message = said.Text, MessageIsError = said.Error } : result;
     }
 
     /// <summary>The put a p or P from + or * asked for, with the clipboard's text the editor read.</summary>
@@ -181,7 +231,7 @@ public sealed partial class Vim(VimRegisters registers)
     }
 
     private static bool IsVimKey(string key) =>
-        key.Length == 1 || (key.Length == 2 && char.IsSurrogatePair(key[0], key[1])) || key is "<BS>" or "<CR>" or "<Del>" or "<Tab>" or "<C-v>";
+        key.Length == 1 || (key.Length == 2 && char.IsSurrogatePair(key[0], key[1])) || key is "<BS>" or "<CR>" or "<Del>" or "<Tab>" or "<C-v>" or "<C-o>" or "<C-i>";
 
     /// <summary>The count typed so far where nothing else is, 0 with none.</summary>
     private int CountOnly()

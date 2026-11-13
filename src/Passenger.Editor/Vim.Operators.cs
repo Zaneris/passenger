@@ -437,9 +437,10 @@ public sealed partial class Vim
     }
 
     /// <summary>J: each caret's line joined with the <paramref name="n"/> - 1 after it (at least one): the next line's
-    /// indent goes and one space comes between, none after white, before a ')' or with an empty side; gJ
+    /// indent goes and one space comes between (two after a sentence's end with joinspaces), none after white, before a
+    /// ')' or with an empty side; gJ
     /// (<paramref name="spaced"/> false) joins them as they are. The caret stands where the last join met.</summary>
-    private static EditPlan? Join(TextSnapshot text, SelectionSet selections, int n, bool spaced = true)
+    private static EditPlan? Join(TextSnapshot text, SelectionSet selections, int n, bool spaced = true, bool sentenceSpaces = false)
     {
         int lastLine = VimMotions.LastLine(text);
         List<TextEdit> edits = [];
@@ -462,8 +463,8 @@ public sealed partial class Vim
                 LineSpan next = text.GetLine(line + 1);
                 int body = spaced ? TextNavigation.IndentEnd(text, next) : next.Start;
                 bool empty = body >= next.End;
-                // One space even after a sentence's end, as most editors and code's comments have it.
-                string space = !spaced || empty || joinedLength == 0 || end is ' ' or '\t' || text[body] == ')' ? string.Empty : " ";
+                // One space after a sentence's end too unless joinspaces is set, as code's comments have it.
+                string space = !spaced || empty || joinedLength == 0 || end is ' ' or '\t' || text[body] == ')' ? string.Empty : sentenceSpaces && end is '.' or '!' or '?' ? "  " : " ";
                 edits.Add(new TextEdit(here.End, body - here.End, space));
                 landing = joinedLength;
                 joinedLength += space.Length + (next.End - body);

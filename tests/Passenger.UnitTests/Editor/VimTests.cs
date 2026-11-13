@@ -419,6 +419,184 @@ public class VimTests
     public void Replace_mode_types_over_the_text_and_backspace_puts_it_back_as_vims_does(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    [Theory]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two<CR>", "  one two\nfoo |two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two<CR>n", "  one two\nfoo two\n  |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two<CR>nn", "  one two\nfoo two\n  two three |two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two<CR>nnn", "  one |two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two<CR>N", "  one |two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "?two<CR>", "  one |two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "?two<CR>n", "  one two\nfoo two\n  two three |two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "?two<CR>N", "  one two\nfoo |two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two/e<CR>", "  one tw|o\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two/e<CR>n", "  one two\nfoo tw|o\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two/s+1<CR>", "  one two\nfoo t|wo\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two/+1<CR>", "  one two\nfoo two\n|  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "2/two<CR>", "  one two\nfoo two\n  |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/t\\(w\\|h\\)<CR>n", "  one two\nfoo two\n  |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/\\vt(w|h)<CR>n", "  one two\nfoo two\n  |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/\\<two\\><CR>", "  one two\nfoo |two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/o\\zsn<CR>", "  o|ne two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/^f<CR>", "  one two\n|foo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two$<CR>n", "  one two\nfoo two\n  two three |two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/[fl]<CR>n", "  one two\nfoo two\n  two three two\n|last")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "*", "  one two\nfoo |two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "**", "  one two\nfoo two\n  |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "#", "  one two\nfoo two\n  two three |two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "jjj*", "  one two\nfoo two\n  two three two\n|last")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "g*", "  one two\nfoo |two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "d/foo<CR>", "  one |t\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "d/two<CR>", "  one t|two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "y/two<CR>P", "  one t|wo\nfoo wo\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "c/foo<CR>X<Esc>", "  one t|X\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "v/three<CR>d", "  one t|hree two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two<CR>dn", "  one two\nfoo |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two<CR>x.", "  one two\nfoo |o\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two<CR>/<CR>", "  one two\nfoo two\n  |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":set ic<CR>/TWO<CR>", "  one two\nfoo |two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":set ic scs<CR>/two<CR>", "  one two\nfoo |two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/Two\\c<CR>", "  one two\nfoo |two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "ma:3<CR>'a", "  |one two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "majj`a", "  one t|wo\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "majjd'a", "|last")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "majjy`aP", "  one t|wo\nfoo two\n  two two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "G''", "  |one two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "G``", "  one t|wo\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/three<CR>''", "  |one two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "3G''", "  |one two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":3<CR>''", "  |one two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "mxjmyG'x", "  |one two\nfoo two\n  two three two\nlast")]
+    public void Searches_and_marks_go_where_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    [Theory]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":s/two/2/<CR>", "  |one 2\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/two/2/<CR>", "  one 2\nfoo 2\n  |2 three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/two/2/g<CR>", "  one 2\nfoo 2\n  |2 three 2\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":2,3s/two/2/g<CR>", "  one two\nfoo 2\n  |2 three 2\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/two/2/gn<CR>", "  |one two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":.,+1s/o/0/g<CR>", "  0ne tw0\n|f00 tw0\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":.,$s/o/0/g<CR>", "  0ne tw0\nf00 tw0\n  |tw0 three tw0\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":3<CR>", "  one two\nfoo two\n  |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":$<CR>", "  one two\nfoo two\n  two three two\n|last")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":+2<CR>", "  one two\nfoo two\n  |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/\\(t\\)\\(w\\)o/\\2\\1/g<CR>", "  one wt\nfoo wt\n  |wt three wt\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/two/\\U&/<CR>", "  one TWO\nfoo TWO\n  |TWO three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/two/\\u&/g<CR>", "  one Two\nfoo Two\n  |Two three Two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/o\\zsn/N/g<CR>", "  |oNe two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/two/a\\rb/<CR>", "  one a\nb\nfoo a\nb\n  a\n|b three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/ two/!/g<CR>", "  one!\nfoo!\n |! three!\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":s#two#2#<CR>", "  |one 2\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/two/2/<CR>:%&&<CR>", "  one 2\nfoo 2\n  |2 three 2\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":s/two/2/<CR>j:s<CR>", "  one 2\n|foo 2\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "/two<CR>:%s//2/g<CR>", "  one 2\nfoo 2\n  |2 three 2\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/^/> /<CR>", ">   one two\n> foo two\n>   two three two\n|> last")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/$/;/<CR>", "  one two;\nfoo two;\n  two three two;\n|last;")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/\\s\\+/ /g<CR>", " one two\nfoo two\n |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/[ot]\\{2}/X/g<CR>", "  one two\n|fX two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/two\\|foo/X/g<CR>", "  one X\nX X\n  |X three X\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/\\vt(w|h)/X/g<CR>", "  one Xo\nfoo Xo\n  |Xo Xree Xo\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%s/O/X/gi<CR>", "  Xne twX\nfXX twX\n  |twX three twX\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":g/two/d<CR>", "|last")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":v/two/d<CR>", "  one two\nfoo two\n  |two three two")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":g!/foo/d<CR>", "|foo two")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":g/two/s/o/0/g<CR>", "  0ne tw0\nf00 tw0\n  |tw0 three tw0\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":2,3g/two/d<CR>", "  one two\n|last")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":g/two/normal Ax<CR>", "  one twox\nfoo twox\n  two three two|x\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%d<CR>", "|")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":2,3d<CR>", "  one two\n|last")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":2d<CR>p", "  one two\n  two three two\n|foo two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":2y<CR>P", "|foo two\n  one two\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":1,2j<CR>", "  |one two foo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":2>><CR>", "  one two\n        |foo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":%<<CR>", "one two\nfoo two\ntwo three two\n|last")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "ma:'a,'a+1s/o/0/g<CR>", "  0ne tw0\n|f00 tw0\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":/foo/s/two/2/<CR>", "  one two\n|foo 2\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "Vj:s/o/0/g<CR>", "  0ne tw0\n|f00 tw0\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", "Vj:d<CR>", "  |two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":set js<CR>J", "  one two| foo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":norm Ax<CR>", "  one two|x\nfoo two\n  two three two\nlast")]
+    [InlineData("  one t|wo\nfoo two\n  two three two\nlast", ":2,3norm Ax<CR>", "  one two\nfoo twox\n  two three two|x\nlast")]
+    public void Ex_commands_change_and_move_as_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    [Theory]
+    [InlineData(@"t\(w\|h\)o", "t(w|h)o")]
+    [InlineData(@"\vt(w|h)o", "t(w|h)o")]
+    [InlineData(@"a+b?", @"a\+b\?")]
+    [InlineData(@"a\+b\=", "a+b?")]
+    [InlineData(@"\<two\>", @"\b(?=\w)two\b(?<=\w)")]
+    [InlineData(@"x\{2,3}y\{-}", "x{2,3}y*?")]
+    [InlineData(@"\s\d\w", @"[ \t][0-9][0-9A-Za-z_]")]
+    [InlineData(@"o\zsn", "(?<=o)n")]
+    [InlineData(@"o\zen", "o(?=n)")]
+    [InlineData(@"[[:alpha:]]", "[A-Za-z]")]
+    [InlineData(@"\Va.b", @"a\.b")]
+    [InlineData("a^b$", @"a\^b$")]
+    public void Vims_patterns_read_as_dotnets(string pattern, string regex) =>
+        Assert.Equal(regex, VimPatterns.Translate(pattern, ignoreCase: false, smartCase: false).Regex);
+
+    [Fact]
+    public void A_pattern_with_no_counterpart_is_said_and_case_follows_its_flags_and_smartcase()
+    {
+        Assert.NotNull(VimPatterns.Translate(@"a\@<=b", false, false).Problem);
+        Assert.NotNull(VimPatterns.Translate(@"a\&b", false, false).Problem);
+        Assert.False(VimPatterns.Translate(@"two\c", false, false).MatchCase);
+        Assert.True(VimPatterns.Translate("Two", ignoreCase: true, smartCase: true).MatchCase);
+        Assert.False(VimPatterns.Translate("two", ignoreCase: true, smartCase: true).MatchCase);
+    }
+
+    [Fact]
+    public void A_search_shows_its_matches_says_its_wrap_and_failure_and_noh_clears_them()
+    {
+        Vim vim = new();
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("one t|wo\ntwo");
+        VimResult found = Press(vim, "/two<CR>", text, carets);
+        Assert.True(found.Highlight is { IsEmpty: false, Regex: true }, "a search asked the editor to show no matches");
+        VimResult wrapped = Press(vim, "n", text, SelectionSet.Single(8));
+        Assert.Equal(("search hit BOTTOM, continuing at TOP", false), (wrapped.Message, wrapped.MessageIsError));
+        VimResult missing = Press(vim, "/xyz<CR>", text, carets);
+        Assert.Equal(("E486: Pattern not found: xyz", true), (missing.Message, missing.MessageIsError));
+        Assert.True(Press(vim, ":noh<CR>", text, carets).Highlight is { IsEmpty: true }, ":noh left the matches shown");
+        Assert.Equal("/fo", Press(vim, "/fo", text, carets) is { Taken: true } ? vim.CommandLine : null);
+    }
+
+    [Theory]
+    [InlineData(":w<CR>", VimRequestKind.Save, null)]
+    [InlineData(":q<CR>", VimRequestKind.Close, null)]
+    [InlineData(":wq<CR>", VimRequestKind.SaveAndClose, null)]
+    [InlineData(":x<CR>", VimRequestKind.SaveAndClose, null)]
+    [InlineData(":wa<CR>", VimRequestKind.SaveAll, null)]
+    [InlineData(":e src/Other.cs<CR>", VimRequestKind.Open, "src/Other.cs")]
+    [InlineData("<C-o>", VimRequestKind.Older, null)]
+    [InlineData("<Tab>", VimRequestKind.Newer, null)]
+    public void Saving_closing_opening_and_the_ides_places_are_asked_of_the_host(string keys, VimRequestKind kind, string? path)
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("a|b");
+        Assert.Equal(new VimRequest(kind, path), Press(new Vim(), keys, text, carets).Request);
+    }
+
+    [Theory]
+    [InlineData(":frobnicate<CR>", "Vim mode does not do :frobnicate")]
+    [InlineData(":qa<CR>", "Vim mode does not do :qa")]
+    [InlineData(":%s/a/b/c<CR>", ":s's c flag (asking at each match) is not done; Find and Replace asks match by match")]
+    [InlineData(":set sw=2<CR>", "sw is the file's indent, which Settings › Editor and an .editorconfig set")]
+    [InlineData(":set nosuch<CR>", "E518: Unknown option: nosuch")]
+    public void A_command_vim_mode_does_not_do_is_said(string keys, string said)
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("a|b");
+        Assert.Equal(said, Press(new Vim(), keys, text, carets).Message);
+    }
+
+    [Fact]
+    public void A_substitution_over_many_lines_is_one_edit()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|a\na\na\n");
+        VimResult result = Press(new Vim(), ":%s/a/b/<CR>", text, carets);
+        Assert.Equal(("b\nb\n|b\n", 1), (Marked.After(text, result.Edit), result.Edits?.Count));
+        Assert.Equal("3 substitutions on 3 lines", result.Message);
+    }
+
     [Fact]
     public void A_repeated_change_is_edits_of_one_step_and_a_plain_change_one_edit()
     {
@@ -617,7 +795,7 @@ public class VimTests
     /// <summary>The keys of Vim's notation one by one: a named key ("&lt;Esc&gt;") whole, any other character alone.</summary>
     public static IEnumerable<string> Keys(string keys)
     {
-        string[] named = ["<Esc>", "<CR>", "<BS>", "<Tab>", "<Del>", "<C-r>", "<C-v>", "<C-o>", "<C-i>", "<D-s>"];
+        string[] named = ["<Esc>", "<CR>", "<BS>", "<Tab>", "<Del>", "<C-r>", "<C-v>", "<C-o>", "<C-i>", "<C-u>", "<C-w>", "<Up>", "<Down>", "<D-s>"];
         for (int i = 0; i < keys.Length; i++)
         {
             string? name = keys[i] == '<' ? Array.Find(named, n => string.CompareOrdinal(keys, i, n, 0, n.Length) == 0) : null;

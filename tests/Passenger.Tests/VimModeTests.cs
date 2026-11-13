@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Passenger.App;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -407,10 +408,101 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>/ opens a command line in the status bar's place, Enter searches with the editor's own find, its matches
+    /// shown and the one reached the current one, n goes on, :noh hides them, and a command not done is said.</summary>
+    [AvaloniaFact]
+    public void A_search_is_typed_in_the_status_bar_and_shows_its_matches_as_find_does()
+    {
+        (MainWindow window, CodeEditor editor) = Open("one two\nfoo two\ntwo three\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "/two");
+            Assert.Equal("/two", StatusWords(window));
+            Keys(window, "<CR>");
+            Assert.True(editor.Selections.Primary.Caret == 4 && editor.Highlights.Count == 3 && editor.CurrentHighlight == 0,
+                $"/two left the caret at {editor.Selections.Primary.Caret} with {editor.Highlights.Count} matches shown, the current {editor.CurrentHighlight}");
+            Assert.NotEqual("/two", StatusWords(window));
+            Keys(window, "n");
+            Assert.Equal((12, 1), (editor.Selections.Primary.Caret, editor.CurrentHighlight));
+            Keys(window, ":noh<CR>");
+            Assert.Empty(editor.Highlights);
+            Keys(window, ":zz<CR>");
+            Assert.Equal("Vim mode does not do :zz", StatusWords(window));
+            Keys(window, "/zzz<CR>");
+            Assert.Equal("E486: Pattern not found: zzz", StatusWords(window));
+            Assert.Equal(12, editor.Selections.Primary.Caret);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>:s over a range is one step of undo, : in visual mode names its lines, :w saves as Save does, :e opens a
+    /// file and :q closes its tab as Close Tab does.</summary>
+    [AvaloniaFact]
+    public void Ex_commands_substitute_as_one_step_save_open_and_close()
+    {
+        string other = Path.Combine(folder, "Other.txt");
+        File.WriteAllText(other, "other\n");
+        (MainWindow window, CodeEditor editor) = Open("one two\nfoo two\ntwo three\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, ":%s/two/2/g<CR>");
+            Assert.Equal("one 2\nfoo 2\n2 three\n", Text(editor));
+            Keys(window, "u");
+            Ui.WaitFor(() => Text(editor) == "one two\nfoo two\ntwo three\n", () => $"u took back part of :s, leaving \"{Text(editor)}\"");
+            Keys(window, "Vj:");
+            Assert.Equal((":'<,'>", "NORMAL"), (StatusWords(window), Status(window).Mode));
+            Keys(window, "s/o/0/g<CR>");
+            Assert.Equal("0ne tw0\nf00 tw0\ntwo three\n", Text(editor));
+            Keys(window, ":w<CR>");
+            Ui.WaitFor(() => File.ReadAllText(Path.Combine(folder, "One.txt")) == Text(editor), "the file :w saved on disk");
+            Keys(window, ":e Other.txt<CR>");
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(other), () => $":e left {window.EditorArea.Active?.Path} shown, not Other.txt");
+            Keys(window, ":q<CR>");
+            Ui.WaitFor(() => window.EditorArea.Documents.All(d => d.Path != PathNames.Canonical(other)), ":q to close Other.txt's tab");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A mark stays on its text as lines come above it, '' goes back to where a jump left, and Ctrl+O and Ctrl+I
+    /// step through the IDE's places, a jump leaving one.</summary>
+    [AvaloniaFact]
+    public void Marks_move_with_the_text_and_ctrl_o_steps_back_through_the_ides_places()
+    {
+        (MainWindow window, CodeEditor editor) = Open("l1\nl2\nl3\nl4\nl5\nl6\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "jmaggOx<Esc>G'a");
+            Assert.Equal(("x\nl1\nl2\nl3\nl4\nl5\nl6\n", 5), (Text(editor), editor.Selections.Primary.Caret));
+            Keys(window, "''");
+            Assert.Equal(17, editor.Selections.Primary.Caret);
+            Keys(window, "gg");
+            Ui.Press(window, "control O");
+            Ui.WaitFor(() => editor.Selections.Primary.Caret == 17, () => $"Ctrl+O left the caret at {editor.Selections.Primary.Caret}, not the last line gg left");
+            Ui.Press(window, "control I");
+            Ui.WaitFor(() => editor.Selections.Primary.Caret == 0, () => $"Ctrl+I left the caret at {editor.Selections.Primary.Caret}, not back at the first line");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A long session of normal mode's keys in an editor, seeded, checked after each key against a model of what
-    /// Vim does with them: counts, h l j k 0 $, x X D dd, yy p P, J, ~ and u, and visual mode's v d, v y, V d, V j d and
-    /// V y; the model knows a string, a caret, the column j and k aim for, the unnamed register and the text before each
-    /// change.</summary>
+    /// Vim does with them: counts, h l j k 0 $, x X D dd, yy p P, J, ~ and u, visual mode's v d, v y, V d, V j d and V y,
+    /// and searches /baz and ?qux with n and N, wrapping; the model knows a string, a caret, the column j and k aim for,
+    /// the unnamed register, the last search and the text before each change.</summary>
     [AvaloniaTheory]
     [InlineData(1)]
     [InlineData(2)]
@@ -422,7 +514,7 @@ public sealed class VimModeTests : IDisposable
         rig.Window.Height = 300;
         rig.Editor.UsesVim = true;
         Assert.True(rig.Editor.VimRegisters.Unnamed is null, "Vim mode began with something to put, where Vim begins with its registers empty");
-        string[] commands = ["h", "l", "j", "k", "0", "$", "x", "X", "D", "dd", "yy", "p", "P", "J", "~", "u", "vd", "vy", "Vd", "Vjd", "Vy"];
+        string[] commands = ["h", "l", "j", "k", "0", "$", "x", "X", "D", "dd", "yy", "p", "P", "J", "~", "u", "vd", "vy", "Vd", "Vjd", "Vy", "/baz<CR>", "?qux<CR>", "n", "N"];
         for (int step = 0; step < 400; step++)
         {
             string command = commands[random.Next(commands.Length)];
@@ -477,6 +569,12 @@ public sealed class VimModeTests : IDisposable
                 '_' => "shift MINUS",
                 '+' => "shift EQUALS",
                 '!' => "shift 1",
+                '/' => "SLASH",
+                '?' => "shift SLASH",
+                ':' => "shift SEMICOLON",
+                '\'' => "QUOTE",
+                '`' => "BACK_QUOTE",
+                '&' => "shift 7",
                 '@' => "shift 2",
                 _ => throw new ArgumentException($"No key types '{c}' here", nameof(keys)),
             };
@@ -509,6 +607,9 @@ public sealed class VimModeTests : IDisposable
 
     private static string Text(CodeEditor editor) => editor.Document.Snapshot.ToString();
 
+    /// <summary>What the status bar says on its left, where Vim mode's command line stands.</summary>
+    private static string? StatusWords(MainWindow window) => window.FindControl<TextBlock>("StatusText")!.Text;
+
     /// <summary>What Vim does with a few of normal mode's keys, as plainly as it can be said: a string of lines each ending
     /// with a break, a caret, the column j and k aim for, the unnamed register (whole lines or not) and the text and caret
     /// before each change, for u. It passes over a dd that would leave no line.</summary>
@@ -519,6 +620,8 @@ public sealed class VimModeTests : IDisposable
         private int want;
 
         private (string Text, bool Lines)? register;
+
+        private (string Word, bool Back)? search;
 
         public string Text { get; private set; } = text;
 
@@ -540,6 +643,26 @@ public sealed class VimModeTests : IDisposable
             int length = lines[line].Length;
             switch (command)
             {
+                case "/baz<CR>" or "?qux<CR>":
+                    search = (command[1..4], command[0] == '?');
+                    return Press("n", 1);
+                case "n" or "N":
+                    if (search is not { } searched)
+                    {
+                        break;
+                    }
+                    bool backward = searched.Back != (command == "N");
+                    int behind = Caret > 0 ? Text.LastIndexOf(searched.Word, Math.Min(Text.Length - 1, Caret + searched.Word.Length - 2), StringComparison.Ordinal) : -1;
+                    int ahead = Text.IndexOf(searched.Word, Caret + 1, StringComparison.Ordinal);
+                    int hit = backward
+                        ? behind >= 0 ? behind : Text.LastIndexOf(searched.Word, StringComparison.Ordinal)
+                        : ahead >= 0 ? ahead : Text.IndexOf(searched.Word, StringComparison.Ordinal);
+                    if (hit >= 0)
+                    {
+                        int hitLine = Text[..hit].Count(c => c == '\n');
+                        Move(lines, hitLine, hit - Start(lines, hitLine));
+                    }
+                    break;
                 case "vd" or "vy" when length == 0:
                     // On an empty line visual mode takes the line break, which the model leaves aside.
                     return false;
