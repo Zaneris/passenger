@@ -13,7 +13,7 @@ public sealed record MobileWant
     /// <summary>The projects needing what is lacking, by name, in the folder's order.</summary>
     public IReadOnlyList<string> Projects { get; init; } = [];
 
-    /// <summary>The workload ids to install, each once; none for a project that builds only on a Mac, off one.</summary>
+    /// <summary>The workload ids to install, each once; off a Mac, for a project that builds only on one, only its platforms' own.</summary>
     public IReadOnlyList<string> Workloads { get; init; } = [];
 
     /// <summary>The Android SDK's folder, the one found or the one it would be installed into; null where no project's
@@ -65,9 +65,11 @@ public sealed record MobileWant
         {
             bool needs = false;
             IReadOnlyList<string> mobile = MobilePlatforms.FrameworksOf(project.Frameworks);
-            // Off a Mac no workload builds an app only of Apple platforms, whatever the SDK names for it.
+            // Off a Mac an app only of Apple platforms takes only its platforms' own workloads, which let it load to be edited.
             bool appleOnly = !onMac && mobile.Count > 0 && mobile.All(f => MobilePlatforms.IsApple(MobilePlatforms.Of(f)!));
-            IReadOnlyList<WorkloadLacked> lacking = appleOnly ? [] : project.Workloads;
+            IReadOnlyList<WorkloadLacked> lacking = appleOnly
+                ? [.. project.Workloads.Where(w => w.Framework is { } framework && mobile.Contains(framework, StringComparer.OrdinalIgnoreCase))]
+                : project.Workloads;
             foreach (WorkloadLacked workload in lacking.Where(w => !workloads.Contains(w.Id)))
             {
                 workloads.Add(workload.Id);
