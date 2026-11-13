@@ -98,8 +98,10 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 - **Containers are ended by label** (`ContainerLabels`), never by `down` or `--remove-orphans`, which take the person's
   own; Aspire's unlabelled DCP containers and network through `AspireContainerOwnership`; persistent containers and the
   person's own never.
-- **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`), given in every theme (dark and light, `Harbour.axaml`
-  and each look `just themes` writes); Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. The window's typeface
+- **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`, the default theme every other is laid over), given in
+  every built-in theme (dark and light, `Theme/BuiltIn/*.json`: Harbour's and the code colour scheme by hand, the rest by
+  `just themes`); a theme file is read only through `ThemeFiles` (format 1, `docs/themes.md`) and laid through
+  `ThemeResources`, so a token added to Tokens.axaml is one a theme may give; Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. The window's typeface
   is the resource `WindowFonts.Key` (macOS tracking `WindowTracking`), the code's `CodeFonts.Key`; a control drawing its
   own words takes `TextElement.GetFontFamily`, never a named family. UiRulesTests fails on a colour or non-zero
   CornerRadius written outside `Theme/` (but the content's own) and on an unmapped Fluent key. No access keys:
