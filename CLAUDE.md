@@ -29,6 +29,8 @@ just package-mac [RID]     # the .dmg (osx-arm64, or osx-x64 checked under Roset
                            # signed by PASSENGER_SIGN_IDENTITY and notarized by PASSENGER_NOTARY_PROFILE when set,
                            # else ad hoc (--dry-run needs an identity)
 just package-win [RID]     # Velopack's per-user installer; just package-linux [RID]: the .tar.gz with install.sh
+just first-start-shots     # the first start's pictures of each carried theme, retaken in a version bump's commit
+                           # (FirstStartPicturesTests fails until then)
 just debug-relay [android] [apple]  # the debugger's relay into artifacts/debug-relay/<rid>/ (macOS: clang, the Android
                            # workload's linker, Xcode's SDKs); the app carries Android's under debugger/relay/<rid>/
 just container-tools [RID] [--archive]  # the in-container tools (linux[-musl]-x64/arm64) into artifacts/container-tools
@@ -271,7 +273,10 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   nothing it flags is left); `tools/` (notices, the test runner, packaging, site shots).
 
 `src/Passenger.App`, by area:
-- **Shell.** Every open through `PassengerApp.OpenProject`; a `.slnf`'s left-out projects are never saved as the
+- **Shell.** A new state's first start asks the theme and dark or light (`MainWindow.ShowFirstStartOnce`,
+  `Welcome/FirstStartView`), never in a window nobody sees; a carried theme needs its first-start pictures.
+  `KeepWorkspace` writes `WorkspaceState` whole, so a field added to it is added there too. Every open through
+  `PassengerApp.OpenProject`; a `.slnf`'s left-out projects are never saved as the
   person's; a handler acts only while its session is bound (`ProjectSession.Bind`). A Passenger nobody sees
   (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`; what a start
   runs read by `DesktopPrograms`, never `Built` alone), and plays no sound; a Linux display is taken by `NoDisplay`,
@@ -334,7 +339,10 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   its indent. what an HTML server holds of Razor's files changes only in a send's turn (`RazorHtmlCopies`); the SDK
   writes no scoped CSS bundle once a project has no sheet left. Razor forwards `_vs_onAutoInsert` to the client's HTML
   only for `=`: its `>` is Razor's own answer, its `</` closed over its HTML.
-- **Build and run.** `BuildRunController`, every console through `ConsoleSink.PumpAsync`, `LaunchPlan` (one resolution
+- **Build and run.** The build configuration and platform are one choice (`BuildConfigurationChoices`, `WorkspaceModel.Build`):
+  command lines take it through `WorkspaceModel.BuildArgumentsFor`, evaluations through `ProjectModels.Properties`/`Each`;
+  never a `-c` written anywhere else. Godot runs only a game's Debug build (`GodotLaunch.RunsConfiguration`).
+  `BuildRunController`, every console through `ConsoleSink.PumpAsync`, `LaunchPlan` (one resolution
   for Run, Debug, Profile, Hot Reload and a debugged test host), `UpToDate`; a Passenger it launches keeps its state in
   `sandbox/`; `PASSENGER_DOTNET_RELEASES` is dead in tests. Godot: `GodotLaunch`, `GodotGame`; the Game window is an
   owned window, never a child; a GDScript-only game is never in `Projects`; export templates only from a `.tpz` the
@@ -351,7 +359,10 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   time; Stop ends every session and recording before the programs go.
 - **Containers.** A published port takes connections from the container's start, before its program listens, so a
   container's page opens on an HTTP answer (`BrowserLaunch.AnsweringAsync`), never a connection. A .dcproj is MSBuild's
-  file in the editor but never evaluated (its SDK is Visual Studio's); its properties are read as text (`ComposeProjectFile`).
+  file in the editor but never evaluated (its SDK is Visual Studio's); its properties are read as text (`ComposeProjectFile`). Its Solution-view files come from that text
+  (`ContainerConfigurations.ItemsOf`), never its folder. A compose service's project is the person's choice, else Visual
+  Studio's project-name label, else what its Dockerfile builds with the build's arguments filled in
+  (`DockerfileStages.Expanded`).
   The person's `docker` CLI and context only, never the Engine API or a Docker package; a service's name
   always after `--`; Compose's own model is the plan, Passenger's override in the state; downloaded tools
   SHA256-checked; Podman both ways. A container publish (`-t:PublishContainer`; several platforms need
