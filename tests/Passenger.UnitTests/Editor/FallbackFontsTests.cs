@@ -4,7 +4,8 @@ using Passenger.Editor;
 namespace Passenger.UnitTests.Editor;
 
 /// <summary>How the font collection Passenger names its families through keeps the platform's fallback answers: a script's
-/// letters under one answer, characters common to scripts by their page, and families named so its own fallback is asked.</summary>
+/// letters under one answer, characters common to scripts by their page, families named so its own fallback is asked, and an
+/// emoji's fallback asked in emoji presentation's language.</summary>
 public class FallbackFontsTests
 {
     /// <summary>A script's letters share one kept answer and each script has its own, so a word asks the platform once and
@@ -42,5 +43,20 @@ public class FallbackFontsTests
         Assert.Equal("fonts", named.Key?.Source.Scheme);
         FontFamily plain = FallbackFonts.Of("Odd, Name");
         Assert.True(plain.Key is not { Source.Scheme: "fonts" }, "A name with a comma was named through the collection, which reads it as two families");
+    }
+
+    /// <summary>A character presented as an emoji by default (a face, a hand, a skin tone, a flag's letter, a check mark) is
+    /// asked for in emoji presentation's language, which names a colour face holding the whole cluster; one presented as text
+    /// by default, and a script's letter, in the culture's.</summary>
+    [Fact]
+    public void An_emojis_fallback_is_asked_in_emoji_presentations_language_and_text_in_the_cultures()
+    {
+        System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.GetCultureInfo("fr-CA");
+        int[] emoji = [0x1F600, 0x1F44D, 0x1F3FD, 0x1F469, 0x1F1E8, 0x2705];
+        int[] text = ['a', 0x263A, 0x2764, 0x2192, '中', 0x200D, 0xFE0F];
+        Assert.All(emoji, codepoint => Assert.True(FallbackFonts.LanguageOf(codepoint, culture) == FallbackFonts.EmojiLanguage,
+            $"U+{codepoint:X4}, an emoji by default, is asked for in {FallbackFonts.LanguageOf(codepoint, culture)}, which may name a face without its colour glyphs"));
+        Assert.All(text, codepoint => Assert.True(FallbackFonts.LanguageOf(codepoint, culture) == "fr-CA",
+            $"U+{codepoint:X4}, text by default, is asked for in {FallbackFonts.LanguageOf(codepoint, culture)}, not the run's culture"));
     }
 }

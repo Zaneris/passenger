@@ -146,7 +146,7 @@ public sealed partial class TerminalView
 
     /// <summary>A line cut into runs, each shaped: cells drawn alike in the terminal's font, every glyph of which is a
     /// column wide so it stays on the grid; a wide character, a letter with its marks or one another font draws alone,
-    /// fitted to its cells.</summary>
+    /// fitted to its cells, an emoji with its skin tone or the emoji joined to it over theirs too.</summary>
     private void Shape(Drawn drawn, TerminalLine line, Typeface plain)
     {
         Cell[] cells = line.Cells;
@@ -177,10 +177,30 @@ public sealed partial class TerminalView
                 {
                     end++;
                 }
+                // A skin tone or a joined emoji has the columns the shell counts, but is one glyph with the emoji before it.
+                for (int last = column; end < cells.Length && cells[end].Style == head.Style && drawn.IsChosen(end) == chosen && GoesOnEmoji(line, last, end);)
+                {
+                    last = end;
+                    end = Math.Min(cells.Length, end + Math.Max(1, (int)cells[end].Width));
+                }
             }
             ShapeRun(drawn, line, column, end, plain, chosen, alone, isLink);
             column = end;
         }
+    }
+
+    /// <summary>Whether the cell at a column goes on the emoji whose last part is at <paramref name="last"/> as one glyph: a
+    /// skin tone after an emoji, or any character after a joiner the emoji's grapheme ends with (a woman, a laptop).</summary>
+    private static bool GoesOnEmoji(TerminalLine line, int last, int column)
+    {
+        Cell cell = line.Cells[column];
+        if (cell.Width == 0 || cell.Rune == 0)
+        {
+            return false;
+        }
+        Span<char> scratch = stackalloc char[2];
+        ReadOnlySpan<char> before = line.TextOf(last, scratch);
+        return before is [.., '\u200D'] || (cell.Rune is >= 0x1F3FB and <= 0x1F3FF && new Avalonia.Media.TextFormatting.Unicode.Codepoint((uint)line.Cells[last].Rune).IsEmoji);
     }
 
     private bool Linked(int column)

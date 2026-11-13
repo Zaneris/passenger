@@ -1,4 +1,3 @@
-using System.Globalization;
 using Avalonia.Media;
 using Avalonia.Media.Fonts;
 using SkiaSharp;
@@ -10,8 +9,9 @@ namespace Passenger.App;
 /// face, never a face of another family the collection would give for the name.</summary>
 internal static class PlatformFallback
 {
-    /// <summary>The installed face the platform names for a character in a culture, asked by a family at a style; null for none.</summary>
-    public static GlyphTypeface? Named(int codepoint, FontCollectionKey style, string? familyName, CultureInfo culture)
+    /// <summary>The installed face the platform names for a character in a language (a BCP 47 tag), asked by a family at a
+    /// style; null for none.</summary>
+    public static GlyphTypeface? Named(int codepoint, FontCollectionKey style, string? familyName, string language)
     {
         using SKFontStyle asked = new((SKFontStyleWeight)(int)style.Weight, (SKFontStyleWidth)(int)style.Stretch, style.Style switch
         {
@@ -20,7 +20,7 @@ internal static class PlatformFallback
             _ => SKFontStyleSlant.Upright,
         });
         // Never disposed: Skia gives one object for a typeface, which the system's collection may hold for this face.
-        if (SKFontManager.Default.MatchCharacter(string.IsNullOrEmpty(familyName) ? null : familyName, asked, [culture.Name], codepoint) is not { } face)
+        if (SKFontManager.Default.MatchCharacter(string.IsNullOrEmpty(familyName) ? null : familyName, asked, [language], codepoint) is not { } face)
         {
             return null;
         }
