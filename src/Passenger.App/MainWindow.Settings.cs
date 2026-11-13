@@ -114,6 +114,8 @@ public partial class MainWindow
         }
         FollowViewSettings(visualSettings, next);
         FollowTitleBar(next);
+        // The layout's smallest at the scale shown: SmallestWidth units of content, however large they are drawn.
+        HoldAtLeast(new Avalonia.Size(SmallestWidth * next.DisplayScale, SmallestHeight * next.DisplayScale));
         FollowMainMenu(next);
         if (terminal is { } panel)
         {

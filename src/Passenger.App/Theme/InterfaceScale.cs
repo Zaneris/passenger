@@ -33,21 +33,10 @@ internal static class InterfaceScale
             {
                 if (change.Property == LayoutTransformControl.LayoutTransformProperty && scale.LayoutTransform is ScaleTransform next)
                 {
-                    // Dialogs need room for the same controls at their new size. The main window keeps its user's size.
-                    if (window is not MainWindow && window.PlatformImpl is not null)
+                    // A dialog needs room for the same controls at their new size; the main window keeps its person's size.
+                    if (window is IdeWindow { PlatformImpl: not null } fitted and not MainWindow && next.ScaleX != previous)
                     {
-                        double ratio = next.ScaleX / previous;
-                        Avalonia.Platform.Screen? screen = window.Screens.ScreenFromWindow(window);
-                        double width = screen is null ? double.PositiveInfinity : screen.WorkingArea.Width / screen.Scaling - 32;
-                        double height = screen is null ? double.PositiveInfinity : screen.WorkingArea.Height / screen.Scaling - 32;
-                        if (double.IsFinite(window.Width))
-                        {
-                            window.Width = Math.Max(window.MinWidth, Math.Min(window.Width * ratio, width));
-                        }
-                        if (double.IsFinite(window.Height))
-                        {
-                            window.Height = Math.Max(window.MinHeight, Math.Min(window.Height * ratio, height));
-                        }
+                        fitted.Rescaled(next.ScaleX / previous);
                     }
                     previous = next.ScaleX;
                 }

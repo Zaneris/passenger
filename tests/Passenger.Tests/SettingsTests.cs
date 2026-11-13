@@ -166,9 +166,9 @@ public sealed class SettingsTests : IDisposable
             SettingsDialog dialog = window.ShowSettings();
             dialog.Page = SettingsDialog.Appearance;
             Ui.Settle();
-            NumericUpDown factor = Editor<NumericUpDown>(dialog, "Display scale");
-            Assert.Equal(1m, factor.Value);
-            factor.Value = 1.5m;
+            ComboBox factor = Editor<ComboBox>(dialog, "Display scale");
+            Assert.Equal("100%", factor.SelectedItem);
+            factor.SelectedItem = "150%";
             Ui.Settle();
             Assert.Equal(1, window.Settings.DisplayScale);
             Assert.True(Scale(window.EditorArea.CodeEditor) == 1.5, "Settings did not show the display scale chosen before Apply");
@@ -228,10 +228,10 @@ public sealed class SettingsTests : IDisposable
             dialog = window.ShowSettings();
             dialog.Page = SettingsDialog.Appearance;
             Ui.Settle();
-            factor = Editor<NumericUpDown>(dialog, "Display scale");
-            Assert.Equal(1.5m, factor.Value);
+            factor = Editor<ComboBox>(dialog, "Display scale");
+            Assert.Equal("150%", factor.SelectedItem);
             Assert.Equal(1.5, Scale(factor));
-            factor.Value = 2m;
+            factor.SelectedItem = "200%";
             Ui.Settle();
             Assert.Equal(2, Scale(window.EditorArea.CodeEditor));
             dialog.Close();
@@ -240,13 +240,13 @@ public sealed class SettingsTests : IDisposable
             dialog = window.ShowSettings();
             dialog.Page = SettingsDialog.Appearance;
             Ui.Settle();
-            factor = Editor<NumericUpDown>(dialog, "Display scale");
-            factor.Value = 1.2m;
+            factor = Editor<ComboBox>(dialog, "Display scale");
+            factor.SelectedItem = "125%";
             dialog.Apply();
             Ui.Settle();
-            Assert.Equal(1.2, Scale(factor));
-            Assert.Equal(1.2, Scale(window.EditorArea.CodeEditor));
-            factor.Value = 1m;
+            Assert.Equal(1.25, Scale(factor));
+            Assert.Equal(1.25, Scale(window.EditorArea.CodeEditor));
+            factor.SelectedItem = "100%";
             dialog.Ok();
             Ui.Settle();
             Assert.Equal(1, Scale(window.EditorArea.CodeEditor));
@@ -254,6 +254,58 @@ public sealed class SettingsTests : IDisposable
         finally
         {
             window.ApplySettings(window.Settings with { DisplayScale = 1 });
+            window.Close();
+        }
+
+        static double Scale(Control control) => control.TransformToVisual(TopLevel.GetTopLevel(control)!)!.Value.M11;
+    }
+
+    /// <summary>A display scale is chosen from a list of sizes that closes as the pointer chooses one, so the size the
+    /// window then takes moves nothing the pointer is on, each choice landing where a spin box's arrows moved out from under
+    /// it; at each the main window holds its layout's smallest width and height (640 by 500 units of content however large
+    /// they are drawn), and the Settings dialog, grown with its content, stays on its screen by the windows' one rule.</summary>
+    [AvaloniaFact]
+    public void A_display_scale_is_chosen_from_a_list_that_closes_and_every_window_holds_its_layout_and_its_screen_at_each()
+    {
+        string file = Path.Combine(folder, "Scaled.cs");
+        File.WriteAllText(file, "class Scaled { }\n");
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFile(file);
+            SettingsDialog dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.Appearance;
+            Ui.Settle();
+            Avalonia.Platform.Screen screen = dialog.Screens.ScreenFromWindow(dialog) ?? dialog.Screens.Primary!;
+            Size area = screen.WorkingArea.Size.ToSize(screen.Scaling);
+            foreach ((double size, string chosen) in new[] { (1.25, "125%"), (1.5, "150%"), (2.0, "200%"), (3.0, "300%") })
+            {
+                ComboBox box = Editor<ComboBox>(dialog, "Display scale");
+                Ui.Click(box);
+                Assert.True(box.IsDropDownOpen, "A click on the display scale's box did not open its list");
+                ComboBoxItem item = Assert.IsType<ComboBoxItem>(box.ContainerFromIndex(Array.IndexOf((string[])box.ItemsSource!, chosen)));
+                Ui.Click(item);
+                Assert.False(box.IsDropDownOpen, $"The list stayed open under the pointer after {chosen} was chosen");
+                Assert.Equal(size, Scale(window.EditorArea.CodeEditor));
+                Assert.Equal(chosen, Editor<ComboBox>(dialog, "Display scale").SelectedItem);
+
+                Assert.True(window.MinWidth == Math.Min(MainWindow.SmallestWidth * size, area.Width) && window.MinHeight == Math.Min(MainWindow.SmallestHeight * size, area.Height),
+                    $"At {chosen} the main window's least size was {window.MinWidth}x{window.MinHeight} on a {area} screen");
+                window.Width = MainWindow.SmallestWidth;
+                Ui.Settle();
+                Control content = window.GetVisualDescendants().OfType<LayoutTransformControl>().First().Child!;
+                Assert.True(content.Bounds.Width >= Math.Min(MainWindow.SmallestWidth, Math.Floor(area.Width / size)),
+                    $"At {chosen} the main window made {MainWindow.SmallestWidth} wide laid its content out {content.Bounds.Width} units wide");
+                PixelRect frame = new(dialog.Position, PixelSize.FromSize(dialog.FrameSize ?? dialog.ClientSize, dialog.DesktopScaling));
+                Assert.True(screen.WorkingArea.Contains(frame), $"At {chosen} the Settings dialog's frame {frame} left the screen's working area {screen.WorkingArea}");
+            }
+            dialog.Close();
+            Ui.Settle();
+            Assert.True(window.MinWidth == MainWindow.SmallestWidth && Scale(window.EditorArea.CodeEditor) == 1,
+                $"Settings closed unapplied left the window's least width {window.MinWidth} and its scale {Scale(window.EditorArea.CodeEditor)}");
+        }
+        finally
+        {
             window.Close();
         }
 
@@ -276,7 +328,7 @@ public sealed class SettingsTests : IDisposable
             dialog.Page = SettingsDialog.Appearance;
             Ui.Settle();
             Assert.Equal(expected, window.Settings.DisplayScale);
-            Assert.Equal((decimal)expected, Editor<NumericUpDown>(dialog, "Display scale").Value);
+            Assert.Equal(SizeSetting.Percent(expected), Editor<ComboBox>(dialog, "Display scale").SelectedItem);
             dialog.Close();
         }
         finally

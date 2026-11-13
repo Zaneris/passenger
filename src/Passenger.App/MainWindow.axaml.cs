@@ -21,8 +21,9 @@ namespace Passenger.App;
 
 public partial class MainWindow : IdeWindow
 {
-    /// <summary>The window's least width and height (its MinWidth and MinHeight), which a screenshot's <c>--size</c> is
-    /// held to: Avalonia would widen a smaller window to them without a word. Narrow enough to tile beside another on
+    /// <summary>The layout's least width and height in its own units: the window's MinWidth and MinHeight at a display scale
+    /// of 100%, that much larger at another (<see cref="IdeWindow.HoldAtLeast"/>), and what a screenshot's <c>--size</c> is
+    /// held to, as Avalonia would widen a smaller window without a word. Narrow enough to tile beside another on
     /// half a 1280-wide screen (Windows' snap halves, GNOME's Super+Left): the toolbar's names give way, a stripe puts
     /// what it has no room for behind More, and the side tool windows keep the editor its share.</summary>
     public const double SmallestWidth = 640;

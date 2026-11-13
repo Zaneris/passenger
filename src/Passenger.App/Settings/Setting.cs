@@ -89,6 +89,41 @@ public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSetting
     public override AppSettings Clamp(AppSettings settings) => set(settings, Math.Clamp(get(settings), min, max));
 }
 
+/// <summary>A size chosen from a drop-down of <paramref name="sizes"/> (1.5 shown as 150%), from the least to the most: the
+/// choice is made in a list that closes as it is made, so a size the window takes at once never moves what the pointer is
+/// on. A size off the list (written by hand) is shown as one of its own and kept; any is held between the least and most.</summary>
+public sealed class SizeSetting(Func<AppSettings, double> get, Func<AppSettings, double, AppSettings> set, IReadOnlyList<double> sizes, SettingRow? row = null)
+    : Setting(row)
+{
+    public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) => Box(now, change);
+
+    /// <summary>The drop-down alone, for a row the dialog builds round it.</summary>
+    public ComboBox Box(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
+    {
+        double value = get(now);
+        double[] offered = sizes.Contains(value) ? [.. sizes] : [.. sizes.Append(value).Order()];
+        ComboBox box = new()
+        {
+            ItemsSource = offered.Select(Percent).ToArray(),
+            SelectedIndex = Array.IndexOf(offered, value),
+            Classes = { StyleClasses.Form },
+        };
+        box.SelectionChanged += (_, _) =>
+        {
+            if (box.SelectedIndex >= 0)
+            {
+                change(s => set(s, offered[box.SelectedIndex]));
+            }
+        };
+        return box;
+    }
+
+    /// <summary>A size as the list shows it: 1.25 as 125%.</summary>
+    public static string Percent(double size) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{size * 100:0.#}%");
+
+    public override AppSettings Clamp(AppSettings settings) => set(settings, Math.Clamp(get(settings), sizes[0], sizes[^1]));
+}
+
 /// <summary>One of an enum's values, edited by a drop-down of the names Settings gives them, in <paramref name="choices"/>'
 /// order (the enum's own names where it gives none); a value this build does not know goes back to its default.</summary>
 public sealed class ChoiceSetting<T> : Setting where T : struct, Enum
