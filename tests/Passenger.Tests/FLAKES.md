@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-13
 
+- `TerminalTests`' `Enter_with_each_modifier_and_Ctrl_J_reach_a_program_as_it_asked_for_them_in_every_keymap(VSCode)`,
+  the Ubuntu VM (testing #1551): "Waited 60 s for a command Enter runs once the program has ended", the screen showing
+  `echo after` on a row of its own and then `$ after`. **The test waited wrong**: it typed `echo after` once the program
+  popped its keyboard flags, which the program does before it puts its terminal modes back (`stty` in a child) and
+  ends, so the line could come in that gap. After the modes were back but before dash's prompt, the tty echoed it ahead
+  of the prompt and dash, which edits no line itself, printed its answer on the prompt's row; a moment sooner, in raw
+  mode, it sat unechoed with its Enter a bare carriage return dash never runs. macOS's sh (bash, readline) takes either,
+  so the Mac never showed it. Not the terminal's: it sends keys as typed, and the line discipline treats type-ahead as
+  in any terminal. With the program held 1.5 s after putting its modes back, all three keymaps failed on the VM with the
+  issue's screen, and held before, with the line never run. The test now waits for the shell's prompt below the
+  program's last line (`WaitForPromptBelow`), as the mouse test does before its second program, which had the same gap
+  (36b324785, #1574).
 - `StoredTracesTests`' `A_stack_trace_through_runtime_async_methods_is_what_its_getter_writes`, CI's macOS (arm64)
   report lane, shard 2, at 667bdfccd (run 43448880209): "$exception.StackTrace was answered: error: The evaluation took
   longer than 3 s and could not be stopped, as it runs outside managed code". The program's first `Task.Yield` had the
