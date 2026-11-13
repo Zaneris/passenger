@@ -156,8 +156,12 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         top.Children.Add(scope);
         Show(choices.Start.Kind);
 
-        status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, Margin = new Thickness(12, 0, 12, 6) };
-        top.Children.Add(status);
+        status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        FindWindow = new Button { Classes = { StyleClasses.Link }, Content = "Open in Find Window", Focusable = false, IsEnabled = false, FontSize = 12, [DockPanel.DockProperty] = Dock.Right };
+        ToolTip.SetTip(FindWindow, $"Open in Find Window ({(OperatingSystem.IsMacOS() ? "⌘↩" : "Ctrl+Enter")})");
+        ToolTip.SetShowOnDisabled(FindWindow, true);
+        FindWindow.Click += (_, _) => KeepInFindWindow();
+        top.Children.Add(new DockPanel { Margin = new Thickness(12, 0, 12, 6), Children = { FindWindow, status } });
         results = new ListBox
         {
             Classes = { StyleClasses.Tree },
@@ -211,6 +215,23 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     /// <summary>A match to go to, or null when dismissed.</summary>
     public event EventHandler<SearchMatch?>? Done;
+
+    /// <summary>The link that lists the matches found in the Find window, enabled while there are some.</summary>
+    public Button FindWindow { get; }
+
+    /// <summary>The matches found, asked for in the Find window by the link or its keys, with the words searched for.</summary>
+    public event EventHandler<(string Text, FilesFound Found)>? FindWindowRequested;
+
+    /// <summary>The matches the search shown found.</summary>
+    public FilesFound Found => found;
+
+    private void KeepInFindWindow()
+    {
+        if (found.Matches.Count > 0)
+        {
+            FindWindowRequested?.Invoke(this, (Text, found));
+        }
+    }
 
     /// <summary>Replace All pressed: the query, its replacement, and the files it matched in.</summary>
     public event EventHandler<(SearchQuery Query, string Replacement, FilesFound Found)>? ReplaceRequested;
@@ -487,6 +508,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         results.ItemsSource = lines;
         results.SelectedIndex = lines.Count > 0 ? 0 : -1;
         status.Text = said;
+        FindWindow.IsEnabled = shown.Matches.Count > 0;
         ShowPreview();
     }
 
@@ -547,6 +569,10 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             case Key.Escape:
                 Done?.Invoke(this, null);
+                e.Handled = true;
+                break;
+            case Key.Enter when e.KeyModifiers == (OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control):
+                KeepInFindWindow();
                 e.Handled = true;
                 break;
             case Key.Enter when replacement?.IsFocused != true && !InField():

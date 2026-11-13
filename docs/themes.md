@@ -124,7 +124,8 @@ language this Passenger does not know is passed over and named.
   "sizes": { "left": 260, "right": 320, "bottom": 220 },
   "editorTabs": "left",
   "toolWindows": "tabs",
-  "closedWindows": "leave"
+  "closedWindows": "leave",
+  "findResults": "window"
 }
 ```
 
@@ -149,8 +150,10 @@ before put them.
 - `closedWindows` says what closing a tool window by its × does to its icon: `keep` it on the stripe, as hiding it does,
   or `leave` the stripe until the window is opened again from View | Tool Windows, Find Action or its keys; left out,
   keep.
+- `findResults` keeps Find in Files' matches in its `popup` alone, or in the Find `window` as well once one is gone to,
+  a tab to go back to; left out, the popup.
 
-What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `closedWindows`) is each a setting of Settings | Appearance: the
+What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `closedWindows`, `findResults`) is each a setting of Settings | Appearance: the
 theme's is the default there, and the place you choose wins over it whatever theme you choose, until you choose Theme
 default again.
 

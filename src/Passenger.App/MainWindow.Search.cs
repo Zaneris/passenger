@@ -35,10 +35,19 @@ public partial class MainWindow
         // However it closes: a match chosen, Escape, a click outside.
         popup.DetachedFromVisualTree += (_, _) => KeepFindScope(popup.Scope, closing: true);
         popup.ReplaceRequested += (_, asked) => IdeErrors.Observe(ReplaceAllAsync(popup, asked));
+        popup.FindWindowRequested += (_, asked) =>
+        {
+            popups.Close();
+            KeepMatches(asked.Text, asked.Found, withKeys: true);
+        };
         popups.Show(popup, match =>
         {
             if (match is not null)
             {
+                if (settings.FindResultsIn() == FindResults.FindWindow)
+                {
+                    KeepMatches(popup.Text, popup.Found, withKeys: false);
+                }
                 NavigateTo(match.Path, new TextPosition(match.Line, match.Column));
                 if (Editors.Active?.Path == match.Path)
                 {
@@ -48,6 +57,23 @@ public partial class MainWindow
             }
         });
         return popup;
+    }
+
+    /// <summary>A search's matches in a tab of the Find window, to go back to: with the keys where asked for there, else shown
+    /// behind the match gone to.</summary>
+    private void KeepMatches(string text, FilesFound found, bool withKeys)
+    {
+        string title = $"Occurrences of '{text}'";
+        Find.ShowMatches(title, [.. found.Matches.Select(m => new ToolWindows.Usage(m.Path, m.Line, m.Column, m.Length, m.LineText, Passenger.Languages.CSharp.UsageKind.Other, ProjectNameOf(m.Path)))]);
+        if (withKeys)
+        {
+            Dock.Activate(ToolWindowIds.Find);
+        }
+        else
+        {
+            Dock.Show(ToolWindowIds.Find);
+        }
+        status.Text = $"{title}: {Plural.Of(found.Matches.Count, "match", "matches")} kept in the Find window";
     }
 
     /// <summary>The scope Find in Files takes on rows of the Solution view: the solution's, a project's, a folder's as

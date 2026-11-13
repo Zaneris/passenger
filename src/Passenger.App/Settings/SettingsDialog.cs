@@ -264,6 +264,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.EditorTabs);
         Add(Declared.ToolWindowLook);
         Add(Declared.ClosedToolWindows);
+        Add(Declared.FindResults);
 
         Add(Declared.ReopenProjectsOnStartup);
         StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = 16 };

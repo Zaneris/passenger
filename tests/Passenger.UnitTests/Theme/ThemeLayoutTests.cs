@@ -110,6 +110,14 @@ public class ThemeLayoutTests
         Assert.Null(Read("""{"editorTabs": "left"}""").ClosedWindows);
     }
 
+    [Fact]
+    public void A_layout_gives_where_Find_in_Files_results_stay_and_one_that_gives_none_keeps_Passengers_own()
+    {
+        Assert.Equal([FindResults.Popup, FindResults.FindWindow],
+            ((string[])["popup", "window"]).Select(word => Read($$$"""{"findResults": "{{{word}}}"}""").FindResults));
+        Assert.Null(Read("""{"editorTabs": "left"}""").FindResults);
+    }
+
     [Theory]
     [InlineData("\"layout\": {\"editorTabs\": \"bottom\"}", "gives layout's editorTabs as \"bottom\": it is \"top\", \"left\" or \"right\"")]
     [InlineData("\"layout\": {\"editorTabs\": 1}", "gives layout's editorTabs as 1")]

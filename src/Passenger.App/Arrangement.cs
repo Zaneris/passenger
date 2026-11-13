@@ -24,3 +24,11 @@ public enum ClosedToolWindows
     KeepIcons,
     LeaveStripe,
 }
+
+/// <summary>Where Find in Files' results stay once a match is gone to: in its popup alone, closed with it, or kept in the
+/// Find window as well, to go back to.</summary>
+public enum FindResults
+{
+    Popup,
+    FindWindow,
+}

@@ -232,6 +232,17 @@ public sealed class FindView : DockPanel
         ShowSearch(search);
     }
 
+    /// <summary>A text search's matches in a tab of their own, grouped by project, then file, the first chosen.</summary>
+    public void ShowMatches(string title, IReadOnlyList<Usage> matches)
+    {
+        searches.Add(new Search(title, Projects(matches, 0, "match", "matches"), matches.Count, null, 0, null));
+        if (searches.Count > TabLimit)
+        {
+            searches.RemoveAt(0);
+        }
+        ShowSearch(searches[^1]);
+    }
+
     /// <summary>Usages grouped by what they do, then project, then file, the groups of what they do at a depth.</summary>
     private static List<FindRow> Kinds(IReadOnlyList<Usage> usages, int depth)
     {
@@ -243,14 +254,17 @@ public sealed class FindView : DockPanel
             {
                 continue;
             }
-            List<FindRow> projects = [.. ofKind.GroupBy(u => u.Project).OrderBy(g => g.Key, StringComparer.Ordinal).Select(project =>
-                new FindRow(project.Key, Core.Plural.Of(project.Count(), "usage"), depth + 1, null, [.. project.GroupBy(u => u.Path).OrderBy(g => g.Key, StringComparer.Ordinal).Select(file =>
-                    new FindRow(Path.GetFileName(file.Key), Core.Plural.Of(file.Count(), "usage"), depth + 2, null, [.. file.OrderBy(u => u.Line).ThenBy(u => u.Column).Select(u =>
-                        new FindRow(u.LineText.Trim(), (u.Line + 1).ToString(), depth + 3, u, []))]))]))];
-            roots.Add(new FindRow(name, Core.Plural.Of(ofKind.Count, "usage"), depth, null, projects));
+            roots.Add(new FindRow(name, Core.Plural.Of(ofKind.Count, "usage"), depth, null, Projects(ofKind, depth + 1, "usage", null)));
         }
         return roots;
     }
+
+    /// <summary>Usages or matches grouped by project, then file, at a depth, each group counting them by its noun.</summary>
+    private static List<FindRow> Projects(IReadOnlyList<Usage> usages, int depth, string noun, string? nouns) =>
+        [.. usages.GroupBy(u => u.Project).OrderBy(g => g.Key, StringComparer.Ordinal).Select(project =>
+            new FindRow(project.Key, Core.Plural.Of(project.Count(), noun, nouns), depth, null, [.. project.GroupBy(u => u.Path).OrderBy(g => g.Key, StringComparer.Ordinal).Select(file =>
+                new FindRow(Path.GetFileName(file.Key), Core.Plural.Of(file.Count(), noun, nouns), depth + 1, null, [.. file.OrderBy(u => u.Line).ThenBy(u => u.Column).Select(u =>
+                    new FindRow(u.LineText.Trim(), (u.Line + 1).ToString(), depth + 2, u, []))]))]))];
 
     /// <summary>Shows a kept search again, as a click on its tab does.</summary>
     public void ShowSearch(string title)

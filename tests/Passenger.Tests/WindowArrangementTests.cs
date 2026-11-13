@@ -7,6 +7,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Docking;
 using Passenger.App.Editors;
+using Passenger.App.Navigation;
 using Passenger.App.Settings;
 
 namespace Passenger.Tests;
@@ -200,6 +201,65 @@ public sealed class WindowArrangementTests : IDisposable
         finally
         {
             TestFolders.Delete(state);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Find_in_Files_matches_are_kept_in_the_Find_window_once_one_is_gone_to_and_Open_in_Find_Windows_keys_put_them_there()
+    {
+        MainWindow window = Open();
+        try
+        {
+            FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
+            Ui.Search(popup, "class");
+            Assert.Equal(3, popup.Matches.Count);
+            Ui.Press(window, "ENTER");
+            Assert.False(window.DockHost.IsShown(ToolWindowIds.Find), "A match gone to put the matches in the Find window, where they stay in the popup");
+
+            window.ApplySettings(window.Settings with { FindResults = FindResults.FindWindow });
+            Ui.Settle();
+            popup = window.ShowFindInFiles(replace: false)!;
+            Ui.Search(popup, "class");
+            string second = popup.Matches[1].Name;
+            Ui.Press(window, "DOWN");
+            Ui.Press(window, "ENTER");
+            Assert.Equal(second, window.EditorArea.Active?.Name);
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Find) && window.Find.Shown == "Occurrences of 'class'"
+                && window.Find.Rows.Count(r => r.Usage is not null) == 3,
+                $"Kept in the Find window, the matches show there as {window.Find.Shown} with {window.Find.Rows.Count(r => r.Usage is not null)} rows");
+            Assert.True(window.EditorArea.CodeEditor.IsKeyboardFocusWithin, "The match gone to does not have the keys, the Find window having taken them");
+
+            popup = window.ShowFindInFiles(replace: false)!;
+            Ui.Search(popup, "Two");
+            Ui.Press(window, OperatingSystem.IsMacOS() ? "meta ENTER" : "control ENTER");
+            Assert.True(window.Find.Shown == "Occurrences of 'Two'" && window.Find.IsKeyboardFocusWithin,
+                $"Open in Find Window's keys left {window.Find.Shown} in the Find window, its keys {(window.Find.IsKeyboardFocusWithin ? "there" : "elsewhere")}");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Cubicle_arranges_the_window_as_an_enterprise_IDE_does()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
+            Ui.Settle();
+            DockHost dock = window.DockHost;
+            Assert.True(window.EditorArea.ActiveGroup.TabsPlace == EditorTabsPlace.Top && dock.TitledTabs && dock.ClosesOffStripe
+                && window.Settings.FindResultsIn() == FindResults.FindWindow && ToolTabs(window).Length > 0,
+                $"Cubicle arranges the tabs {window.EditorArea.ActiveGroup.TabsPlace}, titled tabs {dock.TitledTabs}, closed windows leaving {dock.ClosesOffStripe}, "
+                + $"Find in Files' results {window.Settings.FindResultsIn()}, {ToolTabs(window).Length} tool tabs shown");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
         }
     }
 

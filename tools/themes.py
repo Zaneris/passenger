@@ -269,7 +269,7 @@ BUILT_IN = {
         layout={"places": {"rightTop": ["explorer", "commit"], "rightBottom": ["structure", "bookmarks"],
                            "bottomLeft": ["build", "run", "debug", "tests", "terminal", "find"], "bottomRight": ["problems"]},
                 "open": ["explorer", "build", "problems"], "sizes": {"left": 260, "right": 280, "bottom": 200},
-                "editorTabs": "top", "toolWindows": "tabs", "closedWindows": "leave"},
+                "editorTabs": "top", "toolWindows": "tabs", "closedWindows": "leave", "findResults": "window"},
         dark=dict(ground="#1E1F24", text="#DCDEE3", muted="#A0A5AF", accent="#2D70D0", glance="#6AAAF5",
                   red="#F07B7B", orange="#E8A272", yellow="#E6D9A2", green="#8CC97E", cyan="#62C9B5", blue="#7AAEEB",
                   purple="#C6A0E6", pink="#E094C4", comment="#6EAA62", member="#A9CFF2", string="#E0A584",
