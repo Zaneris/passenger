@@ -122,7 +122,8 @@ language this Passenger does not know is passed over and named.
   "places": { "rightTop": ["explorer", "commit"], "bottomLeft": ["build", "run"], "bottomRight": ["problems"] },
   "open": ["explorer", "build", "problems"],
   "sizes": { "left": 260, "right": 320, "bottom": 220 },
-  "editorTabs": "left"
+  "editorTabs": "left",
+  "toolWindows": "tabs"
 }
 ```
 
@@ -142,8 +143,10 @@ before put them.
   Passenger's own.
 - `editorTabs` stands each editor's tabs in a row across its `top`, or in a column down its `left` or `right` side; left
   out, across the top.
+- `toolWindows` names the docked tool windows by their `icons` on the stripes alone, or by `tabs` too: titled tabs along
+  the foot of each place where several dock; left out, by icons.
 
-What the layout arranges beyond where the windows dock (`editorTabs`) is each a setting of Settings | Appearance: the
+What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`) is each a setting of Settings | Appearance: the
 theme's is the default there, and the place you choose wins over it whatever theme you choose, until you choose Theme
 default again.
 

@@ -56,6 +56,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// across the top (<see cref="TabsPlace"/>).</summary>
     public EditorTabsPlace? EditorTabs { get; init; }
 
+    /// <summary>How docked tool windows are named as the person set it, or null where they set none: the theme's, else by
+    /// stripe icons alone (<see cref="ToolWindowsAs"/>).</summary>
+    public ToolWindowLook? ToolWindowLook { get; init; }
+
     /// <summary>The code font by its family's name, or null for the one Passenger carries.</summary>
     public string? EditorFontFamily { get; init; }
 
@@ -488,6 +492,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     /// <summary>Where the editor's tabs stand: the person's place, else the theme's, else across the top.</summary>
     public EditorTabsPlace TabsPlace() => EditorTabs ?? Themes.Layout?.EditorTabs ?? EditorTabsPlace.Top;
+
+    /// <summary>How docked tool windows are named: the person's choice, else the theme's, else by stripe icons alone.</summary>
+    public ToolWindowLook ToolWindowsAs() => ToolWindowLook ?? Themes.Layout?.ToolWindows ?? Passenger.App.ToolWindowLook.StripeIcons;
 
     /// <summary>A hand-edited or later build's value this build cannot use is brought into range, or back to its default
     /// (each setting of one value as <see cref="Declared"/> says); a shortcut that does not parse is the keymap's to pass over.</summary>

@@ -57,6 +57,8 @@ public sealed class DockHost : Grid
     /// <summary>The IDE's window the frame is in, once it is.</summary>
     private Window? host;
 
+    private bool titledTabs;
+
     public DockHost()
     {
         ColumnDefinitions = new ColumnDefinitions($"{StripeWidth},0,0,*,0,0,{StripeWidth}");
@@ -136,6 +138,21 @@ public sealed class DockHost : Grid
     }
 
     public IReadOnlyList<ToolWindow> Windows => windows;
+
+    /// <summary>Whether each place where several windows dock names them by titled tabs along its foot, beside their
+    /// stripe icons.</summary>
+    public bool TitledTabs
+    {
+        get => titledTabs;
+        set
+        {
+            if (value != titledTabs)
+            {
+                titledTabs = value;
+                Layout();
+            }
+        }
+    }
 
     /// <summary>The window shown last, which Shift+Escape hides.</summary>
     public ToolWindow? Active { get; private set; }
@@ -635,6 +652,7 @@ public sealed class DockHost : Grid
         foreach ((ToolAnchor anchor, ToolPane pane) in panes)
         {
             pane.Show(windows.FirstOrDefault(w => w.Anchor == anchor && w.IsShown && w.Mode == ToolMode.Docked));
+            pane.ShowTabs(titledTabs && pane.Window is not null ? [.. windows.Where(w => w.Anchor == anchor && w.Mode == ToolMode.Docked).OrderBy(w => w.Order)] : []);
         }
         Split(leftArea, panes[ToolAnchor.LeftTop], panes[ToolAnchor.LeftBottom], rows: true);
         Split(rightArea, panes[ToolAnchor.RightTop], panes[ToolAnchor.RightBottom], rows: true);

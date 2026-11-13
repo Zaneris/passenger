@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Editors;
 using Passenger.App.Settings;
 
@@ -104,6 +105,50 @@ public sealed class WindowArrangementTests : IDisposable
             window.Close();
         }
     }
+
+    [AvaloniaFact]
+    public void Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_a_stripe()
+    {
+        MainWindow window = Open();
+        try
+        {
+            DockHost dock = window.DockHost;
+            dock.Show(ToolWindowIds.Build);
+            Ui.Settle();
+            ToolAnchor place = dock[ToolWindowIds.Build].Anchor;
+            Assert.Empty(ToolTabs(window));
+
+            window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs });
+            Ui.Settle();
+            string[] docked = [.. dock.Windows.Where(w => w.Anchor == place && w.Mode == ToolMode.Docked).OrderBy(w => w.Order).Select(w => w.Id)];
+            string[] named = [.. ToolTabs(window).Select(t => (string)t.Tag!).Where(id => dock[id].Anchor == place)];
+            Assert.True(named.SequenceEqual(docked), $"The tabs along the place's foot name {string.Join(", ", named)}, where {string.Join(", ", docked)} dock there");
+            Assert.True(ToolTab(window, ToolWindowIds.Build).Classes.Contains(StyleClasses.Active), "Build, open, has no open tab");
+
+            Ui.Click(ToolTab(window, ToolWindowIds.Run));
+            Assert.True(dock.IsShown(ToolWindowIds.Run) && !dock.IsShown(ToolWindowIds.Build), "A click on Run's tab did not open Run in Build's place");
+
+            Ui.Drag(window, Ui.Centre(ToolTab(window, ToolWindowIds.Run), window), new Point(window.Bounds.Width - 20, 120));
+            Assert.True(dock[ToolWindowIds.Run] is { Anchor: ToolAnchor.RightTop, IsShown: true },
+                $"Run's tab dragged to the right stripe left it {dock[ToolWindowIds.Run].Anchor}");
+            Assert.True(Ui.Centre(ToolTab(window, ToolWindowIds.Run), window).X > window.Bounds.Width / 2,
+                "Run's tab did not go with it to the place it was dragged to, at the right");
+
+            window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.StripeIcons });
+            Ui.Settle();
+            Assert.Empty(ToolTabs(window));
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    private static Border[] ToolTabs(MainWindow window) =>
+        [.. window.DockHost.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.Tab) && b.Tag is string && b.IsEffectivelyVisible)];
+
+    private static Border ToolTab(MainWindow window, string id) => ToolTabs(window).Single(t => Equals(t.Tag, id));
 
     /// <summary>A theme kept as one a person added, its layout as given; its name.</summary>
     private static string Kept(string layout)

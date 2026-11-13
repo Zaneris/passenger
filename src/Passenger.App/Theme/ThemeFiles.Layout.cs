@@ -15,6 +15,9 @@ public sealed record ThemeLayout(IReadOnlyList<PlacedWindow> Places, IReadOnlyLi
 {
     /// <summary>Where the editor's tabs stand.</summary>
     public EditorTabsPlace? EditorTabs { get; init; }
+
+    /// <summary>How docked tool windows are named.</summary>
+    public ToolWindowLook? ToolWindows { get; init; }
 }
 
 /// <summary>A theme's <c>layout</c> (docs/themes.md).</summary>
@@ -42,7 +45,7 @@ public static partial class ThemeFiles
         {
             throw new FormatException($"gives layout as {Shown(layout.Value)}: layout is {{\"places\": {{…}}, \"open\": […], \"sizes\": {{…}}}}");
         }
-        PassOver(file, layout.Value, ["places", "open", "sizes", "editorTabs"], "layout", problems);
+        PassOver(file, layout.Value, ["places", "open", "sizes", "editorTabs", "toolWindows"], "layout", problems);
         List<PlacedWindow> places = [];
         if (Part(layout.Value, "places") is { } placed)
         {
@@ -70,6 +73,7 @@ public static partial class ThemeFiles
         return new ThemeLayout(places, open, Area(sizes, "left"), Area(sizes, "right"), Area(sizes, "bottom"))
         {
             EditorTabs = Word(layout.Value, "editorTabs", [("top", EditorTabsPlace.Top), ("left", EditorTabsPlace.Left), ("right", EditorTabsPlace.Right)]),
+            ToolWindows = Word(layout.Value, "toolWindows", [("icons", ToolWindowLook.StripeIcons), ("tabs", ToolWindowLook.TitledTabs)]),
         };
     }
 

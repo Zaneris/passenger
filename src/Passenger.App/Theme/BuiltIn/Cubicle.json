@@ -21,7 +21,7 @@
     "DialogFooterPadding": [12, 8, 12, 8]
   },
   "fonts": {"code": {"size": 12}},
-  "layout": {"places": {"rightTop": ["explorer", "commit"], "rightBottom": ["structure", "bookmarks"], "bottomLeft": ["build", "run", "debug", "tests", "terminal", "find"], "bottomRight": ["problems"]}, "open": ["explorer", "build", "problems"], "sizes": {"left": 260, "right": 280, "bottom": 200}, "editorTabs": "top"},
+  "layout": {"places": {"rightTop": ["explorer", "commit"], "rightBottom": ["structure", "bookmarks"], "bottomLeft": ["build", "run", "debug", "tests", "terminal", "find"], "bottomRight": ["problems"]}, "open": ["explorer", "build", "problems"], "sizes": {"left": 260, "right": 280, "bottom": 200}, "editorTabs": "top", "toolWindows": "tabs"},
   "dark": {
     "Frame": "#15161B",
     "Panel": "#26272D",

@@ -39,6 +39,12 @@ public static class Declared
         new(D.Appearance, "Editor tabs", "editor tabs tab well strip placement position vertical side left right top layout arrangement",
             "Where each editor's tabs stand: a row across its top, or a column down its left or right side, which fits more of them."));
 
+    public static readonly ThemedChoiceSetting<ToolWindowLook> ToolWindowLook = new(s => s.ToolWindowLook, s => s.ToolWindowsAs(), (s, v) => s with { ToolWindowLook = v },
+        [(Passenger.App.ToolWindowLook.StripeIcons, "Stripe icons"), (Passenger.App.ToolWindowLook.TitledTabs, "Titled tabs")],
+        new(D.Appearance, "Tool windows", "tool windows docked tabs titles names stripe icons wells side bottom panels layout arrangement",
+            "How docked tool windows are named: by their icons on the stripes, or by tabs with their names along the foot of each "
+            + "place where several dock as well, a click on one opening it and a drag moving it as its icon does."));
+
     public static readonly ToggleSetting ReopenProjectsOnStartup = new(s => s.ReopenProjectsOnStartup, (s, v) => s with { ReopenProjectsOnStartup = v },
         new(D.SystemPage, "Reopen projects on startup", "reopen last solution project folder startup start launch welcome screen recent"));
 

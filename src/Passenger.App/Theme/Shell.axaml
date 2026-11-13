@@ -241,6 +241,10 @@
     <Style Selector="Border.sideTabs TextBlock.tabName">
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
+    <!-- A place's titled tool window tabs along its foot. -->
+    <Style Selector="Border.tabStrip.toolTabStrip">
+        <Setter Property="Padding" Value="4,0,0,0" />
+    </Style>
     <Style Selector="Border.statusBar">
         <Setter Property="Height" Value="26" />
         <Setter Property="Background" Value="{DynamicResource Passenger.Frame}" />
@@ -780,6 +784,13 @@
     </Style>
     <Style Selector="Border.tab.active.elsewhere TextBlock.tabName">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
+    </Style>
+    <!-- A tool window's titled tab, open, on the window's own ground, joined to it. -->
+    <Style Selector="Border.toolTabStrip Border.tab.active">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
+    </Style>
+    <Style Selector="Border.toolTabStrip Border.tab.active:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
     </Style>
     <Style Selector="Ellipse.modified">
         <Setter Property="Fill" Value="{DynamicResource Passenger.Modified}" />

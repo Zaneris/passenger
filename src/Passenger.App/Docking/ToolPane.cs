@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
@@ -21,6 +22,16 @@ internal sealed class ToolPane : DockPanel
     private readonly Button expandAll;
     private readonly Button collapseAll;
     private readonly StackPanel treeButtons;
+
+    /// <summary>The titled tabs along its foot of the windows docked in its place, while several are and the dock names them
+    /// so (<see cref="ShowTabs"/>).</summary>
+    private readonly Border tabStrip;
+    private readonly StackPanel tabRow = new() { Orientation = Orientation.Horizontal };
+    private readonly ScrollViewer tabView;
+    private readonly Dictionary<ToolWindow, Border> tabs = [];
+
+    /// <summary>At the tabs' end, shown while some are out of sight: a menu of them.</summary>
+    private readonly Button hiddenTabs;
 
     /// <summary>The window's own action's button (<see cref="ToolWindow.HeaderAction"/>), made as the pane shows it.</summary>
     private Button? own;
@@ -88,6 +99,21 @@ internal sealed class ToolPane : DockPanel
         header.PointerMoved += (_, e) => host.Drag.Continue(e);
         header.PointerReleased += (_, e) => host.Drag.End(e);
         Children.Add(header);
+        tabView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = tabRow };
+        hiddenTabs = ToolButtons.Of(IconKeys.ChevronDown, "Hidden Tool Windows", ShowHiddenTabs);
+        hiddenTabs.IsVisible = false;
+        hiddenTabs.VerticalAlignment = VerticalAlignment.Center;
+        hiddenTabs.Margin = new Thickness(0, 0, 6, 0);
+        hiddenTabs[DockProperty] = Dock.Right;
+        tabView.ScrollChanged += (_, _) => hiddenTabs.IsVisible = HiddenTabs.Count > 0;
+        tabStrip = new Border
+        {
+            Classes = { StyleClasses.TabStrip, StyleClasses.ToolTabStrip },
+            [DockProperty] = Dock.Bottom,
+            IsVisible = false,
+            Child = new DockPanel { Children = { hiddenTabs, tabView } },
+        };
+        Children.Add(tabStrip);
         Children.Add(new Panel { Children = { body, new ThemeBackdrop(BackgroundPlaces.ToolWindows) } });
         Classes.Add(StyleClasses.ToolPane);
         IsVisible = false;
@@ -159,6 +185,105 @@ internal sealed class ToolPane : DockPanel
         expandAll.IsVisible = window?.ExpandAll is not null;
         collapseAll.IsVisible = window?.CollapseAll is not null;
         IsVisible = window is not null;
+    }
+
+    /// <summary>Titled tabs along its foot for the windows docked in its place, in their order, the one shown joined to it;
+    /// none while fewer than two dock there. A tab opens its window as a click on its stripe icon does, and drags it.</summary>
+    public void ShowTabs(IReadOnlyList<ToolWindow> docked)
+    {
+        bool shown = docked.Count > 1;
+        tabStrip.IsVisible = shown;
+        if (!shown)
+        {
+            tabRow.Children.Clear();
+            return;
+        }
+        Border[] wanted = [.. docked.Select(TabOf)];
+        if (!tabRow.Children.SequenceEqual(wanted))
+        {
+            tabRow.Children.Clear();
+            tabRow.Children.AddRange(wanted);
+        }
+        foreach ((ToolWindow window, Border tab) in tabs)
+        {
+            tab.Classes.Set(StyleClasses.Active, window == Window);
+        }
+        // The open window's tab scrolled into sight once laid out, however many crowd the strip.
+        if (Window is { } open && tabs.TryGetValue(open, out Border? shownTab))
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(shownTab.BringIntoView, Avalonia.Threading.DispatcherPriority.Loaded);
+        }
+    }
+
+    /// <summary>The windows whose tabs are out of the strip's sight, wholly or in part, in its order.</summary>
+    public IReadOnlyList<ToolWindow> HiddenTabs
+    {
+        get
+        {
+            double from = tabView.Offset.X;
+            double to = from + tabView.Viewport.Width;
+            return [.. tabs.Where(t => tabRow.Children.Contains(t.Value) && (t.Value.Bounds.X < from - 0.5 || t.Value.Bounds.Right > to + 0.5))
+                .OrderBy(t => tabRow.Children.IndexOf(t.Value)).Select(t => t.Key)];
+        }
+    }
+
+    /// <summary>The menu of the tabs out of sight, each opening its window as its tab would.</summary>
+    private void ShowHiddenTabs()
+    {
+        ContextMenu menu = new() { Placement = PlacementMode.TopEdgeAlignedRight };
+        foreach (ToolWindow window in HiddenTabs)
+        {
+            PathIcon glyph = new();
+            glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(window.Icon));
+            MenuItem item = new() { Header = window.Title, Icon = glyph };
+            string id = window.Id;
+            item.Click += (_, _) => host.Show(id);
+            menu.Items.Add(item);
+        }
+        menu.Open(hiddenTabs);
+    }
+
+    /// <summary>A window's tab, made the first time: its icon and its title as it is now.</summary>
+    private Border TabOf(ToolWindow window)
+    {
+        if (tabs.TryGetValue(window, out Border? made))
+        {
+            return made;
+        }
+        RowIcon icon = new() { Width = 14, Height = 14, DataKey = window.Icon };
+        TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
+        Border tab = new()
+        {
+            Classes = { StyleClasses.Tab },
+            Tag = window.Id,
+            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } },
+        };
+        Avalonia.Automation.AutomationProperties.SetName(tab, window.Title);
+        // Tool windows live as long as the dock, as their tabs do.
+        window.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ToolWindow.Title))
+            {
+                name.Text = window.Title;
+            }
+        };
+        tab.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(tab).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+            if (Window != window)
+            {
+                host.Show(window.Id);
+            }
+            host.Drag.Begin(window, e, tab);
+            e.Handled = true;
+        };
+        tab.PointerMoved += (_, e) => host.Drag.Continue(e);
+        tab.PointerReleased += (_, e) => host.Drag.End(e);
+        tabs[window] = tab;
+        return tab;
     }
 
     /// <summary>A header button's action, run on the window the pane shows.</summary>

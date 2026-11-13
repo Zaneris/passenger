@@ -8,3 +8,11 @@ public enum EditorTabsPlace
     Left,
     Right,
 }
+
+/// <summary>How docked tool windows are named: by their icons on the stripes alone, or also by titled tabs along the foot
+/// of each place where several dock, the open one's tab joined to it.</summary>
+public enum ToolWindowLook
+{
+    StripeIcons,
+    TitledTabs,
+}
