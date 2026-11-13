@@ -1,6 +1,6 @@
 #!/bin/sh
-# Passenger's macOS disk image: `just package-mac [osx-arm64] [--dry-run]` makes
-# artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon only: no Intel Mac build ships), a name each release keeps.
+# Passenger's macOS disk image: `just package-mac [osx-arm64|osx-x64] [--dry-run]` makes
+# artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon) or Passenger-macos-x64.dmg (Intel), names each release keeps.
 # The Release publish (self-contained, ReadyToRun, the debugger and Roslyn's server beside it) becomes Passenger.app,
 # signed under the hardened runtime with the entitlements below: by PASSENGER_SIGN_IDENTITY (a Developer ID
 # Application identity), else ad hoc, which Apple Silicon needs to run it at all and which a person opens once through
@@ -14,9 +14,9 @@ rid=osx-arm64
 dry_run=
 for arg in "$@"; do
     case $arg in
-        osx-arm64) rid=$arg ;;
+        osx-arm64 | osx-x64) rid=$arg ;;
         --dry-run) dry_run=1 ;;
-        *) fail "'$arg' is neither osx-arm64 nor --dry-run (no Intel Mac build ships)" ;;
+        *) fail "'$arg' is neither osx-arm64, osx-x64 nor --dry-run" ;;
     esac
 done
 arch=${rid#osx-}
@@ -327,6 +327,18 @@ mkdir -p "$check/Sample"
 ditto "$shipped" "$check/Passenger.app"
 detach
 codesign --verify --deep --strict "$check/Passenger.app" || fail "the app copied out of the image does not verify before it runs"
+# Under Rosetta the Intel app evaluates projects only with an Intel SDK: DOTNET_ROOT_X64's, as .NET's own host reads it.
+evaluates=1
+if [ "$machine" = x86_64 ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || true)" = 1 ]; then
+    if [ -n "${DOTNET_ROOT_X64:-}" ]; then
+        DOTNET_ROOT=$DOTNET_ROOT_X64
+        PATH="$DOTNET_ROOT_X64:$PATH"
+        export DOTNET_ROOT PATH
+    else
+        evaluates=
+        echo "package-mac: no DOTNET_ROOT_X64 names an Intel .NET SDK, so the check under Rosetta evaluates no project" >&2
+    fi
+fi
 # The framework of the SDK the repository's global.json picks, which carries its own reference assemblies: nothing downloaded.
 framework=net$(cd "$check/Sample" && dotnet --version | cut -d. -f1).0
 cat > "$check/Sample/Sample.csproj" <<EOF
@@ -348,6 +360,9 @@ for run in 1 2; do
     if [ "${loaded:-0}" -ne "$run" ]; then
         tail -n 20 "$settings/logs/passenger.log" >&2 || true
         fail "the C# language server of the app copied out of the image did not load the sample in run $run"
+    fi
+    if [ -n "$evaluates" ] && grep -E 'The project host could not (evaluate|build) the projects' "$settings/logs/passenger.log" >&2; then
+        fail "the project host of the app copied out of the image could not read the sample in run $run"
     fi
 done
 ls "$settings"/cache/roslyn/*/cache/* > /dev/null 2>&1 \

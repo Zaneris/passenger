@@ -92,8 +92,9 @@ jobs:
     with:
       report: false
 
-  # Each system's package, with the Developer ID or the Windows signature when the secrets hold one. macOS is Apple
-  # Silicon only; the arm64 installer and archive are cross-published on x64 runners.
+  # Each system's package, with the Developer ID or the Windows signature when the secrets hold one. The Intel Mac's disk
+  # image is cross-published on an Apple Silicon runner, its check run under Rosetta; the arm64 installer and archive on
+  # x64 runners.
   package:
     name: Package (${{ matrix.rid }})
     needs: [version, test]
@@ -105,6 +106,8 @@ jobs:
       matrix:
         include:
           - rid: osx-arm64
+            os: macos-latest
+          - rid: osx-x64
             os: macos-latest
           - rid: win-x64
             os: windows-latest
@@ -129,6 +132,29 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      # The Intel app's check runs it under Rosetta with an Intel SDK beside the runner's own, set up first so the
+      # runner's own builds; tools/package-mac.sh takes it from DOTNET_ROOT_X64.
+      - name: An Intel .NET SDK for the check
+        if: matrix.rid == 'osx-x64'
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet-intel
+        with:
+          global-json-file: global.json
+          architecture: x64
+          skip-lts-prepass: true
+
+      # Rosetta, which the runner may lack; setup-dotnet puts another processor's .NET in a folder beneath the one given.
+      - name: Rosetta
+        if: matrix.rid == 'osx-x64'
+        run: |
+          arch -x86_64 /usr/bin/true 2> /dev/null || sudo softwareupdate --install-rosetta --agree-to-license
+          for root in "$RUNNER_TEMP/dotnet-intel/x64" "$RUNNER_TEMP/dotnet-intel"; do
+            [ ! -x "$root/dotnet" ] || break
+          done
+          arch -x86_64 "$root/dotnet" --version
+          echo "DOTNET_ROOT_X64=$root" >> "$GITHUB_ENV"
 
       # .NET 10 runs vpk.
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -414,6 +440,7 @@ jobs:
           Passenger-linux-arm64.tar.gz
           Passenger-linux-x64.tar.gz
           Passenger-macos-arm64.dmg
+          Passenger-macos-x64.dmg
           Passenger-windows-arm64.exe
           Passenger-windows-x64.exe
           PassengerIDE-$VERSION-win-arm64-full.nupkg

@@ -59,8 +59,8 @@ screenshot path *args:
     dotnet run --project {{app}} -- --screenshot {{path}} {{args}}
 
 # As the packages publish it, at the release's version (tools/release-common.sh): precompiled with ReadyToRun for startup,
-# only the packages the lock files pin. No Intel Mac build ships. The inner sh is named publish, which its failures say.
-# A self-contained Release build for one platform: just publish osx-arm64 | win-x64 | win-arm64 | linux-x64 | linux-arm64
+# only the packages the lock files pin. The inner sh is named publish, which its failures say.
+# A self-contained Release build for one platform: just publish osx-arm64 | osx-x64 | win-x64 | win-arm64 | linux-x64 | linux-arm64
 [unix]
 publish rid:
     sh -c '. tools/release-common.sh && version=$(release_version .) && publish_app . "$1" "$version"' publish {{ quote(rid) }}
@@ -85,7 +85,8 @@ container-tools *args:
 
 # The app signed ad hoc, or with PASSENGER_SIGN_IDENTITY and then, with PASSENGER_NOTARY_PROFILE, the app and the image
 # notarized and stapled, and checked mounted; --dry-run writes what those two would run instead.
-# The macOS disk image, artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon): just package-mac [osx-arm64] [--dry-run]
+# The macOS disk image, artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon) or -x64.dmg (Intel, checked under
+# Rosetta on Apple Silicon): just package-mac [osx-arm64|osx-x64] [--dry-run]
 package-mac *args:
     tools/package-mac.sh {{args}}
 

@@ -37,7 +37,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>The downloads the release workflow publishes with every release, by fixed names.</summary>
     private static readonly string[] Downloads =
     [
-        "Passenger-macos-arm64.dmg", "Passenger-windows-x64.exe", "Passenger-windows-arm64.exe",
+        "Passenger-macos-arm64.dmg", "Passenger-macos-x64.dmg", "Passenger-windows-x64.exe", "Passenger-windows-arm64.exe",
         "Passenger-linux-x64.tar.gz", "Passenger-linux-arm64.tar.gz",
     ];
 

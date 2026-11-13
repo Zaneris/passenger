@@ -1,6 +1,6 @@
 # Run by hand only, as the owner decided to spend Actions' minutes (Actions > CI > Run workflow, or `gh workflow run CI
 # --ref main`; a pull request's branch the same way): the solution built (warnings are errors) and every test run on
-# macOS (arm64), Windows and Linux, the gate's failing the run and the report lane's listed; the macOS disk image made
+# macOS (arm64), Windows and Linux, the gate's failing the run and the report lane's listed; the macOS disk images made
 # and checked; the Windows installer and the Linux archive built, installed, used and uninstalled; and on Linux, the
 # solution restored from nothing and every package checked against THIRD_PARTY_NOTICES.md. Every restore is locked to
 # the packages.lock.json files. Actions are pinned to a release's commit.
@@ -32,15 +32,16 @@ jobs:
     with:
       report: true
 
-  # The disk image, made with no Developer ID here (the app signed ad hoc, nothing notarized) and mounted read-only and
+  # Each disk image, made with no Developer ID here (the app signed ad hoc, nothing notarized) and mounted read-only and
   # checked before it is done.
   package:
     name: Disk image (${{ matrix.rid }})
     strategy:
       fail-fast: false
-      # Apple Silicon only: no Intel Mac build ships.
+      # Apple Silicon's and Intel's, both on an Apple Silicon runner: the Intel app is cross-published and runs its check
+      # under Rosetta.
       matrix:
-        rid: [osx-arm64]
+        rid: [osx-arm64, osx-x64]
     runs-on: macos-latest
     timeout-minutes: 40
     steps:
@@ -48,6 +49,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      # The Intel app's check runs it under Rosetta with an Intel SDK beside the runner's own, set up first so the
+      # runner's own builds; tools/package-mac.sh takes it from DOTNET_ROOT_X64.
+      - name: An Intel .NET SDK for the check
+        if: matrix.rid == 'osx-x64'
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet-intel
+        with:
+          global-json-file: global.json
+          architecture: x64
+          skip-lts-prepass: true
+
+      # Rosetta, which the runner may lack; setup-dotnet puts another processor's .NET in a folder beneath the one given.
+      - name: Rosetta
+        if: matrix.rid == 'osx-x64'
+        run: |
+          arch -x86_64 /usr/bin/true 2> /dev/null || sudo softwareupdate --install-rosetta --agree-to-license
+          for root in "$RUNNER_TEMP/dotnet-intel/x64" "$RUNNER_TEMP/dotnet-intel"; do
+            [ ! -x "$root/dotnet" ] || break
+          done
+          arch -x86_64 "$root/dotnet" --version
+          echo "DOTNET_ROOT_X64=$root" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
