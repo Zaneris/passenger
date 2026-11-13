@@ -234,9 +234,18 @@ public static class ChildProcesses
     public static Task<Process> StartAsync(ProcessStartInfo start) => StartOffAsync(start, answers: null);
 
     /// <summary>The fork, unheld: what started the child holds its own wait for it, and the window's end may wait for a
-    /// start with no UI thread to come back to.</summary>
-    private static async Task<Process> StartOffAsync(ProcessStartInfo start, IReadOnlyCollection<int>? answers) =>
-        SynchronizationContext.Current is null ? Start(start, answers) : await BackgroundWork.Unheld(() => Start(start, answers));
+    /// start with no UI thread to come back to. What the start throws (its folder gone) is the caller's as it comes back,
+    /// and seen as it is thrown, so a caller whose thread never runs again leaves it to no finalizer.</summary>
+    private static async Task<Process> StartOffAsync(ProcessStartInfo start, IReadOnlyCollection<int>? answers)
+    {
+        if (SynchronizationContext.Current is null)
+        {
+            return Start(start, answers);
+        }
+        Task<Process> starting = BackgroundWork.Unheld(() => Start(start, answers));
+        UnawaitedWork.Dismiss(starting);
+        return await starting;
+    }
 
     /// <summary><see cref="Start(ProcessStartInfo)"/>, with the exit codes that are the child's answer, not its failure.</summary>
     private static Process Start(ProcessStartInfo start, IReadOnlyCollection<int>? answers)

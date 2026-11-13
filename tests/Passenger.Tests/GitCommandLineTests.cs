@@ -1,3 +1,4 @@
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Vcs;
@@ -8,7 +9,7 @@ namespace Passenger.Tests;
 
 /// <summary>What the window hands git names the files and repository the person means, however many and however they
 /// are named: thousands of long paths commit and roll back, a folder whose name ends in a space is its own repository,
-/// and a\b.txt is not a/b.txt off Windows.</summary>
+/// and a\b.txt is not a/b.txt off Windows; and a repository's folder deleted under a window starts no git there.</summary>
 public sealed class GitCommandLineTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n}\n";
@@ -16,6 +17,80 @@ public sealed class GitCommandLineTests : IDisposable
     private readonly string folder = TestFolders.Create("git-lines-");
 
     public void Dispose() => TestFolders.Delete(folder);
+
+    /// <summary>Run as a window test is, on a dispatcher that goes when its run ends: the working tree's folder is deleted
+    /// under the window, its status read, and the window closed with another asked for. No git starts in the folder gone,
+    /// so none is said to be not installed, and none that failed to start there is left for the finalizer to report into
+    /// whichever test ran then.</summary>
+    [Fact]
+    public async Task A_status_asked_for_in_a_deleted_folder_never_says_git_is_not_installed_nor_leaves_an_error_once_the_windows_loop_is_gone()
+    {
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original);
+        await TestGit.InitAsync(folder);
+        string tree = PathNames.Canonical(folder);
+        List<Exception> unheard = [];
+        EventHandler<UnobservedTaskExceptionEventArgs> finalized = (_, e) =>
+        {
+            lock (unheard)
+            {
+                unheard.AddRange(e.Exception.InnerExceptions.Where(x => x.Message.Contains(tree, StringComparison.Ordinal)));
+            }
+        };
+        TaskScheduler.UnobservedTaskException += finalized;
+        try
+        {
+            (Task? Ended, bool Missing, Exception? Failed) run = await HeadlessUnitTestSession.GetOrStartForAssembly(typeof(GitCommandLineTests).Assembly).Dispatch(() =>
+            {
+                // As every window test starts and ends (TestsLeaveNothingBehind), its window closed however the run ends.
+                BackgroundWork.Forget();
+                OpenWindows.Watch();
+                try
+                {
+                    MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+                    Ui.Landed(() => window.Vcs.Branch == "main", "the branch read as the working tree opened");
+                    TestFolders.Delete(folder);
+                    Task read = window.Vcs.RefreshAsync();
+                    Ui.AwaitPumped(read, "the status asked for once the folder was gone");
+                    bool missing = window.Vcs.GitMissing;
+                    // Asked again as the window closes, never come back to.
+                    UnawaitedWork.Dismiss(window.Vcs.RefreshAsync());
+                    window.Close();
+                    return (window.Ended, missing, (Exception?)null);
+                }
+                catch (Exception failed)
+                {
+                    OpenWindows.CloseAll();
+                    return (null, false, failed);
+                }
+            }, TestContext.Current.CancellationToken);
+            // Off the window's thread, where the session ends a run: a test ending there holds it in the runner's wait for the next.
+            await Task.Yield();
+            if (run.Failed is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(run.Failed);
+            }
+            Assert.False(run.Missing, "With the working tree's folder deleted, the window says git is not installed");
+            Task ended = run.Ended ?? throw new InvalidOperationException("The window closed with no end to wait for");
+            Assert.True(await Waiting.Within(ended, MainWindow.EndLimit + TimeSpan.FromSeconds(5).Scaled(), TestContext.Current.CancellationToken, scaled: false),
+                "The window closed without ending what it started within its limit, so the IDE's process would not end");
+            // A task nobody came back for is heard of when the collector finalizes it.
+            for (int i = 0; i < 20; i++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Waiting.For(TimeSpan.FromMilliseconds(100), "for a task nobody came back for to be finalized and heard of, were there one");
+            }
+            lock (unheard)
+            {
+                Assert.True(unheard.Count == 0, "A git asked for in the deleted folder failed to start once the window's loop was gone, with nothing left to "
+                    + $"hear it, so the IDE would report it as an error into whatever ran next: {string.Join("; ", unheard.Select(e => e.Message))}");
+            }
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= finalized;
+        }
+    }
 
     /// <summary>Commit and Rollback of 2,000 files whose paths together overrun the system's command line (Windows' 32,767
     /// characters, macOS's 1 MB, Linux's 2 MB) take every one of them.</summary>

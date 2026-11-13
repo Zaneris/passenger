@@ -2040,6 +2040,11 @@ public sealed partial class Git
         ReadOnlyMemory<byte> input, IReadOnlyDictionary<string, string>? environment, IReadOnlyCollection<int>? answers, CancellationToken cancel, GitAsker? asker,
         GitHold held)
     {
+        // A folder gone (deleted under a window, or with it as it closes) starts no git, which could only fail there.
+        if (!Directory.Exists(folder))
+        {
+            return (Gone(folder), default);
+        }
         if (await StartAsync(folder, arguments) is not { } start)
         {
             return (NotInstalled, default);
@@ -2057,7 +2062,7 @@ public sealed partial class Git
         }
         catch (System.ComponentModel.Win32Exception unstarted)
         {
-            return (StartFailure(unstarted), default);
+            return (Directory.Exists(folder) ? StartFailure(unstarted) : Gone(folder), default);
         }
         catch (IOException unread)
         {
@@ -2138,6 +2143,10 @@ public sealed partial class Git
         failed.NativeErrorCode == 2 || (OperatingSystem.IsWindows() && failed.NativeErrorCode == 3)
             ? new GitResult(Absent, string.Empty, $"git is not installed: {failed.Message}")
             : new GitResult(Unstarted, string.Empty, $"git could not be started: {failed.Message}");
+
+    /// <summary>Why a call has no answer from git where the folder it was asked of is not there: git was not run, never
+    /// that git is not installed, though a start there fails on macOS and Linux as one of a program not found does.</summary>
+    internal static GitResult Gone(string folder) => new(Unstarted, string.Empty, $"git was not run in {folder}, which is not there");
 
     private static GitResult NotInstalled =>
         new(Absent, string.Empty, OperatingSystem.IsMacOS() ? "git is not installed: xcode-select --install installs it" : "git is not installed");
