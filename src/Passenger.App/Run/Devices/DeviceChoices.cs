@@ -38,6 +38,9 @@ public sealed class DeviceChoices
         Changed?.Invoke(this, project.Path);
     }
 
+    /// <summary>The choices as the folder's state keeps them, which a whole rewrite of that state carries on.</summary>
+    public Dictionary<string, KeptTarget> Kept => new(chosen, StringComparer.Ordinal);
+
     /// <summary>Chooses where a project runs, kept with the folder.</summary>
     public void Choose(ProjectModel project, DeviceTarget target)
     {
@@ -50,7 +53,7 @@ public sealed class DeviceChoices
         chosen[project.Path] = choice;
         if (kept is { } document)
         {
-            document.Set(document.Value with { RunTargets = new Dictionary<string, KeptTarget>(chosen, StringComparer.Ordinal) });
+            document.Set(document.Value with { RunTargets = Kept });
         }
         Changed?.Invoke(this, project.Path);
     }
