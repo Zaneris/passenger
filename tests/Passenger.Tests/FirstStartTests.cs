@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Settings;
 using Passenger.App.State;
@@ -166,6 +167,69 @@ public sealed class FirstStartTests : IDisposable
         Assert.False(own.ShowFirstStartOnce(), "A window keeping no settings (an agent's, a screenshot's) asked the theme");
         Assert.Null(own.FirstStart);
         own.Close();
+    }
+
+    /// <summary>At the window's smallest size, 640 by 500 at a display scale of 100% and that times the largest scale
+    /// Settings offers, both questions are laid out at the smallest width with nothing past it: every tile, the system's
+    /// choice, Back and Keep the Defaults whole across it, the tiles' words untrimmed, and the page scrolls down to its end.</summary>
+    [AvaloniaTheory]
+    [InlineData(1.0)]
+    [InlineData(3.0)]
+    public void At_the_windows_smallest_size_both_questions_fit_its_width_and_scroll_to_their_end(double scale)
+    {
+        MainWindow window = new()
+        {
+            Width = MainWindow.SmallestWidth * scale, Height = MainWindow.SmallestHeight * scale, StateFolder = state, StartsLanguageServer = false, Unseen = false,
+        };
+        window.Show();
+        window.ApplySettings(window.Settings with { DisplayScale = scale });
+        Ui.Settle();
+        try
+        {
+            FirstStartView page = window.ShowFirstStart();
+            Ui.Settle();
+            Assert.True(Math.Abs(page.Bounds.Width - MainWindow.SmallestWidth) < 1,
+                $"At a display scale of {scale:P0} the question is laid out {page.Bounds.Width} wide, not at the window's smallest width, {MainWindow.SmallestWidth}");
+            Fits(page, $"The theme's question at {scale:P0}");
+            Ui.Click(page.Tiles[0]);
+            Assert.Equal(FirstStartView.Screen.DarkOrLight, page.Shown);
+            Ui.Settle();
+            Fits(page, $"The question of dark or light at {scale:P0}");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>Holds that a question shows nothing past its width (every tile, the system's choice, Back and Keep the
+    /// Defaults whole across it, no words of a tile trimmed) and that scrolled to its end, Keep the Defaults shows whole.</summary>
+    private static void Fits(FirstStartView page, string question)
+    {
+        ScrollViewer scroller = page.GetVisualDescendants().OfType<ScrollViewer>().First();
+        Button keep = page.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Keep the Defaults");
+        Assert.True(scroller.Extent.Width <= scroller.Viewport.Width + 0.5, $"{question} is {scroller.Extent.Width} wide, past the {scroller.Viewport.Width} it is given");
+        foreach (Control shown in ((Control[])[.. page.Tiles, page.SystemChoice, page.Back, keep]).Where(c => c.IsEffectivelyVisible))
+        {
+            Rect place = Place(shown, scroller);
+            Assert.True(place.X >= -0.5 && place.Right <= scroller.Viewport.Width + 0.5,
+                $"{question} cuts {Avalonia.Automation.AutomationProperties.GetName(shown) ?? Ui.Named(shown)}, from {place.X} to {place.Right} across the {scroller.Viewport.Width} it shows");
+        }
+        foreach (TextBlock words in page.Tiles.Append(page.SystemChoice).SelectMany(t => t.GetVisualDescendants().OfType<TextBlock>()).Where(t => t.IsEffectivelyVisible))
+        {
+            Assert.True(words.TextLayout.TextLines.All(l => !l.HasCollapsed), $"{question} trims \"{words.Text}\" to fit");
+        }
+        scroller.Offset = new Vector(0, Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height));
+        Ui.Settle();
+        Rect last = Place(keep, scroller);
+        Assert.True(last.Y >= -0.5 && last.Bottom <= scroller.Viewport.Height + 0.5,
+            $"{question} scrolled to its end shows Keep the Defaults from {last.Y} to {last.Bottom} of the {scroller.Viewport.Height} it shows");
+        scroller.Offset = default;
+        Ui.Settle();
+
+        static Rect Place(Control control, Visual within) =>
+            new(control.TranslatePoint(default, within) ?? new Point(double.NaN, double.NaN), control.Bounds.Size);
     }
 
     /// <summary>A bare point of the page, under the title bar and left of everything on it.</summary>
