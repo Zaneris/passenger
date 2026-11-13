@@ -229,8 +229,12 @@ internal sealed partial class CodeCompletion
             }
             int caret = Editor.Selections.Primary.Caret;
             TextSnapshot asked = Editor.Document.Snapshot;
-            OwnItems? named = own is null ? null : await own(asked, caret, cancel.Token);
-            (CompletionList? list, _) = await lsp.CompletionAsync(caret, trigger, cancel.Token, incomplete);
+            // The server asked first, so it works out its list while the language finds its own items.
+            Task<(CompletionList? List, int Version)> listing = lsp.CompletionAsync(caret, trigger, cancel.Token, incomplete);
+            Task<OwnItems?> finding = own is null ? Task.FromResult<OwnItems?>(null) : own(asked, caret, cancel.Token);
+            await Task.WhenAll(listing, finding);
+            OwnItems? named = await finding;
+            (CompletionList? list, _) = await listing;
             IReadOnlyList<CompletionItem> served = list?.Items ?? [];
             if (named is { } mine)
             {
