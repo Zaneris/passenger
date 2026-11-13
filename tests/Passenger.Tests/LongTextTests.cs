@@ -571,12 +571,16 @@ public sealed class LongTextTests : IDisposable
     /// the least of the rounds, summed. Unwrapped, the line repeats 32 characters, and the caret stands as far into a step
     /// of its columns in either line, so what is on screen, and the window of the line laid out for it, are the same.
     /// Wrapped, it is words at random, whose rows an edit moves for a few rows only (in 32 characters repeated, a wider
-    /// word can move every row after it for good), ending in the same words in either line, the caret among them: the
-    /// rows fall in with each other long before it, so they are the same rows.</summary>
+    /// word can move every row after it for good), then a word wider than a row and the same words in either line, the
+    /// caret among them: a row starts at that word whatever widths the fonts give the words before it, where two lines'
+    /// rows may otherwise stay out of step for thousands of characters, so the rows after it are the same rows.</summary>
     private sealed class KeysInTheMiddle
     {
         private const string Unit = "word\t中文 café 👍🏽, xyz plain ok ";
         private const int Tail = 8192;
+
+        /// <summary>The length of the word before the tail, wider than any row.</summary>
+        private const int Unbroken = 512;
 
         private readonly string text;
         private readonly EditorRig rig;
@@ -591,7 +595,7 @@ public sealed class LongTextTests : IDisposable
             int middle;
             if (softWrap)
             {
-                line.Append(Words(579, length - Tail));
+                line.Append(Words(579, length - Tail - Unbroken)).Append('z', Unbroken - 1).Append(' ');
                 middle = line.Length + (Tail / 2) + 200;
                 line.Append(Words(578, Tail));
             }
