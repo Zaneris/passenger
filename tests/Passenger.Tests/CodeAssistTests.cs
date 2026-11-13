@@ -2484,7 +2484,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// hundreds more items (a file with the usings a project's implicit ones bring, against one with none) costs the UI
     /// thread, from the key to the list open, less than a third of what reading those items takes, counted rather than
     /// timed. The window starts a server of its own: the class's warm server, once another test had it index the types
-    /// of namespaces not imported, lists them in both files, each list cut at the server's thousand.</summary>
+    /// of namespaces not imported, lists them whole in both files, which leaves the two lists near enough alike.</summary>
     [AvaloniaFact]
     public void A_statements_completion_list_is_read_off_the_UI_thread()
     {
@@ -2608,6 +2608,76 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return (items, key);
     }
 
+    /// <summary>A statement's list is the server's whole list, asked for once for the name: each key typed on narrows it here
+    /// with no word to the server, and costs the UI thread what a key into a far shorter list does, counted rather than
+    /// timed. The lists differ in length alone: a statement in Pantry's method and in Silo's lists each class's fields
+    /// and the same rest, Silo's thousands more than the thousand the server cuts a list it is let cut to.</summary>
+    [AvaloniaFact]
+    public void A_statements_whole_list_narrows_here_as_its_name_is_typed_asking_the_server_nothing()
+    {
+        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
+        window.OpenFile(project.PathOf("Pantry.cs"));
+        Ui.Settle();
+        Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
+        (int fewItems, long fewKey) = StatementNarrowed(window, project.PathOf("Pantry.cs"));
+        (int manyItems, long manyKey) = StatementNarrowed(window, project.PathOf("Silo.cs"));
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"A key narrowing a statement's list of {fewItems} items allocated {fewKey / 1024} KB on the UI thread; of {manyItems} items, {manyKey / 1024} KB");
+        Assert.True(manyItems > 1000 && manyItems >= fewItems + 3700,
+            $"A statement in Silo listed {manyItems} items and one in Pantry {fewItems}: the server cut the longer list");
+        // Less than the least object for each item the longer list has more: whatever is made of an item is made off it.
+        Assert.True(manyKey - fewKey < (manyItems - fewItems) * 24L,
+            $"A key narrowing a statement's list of {manyItems} items allocated {manyKey / 1024} KB on the UI thread, against {fewKey / 1024} KB for {fewItems} "
+            + $"items, {(manyKey - fewKey) / (manyItems - fewItems)} bytes for each item more: it scored them or made their rows there");
+        window.Close();
+    }
+
+    /// <summary>A statement begun in a class's own method and its name typed a letter at a time: how many items the list
+    /// has, whole, and the least the UI thread allocates from a key to the narrower list shown, the server asked nothing
+    /// after the list's first letter.</summary>
+    private static (int Items, long Key) StatementNarrowed(MainWindow window, string path)
+    {
+        string type = Path.GetFileNameWithoutExtension(path);
+        window.OpenFile(path);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "        int total = 0;");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        window.KeyTextInput("R");
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "R" && window.Assist.CompletionLabels.Contains("Ration000"), $"a statement's list in {type} narrowed by R");
+        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
+        int caret = editor.Selections.Primary.Caret;
+        Passenger.Lsp.CompletionList? whole = Ui.Await(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), $"a statement's list in {type}").List;
+        Assert.True(whole is { IsIncomplete: false }, $"The server said a statement's list of {whole?.Items.Count} items in {type} left items out");
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task asked = window.CSharpService!.Session!.Server.HoldNext(Passenger.Lsp.LspMethods.Completion, _ => true, released.Task);
+        string typed = "R";
+        long key = long.MaxValue;
+        try
+        {
+            foreach (string letter in new[] { "a", "t", "i", "o", "n" })
+            {
+                typed += letter;
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.KeyTextInput(letter);
+                Ui.Pumped(() => window.Assist.CompletionNarrowedBy == typed, TimeSpan.FromSeconds(30));
+                key = Math.Min(key, GC.GetAllocatedBytesForCurrentThread() - before);
+                Assert.True(window.Assist.CompletionNarrowedBy == typed, $"The list never showed its rows for '{typed}'");
+                Ui.Settle();
+                Assert.False(asked.IsCompleted, $"Typing '{letter}' into a statement's whole list in {type} asked the server for the list again");
+            }
+            Assert.True(window.Assist.CompletionLabels.FirstOrDefault() == "Ration000",
+                $"Narrowed by '{typed}' the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(5))} first");
+        }
+        finally
+        {
+            released.TrySetResult();
+        }
+        Ui.Press(window, "ESCAPE");
+        return (whole!.Items.Count, key);
+    }
+
     /// <summary>Two methods laid out wrongly, the second's first line indented two spaces too far.</summary>
     private const string SelectedLines = "static class Selected\n{\n    public static int First( int a,int b )\n    {\n        return a+b;\n    }\n\n"
         + "      public static int Second(int a, int b)\n    {\n        return a * b;\n    }\n}\n";
@@ -2692,6 +2762,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             // Two classes alike but for how many members they have, every one named alike, fewer than the server's thousand.
             File.WriteAllText(PathOf("Pantry.cs"), Rations("Pantry", 220));
             File.WriteAllText(PathOf("Granary.cs"), Rations("Granary", 980));
+            // A class of thousands of fields, whose statements list far more than the server's thousand.
+            File.WriteAllText(PathOf("Silo.cs"), Rations("Silo", 4000));
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
         }
