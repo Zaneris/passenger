@@ -126,7 +126,11 @@ public sealed class ServerWatches : IDisposable
         if (changes.Lost || changes.Paths.Count > 0)
         {
             watched.Hearing(changes.Paths);
-            InTurn(() => Tell(changes, open, recursive: true, IgnoredFolders.Is), of: null);
+            InTurn(() =>
+            {
+                watched.Tell(Events(changes, open, recursive: true, IgnoredFolders.Is));
+                return Task.CompletedTask;
+            }, of: null);
         }
         List<string> passedOver = [.. changes.ComeOrGone.Where(IgnoredFolders.Is)];
         // A project's folder moved in, out or within brings its project file; Godot.NET.Sdk's output comes with its first restore.
@@ -260,10 +264,10 @@ public sealed class ServerWatches : IDisposable
         }
     }
 
-    /// <summary>What changed in a folder, each file told as made, changed or gone; with changes lost there, every other file
-    /// in it (and in the folders under it when <paramref name="recursive"/>, but those <paramref name="passedOver"/> names)
-    /// told as changed.</summary>
-    private void Tell(FolderChanges changes, string top, bool recursive, Func<string, bool> passedOver)
+    /// <summary>What changed in a folder, each file as made, changed or gone; with changes lost there, every other file in it
+    /// (and in the folders under it when <paramref name="recursive"/>, but those <paramref name="passedOver"/> names) as
+    /// changed.</summary>
+    private static List<FileEvent> Events(FolderChanges changes, string top, bool recursive, Func<string, bool> passedOver)
     {
         List<FileEvent> events = new(changes.Paths.Count);
         foreach (string path in changes.Paths)
@@ -276,7 +280,7 @@ public sealed class ServerWatches : IDisposable
             HashSet<string> named = new(changes.Paths, PathNames.Comparer);
             events.AddRange(Every(top, recursive, passedOver).Where(change => !named.Contains(change.Path)));
         }
-        watched.Tell(events);
+        return events;
     }
 
     /// <summary>The files in a folder, each as changed: in the folders under it too when <paramref name="recursive"/>, but
@@ -561,22 +565,22 @@ public sealed class ServerWatches : IDisposable
 
     /// <summary>Tells the server on the thread pool after what was told before from the same watcher, the folder's (none)
     /// or one of this one's own, held as background work until it has.</summary>
-    private void InTurn(Action tell, Watched? of)
+    private void InTurn(Func<Task> tell, Watched? of)
     {
         IDisposable held = BackgroundWork.Scope();
         lock (gate)
         {
-            Task next = (of is null ? tellingHeard : of.Telling).ContinueWith(_ =>
+            Task next = (of is null ? tellingHeard : of.Telling).ContinueWith(async _ =>
             {
                 try
                 {
-                    tell();
+                    await tell();
                 }
                 finally
                 {
                     held.Dispose();
                 }
-            }, TaskScheduler.Default);
+            }, TaskScheduler.Default).Unwrap();
             if (of is null)
             {
                 tellingHeard = next;
@@ -621,13 +625,7 @@ public sealed class ServerWatches : IDisposable
                 IdeErrors.Write($"{Shown} records {Plural.Of(folders, "folder")} and {Plural.Of(entries, "entry", "entries")} "
                     + $"{System.Diagnostics.Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s after it started{(apart ? ", apart from the IDE's quiet" : string.Empty)}");
                 // Told whether or not a registration matches them yet: one the server's load sends later takes those kept for it.
-                owner.InTurn(() =>
-                {
-                    if (!IsDisposed)
-                    {
-                        owner.watched.Tell([.. written.Select(file => new FileEvent(file, FileChangeType.Changed))]);
-                    }
-                }, this);
+                owner.InTurn(() => TellAsync([.. written.Select(file => new FileEvent(file, FileChangeType.Changed))]), this);
             }, after: owner.WalkHeld(top));
         }
 
@@ -726,13 +724,22 @@ public sealed class ServerWatches : IDisposable
         protected override void Hand(FolderChanges changes)
         {
             owner.watched.Hearing(changes.Paths);
-            owner.InTurn(() =>
+            owner.InTurn(() => TellAsync(Events(changes, Top, Recursive, _ => false)), this);
+        }
+
+        /// <summary>Tells the server what changed here, but an assembly of a folder it watches whole that no project
+        /// references (<see cref="WatchedFiles.ReferencedAsync"/>), unless the watcher was disposed meanwhile.</summary>
+        private async Task TellAsync(List<FileEvent> changes)
+        {
+            if (IsDisposed)
             {
-                if (!IsDisposed)
-                {
-                    owner.Tell(changes, Top, Recursive, _ => false);
-                }
-            }, this);
+                return;
+            }
+            IReadOnlyList<FileEvent> told = await owner.watched.ReferencedAsync(changes, CancellationToken.None);
+            if (!IsDisposed)
+            {
+                owner.watched.Tell(told);
+            }
         }
 
         /// <summary>Said of the folder itself, and of any the system's watches ran out for; a folder under it gone as it was

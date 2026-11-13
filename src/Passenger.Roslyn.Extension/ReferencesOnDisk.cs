@@ -89,3 +89,19 @@ public sealed class ReferencesRead : IExtensionWorkspaceMessageHandler<Reference
         return new ReferencesTaken(changed.Length);
     }
 }
+
+/// <summary>Of files changed on disk, those a project of the solution references as an assembly or an analyzer, matched as
+/// the server matches a changed file to the references it reads again: by path, ignoring case.</summary>
+public sealed class ReferencedFiles : IExtensionWorkspaceMessageHandler<ReferencedAsked, ReferencedFound>
+{
+    public Task<ReferencedFound> ExecuteAsync(ReferencedAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
+    {
+        HashSet<string> referenced = new(StringComparer.OrdinalIgnoreCase);
+        foreach (Project project in context.Solution.Projects)
+        {
+            referenced.UnionWith(project.MetadataReferences.OfType<PortableExecutableReference>().Select(r => r.FilePath).OfType<string>());
+            referenced.UnionWith(project.AnalyzerReferences.Select(r => r.FullPath).OfType<string>());
+        }
+        return Task.FromResult(new ReferencedFound([.. message.Paths.Where(referenced.Contains)]));
+    }
+}

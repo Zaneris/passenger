@@ -286,6 +286,38 @@ public sealed class WatchedFiles
         return covered.Count;
     }
 
+    /// <summary>Of changes about to be told (<see cref="Tell"/>), those where only a folder of assemblies watched whole
+    /// covers them (<see cref="FileWatch.EveryAssembly"/>, the .NET installation's packs) kept only for a file a project of
+    /// the server's references, as Passenger's extension answers: told any .dll written there, Roslyn's server runs every
+    /// project's source generators again. Those passed over are said in its log; every change is kept where the extension
+    /// cannot be asked.</summary>
+    public async Task<IReadOnlyList<FileEvent>> ReferencedAsync(IReadOnlyList<FileEvent> changes, CancellationToken cancel)
+    {
+        IReadOnlyList<FileWatch> now = Watches;
+        List<string> asked = [.. changes.Where(c => now.Any(w => w.EveryAssembly && w.Covers(c)) && !now.Any(w => !w.EveryAssembly && w.Covers(c))).Select(c => c.Path)];
+        if (asked.Count == 0 || server.ExtensionProblem is not null)
+        {
+            return changes;
+        }
+        HashSet<string> referenced;
+        try
+        {
+            ReferencedFound found = await RoslynExtension.AskWorkspaceAsync<ReferencedFound>(server, Handlers.ReferencedFiles, new ReferencedAsked(asked), cancel).ConfigureAwait(false);
+            referenced = new(found.Paths, PathNames.Comparer);
+        }
+        catch (LanguageServerFailed)
+        {
+            return changes;
+        }
+        HashSet<string> passed = new(asked.Where(path => !referenced.Contains(path)), PathNames.Comparer);
+        if (passed.Count == 0)
+        {
+            return changes;
+        }
+        server.Note($"Passed over {Plural.Of(passed.Count, "assembly", "assemblies")} changed on disk in a folder watched whole that no project references, {asked.First(passed.Contains)} first");
+        return [.. changes.Where(c => !passed.Contains(c.Path))];
+    }
+
     /// <summary>The notification itself, under the gate, so what is told reaches the server in the order told; files gone
     /// in one of their own to a server with Passenger's loader.</summary>
     private void Send(List<FileEvent> changes, string? why)
@@ -400,6 +432,10 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
         }
         return last.IndexOfAny(['*', '{']) >= 0 ? [] : [(last, true)];
     }
+
+    /// <summary>Whether the watcher takes every assembly under its folder however deep (<c>**/*.dll</c> alone): a folder of
+    /// reference assemblies watched whole rather than file by file, as Roslyn's server watches the .NET installation's packs.</summary>
+    public bool EveryAssembly => Folder is not null && Pattern == "**/*.dll";
 
     /// <summary>Whether the pattern reaches into the folders under <see cref="Folder"/>, where it can match a path of more
     /// than one name.</summary>

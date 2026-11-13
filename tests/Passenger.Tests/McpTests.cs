@@ -19,7 +19,8 @@ namespace Passenger.Tests;
 
 /// <summary>Passenger as an agent's IDE with no window (<c>--mcp</c>), over the Model Context Protocol with the SDK's own
 /// client: a project worked through it (its tests, packages, actions, publish, Git and the terminal), a folder given it in
-/// other letter case, and a start or a load that runs long.</summary>
+/// other letter case, a start or a load that runs long, and an assembly written into .NET's packs that no project references,
+/// which the language server never hears of.</summary>
 public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpTests(RestoredFolders folders)
@@ -52,6 +53,65 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"tests_list asked for the state it says the tests are in answered: {notRun}");
         CallToolResult wrong = await Result(client, McpTools.TestsList, new() { ["state"] = "broken" });
         Assert.True(wrong.IsError == true && Text(wrong).Contains("there are passed, failed, skipped and notRun", StringComparison.Ordinal), $"tests_list in no state answered: {Text(wrong)}");
+    }
+
+    /// <summary>Roslyn's server watches the packs folder of the .NET that DOTNET_ROOT names every .dll at once, and told of
+    /// any .dll written there runs every project's source generators again, as installing a workload writes thousands: here
+    /// a .NET whose packs are the test's own, the rest of it the machine's through links. An assembly written there that no
+    /// project references never reaches the server, and one the project references, written after it, does.</summary>
+    [Fact]
+    public async Task An_assembly_written_into_the_packs_folder_that_no_project_references_never_reaches_the_language_server()
+    {
+        string root = PathNames.Canonical(TestFolders.Create("dotnet-root-"));
+        DeleteAtEnd(root);
+        string pack = Directory.CreateDirectory(Path.Combine(root, "packs", "Passenger.Test.Pack", "1.0.0")).FullName;
+        try
+        {
+            foreach (string entry in Directory.EnumerateFileSystemEntries(Dotnet.Root()).Where(e => Path.GetFileName(e) != "packs"))
+            {
+                string link = Path.Combine(root, Path.GetFileName(entry));
+                if (Directory.Exists(entry))
+                {
+                    Directory.CreateSymbolicLink(link, entry);
+                }
+                else
+                {
+                    File.CreateSymbolicLink(link, entry);
+                }
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"A .NET of the test's own takes links to the machine's, which this account may not make: {error.Message}");
+        }
+        string referenced = Path.Combine(pack, "Referenced.dll");
+        File.Copy(typeof(PathNames).Assembly.Location, referenced);
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-packs-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "App.csproj", TestProjects.Console().With(
+            $"  <ItemGroup>\n    <Reference Include=\"Referenced\">\n      <HintPath>{Passenger.Text.XmlEntities.Encode(referenced)}</HintPath>\n    </Reference>\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(typeof(Passenger.Core.PathNames).Name);\n");
+        await Restore.RunAsync(Path.Combine(folder, "App.csproj"));
+
+        await using McpClient client = await Start(["--mcp", folder], environment: new() { [RuntimeVariables.Root] = root });
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["traceProtocols"] = true } });
+        JsonElement found = await Call(client, McpTools.Diagnostics, new() { ["path"] = "Program.cs" });
+        Assert.True(!found.EnumerateArray().Any(d => d.GetProperty("severity").GetString() == "error"), $"The app referencing the pack's assembly has errors: {found}");
+        string packs = Path.Combine(root, "packs");
+        string log = Path.Combine(OwnState, "logs", "passenger.log");
+        await Until(() => File.Exists(log) && Ui.Shared(log).Contains($"the watcher of {packs} records", StringComparison.Ordinal),
+            $"the language server's registration of {packs} to be watched whole for it and its first walk done");
+
+        File.WriteAllBytes(Path.Combine(pack, "Unreferenced.dll"), File.ReadAllBytes(referenced));
+        File.Copy(typeof(PathNames).Assembly.Location, referenced, overwrite: true);
+        File.SetLastWriteTimeUtc(referenced, DateTime.UtcNow);
+        string trace = Path.Combine(OwnState, "logs", "lsp.log");
+        await Until(() => Told(trace, "/Referenced.dll") > 0, "the language server to be told of the referenced assembly written again");
+        Assert.True(Told(trace, "/Unreferenced.dll") == 0,
+            $"The language server was told of an assembly written into {packs} that no project references, so it ran every project's source generators again");
+
+        static int Told(string trace, string file) => Ui.Shared(trace).Split('\n').Count(l => l.Contains("] --> ", StringComparison.Ordinal)
+            && l.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.DidChangeWatchedFiles}\"", StringComparison.Ordinal) && l.Contains(file + "\"", StringComparison.Ordinal));
     }
 
     /// <summary>A project whose global.json asks for a .NET SDK that is not installed: workspace says so and how the person
