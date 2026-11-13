@@ -130,8 +130,8 @@ public sealed class EditorGroup : DockPanel
         // The editor beside a pane of its file's own (a XAML file's preview), divided by a hairline that resizes them.
         body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,0,0") };
         body.Children.Add(Editor);
-        body.Children.Add(new ThemeBackdrop(BackgroundPlaces.Editor) { [Grid.ColumnSpanProperty] = 3 });
-        Children.Add(body);
+        // The picture over the body, whatever it holds, in a panel of their own.
+        Children.Add(new Panel { Children = { body, new ThemeBackdrop(BackgroundPlaces.Editor) } });
         // The group the person works in is the area's active one; while a table lies over the editor, the table takes its focus.
         Editor.GotFocus += (_, _) =>
         {

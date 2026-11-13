@@ -58,9 +58,10 @@ public sealed class ToggleSetting(Func<AppSettings, bool> get, Func<AppSettings,
 }
 
 /// <summary>A number held between <paramref name="min"/> and <paramref name="max"/>, edited by a spin box in steps of
-/// <paramref name="step"/>, its unit after it where it has one.</summary>
+/// <paramref name="step"/>, its unit after it where it has one; one that may be left unset (<paramref name="given"/> false)
+/// shows the value in force and stays unset until changed.</summary>
 public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSettings, double, AppSettings> set, double min, double max, double step,
-    SettingRow? row = null, string? unit = null) : Setting(row)
+    SettingRow? row = null, string? unit = null, Func<AppSettings, bool>? given = null) : Setting(row)
 {
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) => unit is null ? Box(now, change) : new StackPanel
     {
@@ -86,7 +87,8 @@ public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSetting
         return number;
     }
 
-    public override AppSettings Clamp(AppSettings settings) => set(settings, Math.Clamp(get(settings), min, max));
+    public override AppSettings Clamp(AppSettings settings) =>
+        given is not null && !given(settings) ? settings : set(settings, Math.Clamp(get(settings), min, max));
 }
 
 /// <summary>A size chosen from a drop-down of <paramref name="sizes"/> (1.5 shown as 150%), from the least to the most: the

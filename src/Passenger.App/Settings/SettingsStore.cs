@@ -259,18 +259,38 @@ public sealed class SettingsStore : IDisposable
         {
             Themes.Apply(current, after.Look, after.ColourScheme);
         }
-        if (Avalonia.Application.Current is { } shown && (before is null || before.EditorFontFamily != after.EditorFontFamily))
-        {
-            Passenger.Editor.CodeFonts.Use(shown, Passenger.Editor.CodeFonts.Named(after.EditorFontFamily) ?? Passenger.Editor.CodeEditor.CodeFont);
-        }
-        if (Avalonia.Application.Current is { } framed && (before is null || before.WindowFontFamily != after.WindowFontFamily))
-        {
-            WindowFonts.Use(framed, WindowFonts.Named(after.WindowFontFamily) ?? WindowFonts.Carried);
-        }
+        FontsInForce(after);
         if (Avalonia.Application.Current is { } scaled && (before is null || before.DisplayScale != after.DisplayScale))
         {
             InterfaceScale.Use(scaled, after.DisplayScale);
         }
+    }
+
+    /// <summary>The settings whose fonts are in force, which the theme's fonts give way to.</summary>
+    private static AppSettings? fontsOf;
+
+    /// <summary>The code's and the window's family in force, as their names: a family Settings names, else the theme's.</summary>
+    private static (string? Code, string? Window)? fontsInForce;
+
+    /// <summary>The code font and the window's: the family Settings names wherever the person named one, else the theme's,
+    /// else Passenger's own; put in force again as the theme's change.</summary>
+    private static void FontsInForce(AppSettings after)
+    {
+        if (fontsOf is null)
+        {
+            Themes.FontsChanged += (_, _) => FontsInForce(fontsOf!);
+        }
+        fontsOf = after;
+        (string? code, string? window) = (after.EditorFontFamily ?? Themes.Fonts.CodeFamily, after.WindowFontFamily ?? Themes.Fonts.WindowFamily);
+        if (Avalonia.Application.Current is { } shown && (fontsInForce is null || fontsInForce.Value.Code != code))
+        {
+            Passenger.Editor.CodeFonts.Use(shown, Passenger.Editor.CodeFonts.Named(code) ?? Passenger.Editor.CodeEditor.CodeFont);
+        }
+        if (Avalonia.Application.Current is { } framed && (fontsInForce is null || fontsInForce.Value.Window != window))
+        {
+            WindowFonts.Use(framed, WindowFonts.Named(window) ?? WindowFonts.Carried);
+        }
+        fontsInForce = Avalonia.Application.Current is null ? null : (code, window);
     }
 
     /// <summary>What belongs to the process, put in force once for every window: its share of the look, the keymap and the

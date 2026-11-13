@@ -92,12 +92,12 @@ The picture is kept beside the theme when the theme is chosen, so it draws offli
 ### Its fonts
 
 ```json
-"fonts": { "code": { "family": "Fira Code" }, "window": { "family": "Inter" } }
+"fonts": { "code": { "family": "Fira Code", "size": 14 }, "window": { "family": "Inter" } }
 ```
 
-The code's and the window's family, each by its name. A family Settings names wins wherever you chose one; one not
-installed here leaves Passenger's own. (The code's `size`, 6 to 48, is read and kept for a later Passenger, which will
-take it where Settings gives none.)
+The code's and the window's family, each by its name, and the code's `size` in points (6 to 48). A family or size you
+choose in Settings wins wherever you chose one; Reset Font Size goes back to the theme's size. A family not installed
+here leaves Passenger's own.
 
 ### The code's colours by language
 

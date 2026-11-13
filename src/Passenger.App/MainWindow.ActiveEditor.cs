@@ -17,7 +17,7 @@ public partial class MainWindow
             document.SoftWrap = settings.WrapsFile(document.Path);
             document.ShowWhitespaces = settingsStore.Effective.ShowWhitespaces;
         };
-        Editors.ForEachEditor(editor => editor.ZoomRequested += (_, points) => Zoom(settings.EditorFontSize + points));
+        Editors.ForEachEditor(editor => editor.ZoomRequested += (_, points) => Zoom(settings.CodeSize() + points));
         actions!.Add(new IdeAction(A.SoftWrap, "Soft-Wrap", "Editor", context => context.File!.SoftWrap = !context.File.SoftWrap)
         {
             WhyNot = Refusals.NeedsFile,
@@ -30,20 +30,21 @@ public partial class MainWindow
             IsChecked = context => context.File?.ShowWhitespaces == true,
             Menus = [new MenuPlace("View/Active Editor", 1, 0)],
         });
-        Add(A.IncreaseFontSize, "Increase Font Size", "Editor", _ => Zoom(settings.EditorFontSize + 1),
-            context => Refusals.NeedsFile(context) ?? (settings.EditorFontSize >= AppSettings.MaxFontSize ? "The editor's font is as large as it goes" : null),
+        Add(A.IncreaseFontSize, "Increase Font Size", "Editor", _ => Zoom(settings.CodeSize() + 1),
+            context => Refusals.NeedsFile(context) ?? (settings.CodeSize() >= AppSettings.MaxFontSize ? "The editor's font is as large as it goes" : null),
             ("View/Active Editor", 2, 0));
-        Add(A.DecreaseFontSize, "Decrease Font Size", "Editor", _ => Zoom(settings.EditorFontSize - 1),
-            context => Refusals.NeedsFile(context) ?? (settings.EditorFontSize <= AppSettings.MinFontSize ? "The editor's font is as small as it goes" : null),
+        Add(A.DecreaseFontSize, "Decrease Font Size", "Editor", _ => Zoom(settings.CodeSize() - 1),
+            context => Refusals.NeedsFile(context) ?? (settings.CodeSize() <= AppSettings.MinFontSize ? "The editor's font is as small as it goes" : null),
             ("View/Active Editor", 2, 1));
-        Add(A.ResetFontSize, "Reset Font Size", "Editor", _ => Zoom(new AppSettings().EditorFontSize), Refusals.NeedsFile, ("View/Active Editor", 2, 2));
+        // Back to the size the theme gives, or Passenger's own: set by nobody.
+        Add(A.ResetFontSize, "Reset Font Size", "Editor", _ => ApplySettings(settings with { EditorFontSize = null }), Refusals.NeedsFile, ("View/Active Editor", 2, 2));
     }
 
     /// <summary>The editors' font at a size, within what Settings allows, kept as Settings keeps it.</summary>
     private void Zoom(double size)
     {
         double next = Math.Clamp(Math.Round(size), AppSettings.MinFontSize, AppSettings.MaxFontSize);
-        if (next != settings.EditorFontSize)
+        if (next != settings.CodeSize())
         {
             ApplySettings(settings with { EditorFontSize = next });
         }

@@ -27,10 +27,12 @@ public partial class MainWindow
         settingsStore.PreviewChanged += OnPreviewChanged;
         Activated += (_, _) => settingsStore.LookAgain();
         Themes.SaidChanged += OnThemesSaid;
+        Themes.FontsChanged += OnThemeFonts;
         OnThemesSaid(null, EventArgs.Empty);
         Closed += (_, _) =>
         {
             Themes.SaidChanged -= OnThemesSaid;
+            Themes.FontsChanged -= OnThemeFonts;
             settingsStore.Changed -= OnSettingsChanged;
             settingsStore.PreviewChanged -= OnPreviewChanged;
             if (!settingsStore.IsKept)
@@ -102,6 +104,9 @@ public partial class MainWindow
 
     /// <summary>The settings as this window last showed them, a Settings dialog's preview too.</summary>
     private AppSettings visualSettings = new();
+
+    /// <summary>The editors take the theme's code size where the person set none.</summary>
+    private void OnThemeFonts(object? sender, EventArgs args) => Editors.ForEachEditor(editor => ApplyTo(editor, settingsStore.Effective));
 
     /// <summary>The window's share of the look follows the settings shown: each editor's, the title bar's, the menu's, the
     /// terminal's.</summary>
@@ -216,7 +221,7 @@ public partial class MainWindow
 
     private static void ApplyTo(CodeEditor editor, AppSettings with)
     {
-        editor.FontSize = with.EditorFontSize;
+        editor.FontSize = with.CodeSize();
         editor.LineSpacing = with.EditorLineSpacing;
         editor.Ligatures = with.Ligatures;
         editor.ShowLineNumbers = with.ShowLineNumbers;

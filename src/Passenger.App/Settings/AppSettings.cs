@@ -14,6 +14,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     public const double MaxFontSize = ThemeFiles.MostFontSize;
 
+    /// <summary>Passenger's own size for the code, where neither the person nor the theme gives one.</summary>
+    public const double OwnCodeSize = 13;
+
     /// <summary>The names that soft-wrap at first.</summary>
     public const string DefaultSoftWrapFiles = "*.md; *.txt; *.rst; *.adoc";
 
@@ -51,7 +54,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     /// <summary>The code font by its family's name, or null for the one Passenger carries.</summary>
     public string? EditorFontFamily { get; init; }
-    public double EditorFontSize { get; init; } = 13;
+
+    /// <summary>The code's size in points as the person set it, or null where they set none: the theme's, else
+    /// <see cref="OwnCodeSize"/> (<see cref="CodeSize"/>).</summary>
+    public double? EditorFontSize { get; init; }
     public double EditorLineSpacing { get; init; } = 1.2;
     public bool Ligatures { get; init; }
     public bool ShowLineNumbers { get; init; } = true;
@@ -387,7 +393,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>"Reformat on save": a save (File, Save All) first reformats each changed GDScript as Reformat Code does.</summary>
     public bool GDScriptFormatOnSave { get; init; }
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept, ThemesFromTheirRepository];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept, ThemesFromTheirRepository, CodeSizeOwnOnlyWhereSet];
 
     /// <summary><see cref="AgentFolders"/> and <see cref="ThemeSources"/> are sets: a folder let in always (a source added)
     /// from one window while another's Settings takes back a different one stays.</summary>
@@ -461,6 +467,20 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// Passenger's themes repository, where they moved.</summary>
     private static void ThemesFromTheirRepository(JsonObject settings) => ThemeSource.MoveFormerChoices(settings,
         StateFile.Options.PropertyNamingPolicy!.ConvertName(nameof(Look)), StateFile.Options.PropertyNamingPolicy.ConvertName(nameof(ColourScheme)));
+
+    /// <summary>Version 4 to 5: the code's size kept as 13, which every earlier version wrote whether or not the person set
+    /// it, is left unset, so a theme's size shows; any other size stays the person's.</summary>
+    private static void CodeSizeOwnOnlyWhereSet(JsonObject settings)
+    {
+        string name = StateFile.Options.PropertyNamingPolicy!.ConvertName(nameof(EditorFontSize));
+        if (settings[name] is JsonValue size && size.TryGetValue(out double points) && points == OwnCodeSize)
+        {
+            settings.Remove(name);
+        }
+    }
+
+    /// <summary>The code's size in force: the person's, else the theme's, else Passenger's own.</summary>
+    public double CodeSize() => EditorFontSize ?? Themes.Fonts.CodeSize ?? OwnCodeSize;
 
     /// <summary>A hand-edited or later build's value this build cannot use is brought into range, or back to its default
     /// (each setting of one value as <see cref="Declared"/> says); a shortcut that does not parse is the keymap's to pass over.</summary>

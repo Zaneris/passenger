@@ -54,7 +54,7 @@ public sealed class StateTests : IDisposable
         MainWindow window = Keeping();
         window.KeepSettings();
         Ui.Settle();
-        Assert.Equal(13, window.Settings.EditorFontSize);
+        Assert.Null(window.Settings.EditorFontSize);
         Assert.True(File.Exists(file + ".bad"), "The file that did not read was not set aside: the defaults went over it");
         Assert.Equal(cut, File.ReadAllText(file + ".bad"));
         Assert.False(File.Exists(file), "The defaults were written in place of the file that did not read");
@@ -108,7 +108,7 @@ public sealed class StateTests : IDisposable
         MainWindow window = Keeping();
         window.KeepSettings();
         Ui.Settle();
-        Assert.True((window.Settings.EditorFontSize, window.Settings.TerminalFontSize, window.Settings.EditorLineSpacing) == (13, 15, 1.5),
+        Assert.True((window.Settings.EditorFontSize, window.Settings.TerminalFontSize, window.Settings.EditorLineSpacing) == ((double?)null, 15, 1.5),
             $"A font size written as text took the file's other settings with it: the editor's font {window.Settings.EditorFontSize}, the terminal's {window.Settings.TerminalFontSize}, the line spacing {window.Settings.EditorLineSpacing}");
         Assert.False(File.Exists(file + ".bad"), "settings.json was set aside for one value of the wrong kind");
         Assert.True(window.Status == "settings.json's editorFontSize is \"16\", where a number goes: its default stands",

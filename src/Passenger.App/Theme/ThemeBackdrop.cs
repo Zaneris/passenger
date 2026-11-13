@@ -21,14 +21,15 @@ public sealed class ThemeBackdrop : Control
         IsHitTestVisible = false;
         Focusable = false;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.HighQuality);
-        // Over whatever the area holds, its later children too.
-        ZIndex = int.MaxValue;
     }
 
     public ThemeBackdrop(BackgroundPlaces place) : this() => Place = place;
 
     /// <summary>Where it draws.</summary>
     public BackgroundPlaces Place { get; init; }
+
+    /// <summary>How many times it drew a picture, which nothing but the picture, the variant or its place changes.</summary>
+    public long Draws { get; private set; }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -84,28 +85,37 @@ public sealed class ThemeBackdrop : Control
         Size drawn = size * scale;
         Rect placed = new(area.X + ((area.Width - drawn.Width) * value.AlignX), area.Y + ((area.Height - drawn.Height) * value.AlignY), drawn.Width, drawn.Height);
         Rect covered = value.Fit == BackgroundFit.Tile ? area : placed;
+        // Each draw takes its own opacity: these leave the ground at 1 - Opacity, as one layer of the tinted picture would.
+        double tint = value.Opacity * value.TintStrength;
+        double seen = value.TintStrength >= 1 ? 0 : value.Opacity * (1 - value.TintStrength) / (1 - tint);
+        Draws++;
         using (context.PushClip(own))
-        using (context.PushOpacity(value.Opacity))
         {
-            if (value.Fit == BackgroundFit.Tile)
+            if (seen > 0)
             {
-                ImageBrush tiles = new(picture)
+                using (context.PushOpacity(seen))
                 {
-                    TileMode = TileMode.Tile,
-                    Stretch = Stretch.None,
-                    AlignmentX = AlignmentX.Left,
-                    AlignmentY = AlignmentY.Top,
-                    DestinationRect = new RelativeRect(placed, RelativeUnit.Absolute),
-                };
-                context.FillRectangle(tiles, area);
+                    if (value.Fit == BackgroundFit.Tile)
+                    {
+                        ImageBrush tiles = new(picture)
+                        {
+                            TileMode = TileMode.Tile,
+                            Stretch = Stretch.None,
+                            AlignmentX = AlignmentX.Left,
+                            AlignmentY = AlignmentY.Top,
+                            DestinationRect = new RelativeRect(placed, RelativeUnit.Absolute),
+                        };
+                        context.FillRectangle(tiles, area);
+                    }
+                    else
+                    {
+                        context.DrawImage(picture, new Rect(size), placed);
+                    }
+                }
             }
-            else
+            if (tint > 0)
             {
-                context.DrawImage(picture, new Rect(size), placed);
-            }
-            if (value.TintStrength > 0)
-            {
-                context.FillRectangle(new ImmutableSolidColorBrush(Color.FromUInt32(value.TintArgb), value.TintStrength), covered.Intersect(area));
+                context.FillRectangle(new ImmutableSolidColorBrush(Color.FromUInt32(value.TintArgb), tint), covered.Intersect(area));
             }
         }
     }

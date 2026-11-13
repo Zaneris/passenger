@@ -74,8 +74,10 @@ public static class Declared
         FontChoices.Code, new(D.EditorPage, "Font family", "font family typeface monospace monospaced code",
             "The font code is shown in: the editor's, the terminal's unless it has its own, and code's in popups and tool windows."));
 
-    public static readonly NumberSetting EditorFontSize = new(s => s.EditorFontSize, (s, v) => s with { EditorFontSize = v },
-        AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.EditorPage, "Font size", "font size text"));
+    public static readonly NumberSetting EditorFontSize = new(s => s.CodeSize(), (s, v) => s with { EditorFontSize = v },
+        AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.EditorPage, "Font size", "font size text",
+            "The code's size in points. Until you set one, the theme's size, else 13; View | Active Editor | Reset Font Size goes back to it."),
+        given: s => s.EditorFontSize is not null);
 
     public static readonly NumberSetting EditorLineSpacing = new(s => s.EditorLineSpacing, (s, v) => s with { EditorLineSpacing = v }, 0.8, 3, 0.1,
         new(D.EditorPage, "Line spacing", "font line height"));
