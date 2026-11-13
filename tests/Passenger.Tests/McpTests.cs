@@ -57,8 +57,9 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Roslyn's server watches the packs folder of the .NET that DOTNET_ROOT names every .dll at once, and told of
     /// any .dll written there runs every project's source generators again, as installing a workload writes thousands: here
-    /// a .NET whose packs are the test's own, the rest of it the machine's through links. An assembly written there that no
-    /// project references never reaches the server, and one the project references, written after it, does.</summary>
+    /// a .NET whose packs folder is the test's own, holding a pack of its own beside links to the machine's packs, the rest
+    /// of it the machine's through links. An assembly written there that no project references never reaches the server,
+    /// and one the project references, written after it, does.</summary>
     [Fact]
     public async Task An_assembly_written_into_the_packs_folder_that_no_project_references_never_reaches_the_language_server()
     {
@@ -78,6 +79,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
                 {
                     File.CreateSymbolicLink(link, entry);
                 }
+            }
+            // Windows' MSBuild takes the SDK through DOTNET_ROOT's links unresolved, so its targeting packs are found here.
+            foreach (string machines in Directory.EnumerateDirectories(Path.Combine(Dotnet.Root(), "packs")))
+            {
+                Directory.CreateSymbolicLink(Path.Combine(root, "packs", Path.GetFileName(machines)), machines);
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
