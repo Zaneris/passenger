@@ -13,7 +13,8 @@ using Passenger.Workspace;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>A package as the NuGet window lists it: what the feeds say of it, the feeds that have it, the versions
-/// the solution's projects have of it (by project, each framework's), and the known vulnerabilities of those versions.</summary>
+/// the solution's projects have of it (by project, each framework's), those they get only through another package or
+/// project, and the known vulnerabilities of those versions.</summary>
 public sealed record PackageRow(string Id, string Version, string Description, string Authors, long Downloads,
     IReadOnlyDictionary<string, IReadOnlyList<InstalledVersion>> Installed)
 {
@@ -21,6 +22,16 @@ public sealed record PackageRow(string Id, string Version, string Description, s
 
     /// <summary>The versions in force in the projects, each once.</summary>
     public IEnumerable<string> InstalledVersions => Installed.Values.SelectMany(v => v).Select(v => v.Version).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>By project, the versions a project referencing none of it gets through the packages and projects it does
+    /// reference, as its restore resolved them.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>> Transitive { get; init; } = new Dictionary<string, IReadOnlyList<TransitiveUse>>();
+
+    /// <summary>Whether projects get it only through others, none referencing it.</summary>
+    public bool IsTransitive => !IsInstalled && Transitive.Count > 0;
+
+    /// <summary>Every version a project has, referenced or brought in, each once: those the audit is asked of.</summary>
+    public IEnumerable<string> AuditedVersions => InstalledVersions.Concat(Transitive.Values.SelectMany(v => v).Select(v => v.Version)).Distinct(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyList<string> Feeds { get; init; } = [];
 
@@ -103,6 +114,10 @@ public sealed partial class NuGetView : DockPanel
             Hold(null);
             IdeErrors.Observe(RefreshAsync());
         };
+        filters = new FilterMenu("Sort and Filter Packages", FilterItems);
+        (projectSearch, projectFilters, projectsHeader) = MakeProjectsHeader();
+        // Inside the search, so the bar's parts keep their room at the window's least width.
+        filters.Inside(search);
         ToolFlow.SetFills(search, new ToolLayout.Fills(140, 260));
         ToolFlow.SetFills(status, new ToolLayout.Fills(120));
         Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(8, 2), Children = { search, chooser, prerelease, refresh, updateAll, status } });
@@ -161,6 +176,9 @@ public sealed partial class NuGetView : DockPanel
         model.ChangeBegun -= OnChangeBegun;
         model.Changed -= OnChanged;
         model = next;
+        // A project of the last folder's narrows nothing of this one's.
+        usedBy = null;
+        filters.Narrowed = IsNarrowed;
         updateRows = [];
         asking?.Cancel();
         List([], null);
@@ -243,8 +261,9 @@ public sealed partial class NuGetView : DockPanel
     /// them, else the list's.</summary>
     private void ShowStatus()
     {
-        status.Text = outcome ?? listed.Words;
-        ToolTip.SetTip(status, outcome is null ? listed.Tip : string.Join("\n", new[] { outcome, listed.Words }.Where(w => w.Length > 0)));
+        string words = string.Join("; ", new[] { listed.Words, NarrowedWords() }.Where(w => w.Length > 0));
+        status.Text = outcome ?? words;
+        ToolTip.SetTip(status, outcome is null ? listed.Tip : string.Join("\n", new[] { outcome, words }.Where(w => w.Length > 0)));
     }
 
     /// <summary>The projects' Install, Update, Downgrade and Remove, enabled only while no package change is under way.</summary>
@@ -252,7 +271,7 @@ public sealed partial class NuGetView : DockPanel
     {
         updateAll.IsEnabled = CanUpdateAll;
         ToolTip.SetTip(updateAll, $"Update all {updateRows.Count} packages across their projects, including results hidden by search");
-        foreach (Button button in ProjectsPanel?.Children.OfType<Panel>().SelectMany(line => line.Children.OfType<Button>()) ?? [])
+        foreach (Button button in ProjectLines.SelectMany(line => line.Children.OfType<Button>()))
         {
             button.IsEnabled = !model.IsBusy;
         }
@@ -260,6 +279,9 @@ public sealed partial class NuGetView : DockPanel
 
     /// <summary>The chosen package's line per project, among its details; null while none is chosen.</summary>
     private StackPanel? ProjectsPanel => details.Children.OfType<StackPanel>().FirstOrDefault(p => p.Name == "projects");
+
+    /// <summary>The chosen package's line per project, its header aside.</summary>
+    private IEnumerable<Panel> ProjectLines => ProjectsPanel?.Children.OfType<Panel>().Where(line => line != projectsHeader) ?? [];
 
     /// <summary>One of the window's actions asked for by its button.</summary>
     public event EventHandler<string>? ActionRequested;
@@ -297,7 +319,11 @@ public sealed partial class NuGetView : DockPanel
         set => model.Given = value;
     }
 
+    /// <summary>The packages listed, as the filters leave them.</summary>
     public IReadOnlyList<PackageRow> Rows => rows;
+
+    /// <summary>The list the packages are chosen in.</summary>
+    public ListBox PackageList => list;
 
     public PackageRow? Selected => list.SelectedItem as PackageRow;
 
@@ -389,6 +415,7 @@ public sealed partial class NuGetView : DockPanel
             return;
         }
         Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> installed = await model.InstalledAsync();
+        Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive = await model.TransitiveAsync();
         if (cancel.IsCancellationRequested)
         {
             return;
@@ -399,9 +426,13 @@ public sealed partial class NuGetView : DockPanel
             IReadOnlyList<PackageRow> found;
             if (Query.Trim().Length == 0)
             {
-                found = [.. installed.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
-                    .Select(p => new PackageRow(p.Key, p.Value.Values.SelectMany(v => v).Select(v => v.Shown).FirstOrDefault(v => v is not null) ?? string.Empty,
-                        string.Empty, string.Empty, 0, p.Value))];
+                IEnumerable<PackageRow> referenced = installed.Select(p => new PackageRow(p.Key,
+                    p.Value.Values.SelectMany(v => v).Select(v => v.Shown).FirstOrDefault(v => v is not null) ?? string.Empty, string.Empty, string.Empty, 0, p.Value));
+                // A package some project references is listed as referenced, however the others get it.
+                IEnumerable<PackageRow> brought = kinds == PackageKinds.Referenced ? [] : transitive.Where(p => !installed.ContainsKey(p.Key))
+                    .Select(p => new PackageRow(p.Key, string.Join(", ", p.Value.Values.SelectMany(v => v).Select(v => v.Version).Distinct(StringComparer.OrdinalIgnoreCase)),
+                        string.Empty, string.Empty, 0, new Dictionary<string, IReadOnlyList<InstalledVersion>>()));
+                found = [.. referenced.Concat(brought).OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase).Select(r => Brought(r, transitive))];
                 Tell(Counted(found, null));
             }
             else
@@ -410,16 +441,16 @@ public sealed partial class NuGetView : DockPanel
                 FeedSearch answer = feed is FeedSet set
                     ? await set.SearchEachAsync(Query.Trim(), prerelease.IsChecked == true, cancel.Token)
                     : new FeedSearch(await feed.SearchAsync(Query.Trim(), prerelease.IsChecked == true, cancel.Token), [], 0);
-                found = [.. answer.Packages.Select(h => new PackageRow(h.Id, h.Version, h.Description, h.Authors, h.Downloads,
+                found = [.. answer.Packages.Select(h => Brought(new PackageRow(h.Id, h.Version, h.Description, h.Authors, h.Downloads,
                     installed.TryGetValue(h.Id, out Dictionary<string, IReadOnlyList<InstalledVersion>>? have) ? have : new Dictionary<string, IReadOnlyList<InstalledVersion>>())
-                { Feeds = h.Feeds })];
+                { Feeds = h.Feeds }, transitive))];
                 Tell(Said(answer, feed), answer.Failed.Count > 0 ? string.Join("\n", answer.Failed.Select(f => $"{f.Feed}: {f.Problem}")) : null);
             }
             if (cancel.IsCancellationRequested)
             {
                 return;
             }
-            Task<VulnerabilityData>? auditing = found.Any(r => r.IsInstalled) ? model.Audit() : null;
+            Task<VulnerabilityData>? auditing = found.Any(r => r.IsInstalled || r.IsTransitive) ? model.Audit() : null;
             if (auditing is { IsCompletedSuccessfully: true })
             {
                 found = Marked(found, auditing.Result);
@@ -447,10 +478,11 @@ public sealed partial class NuGetView : DockPanel
         }
     }
 
-    /// <summary>Shows rows, the package chosen before chosen again, else the first.</summary>
-    private void List(IReadOnlyList<PackageRow> found, string? chosen)
+    /// <summary>Shows rows as the filters leave them, the package chosen before chosen again, else the first.</summary>
+    private void List(IReadOnlyList<PackageRow> listed, string? chosen)
     {
-        rows = found;
+        all = listed;
+        rows = Filtered(listed);
         list.ItemsSource = rows;
         if (chosen is not null && rows.FirstOrDefault(r => r.Id.Equals(chosen, StringComparison.OrdinalIgnoreCase)) is { } again)
         {
@@ -481,22 +513,32 @@ public sealed partial class NuGetView : DockPanel
         {
             return;
         }
-        List(Marked(rows, known), Selected?.Id);
+        List(Marked(all, known), Selected?.Id);
         if (Query.Trim().Length == 0)
         {
-            Tell(Counted(rows, known));
+            Tell(Counted(all, known));
         }
     }
 
-    /// <summary>Rows with the advisories that affect the versions their projects have.</summary>
+    /// <summary>Rows with the advisories that affect the versions their projects have, referenced or brought in.</summary>
     private static IReadOnlyList<PackageRow> Marked(IReadOnlyList<PackageRow> found, VulnerabilityData known) =>
-        [.. found.Select(r => r with { Advisories = [.. r.InstalledVersions.SelectMany(v => known.Of(r.Id, v)).Distinct().OrderByDescending(a => a.Severity)] })];
+        [.. found.Select(r => r with { Advisories = [.. r.AuditedVersions.SelectMany(v => known.Of(r.Id, v)).Distinct().OrderByDescending(a => a.Severity)] })];
 
-    /// <summary>The status over the installed packages: how many, how many have a known vulnerability, and the audit's
-    /// feeds that did not say.</summary>
+    /// <summary>A row with the projects that get its package through others, those referencing it aside.</summary>
+    private static PackageRow Brought(PackageRow row, Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive) =>
+        transitive.TryGetValue(row.Id, out Dictionary<string, IReadOnlyList<TransitiveUse>>? byProject)
+            ? row with { Transitive = byProject.Where(p => !row.Installed.ContainsKey(p.Key)).ToDictionary(p => p.Key, p => p.Value, Passenger.Core.PathNames.Comparer) }
+            : row;
+
+    /// <summary>The status over the installed packages: how many, how many of them are transitive, how many have a known
+    /// vulnerability, and the audit's feeds that did not say.</summary>
     private static string Counted(IReadOnlyList<PackageRow> found, VulnerabilityData? known)
     {
         string text = $"{Plural.Of(found.Count, "package")} installed";
+        if (found.Count(r => r.IsTransitive) is int brought and > 0)
+        {
+            text += $", {brought} transitive";
+        }
         if (found.Count(r => r.IsVulnerable) is int vulnerable and > 0)
         {
             text += $", {vulnerable} vulnerable";
@@ -732,22 +774,30 @@ public sealed partial class NuGetView : DockPanel
         return block;
     }
 
+    /// <summary>The chosen package's line per project as the pane's filters leave them: its version (a version brought in
+    /// by another package or project tagged so), a mark where it is vulnerable, and Install, Update, Downgrade or Remove.</summary>
     private void ShowProjects(PackageRow row)
     {
         if (ProjectsPanel is not { } panel)
         {
             return;
         }
+        projectsOf = row;
         panel.Children.Clear();
-        panel.Children.Add(new TextBlock { Text = "Projects", FontWeight = FontWeight.SemiBold });
-        foreach (ProjectModel project in model.Projects.Where(p => p.Exists).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        // The one header goes with the chosen package's projects, from the last package's.
+        (projectsHeader.Parent as Panel)?.Children.Remove(projectsHeader);
+        panel.Children.Add(projectsHeader);
+        IReadOnlyList<(ProjectModel Project, IReadOnlyList<InstalledVersion> At, IReadOnlyList<TransitiveUse> Brought)> listed = ProjectsListed(row, out int all);
+        projectCount.Text = listed.Count == all ? string.Empty : $"{listed.Count} of {all}";
+        foreach ((ProjectModel project, IReadOnlyList<InstalledVersion> at, IReadOnlyList<TransitiveUse> brought) in listed)
         {
-            IReadOnlyList<InstalledVersion> at = row.Installed.GetValueOrDefault(project.Path) ?? [];
             bool has = at.Count > 0;
             InstalledVersion? vulnerable = at.FirstOrDefault(v => v.Version is { } known && Known.Of(row.Id, known).Count > 0);
-            TextBlock version = new() { Text = Shown(at), Width = 110, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-            ToolTip.SetTip(version, Told(at));
-            version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(vulnerable is not null ? TokenKeys.Warning : TokenKeys.TextMuted));
+            TransitiveUse? broughtVulnerable = has ? null : brought.FirstOrDefault(b => Known.Of(row.Id, b.Version).Count > 0);
+            (string Shown, string Told)? through = !has && brought.Count > 0 ? Brought(brought, ChosenVersion) : null;
+            TextBlock version = new() { Text = through?.Shown ?? Shown(at), Width = 110, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            ToolTip.SetTip(version, through?.Told ?? Told(at));
+            version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(vulnerable is not null || broughtVulnerable is not null ? TokenKeys.Warning : TokenKeys.TextMuted));
             // A slot of its own, so the buttons stand in one column whichever lines have the mark.
             Panel mark = new() { Width = 14, VerticalAlignment = VerticalAlignment.Center };
             if (vulnerable is { Version: { } affected })
@@ -755,6 +805,11 @@ public sealed partial class NuGetView : DockPanel
                 Advisory gravest = Known.Of(row.Id, affected)[0];
                 string where = at.Count > 1 ? $" for {vulnerable.Framework}" : string.Empty;
                 mark.Children.Add(Warning($"Known security vulnerability in {affected}{where}: {gravest.Severity} severity ({gravest.Address})"));
+            }
+            else if (broughtVulnerable is { } bad)
+            {
+                Advisory gravest = Known.Of(row.Id, bad.Version)[0];
+                mark.Children.Add(Warning($"Known security vulnerability in {bad.Version}, brought in by {string.Join(", ", bad.BroughtBy)}: {gravest.Severity} severity ({gravest.Address})"));
             }
             TextBlock name = new() { Text = project.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
             ToolFlow.SetFills(name, new ToolLayout.Fills(100, 220));
@@ -778,6 +833,14 @@ public sealed partial class NuGetView : DockPanel
                     line.Children.Add(moving);
                 }
                 line.Children.Add(Action("Remove", () => RemoveAsync(project)));
+            }
+            // After the buttons, so they stand in one column whichever lines have the tag.
+            if (through is not null)
+            {
+                Border tag = Tagged("transitive");
+                tag.Margin = new Thickness(0);
+                ToolTip.SetTip(tag, through.Value.Told);
+                line.Children.Add(tag);
             }
             panel.Children.Add(line);
         }
@@ -815,8 +878,9 @@ public sealed partial class NuGetView : DockPanel
         return button;
     }
 
-    /// <summary>A package's row: its icon, its id (strong where a project has it), its version muted, its description on
-    /// hover, and a warning saying the gravest advisory where a version a project has is vulnerable.</summary>
+    /// <summary>A package's row: its icon, its id (strong where a project references it), its version muted, a tag on one
+    /// projects get only through others, its description or what brings it in on hover, and a warning saying the gravest
+    /// advisory where a version a project has is vulnerable.</summary>
     private Control Row()
     {
         TextBlock version = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
@@ -824,24 +888,39 @@ public sealed partial class NuGetView : DockPanel
         RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
         icon.DataKey = IconKeys.Package;
         TextBlock id = new() { VerticalAlignment = VerticalAlignment.Center };
+        Border transitive = Tagged("transitive");
         RowIcon warning = Warning(string.Empty);
         warning.Margin = new Thickness(6, 0, 0, 0);
         StackPanel line = new()
         {
             Orientation = Orientation.Horizontal,
             Height = ListRow.Height,
-            Children = { icon, id, version, warning },
+            Children = { icon, id, version, transitive, warning },
         };
         return line.Showing<PackageRow>(row =>
         {
             id.Text = row.Id;
             id.FontWeight = row.IsInstalled ? FontWeight.SemiBold : FontWeight.Normal;
             version.Text = row.UpdateVersion is { } latest ? $"{row.Version} → {latest}" : row.Version;
-            ToolTip.SetTip(line, row.Description.Length > 0 ? row.Description : null);
+            transitive.IsVisible = row.IsTransitive;
+            ToolTip.SetTip(line, row.IsTransitive ? $"Brought in by {BroughtBy(row.Transitive.Values.SelectMany(v => v))}"
+                : row.Description.Length > 0 ? row.Description : null);
             warning.IsVisible = row.IsVulnerable;
             ToolTip.SetTip(warning, row.IsVulnerable ? $"Known security vulnerability: {row.Advisories[0].Severity} severity ({row.Advisories[0].Address})" : null);
         });
     }
+
+    /// <summary>A small tag after a row's words ("transitive").</summary>
+    private static Border Tagged(string words)
+    {
+        TextBlock text = new() { Text = words, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+        text.Classes.Add(StyleClasses.Muted);
+        return new Border { Classes = { StyleClasses.Tag }, Padding = new Thickness(4, 0), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
+    }
+
+    /// <summary>What brings a package in, each once, in order.</summary>
+    private static string BroughtBy(IEnumerable<TransitiveUse> uses) =>
+        string.Join(", ", uses.SelectMany(u => u.BroughtBy).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase));
 
     /// <summary>The warning a vulnerable version is marked with, saying what it is.</summary>
     private static RowIcon Warning(string tip)

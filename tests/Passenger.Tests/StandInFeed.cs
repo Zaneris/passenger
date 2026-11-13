@@ -48,11 +48,15 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
     /// <summary>Whether the page of advisories its VulnerabilityInfo index lists answers 404, as a mirror out of step does.</summary>
     public bool AdvisoriesGone { get; set; }
 
-    public void Add(string id, string version) => Add(id, version, null);
+    public void Add(string id, string version) => Add(id, version, (IReadOnlyDictionary<string, string>?)null);
 
     /// <summary>A package served with the files given in it, each by its path in the package and its text (<see cref="Package"/>).</summary>
     public void Add(string id, string version, IReadOnlyDictionary<string, string>? files) =>
         (packages.TryGetValue(id, out Dictionary<string, byte[]>? versions) ? versions : packages[id] = [])[version] = Package(id, version, files);
+
+    /// <summary>A package that depends on others, each at least at its version, as a restore takes them in with it.</summary>
+    public void Add(string id, string version, params (string Id, string Version)[] dependencies) =>
+        (packages.TryGetValue(id, out Dictionary<string, byte[]>? versions) ? versions : packages[id] = [])[version] = Package(id, version, null, dependencies);
 
     /// <summary>A known vulnerability of a package's versions (a NuGet range, "[1.0.0, 1.0.1)"), at NuGet's severity (0
     /// low to 3 critical), with its advisory's address.</summary>
@@ -75,8 +79,11 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
 
     /// <summary>A package with nothing in it but its manifest, an empty lib folder, so any framework takes it, and the
     /// <paramref name="files"/> given (an MSBuild SDK's Sdk/Sdk.props), each by its path in the package and its text.</summary>
-    public static byte[] Package(string id, string version, IReadOnlyDictionary<string, string>? files = null)
+    public static byte[] Package(string id, string version, IReadOnlyDictionary<string, string>? files = null, IReadOnlyList<(string Id, string Version)>? dependencies = null)
     {
+        string depends = dependencies is { Count: > 0 }
+            ? $"<dependencies><group>{string.Concat(dependencies.Select(d => $"<dependency id=\"{d.Id}\" version=\"{d.Version}\" />"))}</group></dependencies>"
+            : string.Empty;
         using MemoryStream bytes = new();
         using (ZipArchive zip = new(bytes, ZipArchiveMode.Create, leaveOpen: true))
         {
@@ -90,6 +97,7 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
                         <version>{version}</version>
                         <authors>Passenger Tests</authors>
                         <description>A package for the tests.</description>
+                        {depends}
                       </metadata>
                     </package>
                     """);

@@ -34,6 +34,10 @@ public sealed partial class FolderPackages
 
     private (Task Until, TaskCompletionSource Reached)? holdNext;
 
+    /// <summary>Each assets file as last read, with the time it was written and its length then, so a list made again reads
+    /// only what a restore wrote since.</summary>
+    private readonly ConcurrentDictionary<string, (DateTime Written, long Length, RestoredVersions Read)> assetsRead = new(PathNames.Comparer);
+
     /// <param name="projects">The folder's projects, whose packages are listed and changed.</param>
     /// <param name="root">The folder NuGet's configuration is read from: the solution's, else the one open.</param>
     public FolderPackages(Func<IReadOnlyList<ProjectModel>> projects, Func<string?> root)
@@ -212,18 +216,52 @@ public sealed partial class FolderPackages
         return installed;
     }
 
+    /// <summary>The packages each project gets only through a package or project it references, as its restore resolved
+    /// them (<see cref="RestoredVersions.Transitive"/>): by package, each project's uses; read off the window's thread from
+    /// the projects' project.assets.json, never restoring, so a project not restored yet gets none.</summary>
+    public async Task<Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>>> TransitiveAsync()
+    {
+        ProjectModel[] each = [.. Projects.Where(p => p.Exists)];
+        (string Path, IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>> Uses)[] read =
+            await BackgroundWork.Run(() => each.Select(p => (p.Path, RestoredSince(p).Transitive())).ToArray());
+        Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive = new(StringComparer.OrdinalIgnoreCase);
+        foreach ((string path, IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>> uses) in read)
+        {
+            foreach ((string id, IReadOnlyList<TransitiveUse> at) in uses)
+            {
+                (transitive.TryGetValue(id, out Dictionary<string, IReadOnlyList<TransitiveUse>>? byProject) ? byProject
+                    : transitive[id] = new Dictionary<string, IReadOnlyList<TransitiveUse>>(PathNames.Comparer))[path] = at;
+            }
+        }
+        return transitive;
+    }
+
     /// <summary>What a project's restore resolved: its project.assets.json, where its evaluation says, else in its obj
     /// folder or an artifacts folder above it; none before it is restored, or while its file does not read.</summary>
-    internal static RestoredVersions Restored(ProjectModel project)
+    internal static RestoredVersions Restored(ProjectModel project) => AssetsOf(project) is { } assets ? Read(assets, null) : RestoredVersions.None;
+
+    /// <summary>What a project's restore resolved (<see cref="Restored"/>), read again only once a restore wrote its file.</summary>
+    private RestoredVersions RestoredSince(ProjectModel project) => AssetsOf(project) is { } assets ? Read(assets, assetsRead) : RestoredVersions.None;
+
+    private static string? AssetsOf(ProjectModel project) =>
+        project.Property(Passenger.Host.CarriedProperties.ProjectAssetsFile) ?? Passenger.Xaml.Projects.ProjectInputs.FindAssets(project.Path);
+
+    private static RestoredVersions Read(string assets, ConcurrentDictionary<string, (DateTime Written, long Length, RestoredVersions Read)>? kept)
     {
-        if ((project.Property(Passenger.Host.CarriedProperties.ProjectAssetsFile) ?? Passenger.Xaml.Projects.ProjectInputs.FindAssets(project.Path)) is not { } assets)
-        {
-            return RestoredVersions.None;
-        }
         try
         {
             using FileStream stream = new(assets, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            return RestoredVersions.Read(stream);
+            (DateTime Written, long Length) now = (File.GetLastWriteTimeUtc(assets), stream.Length);
+            if (kept is not null && kept.TryGetValue(assets, out (DateTime Written, long Length, RestoredVersions Read) last) && (last.Written, last.Length) == now)
+            {
+                return last.Read;
+            }
+            RestoredVersions read = RestoredVersions.Read(stream);
+            if (kept is not null)
+            {
+                kept[assets] = (now.Written, now.Length, read);
+            }
+            return read;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

@@ -141,6 +141,8 @@ ICONS = [
     ("SignatureUnverified", "Shield Question", "16_regular"),
     ("SignatureBad", "Shield Dismiss", "16_regular"),
     ("SignatureExpired", "Shield Error", "16_regular"),
+    # A list's Sort and Filter menu (the NuGet window's packages and projects, Attach to Process's processes).
+    ("Filter", "Filter", "20_regular"),
 ]
 
 # Resource key, then two icons (folder and size and style, as above) whose parts make it: the first's shape outside its

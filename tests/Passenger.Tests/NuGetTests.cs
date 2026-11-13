@@ -3,6 +3,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
 using Passenger.App;
+using Passenger.App.Explorer;
 using Passenger.App.Packages;
 using Passenger.App.ToolWindows;
 using Passenger.Workspace;
@@ -19,6 +20,10 @@ public sealed class NuGetTests : IDisposable
     private const string Id = "Passenger.Vulnerable";
 
     private const string Advisory = "https://github.com/advisories/GHSA-pass-nuget-test";
+
+    /// <summary>The framework of the SDK the tests run on, whose targeting pack it carries, so a project of it restores
+    /// from the stand-in alone.</summary>
+    private const string Restorable = "net11.0";
 
     private readonly string folder = TestFolders.Create("nuget-");
     private readonly StandInFeed feed = new();
@@ -84,6 +89,128 @@ public sealed class NuGetTests : IDisposable
         Assert.Equal("2.0.0-preview.1", nuget.ChosenVersion);
         window.Close();
     }
+
+    /// <summary>The package list's Sort and Filter, over two restored projects whose restore brought in packages neither
+    /// names: App references Lib and Passenger.Other, Lib references Passenger.Charts, which depends on a vulnerable
+    /// Passenger.Vulnerable. Transitive packages are listed only when asked, tagged, with what brings each in for each
+    /// project, audited as referenced ones are; a project's alone, the vulnerable alone and the order narrow what the
+    /// list holds without asking the feed again, and are kept as another package is chosen.</summary>
+    [AvaloniaFact]
+    public void The_package_list_sorts_and_filters_and_lists_transitive_packages_with_what_brings_them_in()
+    {
+        const string Charts = "Passenger.Charts";
+        const string Other = "Passenger.Other";
+        feed.Add(Charts, "1.0.0", (Id, "1.0.0"));
+        feed.Add(Other, "1.0.0");
+        Project("Lib", Restorable, $"<ItemGroup><PackageReference Include=\"{Charts}\" Version=\"1.0.0\" /></ItemGroup>");
+        string app = Project("App", Restorable,
+            $"<ItemGroup><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /><ProjectReference Include=\"../Lib/Lib.csproj\" /></ItemGroup>");
+        Restore.Run(Passenger.Core.PathNames.Canonical(app));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        string libPath = Named(window, "Lib").Path;
+        string appPath = Named(window, "App").Path;
+        Assert.Equal([Charts, Other], nuget.Rows.Select(r => r.Id));
+        int asked = feed.Requests.Count;
+
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Referenced and Transitive Packages");
+        Assert.Equal([Charts, Other, Id], nuget.Rows.Select(r => r.Id));
+        PackageRow brought = nuget.Rows.Single(r => r.Id == Id);
+        Assert.True(brought.IsTransitive, $"{Id} was listed as referenced, though only Passenger.Charts brings it in");
+        Assert.Equal(["Passenger.Charts"], Assert.Single(brought.Transitive[libPath]).BroughtBy);
+        Assert.Equal(["Lib"], Assert.Single(brought.Transitive[appPath]).BroughtBy);
+        Assert.Equal("1.0.0", brought.Transitive[appPath][0].Version);
+        Assert.True(brought.IsVulnerable, $"The transitive {Id} 1.0.0 was not audited: {nuget.Status}");
+        Assert.True(nuget.Filters.Button.IsChecked == true, "The Sort and Filter button does not show the list narrowed");
+        Assert.Contains("1 transitive", nuget.Status, StringComparison.Ordinal);
+
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Vulnerable Only");
+        Assert.Equal([Id], nuget.Rows.Select(r => r.Id));
+        Assert.Contains("1 of 3 shown: vulnerable", nuget.Status, StringComparison.Ordinal);
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Vulnerable Only");
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Used By", "App");
+        Assert.Equal([Charts, Other, Id], nuget.Rows.Select(r => r.Id));
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Sort by Name, Z to A");
+        Assert.Equal([Id, Other, Charts], nuget.Rows.Select(r => r.Id));
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Transitive Packages Only");
+        Assert.Equal([Id], nuget.Rows.Select(r => r.Id));
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Referenced Packages");
+        Assert.Equal([Other], nuget.Rows.Select(r => r.Id));
+        Assert.Contains("used by App", nuget.Status, StringComparison.Ordinal);
+        Assert.DoesNotContain(feed.Requests.Skip(asked), r => r.Path.StartsWith("/query", StringComparison.Ordinal) || r.Path.StartsWith("/vulnerabilities", StringComparison.Ordinal));
+
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Clear Filters");
+        Assert.Equal([Charts, Other], nuget.Rows.Select(r => r.Id));
+        Assert.False(nuget.Filters.Button.IsChecked == true, "Clear Filters left the Sort and Filter button pressed");
+        window.Close();
+    }
+
+    /// <summary>The chosen package's projects narrowed by name and by whether they reference it, and sorted, the choices kept
+    /// as another package is chosen; a project that gets the package only through another is tagged so and offers Install,
+    /// which references it directly.</summary>
+    [AvaloniaFact]
+    public void The_projects_pane_sorts_and_filters_and_keeps_its_choices_across_packages()
+    {
+        const string Charts = "Passenger.Charts";
+        feed.Add(Charts, "1.0.0", (Id, "1.0.0"));
+        Project("Lib", Restorable, $"<ItemGroup><PackageReference Include=\"{Charts}\" Version=\"1.0.0\" /><PackageReference Include=\"{Id}\" Version=\"1.0.1\" /></ItemGroup>");
+        string app = Project("App", Restorable, "<ItemGroup><ProjectReference Include=\"../Lib/Lib.csproj\" /></ItemGroup>");
+        Project("Tools", Restorable, string.Empty);
+        // By its real path, as the window reads it: a restore through TMPDIR's /var link loses App's reference to Lib.
+        Restore.Run(Passenger.Core.PathNames.Canonical(app));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        ChoosePackage(nuget, Charts);
+        Assert.Equal(["App", "Lib", "Tools"], nuget.ProjectNames);
+        Assert.Contains(Line(nuget, "App")!.Children.OfType<Border>(), b => b.Child is TextBlock { Text: "transitive" });
+        Assert.Equal(["Install"], Labels(nuget, "App"));
+        Assert.Equal(["Install"], Labels(nuget, "Tools"));
+        Assert.Equal(["Remove"], Labels(nuget, "Lib"));
+
+        Ui.Click(nuget.ProjectFilters.Button);
+        Ui.Choose(nuget.ProjectFilters.OpenMenu, "Sort Installed First");
+        Assert.Equal(["Lib", "App", "Tools"], nuget.ProjectNames);
+        Ui.Click(nuget.ProjectFilters.Button);
+        Ui.Choose(nuget.ProjectFilters.OpenMenu, "Sort by Name, Z to A");
+        Assert.Equal(["Tools", "Lib", "App"], nuget.ProjectNames);
+        Ui.Click(nuget.ProjectFilters.Button);
+        Ui.Choose(nuget.ProjectFilters.OpenMenu, "Not Installed");
+        Assert.Equal(["Tools", "App"], nuget.ProjectNames);
+        nuget.ProjectQuery = "too";
+        Ui.Settle();
+        Assert.Equal(["Tools"], nuget.ProjectNames);
+
+        ChoosePackage(nuget, Id);
+        Assert.True(nuget.ProjectNames.SequenceEqual(["Tools"]) && nuget.ProjectQuery == "too" && nuget.ProjectsShown == ProjectsShown.NotInstalled,
+            $"Choosing another package left [{string.Join(", ", nuget.ProjectNames)}] listed, filtered by '{nuget.ProjectQuery}' and {nuget.ProjectsShown}");
+        nuget.ProjectQuery = string.Empty;
+        Ui.Click(nuget.ProjectFilters.Button);
+        Ui.Choose(nuget.ProjectFilters.OpenMenu, "With an Update");
+        Assert.Equal(["Lib"], nuget.ProjectNames);
+        Ui.Click(nuget.ProjectFilters.Button);
+        Ui.Choose(nuget.ProjectFilters.OpenMenu, "Installed");
+        Assert.Equal(["Lib"], nuget.ProjectNames);
+        window.Close();
+    }
+
+    /// <summary>A package of the list chosen as a person clicks its row, its versions and projects shown.</summary>
+    private static void ChoosePackage(NuGetView nuget, PackageRow row)
+    {
+        Ui.Click(Ui.Row(nuget.PackageList, row));
+        Ui.Settle();
+        Assert.Equal(row.Id, nuget.Selected?.Id);
+    }
+
+    private static void ChoosePackage(NuGetView nuget, string id) =>
+        ChoosePackage(nuget, nuget.Rows.FirstOrDefault(r => r.Id == id) ?? throw new Xunit.Sdk.XunitException($"NuGet lists no {id}: [{string.Join(", ", nuget.Rows.Select(r => r.Id))}]"));
 
     [AvaloniaFact]
     public void Update_all_updates_every_project_even_when_search_hides_results_and_one_undo_restores_them()
