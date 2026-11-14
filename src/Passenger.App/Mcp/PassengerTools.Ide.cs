@@ -119,7 +119,8 @@ public sealed partial class PassengerTools
     /// <summary>How a theme or code colour scheme is named, with some of Passenger's themes repository's.</summary>
     private static string? ThemeNote(string property) => property switch
     {
-        nameof(AppSettings.Look) => $"null for Passenger's own, or {{\"source\", \"name\"}}: {ThemeSource.RepositoryName} holds {string.Join(", ", ThemeSource.FormerlyCarried)} among others; themeSources lists the person's sources",
+        nameof(AppSettings.Look) => $"null for Passenger's own, or {{\"source\", \"name\"}}: {ThemeSource.BuiltIn.Name} holds {Plural.Listed(ThemeSource.Carried)}, "
+            + $"carried with Passenger; {ThemeSource.RepositoryName} holds {string.Join(", ", ThemeSource.FormerlyCarried)} among others; themeSources lists the person's sources",
         nameof(AppSettings.ColourScheme) => $"null for the theme's own, or {{\"source\", \"name\"}}: {ThemeSource.RepositoryName} holds {ThemeSource.FormerScheme} among others",
         _ => null,
     };

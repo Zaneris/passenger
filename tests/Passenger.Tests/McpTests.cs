@@ -1108,8 +1108,13 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
         JsonElement look = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "look");
         Assert.True(look.GetProperty("value").ValueKind == JsonValueKind.Null && look.GetProperty("kind").GetString() == "object"
-            && look.GetProperty("note").GetString()!.Contains($"{ThemeSource.RepositoryName} holds Harbour", StringComparison.Ordinal),
+            && look.GetProperty("note").GetString()!.Contains($"{ThemeSource.RepositoryName} holds Harbour", StringComparison.Ordinal)
+            && look.GetProperty("note").GetString()!.Contains($"{ThemeSource.BuiltIn.Name} holds Cubicle", StringComparison.Ordinal),
             $"settings said of the theme: {look.GetRawText()}");
+        // The theme Passenger carries, by the source the note names.
+        Dictionary<string, object> cubicle = new() { ["source"] = ThemeSource.BuiltIn.Name, ["name"] = "Cubicle" };
+        JsonElement carried = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = cubicle } })).EnumerateArray());
+        Assert.Equal((ThemeSource.BuiltIn.Name, "Cubicle"), (carried.GetProperty("after").GetProperty("source").GetString(), carried.GetProperty("after").GetProperty("name").GetString()));
         Dictionary<string, object> slate = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = "Slate" };
         JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = slate } })).EnumerateArray());
         Assert.Equal("Slate", changed.GetProperty("after").GetProperty("name").GetString());
