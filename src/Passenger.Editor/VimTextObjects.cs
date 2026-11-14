@@ -298,38 +298,32 @@ public static class VimTextObjects
         return line;
     }
 
-    /// <summary>ip and ap carrying a visual stretch over several lines on: from its cursor's line <paramref name="n"/>
-    /// runs of lines with text or of blank ones further (ap a run of each), up or down, as far as the text's edge.</summary>
+    /// <summary>ip and ap carrying a visual stretch on from its cursor's line: <paramref name="n"/> runs of lines with
+    /// text or of blank ones further (ap two runs for each), up to the first line of each run or down to its last; a run
+    /// the line is inside counts as one. They stop at the text's edge, never failing.</summary>
     public static int ParagraphsOn(TextSnapshot text, int line, bool up, int n, bool inner, bool breakEnds)
     {
-        int edge = up ? 0 : VimMotions.LastLine(text, breakEnds);
-        int step = up ? -1 : 1;
-        for (int i = 0; i < n; i++)
+        int last = VimMotions.LastLine(text, breakEnds);
+        long runs = inner ? n : 2L * n;
+        for (long i = 0; i < runs; i++)
         {
-            if (line == edge)
+            int next = up ? line - 1 : line + 1;
+            if (next < 0 || next > last)
             {
                 break;
             }
-            bool? before = null;
-            for (int t = 0; t < 2; t++)
-            {
-                line += step;
-                bool blank = BlankLine(text, line);
-                if (before == blank)
-                {
-                    line -= step;
-                    break;
-                }
-                while (line != edge && BlankLine(text, line + step) == blank)
-                {
-                    line += step;
-                }
-                if (inner || line == edge)
-                {
-                    break;
-                }
-                before = blank;
-            }
+            line = up ? RunStartOf(text, next) : RunEnd(text, next, last);
+        }
+        return line;
+    }
+
+    /// <summary>The first line of the run of lines alike (blank or not) that the line is in.</summary>
+    private static int RunStartOf(TextSnapshot text, int line)
+    {
+        bool blank = BlankLine(text, line);
+        while (line > 0 && BlankLine(text, line - 1) == blank)
+        {
+            line--;
         }
         return line;
     }
