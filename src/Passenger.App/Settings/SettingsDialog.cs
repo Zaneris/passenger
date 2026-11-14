@@ -310,6 +310,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.VimMode);
         Add(Declared.VimKeysToKeymap, Declared.VimKeysToKeymap.Box(Working, Change, stroke => KeymapDoes(actions, stroke)));
         Add(Declared.CloseTags);
+        Add(Declared.CompletionParentheses);
         Add(Declared.XamlWorkspace);
         Add(Declared.SolutionWideAnalysis);
         Add(Declared.ParameterHints);

@@ -704,6 +704,37 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     private static bool AsksCall(object parameters) =>
         parameters is Passenger.Lsp.RoslynExtension.DispatchExtensionMessageParams { MessageName: Passenger.Roslyn.Extension.Handlers.CompletionCall };
 
+    /// <summary>With Settings' parentheses for a method chosen from completion turned off, a method chosen by Enter is
+    /// written as its name alone, the caret after it.</summary>
+    [AvaloniaFact]
+    public void With_parentheses_turned_off_a_method_chosen_from_the_list_is_written_as_its_name_alone()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        void Change(Func<AppSettings, AppSettings> change) => window.ApplySettings(change(window.Settings));
+        try
+        {
+            Change(s => s with { CompletionParentheses = false });
+            Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
+            editor.Focus();
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("int doubled = Helper.");
+            Ui.Settle();
+            window.KeyTextInput("Tw");
+            Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "Twice", "Helper.Twice among its members");
+            Ui.Press(window, "ENTER");
+            Ui.Settle();
+            Assert.True(Line() == "        int doubled = Helper.Twice" && editor.CaretPosition.Column == Line().Length,
+                $"With parentheses turned off, Twice was not written as its name alone with the caret after it: '{Line()}', the caret at {editor.CaretPosition.Column}");
+        }
+        finally
+        {
+            Change(s => s with { CompletionParentheses = true });
+            window.Close();
+        }
+    }
+
     /// <summary>What Roslyn's server package carries under Visual Studio's terms rather than an open-source licence and
     /// Passenger.Lsp.csproj leaves out of roslyn/ (RoslynServerLeftOut), since nothing Passenger asks of the server loads them.</summary>
     private static readonly string[] LeftOut =

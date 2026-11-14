@@ -137,6 +137,11 @@ public static class Declared
     public static readonly ToggleSetting CloseTags = new(s => s.CloseTags, (s, v) => s with { CloseTags = v },
         new(D.EditorPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html razor blazor msbuild elements"));
 
+    public static readonly ToggleSetting CompletionParentheses = new(s => s.CompletionParentheses, (s, v) => s with { CompletionParentheses = v },
+        new(D.EditorPage, "Add parentheses to a method chosen from completion", "completion parentheses brackets call method invocation arguments autocomplete",
+            "A C# method chosen by Enter, Tab or a click is written as a call, the caret between its parentheses where it takes "
+            + "arguments. Where the code asks for the method itself, as an event's handler or a delegate, it stays a name."));
+
     public static readonly ToggleSetting XamlWorkspace = new(s => s.XamlWorkspace, (s, v) => s with { XamlWorkspace = v },
         new(D.EditorPage, "Open XAML files in the XAML workspace",
             "xaml workspace axaml preview designer live visual tree selection properties avalonia wpf layout side by side",

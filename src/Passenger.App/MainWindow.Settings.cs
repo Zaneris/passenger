@@ -188,6 +188,7 @@ public partial class MainWindow
         FollowXamlWorkspace(before);
         FollowVimMappings(next.VimMode);
         assist.Templates = CSharp.TemplateSet.Of(next);
+        assist.CompletionParentheses = next.CompletionParentheses;
         assist.XamlFormat = next.XamlFormat;
         assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);
         if (terminal is { } panel)

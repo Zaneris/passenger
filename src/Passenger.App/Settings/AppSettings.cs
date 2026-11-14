@@ -96,6 +96,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// the open element's name.</summary>
     public bool CloseTags { get; init; } = true;
 
+    /// <summary>In C#, a method chosen from the completion list by Enter, Tab or a click is written called, its parentheses
+    /// after it and the caret between them where it takes arguments; off, its name alone.</summary>
+    public bool CompletionParentheses { get; init; } = true;
+
     /// <summary>The XAML workspace: an Avalonia or WPF file opens beside its preview and, while its app runs, its Live Visual
     /// Tree, an element chosen in any of the three chosen in the others.</summary>
     public bool XamlWorkspace { get; init; }

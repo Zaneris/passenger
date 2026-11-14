@@ -686,6 +686,10 @@ internal sealed partial class CodeCompletion
         }
     }
 
+    /// <summary>Whether a C# method chosen by Enter, Tab or a click is written called where the code calls it, as Settings
+    /// leaves it.</summary>
+    public bool CallsMethods { get; set; } = true;
+
     /// <summary>The chosen item in place of the name typed, up to <paramref name="end"/> (the caret when not given).</summary>
     private async Task CommitCore(int? end = null)
     {
@@ -799,7 +803,7 @@ internal sealed partial class CodeCompletion
             context.Say(CodeActions.NotRun(item.Label, command));
         }
         // Chosen by Enter, Tab or a click: a commit character typed is what follows the name.
-        if (end is null && lands && item.Kind == CompletionItemKind.Method && item.InsertTextFormat != InsertTextFormat.Snippet
+        if (CallsMethods && end is null && lands && item.Kind == CompletionItemKind.Method && item.InsertTextFormat != InsertTextFormat.Snippet
             && lsp is { IsRazor: false } && context.Current is CSharpDocument)
         {
             await CallAsync(lsp, document, place, landing.Caret);

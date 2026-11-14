@@ -436,6 +436,13 @@ public sealed class CodeAssist
         set => completion.Templates = value;
     }
 
+    /// <summary>Whether a C# method chosen from completion is written called, as Settings leaves it.</summary>
+    public bool CompletionParentheses
+    {
+        get => completion.CallsMethods;
+        set => completion.CallsMethods = value;
+    }
+
     /// <summary>The XAML code style as Settings leaves it, which a file's .editorconfig overrides.</summary>
     public XamlFormatSettings XamlFormat
     {
