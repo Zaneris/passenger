@@ -299,7 +299,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - **Docking.** A theme's default layout is the dock's default (`DockHost.UseDefault`/`Default`, `Themes.Layout`): what a
   window with no kept layout opens on and what Restore Default Layout goes to, never laid over a kept layout. A window
   closed off its stripe (`ToolWindow.IsClosed`, set only through `DockHost.SetOnStripe`: Close and the stripe's checklist, `DockHost.StripeMenu`; `ClosesOffStripe` governs only ×) is kept in the saved layout; the stripes and titled tabs list only
-  `OnStripes`. A stripe with no icon folds away and shows while a tool window is dragged (`DockHost.Dragging`, fed by
+  `OnStripes`. A stripe with no icon folds away, but not while a window of its places is off it (`ToolWindow.IsClosed`), so its checklist stays reachable, and shows while a tool window is dragged (`DockHost.Dragging`, fed by
   `DragGesture.DraggingChanged`); drop places are measured on the editors and the open areas (`DockDrag.Target`), never the frame's quarters. A kept layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
