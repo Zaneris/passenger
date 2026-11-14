@@ -559,8 +559,45 @@ internal sealed partial class CodeCompletion
         }
         string eol = document.LineEnding;
         List<TextEdit> fitted = Indentation.Fit(document.Snapshot, LineEndings.Fit(document.Snapshot, edits, eol), indent);
+        Roslyn.Extension.CallFound call = Roslyn.Extension.CallFound.None;
+        // Chosen by Enter, Tab or a click: a commit character typed is what follows the name.
+        if (end is null && item.Kind == CompletionItemKind.Method && item.InsertTextFormat != InsertTextFormat.Snippet && lsp is { IsRazor: false }
+            && context.Current is CSharpDocument && ItemEdit(fitted, start, replaced) is int held)
+        {
+            using ChangeTracker calling = new(document);
+            try
+            {
+                call = await lsp.CompletionCallAsync(fitted, held);
+            }
+            catch (LanguageServerFailed)
+            {
+                // The method goes in alone, as the server listed it.
+            }
+            if (Editor.Document != document)
+            {
+                return;
+            }
+            if (calling.Version != document.Version)
+            {
+                // Typed on meanwhile: what was typed after the name may be its call already.
+                call = Roslyn.Extension.CallFound.None;
+                if (calling.Map(fitted) is not { } moved)
+                {
+                    context.Say("The completion was not inserted: the code it changes was edited meanwhile");
+                    return;
+                }
+                fitted = [.. moved];
+                start = calling.MapOffset(start);
+                replaced = calling.MapOffset(replaced);
+            }
+            else if (call.Call)
+            {
+                fitted[held] = fitted[held] with { Text = fitted[held].Text + "()" };
+            }
+        }
         int after = ItemEnd(fitted, start, replaced);
-        Selection landing = new(after - LineEndings.In(insert[final.Start..], eol).Length, after - LineEndings.In(insert[final.End..], eol).Length);
+        Selection landing = call.Call ? new(after - (call.Arguments ? 1 : 0), after - (call.Arguments ? 1 : 0))
+            : new(after - LineEndings.In(insert[final.Start..], eol).Length, after - LineEndings.In(insert[final.End..], eol).Length);
         int at = Editor.Selections.Primary.Caret;
         // Said, since an item put in with nothing typed is an insertion at the caret, which stays before it; a commit character's caret is past it.
         Editor.ApplyEdits(fitted, at >= start && at <= replaced ? SelectionSet.Single(landing) : null);
@@ -568,6 +605,25 @@ internal sealed partial class CodeCompletion
         {
             context.Say(CodeActions.NotRun(item.Label, command));
         }
+        if (call.Arguments)
+        {
+            // The call's bracket, as if typed: its signature shows.
+            context.Languages.Typed("(");
+        }
+    }
+
+    /// <summary>Which of the fitted edits holds the item put in place of <paramref name="start"/> to <paramref name="end"/>
+    /// (<see cref="ItemEnd"/>), null where fitting left none holding it.</summary>
+    private static int? ItemEdit(IReadOnlyList<TextEdit> fitted, int start, int end)
+    {
+        for (int i = 0; i < fitted.Count; i++)
+        {
+            if (fitted[i].Start <= start && fitted[i].End >= end)
+            {
+                return i;
+            }
+        }
+        return null;
     }
 
     /// <summary>Where the item put in place of <paramref name="start"/> to <paramref name="end"/> ends once the fitted

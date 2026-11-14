@@ -282,10 +282,12 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             $"Typing lIO offered [{string.Join(", ", window.Assist.CompletionLabels.Take(5))}], not LastIndexOf then LastIndexOfAny");
         Ui.Press(window, "ENTER");
         Ui.Settle();
-        Assert.Contains("int at = \"text\".LastIndexOf", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Contains("int at = \"text\".LastIndexOf()", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
 
         // A name the humps start comes after every name the letters begin.
-        window.KeyTextInput("('x');");
+        window.KeyTextInput("'x'");
+        window.KeyTextInput(")");
+        window.KeyTextInput(";");
         Ui.Press(window, "ENTER");
         window.KeyTextInput("bool plain = \"text\".");
         Ui.Settle();
@@ -408,13 +410,65 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
         Ui.Press(window, "ENTER");
         Ui.Settle();
-        window.KeyTextInput("();");
+        // Max's overloads taking a selector put the caret between its call's brackets, which ')' types over.
+        window.KeyTextInput(")");
+        window.KeyTextInput(";");
         string text = editor.Document.Snapshot.ToString();
         Assert.True(text.StartsWith("using System.Linq;\n", StringComparison.Ordinal), $"Choosing Max did not add the using it needs above:\n{text}");
         string line = editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
         Assert.True(line == "        int largest = numbers.Max();",
             $"What was typed after choosing Max, its using added above, did not follow it: '{line}'\n{text}");
         Assert.Equal(line.Length, editor.CaretPosition.Column);
+        window.Close();
+    }
+
+    /// <summary>A method chosen by Enter is written with its call's brackets: the caret between them where an overload
+    /// takes arguments, its signature shown, and after them where none does; a method given where a delegate is asked for
+    /// stays a method group, without them.</summary>
+    [AvaloniaFact]
+    public void A_method_chosen_from_the_list_is_written_called_the_caret_inside_its_brackets_when_it_takes_arguments()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
+        editor.Focus();
+
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("int doubled = Helper.");
+        Ui.Settle();
+        window.KeyTextInput("Tw");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "Twice", "Helper.Twice among its members");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.True(Line() == "        int doubled = Helper.Twice()" && editor.CaretPosition.Column == Line().Length - 1,
+            $"Twice, which takes a value, was not written called with the caret between its brackets: '{Line()}', the caret at {editor.CaretPosition.Column}");
+        Ui.WaitFor(() => window.Assist.SignatureText?.Contains("int value", StringComparison.Ordinal) == true, "Twice's signature");
+        window.KeyTextInput("3");
+        window.KeyTextInput(")");
+        window.KeyTextInput(";");
+        Assert.Equal("        int doubled = Helper.Twice(3);", Line());
+
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("System.Console.");
+        Ui.Settle();
+        window.KeyTextInput("Clea");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "Clear", "Console.Clear among the members");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.True(Line() == "        System.Console.Clear()" && editor.CaretPosition.Column == Line().Length,
+            $"Clear, which takes nothing, was not written called with the caret after its brackets: '{Line()}', the caret at {editor.CaretPosition.Column}");
+        window.KeyTextInput(";");
+
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("System.Action clear = System.Console.");
+        Ui.Settle();
+        window.KeyTextInput("Clea");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "Clear", "Console.Clear among the members");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.True(Line() == "        System.Action clear = System.Console.Clear" && editor.CaretPosition.Column == Line().Length,
+            $"Clear given to an Action was written as a call rather than the method itself: '{Line()}'");
         window.Close();
     }
 
