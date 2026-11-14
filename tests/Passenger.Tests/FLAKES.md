@@ -1632,3 +1632,17 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   (`ProjectBuilds.HoldNextAsked`) failed with the run's words before. The same look found every code tool's question of a
   project the server could not load or restore waiting out two minutes for a restore never to come (`AwaitsRestore`), now
   answered at once (#1640).
+- `BranchesTests`' `Each_side_button_is_greyed_with_why_where_the_chosen_row_gives_it_nothing_to_act_on`, CI 43607499212
+  (macOS): "Once its background work had landed the window still lacked main's head chosen in the log filtered to
+  feature". **A race in the IDE**: the branches panel lists its branches again as the log reads a filter's history, and
+  the listing let go of the chosen row before taking it again, greying every side button for a moment; a greyed button
+  lets go of its press, so a click whose release came after git answered did nothing. The panel now greys its buttons
+  only for the choice it ends on. A second race showed on the Windows VM: Navigate asked while the log read the new
+  filter decided on the rows listed before it; it now decides on rows read for the filter in force. Each has a test
+  forcing its order (#1641).
+- `McpNavigationTests`' `A_second_diagnostics_of_an_unchanged_file_answers_from_the_servers_last_pull_sending_none`, CI
+  43607499212 (macOS): 9 pulls on the second ask. **The test waited wrong**: Roslyn's server reruns its generators and
+  says its diagnostics may have changed 1.6 to 1.9 s after its projects load, which rightly moves the next ask to pull
+  again, and brings no pull of a file no tab shows, so the test's wait for the pull count to hold still could not see it.
+  The server's log now notes the server's word (`LanguageServer.RefreshedNote`), and both diagnostics tests take their
+  baseline after it (#1642).
