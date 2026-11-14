@@ -30,6 +30,10 @@ public sealed record MobileWant
     /// <summary>The Java version the workload wants, where it found no JDK; null where it found one.</summary>
     public string? Java { get; init; }
 
+    /// <summary>The folder JAVA_HOME names, where the workload wants a JDK though JAVA_HOME names one: no JDK it can use,
+    /// which its installer would install over.</summary>
+    public string? JavaHome { get; init; }
+
     /// <summary>Why the Apple workload cannot build with the Xcode it found, in its words; null where it can.</summary>
     public string? Xcode { get; init; }
 
@@ -127,6 +131,7 @@ public sealed record MobileWant
             NoAndroidSdk = noSdk,
             AndroidPackages = packages,
             Java = java,
+            JavaHome = java is not null && environment("JAVA_HOME") is { Length: > 0 } javaHome ? javaHome : null,
             Xcode = xcode,
             UnchosenXcode = unchosen,
             Simulators = simulators,
@@ -174,6 +179,10 @@ public sealed record MobileWant
             if (lacks.Count > 0 && needing.Count > 0)
             {
                 sentences.Add($"{Plural.Listed([.. needing])} {Plural.Agreeing(needing.Count, "needs", "need")} {Plural.Listed([.. lacks])}");
+            }
+            if (JavaHome is { } javaHome)
+            {
+                sentences.Add($"JAVA_HOME names {javaHome}, where the Android workload finds no JDK");
             }
             foreach ((string project, string framework) in OnMono)
             {

@@ -257,6 +257,19 @@ public static class AndroidFolders
         : OperatingSystem.IsWindows() ? Path.Combine(localData, "Android", "Sdk")
         : Path.Combine(home, "Android", "Sdk");
 
+    /// <summary>The folder the workload's installer is given for a JDK of a Java version (<c>21.0.8</c>), one of the
+    /// person's own that the workload looks in before JAVA_HOME: the installer's own choice on a Mac and on Windows, and on
+    /// Linux, where it has none, the folder under the home folder the workload looks for JDKs in. Null for a version
+    /// naming no major one.</summary>
+    public static string? Jdk(string home, string localData, string version)
+    {
+        string major = new([.. version.TakeWhile(char.IsAsciiDigit)]);
+        return major.Length == 0 ? null
+            : OperatingSystem.IsMacOS() ? Path.Combine(home, "Library", "Android", $"microsoft-{major}.jdk")
+            : OperatingSystem.IsWindows() ? Path.Combine(localData, "Android", $"jdk-{major}")
+            : Path.Combine(home, "android-toolchain", $"jdk-{major}");
+    }
+
     /// <summary>The SDK folder to look in and install into: the one the workload found, else the environment's, else the
     /// usual one.</summary>
     public static string Of(AndroidAnswer answer, Func<string, string?> environment, string usual) =>

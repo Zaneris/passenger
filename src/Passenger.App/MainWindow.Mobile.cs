@@ -284,8 +284,13 @@ public partial class MainWindow
             }
             string what = Plural.Listed([.. (want.NoAndroidSdk ? ["the Android SDK"] : Array.Empty<string>()), .. packages,
                 .. (want.Java is { } java ? [$"Microsoft's build of OpenJDK {java} (GPL-2.0 with the Classpath Exception)"] : Array.Empty<string>())]);
+            // The installer's own JDK folder is JAVA_HOME's, which it would install over, and on Linux, with none set, none at all.
+            string? jdk = want.Java is { } version
+                ? AndroidFolders.Jdk(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), version)
+                : null;
             string text = $"Passenger runs the .NET android workload's installer (InstallAndroidDependencies) on {project.Name}, which downloads {what} "
-                + $"and installs the Android SDK's part into {PathNames.Shown(sdk, null)}, for you alone. Installing them means you accept "
+                + $"and installs the Android SDK's part into {PathNames.Shown(sdk, null)}{(jdk is null ? string.Empty : $" and the JDK into {PathNames.Shown(jdk, null)}")}, "
+                + "for you alone. Installing them means you accept "
                 + $"{Plural.Listed([.. licences.Select(l => l.Id)])}, Google's {Plural.Noun(licences.Count, "licence")} of the Android SDK, below.";
             installing.Say("Asking to accept the Android SDK's licences");
             if (!await AcceptLicencesAsync("Accept the Android SDK's Licences?", text, licences))
@@ -296,6 +301,7 @@ public partial class MainWindow
             installing.Say($"Installing {what}");
             List<string> arguments = ["msbuild", project.Path, "-nologo", "-target:InstallAndroidDependencies", $"-property:{MSBuildNames.TargetFramework}={framework}",
                 $"-property:AndroidSdkDirectory={sdk}", "-property:AcceptAndroidSDKLicenses=True",
+                .. (want.Java is null ? (string[])["-property:AndroidInstallJavaDependencies=false"] : jdk is null ? [] : [$"-property:JavaSdkDirectory={jdk}"]),
                 .. ProjectModels.Properties(session.Workspace, project).Where(g => g.Key is not MSBuildNames.TargetFramework).Select(g => $"-property:{g.Key}={g.Value}")];
             (int code, IReadOnlyList<string> lines) = await RunInstallAsync(ChildProcesses.DotnetCommand(arguments, project.Folder), installing);
             if (installing.IsStopped)

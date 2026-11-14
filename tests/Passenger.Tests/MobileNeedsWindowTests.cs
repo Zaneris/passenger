@@ -12,7 +12,8 @@ namespace Passenger.Tests;
 /// (a stand-in of dotnet's) and loads the project again; an Android project whose workload's answers say it lacks its
 /// SDK's platform and a JDK (stand-ins of the workload's targets in the project) offers the workload's installer, which
 /// runs only once the person accepted the licences Google's repository (a stand-in) gives, and the banner goes once nothing
-/// lacks, a JDK where that installer puts one found after with no JAVA_HOME; on a Mac an iOS project whose Xcode has no
+/// lacks; the JDK it installs (a stand-in installer's) is found after with no JAVA_HOME on a Mac and on Linux, and a
+/// JAVA_HOME where the workload finds no JDK is said and never given to the installer; on a Mac an iOS project whose Xcode has no
 /// simulator runtime of its SDK says so with how Xcode installs one, and one whose Xcode the workload refuses offers Get
 /// Xcode; New Project offers each mobile template a missing workload brings. It sets a process-wide stand-in and the
 /// environment (ANDROID_HOME, DEVELOPER_DIR, HOME, JAVA_HOME), so it runs alone.</summary>
@@ -102,10 +103,11 @@ public sealed class MobileNeedsWindowTests : IDisposable
         string sdk = Directory.CreateDirectory(Path.Combine(folder, "android-sdk")).FullName;
         Directory.CreateDirectory(Path.Combine(sdk, "platform-tools"));
         Environment.SetEnvironmentVariable("ANDROID_HOME", sdk);
-        using StandInHttp google = new(exchange => exchange.Path == "/repository2-3.xml"
-            ? exchange.ReplyAsync(200, "application/xml", Repository)
-            : exchange.ReplyAsync(404, "text/plain", "not here"));
-        Environment.SetEnvironmentVariable(AndroidLicences.Variable, google.Root + "/repository2-3.xml");
+        foreach (string name in JavaVariables)
+        {
+            Environment.SetEnvironmentVariable(name, null);
+        }
+        using StandInHttp google = StandInRepository();
         File.WriteAllText(Path.Combine(folder, "Droid.csproj"), StandInAndroid);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
@@ -135,21 +137,21 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Ui.ClickButton(window, "Install Android SDK and Java…");
         Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallAndroidDependencies) is null, () => $"the install to end: {window.Status}", Slow);
         Assert.Equal(2, questions.Count);
-        Assert.Equal("AcceptAndroidSDKLicenses=True", File.ReadAllText(Path.Combine(sdk, "installed.txt")).Trim());
+        Assert.Contains("AcceptAndroidSDKLicenses=True", File.ReadAllLines(Path.Combine(sdk, "installed.txt")));
         Assert.True(window.MobileSaid is null && !window.MobileWant.AndroidLacks, $"Once installed, the banner still says: {window.MobileSaid}");
         Assert.StartsWith("platforms;android-37.0 and Microsoft's build of OpenJDK 21.0.8", window.Status, StringComparison.Ordinal);
         window.Close();
     }
 
     [AvaloniaFact]
-    public void A_JDK_where_the_Android_workloads_installer_puts_one_is_found_by_a_window_opened_after_with_no_JAVA_HOME()
+    public void Install_Android_SDK_and_Java_puts_the_JDK_where_a_window_opened_after_finds_it_with_no_JAVA_HOME()
     {
-        if (!OperatingSystem.IsMacOS())
+        if (OperatingSystem.IsWindows())
         {
-            // Windows' installer puts it under the person's own LocalApplicationData, which no variable moves; Linux's has no folder of its own.
-            Assert.Skip("Only a Mac's JDK folder for the workload's installer can be moved into the test's own home");
+            // Windows' folder for it is under the person's own LocalApplicationData, which no variable moves.
+            Assert.Skip("Only a Mac's or Linux's JDK folder for the workload's installer can be moved into the test's own home");
         }
-        // The workload's installer, given no JDK folder, puts the JDK under the home folder, which this test stands in.
+        // The folder Passenger gives the workload's installer is under the home folder, which this test stands in.
         string person = Directory.CreateDirectory(Path.Combine(folder, "home")).FullName;
         string sdk = Directory.CreateDirectory(Path.Combine(folder, "android-sdk")).FullName;
         Directory.CreateDirectory(Path.Combine(sdk, "platform-tools"));
@@ -159,14 +161,8 @@ public sealed class MobileNeedsWindowTests : IDisposable
         {
             Environment.SetEnvironmentVariable(name, null);
         }
-        File.WriteAllText(Path.Combine(folder, "Droid.csproj"), $"""
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>{Mobile}-android</TargetFramework>
-                <OutputType>Exe</OutputType>
-              </PropertyGroup>
-            </Project>
-            """);
+        using StandInHttp google = StandInRepository();
+        File.WriteAllText(Path.Combine(folder, "Droid.csproj"), StandInInstaller);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
         Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
@@ -177,19 +173,62 @@ public sealed class MobileNeedsWindowTests : IDisposable
         string? java = window.MobileWant.Java;
         if (java is null)
         {
-            Assert.Skip($"The android workload found a JDK of this Mac's own outside the home folder: {window.MobileSaid}");
+            Assert.Skip($"The android workload found a JDK of this machine's own outside the home folder: {window.MobileSaid}");
         }
+        StandInJdk(Path.Combine(folder, "jdk-stand-in"), java);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Ui.ClickButton(window, "Install Android SDK and Java…");
+        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallAndroidDependencies) is null, () => $"the install to end: {window.Status}", Slow);
+        string major = java.Split('.')[0];
+        string jdk = OperatingSystem.IsMacOS() ? Path.Combine(person, "Library", "Android", $"microsoft-{major}.jdk") : Path.Combine(person, "android-toolchain", $"jdk-{major}");
+        Assert.Equal(jdk, File.ReadAllText(Path.Combine(folder, "installed.txt")).Trim());
+        Assert.True(window.MobileWant.Java is null, $"The JDK installed in {jdk} was not found once the projects loaded again, the window saying: {window.MobileSaid}; {window.Status}");
         window.Close();
 
-        string jdk = Path.Combine(person, "Library", "Android", $"microsoft-{java.Split('.')[0]}.jdk", "Contents", "Home");
-        StandInJdk(jdk, java);
         MainWindow again = Ui.OpenFolder(folder, languageServer: false);
         Ui.WaitFor(() => again.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
         Ui.Await(again.MobileAsked(), "what the project needs to be asked", Slow);
         Assert.True(again.MobileWant.AndroidSdk is not null, $"The Android workload was not asked again: {again.MobileSaid}");
-        Assert.True(again.MobileWant.Java is null, $"The JDK in {jdk} was not found, the window saying: {again.MobileSaid}");
+        Assert.True(again.MobileWant.Java is null, $"The JDK in {jdk} was not found by a window opened after, the window saying: {again.MobileSaid}");
         Assert.DoesNotContain("JDK", again.MobileSaid ?? string.Empty, StringComparison.Ordinal);
         again.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_JAVA_HOME_where_the_Android_workload_finds_no_JDK_is_said_and_never_given_to_its_installer_to_install_over()
+    {
+        string sdk = Directory.CreateDirectory(Path.Combine(folder, "android-sdk")).FullName;
+        Directory.CreateDirectory(Path.Combine(sdk, "platform-tools"));
+        Environment.SetEnvironmentVariable("ANDROID_HOME", sdk);
+        foreach (string name in JavaVariables)
+        {
+            Environment.SetEnvironmentVariable(name, null);
+        }
+        // A JDK of the person's own whose tools are gone, which the workload passes over and its installer would delete.
+        string broken = Directory.CreateDirectory(Path.Combine(folder, "broken-jdk")).FullName;
+        File.WriteAllText(Path.Combine(broken, "release"), "JAVA_VERSION=\"17.0.2\"\n");
+        Environment.SetEnvironmentVariable("JAVA_HOME", broken);
+        using StandInHttp google = StandInRepository();
+        File.WriteAllText(Path.Combine(folder, "Droid.csproj"), StandInAndroid);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
+        Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
+        Assert.Equal($"Droid needs a JDK (Java 21.0.8) and the Android SDK's platforms;android-37.0. JAVA_HOME names {broken}, where the Android workload finds no JDK",
+            window.MobileSaid);
+
+        string? asked = null;
+        window.Confirm = (_, text, _) =>
+        {
+            asked = text;
+            return Task.FromResult(true);
+        };
+        Ui.ClickButton(window, "Install Android SDK and Java…");
+        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallAndroidDependencies) is null, () => $"the install to end: {window.Status}", Slow);
+        string jdk = AndroidFolders.Jdk(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "21.0.8")!;
+        Assert.Contains($"JavaSdkDirectory={jdk}", File.ReadAllLines(Path.Combine(sdk, "installed.txt")));
+        Assert.Contains($" and the JDK into {PathNames.Shown(jdk, null)}, for you alone.", asked, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(broken, "release")), "The JDK JAVA_HOME names was installed over");
+        window.Close();
     }
 
     [AvaloniaFact]
@@ -299,12 +338,13 @@ public sealed class MobileNeedsWindowTests : IDisposable
     private static IEnumerable<string> ShownButtons(MainWindow window) =>
         window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Where(b => b.IsEffectivelyVisible).Select(b => b.Content).OfType<string>();
 
-    /// <summary>A stand-in of a macOS JDK's home folder as the Android workload checks one: its tools, its launcher library
-    /// and its release file naming the version, its java saying its properties as a JDK's does.</summary>
+    /// <summary>A stand-in of a JDK's home folder as the Android workload checks one: its tools, its launcher library
+    /// (macOS's) and its virtual machine (Linux's), and its release file naming the version, its java saying its
+    /// properties as a JDK's does.</summary>
     private static void StandInJdk(string jdk, string version)
     {
         string bin = Directory.CreateDirectory(Path.Combine(jdk, "bin")).FullName;
-        foreach (string tool in (string[])["jar", "javac", "java"])
+        foreach (string tool in (string[])["jar", "javac", "java", "jarsigner"])
         {
             string program = Path.Combine(bin, tool);
             File.WriteAllText(program, $"#!/bin/sh\necho 'Property settings:' >&2\necho '    java.home = {jdk}' >&2\necho '    java.vendor = Microsoft' >&2\n"
@@ -315,6 +355,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
             }
         }
         File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(jdk, "lib")).FullName, "libjli.dylib"), string.Empty);
+        File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(jdk, "lib", "server")).FullName, "libjvm.so"), string.Empty);
         File.WriteAllText(Path.Combine(jdk, "release"), $"IMPLEMENTOR=\"Microsoft\"\nJAVA_VERSION=\"{version}\"\n");
     }
 
@@ -352,6 +393,33 @@ public sealed class MobileNeedsWindowTests : IDisposable
         </Project>
         """;
 
+    /// <summary>A stand-in of Google's repository (<see cref="Repository"/>), which the window is told to read.</summary>
+    private static StandInHttp StandInRepository()
+    {
+        StandInHttp google = new(exchange => exchange.Path == "/repository2-3.xml"
+            ? exchange.ReplyAsync(200, "application/xml", Repository)
+            : exchange.ReplyAsync(404, "text/plain", "not here"));
+        Environment.SetEnvironmentVariable(AndroidLicences.Variable, google.Root + "/repository2-3.xml");
+        return google;
+    }
+
+    /// <summary>An Android project on the Android workload whose installer is a stand-in after the workload's own targets,
+    /// which writes the JDK folder it was given to installed.txt and copies the stand-in JDK beside the project into it.</summary>
+    private static string StandInInstaller => $"""
+        <Project>
+          <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+          <PropertyGroup>
+            <TargetFramework>{Mobile}-android</TargetFramework>
+            <OutputType>Exe</OutputType>
+          </PropertyGroup>
+          <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+          <Target Name="InstallAndroidDependencies">
+            <WriteLinesToFile File="$(MSBuildProjectDirectory)/installed.txt" Lines="$(JavaSdkDirectory)" Overwrite="true" />
+            <Exec Command="mkdir -p &quot;$(JavaSdkDirectory)&quot; &amp;&amp; cp -R &quot;$(MSBuildProjectDirectory)/jdk-stand-in/.&quot; &quot;$(JavaSdkDirectory)&quot;" />
+          </Target>
+        </Project>
+        """;
+
     /// <summary>A Google repository of one licence, which the platform uses.</summary>
     private const string Repository = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -382,7 +450,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
                      Condition="!Exists('$(ANDROID_HOME)/jdk-installed')" />
           </Target>
           <Target Name="InstallAndroidDependencies">
-            <WriteLinesToFile File="$(AndroidSdkDirectory)/installed.txt" Lines="AcceptAndroidSDKLicenses=$(AcceptAndroidSDKLicenses)" Overwrite="true" />
+            <WriteLinesToFile File="$(AndroidSdkDirectory)/installed.txt" Lines="AcceptAndroidSDKLicenses=$(AcceptAndroidSDKLicenses);JavaSdkDirectory=$(JavaSdkDirectory)" Overwrite="true" />
             <MakeDir Directories="$(AndroidSdkDirectory)/platforms/android-37.0" />
             <Touch Files="$(AndroidSdkDirectory)/platforms/android-37.0/android.jar;$(AndroidSdkDirectory)/jdk-installed" AlwaysCreate="true" />
           </Target>

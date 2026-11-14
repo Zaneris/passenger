@@ -62,8 +62,9 @@ public class MobileNeedsTests
     private static readonly HashSet<string> OnDisk = [Path.Combine(Sdk, "platform-tools"), Path.Combine(Sdk, "platforms"), Path.Combine(Sdk, "platforms", "android-36", "android.jar"),
         Path.Combine(Sdk, "build-tools", "36.1.0")];
 
-    private static MobileWant Want(IReadOnlyList<ProjectNeeds> projects, bool onMac = true, IReadOnlySet<string>? disk = null, string? androidHome = null) =>
-        MobileWant.Of(projects, onMac, name => name == "ANDROID_HOME" ? androidHome : null, Sdk, (disk ?? OnDisk).Contains);
+    private static MobileWant Want(IReadOnlyList<ProjectNeeds> projects, bool onMac = true, IReadOnlySet<string>? disk = null, string? androidHome = null,
+        string? javaHome = null) =>
+        MobileWant.Of(projects, onMac, name => name switch { "ANDROID_HOME" => androidHome, "JAVA_HOME" => javaHome, _ => null }, Sdk, (disk ?? OnDisk).Contains);
 
     [Fact]
     public void The_workloads_the_SDK_names_are_each_taken_once_with_the_framework_that_needs_it()
@@ -120,6 +121,34 @@ public class MobileNeedsTests
         Assert.True(elsewhere.NoAndroidSdk, "Nothing is in ANDROID_HOME");
         Assert.Equal(["platforms;android-37.0", "build-tools;37.0.0", "platform-tools"], elsewhere.AndroidPackages);
         Assert.Equal("AndroidApp needs a JDK (Java 21.0.8) and the Android SDK", elsewhere.Said);
+    }
+
+    [Fact]
+    public void A_JAVA_HOME_where_the_workload_found_no_JDK_is_said_and_one_beside_a_JDK_found_is_not()
+    {
+        ProjectNeeds app = new("AndroidApp", ["net11.0-android"]) { Android = MobileAnswers.Android(AndroidSaid, AndroidWarned) };
+        AndroidAnswer found = MobileAnswers.Android(AndroidSaid.Replace("\"JavaSdkDirectory\": \"\"", "\"JavaSdkDirectory\": \"/jdk\""), string.Empty)!;
+
+        MobileWant broken = Want([app], javaHome: "/opt/broken-jdk");
+        MobileWant beside = Want([new ProjectNeeds("AndroidApp", ["net11.0-android"]) { Android = found }], javaHome: "/opt/broken-jdk");
+
+        Assert.Equal("/opt/broken-jdk", broken.JavaHome);
+        Assert.Equal("AndroidApp needs a JDK (Java 21.0.8) and the Android SDK's platforms;android-37.0 and build-tools;37.0.0. "
+            + "JAVA_HOME names /opt/broken-jdk, where the Android workload finds no JDK", broken.Said);
+        Assert.Null(beside.JavaHome);
+        Assert.Null(Want([app]).JavaHome);
+    }
+
+    [Fact]
+    public void The_JDK_folder_given_to_the_installer_is_one_the_workload_looks_in_before_JAVA_HOME()
+    {
+        string? jdk = AndroidFolders.Jdk("/home/ann", @"C:\Users\ann\AppData\Local", "21.0.8");
+
+        Assert.Equal(OperatingSystem.IsMacOS() ? Path.Combine("/home/ann", "Library", "Android", "microsoft-21.jdk")
+            : OperatingSystem.IsWindows() ? Path.Combine(@"C:\Users\ann\AppData\Local", "Android", "jdk-21")
+            : Path.Combine("/home/ann", "android-toolchain", "jdk-21"), jdk);
+        Assert.EndsWith(OperatingSystem.IsMacOS() ? "-17.jdk" : "-17", AndroidFolders.Jdk("/home/ann", "/local", "17 or later"), StringComparison.Ordinal);
+        Assert.Null(AndroidFolders.Jdk("/home/ann", "/local", "latest"));
     }
 
     [Fact]
