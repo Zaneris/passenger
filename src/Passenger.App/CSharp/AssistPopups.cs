@@ -363,9 +363,12 @@ internal sealed class CompletionPopup : Border
     public IReadOnlyList<CompletionRow> Rows => rows;
 
     /// <summary>The list's rows, the first chosen, or the row of <paramref name="stays"/> where it is among them, scrolled
-    /// only as far as shows the one chosen.</summary>
-    public void Show(IReadOnlyList<CompletionRow> rows, Lsp.CompletionItem? stays = null)
+    /// only as far as shows the one chosen; rows of the name already shown (<paramref name="sameName"/>: a list grown by
+    /// items as they came, or answered again) that the person had scrolled away from the row chosen keep showing the rows
+    /// scrolled to, wherever they now stand.</summary>
+    public void Show(IReadOnlyList<CompletionRow> rows, Lsp.CompletionItem? stays = null, bool sameName = false)
     {
+        Lsp.CompletionItem? first = sameName && chosen >= 0 && (chosen < top || chosen >= top + Shown) && top < this.rows.Count ? this.rows[top].Item : null;
         this.rows = rows;
         chosen = rows.Count > 0 ? 0 : -1;
         for (int i = 0; stays is not null && i < rows.Count; i++)
@@ -376,7 +379,20 @@ internal sealed class CompletionPopup : Border
                 break;
             }
         }
-        Place();
+        if (first is null)
+        {
+            Place();
+            return;
+        }
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (ReferenceEquals(rows[i].Item, first))
+            {
+                top = i;
+                break;
+            }
+        }
+        ScrollTo(top, fromBar: false);
     }
 
     /// <summary>The list laid out once before it is first shown, so its first list costs what any other does: the rows'

@@ -531,7 +531,8 @@ internal sealed partial class CodeCompletion
             Close();
             return;
         }
-        completion.Show(rows, chosen);
+        // The rows of the name as shown, the list grown or answered again, keep the place the person scrolled to.
+        completion.Show(rows, chosen, sameName: !opening && filtered?.Typed == narrowing.Typed);
         filtered = (narrowing.List, narrowing.Typed);
         completion.IsVisible = true;
         completion.Within(popups.Widest);

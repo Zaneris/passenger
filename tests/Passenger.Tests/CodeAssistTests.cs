@@ -2897,8 +2897,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>A completion list of more rows than it shows scrolls by the wheel turned over it, two rows a notch as a
-    /// scrolled view goes, and by a click on its bar's track, a screen at a time, the row chosen staying chosen; a Down
-    /// from the row chosen, scrolled away, brings the list back to the row after it.</summary>
+    /// scrolled view goes, and by a click on its bar's track, a screen at a time, the row chosen staying chosen; the server's
+    /// types of namespaces not imported, held until the list is scrolled, join it with the rows scrolled to still shown; a
+    /// Down from the row chosen, scrolled away, brings the list back to the row after it.</summary>
     [AvaloniaFact]
     public void A_completion_list_scrolls_by_the_wheel_and_its_bar_its_choice_staying()
     {
@@ -2906,23 +2907,54 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.OpenFile(project.PathOf("Pantry.cs"));
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.Settle();
+        Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
         Ui.PlaceAfter(editor, "        int total = 0;");
         editor.Focus();
         Ui.Press(window, "ENTER");
-        window.KeyTextInput("total += Pantry");
         Ui.Settle();
-        window.KeyTextInput(".");
-        Ui.WaitFor(() => window.Assist.IsCompletionOpen, "Pantry's members after its dot");
-        window.KeyTextInput("Ration");
-        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "Ration" && window.Assist.CompletionLabels.Count == 200,
-            () => $"Pantry's members narrowed by Ration to the 200 shown, where the list shows {window.Assist.CompletionLabels.Count}");
-        Assert.Equal(("Ration000", "Ration000"), (window.Assist.CompletionChosen, FirstShown()));
-        Rect list = window.Assist.CompletionPlace ?? throw new InvalidOperationException("The completion list shows, yet has no place");
-        window.MouseMove(list.Center);
-        window.MouseWheel(list.Center, new Vector(0, -1));
+        // The server's types of namespaces not imported indexed, so the part held below has items to join the list with.
+        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
+        int caret = editor.Selections.Primary.Caret;
+        Task<int>? asking = null;
+        Ui.WaitFor(() =>
+        {
+            if (asking is { IsCompleted: true } asked)
+            {
+                if (asked.IsCompletedSuccessfully && Ui.Await(asked, "the types of namespaces not imported") > 0)
+                {
+                    return true;
+                }
+                asking = null;
+            }
+            asking ??= Waiting.Apart(() => LaterItemsAsync(lsp, caret));
+            return false;
+        }, "the server's types of namespaces not imported, indexed");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.LaterCompletion, _ => true, released.Task);
+        try
+        {
+            window.KeyTextInput("R");
+            Ui.PumpUntil(() => window.Assist.CompletionNarrowedBy == "R", "a statement's list opened by R");
+            window.KeyTextInput("ation");
+            Ui.PumpUntil(() => window.Assist.CompletionNarrowedBy == "Ration" && window.Assist.CompletionLabels.Count == 200 && FirstShown() == "Ration000",
+                $"a statement's list narrowed by Ration to the 200 shown, Ration000 first, where it shows {FirstShown()} first of {window.Assist.CompletionLabels.Count}");
+            Ui.AwaitPumped(held, "the types of namespaces not imported, come and held unanswered");
+            Assert.Equal("Ration000", window.Assist.CompletionChosen);
+            Rect list = window.Assist.CompletionPlace ?? throw new InvalidOperationException("The completion list shows, yet has no place");
+            window.MouseMove(list.Center);
+            window.MouseWheel(list.Center, new Vector(0, -1));
+            Ui.Draw();
+            Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration000", "Ration002"),
+                $"A notch of the wheel down over the list shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen, not Ration002 with Ration000 still chosen");
+        }
+        finally
+        {
+            released.TrySetResult();
+        }
         Ui.Settle();
         Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration000", "Ration002"),
-            $"A notch of the wheel down over the list shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen, not Ration002 with Ration000 still chosen");
+            $"With the types of namespaces not imported joined, the list scrolled to Ration002 shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen: it went back to the row chosen");
         Avalonia.Controls.Primitives.ScrollBar bar = window.EditorArea.AssistLayer.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ScrollBar>().Single(b => b.IsEffectivelyVisible);
         Ui.Click(bar.GetVisualDescendants().OfType<RepeatButton>().Single(b => b.Name == "PART_PageDownButton"));
         Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration000", "Ration012"),
@@ -2934,6 +2966,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
 
         string? FirstShown() => window.Assist.CompletionRowControls.OfType<Avalonia.Controls.Panel>().FirstOrDefault()?.Children.OfType<TextBlock>().FirstOrDefault()?.Text;
+
+        static async Task<int> LaterItemsAsync(Passenger.Lsp.LspDocument lsp, int caret) =>
+            (await lsp.CompletionAsync(caret, null)).List?.Later is { } later ? (await later)?.Items.Count ?? 0 : 0;
     }
 
     /// <summary>A window's completion list is laid out once as the window opens, off screen: its first list shows in row
