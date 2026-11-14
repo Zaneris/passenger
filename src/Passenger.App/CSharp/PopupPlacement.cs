@@ -84,7 +84,15 @@ internal sealed class PopupPlacement
     public void Place(Control popup, Point at, bool above)
     {
         at = InLayer(at);
-        popup.Measure(Size.Infinity);
+        // A list shown again measures as its last rows did until a layout pass measures the rows it shows now.
+        if (popup.IsAttachedToVisualTree())
+        {
+            popup.UpdateLayout();
+        }
+        else
+        {
+            popup.Measure(Size.Infinity);
+        }
         Size size = popup.DesiredSize;
         Size room = layer.Bounds.Size;
         double lineHeight = Editor.LineHeight;
