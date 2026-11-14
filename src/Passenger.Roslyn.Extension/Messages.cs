@@ -1100,17 +1100,8 @@ public sealed record MembersMove(
     [property: JsonPropertyName("members")] IReadOnlyList<string> Members,
     [property: JsonPropertyName("abstract")] IReadOnlyList<string> Abstract);
 
-/// <summary>A completion's edits about to be made, in order, and which of them writes the name chosen: whether that name,
-/// once written, is a method called there is asked.</summary>
-public sealed record CallAsked(
-    [property: JsonPropertyName("edits")] IReadOnlyList<PlacedText> Edits,
-    [property: JsonPropertyName("item")] int Item);
-
-/// <summary>Text in place of a span of a document, its ends as the server counts places.</summary>
-public sealed record PlacedText(
-    [property: JsonPropertyName("start")] Place Start,
-    [property: JsonPropertyName("end")] Place End,
-    [property: JsonPropertyName("text")] string Text);
+/// <summary>The end of the name of a method a completion just wrote: whether it is called where it stands is asked.</summary>
+public sealed record CallAsked([property: JsonPropertyName("end")] Place End);
 
 /// <summary>Whether the name a completion writes is a method called where it goes, so its call's parentheses follow it,
 /// and whether any of its overloads takes arguments, so the caret goes between them.</summary>

@@ -650,6 +650,60 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A method chosen by Enter is written at once, its brackets following as the server says it is called there,
+    /// and one Undo takes back both; a key typed before that answer came is what follows the name, and no brackets come.</summary>
+    [AvaloniaFact]
+    public void A_method_chosen_is_written_at_once_its_brackets_following_in_its_step_of_undo_unless_typed_on_before_they_came()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
+        editor.Focus();
+
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("int tripled = Helper.");
+        Ui.Settle();
+        window.KeyTextInput("Tw");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "Twice", "Helper.Twice among its members");
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = window.CSharpService!.Session!.Server.HoldNextAnswer(Passenger.Lsp.LspMethods.DispatchDocumentExtensionMessage, AsksCall, answered.Task);
+        try
+        {
+            Ui.Press(window, "ENTER", settle: false);
+            Ui.PumpUntil(() => held.IsCompleted, "the server's answer whether Twice is called there, held");
+            Assert.True(Line() == "        int tripled = Helper.Twice" && editor.CaretPosition.Column == Line().Length,
+                $"Twice was not written at once, before the server said whether it is called there: '{Line()}', the caret at {editor.CaretPosition.Column}");
+            window.KeyTextInput("(");
+            window.KeyTextInput("3");
+            window.KeyTextInput(")");
+            window.KeyTextInput(";");
+        }
+        finally
+        {
+            answered.SetResult();
+        }
+        Ui.Settle();
+        Assert.Equal("        int tripled = Helper.Twice(3);", Line());
+
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("int doubled = Helper.");
+        Ui.Settle();
+        window.KeyTextInput("Tw");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "Twice", "Helper.Twice among its members");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.Equal("        int doubled = Helper.Twice()", Line());
+        Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
+        Assert.True(Line() == "        int doubled = Helper.Tw",
+            $"One Undo after Twice was written called left '{Line()}', where it takes back the name and its brackets together");
+        window.Close();
+    }
+
+    /// <summary>How Passenger's extension is asked whether a method just written is called.</summary>
+    private static bool AsksCall(object parameters) =>
+        parameters is Passenger.Lsp.RoslynExtension.DispatchExtensionMessageParams { MessageName: Passenger.Roslyn.Extension.Handlers.CompletionCall };
+
     /// <summary>What Roslyn's server package carries under Visual Studio's terms rather than an open-source licence and
     /// Passenger.Lsp.csproj leaves out of roslyn/ (RoslynServerLeftOut), since nothing Passenger asks of the server loads them.</summary>
     private static readonly string[] LeftOut =

@@ -787,85 +787,54 @@ internal sealed partial class CodeCompletion
         }
         string eol = document.LineEnding;
         List<TextEdit> fitted = Indentation.Fit(document.Snapshot, LineEndings.Fit(document.Snapshot, edits, eol), indent);
-        Roslyn.Extension.CallFound call = Roslyn.Extension.CallFound.None;
-        // Chosen by Enter, Tab or a click: a commit character typed is what follows the name.
-        if (end is null && item.Kind == CompletionItemKind.Method && item.InsertTextFormat != InsertTextFormat.Snippet && lsp is { IsRazor: false }
-            && context.Current is CSharpDocument && ItemEdit(fitted, start, replaced, document.Snapshot) is ({ } asking, int held))
-        {
-            using ChangeTracker calling = new(document);
-            try
-            {
-                call = await lsp.CompletionCallAsync(asking, held);
-            }
-            catch (LanguageServerFailed)
-            {
-                // The method goes in alone, as the server listed it.
-            }
-            if (Editor.Document != document)
-            {
-                return;
-            }
-            if (calling.Version != document.Version)
-            {
-                // Typed on meanwhile: what was typed after the name may be its call already.
-                call = Roslyn.Extension.CallFound.None;
-                if (calling.Map(fitted) is not { } moved)
-                {
-                    context.Say("The completion was not inserted: the code it changes was edited meanwhile");
-                    return;
-                }
-                fitted = [.. moved];
-                start = calling.MapOffset(start);
-                replaced = calling.MapOffset(replaced);
-            }
-            else if (call.Call)
-            {
-                fitted = [.. asking];
-                fitted[held] = fitted[held] with { Text = fitted[held].Text + "()" };
-            }
-        }
         int after = ItemEnd(fitted, start, replaced);
-        Selection landing = call.Call ? new(after - (call.Arguments ? 1 : 0), after - (call.Arguments ? 1 : 0))
-            : new(after - LineEndings.In(insert[final.Start..], eol).Length, after - LineEndings.In(insert[final.End..], eol).Length);
+        Selection landing = new(after - LineEndings.In(insert[final.Start..], eol).Length, after - LineEndings.In(insert[final.End..], eol).Length);
         int at = Editor.Selections.Primary.Caret;
         // Said, since an item put in with nothing typed is an insertion at the caret, which stays before it; a commit character's caret is past it.
-        Editor.ApplyEdits(fitted, at >= start && at <= replaced ? SelectionSet.Single(landing) : null);
+        bool lands = at >= start && at <= replaced;
+        long place = document.UndoPlace;
+        Editor.ApplyEdits(fitted, lands ? SelectionSet.Single(landing) : null);
         if (item.Command is { } command)
         {
             context.Say(CodeActions.NotRun(item.Label, command));
         }
+        // Chosen by Enter, Tab or a click: a commit character typed is what follows the name.
+        if (end is null && lands && item.Kind == CompletionItemKind.Method && item.InsertTextFormat != InsertTextFormat.Snippet
+            && lsp is { IsRazor: false } && context.Current is CSharpDocument)
+        {
+            await CallAsync(lsp, document, place, landing.Caret);
+        }
+    }
+
+    /// <summary>The method just written, its name ending at <paramref name="named"/>, made a call where the code calls it:
+    /// its parentheses after it, the caret between them where an overload takes arguments and its signature shown, else
+    /// after them. They come as the server answers, in the step of Undo that wrote the name (from <paramref name="place"/>),
+    /// and only while the text and the caret stand as the name left them.</summary>
+    private async Task CallAsync(LspDocument lsp, TextDocument document, long place, int named)
+    {
+        int version = document.Version;
+        Roslyn.Extension.CallFound call;
+        try
+        {
+            call = await lsp.CompletionCallAsync(named);
+        }
+        catch (LanguageServerFailed)
+        {
+            // The method stays a name alone, as the server listed it.
+            return;
+        }
+        if (!call.Call || Editor.Document != document || document.Version != version || Editor.Selections.HasMultiple
+            || Editor.Selections.Primary is not { IsEmpty: true, Caret: var caret } || caret != named)
+        {
+            return;
+        }
+        Editor.ApplyEdits([new TextEdit(named, 0, "()")], SelectionSet.Single(named + (call.Arguments ? 1 : 2)));
+        document.JoinUndoSince(place);
         if (call.Arguments)
         {
             // The call's bracket, as if typed: its signature shows.
             context.Languages.Typed("(");
         }
-    }
-
-    /// <summary>The fitted edits with the one holding the item put in place of <paramref name="start"/> to
-    /// <paramref name="end"/> (<see cref="ItemEnd"/>), and its index; where fitting left it out, as a name typed whole
-    /// changes nothing, an edit writing the name as it stands, so its call still follows it. Null where another edit
-    /// meets the name.</summary>
-    private static (List<TextEdit> Edits, int Item)? ItemEdit(List<TextEdit> fitted, int start, int end, TextSnapshot text)
-    {
-        int at = 0;
-        for (; at < fitted.Count && fitted[at].Start <= end; at++)
-        {
-            if (fitted[at].Start <= start && fitted[at].End >= end)
-            {
-                return (fitted, at);
-            }
-            if (fitted[at].End > start)
-            {
-                return null;
-            }
-        }
-        if (end > text.Length)
-        {
-            return null;
-        }
-        List<TextEdit> edits = [.. fitted];
-        edits.Insert(at, new TextEdit(start, end - start, text.GetText(start, end - start)));
-        return (edits, at);
     }
 
     /// <summary>A keyword a word always follows: new is left out, as new() and new[] follow it with none.</summary>

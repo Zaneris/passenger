@@ -15,39 +15,20 @@ public sealed class CompletionCall : IExtensionDocumentMessageHandler<CallAsked,
         CompletionCalls.FindAsync(context.Document(), message, cancellationToken);
 }
 
-/// <summary>A completed method's call, read in the document as the completion's edits leave it: a call unless the name
-/// is called already, given type arguments, named by nameof, its address taken for a function pointer, or converted to a
-/// delegate the code asks for (an event's handler, a delegate parameter's argument), where it stays a method group.</summary>
+/// <summary>A completed method's call, read in the document as the completion left it: a call unless the name is called
+/// already, given type arguments, named by nameof, its address taken for a function pointer, or converted to a delegate
+/// the code asks for (an event's handler, a delegate parameter's argument), where it stays a method group.</summary>
 internal static class CompletionCalls
 {
     public static async Task<CallFound> FindAsync(Document document, CallAsked asked, CancellationToken cancel)
     {
-        if (asked.Item < 0 || asked.Item >= asked.Edits.Count)
+        SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
+        if (asked.End.Line < 0 || asked.End.Line >= text.Lines.Count || asked.End.Character < 0 || asked.End.Character > text.Lines[asked.End.Line].Span.Length)
         {
             return CallFound.None;
         }
-        SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
-        List<TextChange> changes = [];
-        int nameEnd = 0;
-        int shift = 0;
-        for (int i = 0; i < asked.Edits.Count; i++)
-        {
-            PlacedText edit = asked.Edits[i];
-            int start = text.Lines.GetPosition(new LinePosition(edit.Start.Line, edit.Start.Character));
-            int end = text.Lines.GetPosition(new LinePosition(edit.End.Line, edit.End.Character));
-            if (end < start || changes.Count > 0 && start < changes[^1].Span.End)
-            {
-                return CallFound.None;
-            }
-            changes.Add(new TextChange(TextSpan.FromBounds(start, end), edit.Text));
-            if (i == asked.Item)
-            {
-                nameEnd = start + shift + edit.Text.Length;
-            }
-            shift += edit.Text.Length - (end - start);
-        }
-        Document written = document.WithText(text.WithChanges(changes));
-        SyntaxNode root = await written.GetSyntaxRootAsync(cancel).ConfigureAwait(false) ?? throw new InvalidOperationException($"{document.FilePath} has no syntax tree");
+        int nameEnd = text.Lines.GetPosition(new LinePosition(asked.End.Line, asked.End.Character));
+        SyntaxNode root = await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) ?? throw new InvalidOperationException($"{document.FilePath} has no syntax tree");
         if (nameEnd == 0 || root.FindToken(nameEnd - 1) is not { RawKind: (int)SyntaxKind.IdentifierToken } token || token.Span.End != nameEnd
             || token.Parent is not IdentifierNameSyntax name)
         {
@@ -61,7 +42,7 @@ internal static class CompletionCalls
         {
             return CallFound.None;
         }
-        SemanticModel model = await written.GetSemanticModelAsync(cancel).ConfigureAwait(false) ?? throw new InvalidOperationException($"{document.FilePath} has no semantic model");
+        SemanticModel model = await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) ?? throw new InvalidOperationException($"{document.FilePath} has no semantic model");
         ImmutableArray<IMethodSymbol> methods = [.. model.GetMemberGroup(expression, cancel).OfType<IMethodSymbol>()];
         if (methods.IsEmpty || MadeDelegate(model, expression, cancel))
         {

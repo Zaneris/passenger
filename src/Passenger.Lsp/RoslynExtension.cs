@@ -136,7 +136,8 @@ public static class RoslynExtension
 
     private sealed record ActivateExtensionParams(string AssemblyFilePath);
 
-    private sealed record DispatchExtensionMessageParams(string MessageName, string Message, TextDocumentIdentifier TextDocument);
+    /// <summary>A message to one of the extension's document handlers, by the handler's name, as the server is sent it.</summary>
+    public sealed record DispatchExtensionMessageParams(string MessageName, string Message, TextDocumentIdentifier TextDocument);
 
     /// <summary>A message to one of the extension's workspace handlers, by the handler's name, as the server is sent it.</summary>
     public sealed record DispatchWorkspaceMessageParams(string MessageName, string Message);

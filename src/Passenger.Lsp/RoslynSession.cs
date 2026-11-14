@@ -913,11 +913,10 @@ public sealed class LspDocument : IDisposable
     public Task<Roslyn.Extension.ToolkitFound> ToolkitRenamesAsync(int offset, string name, CancellationToken cancel = default) =>
         ExtensionAsync<Roslyn.Extension.ToolkitFound>(Roslyn.Extension.Handlers.ToolkitRenames, new Roslyn.Extension.ToolkitAsked(PlaceOf(offset), name), cancel);
 
-    /// <summary>Whether the method a completion's edits write (<paramref name="item"/> of <paramref name="edits"/>, in the
-    /// text's offsets now) is called where it goes, and takes arguments.</summary>
-    public Task<Roslyn.Extension.CallFound> CompletionCallAsync(IReadOnlyList<TextEdit> edits, int item, CancellationToken cancel = default) =>
-        ExtensionAsync<Roslyn.Extension.CallFound>(Roslyn.Extension.Handlers.CompletionCall,
-            new Roslyn.Extension.CallAsked([.. edits.Select(e => new Roslyn.Extension.PlacedText(PlaceOf(e.Start), PlaceOf(e.End), e.Text))], item), cancel);
+    /// <summary>Whether the method whose name, just written, ends at <paramref name="offset"/> is called where it stands,
+    /// and takes arguments.</summary>
+    public Task<Roslyn.Extension.CallFound> CompletionCallAsync(int offset, CancellationToken cancel = default) =>
+        ExtensionAsync<Roslyn.Extension.CallFound>(Roslyn.Extension.Handlers.CompletionCall, new Roslyn.Extension.CallAsked(PlaceOf(offset)), cancel);
 
     /// <summary>An offset as the extension's messages give a place.</summary>
     public Roslyn.Extension.Place PlaceOf(int offset)
