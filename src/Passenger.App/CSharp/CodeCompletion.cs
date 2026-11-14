@@ -417,13 +417,14 @@ internal sealed partial class CodeCompletion
     /// <summary>A list's ranking (<see cref="CompletionRanking"/>), made from its items the first time it is narrowed, off the
     /// UI thread since a statement's list is every type in reach; and the row each item makes, made once it is first shown.
     /// Its items that match what was typed are the best first, the higher score over the list's
-    /// <see cref="Completion.Alike"/>, then the one the server preselects, then by its sort text; only the best
-    /// <see cref="MostShown"/> kept. An item with no filter text of its own is matched by what was typed less a web
+    /// <see cref="Completion.Alike"/>, then the one the server preselects, then by its sort text; where the server says
+    /// how well its items fit the place (C#'s), the one that fits better first among those matched the same way. Only the
+    /// best <see cref="MostShown"/> kept. An item with no filter text of its own is matched by what was typed less a web
     /// server's lead.</summary>
     private sealed class RankedList(Completion list)
     {
         private readonly Lazy<CompletionRanking> ranking = new(() => new CompletionRanking([.. list.Items.Select(item =>
-            new CompletionRanking.Entry(item.FilterText ?? item.Label, item.FilterText is not null, item.Preselect == true, item.SortText ?? item.Label))]));
+            new CompletionRanking.Entry(item.FilterText ?? item.Label, item.FilterText is not null, item.Preselect == true, item.SortText ?? item.Label, item.MatchPriority))]));
 
         private readonly CompletionRow?[] rows = new CompletionRow?[list.Items.Count];
 

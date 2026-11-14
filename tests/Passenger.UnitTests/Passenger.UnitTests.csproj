@@ -288,6 +288,7 @@
     <Compile Include="../../src/Passenger.Lsp/RazorHtmlCopies.cs" Link="Lsp/RazorHtmlCopies.cs" />
     <Compile Include="../../src/Passenger.Lsp/LanguageServerFailed.cs" Link="Lsp/LanguageServerFailed.cs" />
     <Compile Include="../../src/Passenger.Lsp/Protocol.cs" Link="Lsp/Protocol.cs" />
+    <Compile Include="../../src/Passenger.Roslyn.Extension/CompletionPriorities.cs" Link="Lsp/CompletionPriorities.cs" />
   </ItemGroup>
 
   <!-- Which argument of a JS interop call names its module, by the overload a compilation of the call binds it to,

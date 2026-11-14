@@ -49,6 +49,24 @@ public class CompletionAnswerTests
     }
 
     [Fact]
+    public void Each_item_reads_how_well_it_fits_from_the_runs_beside_the_list_and_never_sends_it_back()
+    {
+        int[] priorities = [0, 0, 600, 600, 600, 0, int.MaxValue / 2, int.MinValue / 2, 0];
+        int[] runs = Passenger.Roslyn.Extension.CompletionPriorities.Runs(priorities.Length, i => priorities[i])!;
+        Assert.Equal([0, 2, 600, 3, 0, 1, int.MaxValue / 2, 1, int.MinValue / 2, 1, 0, 1], runs);
+        Assert.Null(Passenger.Roslyn.Extension.CompletionPriorities.Runs(4, _ => 0));
+        string items = string.Join(",", priorities.Select((_, i) => $$"""{"label":"Item{{i}}"}"""));
+        CompletionList list = Read($$"""{"isIncomplete":false,"matchPriorities":[{{string.Join(",", runs)}}],"items":[{{items}}]}""");
+        Assert.Equal(priorities, list.Items.Select(i => i.MatchPriority));
+        Assert.DoesNotContain("600", JsonSerializer.Serialize(list.Items[2], Json.Options), StringComparison.Ordinal);
+
+        // Runs that say more or fewer items than the list holds say nothing of any.
+        CompletionList miscounted = Read($$"""{"isIncomplete":false,"matchPriorities":[600,2],"items":[{{items}}]}""");
+        Assert.All(miscounted.Items, i => Assert.Equal(0, i.MatchPriority));
+        Assert.All(Read($$"""{"isIncomplete":false,"items":[{{items}}]}""").Items, i => Assert.Equal(0, i.MatchPriority));
+    }
+
+    [Fact]
     public void An_answer_of_items_alone_or_of_nothing_reads_as_the_protocol_says()
     {
         CompletionList items = Read("""[{"label":"Main","kind":2}]""");

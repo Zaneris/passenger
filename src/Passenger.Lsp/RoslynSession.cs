@@ -670,10 +670,14 @@ public sealed class LspDocument : IDisposable
         CompletionContext context = incomplete ? new CompletionContext(CompletionTriggerKind.TriggerForIncompleteCompletions)
             : trigger is null ? new CompletionContext(CompletionTriggerKind.Invoked) : new CompletionContext(CompletionTriggerKind.TriggerCharacter, trigger);
         // Sent now, after the changes before it; read off the caller's thread: a list may hold every type in reach.
-        CompletionAnswer? answer = await Read(Server.RequestAsync<CompletionAnswer>(LspMethods.Completion,
+        CompletionAnswer? answer = await Read(Server.RequestAsync<CompletionAnswer>(CompletionMethod,
             new CompletionParams(Identifier, PositionOf(offset), context), cancel));
         return (answer?.List, version);
     }
+
+    /// <summary>How completion is asked for: of a C# file, through Passenger's extension once it is up, whose list says how
+    /// well each item fits where it is asked for; else as the protocol asks it.</summary>
+    public string CompletionMethod => Server.ExtensionProblem is null && !IsRazor ? ExtensionMethods.Completion : LspMethods.Completion;
 
     public Task<CompletionItem?> ResolveAsync(CompletionItem item, CancellationToken cancel = default) =>
         Server.RequestAsync<CompletionItem>(LspMethods.CompletionResolve, item, cancel);

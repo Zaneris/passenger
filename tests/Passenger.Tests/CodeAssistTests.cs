@@ -312,6 +312,43 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
+    /// <summary>Where the code takes a type, the name typed lists first what is of that type, as Roslyn's own matching says
+    /// it fits, ahead of a name that begins as well, which stays listed: in an if's condition, an argument and a return.</summary>
+    [AvaloniaFact]
+    public void Completion_lists_first_the_names_of_the_type_the_place_takes_keeping_the_rest()
+    {
+        MainWindow window = project.Open("Fits.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        Fits(window, editor, "if (", "a", "aef", "abc", "an if's condition takes a bool");
+        Fits(window, editor, "Name(", "c", "caption", "count", "Name takes a string");
+        Fits(window, editor, "return ", "a", "aef", "abc", "Check returns a bool");
+        Assert.True(editor.Document.Snapshot.ToString() == FitsCode, "Completion changed the file it only listed names for");
+        window.Close();
+    }
+
+    /// <summary>Types a letter after some text, where the list first shows <paramref name="fitting"/>, keeps
+    /// <paramref name="other"/> (a name that begins as well, of another type) and lets the letter go again.</summary>
+    private static void Fits(MainWindow window, CodeEditor editor, string after, string letter, string fitting, string other, string why)
+    {
+        Ui.PlaceAfter(editor, after);
+        Ui.Settle();
+        window.KeyTextInput(letter);
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == letter && window.Assist.CompletionLabels.Contains(other), $"the list after '{after}{letter}'");
+        IReadOnlyList<string> labels = window.Assist.CompletionLabels;
+        Assert.True(labels.FirstOrDefault() == fitting,
+            $"After '{after}{letter}' the list showed [{string.Join(", ", labels.Take(5))}] first, not {fitting}, though {why}: the name meant would be a key further down");
+        Ui.Press(window, "ESCAPE");
+        Ui.Press(window, "BACK");
+        Ui.Settle();
+    }
+
+    /// <summary>A method whose places each take a type, one local of that type and one of another type beginning as its
+    /// name does.</summary>
+    private const string FitsCode = "static class Fits\n{\n    public static bool Check()\n    {\n        int abc = 1;\n        bool aef = true;\n"
+        + "        int count = 2;\n        string caption = \"\";\n        if ()\n        {\n        }\n        Name();\n        return ;\n    }\n\n"
+        + "    private static void Name(string text)\n    {\n    }\n}\n";
+
     [AvaloniaFact]
     public void CamelHumps_typed_offer_the_names_they_start_after_the_prefix_matches_and_enter_writes_the_one_chosen()
     {
@@ -2729,7 +2766,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Passenger.Lsp.CompletionList? whole = Ui.Await(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), $"a statement's list in {type}").List;
         Assert.True(whole is { IsIncomplete: false }, $"The server said a statement's list of {whole?.Items.Count} items in {type} left items out");
         TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task asked = window.CSharpService!.Session!.Server.HoldNext(Passenger.Lsp.LspMethods.Completion, _ => true, released.Task);
+        Task asked = window.CSharpService!.Session!.Server.HoldNext(lsp.CompletionMethod, _ => true, released.Task);
         string typed = "R";
         long key = long.MaxValue;
         try
@@ -2818,6 +2855,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 + "        return total / count;\n    }\n}\n");
             File.WriteAllText(PathOf("Casts.cs"), "static class Casts\n{\n    public static int Three() => (int)3;\n}\n");
             File.WriteAllText(PathOf("Ragged.cs"), Ragged);
+            File.WriteAllText(PathOf("Fits.cs"), FitsCode);
             File.WriteAllText(PathOf("Wide.cs"), "static class Wide\n{\n    public static int Four()\n    {\n        return Area.Of(2, 2);\n    }\n}\n", Encoding.Unicode);
             File.WriteAllText(PathOf("Actions.cs"), "static class Actions\n{\n    public static int Go()\n    {\n        int half = Half(4);\n"
                 + "        Missing gone = null;\n        return half;\n    }\n\n    private static int Half(int value) => value / 2;\n}\n");

@@ -158,11 +158,11 @@ public static class FuzzyMatch
         }
         if (label.StartsWith(query, StringComparison.Ordinal))
         {
-            return 4000 - label.Length;
+            return PrefixInCase - label.Length;
         }
         if (label.StartsWith(query, StringComparison.OrdinalIgnoreCase))
         {
-            return 3000 - label.Length;
+            return PrefixInAnyCase - label.Length;
         }
         if (!Within(query, label))
         {
@@ -171,14 +171,34 @@ public static class FuzzyMatch
         if (Humps(query, label))
         {
             // The humps take the label's first word whenever its first letter is the query's.
-            return (char.ToLowerInvariant(label[0]) == char.ToLowerInvariant(query[0]) ? 2000 : 1500) - label.Length;
+            return (char.ToLowerInvariant(label[0]) == char.ToLowerInvariant(query[0]) ? HumpsFromFirstWord : HumpsFromLaterWord) - label.Length;
         }
         if (query.Length >= 2 && label.Contains(query, StringComparison.OrdinalIgnoreCase))
         {
-            return 1000 - label.Length;
+            return Anywhere - label.Length;
         }
         return null;
     }
+
+    /// <summary>The way <see cref="Label"/> found a label it scored <paramref name="score"/>, higher the better: the label
+    /// typed whole in its own case, then each of its ways in its order; one way for every label when nothing is typed.</summary>
+    public static int LabelWay(string query, string label, int score)
+    {
+        if (query.Length == 0)
+        {
+            return 0;
+        }
+        int way = score + label.Length;
+        return way == PrefixInCase && label.Length == query.Length ? Whole : way;
+    }
+
+    // Label's ways, each a score less the label's length, so a shorter label scores higher within its way.
+    private const int Whole = 5000;
+    private const int PrefixInCase = 4000;
+    private const int PrefixInAnyCase = 3000;
+    private const int HumpsFromFirstWord = 2000;
+    private const int HumpsFromLaterWord = 1500;
+    private const int Anywhere = 1000;
 
     /// <summary>Whether the query's letters are in the name in order, a letter matching in either case (as each way of
     /// matching above takes it); a query with a surrogate pair, which ignoring case compares whole, always is.</summary>

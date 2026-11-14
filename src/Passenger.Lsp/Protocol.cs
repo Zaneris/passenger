@@ -107,6 +107,11 @@ public sealed class CompletionList
     public List<CompletionItem> Items { get; init; } = [];
     public CompletionItemDefaults? ItemDefaults { get; init; }
 
+    /// <summary>How well each item fits where the list was asked for, as runs (<see cref="Roslyn.Extension.CompletionPriorities"/>),
+    /// which <see cref="WithPriorities"/> gives each item; only Passenger's extension to Roslyn's server says them.</summary>
+    [JsonPropertyName(Roslyn.Extension.CompletionPriorities.Member)]
+    public int[]? MatchPriorities { get; init; }
+
     /// <summary>Each item given what the list's defaults say of it and it does not say itself
     /// (<see cref="CompletionItem.TakeDefaults"/>), as though the server had sent it whole.</summary>
     public CompletionList WithDefaults()
@@ -116,6 +121,19 @@ public sealed class CompletionList
             foreach (CompletionItem item in Items)
             {
                 item.TakeDefaults(defaults);
+            }
+        }
+        return this;
+    }
+
+    /// <summary>Each item given how well it fits (<see cref="CompletionItem.MatchPriority"/>), as the list's runs say.</summary>
+    public CompletionList WithPriorities()
+    {
+        if (Roslyn.Extension.CompletionPriorities.Each(MatchPriorities, Items.Count) is { } each)
+        {
+            for (int i = 0; i < each.Length; i++)
+            {
+                Items[i].MatchPriority = each[i];
             }
         }
         return this;
@@ -131,7 +149,7 @@ internal sealed class CompletionAnswerConverter : JsonConverter<CompletionAnswer
     public override CompletionAnswer Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.TokenType switch
     {
         JsonTokenType.StartArray => new(new CompletionList { Items = JsonSerializer.Deserialize<List<CompletionItem>>(ref reader, options) ?? [] }),
-        JsonTokenType.StartObject => new(JsonSerializer.Deserialize<CompletionList>(ref reader, options)?.WithDefaults()),
+        JsonTokenType.StartObject => new(JsonSerializer.Deserialize<CompletionList>(ref reader, options)?.WithDefaults().WithPriorities()),
         _ => Skipped(ref reader),
     };
 
@@ -174,6 +192,11 @@ public sealed class CompletionItem
     public bool? Preselect { get; init; }
     public LspCommand? Command { get; init; }
     public JsonElement? Data { get => data; init => data = value; }
+
+    /// <summary>How well the item fits where its list was asked for, as the server's matching says: higher fits better,
+    /// 0 where it says nothing (<see cref="CompletionList.WithPriorities"/>). Never sent back.</summary>
+    [JsonIgnore]
+    public int MatchPriority { get; internal set; }
 
     private InsertTextFormat? insertTextFormat;
     private LspTextEdit? textEdit;

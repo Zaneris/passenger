@@ -68,6 +68,10 @@ public static class ExtensionMethods
     /// <summary>workspace/diagnostic with a <c>frameworks</c> map from a multi-targeted project's file to the framework
     /// solution-wide analysis takes it in, its reports and previous results each naming their project (<c>_vs_projectContext</c>).</summary>
     public const string WorkspaceDiagnostic = "passenger/workspaceDiagnostic";
+
+    /// <summary>textDocument/completion, its list saying beside its items how well each fits where it is asked for
+    /// (<see cref="CompletionPriorities"/>).</summary>
+    public const string Completion = "passenger/completion";
 }
 
 /// <summary>Files the solution has, by their paths, whose texts as the server holds them are asked for: an edit to a file
