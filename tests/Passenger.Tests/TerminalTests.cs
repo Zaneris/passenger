@@ -1366,6 +1366,8 @@ public sealed class TerminalTests
         RawInputModifiers command = OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
         Run(window, "echo see https://example.com/terminal/docs. now");
         long line = WaitForLine(shell, "see https://example.com/terminal/docs. now", "the address");
+        // A full screen scrolls as the shell's prompt comes: the pointer goes to a line once the prompt is below it.
+        WaitForPromptBelow(window, shell, "see https://example.com/terminal/docs. now");
         Point at = view.TranslatePoint(view.PointOf(line, 10), window)!.Value;
         window.MouseMove(at);
         Ui.Settle();
@@ -1388,6 +1390,7 @@ public sealed class TerminalTests
         string longer = "https://example.com/" + new string('w', shell.Screen.Columns);
         Run(window, $"echo {longer}");
         long first = WaitForLine(shell, longer[..shell.Screen.Columns], "the long address's first row");
+        WaitForPromptBelow(window, shell, longer[..shell.Screen.Columns]);
         Point wrapped = view.TranslatePoint(view.PointOf(first + 1, 3), window)!.Value;
         window.MouseMove(wrapped, command);
         Ui.Settle();
@@ -1399,6 +1402,7 @@ public sealed class TerminalTests
 
         Run(window, "echo written to notes.txt:2 just now");
         long named = WaitForLine(shell, "written to notes.txt:2 just now", "the file's name");
+        WaitForPromptBelow(window, shell, "written to notes.txt:2 just now");
         Point file = view.TranslatePoint(view.PointOf(named, 13), window)!.Value;
         window.MouseMove(file);
         Ui.Settle();
@@ -1419,6 +1423,7 @@ public sealed class TerminalTests
         Ui.Settle();
         Run(window, "echo https://example.com/double-click");
         long doubleClick = WaitForLine(shell, "https://example.com/double-click", "the address to double-click");
+        WaitForPromptBelow(window, shell, "https://example.com/double-click");
         Ui.DoubleClick(view, view.PointOf(doubleClick, 13));
         Assert.Equal(copyOnSelection ? "example.com" : "clipboard kept", Ui.Clipboard(window));
         window.Close();
