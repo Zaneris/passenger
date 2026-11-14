@@ -63,7 +63,7 @@ public sealed partial class CSharpDocument
         try
         {
             reads = await roslyn.ExtensionAsync<ConnectionReadsFound>(Handlers.ConnectionReads,
-                new ConnectionReadsRequest([.. gaps.Select(g => g.Project).Distinct(PathNames.Comparer)]), cancel);
+                new ConnectionReadsRequest([.. gaps.Select(g => g.Project).Distinct(PathNames.Comparer)], File: document.Path), cancel);
         }
         catch (LanguageServerFailed)
         {

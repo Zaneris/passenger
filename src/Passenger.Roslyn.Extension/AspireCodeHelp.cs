@@ -55,7 +55,7 @@ public sealed class AspireRunResources : IExtensionWorkspaceMessageHandler<Aspir
 public sealed class ConnectionReads : IExtensionWorkspaceMessageHandler<ConnectionReadsRequest, ConnectionReadsFound>
 {
     public Task<ConnectionReadsFound> ExecuteAsync(ConnectionReadsRequest message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
-        AspireSource.ConnectionReadsAsync(context.Solution, message.Projects, cancellationToken, message.Keys);
+        AspireSource.ConnectionReadsAsync(context.Solution, message.Projects, cancellationToken, message.Keys, message.File);
 }
 
 internal static class AspireSource
@@ -577,8 +577,11 @@ internal static class AspireSource
 
     /// <summary>The connection strings the projects' code reads (<see cref="ConnectionUses"/>), each where its name is
     /// written, and with <see cref="ConnectionReadsRequest.Keys"/> the configuration keys it reads or binds
-    /// (<see cref="ConfigurationSource"/>): every target framework's build of a project, each read once.</summary>
-    public static async Task<ConnectionReadsFound> ConnectionReadsAsync(Solution solution, IReadOnlyList<string> projects, CancellationToken cancel, bool keys = false)
+    /// (<see cref="ConfigurationSource"/>): every target framework's build of a project, each read once. With
+    /// <paramref name="file"/>, only that file's code, read alone: a walk of the projects is kept only until an edit
+    /// anywhere in them, so a file's check walking them would walk them all at each key.</summary>
+    public static async Task<ConnectionReadsFound> ConnectionReadsAsync(Solution solution, IReadOnlyList<string> projects, CancellationToken cancel, bool keys = false,
+        string? file = null)
     {
         List<ConnectionRead> reads = [];
         List<ConfigurationKey> configured = [];
@@ -591,36 +594,23 @@ internal static class AspireSource
             HashSet<(string Key, string Kind, string? File, int Line, int Character)> keyed = [];
             foreach (Project project in solution.Projects.Where(p => SamePath(p.FilePath, path)))
             {
-                VersionStamp version = await project.GetDependentVersionAsync(cancel).ConfigureAwait(false);
-                if (!read.TryGetValue(project.Id, out (VersionStamp Version, IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys) known) || known.Version != version)
+                (IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys) known;
+                if (file is not null)
                 {
-                    List<ConnectionRead> found = [];
-                    List<ConfigurationKey> named = [];
-                    foreach (Document document in project.Documents.Where(d => d.FilePath is not null))
+                    known = await ReadAsync(path, solution.GetDocumentIdsWithFilePath(file).Where(id => id.ProjectId == project.Id).Select(project.GetDocument)
+                        .OfType<Document>().Where(d => SamePath(d.FilePath, file)), cancel).ConfigureAwait(false);
+                }
+                else
+                {
+                    VersionStamp version = await project.GetDependentVersionAsync(cancel).ConfigureAwait(false);
+                    if (!read.TryGetValue(project.Id, out (VersionStamp Version, IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys) kept) || kept.Version != version)
                     {
-                        if (await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
-                        {
-                            continue;
-                        }
-                        bool connections = MayReadConnections(root);
-                        bool configuration = ConfigurationSource.MayRead(root);
-                        if (!connections && !configuration || await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model)
-                        {
-                            continue;
-                        }
-                        SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
-                        if (connections)
-                        {
-                            found.AddRange(ConnectionUses(root, model, cancel).Select(use =>
-                                new ConnectionRead(path, use.Name, document.FilePath!, PlaceAt(text, use.Expression.SpanStart), PlaceAt(text, use.Expression.Span.End))));
-                        }
-                        if (configuration)
-                        {
-                            named.AddRange(ConfigurationSource.Read(path, document.FilePath!, root, model, text, cancel));
-                        }
+                        (IReadOnlyList<ConnectionRead> found, IReadOnlyList<ConfigurationKey> named) =
+                            await ReadAsync(path, project.Documents.Where(d => d.FilePath is not null), cancel).ConfigureAwait(false);
+                        kept = (version, found, named);
+                        read[project.Id] = kept;
                     }
-                    known = (version, found, named);
-                    read[project.Id] = known;
+                    known = (kept.Reads, kept.Keys);
                 }
                 reads.AddRange(known.Reads.Where(r => seen.Add((r.Name, r.Path, r.At.Line, r.At.Character))).Select(r => r with { Project = path }));
                 if (keys)
@@ -630,6 +620,39 @@ internal static class AspireSource
             }
         }
         return new ConnectionReadsFound(reads, keys ? configured : null);
+    }
+
+    /// <summary>The connection strings and configuration keys the documents' code reads, of the project at
+    /// <paramref name="project"/>: a document whose syntax can read neither is never bound.</summary>
+    private static async Task<(IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys)> ReadAsync(string project, IEnumerable<Document> documents,
+        CancellationToken cancel)
+    {
+        List<ConnectionRead> found = [];
+        List<ConfigurationKey> named = [];
+        foreach (Document document in documents)
+        {
+            if (await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
+            {
+                continue;
+            }
+            bool connections = MayReadConnections(root);
+            bool configuration = ConfigurationSource.MayRead(root);
+            if (!connections && !configuration || await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model)
+            {
+                continue;
+            }
+            SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
+            if (connections)
+            {
+                found.AddRange(ConnectionUses(root, model, cancel).Select(use =>
+                    new ConnectionRead(project, use.Name, document.FilePath!, PlaceAt(text, use.Expression.SpanStart), PlaceAt(text, use.Expression.Span.End))));
+            }
+            if (configuration)
+            {
+                named.AddRange(ConfigurationSource.Read(project, document.FilePath!, root, model, text, cancel));
+            }
+        }
+        return (found, named);
     }
 
     /// <summary>Whether an argument is the name of a connection string a service reads: GetConnectionString's, or an Aspire

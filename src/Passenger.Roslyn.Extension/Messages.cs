@@ -346,10 +346,12 @@ public sealed record AspireParameter(string Name, bool Secret, Place Start, Plac
 public sealed record AspireParametersFound(IReadOnlyList<AspireParameter> Parameters);
 
 /// <summary>The projects whose code's connection-string reads are asked for, by their project files' paths, and with
-/// <paramref name="Keys"/> every configuration key their code reads or binds too (<see cref="ConfigurationKey"/>).</summary>
+/// <paramref name="Keys"/> every configuration key their code reads or binds too (<see cref="ConfigurationKey"/>); with
+/// <paramref name="File"/>, only what that file's code in them reads.</summary>
 public sealed record ConnectionReadsRequest(
     [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects,
-    [property: JsonPropertyName("keys")] bool Keys = false);
+    [property: JsonPropertyName("keys")] bool Keys = false,
+    [property: JsonPropertyName("file")] string? File = null);
 
 /// <summary>A configuration key a project's code reads or binds, as .NET's configuration names it (sections joined by ':',
 /// <c>*</c> for any item of a collection or key of a dictionary): what reads it (<see cref="ConfigurationKinds"/>), the type

@@ -103,7 +103,7 @@ public sealed partial class CSharpDocument
         ConnectionReadsFound found;
         try
         {
-            found = await roslyn.ExtensionAsync<ConnectionReadsFound>(Handlers.ConnectionReads, new ConnectionReadsRequest([code.Project], Keys: true), cancel);
+            found = await roslyn.ExtensionAsync<ConnectionReadsFound>(Handlers.ConnectionReads, new ConnectionReadsRequest([code.Project], Keys: true, File: document.Path), cancel);
         }
         catch (LanguageServerFailed)
         {
