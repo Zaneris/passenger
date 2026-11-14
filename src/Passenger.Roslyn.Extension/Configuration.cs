@@ -30,33 +30,49 @@ internal static class ConfigurationSource
     public static bool MayRead(SyntaxNode root) =>
         root.DescendantNodes().Any(node => node switch
         {
-            InvocationExpressionSyntax call => NameOf(call.Expression) is "GetSection" or "GetRequiredSection" or "GetValue" or "GetConnectionString"
-                or "Configure" or "Bind" or "BindConfiguration" or "Get",
+            InvocationExpressionSyntax call => ApiName(NameOf(call.Expression)),
             ElementAccessExpressionSyntax access => access.ArgumentList.Arguments is [{ Expression: LiteralExpressionSyntax literal }]
                 && literal.IsKind(SyntaxKind.StringLiteralExpression),
             _ => false,
         });
 
-    /// <summary>The keys a document reads or binds, each where it is written.</summary>
+    /// <summary>Whether a compilation holds the API a key is read through: configuration itself, or the options builder's
+    /// binding by a section's path (its one read that takes no configuration); without either nothing reads a key.</summary>
+    private static bool Present(Compilation compilation) =>
+        !compilation.GetTypesByMetadataName(Configuration).IsEmpty || !compilation.GetTypesByMetadataName(OptionsBuilder).IsEmpty;
+
+    /// <summary>Whether a call by this name can read configuration: the names of the API's methods <see cref="Read"/> knows.</summary>
+    private static bool ApiName(string? name) => name is "GetSection" or "GetRequiredSection" or "GetValue" or "GetConnectionString" or "Configure" or "Bind"
+        or "BindConfiguration" or "Get";
+
+    /// <summary>The keys a document reads or binds, each where it is written. Only what can read a key by its syntax is bound:
+    /// a call by one of the API's names, an indexer read with what can be a string constant, and, in a document that takes a
+    /// section by name, a section's Value.</summary>
     public static IEnumerable<ConfigurationKey> Read(string project, string path, SyntaxNode root, SemanticModel model, SourceText text, CancellationToken cancel)
     {
+        if (!Present(model.Compilation))
+        {
+            yield break;
+        }
+        bool sections = root.DescendantNodes().OfType<InvocationExpressionSyntax>().Any(call => CalledBy(call) is "GetSection" or "GetRequiredSection");
         foreach (SyntaxNode node in root.DescendantNodes())
         {
             cancel.ThrowIfCancellationRequested();
             switch (node)
             {
                 case ElementAccessExpressionSyntax access:
-                    if (Indexed(access, model, cancel) is { } indexed)
+                    if (MayIndex(access) && Indexed(access, model, cancel) is { } indexed)
                     {
                         yield return Key(project, path, text, indexed.Key, ConfigurationKinds.Read, ConfigurationTypes.String, "string", Checked(access, model, cancel), indexed.Written);
                     }
                     break;
                 case MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Value" } value
-                    when model.GetSymbolInfo(value, cancel).Symbol is IPropertySymbol { Name: "Value" } property && Is(property.ContainingType, ConfigurationSection)
+                    when sections && MaySection(value.Expression)
+                    && model.GetSymbolInfo(value, cancel).Symbol is IPropertySymbol { Name: "Value" } property && Is(property.ContainingType, ConfigurationSection)
                     && Section(value.Expression, model, cancel) is { Path.Length: > 0, Written: { } written } section:
                     yield return Key(project, path, text, section.Path, ConfigurationKinds.Read, ConfigurationTypes.String, "string", Checked(value, model, cancel), written);
                     break;
-                case InvocationExpressionSyntax call when model.GetSymbolInfo(call, cancel).Symbol is IMethodSymbol method:
+                case InvocationExpressionSyntax call when ApiName(CalledBy(call)) && model.GetSymbolInfo(call, cancel).Symbol is IMethodSymbol method:
                     foreach (ConfigurationKey key in Called(project, path, text, call, method, model, cancel))
                     {
                         yield return key;
@@ -263,6 +279,32 @@ internal static class ConfigurationSource
         return converted || named.TypeKind is not (TypeKind.Class or TypeKind.Struct)
             ? new((ConfigurationTypes.String, null), null)
             : new((ConfigurationTypes.Object, null), null);
+    }
+
+    /// <summary>Whether an indexer can read a key, by its syntax: read, not written to, with one argument that can be a string
+    /// constant (a string, a name, an operator's or a cast's result, <c>nameof</c>), where a number, a call or an index from
+    /// the end never is.</summary>
+    private static bool MayIndex(ElementAccessExpressionSyntax access) =>
+        access.ArgumentList.Arguments is [{ Expression: { } argument }] && !(access.Parent is AssignmentExpressionSyntax assignment && assignment.Left == access)
+        && argument switch
+        {
+            LiteralExpressionSyntax literal => literal.IsKind(SyntaxKind.StringLiteralExpression),
+            InvocationExpressionSyntax call => NameOf(call.Expression) == "nameof",
+            PostfixUnaryExpressionSyntax suppressed => suppressed.IsKind(SyntaxKind.SuppressNullableWarningExpression),
+            InterpolatedStringExpressionSyntax or NameSyntax or MemberAccessExpressionSyntax or BinaryExpressionSyntax or ConditionalExpressionSyntax
+                or CastExpressionSyntax or ParenthesizedExpressionSyntax or CheckedExpressionSyntax => true,
+            _ => false,
+        };
+
+    /// <summary>Whether a section's Value can be read of an expression, by its syntax: a section taken by name, or a local
+    /// that may hold one (<see cref="Section"/> follows no other, and a local only to its initializer in the same document).</summary>
+    private static bool MaySection(ExpressionSyntax expression)
+    {
+        while (expression is ParenthesizedExpressionSyntax or PostfixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.SuppressNullableWarningExpression })
+        {
+            expression = expression is ParenthesizedExpressionSyntax parenthesized ? parenthesized.Expression : ((PostfixUnaryExpressionSyntax)expression).Operand;
+        }
+        return expression is IdentifierNameSyntax || expression is InvocationExpressionSyntax call && CalledBy(call) is "GetSection" or "GetRequiredSection";
     }
 
     /// <summary>The key a configuration indexer reads (<c>Configuration["A:B"]</c>), under the sections its receiver was taken

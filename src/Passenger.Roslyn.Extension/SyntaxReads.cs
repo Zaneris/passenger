@@ -51,6 +51,11 @@ internal static class SyntaxReads
         _ => null,
     };
 
+    /// <summary>The name a call calls by, as <see cref="NameOf"/> reads it or after a <c>?.</c>; null for one named by none
+    /// (a delegate's result called): what a reader checks before binding the call, as a method bound is called by its name.</summary>
+    public static string? CalledBy(InvocationExpressionSyntax call) =>
+        call.Expression is MemberBindingExpressionSyntax binding ? binding.Name.Identifier.ValueText : NameOf(call.Expression);
+
     /// <summary>What a method is called on: the expression before its dot, or an extension method's first argument when it
     /// is called as a static method; null for a static method's type.</summary>
     public static ExpressionSyntax? Receiver(InvocationExpressionSyntax call, IMethodSymbol method)
