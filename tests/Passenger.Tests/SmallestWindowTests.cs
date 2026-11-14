@@ -13,8 +13,8 @@ namespace Passenger.Tests;
 
 /// <summary>At the smallest window (MainWindow.SmallestWidth wide and SmallestHeight tall) everything shown can be read
 /// and reached: the Welcome page scrolls to each of its tiles, Find in Files stands inside the window, the toolbar's long
-/// names give way with an ellipsis and never draw over each other, what the status bar says stands whole in front of
-/// the file's path, and the Commit window sharing its column draws nothing over its form.</summary>
+/// names give way with an ellipsis and never draw over each other or the window's buttons, what the status bar says
+/// stands whole in front of the file's path, and the Commit window sharing its column draws nothing over its form.</summary>
 public sealed class SmallestWindowTests
 {
     [AvaloniaFact]
@@ -91,8 +91,10 @@ public sealed class SmallestWindowTests
             {
                 window.Width = width;
                 Ui.Settle();
+                // The window's own buttons too (Windows' and Linux's), whose clicks a part drawn over them would take.
                 Control[] parts = [.. ((Panel)Named(window, "ToolbarStart")).Children.Concat(((Panel)Named(window, "ToolbarEnd")).Children)
-                    .Where(c => c.IsEffectivelyVisible && c.Bounds.Width > 0)];
+                    .Concat(((Panel)Named(window, "WindowButtons")).Children)
+                    .Where(c => c.IsEffectivelyVisible && c.Bounds.Width > 0 && !ShrinkingRow.HasGone(c))];
                 foreach (Control one in parts)
                 {
                     foreach (Control other in parts.Where(o => o != one && Placed(window, o).Left > Placed(window, one).Left))

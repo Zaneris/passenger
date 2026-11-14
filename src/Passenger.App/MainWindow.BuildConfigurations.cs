@@ -69,7 +69,8 @@ public partial class MainWindow
         {
             menu.Items.Add(MenuChoice.Of(each.Shown(offered), chosen is not null && chosen.Is(each), () => IdeErrors.Observe(ChooseBuildConfigurationAsync(each))));
         }
-        Open(menu, BuildConfigButton);
+        // Gone from a narrow toolbar, the widget leaves its menu to the Build button beside it.
+        Open(menu, ShrinkingRow.HasGone(BuildConfigButton) ? BuildButton : BuildConfigButton);
     }
 
     /// <summary>A configuration chosen: kept with the folder, and said with what it changes; nothing is built.</summary>

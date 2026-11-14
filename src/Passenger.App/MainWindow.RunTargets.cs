@@ -147,7 +147,8 @@ public partial class MainWindow
         MenuItem refresh = new() { Header = "Look Again" };
         refresh.Click += (_, _) => IdeErrors.Observe(LookAgainAsync());
         menu.Items.Add(refresh);
-        Open(menu, RunTargetButton);
+        // Gone from a narrow toolbar, the widget leaves its menu to the run configuration's beside it.
+        Open(menu, ShrinkingRow.HasGone(RunTargetButton) ? RunConfigButton : RunTargetButton);
 
         async Task LookAgainAsync()
         {

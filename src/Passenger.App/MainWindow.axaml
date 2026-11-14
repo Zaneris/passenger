@@ -51,7 +51,8 @@
 
                 <!-- The run widget and the icons at the right keep their room as the window narrows: the branch's and
                      project's names give way first, then the run configuration's, each ending in an ellipsis
-                     (ToolbarRow). -->
+                     (ToolbarRow); where even that leaves too little, the run target's widget goes, then the build
+                     configuration's, their choices still in the Run and Build menus (ShrinkingRow.GoesWhole). -->
                 <app:ShrinkingRow Name="ToolbarEnd" DockPanel.Dock="Right" Spacing="2" VerticalAlignment="Center"
                             WindowDecorationProperties.ElementRole="User">
                     <Button Name="BuildButton" Classes="tool" ToolTip.Tip="Build solution">
@@ -59,7 +60,8 @@
                     </Button>
                     <!-- The build configuration every build takes, shown once the folder offers any
                          (MainWindow.BuildConfigurations.cs). -->
-                    <Button Name="BuildConfigButton" Classes="widget" MinWidth="52" ToolTip.Tip="Build configuration" IsVisible="False" Click="OnBuildConfigClicked">
+                    <Button Name="BuildConfigButton" Classes="widget" MinWidth="52" ToolTip.Tip="Build configuration" IsVisible="False" Click="OnBuildConfigClicked"
+                            app:ShrinkingRow.GoesWhole="True">
                         <DockPanel>
                             <PathIcon DockPanel.Dock="Right" Margin="6,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
                             <TextBlock Name="BuildConfigName" Text="Debug" VerticalAlignment="Center"
@@ -75,7 +77,8 @@
                     </Button>
                     <!-- Where the chosen configuration's app runs, shown for a project of devices, emulators or simulators
                          (MainWindow.RunTargets.cs). -->
-                    <Button Name="RunTargetButton" Classes="widget" MinWidth="52" ToolTip.Tip="Where it runs" IsVisible="False" Click="OnRunTargetClicked">
+                    <Button Name="RunTargetButton" Classes="widget" MinWidth="52" ToolTip.Tip="Where it runs" IsVisible="False" Click="OnRunTargetClicked"
+                            app:ShrinkingRow.GoesWhole="True">
                         <DockPanel>
                             <PathIcon DockPanel.Dock="Right" Margin="6,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
                             <TextBlock Name="RunTargetName" Text="Choose a device" VerticalAlignment="Center"
