@@ -745,7 +745,7 @@ public sealed class ExplorerTree
     /// project, else what it holds under it, as nowhere else shows its files.</summary>
     private ExplorerNode SharedLeaf(ProjectModel owner, string items, string? project, int depth)
     {
-        string named = project ?? items;
+        string named = project ?? Beside(items) ?? items;
         string name = Path.GetFileNameWithoutExtension(named);
         ProjectModel holder = ProjectModel.Unevaluated(named);
         return new(NodeKind.SharedProject, name, null, depth, false, project is null ? node => HeldIn(holder, string.Empty, node.Depth + 1) : null, "shared")
@@ -753,6 +753,20 @@ public sealed class ExplorerTree
             Owner = owner.Path,
             Referenced = named,
         };
+    }
+
+    /// <summary>The shared project beside an items file whose items it is, which no row shows; null for none.</summary>
+    private static string? Beside(string items)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(Path.GetDirectoryName(items)!, "*" + SharedProjects.Extension).Select(PathNames.Canonical)
+                .FirstOrDefault(p => PathNames.Same(SharedProjects.ItemsFileOf(p), items));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>A project's dependencies as MSBuild evaluates them: for a project of one framework, it with the

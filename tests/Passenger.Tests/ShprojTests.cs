@@ -6,6 +6,7 @@ using Passenger.App.Explorer;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Text;
 
 namespace Passenger.Tests;
 
@@ -107,6 +108,14 @@ public sealed class ShprojTests : IDisposable
             Ui.Settle();
             Assert.True(window.ExplorerView.Selected is { Path: { } chosen, Depth: 2 } && chosen == greeting,
                 $"Greeting.cs was revealed at {window.ExplorerView.Selected?.Path} (depth {window.ExplorerView.Selected?.Depth}), not under Shop.Shared");
+
+            // Find in Files on the shared project's row searches its files, each listed under it; on an importer's, none of them.
+            SearchQuery query = new("namespace");
+            FilesFound inShared = Ui.Await(window.FindInFilesAsync(query, window.ScopeOf([shared])!, CancellationToken.None), "the search of Shop.Shared");
+            Assert.Equal([(greeting, "Shop.Shared"), (Path.Combine(Shared, "Models", "Order.cs"), "Shop.Shared")],
+                inShared.Matches.Select(m => (m.Path, window.ProjectNameOf(m.Path))).Order());
+            FilesFound inApi = Ui.Await(window.FindInFilesAsync(new SearchQuery("Greeting"), window.ScopeOf([Row(window, "Shop.Api")])!, CancellationToken.None), "the search of Shop.Api");
+            Assert.Equal([Path.Combine(folder, "Shop.Api", "Program.cs")], inApi.Matches.Select(m => m.Path).Distinct());
         }
         finally
         {

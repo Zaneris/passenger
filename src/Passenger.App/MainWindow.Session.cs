@@ -38,7 +38,8 @@ public partial class MainWindow
     /// <summary>The loaded project a file or folder (a canonical path) belongs to; null outside them all.</summary>
     public ProjectModel? ProjectOf(string path) => session.ProjectOf(path);
 
-    private string ProjectNameOf(string path) => session.ProjectNameOf(path);
+    /// <summary>The name of the project a file belongs to, as Find and Problems group by it (<see cref="ProjectSession.ProjectNameOf"/>).</summary>
+    public string ProjectNameOf(string path) => session.ProjectNameOf(path);
 
     /// <summary>The read of the open folder under way, done once it has landed.</summary>
     public Task WorkspaceRead => session.WorkspaceRead;

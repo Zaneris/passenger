@@ -9,22 +9,11 @@ namespace Passenger.App;
 /// made or deleted it, so one Undo takes back both; moves follow in <see cref="FollowMoved"/>.</summary>
 public partial class MainWindow
 {
-    /// <summary>The items file of the solution's shared project whose folder holds a path, the nearest; null for a path in
-    /// none, or in a project of its own inside one.</summary>
-    private string? SharedItemsOf(string path)
-    {
-        string? found = null;
-        foreach (string shproj in session.Workspace?.SharedProjects ?? [])
-        {
-            string items = SharedProjects.ItemsFileOf(shproj);
-            if (PathNames.IsUnder(path, Path.GetDirectoryName(items)!) && (found is null || items.Length > found.Length))
-            {
-                found = items;
-            }
-        }
-        return found is not null && ProjectModel.Owning(Projects, path) is { } owner && PathNames.IsUnder(owner.Folder, Path.GetDirectoryName(found)!)
-            ? null : found;
-    }
+    /// <summary>The items file of the solution's shared project whose folder holds a path (<see cref="ProjectSession.SharedProjectOf"/>),
+    /// where the items file's own folder holds it too; null for a path in none.</summary>
+    private string? SharedItemsOf(string path) =>
+        session.SharedProjectOf(path) is { } shared && SharedProjects.ItemsFileOf(shared) is var items && PathNames.IsUnder(path, Path.GetDirectoryName(items)!)
+            ? items : null;
 
     /// <summary>Whether any of these paths lies in a shared project's folder.</summary>
     private bool InShared(IEnumerable<string> paths) => paths.Any(p => SharedItemsOf(p) is not null);
