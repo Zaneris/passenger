@@ -2431,6 +2431,41 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>An Avalonia preview draws its root at a phone's and a tablet's size beside its design's (#1549): chosen
+    /// beside the preview's title, the frame takes the size chosen as the root lays itself out there, the file's text stays as
+    /// written, and Design size brings the design's back.</summary>
+    [AvaloniaFact]
+    public void An_avalonia_preview_draws_its_root_at_a_phones_and_a_tablets_size_beside_its_design_size()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        OpenDocument document = window.EditorArea.Active!;
+        string written = document.Text.Snapshot.ToString();
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+        Ui.Settle();
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+        Ui.WaitFor(() => preview.Frame is not null && preview.FrameSize.Width > 0, () => $"the previewer's first frame; the preview says: {preview.Status} {preview.Error}",
+            TimeSpan.FromSeconds(60));
+        Size design = preview.FrameSize;
+        Assert.True(pane.Sizes.IsVisible, "The preview of a window offers no sizes beside its design's");
+        Assert.Equal([Passenger.App.Xaml.XamlPreviewPane.DesignSize, "Phone (412 × 915)", "Phone, turned (915 × 412)", "Tablet (800 × 1280)", "Tablet, turned (1280 × 800)"],
+            pane.Sizes.Items.Cast<string>());
+        foreach (int chosen in (int[])[1, 3, 0])
+        {
+            pane.Sizes.SelectedIndex = chosen;
+            Size wanted = chosen == 0 ? design : new Size(Passenger.Xaml.Features.PreviewSize.Offered[chosen - 1].Width, Passenger.Xaml.Features.PreviewSize.Offered[chosen - 1].Height);
+            Ui.WaitFor(() => Math.Abs(preview.FrameSize.Width - wanted.Width) < 1 && Math.Abs(preview.FrameSize.Height - wanted.Height) < 1,
+                () => $"the frame at {pane.Sizes.SelectedItem} ({wanted.Width} × {wanted.Height}); it is {preview.FrameSize}: {preview.Status} {preview.Error}", TimeSpan.FromSeconds(60));
+            Assert.Null(preview.Error);
+        }
+        Assert.Equal(written, document.Text.Snapshot.ToString());
+        // XAML Preview is kept on for the next window, which the class's other tests open with it off.
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
     /// <summary>An app still on Avalonia 11, whose package carries its previewer under tools/netstandard2.0 where Avalonia
     /// 12's are under tools/net8.0 and later, and whose Directory.Build.props moves its obj and bin folders, previews as
     /// any app does: turned on from its file's tab strip before the app was ever restored, it draws once Build has

@@ -26,6 +26,9 @@ public sealed class XamlPreviewPane : DockPanel
     private readonly ToolWindows.EmptyState waiting;
     private readonly Panel view;
 
+    /// <summary>The size the root is drawn at: its design's, a phone's or a tablet's, shown while the previewer takes one.</summary>
+    private readonly ComboBox sizes;
+
     /// <summary>The chosen element's own values, under the frame, while it shows them.</summary>
     private readonly Border properties;
     private readonly TextBlock propertiesTitle;
@@ -50,12 +53,25 @@ public sealed class XamlPreviewPane : DockPanel
     {
         this.preview = preview;
         status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        sizes = new ComboBox
+        {
+            [DockProperty] = Dock.Right,
+            Classes = { StyleClasses.Compact },
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
+            IsVisible = false,
+            ItemsSource = (string[])[DesignSize, .. Passenger.Xaml.Features.PreviewSize.Offered.Select(s => s.Shown)],
+            SelectedIndex = 0,
+        };
+        ToolTip.SetTip(sizes, "The size the preview draws its root at");
+        sizes.SelectionChanged += (_, _) => preview.Size = sizes.SelectedIndex > 0 ? Passenger.Xaml.Features.PreviewSize.Offered[sizes.SelectedIndex - 1] : null;
         Border header = ToolWindows.ToolBars.OverEditor(new DockPanel
         {
             Margin = new Thickness(10, 0),
             Children =
             {
                 new TextBlock { Text = "Preview", FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) },
+                sizes,
                 status,
             },
         });
@@ -142,6 +158,12 @@ public sealed class XamlPreviewPane : DockPanel
 
     /// <summary>The element's box outlined, in the frame's units; null while none is.</summary>
     public Rect? Outlined => outline.IsVisible ? outlined : null;
+
+    /// <summary>The chooser of the size the root is drawn at.</summary>
+    public ComboBox Sizes => sizes;
+
+    /// <summary>The chooser's first item: the root at the size its XAML designs it at.</summary>
+    public const string DesignSize = "Design size";
 
     /// <summary>Build for XAML Preview's title, which the pane's link shows.</summary>
     public const string BuildForPreviewTitle = "Build for XAML Preview";
@@ -251,6 +273,7 @@ public sealed class XamlPreviewPane : DockPanel
     private void Show()
     {
         status.Text = preview.Status;
+        sizes.IsVisible = preview.TakesSizes;
         image.Source = preview.Frame;
         image.Width = preview.FrameSize.Width;
         image.Height = preview.FrameSize.Height;

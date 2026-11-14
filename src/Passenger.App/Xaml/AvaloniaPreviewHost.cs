@@ -140,7 +140,8 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         preview.Hold();
         TextSnapshot text = preview.Document.Document.Text.Snapshot;
         unanswered.Enqueue(text);
-        IdeErrors.Observe(open.Send(new UpdateXamlMessage { Xaml = text.ToString(), AssemblyPath = output, XamlFileProjectPath = preview.ProjectPath() }));
+        string xaml = preview.Size is { } size ? size.Sized(text.ToString()) : text.ToString();
+        IdeErrors.Observe(open.Send(new UpdateXamlMessage { Xaml = xaml, AssemblyPath = output, XamlFileProjectPath = preview.ProjectPath() }));
     }
 
     /// <summary>The host's window drawn again at a scale, screenshots and tests held for its frame where the host has a

@@ -222,6 +222,51 @@ public sealed class XamlPreview : IDisposable
         }
     }
 
+    /// <summary>The size the root is drawn at in place of its design size (a phone's, a tablet's); null for its design
+    /// size. Only an Avalonia previewer takes one (<see cref="TakesSizes"/>), sent the file again as it changes.</summary>
+    public Passenger.Xaml.Features.PreviewSize? Size
+    {
+        get => size;
+        set
+        {
+            UiThread.Check();
+            if (value == size)
+            {
+                return;
+            }
+            size = value;
+            if (!disposed)
+            {
+                host?.Update();
+            }
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private Passenger.Xaml.Features.PreviewSize? size;
+
+    /// <summary>Whether the file's previewer draws its root at a size given it: Avalonia's, while the root is a control's
+    /// (<see cref="Passenger.Xaml.Features.PreviewSize.Fits"/>).</summary>
+    public bool TakesSizes
+    {
+        get
+        {
+            if (host is not AvaloniaPreviewHost)
+            {
+                return false;
+            }
+            TextSnapshot text = document.Document.Text.Snapshot;
+            if (fits.Text != text)
+            {
+                fits = (text, Passenger.Xaml.Features.PreviewSize.Fits(text.ToString()));
+            }
+            return fits.Fits;
+        }
+    }
+
+    /// <summary>Whether the root of the text last asked about takes a size, kept until the text changes.</summary>
+    private (TextSnapshot? Text, bool Fits) fits;
+
     /// <summary>The deepest of the file's elements drawn at a point of the frame, in its units; null for none.</summary>
     public PreviewElement? ElementAt(Point point) => Elements.LastOrDefault(e => e.Box.Contains(point));
 
