@@ -63,10 +63,10 @@ public sealed class LanguageServer : IAsyncDisposable
     private long changes;
 
     /// <summary>A count of what may have changed the server's answers since it started: each notification it was sent (an
-    /// open, a change or close of a document, files changed on disk, options), each of Passenger's own project
-    /// requests, each time it said its projects loaded or its diagnostics changed, and each change it made that nothing
-    /// said (<see cref="AnswersMoved"/>). Roslyn's server watches nothing itself, so an answer pulled at one count stands
-    /// while the count does.</summary>
+    /// open, a change or close of a document, files changed on disk, options), each project it was given, each time it said
+    /// its projects loaded or its diagnostics changed, and each change it made as it was asked that nothing said
+    /// (<see cref="AnswersMoved"/>); never a request that only reads (a completion list, a symbol's lookup, a pull).
+    /// Roslyn's server watches nothing itself, so an answer pulled at one count stands while the count does.</summary>
     public long Changes => Interlocked.Read(ref changes);
 
     /// <summary>Counts a change the server has made as it was asked, which it says only seconds later, if at all.</summary>
@@ -762,10 +762,6 @@ public sealed class LanguageServer : IAsyncDisposable
     public async Task<T?> RequestAsync<T>(string method, object parameters, CancellationToken cancel = default, string? about = null)
     {
         long id = Interlocked.Increment(ref requests);
-        if (method.StartsWith("passenger/", StringComparison.Ordinal))
-        {
-            Changing(method);
-        }
         lock (waiting)
         {
             waiting[id] = (about is null ? method : $"{method} ({about[(about.LastIndexOf('.') + 1)..]})", Stopwatch.GetTimestamp());

@@ -256,9 +256,24 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     }
 
     /// <summary>Has a server fed by the client let go of projects, which it answers from no longer; done once it has, with
-    /// whether it held any of them.</summary>
-    public async Task<bool> UnloadAsync(IReadOnlyList<string> projects) =>
-        Fed && projects.Count > 0 && await Server.RequestAsync<bool>(ProjectMethods.Unload, new UnloadProjectsParams(projects)).ConfigureAwait(false);
+    /// whether it held any of them. Nothing pulled before it answered stands (<see cref="LanguageServer.Changes"/>).</summary>
+    public async Task<bool> UnloadAsync(IReadOnlyList<string> projects)
+    {
+        if (!Fed || projects.Count == 0)
+        {
+            return false;
+        }
+        // Counted as sent and again once answered: a pull answered meanwhile may have read the projects still held.
+        Server.AnswersMoved();
+        try
+        {
+            return await Server.RequestAsync<bool>(ProjectMethods.Unload, new UnloadProjectsParams(projects)).ConfigureAwait(false);
+        }
+        finally
+        {
+            Server.AnswersMoved();
+        }
+    }
 
     /// <summary>Has a server fed by the client that has loaded its projects load them again, from the design-time builds
     /// it asks for, and waits for that load as for its first: <see cref="IsLoaded"/> until it says it has. For a server

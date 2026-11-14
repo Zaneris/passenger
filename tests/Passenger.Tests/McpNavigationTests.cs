@@ -590,9 +590,41 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         }
         string second = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
         Assert.Equal(first, second);
+        await TracedAsync(client, trace);
         Assert.True(Pulls(trace, "Helper.cs") == pulls,
             $"The second ask of Helper.cs, unchanged, sent the language server {Pulls(trace, "Helper.cs") - pulls} pulls of its diagnostics, where its last pull answered");
         Assert.Contains("Helper.cs", ServerOpen(trace));
+    }
+
+    /// <summary>A completion list changes nothing the language server answers, so an agent's diagnostics of a file asked again
+    /// once the list for a place in it has come answer from the pull before the list, sending none (the protocol trace).</summary>
+    [Fact]
+    public async Task Diagnostics_asked_again_after_a_completion_answer_from_the_pull_before_it_sending_none()
+    {
+        await TakeFolderAsync();
+        await using McpClient client = await Start(["--mcp", Folder]);
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["traceProtocols"] = true } });
+        await Call(client, McpTools.Open, new() { ["path"] = "Helper.cs", ["line"] = 6, ["column"] = 16 });
+        string first = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
+        Assert.Contains("unused", first, StringComparison.Ordinal);
+        string trace = Path.Combine(OwnState, "logs", "lsp.log");
+        // The window's own pulls of the file just opened, and one a refresh of the server's as it read the file brings, come first.
+        await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" });
+        int pulls = -1;
+        for (int round = 0; round < 20 && Pulls(trace, "Helper.cs") != pulls; round++)
+        {
+            pulls = Pulls(trace, "Helper.cs");
+            Waiting.For(TimeSpan.FromSeconds(1), "the trace of the first calls' pulls to settle");
+        }
+
+        await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.Complete });
+        Assert.True(await Waiting.UntilAsync(() => Answered(trace, Passenger.Roslyn.Extension.ExtensionMethods.Completion), TimeSpan.FromSeconds(30).Scaled(), Cancel),
+            "Basic Completion at return value in Helper.cs had no completion list answered by the language server");
+        string second = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
+        Assert.Equal(first, second);
+        await TracedAsync(client, trace);
+        Assert.True(Pulls(trace, "Helper.cs") == pulls,
+            $"Diagnostics of Helper.cs asked again after a completion list, nothing changed, sent the language server {Pulls(trace, "Helper.cs") - pulls} pulls of them, where its last pull answered");
     }
 
     /// <summary>A type a code action moved to a file of its own is known at once to what the agent asks next of a file using
@@ -650,6 +682,39 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         using StreamReader reader = new(read);
         return reader.ReadToEnd().Split('\n').Count(l => l.Contains("] --> ", StringComparison.Ordinal)
             && l.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.DocumentDiagnostic}\"", StringComparison.Ordinal) && l.Contains("/" + file + "\"", StringComparison.Ordinal));
+    }
+
+    /// <summary>Has every message sent the language server so far reach lsp.log, whose lines are written a moment after they
+    /// cross: a hover card asked of Helper.cs now, its request found there after them.</summary>
+    private async Task TracedAsync(McpClient client, string trace)
+    {
+        int hovers = Sent(trace, Passenger.Lsp.LspMethods.Hover);
+        await Call(client, McpTools.SymbolInfo, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23 });
+        Assert.True(await Waiting.UntilAsync(() => Sent(trace, Passenger.Lsp.LspMethods.Hover) > hovers, TimeSpan.FromSeconds(10).Scaled(), Cancel),
+            "A hover card asked of Helper.cs never reached lsp.log's trace of what the language server was sent");
+    }
+
+    /// <summary>How many requests of a method lsp.log's trace says the server was sent.</summary>
+    private static int Sent(string trace, string method)
+    {
+        using FileStream read = new(trace, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using StreamReader reader = new(read);
+        return reader.ReadToEnd().Split('\n').Count(l => l.Contains("] --> ", StringComparison.Ordinal) && l.Contains($"\"method\":\"{method}\"", StringComparison.Ordinal));
+    }
+
+    /// <summary>Whether lsp.log's trace has the server's answer to a request of the method sent it.</summary>
+    private static bool Answered(string trace, string method)
+    {
+        string[] lines;
+        using (FileStream read = new(trace, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        using (StreamReader reader = new(read))
+        {
+            lines = reader.ReadToEnd().Split('\n');
+        }
+        IEnumerable<string> ids = lines.Where(l => l.Contains("] --> ", StringComparison.Ordinal) && l.Contains($"\"method\":\"{method}\"", StringComparison.Ordinal))
+            .Select(l => System.Text.RegularExpressions.Regex.Match(l, "\"id\":(\\d+)[,}]").Groups[1].Value).Where(id => id.Length > 0);
+        return ids.Any(id => lines.Any(l => l.Contains("] <-- ", StringComparison.Ordinal) && l.Contains($"\"id\":{id},", StringComparison.Ordinal)
+            && l.Contains("\"result\"", StringComparison.Ordinal)));
     }
 
     /// <summary>The names of the files the language server was told open and not since closed, by lsp.log's trace of what it
