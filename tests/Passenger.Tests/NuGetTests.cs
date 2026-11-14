@@ -963,6 +963,79 @@ public sealed class NuGetTests : IDisposable
                 .Select(b => b.GetLogicalDescendants().OfType<TextBlock>().First().Text ?? string.Empty)];
     }
 
+    /// <summary>The version chosen in a package's details is said vulnerable there before it is put in, as the stand-in's
+    /// audit says, with its advisories, the gravest first and each linked, and the version that fixes them: of a package no
+    /// project has, the audit read as the details ask, nothing listed having asked for it; of one a project has, in the
+    /// word on its vulnerable version where the same advisories affect both, in a word of its own where others do, and not
+    /// at all where none does.</summary>
+    [AvaloniaFact]
+    public void A_vulnerable_version_chosen_before_install_is_said_in_the_details()
+    {
+        const string Leaky = "Passenger.Leaky";
+        const string Moderate = "https://github.com/advisories/GHSA-pass-leak-mild";
+        const string Critical = "https://github.com/advisories/GHSA-pass-leak-grave";
+        const string Low = "https://github.com/advisories/GHSA-pass-leak-slight";
+        const string Known = "Known security vulnerability in";
+        const string Details = "It could be exploited in certain scenarios. See the advisories below for details.";
+        foreach (string version in new[] { "1.0.0", "1.2.0", "1.5.0", "2.0.0" })
+        {
+            feed.Add(Leaky, version);
+        }
+        feed.Advise(Leaky, 1, Moderate, "[1.0.0, 1.5.0)");
+        feed.Advise(Leaky, 0, Low, "[2.0.0, )");
+        feed.Advise(Leaky, 3, Critical, "[2.0.0, )");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Search(nuget);
+        Assert.Equal("1.1.0", nuget.ChosenVersion);
+        Assert.Empty(Said(nuget));
+        Choose(nuget, "1.0.0");
+        Ui.WaitFor(() => Said(nuget).Count == 1, () => $"{Id}'s chosen 1.0.0, which no project has, to be said vulnerable: [{string.Join(" | ", Said(nuget))}]");
+        Assert.Equal([$"{Known} 1.0.0. {Details}"], Said(nuget));
+        Assert.Equal("Fixed in 1.0.1", Fix(nuget, "Vulnerability"));
+        Assert.Contains(Line(nuget, "Lib")!.Children.OfType<Button>(), b => b.Content as string == "Install");
+        Choose(nuget, "1.1.0");
+        Assert.Empty(Said(nuget));
+
+        // Lib takes Leaky's vulnerable 1.0.0, as a person edits the project.
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Leaky}\" Version=\"1.0.0\" /></ItemGroup>");
+        nuget.Query = string.Empty;
+        Ui.WaitFor(() => nuget.Rows.Any(r => r.Id == Leaky && r.IsVulnerable), () => $"Lib's {Leaky} listed as vulnerable: {nuget.Status}");
+        ChoosePackage(nuget, Leaky);
+        Ui.WaitFor(() => nuget.Versions.Count == 4 && Said(nuget).Count == 1, () => $"{Leaky}'s details to say Lib's vulnerable 1.0.0: [{string.Join(" | ", Said(nuget))}]");
+        Assert.Equal("1.5.0", nuget.ChosenVersion);
+        Assert.Equal([$"{Known} 1.0.0. {Details}"], Said(nuget));
+        Assert.Equal("Fixed in 1.5.0", Fix(nuget, "Vulnerability"));
+
+        Choose(nuget, "1.2.0");
+        Assert.Equal([$"{Known} 1.0.0 and 1.2.0. {Details}"], Said(nuget));
+        Assert.Equal("Fixed in 1.5.0", Fix(nuget, "Vulnerability"));
+
+        Choose(nuget, "2.0.0");
+        Assert.Equal([$"{Known} 1.0.0. {Details}", $"{Known} 2.0.0. {Details}"], Said(nuget));
+        Border chosen = nuget.GetLogicalDescendants().OfType<Border>().Single(b => b.Name == "ChosenVulnerability");
+        Assert.Equal([Critical, Low], chosen.GetLogicalDescendants().OfType<Button>().Select(b => b.Content as string));
+        Assert.Equal(["(Severity: Critical)", "(Severity: Low)"],
+            chosen.GetLogicalDescendants().OfType<TextBlock>().Select(t => t.Text).Where(t => t?.StartsWith("(Severity", StringComparison.Ordinal) == true));
+        Assert.Equal("No version without a known vulnerability is offered", Fix(nuget, "ChosenVulnerability"));
+        Assert.Contains(Line(nuget, "App")!.Children.OfType<Button>(), b => b.Content as string == "Install");
+        Ui.Click(chosen.GetLogicalDescendants().OfType<Button>().First(), settle: false);
+        Assert.True(window.Browsed.Contains(new Uri(Critical)), $"The chosen version's gravest advisory's link opened [{string.Join(", ", window.Browsed)}]");
+
+        Choose(nuget, "1.5.0");
+        Assert.Equal([$"{Known} 1.0.0. {Details}"], Said(nuget));
+        window.Close();
+
+        // The first line of each word the details say on vulnerable versions.
+        static List<string> Said(NuGetView nuget) =>
+            [.. nuget.GetLogicalDescendants().OfType<Border>().Where(b => b.Name is "Vulnerability" or "ChosenVulnerability")
+                .Select(b => b.GetLogicalDescendants().OfType<TextBlock>().First().Text ?? string.Empty)];
+
+        // The last line of a word, the version that fixes what it names.
+        static string? Fix(NuGetView nuget, string word) =>
+            nuget.GetLogicalDescendants().OfType<Border>().Single(b => b.Name == word).GetLogicalDescendants().OfType<TextBlock>().Last().Text;
+    }
+
     /// <summary>A tag of a package's row shown in the list, by its words.</summary>
     private static Border? Tag(Control row, string words) =>
         row.GetLogicalDescendants().OfType<Border>().FirstOrDefault(b => b.Child is TextBlock { Text: { } text } && text == words);

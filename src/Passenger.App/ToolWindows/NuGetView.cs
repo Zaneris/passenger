@@ -54,10 +54,10 @@ public sealed record PackageRow(string Id, string Version, string Description, s
 /// <summary>The NuGet window, its Packages and Sources tabs in its header. Packages: the projects' packages with nothing
 /// typed, else what the feed chosen beside the query finds; the chosen package's versions and a row per project to Install,
 /// Update or Remove it through the .NET command line, whose restore uses those feeds and their credentials. A version with
-/// a known vulnerability (the audit's VulnerabilityInfo, as restore reads it) is marked with its advisories, and Update
-/// offers the least version that fixes it; one its owner deprecated (the feed's registration, read while the window is
-/// shown), a project's or the one chosen to put in, with why and what to use instead. Sources: the files and their feeds (<see cref="NuGetSourcesView"/>). A view over
-/// the folder's <see cref="FolderPackages"/>, its session's.</summary>
+/// a known vulnerability (the audit's VulnerabilityInfo, as restore reads it), a project's or the one chosen to put in, is
+/// marked with its advisories, and Update offers the least version that fixes it; one its owner deprecated (the feed's
+/// registration, read while the window is shown) with why and what to use instead. Sources: the files and their feeds
+/// (<see cref="NuGetSourcesView"/>). A view over the folder's <see cref="FolderPackages"/>, its session's.</summary>
 public sealed partial class NuGetView : DockPanel
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(300);
@@ -755,12 +755,15 @@ public sealed partial class NuGetView : DockPanel
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
         ChosenVersion = row.UpdateVersion ?? fix ?? versions.FirstOrDefault() ?? row.Version;
         ComboBox picker = new() { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140 };
+        StackPanel vulnerabilities = new() { Spacing = 8 };
         StackPanel deprecated = new() { Spacing = 8 };
         picker.SelectionChanged += (_, _) =>
         {
             ChosenVersion = picker.SelectedItem as string;
+            ShowVulnerable(row, vulnerabilities);
             ShowDeprecated(row, deprecated);
             ShowProjects(row);
+            IdeErrors.Observe(ChosenVulnerabilityAsync(row, vulnerabilities, cancel));
             IdeErrors.Observe(ChosenDeprecationAsync(row, deprecated, cancel));
         };
         details.Children.Add(new StackPanel
@@ -785,15 +788,68 @@ public sealed partial class NuGetView : DockPanel
             from.Classes.Add(StyleClasses.Muted);
             details.Children.Add(from);
         }
-        if (vulnerable is not null)
-        {
-            details.Children.Add(Vulnerability(known.Of(row.Id, vulnerable), vulnerable, fix));
-        }
+        details.Children.Add(vulnerabilities);
+        ShowVulnerable(row, vulnerabilities);
         details.Children.Add(deprecated);
         ShowDeprecated(row, deprecated);
         details.Children.Add(new StackPanel { Name = "projects", Spacing = 4, Margin = new Thickness(0, 8, 0, 0) });
         ShowProjects(row);
-        await ChosenDeprecationAsync(row, deprecated, cancel);
+        await Task.WhenAll(ChosenVulnerabilityAsync(row, vulnerabilities, cancel), ChosenDeprecationAsync(row, deprecated, cancel));
+    }
+
+    /// <summary>Reads, while the window is shown, the advisories the audit's feeds know, so the version chosen in the details
+    /// is said vulnerable once they are, unless another package or version was chosen meanwhile.</summary>
+    private async Task ChosenVulnerabilityAsync(PackageRow row, Panel said, CancellationTokenSource cancel)
+    {
+        if (!IsShown || ChosenVersion is not { Length: > 0 } chosen || model.Audit() is not { IsCompleted: false } reading)
+        {
+            return;
+        }
+        try
+        {
+            await reading;
+        }
+        catch (Exception failed) when (FeedSet.IsFeedFailure(failed))
+        {
+            // The audit unread, no version is said vulnerable.
+            return;
+        }
+        if (!cancel.IsCancellationRequested && Selected == row && ChosenVersion == chosen)
+        {
+            ShowVulnerable(row, said);
+        }
+    }
+
+    /// <summary>The details' word on vulnerable versions: the newest a project has, and the version chosen to install or
+    /// move to, one word for both where the same advisories affect each.</summary>
+    private void ShowVulnerable(PackageRow row, Panel said)
+    {
+        VulnerabilityData known = Known;
+        List<(List<string> Versions, IReadOnlyList<Advisory> Advisories)> told = [];
+        if (row.InstalledVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault() is { } held)
+        {
+            told.Add(([held], known.Of(row.Id, held)));
+        }
+        if (ChosenVersion is { } chosen && known.Of(row.Id, chosen) is { Count: > 0 } advisories
+            && !told.Any(t => t.Versions.Contains(chosen, StringComparer.OrdinalIgnoreCase)))
+        {
+            if (told.FirstOrDefault(t => t.Advisories.SequenceEqual(advisories)).Versions is { } same)
+            {
+                same.Add(chosen);
+            }
+            else
+            {
+                told.Add(([chosen], advisories));
+            }
+        }
+        said.Children.Clear();
+        for (int i = 0; i < told.Count; i++)
+        {
+            // Versions the same advisories affect have the same least version above them that none affects.
+            string newest = told[i].Versions.OrderByDescending(v => v, VersionOrder.Instance).First();
+            said.Children.Add(Vulnerability(told[i].Advisories, told[i].Versions, known.FixedVersion(row.Id, newest, versions), first: i == 0));
+        }
+        said.IsVisible = told.Count > 0;
     }
 
     /// <summary>Reads, while the window is shown, whether the version chosen in the details is deprecated, and says it once
@@ -842,9 +898,10 @@ public sealed partial class NuGetView : DockPanel
         static bool Alike(Deprecation one, Deprecation other) => one.Why == other.Why && one.Message == other.Message && one.Instead == other.Instead;
     }
 
-    /// <summary>The word on a vulnerable version, its advisories each with its severity, and the version that fixes
-    /// them, which the version picker and Update offer.</summary>
-    private Border Vulnerability(IReadOnlyList<Advisory> advisories, string version, string? fix)
+    /// <summary>The word on vulnerable versions, their advisories each with its severity, the gravest first, and the
+    /// version that fixes them, which the version picker and Update offer; the first of the details' named for a test to
+    /// find.</summary>
+    private Border Vulnerability(IReadOnlyList<Advisory> advisories, IReadOnlyList<string> versions, string? fix, bool first)
     {
         PathIcon warning = new() { Width = 14, Height = 14, Margin = new Thickness(0, 1, 8, 0), VerticalAlignment = VerticalAlignment.Top, [DockProperty] = Dock.Left };
         warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
@@ -852,7 +909,7 @@ public sealed partial class NuGetView : DockPanel
         StackPanel said = new() { Spacing = 4 };
         said.Children.Add(new TextBlock
         {
-            Text = $"Known security vulnerability in {version}. It could be exploited in certain scenarios. See the advisories below for details.",
+            Text = $"Known security vulnerability in {Plural.Listed(versions)}. It could be exploited in certain scenarios. See the advisories below for details.",
             TextWrapping = TextWrapping.Wrap,
         });
         foreach (Advisory advisory in advisories)
@@ -879,7 +936,7 @@ public sealed partial class NuGetView : DockPanel
         said.Children.Add(new TextBlock { Text = fix is null ? "No version without a known vulnerability is offered" : $"Fixed in {fix}", FontWeight = FontWeight.SemiBold });
         Border block = new()
         {
-            Name = "Vulnerability",
+            Name = first ? "Vulnerability" : "ChosenVulnerability",
             Classes = { StyleClasses.Box },
             Padding = new Thickness(10, 8),
             Child = new DockPanel { Children = { warning, said } },
