@@ -196,12 +196,7 @@ public static class VimTextObjects
     /// <summary>Where a sentence's text ends, before the white that leads to the next one.</summary>
     private static int BodyEnd(TextSnapshot text, int start)
     {
-        int next = SentenceAfter(text, start);
-        if (next >= text.Length && VimMotions.Settled(text, text.Length) == next)
-        {
-            next = text.Length;
-        }
-        int end = next;
+        int end = SentenceAfter(text, start);
         while (end > start && char.IsWhiteSpace(text[end - 1]))
         {
             end--;
@@ -270,8 +265,27 @@ public static class VimTextObjects
         return TextNavigation.IndentEnd(text, span) >= span.End;
     }
 
-    /// <summary>A bracketed block, the <paramref name="n"/>th around the caret (a bracket under it counting as its own);
-    /// inner, a block whose brackets end and begin lines takes only the lines between, linewise.</summary>
+    /// <summary>The first <paramref name="open"/> from an offset on, -1 where none is or a <paramref name="close"/> comes
+    /// first, ending the block the offset is in.</summary>
+    private static int Ahead(TextSnapshot text, int from, char open, char close)
+    {
+        for (int p = from; p < text.Length; p++)
+        {
+            if (text[p] == open)
+            {
+                return p;
+            }
+            if (text[p] == close)
+            {
+                return -1;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>A bracketed block, the <paramref name="n"/>th around the caret (a bracket under it counting as its own),
+    /// or outside any the <paramref name="n"/>th ahead before a closing bracket; inner, a block whose brackets end and begin lines takes only the
+    /// lines between, linewise.</summary>
     private static VimSpan? Block(TextSnapshot text, int caret, int n, bool inner, char open, char close)
     {
         int at = caret < text.Length && text[caret] == close ? Match(text, caret, open, close, forward: false) : caret;
@@ -281,16 +295,15 @@ public static class VimTextObjects
         }
         int start = -1;
         int from = at < text.Length && text[at] == open ? at : at - 1;
+        bool ahead = false;
         for (int i = 0; i < n; i++)
         {
-            start = Unclosed(text, i == 0 ? from : start - 1, open, close);
-            if (start < 0 && i == 0 && n == 1)
+            start = ahead ? Ahead(text, start + 1, open, close) : Unclosed(text, i == 0 ? from : start - 1, open, close);
+            if (start < 0 && i == 0)
             {
-                // Outside any block, the first one ahead.
-                for (int p = caret; p < text.Length && start < 0; p++)
-                {
-                    start = text[p] == open ? p : -1;
-                }
+                // Outside any block, the first one ahead, and a count's more the next ones ahead.
+                ahead = true;
+                start = Ahead(text, caret, open, close);
             }
             if (start < 0)
             {

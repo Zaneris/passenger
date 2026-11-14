@@ -282,7 +282,7 @@ public sealed partial class Vim(VimRegisters registers)
         return new VimResult(true, Edits: [plan]);
     }
 
-    /// <summary>An insert session begun; only i, a, I, A, o and O repeat what it types by their count.</summary>
+    /// <summary>An insert session begun; only i, a, I, gI, A, o and O repeat what it types by their count.</summary>
     private void Begin(Command command, string how, SelectionSet carets, int length) =>
         inserting = (command.Keys, command.Count, how, carets.Items[0].Caret, length, carets.Count);
 

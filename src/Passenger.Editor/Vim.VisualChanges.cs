@@ -303,15 +303,21 @@ public sealed partial class Vim
     }
 
     /// <summary>p and P over a visual stretch: the register's text in place of what is shown, which p keeps in the
-    /// unnamed register and P doesn't; whole lines put over characters go on lines of their own.</summary>
+    /// unnamed register and P doesn't; whole lines put over characters go on lines of their own. From an empty register
+    /// the stretch is deleted alone, as a d into the unnamed register (for P into none), which . makes again.</summary>
     private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view)
     {
-        Remember(command);
-        VimRegister? value = VimRegisters.IsClipboard(command.Register) ? null : Registers.Get(command.Register);
-        if (value is null)
+        if (VimRegisters.IsClipboard(command.Register))
         {
+            Remember(command);
             return new VimResult(true, carets);
         }
+        if (Registers.Get(command.Register) is not { } value)
+        {
+            char? into = keep ? '_' : null;
+            return Act(command with { Keys = into is { } none ? ["\"", none.ToString(), "d"] : ["d"], Register = into }, "d", stretches, text, carets, view, block);
+        }
+        Remember(command);
         stretches.Sort((a, b) => a.Start.CompareTo(b.Start));
         VimRegister replaced = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
         string eol = view.LineEnding;

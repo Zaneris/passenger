@@ -446,15 +446,20 @@ public static class VimMotions
     /// <summary>Whether a line is empty, a paragraph's bound; a line of blanks is not.</summary>
     public static bool Blank(TextSnapshot text, int line) => text.GetLine(line).Length == 0;
 
-    /// <summary>) and (: the start of the next sentence, or of this one or the one before; exclusive.</summary>
+    /// <summary>) and (: the start of the next sentence, or of this one or the one before; exclusive. Run past the last
+    /// sentence, ) stands on the text's last character and takes it.</summary>
     public static VimTarget? Sentence(TextSnapshot text, int caret, int n, bool forward)
     {
         int to = Repeated(n, caret, p => forward ? NextSentenceStart(text, p) : PreviousSentenceStart(text, p));
-        return to == caret ? null : new VimTarget(to, VimMotionKind.Exclusive);
+        if (to == caret)
+        {
+            return null;
+        }
+        return to == text.Length && Settled(text, to) < to ? new VimTarget(Settled(text, to), VimMotionKind.Inclusive) : new VimTarget(to, VimMotionKind.Exclusive);
     }
 
     /// <summary>The start of the first sentence after the offset: past a sentence's end and the blanks after it, an empty
-    /// line, or the first text after an empty line; the text's last character where none is.</summary>
+    /// line, or the first text after an empty line; the text's end where none is.</summary>
     public static int NextSentenceStart(TextSnapshot text, int offset)
     {
         int n = text.Length;
@@ -466,29 +471,25 @@ public static class VimMotions
             {
                 p++;
             }
-            return p >= n ? Settled(text, n) : SkipBlanks(text, p);
+            return p >= n ? n : SkipBlanks(text, p);
         }
         for (int p = offset; p < n; p++)
         {
             char c = text[p];
             if (c == '\n' && p + 1 <= n && (p + 1 == n || EmptyLineAt(text, p + 1)))
             {
-                return p + 1 >= n ? Settled(text, n) : p + 1;
+                return p + 1;
             }
             if (c is '.' or '!' or '?' && EndsSentence(text, p, out int after) && after > offset)
             {
                 int start = SkipBlanks(text, after);
-                if (start >= n)
-                {
-                    return Settled(text, n);
-                }
                 if (start > offset)
                 {
                     return start;
                 }
             }
         }
-        return Settled(text, n);
+        return n;
     }
 
     /// <summary>The start of the sentence the offset is in when past it, else of the one before: sentences counted

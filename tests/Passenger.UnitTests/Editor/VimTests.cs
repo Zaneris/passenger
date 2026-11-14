@@ -218,6 +218,51 @@ public class VimTests
     public void Text_objects_take_what_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>The less common corners: gI inserting at column 1, a visual put from an empty register deleting what is
+    /// shown, a sentence motion or object running to the end of a text with no line break after it taking its last
+    /// character, a block found after the caret in visual line and block mode turning them charwise (and the block a longer
+    /// stretch is taken to), a count's blocks ahead until a bracket closes, and a count of J past the last line going to
+    /// its start.</summary>
+    [Theory]
+    [InlineData("a b c d |e f\ng h", "gI7<Esc>", "|7a b c d e f\ng h")]
+    [InlineData("  a b c d |e f\ng h", "3gI78<Esc>", "78787|8  a b c d e f\ng h")]
+    [InlineData("  a |b\n  c d", "gIx<Esc>j.", "x  a b\n|x  c d")]
+    [InlineData("ab|c def\nxyz", "vlp", "ab|def\nxyz")]
+    [InlineData("ab|c def\nxyz", "Vjp", "|")]
+    [InlineData("ab|c def\nxyz", "<C-v>jp", "ab| def\nxy")]
+    [InlineData("ab|c def\nxyz", "vlpp", "abdc| ef\nxyz")]
+    [InlineData("ab|c def\nxyz", "vlPp", "ab|def\nxyz")]
+    [InlineData("ab|c def\nxyz", "vlp.", "ab|f\nxyz")]
+    [InlineData("ab|c def\nxyz", "v\"ap", "ab| def\nxyz")]
+    [InlineData("a b c d e f\ng h i j k l\n|m n o p q r", "gU)", "a b c d e f\ng h i j k l\n|M N O P Q R")]
+    [InlineData("one. tw|o three", "d)", "one. t|w")]
+    [InlineData("a. |b", "d)", "a.| ")]
+    [InlineData("o|ne. two three", "d2)", "|o")]
+    [InlineData("one. two |three", "das", "one|.")]
+    [InlineData("one. two |three", "dis", "one.| ")]
+    [InlineData("one. tw|o three", "y)P", "one. two thre|eo three")]
+    [InlineData("f|oo(a, b) x\nnext", "Vi(d", "foo(|) x\nnext")]
+    [InlineData("f|oo(a, b) x\nnext", "<C-v>i(d", "foo(|) x\nnext")]
+    [InlineData("f|oo(a, b) x\nnext", "Va(d", "foo| x\nnext")]
+    [InlineData("f|oo \"a b\" x\nnext", "Vi\"d", "foo \"|\" x\nnext")]
+    [InlineData("f|oo bar\nnext", "Viwd", "| bar\nnext")]
+    [InlineData("f|oo(a) bar\nnext\nx", "Vji(d", "foo(|) bar\nnext\nx")]
+    [InlineData("f|oo(ab) bar\nnext\nx", "Vji(d", "|x")]
+    [InlineData("f|oo(a, b) x\nnext", "vlli(d", "foo(|) x\nnext")]
+    [InlineData("foo(a, |b) x\nnext", "vlli(d", "foo(|) x\nnext")]
+    [InlineData("x (a [b|] c) y", "vi(i(d", "x (|) y")]
+    [InlineData("f|oo(a, (b)) x\nnext", "d2i(", "foo(a, (|)) x\nnext")]
+    [InlineData("f|oo(a, (b)) x\nnext", "V2i(d", "foo(a, (|)) x\nnext")]
+    [InlineData("|d foo(a) (b)", "d2i(", "|d foo(a) (b)")]
+    [InlineData("|d) foo(a) (b)", "di(", "|d) foo(a) (b)")]
+    [InlineData("a b\n  c |d", "3J", "a b\n|  c d")]
+    [InlineData("a b\nc |d", "3gJ", "a b\n|c d")]
+    [InlineData("a b\nc |d", "2J", "a b\nc |d")]
+    [InlineData("a |b\nc d", "3J.", "a b| c d")]
+    [InlineData("a |b\nc d\ne\nf", "5Jk.", "|a b c d e f")]
+    public void Less_common_corners_do_what_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Theory]
     [InlineData("a|bc\ndef", "\"ayy\"ap", "abc\n|abc\ndef")]
     [InlineData("a|bc\ndef", "\"ayy\"Ayy\"ap", "abc\n|abc\nabc\ndef")]

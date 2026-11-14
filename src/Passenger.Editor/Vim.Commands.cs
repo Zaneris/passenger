@@ -19,10 +19,10 @@ public sealed partial class Vim
 
     /// <summary>The commands that change the text, or begin insert or replace mode, without an operator: refused alone where the
     /// text refuses changes (x and its kind are operators' and refused by the operator).</summary>
-    private static readonly HashSet<string> Changing = ["i", "a", "I", "A", "o", "O", "R", "u", "p", "P", "gp", "gP", "r", "J", "gJ", "~"];
+    private static readonly HashSet<string> Changing = ["i", "a", "I", "gI", "A", "o", "O", "R", "u", "p", "P", "gp", "gP", "r", "J", "gJ", "~"];
 
     /// <summary>The commands g begins that are neither motions nor operators.</summary>
-    private static readonly HashSet<string> GCommands = ["v", "J", "p", "P"];
+    private static readonly HashSet<string> GCommands = ["v", "J", "p", "P", "I"];
 
     /// <summary>The command the keys make, null where they make none; <paramref name="incomplete"/> while more keys may
     /// still make one.</summary>
@@ -226,7 +226,7 @@ public sealed partial class Vim
             case "gv":
                 return Reselect(text, view);
             case "gJ":
-                return Changed(command, Join(text, selections, n, spaced: false));
+                return Joined(command, Join(text, selections, n, spaced: false), text, selections);
             case "R":
                 return EnterReplace(command, selections);
             case "@" when command.Argument == ":":
@@ -261,6 +261,8 @@ public sealed partial class Vim
                 return Insert(text, selections.With(s => Selection.At(Math.Min(TextNavigation.NextGrapheme(text, s.Caret), VimMotions.LineOf(text, s.Caret).End))), command, "a");
             case "I":
                 return Insert(text, selections.With(s => Selection.At(TextNavigation.IndentEnd(text, VimMotions.LineOf(text, s.Caret)))), command, "I");
+            case "gI":
+                return Insert(text, selections.With(s => Selection.At(VimMotions.LineOf(text, s.Caret).Start)), command, "gI");
             case "A":
                 return Insert(text, selections.With(s => Selection.At(VimMotions.LineOf(text, s.Caret).End)), command, "A");
             case "o" or "O":
@@ -274,11 +276,27 @@ public sealed partial class Vim
             case "r":
                 return Changed(command, Replace(text, selections, n, command.Argument!, view));
             case "J":
-                return Changed(command, Join(text, selections, n, spaced: true, Options.JoinSpaces));
+                return Joined(command, Join(text, selections, n, spaced: true, Options.JoinSpaces), text, selections);
             case "~":
                 return Changed(command, Toggle(text, selections, n));
         }
         return MoveTo(command, text, selections, view);
+    }
+
+    /// <summary>J or gJ done: with a count past two on the last line, where there is nothing to join, each caret there
+    /// goes to its line's start, as Vim's does, and . does so again.</summary>
+    private VimResult Joined(Command command, EditPlan? plan, TextSnapshot text, SelectionSet selections)
+    {
+        int last = VimMotions.LastLine(text);
+        // . joins as many lines as there were: a count past the last line counts the lines to it.
+        int reach = Math.Max(1, last - text.GetLineFromOffset(selections.Primary.Caret) + 1);
+        Command kept = command.Count > reach ? command with { Count = reach } : command;
+        if (plan is not null || command.Count <= 2 || !selections.Items.Any(s => text.GetLineFromOffset(s.Caret) >= last))
+        {
+            return Changed(kept, plan);
+        }
+        Remember(kept);
+        return new VimResult(true, selections.With(s => text.GetLineFromOffset(s.Caret) >= last ? Selection.At(VimMotions.LineOf(text, s.Caret).Start) : s));
     }
 
     /// <summary>A change made, kept for . to make again; nothing changed where there is no plan.</summary>

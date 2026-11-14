@@ -519,28 +519,51 @@ public sealed partial class Vim
     private static int LineEndOf(TextSnapshot text, int line) => text.GetLine(Math.Min(line, VimMotions.LastLine(text))).End;
 
     /// <summary>A text object in visual mode: the object at a single-character stretch, else the stretch carried on to
-    /// the end of the next one; an object of lines turns the mode linewise.</summary>
+    /// the end of the next one; a block or a tag in place of a longer stretch is the one around its start (or the first
+    /// after it), the one around that where the stretch already holds more than a character of it. An object of lines
+    /// turns the mode linewise; a block or a tag, or any object at a single place in linewise mode, turns it charwise.</summary>
     private VimResult VisualObject(TextSnapshot text, string key, bool inner, int n, IVimView view)
     {
+        bool enclosing = key is "(" or ")" or "b" or "{" or "}" or "B" or "[" or "]" or "<" or ">" or "t";
+        VimMode was = Mode;
         for (int i = 0; i < regions.Count; i++)
         {
             Region r = regions[i];
             bool single = r.Anchor == r.Cursor;
             int at = single ? r.Cursor : Math.Min(CharEnd(text, r.Cursor), text.Length);
             // A stretch reaching the text's last character has nothing after it to carry on to, and keeps as it is.
-            if (at >= text.Length || VimTextObjects.Of(text, at, key, inner, n) is not { } found)
+            VimSpan? found = !single && enclosing ? Around(text, r, key, inner, n) : at >= text.Length ? null : VimTextObjects.Of(text, at, key, inner, n);
+            if (found is not { } span)
             {
                 continue;
             }
-            if (found.Linewise)
+            if (span.Linewise)
             {
                 Mode = VimMode.VisualLine;
-                regions[i] = single ? new Region(found.Start, found.End) : r with { Cursor = found.End };
+                regions[i] = single ? new Region(span.Start, span.End) : r with { Cursor = span.End };
                 continue;
             }
-            int last = Math.Max(found.Start, VimMotions.StepBack(text, found.End));
-            regions[i] = single ? new Region(found.Start, last) : r with { Cursor = last };
+            int last = Math.Max(span.Start, VimMotions.StepBack(text, span.End));
+            regions[i] = single || enclosing ? new Region(span.Start, last) : r with { Cursor = last };
+            if (enclosing ? was != VimMode.Visual : was == VimMode.VisualLine && single)
+            {
+                Mode = VimMode.Visual;
+            }
+            else if (was == VimMode.VisualBlock)
+            {
+                int tab = view.Indent.TabWidth;
+                blockColumns = (VimMotions.ColumnOf(text, regions[i].Anchor, tab), VimMotions.ColumnOf(text, regions[i].Cursor, tab), false);
+            }
         }
         return ShowVisual(text, view);
+    }
+
+    /// <summary>The block or tag a stretch of several characters is taken to: the one around its start or the first
+    /// after, or the one around that where the stretch already holds all of it, and more than a character.</summary>
+    private static VimSpan? Around(TextSnapshot text, Region r, string key, bool inner, int n)
+    {
+        VimSpan? found = r.Low >= text.Length ? null : VimTextObjects.Of(text, r.Low, key, inner, n);
+        bool held = found is { } span && span.Start >= r.Low && span.End <= CharEnd(text, r.High) && CharEnd(text, span.Start) < span.End;
+        return held ? VimTextObjects.Of(text, r.Low, key, inner, n + 1) : found;
     }
 }
