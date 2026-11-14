@@ -415,7 +415,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
   templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); updates are checked and downloaded once, by the watching window, and said in every window (`MainWindow.UpdatesOwner`); only an installed copy
   updates itself, a package manager's left to it; What's New from `docs/release-notes/X.Y.Z.md`.
-- **MCP.** `PassengerTools` (every tool on the UI thread), `McpHost`, `McpProxy`, `AgentConnection`. A tool that changes files answers once its saves landed and its moves are in Git's index (`SaveLandedAsync`, `VcsController.MovesIndexed`); a theme an agent names is taken as the picker takes one (`ThemeListing.TakeAsync`). A relay follows an
+- **MCP.** `PassengerTools` (every tool on the UI thread), `McpHost`, `McpProxy`, `AgentConnection`. A tool that changes files answers once its saves landed and its moves are in Git's index (`SaveLandedAsync`, `VcsController.MovesIndexed`); a theme an agent names is taken as the picker takes one (`ThemeListing.TakeAsync`). An agent's rename, refactor and code action name their Local History change set (`MainWindow.NameAgentsChange`). A relay follows an
   update or, on Windows, ends, signalling the relay alone, never its agent's process group; `godot_editor` makes each
   change one `EditorUndoRedoManager` action.
 
@@ -693,6 +693,9 @@ a new name, and `just site-shots` retakes its images.
   disposes its picture, so a picture is never let go while a frame may still draw it.
 - **HarfBuzz applies a font's 'trak' itself** (at 12 pt when told no size, a lone track too: PingFang's CJK 2% wider than Core Text sets it, accepted, harfbuzz/harfbuzz#6671), where Core Text takes the
   normal track alone: the window's letter spacing makes up only the difference (`FontTracking.Shaped`).
+- **Avalonia's Skia context of a bitmap above 96 DPI** reads its transform back with the DPI in it once a clip or layer
+  is popped (AvaloniaUI#20693), so a transform pushed after (every text run's) is scaled twice: an immediate drawing at a
+  scale goes into a 96-DPI bitmap under a scale transform (`Pictures.Take`).
 - **Avalonia renders a visual again when its Bounds, ZIndex or RenderTransform change**, and on `InvalidateArrange`:
   retained content moves through its parent layer. Two visuals invalidated in one frame draw again all that lies between
   them: invalidate only what changed (`CodeEditor.RefreshStripe`).
