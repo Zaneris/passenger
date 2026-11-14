@@ -538,6 +538,19 @@ internal sealed partial class CodeCompletion
             caret += tail.Length;
         }
         string insert = item.TextEdit?.NewText ?? item.TextEditText ?? item.InsertText ?? item.Label;
+        // Reuse a separator already at the caret so accepting a declaration keyword does not double the space.
+        if (end is null && lsp?.LanguageId == LanguageIds.CSharp && item.Kind == CompletionItemKind.Keyword
+            && item.InsertTextFormat != InsertTextFormat.Snippet && DeclarationKeyword(insert))
+        {
+            if (caret < document.Snapshot.Length && document.Snapshot[caret] is ' ' or '\t')
+            {
+                insert += document.Snapshot[caret++];
+            }
+            else
+            {
+                insert += " ";
+            }
+        }
         TextRange final = new(insert.Length, 0);
         if (item.InsertTextFormat == InsertTextFormat.Snippet)
         {
@@ -569,6 +582,12 @@ internal sealed partial class CodeCompletion
             context.Say(CodeActions.NotRun(item.Label, command));
         }
     }
+
+    private static bool DeclarationKeyword(string text) => text is
+        "public" or "private" or "protected" or "internal" or "static" or "abstract" or "sealed"
+        or "virtual" or "override" or "new" or "readonly" or "volatile" or "const" or "extern"
+        or "unsafe" or "async" or "partial" or "required" or "file" or "ref" or "scoped"
+        or "class" or "struct" or "interface" or "enum" or "record" or "delegate" or "event" or "namespace";
 
     /// <summary>Where the item put in place of <paramref name="start"/> to <paramref name="end"/> ends once the fitted
     /// edits are made: the end of the edit holding it (fitting may widen it or join an edit touching it), moved on by the
