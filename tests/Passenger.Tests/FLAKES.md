@@ -1582,3 +1582,8 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   for Windows to let go of the .NET SDK's sdk", the move giving up on what held it after 30 s. **The IDE's limit**: a
   scanner reads every file just unpacked, and the same install gave the SDK's first run 3 minutes for that reason. The
   move now waits as long.
+- `IdeErrorsTests`' `A_language_server_that_stops_answering_is_reported_not_responding_and_started_again`, the Mac (the
+  #1548 landing run): the log named `textDocument/semanticTokens/full` as the request that waited, not Find Usages. The
+  server was stopped just after its load, while the window asked an open file's colours again at the generators' rerun;
+  that request reached its limit first, and the IDE names the first. Status, replacement and the log's word were right.
+  **The test**: it checks that the log says the server stopped answering, whichever request found it.

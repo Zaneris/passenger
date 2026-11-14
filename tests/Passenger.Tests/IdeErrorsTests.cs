@@ -512,8 +512,9 @@ public sealed class IdeErrorsTests : IDisposable
         }
         Assert.Equal("Find Usages failed: the language server stopped responding, so it was ended", window.Status);
         string[] said = [.. Ui.IdeLog().Split('\n').Where(l => l.Contains($"process {first})", StringComparison.Ordinal))];
-        Assert.True(said.Any(l => l.Contains($"process {first}) is not responding: {Passenger.Lsp.LspMethods.References} waited", StringComparison.Ordinal)),
-            $"The log did not say the server stopped answering Find Usages; of process {first} it said: {string.Join(" | ", said)}");
+        // The first request past its limit is named, which may be one the window asked just before the stop (a refresh's colours).
+        Assert.True(said.Any(l => l.Contains($"process {first}) is not responding: ", StringComparison.Ordinal) && l.Contains(" waited ", StringComparison.Ordinal)),
+            $"The log did not say the server stopped answering; of process {first} it said: {string.Join(" | ", said)}");
         Ui.WaitFor(() => !Running(first), "the server that stopped answering to be ended, not left behind");
 
         TypeAnErrorAndSeeItReported(window);

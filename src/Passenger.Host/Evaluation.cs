@@ -128,7 +128,7 @@ internal static class Evaluation
         {
             Path = path,
             AssemblyName = NonEmpty(first.GetPropertyValue(MSBuildNames.AssemblyName)),
-            OutputType = NonEmpty(first.GetPropertyValue("OutputType")),
+            OutputType = NonEmpty(first.GetPropertyValue(MSBuildNames.OutputType)),
             TargetFrameworks = frameworks,
             IsTestProject = each.Any(p => p.GetPropertyValue("IsTestProject").Equals("true", StringComparison.OrdinalIgnoreCase)),
             IsAspireHost = each.Any(p => p.GetPropertyValue("IsAspireHost").Equals("true", StringComparison.OrdinalIgnoreCase)),
