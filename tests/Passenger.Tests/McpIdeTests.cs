@@ -6,6 +6,7 @@ using ModelContextProtocol.Protocol;
 using Passenger.App.Mcp;
 using Passenger.App;
 using Passenger.Core;
+using SkiaSharp;
 
 namespace Passenger.Tests;
 
@@ -350,6 +351,53 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
             $"Settings… in an agent's own IDE answered: {Text(settings)}");
         Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.AppWindows, new() { ["app"] = "ide" })).GetProperty("windows").GetArrayLength() == 1, TimeSpan.FromSeconds(10), Cancel),
             $"Settings' dialog was left open: {(await Call(client, McpTools.AppWindows, new() { ["app"] = "ide" })).GetRawText()}");
+    }
+
+    /// <summary>An agent's picture of Passenger's own window at 2 pixels a unit shows the code and the active tab's name as
+    /// at 1, where at any scale but 1 the editor's text and the tab's title and icons were left out: drawn after a clip of
+    /// their own, they were scaled twice over, off the picture.</summary>
+    [Fact]
+    public async Task An_agents_picture_of_passengers_window_at_any_scale_shows_the_code_and_the_active_tabs_name()
+    {
+        string folder = TestFolders.Create("mcp-picture-");
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Shown.cs"),
+            string.Concat(Enumerable.Range(0, 40).Select(i => $"public static class Shown{i} {{ public static int Value => {i} * 1024 + {i}; }}\n")));
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        await Call(client, McpTools.Open, new() { ["path"] = "Shown.cs" });
+        foreach (string control in (string[])["CodeEditor", "Border.tab.active"])
+        {
+            int once = Edges(await PictureAsync(client, control, 1));
+            int twice = Edges(await PictureAsync(client, control, 2));
+            Assert.True(once > 50 && twice >= once, $"{control} drawn at scale 2 has {twice} edges of glyphs, at scale 1 {once}: what it shows was left out");
+        }
+    }
+
+    private async Task<byte[]> PictureAsync(McpClient client, string control, double scale)
+    {
+        CallToolResult picture = await Result(client, McpTools.AppScreenshot, new() { ["app"] = "ide", ["control"] = control, ["scale"] = scale });
+        return Assert.IsType<ImageContentBlock>(picture.Content[0]).DecodedData.ToArray();
+    }
+
+    /// <summary>The pixels of a picture whose colour differs sharply from the next to their right: the edges glyphs draw,
+    /// which flat fills have only at their ends.</summary>
+    private static int Edges(byte[] png)
+    {
+        using SKBitmap bitmap = SKBitmap.Decode(png);
+        SKColor[] pixels = bitmap.Pixels;
+        int edges = 0;
+        for (int y = 0; y < bitmap.Height; y++)
+        {
+            for (int x = y * bitmap.Width, end = x + bitmap.Width - 1; x < end; x++)
+            {
+                (SKColor a, SKColor b) = (pixels[x], pixels[x + 1]);
+                if (Math.Abs(a.Red - b.Red) + Math.Abs(a.Green - b.Green) + Math.Abs(a.Blue - b.Blue) > 96)
+                {
+                    edges++;
+                }
+            }
+        }
+        return edges;
     }
 
     /// <summary>Razor for an agent: a component's errors, what a name in its markup is, and a method's usages across its

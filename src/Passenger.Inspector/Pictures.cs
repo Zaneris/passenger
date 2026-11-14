@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -13,6 +14,8 @@ namespace Passenger.Inspector;
 /// over the window (a menu, a drop-down) are drawn where they are. Cropped to an element's part, or a part asked for.</summary>
 internal static class Pictures
 {
+    private static MethodInfo? render;
+
     /// <summary>The longer side of a picture when no scale is asked for: the window's own scaling, less for a large one.</summary>
     private const int Longest = 1600;
 
@@ -36,9 +39,16 @@ internal static class Pictures
         double scale = request.Scale ?? Math.Min(top.RenderScaling, Longest / Math.Max(area.Width, area.Height));
         scale = Math.Clamp(Math.Min(scale, Math.Sqrt(MostPixels / (window.Width * window.Height))), 0.05, 8);
         PixelSize size = new(Math.Max(1, (int)Math.Ceiling(window.Width * scale)), Math.Max(1, (int)Math.Ceiling(window.Height * scale)));
-        using RenderTargetBitmap whole = new(size, new Vector(96 * scale, 96 * scale));
-        whole.Render(top);
-        DrawPopups(top, whole, scale);
+        using RenderTargetBitmap whole = new(size);
+        using (DrawingContext context = whole.CreateDrawingContext())
+        {
+            Draw(context, top, default, scale);
+            foreach (PopupRoot popup in Popups(top))
+            {
+                popup.UpdateLayout();
+                Draw(context, popup, top.PointToClient(popup.PointToScreen(default)), scale);
+            }
+        }
         PixelRect part = PixelRect.FromRect(area, scale).Intersect(new PixelRect(size));
         using MemoryStream png = new();
         if (part.Width == size.Width && part.Height == size.Height)
@@ -48,7 +58,7 @@ internal static class Pictures
         else
         {
             // The pixels as they are, so the part keeps the bitmap's own layout.
-            using WriteableBitmap cropped = new(part.Size, whole.Dpi, whole.Format ?? PixelFormat.Bgra8888, whole.AlphaFormat ?? AlphaFormat.Premul);
+            using WriteableBitmap cropped = new(part.Size, new Vector(96 * scale, 96 * scale), whole.Format ?? PixelFormat.Bgra8888, whole.AlphaFormat ?? AlphaFormat.Premul);
             using (ILockedFramebuffer target = cropped.Lock())
             {
                 whole.CopyPixels(part, target.Address, target.RowBytes * part.Height, target.RowBytes);
@@ -59,24 +69,18 @@ internal static class Pictures
             new Box(part.X / scale, part.Y / scale, part.Width / scale, part.Height / scale));
     }
 
-    /// <summary>Each popup open over the window, drawn at its place over the window's picture.</summary>
-    private static void DrawPopups(TopLevel top, RenderTargetBitmap whole, double scale)
+    /// <summary>A top level drawn as <see cref="RenderTargetBitmap.Render"/> draws one (by Avalonia's own name for that
+    /// drawing), at a place in the window's units, into a bitmap of 96 DPI scaled by a transform: in a bitmap of more DPI,
+    /// what a control draws after popping a clip of its own (an editor's text beside its gutter, a tab's title) would be
+    /// scaled twice over, off the picture.</summary>
+    private static void Draw(DrawingContext context, TopLevel shown, Point at, double scale)
     {
-        List<PopupRoot> popups = [.. Popups(top)];
-        if (popups.Count == 0)
+        render ??= typeof(Visual).Assembly.GetType("Avalonia.Rendering.ImmediateRenderer")
+            ?.GetMethod("Render", BindingFlags.Public | BindingFlags.Static, [typeof(DrawingContext), typeof(Visual)])
+            ?? throw new MissingMethodException("Avalonia's ImmediateRenderer no longer has Render(DrawingContext, Visual)");
+        using (context.PushTransform(Matrix.CreateTranslation(at) * Matrix.CreateScale(scale, scale)))
         {
-            return;
-        }
-        using DrawingContext context = whole.CreateDrawingContext(false);
-        foreach (PopupRoot popup in popups)
-        {
-            popup.UpdateLayout();
-            Point at = top.PointToClient(popup.PointToScreen(default));
-            PixelSize its = new(Math.Max(1, (int)Math.Ceiling(popup.ClientSize.Width * scale)), Math.Max(1, (int)Math.Ceiling(popup.ClientSize.Height * scale)));
-            using RenderTargetBitmap drawn = new(its, new Vector(96 * scale, 96 * scale));
-            drawn.Render(popup);
-            // The source in the bitmap's pixels: by its size in units, a scaled window's popup would be drawn magnified.
-            context.DrawImage(drawn, new Rect(0, 0, its.Width, its.Height), new Rect(at, popup.ClientSize));
+            render.Invoke(null, BindingFlags.DoNotWrapExceptions, null, [context, shown], CultureInfo.InvariantCulture);
         }
     }
 
