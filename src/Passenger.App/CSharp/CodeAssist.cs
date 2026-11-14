@@ -244,6 +244,9 @@ public sealed class CodeAssist
     /// <summary>What was typed of the name the completion list shows its rows for, while it shows.</summary>
     public string? CompletionNarrowedBy => completion.NarrowedBy;
 
+    /// <summary>Holds the completion list's next rows, made and not yet shown (<see cref="CodeCompletion.HoldNextRows"/>).</summary>
+    public Task HoldNextCompletionRows(Task until) => completion.HoldNextRows(until);
+
     /// <summary>The label of the completion list's chosen row, while it shows.</summary>
     public string? CompletionChosen => completion.Chosen;
 

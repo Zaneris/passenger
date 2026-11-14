@@ -94,9 +94,9 @@ internal sealed partial class CodeCompletion
             // From the rows of the name as typed, whose filter landing later would have chosen its first row again.
             FilterNow();
         }
-        if (!completion.IsVisible && open is { Coming: true } && action == EditorActions.Escape)
+        if (!completion.IsVisible && open is not null && action == EditorActions.Escape)
         {
-            // A list showing no row while it waits for more is the person's to dismiss too.
+            // A list showing no row yet, its rows being made or more to come, is the person's to dismiss too.
             Close();
         }
         if (completion.IsVisible)
@@ -127,10 +127,10 @@ internal sealed partial class CodeCompletion
     }
 
     /// <summary>What was just typed narrows the open list, commits its item or closes it; then opens what the language
-    /// opens for it.</summary>
+    /// opens for it. A list is open from the moment a language opens it, its first rows shown or not.</summary>
     public void Typed(string text)
     {
-        if (completion.IsVisible || open is { Coming: true })
+        if (open is not null)
         {
             if (text.All(IsWordChar))
             {
@@ -190,7 +190,7 @@ internal sealed partial class CodeCompletion
     /// typed, and a commit character must find the list still open.</summary>
     public void CaretMoved()
     {
-        if (completion.IsVisible || open is { Coming: true })
+        if (open is not null)
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(Filter);
         }
@@ -435,6 +435,18 @@ internal sealed partial class CodeCompletion
     /// <summary>The open list's ranking, made for it once.</summary>
     private RankedList? ranked;
 
+    /// <summary>The next rows held by a test (<see cref="HoldNextRows"/>): what they wait for, and done once they wait.</summary>
+    private (Task Until, TaskCompletionSource Holding)? rowsHeld;
+
+    /// <summary>Holds the next rows the list is narrowed to, made and not yet shown, until <paramref name="until"/> ends,
+    /// for a test of what typing on does meanwhile. Done once they are held.</summary>
+    public Task HoldNextRows(Task until)
+    {
+        TaskCompletionSource holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        rowsHeld = (until, holding);
+        return holding.Task;
+    }
+
     /// <summary>What the open list is narrowed by with the name typed up to <paramref name="end"/> (the caret when not
     /// given); null, the list closed, once the caret has left the name or what is typed is no name.</summary>
     private Narrowing? NarrowedTo(int? end = null)
@@ -487,6 +499,12 @@ internal sealed partial class CodeCompletion
     private async Task FilterAsync(Narrowing narrowing, int asked)
     {
         CompletionRow[] rows = await BackgroundWork.Run(() => Rows(narrowing));
+        if (rowsHeld is { } held)
+        {
+            rowsHeld = null;
+            held.Holding.SetResult();
+            await held.Until;
+        }
         if (asked == filters && open == narrowing.List)
         {
             ShowRows(narrowing, rows);

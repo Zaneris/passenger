@@ -76,6 +76,47 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>What is typed after an annotation's @ while its list's first rows are still being made, as a loaded machine's
+    /// thread pool leaves them, narrows the list as it shows, and an Escape pressed then dismisses the list before it shows.</summary>
+    [AvaloniaFact]
+    public void Keys_typed_while_a_lists_first_rows_are_made_narrow_the_list_or_dismiss_it()
+    {
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        TaskCompletionSource made = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource dismissed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "var counter := 0");
+            ClearLine(window, editor);
+            Task held = window.Assist.HoldNextCompletionRows(made.Task);
+            window.KeyTextInput("@");
+            Ui.AwaitPumped(held, "the annotations' first rows held as their list opened", TimeSpan.FromSeconds(60));
+            window.KeyTextInput("export_r");
+            made.SetResult();
+            First(window, "@export_range", "a member's annotation narrowed by what was typed as its list was made");
+            Assert.Equal("@export_r", window.Assist.CompletionNarrowedBy);
+
+            Ui.Press(window, "ESCAPE", settle: false);
+            ClearLine(window, editor);
+            held = window.Assist.HoldNextCompletionRows(dismissed.Task);
+            window.KeyTextInput("@");
+            Ui.AwaitPumped(held, "the annotations' first rows held as their list opened again", TimeSpan.FromSeconds(60));
+            Ui.Press(window, "ESCAPE", settle: false);
+            dismissed.SetResult();
+            Ui.Hold(TimeSpan.FromMilliseconds(200), "the held rows landing, which must not show the list Escape dismissed");
+            Assert.False(window.Assist.IsCompletionOpen,
+                $"The list Escape dismissed as its rows were made showed once they came: {string.Join(", ", window.Assist.CompletionLabels.Take(5))}");
+        }
+        finally
+        {
+            made.TrySetResult();
+            dismissed.TrySetResult();
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     /// <summary>After self's dot, and among the names in scope, the script's own members come before those its engine class
     /// gives it, however their names sort; a function returning nothing says void.</summary>
     [AvaloniaFact]
