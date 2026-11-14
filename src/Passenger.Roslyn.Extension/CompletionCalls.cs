@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Extensions;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 
 namespace Passenger.Roslyn.Extension;
@@ -15,8 +16,8 @@ public sealed class CompletionCall : IExtensionDocumentMessageHandler<CallAsked,
 }
 
 /// <summary>A completed method's call, read in the document as the completion's edits leave it: a call unless the name
-/// is called already, given type arguments, named by nameof or converted to a delegate type the code gives (an event's
-/// handler, a delegate parameter's argument), where it stays a method group.</summary>
+/// is called already, given type arguments, named by nameof, its address taken for a function pointer, or converted to a
+/// delegate the code asks for (an event's handler, a delegate parameter's argument), where it stays a method group.</summary>
 internal static class CompletionCalls
 {
     public static async Task<CallFound> FindAsync(Document document, CallAsked asked, CancellationToken cancel)
@@ -55,18 +56,45 @@ internal static class CompletionCalls
         ExpressionSyntax expression = name.Parent is MemberAccessExpressionSyntax access && access.Name == name ? access
             : name.Parent is MemberBindingExpressionSyntax binding ? binding
             : name;
-        if (expression.Parent is InvocationExpressionSyntax invoked && invoked.Expression == expression || InNameof(expression))
+        if (expression.Parent is InvocationExpressionSyntax invoked && invoked.Expression == expression
+            || expression.Parent is PrefixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.AddressOfExpression } || InNameof(expression))
         {
             return CallFound.None;
         }
         SemanticModel model = await written.GetSemanticModelAsync(cancel).ConfigureAwait(false) ?? throw new InvalidOperationException($"{document.FilePath} has no semantic model");
         ImmutableArray<IMethodSymbol> methods = [.. model.GetMemberGroup(expression, cancel).OfType<IMethodSymbol>()];
-        if (methods.IsEmpty || model.GetTypeInfo(expression, cancel).ConvertedType is { TypeKind: TypeKind.Delegate } && !TakenByVar(expression))
+        if (methods.IsEmpty || MadeDelegate(model, expression, cancel))
         {
             return CallFound.None;
         }
         return new CallFound(true, methods.Any(m => m.Parameters.Length > 0));
     }
+
+    /// <summary>Whether the code converts the method group to a delegate it asks for (a delegate type, or System.Delegate
+    /// or MulticastDelegate), rather than only to its natural type for a <c>var</c> or an <c>object</c>, where a person
+    /// means the method's value.</summary>
+    private static bool MadeDelegate(SemanticModel model, ExpressionSyntax expression, CancellationToken cancel)
+    {
+        if (TakenByVar(expression))
+        {
+            return false;
+        }
+        // The type the code asks for: a natural type's delegate is converted on to it, and a non-delegate is no conversion of a group.
+        ITypeSymbol? asked = model.GetTypeInfo(expression, cancel).ConvertedType;
+        if (model.GetOperation(expression, cancel) is IMethodReferenceOperation { Parent: IDelegateCreationOperation created })
+        {
+            IOperation outermost = created;
+            while (outermost.Parent is IConversionOperation { IsImplicit: true } conversion)
+            {
+                outermost = conversion;
+            }
+            asked = outermost.Type;
+        }
+        return IsDelegate(asked);
+    }
+
+    private static bool IsDelegate(ITypeSymbol? type) =>
+        type is { TypeKind: TypeKind.Delegate } or { SpecialType: SpecialType.System_Delegate or SpecialType.System_MulticastDelegate };
 
     /// <summary>Whether an expression is inside nameof's argument, which names a method without calling it.</summary>
     private static bool InNameof(ExpressionSyntax expression) =>
