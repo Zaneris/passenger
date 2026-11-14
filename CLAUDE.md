@@ -242,7 +242,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
   binding's path is read once (`BindingPath`) for the check, Go to Declaration, uses and completion. MAUI's XAML is a
   dialect of it (`MauiDialect`, its implied namespaces in `XamlFile`); a `{…}` a dialect reads as a C# expression is the
-  compiler's to check (`XamlDialect.IsExpression`).
+  compiler's to check (`XamlDialect.IsExpression`). A MAUI expression is answered through the extension's `MauiExpressionDocument`, written from the editor's text as MAUI's generator writes it, never from its `.xsg.cs`; the live check reruns the generator in a fork (`MauiXamlChecks`).
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project), `LspDocument` (never a change
   between a "\r\n"'s halves), Roslyn's server (`RoslynServer.targets`), the web servers under `web/` (to move a pin:
   edit `WebServers/package.json`, `npm install --package-lock-only --ignore-scripts`, the notices' "Inside web/").
