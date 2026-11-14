@@ -2723,6 +2723,29 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return (items, key);
     }
 
+    /// <summary>A window's completion list is laid out once as the window opens, off screen: its first list shows in row
+    /// controls made then, so the first list a person asks for waits for no control to be made, styled or shaped.</summary>
+    [AvaloniaFact]
+    public void A_windows_first_completion_list_shows_in_the_rows_laid_out_as_the_window_opened()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.Settle();
+        IReadOnlyList<Avalonia.Controls.Control> ahead = window.Assist.CompletionRowsLaidOut;
+        Assert.True(ahead.Count >= 10 && !window.Assist.IsCompletionOpen,
+            $"The window opened with {ahead.Count} completion rows laid out, the list {(window.Assist.IsCompletionOpen ? "showing" : "hidden")}: its first list would make its own");
+        Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("S");
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "S", "a statement's list narrowed by S");
+        IReadOnlyList<Avalonia.Controls.Control> shown = window.Assist.CompletionRowControls;
+        Assert.True(shown.Count > 0 && shown.All(ahead.Contains),
+            $"The window's first list showed {shown.Count(row => !ahead.Contains(row))} of its {shown.Count} rows in controls it made then, not those laid out as the window opened");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
     /// <summary>A statement's first letters show what is in scope while the server's types of namespaces not imported, held
     /// unanswered, are still to come; once they come they join the list, the row chosen meanwhile still chosen and the
     /// caret where it was, and typing on asks the server for no list. A name nothing in scope fits shows no list until

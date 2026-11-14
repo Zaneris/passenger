@@ -62,9 +62,10 @@ internal sealed partial class CodeCompletion
     public string? Chosen => completion.IsVisible ? completion.Selected?.Item.Label : null;
 
     /// <summary>The controls showing the completion list's rows on screen, while it shows.</summary>
-    public IReadOnlyList<Control> RowControls => completion.IsVisible
-        ? [.. completion.List.GetRealizedContainers().OfType<ListBoxItem>().Select(row => row.Presenter?.Child).OfType<Control>()]
-        : [];
+    public IReadOnlyList<Control> RowControls => completion.IsVisible ? RowsLaidOut : [];
+
+    /// <summary>The controls the completion list has made for its rows, shown or not.</summary>
+    public IReadOnlyList<Control> RowsLaidOut => [.. completion.List.GetRealizedContainers().OfType<ListBoxItem>().Select(row => row.Presenter?.Child).OfType<Control>()];
 
     /// <summary>The keys the open list takes before the editor does (Up, Down, Enter, Tab, Escape), and Tab's template
     /// after its abbreviation.</summary>
@@ -194,6 +195,23 @@ internal sealed partial class CodeCompletion
         CancellationTokenSource cancel = new();
         completing = cancel;
         return cancel;
+    }
+
+    /// <summary>The list laid out once ahead of its first use, with a row of each kind, as its window opens: its first
+    /// layout makes, styles and shapes all its rows' controls, which the window's first list would wait for.</summary>
+    public void LayOutAhead()
+    {
+        if (completion.IsVisible)
+        {
+            return;
+        }
+        CompletionItemKind[] kinds = Enum.GetValues<CompletionItemKind>();
+        completion.LayOutAhead([.. Enumerable.Range(0, 12).Select(i => Row(new CompletionItem
+        {
+            Label = new string('m', 4 + i * 3),
+            Kind = kinds[i % kinds.Length],
+            Detail = i % 2 == 0 ? new string('n', 6 + i) : null,
+        }))]);
     }
 
     /// <summary>A list a language made, shown narrowed to what has been typed.</summary>

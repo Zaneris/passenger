@@ -254,6 +254,9 @@ internal sealed class CompletionPopup : Border
     /// <summary>The item the selection was last said to be on, so a filter that leaves it there says nothing.</summary>
     private Lsp.CompletionItem? told;
 
+    /// <summary>Whether the list is being laid out ahead (<see cref="LayOutAhead"/>), its choice no one's to hear of.</summary>
+    private bool ahead;
+
     public CompletionPopup()
     {
         Classes.Add(StyleClasses.Popup);
@@ -320,6 +323,29 @@ internal sealed class CompletionPopup : Border
         }
     }
 
+    /// <summary>The list laid out once before it is first shown, so its first list costs what any other does: the rows'
+    /// controls made with their containers, styled and their words shaped. Shown and hidden again within one turn of the
+    /// window's thread, it is never drawn; placed in its window, as a list off it lays out no row it would not see. The
+    /// rows stay in their places for the first list to show its own in, and nothing hears of their choice.</summary>
+    public void LayOutAhead(IReadOnlyList<CompletionRow> rows)
+    {
+        ahead = true;
+        try
+        {
+            Canvas.SetLeft(this, 0);
+            Canvas.SetTop(this, 0);
+            Show(rows);
+            IsVisible = true;
+            UpdateLayout();
+        }
+        finally
+        {
+            IsVisible = false;
+            ahead = false;
+            told = null;
+        }
+    }
+
     public void Move(int step)
     {
         int count = List.ItemCount;
@@ -333,6 +359,10 @@ internal sealed class CompletionPopup : Border
 
     private void FollowSelected()
     {
+        if (ahead)
+        {
+            return;
+        }
         Lsp.CompletionItem? now = Selected?.Item;
         if (!ReferenceEquals(now, told))
         {

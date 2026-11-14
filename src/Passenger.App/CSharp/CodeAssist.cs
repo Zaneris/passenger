@@ -222,6 +222,9 @@ public sealed class CodeAssist
 
     public bool IsCompletionOpen => completion.IsOpen;
 
+    /// <summary>The completion list laid out once ahead of its first use (<see cref="CodeCompletion.LayOutAhead"/>).</summary>
+    public void LayOutAhead() => completion.LayOutAhead();
+
     /// <summary>What the card beside the completion list says about the chosen item while it shows, null otherwise.</summary>
     public string? ItemDocumentation => completion.ItemDocumentation;
 
@@ -239,6 +242,9 @@ public sealed class CodeAssist
 
     /// <summary>The controls showing the completion list's rows on screen, while it shows.</summary>
     public IReadOnlyList<Control> CompletionRowControls => completion.RowControls;
+
+    /// <summary>The controls the completion list has made for its rows, shown or not.</summary>
+    public IReadOnlyList<Control> CompletionRowsLaidOut => completion.RowsLaidOut;
 
     /// <summary>What the hover card says while it shows, null otherwise.</summary>
     public string? HoverText => quickInfo.Text;
