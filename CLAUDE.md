@@ -380,7 +380,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   asked: without the plugin docker answers `scout … --format` with "unknown flag", so find it by `docker scout version`.
   docker exec's end ends nothing it started, only closing its standard input; a container's first process takes no
   SIGKILL from inside it, so Stop lets one attached to go (`ManagedDebugger.Unending`).
-- **Aspire.** `AspireController` checks bearer tokens first; an AppHost's Functions app runs through `func start`, the debugger attached to the worker func starts (`FunctionsHost`); deploy logins are read from each tool's files, never by
+- **Aspire.** `AspireController` checks bearer tokens first; a Functions app, its own or an AppHost's, runs through `func start`, the debugger attached to the worker func starts (`FunctionsHost`; Debug through `DebugController.StartThroughAsync`, func ending with its session, `DebugTab.FollowedStarts`); deploy logins are read from each tool's files, never by
   running a cloud CLI; metrics only while shown. MetricsEventSource's CollectionStart and Stop reach TraceEvent as
   `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
