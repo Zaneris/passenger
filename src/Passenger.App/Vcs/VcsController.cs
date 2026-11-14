@@ -1891,6 +1891,17 @@ public sealed class VcsController : IDisposable
     /// <summary>The index's moves still under way, which a read waits out so it never shows a move half made.</summary>
     private Task indexed = Task.CompletedTask;
 
+    /// <summary>Ends once every move heard so far is in the index, or Git refused it (said through <see cref="Message"/>);
+    /// it never fails.</summary>
+    public Task MovesIndexed
+    {
+        get
+        {
+            UiThread.Check();
+            return indexed;
+        }
+    }
+
     /// <summary>The moves heard since the last batch for the index was taken, which the next takes with it.</summary>
     private List<(string From, string To)>? unindexed;
 

@@ -182,12 +182,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return unsaved == 0 ? "Nothing to save" : $"Saved {Plural.Of(unsaved, "file")}";
     });
 
-    /// <summary>Saves every changed file and comes back once each save has landed (<see cref="Passenger.App.Editors.EditorArea.LandedAsync"/>), so
-    /// the agent, its shell and what it starts read what was saved; a save that never lands fails the call, saying why.</summary>
+    /// <summary>Saves every changed file and comes back once each save has landed (<see cref="Passenger.App.Editors.EditorArea.LandedAsync"/>)
+    /// and each file moved is moved in Git's index too (<see cref="Vcs.VcsController.MovesIndexed"/>), so the agent, its shell and
+    /// what it starts read what was saved and git status shows a rename; a save that never lands fails the call, saying why.</summary>
     private async Task SaveLandedAsync(CancellationToken cancel)
     {
         Editors.SaveAll();
         await LandedAsync(cancel);
+        await Session.Vcs.MovesIndexed.WaitAsync(cancel);
     }
 
     /// <summary>Comes back once each save still landing has (<see cref="Passenger.App.Editors.EditorArea.LandedAsync"/>); one that never lands

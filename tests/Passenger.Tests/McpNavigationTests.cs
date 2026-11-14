@@ -473,6 +473,22 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("public static int All(string[] texts)", File.ReadAllText(Path.Combine(Folder, "Aaa.cs")), StringComparison.Ordinal);
     }
 
+    /// <summary>rename of a type answers once Git's index holds its file's move: git status, run the moment the answer comes,
+    /// as an agent's shell runs it, shows the file renamed, never the old one deleted and the new one untracked.</summary>
+    [Fact]
+    public async Task An_agents_rename_of_a_type_answers_once_gits_index_holds_its_files_move()
+    {
+        string folder = await TakeFolderAsync();
+        File.WriteAllText(Path.Combine(folder, ".gitignore"), "bin/\nobj/\n");
+        await TestGit.InitAsync(folder);
+        await using McpClient client = await Start(["--mcp", folder]);
+        string said = Text(await Call(client, McpTools.Rename, new() { ["symbol"] = "Helper", ["newName"] = "Doubler" }));
+        string[] status = (await TestGit.RunAsync(folder, "status", "--porcelain", "--untracked-files=all")).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.True(said.EndsWith("; renamed Helper.cs to Doubler.cs", StringComparison.Ordinal), $"The agent's rename of Helper to Doubler answered: {said}");
+        Assert.True(status.Length == 2 && status[0].StartsWith('R') && status[0].EndsWith(" Helper.cs -> Doubler.cs", StringComparison.Ordinal) && status[1] == " M Program.cs",
+            $"git status, run as rename answered, did not show Helper.cs renamed to Doubler.cs and Program.cs changed:\n{string.Join('\n', status)}");
+    }
+
     private const string Figures = "abstract class Shape\n{\n    public abstract double Area();\n}\n\n"
         + "sealed class Square(double side) : Shape\n{\n    public override double Area() => side * side;\n}\n";
 
