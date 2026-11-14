@@ -53,6 +53,12 @@ public sealed partial class DiskImageUpdater : Updater
     /// test, which holds the image there as another program may.</summary>
     public Func<string, int, Task>? Opening { get; init; }
 
+    /// <summary>What opens the image and lets it go: this Mac's own (<see cref="ThisMacs"/>) but in a test.</summary>
+    public DiskImageTool Images { get; init; } = ThisMacs;
+
+    /// <summary>diskutil image where macOS has it (from 26; a later macOS calls hdiutil's attach and detach deprecated), hdiutil before.</summary>
+    public static DiskImageTool ThisMacs => OperatingSystem.IsMacOSVersionAtLeast(26) ? DiskImageTool.Diskutil : DiskImageTool.Hdiutil;
+
     /// <summary>The running copy's updater: the app bundle its executable is in, when this user can replace it.</summary>
     internal static DiskImageUpdater? OfThisBundle(string staging, out string why)
     {
@@ -231,8 +237,7 @@ public sealed partial class DiskImageUpdater : Updater
 
     protected override IReadOnlyList<int> RunningHere() => RunningAs(Path.Combine(Bundle, "Contents", "MacOS", "Passenger"));
 
-    /// <summary>The app at the image's top, copied out of it mounted read-only (hdiutil checks the image's own checksums
-    /// as it mounts it), and the image let go of, a failure included.</summary>
+    /// <summary>The app at the image's top, copied out of it mounted read-only, and the image let go of, a failure included.</summary>
     private async Task CopyOutAsync(string image, string folder, string app, CancellationToken cancel)
     {
         string mount = Path.Combine(folder, "mount");
@@ -259,7 +264,7 @@ public sealed partial class DiskImageUpdater : Updater
 
     /// <summary>The image mounted read-only at <paramref name="mount"/>, tried again while it will not open: its SHA-256 is
     /// the release's, so what refuses it is this Mac (a program holding the file just written, which hdiutil calls
-    /// "Resource temporarily unavailable"), and that lets go. Refused in hdiutil's words once the tries are spent.</summary>
+    /// "Resource temporarily unavailable"), and that lets go. Refused in the tool's words once the tries are spent.</summary>
     private async Task AttachAsync(string image, string mount, CancellationToken cancel)
     {
         string name = Path.GetFileName(image);
@@ -269,7 +274,8 @@ public sealed partial class DiskImageUpdater : Updater
             {
                 await opening(image, attempt).ConfigureAwait(false);
             }
-            ChildResult attached = await RunAsync("hdiutil", ["attach", image, "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount], cancel).ConfigureAwait(false);
+            ChildResult attached = await RunAsync(ImageTool(["image", "attach", "--readOnly", "--mountOptions", "nobrowse", "--mountPoint", mount, image],
+                ["attach", image, "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount]), cancel).ConfigureAwait(false);
             if (attached.Succeeded)
             {
                 if (attempt > 1)
@@ -289,11 +295,13 @@ public sealed partial class DiskImageUpdater : Updater
         }
     }
 
-    /// <summary>What hdiutil said of an attach that failed: its last line but a warning ("hdiutil: attach failed -
-    /// Resource busy"), else how it ended.</summary>
-    private static string FailureOf(ChildResult attached) =>
+    /// <summary>What the tool said of an attach that failed, its last line but a warning, named as hdiutil names itself
+    /// ("hdiutil: attach failed - Resource busy", "diskutil: The disk image is corrupted"); else how it ended.</summary>
+    private string FailureOf(ChildResult attached) =>
         attached.Error.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .LastOrDefault(line => !line.StartsWith("hdiutil: WARNING", StringComparison.Ordinal)) ?? attached.Ended;
+            .LastOrDefault(line => !line.StartsWith("hdiutil: WARNING", StringComparison.Ordinal)) is not { } said ? attached.Ended
+            : Images == DiskImageTool.Diskutil ? $"diskutil: {(said.StartsWith(DiskutilError, StringComparison.Ordinal) ? said[DiskutilError.Length..] : said)}"
+            : said;
 
     /// <summary>The app made ready is the release's: the installed app's bundle, the release's version, its signature
     /// whole, and the installed app's team's when that has one.</summary>
@@ -351,11 +359,11 @@ public sealed partial class DiskImageUpdater : Updater
         }
     }
 
-    private static async Task DetachAsync(string mount)
+    private async Task DetachAsync(string mount)
     {
-        if (!(await ToolAsync("hdiutil", ["detach", mount, "-quiet"]).ConfigureAwait(false)).Succeeded)
+        if (!(await ToolAsync(ImageTool(["eject", mount], ["detach", mount, "-quiet"]), ToolLimit, CancellationToken.None).ConfigureAwait(false)).Succeeded)
         {
-            await ToolAsync("hdiutil", ["detach", mount, "-force", "-quiet"]).ConfigureAwait(false);
+            await ToolAsync(ImageTool(["eject", "force", mount], ["detach", mount, "-force", "-quiet"]), ToolLimit, CancellationToken.None).ConfigureAwait(false);
         }
         try
         {
@@ -387,10 +395,18 @@ public sealed partial class DiskImageUpdater : Updater
         }
     }
 
-    private static Task<ChildResult> RunAsync(string tool, IEnumerable<string> arguments, CancellationToken cancel) =>
-        ChildProcesses.RunAsync(Tool(tool, arguments), limit: ToolLimit, cancel: cancel);
+    private static Task<ChildResult> RunAsync(string tool, IEnumerable<string> arguments, CancellationToken cancel) => RunAsync(Tool(tool, arguments), cancel);
+
+    private static Task<ChildResult> RunAsync(ProcessStartInfo start, CancellationToken cancel) => ChildProcesses.RunAsync(start, limit: ToolLimit, cancel: cancel);
 
     private static ProcessStartInfo Tool(string tool, IEnumerable<string> arguments) => ChildProcesses.Command(Path.Combine("/usr/bin", tool), arguments);
+
+    /// <summary>The image's tool run with these arguments: diskutil's or hdiutil's.</summary>
+    private ProcessStartInfo ImageTool(IEnumerable<string> diskutil, IEnumerable<string> hdiutil) =>
+        Images == DiskImageTool.Diskutil ? ChildProcesses.Command("/usr/sbin/diskutil", diskutil) : Tool("hdiutil", hdiutil);
+
+    /// <summary>How diskutil begins a line saying why it failed.</summary>
+    private const string DiskutilError = "Error: ";
 
     /// <summary>A tool waited for where nothing awaits: the install, as the process ends.</summary>
     private static ChildResult Run(string tool, IEnumerable<string> arguments) => Synchronously.Run(() => ToolAsync(tool, arguments));
@@ -416,4 +432,11 @@ public sealed partial class DiskImageUpdater : Updater
 
     [GeneratedRegex(@"^TeamIdentifier=(.+)$", RegexOptions.Multiline)]
     private static partial Regex Team();
+}
+
+/// <summary>macOS's tool for disk images: diskutil image (from macOS 26), or hdiutil.</summary>
+public enum DiskImageTool
+{
+    Hdiutil,
+    Diskutil,
 }

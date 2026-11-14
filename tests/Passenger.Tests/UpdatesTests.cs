@@ -448,20 +448,24 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.True(copy.InstalledVersion is null || copy.InstalledVersion == Product.Version, $"The refused update was installed, as {copy.InstalledVersion}");
     }
 
-    /// <summary>A program on the Mac (a scanner) holding the disk image just downloaded keeps hdiutil from opening it
-    /// ("Resource temporarily unavailable") until it lets go, as an exclusive lock taken on it here does: the image,
-    /// whose SHA-256 is the release's, is opened again once let go; one never let go is refused in hdiutil's words.</summary>
-    [AvaloniaFact]
+    /// <summary>The Mac refusing the disk image just downloaded for a moment is waited out: hdiutil refuses one another
+    /// program (a scanner) holds ("Resource temporarily unavailable"), as an exclusive lock taken on it here does, and
+    /// diskutil image, which opens a held one, one it cannot read. The image, whose SHA-256 is the release's, is opened
+    /// again once let go; one never let go is refused in the tool's words.</summary>
+    [AvaloniaTheory]
+    [InlineData(DiskImageTool.Hdiutil, "hdiutil: attach failed - Resource temporarily unavailable")]
+    [InlineData(DiskImageTool.Diskutil, "diskutil: The operation couldn\u2019t be completed. Permission denied")]
     [SupportedOSPlatform("macos")]
-    public void A_disk_image_another_program_holds_as_it_lands_opens_once_let_go_and_one_never_let_go_is_refused_in_hdiutils_words()
+    public void A_disk_image_the_Mac_refuses_as_it_lands_opens_once_let_go_and_one_never_let_go_is_refused_in_the_tools_words(DiskImageTool tool, string refused)
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Disk images are macOS's");
+        Assert.SkipWhen(tool == DiskImageTool.Diskutil && !OperatingSystem.IsMacOSVersionAtLeast(26), "diskutil image is macOS 26's");
         using IDisposable theme = TestsTheme();
         ConcurrentQueue<int> tries = new();
-        FileStream? held = null;
+        Held held = new(tool);
         try
         {
-            AppBundle copy = new(images, TestFolders.Create("installed-"));
+            AppBundle copy = new(images, TestFolders.Create("installed-")) { Images = tool };
             string newer = Bumped(1, 0);
             github.Answer = Release($"v{newer}", files: copy.Update(newer));
             DiskImageUpdater lettingGo = copy.Updater((image, attempt) =>
@@ -469,53 +473,84 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
                 tries.Enqueue(attempt);
                 if (attempt == 1)
                 {
-                    held = new FileStream(image, FileMode.Open, FileAccess.Read, FileShare.None);
+                    held.Hold(image);
                 }
                 else
                 {
-                    Interlocked.Exchange(ref held, null)?.Dispose();
+                    held.Let();
                 }
                 return Task.CompletedTask;
             }, [TimeSpan.FromMilliseconds(200)]);
             MainWindow window = Started(lettingGo);
             window.WatchForUpdates();
-            Ui.WaitFor(() => Settled(window, newer), () => $"the update held as it landed to be made ready or refused, where {UpdatesSaid(window)}");
+            Ui.WaitFor(() => Settled(window, newer), () => $"the update refused as it landed to be made ready or refused, where {UpdatesSaid(window)}");
             Assert.True(Notice(window) == $"Restart to update to Passenger {newer}",
-                $"A disk image held by another program a moment after it landed was not opened once let go: {UpdatesSaid(window)}");
-            Assert.True(tries.SequenceEqual([1, 2]), $"The image was tried {string.Join(", ", tries)}, not once held and once let go");
+                $"A disk image the Mac refused a moment after it landed was not opened once let go: {UpdatesSaid(window)}");
+            Assert.True(tries.SequenceEqual([1, 2]), $"The image was tried {string.Join(", ", tries)}, not once refused and once let go");
             Assert.True(copy.Holds(newer), $"The status bar offers Restart to Update, but v{newer} is not where it installs from");
             string[] log = Ui.IdeLog().Split('\n');
-            Assert.Contains(log, line => line.Contains($"Updates: {copy.Package(newer)} did not open as a disk image at try 1 (hdiutil: attach failed - Resource temporarily unavailable)", StringComparison.Ordinal));
+            Assert.Contains(log, line => line.Contains($"Updates: {copy.Package(newer)} did not open as a disk image at try 1 ({refused})", StringComparison.Ordinal));
             Assert.Contains(log, line => line.Contains($"Updates: {copy.Package(newer)} opened as a disk image at try 2", StringComparison.Ordinal));
             window.Close();
 
-            AppBundle other = new(images, TestFolders.Create("installed-"));
+            AppBundle other = new(images, TestFolders.Create("installed-")) { Images = tool };
             string later = Bumped(1, 1);
             github.Answer = Release($"v{later}", files: other.Update(later));
             tries.Clear();
             DiskImageUpdater neverLettingGo = other.Updater((image, attempt) =>
             {
                 tries.Enqueue(attempt);
-                held ??= new FileStream(image, FileMode.Open, FileAccess.Read, FileShare.None);
+                held.Hold(image);
                 return Task.CompletedTask;
             }, [TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100)]);
             window = Started(neverLettingGo);
             window.WatchForUpdates();
-            Ui.WaitFor(() => Settled(window, later), () => $"the update held throughout to be refused, where {UpdatesSaid(window)}");
-            string words = $"Passenger {later} was not installed: {other.Package(later)} does not open as a disk image: hdiutil: attach failed - Resource temporarily unavailable";
-            Assert.True(window.Status == words, $"An image hdiutil never opened was not said in its words: the status bar says '{window.Status}', not '{words}'");
+            Ui.WaitFor(() => Settled(window, later), () => $"the update refused throughout to be refused, where {UpdatesSaid(window)}");
+            string words = $"Passenger {later} was not installed: {other.Package(later)} does not open as a disk image: {refused}";
+            Assert.True(window.Status == words, $"An image the Mac never opened was not said in the tool's words: the status bar says '{window.Status}', not '{words}'");
             Assert.Contains(words, ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty);
-            Assert.True(tries.SequenceEqual([1, 2, 3]), $"The image held throughout was tried {string.Join(", ", tries)}, not three times");
+            Assert.True(tries.SequenceEqual([1, 2, 3]), $"The image refused throughout was tried {string.Join(", ", tries)}, not three times");
             Assert.True(other.Downloaded().Count == 0, $"The image refused left {string.Join(", ", other.Downloaded())} behind");
             window.Close();
         }
         finally
         {
-            held?.Dispose();
+            held.Let();
         }
 
         static bool Settled(MainWindow window, string version) =>
             Notice(window) == $"Restart to update to Passenger {version}" || Notice(window) == $"Passenger {version} not installed";
+    }
+
+    /// <summary>A disk image the Mac refuses as hdiutil or diskutil image would find it: held by another program for
+    /// hdiutil, an exclusive lock taken on it; unreadable for diskutil image, which opens a held one.</summary>
+    [SupportedOSPlatform("macos")]
+    private sealed class Held(DiskImageTool tool)
+    {
+        private FileStream? held;
+        private string? unread;
+
+        public void Hold(string image)
+        {
+            if (tool == DiskImageTool.Hdiutil)
+            {
+                held ??= new FileStream(image, FileMode.Open, FileAccess.Read, FileShare.None);
+            }
+            else
+            {
+                File.SetUnixFileMode(image, UnixFileMode.None);
+                unread = image;
+            }
+        }
+
+        public void Let()
+        {
+            Interlocked.Exchange(ref held, null)?.Dispose();
+            if (Interlocked.Exchange(ref unread, null) is { } image && File.Exists(image))
+            {
+                File.SetUnixFileMode(image, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+        }
     }
 
     [AvaloniaFact]
@@ -580,14 +615,19 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
-    [AvaloniaFact]
+    /// <summary>The disk image is opened and let go of by diskutil image where macOS has it, hdiutil before; each puts the
+    /// update in place.</summary>
+    [AvaloniaTheory]
+    [InlineData(DiskImageTool.Hdiutil)]
+    [InlineData(DiskImageTool.Diskutil)]
     [SupportedOSPlatform("macos")]
-    public void Restart_to_Update_puts_the_new_version_in_place_of_the_old_and_starts_it_and_closing_installs_it_too()
+    public void Restart_to_Update_puts_the_new_version_in_place_of_the_old_and_starts_it_and_closing_installs_it_too(DiskImageTool tool)
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(),
             "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
+        Assert.SkipWhen(tool == DiskImageTool.Diskutil && !OperatingSystem.IsMacOSVersionAtLeast(26), "diskutil image is macOS 26's");
         using IDisposable theme = TestsTheme();
-        AppBundle copy = new(images, TestFolders.Create("installed-"));
+        AppBundle copy = new(images, TestFolders.Create("installed-")) { Images = tool };
         string newer = Bumped(1, 0);
         github.Answer = Release($"v{newer}", files: copy.Update(newer));
         MainWindow window = Started(copy.Updater());
@@ -1343,12 +1383,15 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
         public override string? InstalledVersion => Version(Bundle);
 
-        public override Updater Updater() => new DiskImageUpdater(Bundle, Staging, StartAsync);
+        /// <summary>What its updates open their disk images with: this Mac's own unless a test names one.</summary>
+        public DiskImageTool Images { get; init; } = DiskImageUpdater.ThisMacs;
+
+        public override Updater Updater() => new DiskImageUpdater(Bundle, Staging, StartAsync) { Images = Images };
 
         /// <summary>The copy's updater, <paramref name="opening"/> run as each try to open the image begins, waiting
         /// <paramref name="pauses"/> between tries.</summary>
         public DiskImageUpdater Updater(Func<string, int, Task> opening, IReadOnlyList<TimeSpan> pauses) =>
-            new(Bundle, Staging, StartAsync) { Opening = opening, OpenAgainAfter = pauses };
+            new(Bundle, Staging, StartAsync) { Opening = opening, OpenAgainAfter = pauses, Images = Images };
 
         public override string Package(string version) => ThisSystemsDownload();
 
