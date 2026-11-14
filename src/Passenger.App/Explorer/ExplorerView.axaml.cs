@@ -289,8 +289,8 @@ public partial class ExplorerView : UserControl
         Refresh();
     }
 
-    /// <summary>Projects MSBuild evaluated again: their rows show them anew, every other row as it was (open, chosen,
-    /// focused), and a file waiting to be chosen is chosen once it shows.</summary>
+    /// <summary>Projects MSBuild evaluated again, or Docker Compose projects whose text was written: their rows show them
+    /// anew, every other row as it was (open, chosen, focused), and a file waiting to be chosen is chosen once it shows.</summary>
     public void UpdateProjects(WorkspaceModel workspace, IEnumerable<ProjectModel> updated)
     {
         // A row made again takes the keys with it: they stay the Explorer's, on the row chosen, for the next Paste.

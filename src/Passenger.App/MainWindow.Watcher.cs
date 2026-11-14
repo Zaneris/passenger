@@ -66,9 +66,15 @@ public partial class MainWindow
             // A restore writes what a project imports; a program's directives make its project; a global.json may name an SDK there is.
             session.Evaluate();
         }
-        if (changes.LaunchProfiles && !(changes.Projects || changes.Lost))
+        // A Docker Compose project is never evaluated: what it holds and how it runs are read from its text as written.
+        IReadOnlyList<ProjectModel> composed = changes.Projects || changes.Lost ? [] : ComposeProjectsWritten(changes.Paths);
+        if (composed.Count > 0)
         {
-            // Only the run configurations are made of launch profiles, so the solution and the Explorer stay as they are.
+            Explorer.UpdateProjects(session.Workspace!, composed);
+        }
+        if ((changes.LaunchProfiles || composed.Count > 0) && !(changes.Projects || changes.Lost))
+        {
+            // Only the run configurations are made of launch profiles and compose projects, so the solution stays as it is.
             session.Configurations.Configure(Projects);
         }
         // A Godot project's page shows its export presets and plugins as their files say.
@@ -123,6 +129,12 @@ public partial class MainWindow
             IdeErrors.Observe(session.Vcs.FolderChangedAsync(changes.Git || changes.Lost));
         }
     }
+
+    /// <summary>The solution's Docker Compose projects (.dcproj) among the files written.</summary>
+    private IReadOnlyList<ProjectModel> ComposeProjectsWritten(IReadOnlySet<string> paths) =>
+        session.Workspace?.Solution is { } solution && paths.Any(WorkspaceModel.IsComposeProject)
+            ? [.. solution.Projects.Where(p => WorkspaceModel.IsComposeProject(p.Path) && paths.Any(written => PathNames.Same(written, p.Path)))]
+            : [];
 
     /// <summary>What the C# files written, come or gone change of the folder's file-based programs: one that is a program
     /// now and was not, or the reverse, has the folder read again; one a program compiles (its own file, or one it

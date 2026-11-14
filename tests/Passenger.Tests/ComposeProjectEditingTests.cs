@@ -86,7 +86,8 @@ public sealed class ComposeProjectEditingTests
     /// <summary>A Docker Compose project at the solution's root shows in the Solution view only what it holds: the files its
     /// ItemGroups name, in their folders, an override under the file it depends on, and those its runs read that it names
     /// not (its launch profiles); never the projects, folders and files beside it, which the Files view still shows, nor
-    /// a Dependencies row. A file it names once saved shows at once.</summary>
+    /// a Dependencies row. What its text says once written, by another program or saved in the editor, shows at once: the
+    /// files it names, and the service its run configuration launches.</summary>
     [AvaloniaFact]
     public void A_Docker_Compose_project_at_the_solutions_root_shows_only_the_files_it_holds()
     {
@@ -137,10 +138,24 @@ public sealed class ComposeProjectEditingTests
             Assert.Equal(["Dockerfile"], Under(tree, docker.Children!.Single().Children!.Single()));
             Assert.Equal(["launchSettings.json"], Under(tree, project.Children!.Single(c => c.Name == "Properties")));
 
-            File.WriteAllText(dcproj, File.ReadAllText(dcproj).Replace("<None Include=\"launchSettings.json\" />", "<None Include=\"README.md\" />", StringComparison.Ordinal));
+            // Written by another program: an item and the service its configuration launches.
+            File.WriteAllText(dcproj, File.ReadAllText(dcproj)
+                .Replace("<None Include=\"launchSettings.json\" />", "<None Include=\"README.md\" />", StringComparison.Ordinal)
+                .Replace("</DockerComposeBaseFilePath>", "</DockerComposeBaseFilePath>\n    <DockerServiceName>internal-api</DockerServiceName>", StringComparison.Ordinal));
             List<string> Held() => tree.Rows.FirstOrDefault(r => r.Kind == NodeKind.Project && r.Name == "docker-compose-foo")?.Children?.Select(c => c.Name).ToList() ?? [];
             Ui.WaitFor(() => Held().Contains("README.md") && !Held().Contains("launchSettings.json"),
                 () => $"README.md in place of launchSettings.json once the .dcproj named it: [{string.Join(", ", Held())}]");
+            string Launches() => window.Configurations.FirstOrDefault(c => c.Name == "docker-compose-foo")?.LaunchService ?? "no configuration";
+            Ui.WaitFor(() => Launches() == "internal-api", () => $"the .dcproj's configuration to launch internal-api once its DockerServiceName said so, where it launches '{Launches()}'");
+
+            // Saved in the editor: the item put back.
+            window.OpenFile(dcproj);
+            Ui.Settle();
+            Typing.Replace(window, "README.md", "launchSettings.json");
+            Ui.Press(window, "ESCAPE");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => Held().Contains("launchSettings.json") && !Held().Contains("README.md"),
+                () => $"launchSettings.json in place of README.md once the .dcproj saved in the editor named it: [{string.Join(", ", Held())}]");
 
             Ui.Click(window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().First(b => Avalonia.Controls.ToolTip.GetTip(b) is string tip
                 && tip.StartsWith("Switch between the solution", StringComparison.Ordinal)));
