@@ -535,7 +535,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         catch (Exception refused) when (refused is IOException or UnauthorizedAccessException && !File.Exists(target) && File.Exists(temporary))
         {
             // ERROR_UNABLE_TO_MOVE_REPLACEMENT_2: the old file is set aside but the new one could not take its name; the move gives it.
-            File.Move(temporary, target, overwrite: true);
+            AtomicFile.Move(temporary, target);
         }
         finally
         {

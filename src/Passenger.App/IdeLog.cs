@@ -261,7 +261,7 @@ public static partial class IdeLog
         string aside = Rotated(path, "rotating");
         try
         {
-            File.Move(path, aside, overwrite: true);
+            AtomicFile.Move(path, aside);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -284,7 +284,7 @@ public static partial class IdeLog
         }
         try
         {
-            File.Move(aside, Rotated(path, 1), overwrite: true);
+            AtomicFile.Move(aside, Rotated(path, 1));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

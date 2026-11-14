@@ -101,6 +101,17 @@ internal static class Rules
             + "a member as the kind it should be (Text, Number, Bool, Object, Items, Texts, Properties, or Value of any kind), "
             + "null for one of another kind. A member a message cannot go without is read so, then thrown on by name.");
 
+    public static readonly DiagnosticDescriptor FileMoveOver = new(
+        "PSG0009",
+        "A file is moved over another past AtomicFile.Move",
+        "{0} over a file is refused on Windows while any program has it open: put the file in place through AtomicFile.Move",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Windows refuses a plain move over a file another program has open, however that program shares it (a "
+            + "scanner, an indexer, another Passenger reading it). AtomicFile.Move renames with POSIX semantics, which only a "
+            + "program sharing no deletion refuses, and moves plainly where the file system has no such rename (FAT, a share).");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",

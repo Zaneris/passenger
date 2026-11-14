@@ -327,7 +327,7 @@ public sealed class ContainerFilesPane : DockPanel
                 }
             }
             // A rename puts the file where a link may stand, never through it.
-            File.Move(partial, copy, overwrite: true);
+            AtomicFile.Move(partial, copy);
             return null;
         }
         finally

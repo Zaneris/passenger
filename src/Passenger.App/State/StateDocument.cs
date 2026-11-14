@@ -291,11 +291,17 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
 
     private void WriteAfter(TimeSpan wait) => IdeErrors.Observe(Task.Delay(wait).ContinueWith(_ => Write(), TaskScheduler.Default));
 
-    /// <summary>Writes the change waiting, if there is one, merged over the file as it is now. Whether none waits after:
-    /// one whose write failed waits again (<see cref="Failed"/>).</summary>
-    private bool Write(bool flushing = false)
+    /// <summary>Writes the change waiting, if there is one, merged over the file as it is now. Given
+    /// <paramref name="heldFor"/>, it waits no longer than that for a try of this side's own or for another Passenger's
+    /// lock; else as long as its own takes and <see cref="StateFile.HeldFor"/> for the lock. Whether none waits after: one
+    /// whose write failed, or that was not tried in time, waits again (<see cref="Failed"/>).</summary>
+    private bool Write(bool flushing = false, TimeSpan? heldFor = null)
     {
-        lock (writing)
+        if (!Monitor.TryEnter(writing, heldFor ?? Timeout.InfiniteTimeSpan))
+        {
+            return false;
+        }
+        try
         {
             string? mine;
             int tries;
@@ -313,7 +319,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
             }
             try
             {
-                using FileStream held = StateFile.Hold(Path, StateFile.HeldFor);
+                using FileStream held = StateFile.Hold(Path, heldFor ?? StateFile.HeldFor);
                 if (OnDisk() is not { } disk)
                 {
                     StateFile.Landed(this);
@@ -339,6 +345,10 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
                 return false;
             }
         }
+        finally
+        {
+            Monitor.Exit(writing);
+        }
     }
 
     /// <summary>A change whose write failed waits again, unless one set since holds it, and is tried after the next of
@@ -359,7 +369,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
                 scheduled = true;
             }
         }
-        StateFile.Waits(this, Path, () => Write());
+        StateFile.Waits(this, Path, left => Write(heldFor: left));
         if (flushing)
         {
             StateFile.Log($"{Path} could not be written as it was flushed ({error.Message}): it is tried again while Passenger runs, and as it ends");
@@ -508,28 +518,31 @@ internal static class StateFile
 
     /// <summary>The documents whose change waits after a write that failed, each with its file and the write that tries it
     /// again.</summary>
-    private static readonly ConcurrentDictionary<object, (string Path, Action Write)> Unwritten = new();
+    private static readonly ConcurrentDictionary<object, (string Path, Action<TimeSpan> Write)> Unwritten = new();
 
     /// <summary>How long Passenger's end tries again the changes still waiting, <see cref="LandingPause"/> apart.</summary>
     private static readonly TimeSpan LandingLimit = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LandingPause = TimeSpan.FromMilliseconds(50);
 
-    /// <summary>A document's change waiting after a write that failed, written again as Passenger ends.</summary>
-    public static void Waits(object document, string path, Action write) => Unwritten[document] = (path, write);
+    /// <summary>A document's change waiting after a write that failed, written again as Passenger ends by
+    /// <paramref name="write"/>, given how long it may wait for another Passenger's lock.</summary>
+    public static void Waits(object document, string path, Action<TimeSpan> write) => Unwritten[document] = (path, write);
 
     /// <summary>A document with no change waiting after a write that failed.</summary>
     public static void Landed(object document) => Unwritten.TryRemove(document, out _);
 
     /// <summary>Writes again each change waiting after a write that failed, <see cref="LandingPause"/> apart, until all
-    /// have landed or <see cref="LandingLimit"/> has passed, logging those still waiting as lost.</summary>
+    /// have landed or <see cref="LandingLimit"/> has passed, a write waiting for another Passenger's lock only as long as
+    /// is left of it, and logs those still waiting as lost.</summary>
     public static void LandWaiting()
     {
         long began = Stopwatch.GetTimestamp();
         while (!Unwritten.IsEmpty)
         {
-            foreach ((string _, Action write) in Unwritten.Values)
+            foreach ((string _, Action<TimeSpan> write) in Unwritten.Values)
             {
-                write();
+                TimeSpan left = LandingLimit - Stopwatch.GetElapsedTime(began);
+                write(left > TimeSpan.Zero ? left : TimeSpan.Zero);
             }
             if (Unwritten.IsEmpty || Stopwatch.GetElapsedTime(began) >= LandingLimit)
             {
@@ -537,7 +550,7 @@ internal static class StateFile
             }
             Thread.Sleep(LandingPause);
         }
-        foreach ((string path, Action _) in Unwritten.Values)
+        foreach ((string path, Action<TimeSpan> _) in Unwritten.Values)
         {
             Log($"{path} could not be written before Passenger ended: its change is lost");
         }
