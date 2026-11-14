@@ -45,6 +45,14 @@ public sealed partial class DiskImageUpdater : Updater
 
     public override string Installed => Bundle;
 
+    /// <summary>The waits before each try again to open an image that would not open: a minute in all.</summary>
+    public IReadOnlyList<TimeSpan> OpenAgainAfter { get; init; } =
+        [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(30)];
+
+    /// <summary>Runs as each try to open the image begins, given the image and the try's number from 1: nothing but in a
+    /// test, which holds the image there as another program may.</summary>
+    public Func<string, int, Task>? Opening { get; init; }
+
     /// <summary>The running copy's updater: the app bundle its executable is in, when this user can replace it.</summary>
     internal static DiskImageUpdater? OfThisBundle(string staging, out string why)
     {
@@ -225,15 +233,11 @@ public sealed partial class DiskImageUpdater : Updater
 
     /// <summary>The app at the image's top, copied out of it mounted read-only (hdiutil checks the image's own checksums
     /// as it mounts it), and the image let go of, a failure included.</summary>
-    private static async Task CopyOutAsync(string image, string folder, string app, CancellationToken cancel)
+    private async Task CopyOutAsync(string image, string folder, string app, CancellationToken cancel)
     {
         string mount = Path.Combine(folder, "mount");
         Directory.CreateDirectory(mount);
-        ChildResult attached = await RunAsync("hdiutil", ["attach", image, "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount], cancel).ConfigureAwait(false);
-        if (!attached.Succeeded)
-        {
-            throw new UpdateRefusedException($"{Path.GetFileName(image)} does not open as a disk image", attached.Said);
-        }
+        await AttachAsync(image, mount, cancel).ConfigureAwait(false);
         try
         {
             string inside = Path.Combine(mount, AppName);
@@ -252,6 +256,44 @@ public sealed partial class DiskImageUpdater : Updater
             await DetachAsync(mount).ConfigureAwait(false);
         }
     }
+
+    /// <summary>The image mounted read-only at <paramref name="mount"/>, tried again while it will not open: its SHA-256 is
+    /// the release's, so what refuses it is this Mac (a program holding the file just written, which hdiutil calls
+    /// "Resource temporarily unavailable"), and that lets go. Refused in hdiutil's words once the tries are spent.</summary>
+    private async Task AttachAsync(string image, string mount, CancellationToken cancel)
+    {
+        string name = Path.GetFileName(image);
+        for (int attempt = 1; ; attempt++)
+        {
+            if (Opening is { } opening)
+            {
+                await opening(image, attempt).ConfigureAwait(false);
+            }
+            ChildResult attached = await RunAsync("hdiutil", ["attach", image, "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount], cancel).ConfigureAwait(false);
+            if (attached.Succeeded)
+            {
+                if (attempt > 1)
+                {
+                    IdeErrors.Write($"Updates: {name} opened as a disk image at try {attempt}");
+                }
+                return;
+            }
+            string said = FailureOf(attached);
+            if (attempt > OpenAgainAfter.Count)
+            {
+                throw new UpdateRefusedException($"{name} does not open as a disk image: {said}", attached.Said);
+            }
+            TimeSpan pause = Waits.Of(OpenAgainAfter[attempt - 1]);
+            IdeErrors.Write($"Updates: {name} did not open as a disk image at try {attempt} ({said}); trying again in {pause.TotalSeconds:0.#} s");
+            await Task.Delay(pause, cancel).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>What hdiutil said of an attach that failed: its last line but a warning ("hdiutil: attach failed -
+    /// Resource busy"), else how it ended.</summary>
+    private static string FailureOf(ChildResult attached) =>
+        attached.Error.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault(line => !line.StartsWith("hdiutil: WARNING", StringComparison.Ordinal)) ?? attached.Ended;
 
     /// <summary>The app made ready is the release's: the installed app's bundle, the release's version, its signature
     /// whole, and the installed app's team's when that has one.</summary>
