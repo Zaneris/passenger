@@ -117,7 +117,9 @@ public class DeviceTargetsTests
         string put = app.PutRelayIn("arm64-v8a")[^1];
         string taken = app.TakeRelayOut("arm64-v8a", "/data/local/tmp/fastdeploy2/com.shop/0/arm64-v8a/environment")[^1];
 
-        Assert.StartsWith("run-as com.shop sh -c 'cd /data/user/0/com.shop/files/.__override__/arm64-v8a || exit 1; readlink environment; ", put, StringComparison.Ordinal);
+        Assert.StartsWith("run-as com.shop sh -c 'cd /data/user/0/com.shop/files/.__override__/arm64-v8a || exit 1; readlink environment || ", put, StringComparison.Ordinal);
+        // A file a start left in the link's place: the build's environment is the one beside its assemblies' links.
+        Assert.Contains("for f in *.dll; do d=$(readlink \"$f\") && { [ -e \"${d%/*}/environment\" ] && echo \"${d%/*}/environment\"; break; }; done; ", put, StringComparison.Ordinal);
         Assert.Contains("cp /data/local/tmp/passenger-com.shop-relay libpassenger-debug.so && rm -f environment && cp /data/local/tmp/passenger-com.shop-environment environment'", put,
             StringComparison.Ordinal);
         Assert.EndsWith("; rm -f /data/local/tmp/passenger-com.shop-relay /data/local/tmp/passenger-com.shop-environment", put, StringComparison.Ordinal);

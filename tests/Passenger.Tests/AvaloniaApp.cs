@@ -129,6 +129,22 @@ internal static class AvaloniaApp
         Passenger.App.Templates.DeveloperTools.TakeOut(folder);
     }
 
+    /// <summary>Avalonia's cross-platform solution made in a folder (<see cref="CreateCrossPlatformAsync"/>), its Android
+    /// head (<c>name.Android</c>, its application <c>com.CompanyName.name</c>) taken to the first .NET whose Android apps run
+    /// on CoreCLR and restored from the package cache alone: the head's project, and why it did not restore, or null.</summary>
+    public static async Task<(string Project, string? Unrestored)> CreateAndroidHeadAsync(string folder, string name)
+    {
+        await CreateCrossPlatformAsync(folder, name);
+        string project = Path.Combine(folder, $"{name}.Android", $"{name}.Android.csproj");
+        // The template's head is .NET 10's, on Mono; on CoreCLR from .NET 11, whose Android workload takes API 24 at least.
+        File.WriteAllText(project, File.ReadAllText(project).Replace("net10.0-android", $"net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-android", StringComparison.Ordinal)
+            .Replace("<SupportedOSPlatformVersion>23<", "<SupportedOSPlatformVersion>24<", StringComparison.Ordinal));
+        ChildResult restored = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", project], Path.GetDirectoryName(project)!), limit: Limit * 2);
+        return (project, restored.Succeeded ? null
+            : $"The app's Android head does not restore here, from the package cache alone (Avalonia.Android {Version} and its AndroidX packages are there once an Avalonia "
+                + $"Android app was restored): {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
+    }
+
     /// <summary>A value the test project's build put in the assembly (Passenger.Tests.csproj).</summary>
     internal static string Metadata(string key) =>
         typeof(AvaloniaApp).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value

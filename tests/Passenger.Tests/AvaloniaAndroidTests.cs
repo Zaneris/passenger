@@ -14,7 +14,8 @@ namespace Passenger.Tests;
 /// .NET whose Android apps run on CoreCLR, run and debugged on an emulator from the window: the head is chosen to run
 /// there, Run installs and starts it with Passenger's inspector in it, whose tree shows the shared view and takes a XAML
 /// edit saved, and Debug stops at a breakpoint in the shared project's App, its locals shown, the shared library still
-/// built for its own framework; each end leaves nothing of Passenger's on the device. Skips, saying why, without the
+/// built for its own framework; each end leaves nothing of Passenger's on the device and the build's own environment in
+/// the app, Debug's after a start left its own environment file in the build's link's place. Skips, saying why, without the
 /// Android workload, its SDK and Java, Avalonia's Android packages in the package cache, an emulator, or the relays.
 /// Debugged through the window, so alone.</summary>
 [Collection(Alone.Name)]
@@ -30,17 +31,11 @@ public sealed class AvaloniaAndroidTests
     public void An_avalonia_apps_android_head_runs_and_stops_at_a_breakpoint_in_its_shared_code_on_an_emulator()
     {
         string folder = PathNames.Canonical(TestFolders.Create("avalonia-android"));
-        Ui.AwaitPumped(Waiting.Apart(() => AvaloniaApp.CreateCrossPlatformAsync(folder, "XApp")), "dotnet new avalonia.xplat", Slow);
-        string project = Path.Combine(folder, "XApp.Android", "XApp.Android.csproj");
-        // The template's head is .NET 10's, on Mono; on CoreCLR from .NET 11, whose Android workload takes API 24 at least.
-        File.WriteAllText(project, File.ReadAllText(project).Replace("net10.0-android", Android, StringComparison.Ordinal)
-            .Replace("<SupportedOSPlatformVersion>23<", "<SupportedOSPlatformVersion>24<", StringComparison.Ordinal));
-        ChildResult restored = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", project], Path.GetDirectoryName(project)!),
-            limit: Slow)), "the Android head's restore", Slow);
-        if (!restored.Succeeded)
+        (string project, string? unrestored) = Ui.AwaitPumped(Waiting.Apart(() => AvaloniaApp.CreateAndroidHeadAsync(folder, "XApp")),
+            "dotnet new avalonia.xplat and the Android head's restore", Slow);
+        if (unrestored is not null)
         {
-            Assert.Skip($"The app's Android head does not restore here, from the package cache alone (Avalonia.Android {AvaloniaApp.Version} and its AndroidX packages "
-                + $"are there once an Avalonia Android app was restored): {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
+            Assert.Skip(unrestored);
         }
         (IReadOnlyList<DeviceTarget> targets, AndroidTools? tools, string? problem) = Ui.Await(Waiting.Apart(() =>
             AndroidDevices.ListAsync(project, Android, new Dictionary<string, string>(), CancellationToken.None)), "the Android workload's devices", Slow);
@@ -75,6 +70,7 @@ public sealed class AvaloniaAndroidTests
             Ui.WaitFor(() => Output(window).Contains($"{Package} started as process ", StringComparison.Ordinal),
                 () => $"the app's start in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
             Ui.WaitFor(() => Pid(tools, window).Length > 0, "the app to run on the emulator", TimeSpan.FromSeconds(30));
+            string serial = window.Session.RunPlan!.Device!.App!.Serial;
             Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, () => $"the inspector in the app on the emulator to say hello; it is "
                 + $"{window.Session.RunApp?.State.ToString() ?? "not made"} ({window.Session.RunApp?.Problem}): {Ui.Said(window)}\n{Output(window)}", Slow);
             TreeAsked tree = new(window.Session.RunApp!);
@@ -93,6 +89,12 @@ public sealed class AvaloniaAndroidTests
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
             Ui.WaitFor(() => Pid(tools, window).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, window)}", TimeSpan.FromSeconds(30));
             Ui.WaitFor(() => Left(tools).Length == 0, () => $"the inspector's port and files to be let go on the emulator; it still has {Left(tools)}", TimeSpan.FromSeconds(30));
+            (string linked, string built) = AppEnvironment(tools, serial);
+            Assert.True(linked == built, $"Run's end left the app's environment linked to '{linked}', not the build's own at {built}: the app's next start reads it");
+
+            // A start Passenger could not end left its own environment file in place of the build's link, which the next start's end puts back.
+            InAppsFolder(tools, serial, "cp environment left && rm environment && mv left environment");
+            Assert.True(AppEnvironment(tools, serial).Linked.Length == 0, "The app's environment is still a link, so the start after it is no start after an interrupted one");
 
             string app = Path.Combine(folder, "XApp", "App.axaml.cs");
             window.OpenFile(app);
@@ -115,6 +117,9 @@ public sealed class AvaloniaAndroidTests
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
             Ui.WaitFor(() => Pid(tools, window).Length == 0, () => $"the debugged app to end on the emulator once stopped; it runs as {Pid(tools, window)}", TimeSpan.FromSeconds(30));
             Ui.WaitFor(() => Left(tools).Length == 0, () => $"the debugging's ports and files to be let go on the emulator; it still has {Left(tools)}", TimeSpan.FromSeconds(30));
+            (linked, built) = AppEnvironment(tools, serial);
+            Assert.True(linked == built, $"Debug, started where a start left its own environment file, left the app's environment linked to '{linked}', not the build's "
+                + $"own at {built}: the app's next start reads no environment of its build's");
         }
         finally
         {
@@ -168,6 +173,26 @@ public sealed class AvaloniaAndroidTests
         return string.Join("; ", [.. forwards.Split('\n').Where(l => l.Contains("localabstract:passenger-", StringComparison.Ordinal)).Select(l => l.Trim()),
             .. files.Split('\n').Any(l => l.Trim() == ".passenger") ? ["the inspector's files"] : (string[])[],
             .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [$"{Package} marked as debugged"] : (string[])[]]);
+    }
+
+    /// <summary>Where the app's environment file links to in its fast-deployment folder (empty where it is no link), and
+    /// where its build's own is, beside what the links to the build's assemblies point to.</summary>
+    private static (string Linked, string Built) AppEnvironment(AndroidTools tools, string serial)
+    {
+        string assembly = InAppsFolder(tools, serial, "readlink XApp.Android.dll").Trim();
+        Assert.True(assembly.StartsWith('/'), $"The build put no link to XApp.Android.dll in the app's folder: {assembly}");
+        return (InAppsFolder(tools, serial, "readlink environment || true").Trim(), $"{assembly[..assembly.LastIndexOf('/')]}/environment");
+    }
+
+    /// <summary>What the app's own shell says to a command run in its fast-deployment folder for the device's ABI.</summary>
+    private static string InAppsFolder(AndroidTools tools, string serial, string command)
+    {
+        string abi = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "getprop", "ro.product.cpu.abi"]))),
+            "the device's ABI").Output.Trim();
+        ChildResult said = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb,
+            ["-s", serial, "shell", $"run-as {Package} sh -c 'cd files/.__override__/{abi} && {command}'"]))), $"{command} in the app's folder");
+        Assert.True(said.Succeeded, $"{command} failed in the app's folder on the device: {said.Output}{said.Error}");
+        return said.Output;
     }
 
     /// <summary>The app's process on the device the window chose, as pidof says it: empty once it has ended.</summary>

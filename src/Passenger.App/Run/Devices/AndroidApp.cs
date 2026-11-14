@@ -131,9 +131,11 @@ public sealed record AndroidApp(string Serial, string Adb, string Package, strin
 
     /// <summary>The app's own shell putting in what a start staged: the relay beside its assemblies (Debug's), the files
     /// named in <see cref="Carried"/> (the inspector's), and the environment over the build's own, saying first where that
-    /// pointed (a link fast deployment made), which <see cref="TakeOut"/> puts back.</summary>
+    /// pointed (a link fast deployment made), which <see cref="TakeOut"/> puts back; where a start Passenger could not end
+    /// left its own file there, the build's environment beside what the assemblies' links point to.</summary>
     public IReadOnlyList<string> PutIn(string abi, bool relay, IReadOnlyList<string> carried) => On("shell",
-        $"run-as {Package} sh -c 'cd {OverrideFolder(abi)} || exit 1; readlink environment; "
+        $"run-as {Package} sh -c 'cd {OverrideFolder(abi)} || exit 1; readlink environment || "
+        + "for f in *.dll; do d=$(readlink \"$f\") && { [ -e \"${d%/*}/environment\" ] && echo \"${d%/*}/environment\"; break; }; done; "
         + (relay ? $"cp {Staged("relay")} {RelayFile} && " : string.Empty)
         + (carried.Count > 0 ? $"mkdir -p {Carried} && {string.Concat(carried.Select(f => $"cp {Staged(f)} {Carried}/{f} && "))}" : string.Empty)
         + $"rm -f environment && cp {Staged("environment")} environment'"
