@@ -5,11 +5,11 @@ using Avalonia.Input;
 namespace Passenger.App;
 
 /// <summary>A row whose children take their own widths while they fit and, when the row is narrower, give way from the
-/// last one back, each down to its MinWidth (its Width when it has one, its item's when it holds a list's): a list's
-/// row (a frame's place before its method's name, a branch's upstream before its name) or the main toolbar narrowing
-/// (the branch's name before the project's). Its words end in an ellipsis (Shell.axaml), so none is cut
-/// mid-letter. A child that goes whole (<see cref="GoesWholeProperty"/>) goes where the row cannot hold every child at
-/// its least.</summary>
+/// last one back, each down to its MinWidth (its Width when it has one or keeps it, <see cref="KeepsWidthProperty"/>,
+/// its item's when it holds a list's): a list's row (a frame's place before its method's name, a branch's upstream
+/// before its name) or the main toolbar narrowing (the branch's name before the project's). Its words end in an
+/// ellipsis (Shell.axaml), so none is cut mid-letter. A child that goes whole (<see cref="GoesWholeProperty"/>) goes
+/// where the row cannot hold every child at its least.</summary>
 public sealed class ShrinkingRow : Panel
 {
     private double[] widths = [];
@@ -128,9 +128,17 @@ public sealed class ShrinkingRow : Panel
     /// tab's few letters, its ellipsis and its ×.</summary>
     public static readonly AttachedProperty<double> LeastProperty = AvaloniaProperty.RegisterAttached<ShrinkingRow, Control, double>("Least");
 
-    private double Least(Control child, int i) => !double.IsNaN(child.Width) ? widths[i]
+    private double Least(Control child, int i) => !double.IsNaN(child.Width) || GetKeepsWidth(child) ? widths[i]
         : Math.Max(Math.Max(child.MinWidth, child.GetValue(LeastProperty)), ItemOf(child) is { } item ? Math.Max(item.MinWidth, item.GetValue(LeastProperty)) + item.Margin.Left + item.Margin.Right : 0)
             + child.Margin.Left + child.Margin.Right;
+
+    /// <summary>A child that never gives way, so those before it give way first: a package's version and its tags after
+    /// its name, which is cut before them.</summary>
+    public static readonly AttachedProperty<bool> KeepsWidthProperty = AvaloniaProperty.RegisterAttached<ShrinkingRow, Control, bool>("KeepsWidth");
+
+    public static bool GetKeepsWidth(Control child) => child.GetValue(KeepsWidthProperty);
+
+    public static void SetKeepsWidth(Control child, bool value) => child.SetValue(KeepsWidthProperty, value);
 
     /// <summary>A child that goes whole where the row cannot hold every child at its least, the last first, before any is
     /// cut below its least: unseen, taking no pointer and no Tab, as the main menu's titles go behind its button.</summary>

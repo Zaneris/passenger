@@ -766,11 +766,16 @@ public sealed partial class NuGetView : DockPanel
             IdeErrors.Observe(ChosenVulnerabilityAsync(row, vulnerabilities, cancel));
             IdeErrors.Observe(ChosenDeprecationAsync(row, deprecated, cancel));
         };
-        details.Children.Add(new StackPanel
+        // The versions go under the id where the pane is too narrow for both.
+        details.Children.Add(new WrapPanel
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 12,
-            Children = { new TextBlock { Text = row.Id, FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, picker },
+            ItemSpacing = 12,
+            LineSpacing = 8,
+            Children =
+            {
+                new TextBlock { Text = row.Id, FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap },
+                picker,
+            },
         });
         if (row.Description.Length > 0)
         {
@@ -1110,7 +1115,8 @@ public sealed partial class NuGetView : DockPanel
 
     /// <summary>A package's row: its icon, its id (strong where a project references it), its version muted, a tag on one
     /// projects get only through others and on one a project has a deprecated version of, its description or what brings
-    /// it in on hover, and a warning saying the gravest advisory where a version a project has is vulnerable.</summary>
+    /// it in on hover, and a warning saying the gravest advisory where a version a project has is vulnerable. In a narrow
+    /// list the id is cut, its version and marks kept whole after it.</summary>
     private Control Row()
     {
         TextBlock version = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
@@ -1122,12 +1128,11 @@ public sealed partial class NuGetView : DockPanel
         Border deprecated = Tagged("deprecated");
         RowIcon warning = Warning(string.Empty);
         warning.Margin = new Thickness(6, 0, 0, 0);
-        StackPanel line = new()
+        ShrinkingRow line = new() { Height = ListRow.Height, Children = { icon, id, version, transitive, deprecated, warning } };
+        foreach (Control kept in (Control[])[version, transitive, deprecated])
         {
-            Orientation = Orientation.Horizontal,
-            Height = ListRow.Height,
-            Children = { icon, id, version, transitive, deprecated, warning },
-        };
+            ShrinkingRow.SetKeepsWidth(kept, true);
+        }
         return line.Showing<PackageRow>(row =>
         {
             id.Text = row.Id;

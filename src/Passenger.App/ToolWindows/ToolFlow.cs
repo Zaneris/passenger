@@ -14,7 +14,8 @@ public sealed class ToolFlow : Panel
 
     private readonly List<(Control[] Parts, ToolLayout.Piece[] Pieces)> rows = [];
 
-    static ToolFlow() => AffectsParentMeasure<ToolFlow>(FillsProperty);
+    // Words coming to a part may move it to a row of its own, which its measure, held to its row's width, never tells.
+    static ToolFlow() => AffectsParentMeasure<ToolFlow>(FillsProperty, TextBlock.TextProperty);
 
     /// <summary>The space between parts, and between rows.</summary>
     public double Spacing { get; init; } = 2;

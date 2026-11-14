@@ -1,7 +1,9 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Packages;
@@ -922,6 +924,59 @@ public sealed class NuGetTests : IDisposable
             ?? throw new Xunit.Sdk.XunitException($"{nuget.Selected?.Id}'s details say nothing of a deprecated version");
     }
 
+    /// <summary>At the smallest window, a deprecated package's row cuts its long id, its version and its deprecated tag kept
+    /// whole after it, where the row was cut inside its version; the bar's words take a row of their own, where they had
+    /// none; and the details put the version picker under the id inside the pane, where it ran under the pane's scroll
+    /// bar. At a wide window the id is whole and the picker beside it.</summary>
+    [AvaloniaFact]
+    public void At_the_smallest_window_a_rows_id_gives_way_to_its_version_and_mark_and_the_details_version_picker_wraps_under_it()
+    {
+        const string Legacy = "Passenger.Legacy.Storage.Client.Extensions";
+        feed.Add(Legacy, "9.3.3");
+        feed.Deprecate(Legacy, "9.3.3", ["Legacy"], "Kept no more.");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Legacy}\" Version=\"9.3.3\" /></ItemGroup>");
+        MainWindow window = Ui.OpenFolder(folder, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false);
+        try
+        {
+            window.Perform(AppActions.ShowNuGet);
+            Ui.Settle();
+            NuGetView nuget = window.NuGet;
+            Ui.WaitFor(() => nuget.Status == "1 package installed, 1 deprecated", () => $"{Legacy} listed deprecated: {nuget.Status}");
+            PackageRow row = nuget.Rows.Single(r => r.Id == Legacy);
+            Control line = Ui.Row(nuget.PackageList, row);
+            Rect list = Placed(window, nuget.PackageList);
+            TextBlock id = line.GetLogicalDescendants().OfType<TextBlock>().Single(t => t.Text == Legacy);
+            TextBlock version = line.GetLogicalDescendants().OfType<TextBlock>().Single(t => t.Text == "9.3.3");
+            Border tag = Tag(line, "deprecated") ?? throw new Xunit.Sdk.XunitException($"{Legacy}'s row has no deprecated tag");
+            foreach (Control kept in (Control[])[version, tag])
+            {
+                TextBlock words = kept as TextBlock ?? (TextBlock)((Border)kept).Child!;
+                Assert.True(kept.IsEffectivelyVisible && Placed(window, kept).Right <= list.Right + 0.5 && words.TextLayout.TextLines.All(l => !l.HasCollapsed),
+                    $"{Legacy}'s {(kept == tag ? "deprecated tag" : "version")} stands at {Placed(window, kept)} in a list ending at {list.Right:0.#}: the row is cut there");
+            }
+            Assert.True(id.TextLayout.TextLines is [{ HasCollapsed: true }], $"{Legacy}'s id, {id.Bounds.Width:0.#} wide, is not cut with an ellipsis before its version");
+            TextBlock status = nuget.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == nuget.Status);
+            Assert.True(status.IsEffectivelyVisible && status.TextLayout.TextLines.All(l => !l.HasCollapsed) && status.Bounds.Width >= status.TextLayout.Width - 0.5,
+                $"The bar's \"{nuget.Status}\" is given {status.Bounds.Width:0.#} units: it is out of sight at the smallest window");
+
+            ChoosePackage(nuget, row);
+            ComboBox picker = nuget.GetLogicalDescendants().OfType<ComboBox>().Single(c => c.Name == "Versions");
+            Control details = (Control)picker.FindLogicalAncestorOfType<ScrollViewer>()!.Content!;
+            TextBlock heading = details.GetLogicalDescendants().OfType<TextBlock>().First(t => t.Text == Legacy);
+            Assert.True(Placed(window, picker).Right <= Placed(window, details).Right + 0.5 && Placed(window, picker).Top >= Placed(window, heading).Bottom - 0.5,
+                $"The version picker stands at {Placed(window, picker)}, past the details' edge at {Placed(window, details).Right:0.#} or beside the id at {Placed(window, heading)}");
+
+            window.Width = 1600;
+            Ui.Settle();
+            Assert.True(id.TextLayout.TextLines is [{ HasCollapsed: false }] && Math.Abs(Placed(window, picker).Center.Y - Placed(window, heading).Center.Y) < 4,
+                $"At a wide window the id is {(id.TextLayout.TextLines[0].HasCollapsed ? "cut" : "whole")} and the picker at {Placed(window, picker)} beside the id at {Placed(window, heading)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The version chosen in a package's details is said deprecated there before it is put in, as the stand-in's
     /// registration says: in the word on the version a project has where their owner says the same of both, in a word of
     /// its own where they say otherwise, and not at all where it is not deprecated.</summary>
@@ -1037,6 +1092,8 @@ public sealed class NuGetTests : IDisposable
     }
 
     /// <summary>A tag of a package's row shown in the list, by its words.</summary>
+    private static Rect Placed(Visual window, Visual control) => new(control.TranslatePoint(default, window)!.Value, control.Bounds.Size);
+
     private static Border? Tag(Control row, string words) =>
         row.GetLogicalDescendants().OfType<Border>().FirstOrDefault(b => b.Child is TextBlock { Text: { } text } && text == words);
 
