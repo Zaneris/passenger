@@ -817,12 +817,16 @@ public sealed class CommitView : DockPanel, IOwnKeys
         LookForLostMoves();
     }
 
+    /// <summary>Commit and Commit and Push… greyed while no commit can be made, their tips saying why as a press would.</summary>
     private void UpdateButtons()
     {
-        // Off while a commit (or a stash, a rollback) runs, so a second press cannot start another on git's index lock.
-        bool ready = !vcs.IsBusy && vcs.Repository is not null && Message.Trim().Length > 0 && (Amend || vcs.Merge.CommitsWhole || rows.OfType<CommitGroup>().Any(g => g.IsChosen != false));
-        commit.IsEnabled = ready;
-        commitAndPush.IsEnabled = ready;
+        string? why = vcs.Repository is null ? vcs.NoRepository : vcs.WhyNotCommit(rows.OfType<CommitGroup>().Any(g => g.IsChosen != false), Message, Amend);
+        foreach (Button button in (Button[])[commit, commitAndPush])
+        {
+            ToolButtons.Grey(button, why);
+            // Off while a commit (or a stash, a rollback) runs, so a second press cannot start another on git's index lock.
+            button.IsEnabled = why is null && !vcs.IsBusy;
+        }
     }
 
     private const string MergeConflicts = "Merge Conflicts";

@@ -797,6 +797,19 @@ public sealed class VcsController : IDisposable
         return labels;
     }
 
+    /// <summary>Why a commit cannot be made of what is chosen (<paramref name="anyChosen"/>) with a message, in the order a
+    /// commit refuses: files in conflict, a rebase stopped for them, nothing chosen, a chosen file no commit takes, the
+    /// message empty; null when one can be made.</summary>
+    public string? WhyNotCommit(bool anyChosen, string message, bool amend, IReadOnlyList<FileChange>? chosen = null) =>
+        Conflicts.Count > 0 ? Refusals.CommitWithConflicts
+        // Stopped for conflicts, a commit of its own would go beside the rebase's; a step that stops it (an edit) asks for one.
+        : Merge.Operation is MergeOperation.Rebase && Merge.Stop is null ? $"{Merge.UnderWay}: Continue Rebase commits what is resolved and goes on, or Abort Rebase ends it"
+        // A merge's commit finishes it even when it changed no file (every conflict resolved as HEAD had it).
+        : !anyChosen && !amend && !Merge.CommitsWhole ? Refusals.NoFilesChosenToCommit
+        : chosen?.Select(c => c.Uncommittable).FirstOrDefault(why => why is not null) is { } uncommittable ? uncommittable
+        : message.Trim().Length == 0 ? Refusals.EmptyCommitMessage
+        : null;
+
     /// <summary>Commits the chosen files with a message, signed as <paramref name="signing"/> says (as git's config says
     /// where it is null), a key's passphrase asked in the window, then pushes when asked (the remote asked for as
     /// <see cref="PushAsync"/> asks): the commit's outcome with the commit made, and the push's. A commit not signed says
@@ -810,29 +823,11 @@ public sealed class VcsController : IDisposable
         {
             return new CommitResult(Report(false, NoRepository), null, null);
         }
-        if (Conflicts.Count > 0)
+        if (WhyNotCommit(chosen.Count > 0, message, amend, chosen) is { } refused)
         {
-            return new CommitResult(Report(false, "Resolve conflicts in order to commit"), null, null);
+            return new CommitResult(Report(false, refused), null, null);
         }
-        // Stopped for conflicts, a commit of its own would go beside the rebase's; a step that stops it (an edit) asks for one.
-        if (Merge.Operation is MergeOperation.Rebase && Merge.Stop is null)
-        {
-            return new CommitResult(Report(false, $"{Merge.UnderWay}: Continue Rebase commits what is resolved and goes on, or Abort Rebase ends it"), null, null);
-        }
-        // A merge's commit finishes it even when it changed no file (every conflict resolved as HEAD had it).
         bool merging = Merge.CommitsWhole && !amend;
-        if (chosen.Count == 0 && !amend && !merging)
-        {
-            return new CommitResult(Report(false, "No files are chosen to commit"), null, null);
-        }
-        if (chosen.Select(c => c.Uncommittable).FirstOrDefault(why => why is not null) is { } uncommittable)
-        {
-            return new CommitResult(Report(false, uncommittable), null, null);
-        }
-        if (message.Trim().Length == 0)
-        {
-            return new CommitResult(Report(false, "The commit message is empty"), null, null);
-        }
         if (!Begin(Committing, $"Committing {Plural.Of(chosen.Count, "file")}…", out Working? work))
         {
             return new CommitResult(Report(false, UnderWay(Committing)), null, null);

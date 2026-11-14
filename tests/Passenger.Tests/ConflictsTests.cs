@@ -17,7 +17,8 @@ namespace Passenger.Tests;
 /// merged in the three-way window (its non-conflicting changes in one go, the conflict by its arrow, a simple one by
 /// the magic wand, all undoable) and written, git marking each resolved and the commit finishing the merge; a rebase's
 /// sides named by their branches as Update Project stops on them, and the rebase going on once they are resolved; an
-/// unstash's conflict; a file in conflict saying so over its text, its Merge… opening the merge window.</summary>
+/// unstash's conflict; a file in conflict saying so over its text, its Merge… opening the merge window, and Commit greyed
+/// while any is.</summary>
 public sealed class ConflictsTests : IDisposable
 {
     private const string Shop = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";
@@ -57,7 +58,7 @@ public sealed class ConflictsTests : IDisposable
         Assert.Equal(["Prices.cs", "Shop.cs"], conflicts.Rows.Select(r => r.Change.Name));
         Assert.DoesNotContain(commit.Chosen, c => c.Kind == ChangeKind.Conflicted);
         Assert.Equal("Merge branch 'feature'", commit.Message);
-        Assert.Equal("Resolve conflicts in order to commit", CommitRefused(window));
+        Assert.Equal(Refusals.CommitWithConflicts, CommitRefused(window));
 
         Assert.True(window.Perform(AppActions.ResolveConflicts), window.Status);
         Ui.Settle();
@@ -621,6 +622,39 @@ public sealed class ConflictsTests : IDisposable
             Assert.Equal("Merge Revisions for Prices.cs", merge.Title);
             return merge;
         }
+    }
+
+    /// <summary>The Commit window's Commit and Commit and Push… are greyed while a file is in conflict, the merge's message
+    /// written, their tip saying why as a press would; once the conflict is resolved they take a press, and with the
+    /// message emptied they are greyed again, saying so.</summary>
+    [AvaloniaFact]
+    public void Commit_is_greyed_saying_why_while_a_file_is_in_conflict_and_takes_a_press_once_it_is_resolved()
+    {
+        ConflictingPrices();
+        MainWindow window = Open();
+        CommitView commit = window.CommitView;
+        window.Perform(AppActions.ShowCommit);
+        Ui.Landed(() => commit.Rows.OfType<CommitGroup>().Any(g => g.Name == "Merge Conflicts"), "the Merge Conflicts group");
+        Assert.Equal("Merge branch 'feature'", commit.Message);
+        Button[] buttons = [.. Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(commit).OfType<Button>().Where(b => b.Content is "Commit" or "Commit and Push…")];
+        Assert.Equal(2, buttons.Length);
+        Assert.All(buttons, b => Assert.True(!b.IsEffectivelyEnabled && ToolTip.GetTip(b) as string == Refusals.CommitWithConflicts,
+            $"With Prices.cs in conflict, {b.Content} is {(b.IsEffectivelyEnabled ? "on" : "greyed")}, its tip saying \"{ToolTip.GetTip(b)}\""));
+
+        Assert.True(window.Perform(AppActions.ResolveConflicts), window.Status);
+        Ui.Settle();
+        ConflictsDialog dialog = Assert.IsType<ConflictsDialog>(window.Frontmost);
+        dialog.Chosen = [dialog.Rows.Single()];
+        Press(dialog, "Accept Theirs");
+        Ui.WaitFor(() => window.ConflictsWindow is null && window.Vcs.Conflicts.Count == 0 && buttons.All(b => b.IsEffectivelyEnabled),
+            () => $"Commit to take a press once Prices.cs was resolved (its tip says \"{ToolTip.GetTip(buttons[0])}\")");
+        Assert.All(buttons, b => Assert.Null(ToolTip.GetTip(b)));
+
+        commit.Message = string.Empty;
+        Ui.Settle();
+        Assert.All(buttons, b => Assert.True(!b.IsEffectivelyEnabled && ToolTip.GetTip(b) as string == Refusals.EmptyCommitMessage,
+            $"With no message, {b.Content} is {(b.IsEffectivelyEnabled ? "on" : "greyed")}, its tip saying \"{ToolTip.GetTip(b)}\""));
+        window.Close();
     }
 
     /// <summary>A merge of the feature stopped on Prices.cs, which both branches changed on one line.</summary>

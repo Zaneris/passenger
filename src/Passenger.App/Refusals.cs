@@ -42,6 +42,15 @@ public static class Refusals
     /// <summary>The folder open is in a Git working tree already, which Create Git Repository would make.</summary>
     public const string InRepository = "The folder is in a Git repository already";
 
+    /// <summary>Git has files in conflict, which no commit takes as they are.</summary>
+    public const string CommitWithConflicts = "Resolve conflicts in order to commit";
+
+    /// <summary>The Commit window has no file chosen, and no merge to finish or commit to amend.</summary>
+    public const string NoFilesChosenToCommit = "No files are chosen to commit";
+
+    /// <summary>The Commit window's message is empty or blank.</summary>
+    public const string EmptyCommitMessage = "The commit message is empty";
+
     /// <summary>The Git log's branches panel has HEAD, a group or no row chosen, where a branch or tag is acted on.</summary>
     public const string NoRefChosen = "No branch or tag is chosen";
 

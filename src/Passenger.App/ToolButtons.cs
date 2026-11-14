@@ -63,13 +63,14 @@ public static class ToolButtons
         return button;
     }
 
-    /// <summary>Greys a button made here while it can't act, its tip saying why after its name, as a refusal follows what
-    /// it stopped ("Delete: main is checked out"); null gives it back its name alone. A screen reader names it as before.</summary>
+    /// <summary>Greys a button while it can't act, its tip saying why: after an icon's name, as a refusal follows what it
+    /// stopped ("Delete: main is checked out"), or alone on a button of words, which names itself; null gives it back its
+    /// name alone. A screen reader names it as before.</summary>
     public static void Grey(Button button, string? why)
     {
         string? name = AutomationProperties.GetName(button);
         button.IsEnabled = why is null;
-        ToolTip.SetTip(button, why is null ? name : $"{name}: {why}");
+        ToolTip.SetTip(button, why is null ? name : name is null ? why : $"{name}: {why}");
     }
 
     private static T Made<T>(T button, string icon, string tip)
