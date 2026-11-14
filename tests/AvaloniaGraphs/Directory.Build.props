@@ -1,8 +1,9 @@
 <Project>
-  <!-- The package graph of the Avalonia 11 app the previewer's tests write, at AvaloniaOlderVersion and the tests' own
-       target, TestProjects.Framework, restored with the solution so the package cache holds it: a test folder restores
-       from the run's local feed alone, never nuget.org. Built as an empty library, never run, under none of the repo's
-       rules, which are for Passenger's code. -->
+  <!-- The package graphs of the Avalonia apps the tests write, at the tests' own target, TestProjects.Framework: the
+       Avalonia 11 app the previewer's tests write, at AvaloniaOlderVersion, and the apps on the Avalonia Passenger runs
+       (AvaloniaApp), with the Skia and HarfBuzz that Avalonia names rather than Passenger's newer ones. Restored with the
+       solution so the package cache holds them: a test folder restores from the run's local feed alone, never
+       nuget.org. Built as empty libraries, never run, under none of the repo's rules, which are for Passenger's code. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>

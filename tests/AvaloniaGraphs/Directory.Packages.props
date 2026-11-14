@@ -1,4 +1,4 @@
 <Project>
-  <!-- The repo's own versions, whose tests' section pins Avalonia 11's. -->
+  <!-- The repo's own versions, Avalonia's and, in its tests' section, Avalonia 11's. -->
   <Import Project="../../Directory.Packages.props" />
 </Project>

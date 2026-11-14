@@ -54,6 +54,12 @@
     <PackageReference Include="Avalonia.HarfBuzz" />
     <PackageReference Include="Avalonia.Headless" />
     <PackageReference Include="Avalonia.Skia" />
+    <!-- Avalonia.Skia's Skia and HarfBuzz, taken at the versions Directory.Packages.props gives, each with its Linux
+         native library, which would otherwise stay at the older version Avalonia.Skia names. -->
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
+    <PackageReference Include="HarfBuzzSharp" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" />
     <!-- Aspire's resource service client (Aspire/), its C# generated from Aspire/Protocol/dashboard_service.proto and
          checked in beside it (just aspire-protocol), so no build runs protoc. -->
     <PackageReference Include="Google.Protobuf" />

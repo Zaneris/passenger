@@ -62,8 +62,8 @@
       },
       "Avalonia.Remote.Protocol": {
         "type": "Transitive",
-        "resolved": "12.1.5",
-        "contentHash": "yNSke7MNKxJrgcTOQJk70QhPU568dxwRMeQCSmq9N7IGbpPS4zpbr4o6e8rLF/8UfASBQN/yuTgqUfa2nwf6Iw=="
+        "resolved": "12.1.6",
+        "contentHash": "55fcjPpzkzPaSSMczUjpKHKWcuJo6dJHHkLXgT8nMP80ijYASzdPdf86173R7CqPitw8E8nJ229Jqpu/EyUVow=="
       },
       "Azure.Core": {
         "type": "Transitive",
@@ -491,7 +491,7 @@
       "passenger.dap": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.3.1, )"
+          "Passenger.Core": "[0.3.4, )"
         }
       },
       "passenger.debugger": {
@@ -502,9 +502,9 @@
           "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
           "Microsoft.Diagnostics.DbgShim": "[10.0.750501, )",
           "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )",
-          "Passenger.Core": "[0.3.1, )",
-          "Passenger.Dap": "[0.3.1, )",
-          "Passenger.Debugger.Interop": "[0.3.1, )",
+          "Passenger.Core": "[0.3.4, )",
+          "Passenger.Dap": "[0.3.4, )",
+          "Passenger.Debugger.Interop": "[0.3.4, )",
           "ZLinq": "[1.6.1, )"
         }
       },
@@ -514,9 +514,9 @@
       "passenger.editor": {
         "type": "Project",
         "dependencies": {
-          "Avalonia": "[12.1.5, )",
-          "Passenger.Core": "[0.3.1, )",
-          "Passenger.Text": "[0.3.1, )"
+          "Avalonia": "[12.1.6, )",
+          "Passenger.Core": "[0.3.4, )",
+          "Passenger.Text": "[0.3.4, )"
         }
       },
       "passenger.nodepackages": {
@@ -526,9 +526,9 @@
         "type": "Project",
         "dependencies": {
           "NuGet.Configuration": "[7.9.0, )",
-          "Passenger.Core": "[0.3.1, )",
-          "Passenger.Text": "[0.3.1, )",
-          "Passenger.Workspace": "[0.3.1, )"
+          "Passenger.Core": "[0.3.4, )",
+          "Passenger.Text": "[0.3.4, )",
+          "Passenger.Workspace": "[0.3.4, )"
         }
       },
       "passenger.profiler": {
@@ -537,54 +537,54 @@
           "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )",
           "Microsoft.Diagnostics.Runtime": "[4.2.751201, )",
           "Microsoft.Diagnostics.Tracing.TraceEvent": "[4.0.0, )",
-          "Passenger.Core": "[0.3.1, )"
+          "Passenger.Core": "[0.3.4, )"
         }
       },
       "passenger.terminal": {
         "type": "Project",
         "dependencies": {
-          "Avalonia": "[12.1.5, )",
-          "Passenger.Editor": "[0.3.1, )",
+          "Avalonia": "[12.1.6, )",
+          "Passenger.Editor": "[0.3.4, )",
           "Porta.Pty": "[2.2.4, )"
         }
       },
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.3.1, )"
+          "Passenger.Core": "[0.3.4, )"
         }
       },
       "passenger.vcs": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.3.1, )",
-          "Passenger.Text": "[0.3.1, )"
+          "Passenger.Core": "[0.3.4, )",
+          "Passenger.Text": "[0.3.4, )"
         }
       },
       "passenger.workspace": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.3.1, )",
-          "Passenger.Text": "[0.3.1, )"
+          "Passenger.Core": "[0.3.4, )",
+          "Passenger.Text": "[0.3.4, )"
         }
       },
       "passenger.xaml": {
         "type": "Project",
         "dependencies": {
           "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
-          "Passenger.Core": "[0.3.1, )",
-          "Passenger.Packages": "[0.3.1, )",
-          "Passenger.Text": "[0.3.1, )"
+          "Passenger.Core": "[0.3.4, )",
+          "Passenger.Packages": "[0.3.4, )",
+          "Passenger.Text": "[0.3.4, )"
         }
       },
       "Avalonia": {
         "type": "CentralTransitive",
-        "requested": "[12.1.5, )",
-        "resolved": "12.1.5",
-        "contentHash": "Vw+gNvv4RXK5hLeVI9PfalhxPai6hrQjIElfoCDQK1fXTpk+vRyfhuhprrh+EIeuJtoYCy+AsSrqR1wgU28zeQ==",
+        "requested": "[12.1.6, )",
+        "resolved": "12.1.6",
+        "contentHash": "juogZu7ASS2KMtSqOMa8nGJ5I1Ile/3PG3JR+tD73liDr30qgilEsqNVQw3KIXJvuFc9m3Mf9NzGWc3sQvnlXA==",
         "dependencies": {
           "Avalonia.BuildServices": "11.3.2",
-          "Avalonia.Remote.Protocol": "12.1.5",
+          "Avalonia.Remote.Protocol": "12.1.6",
           "MicroCom.Runtime": "0.11.6"
         }
       },

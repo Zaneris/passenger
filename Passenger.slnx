@@ -51,6 +51,7 @@
   </Folder>
   <Folder Name="/tests/AvaloniaGraphs/">
     <Project Path="tests/AvaloniaGraphs/Avalonia11/AvaloniaGraphs.Avalonia11.csproj" />
+    <Project Path="tests/AvaloniaGraphs/Avalonia12/AvaloniaGraphs.Avalonia12.csproj" />
   </Folder>
   <Folder Name="/tests/MauiGraphs/">
     <Project Path="tests/MauiGraphs/Controls/MauiGraphs.Controls.csproj" />

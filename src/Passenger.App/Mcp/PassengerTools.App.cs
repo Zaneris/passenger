@@ -719,7 +719,7 @@ public sealed partial class PassengerTools
         (done.Shows is { } shows ? $"; it shows \"{shows}\"" : string.Empty) + (done.Focused is { } focused ? $"; {focused} has the focus" : "; nothing has the focus");
 }
 
-/// <summary>An app's windows, with what the app is: its run configuration's name, its framework ("Avalonia 12.1.5", "WPF
+/// <summary>An app's windows, with what the app is: its run configuration's name, its framework ("Avalonia 12.1.6", "WPF
 /// 10.0.1"), its Avalonia's version (null for WPF) and its process.</summary>
 public sealed record AppWindows(string App, string Framework, string? Avalonia, int? ProcessId, IReadOnlyList<AppWindowInfo> Windows);
 

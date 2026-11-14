@@ -34,8 +34,8 @@
       },
       "Avalonia.Remote.Protocol": {
         "type": "Transitive",
-        "resolved": "12.1.5",
-        "contentHash": "yNSke7MNKxJrgcTOQJk70QhPU568dxwRMeQCSmq9N7IGbpPS4zpbr4o6e8rLF/8UfASBQN/yuTgqUfa2nwf6Iw=="
+        "resolved": "12.1.6",
+        "contentHash": "55fcjPpzkzPaSSMczUjpKHKWcuJo6dJHHkLXgT8nMP80ijYASzdPdf86173R7CqPitw8E8nJ229Jqpu/EyUVow=="
       },
       "GregsEx": {
         "type": "Transitive",
@@ -121,33 +121,33 @@
       "passenger.editor": {
         "type": "Project",
         "dependencies": {
-          "Avalonia": "[12.1.5, )",
-          "Passenger.Core": "[0.3.0, )",
-          "Passenger.Text": "[0.3.0, )"
+          "Avalonia": "[12.1.6, )",
+          "Passenger.Core": "[0.3.4, )",
+          "Passenger.Text": "[0.3.4, )"
         }
       },
       "passenger.lsp": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.3.0, )",
-          "Passenger.Text": "[0.3.0, )",
+          "Passenger.Core": "[0.3.4, )",
+          "Passenger.Text": "[0.3.4, )",
           "StreamJsonRpc": "[2.26.150, )"
         }
       },
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.3.0, )"
+          "Passenger.Core": "[0.3.4, )"
         }
       },
       "Avalonia": {
         "type": "CentralTransitive",
-        "requested": "[12.1.5, )",
-        "resolved": "12.1.5",
-        "contentHash": "Vw+gNvv4RXK5hLeVI9PfalhxPai6hrQjIElfoCDQK1fXTpk+vRyfhuhprrh+EIeuJtoYCy+AsSrqR1wgU28zeQ==",
+        "requested": "[12.1.6, )",
+        "resolved": "12.1.6",
+        "contentHash": "juogZu7ASS2KMtSqOMa8nGJ5I1Ile/3PG3JR+tD73liDr30qgilEsqNVQw3KIXJvuFc9m3Mf9NzGWc3sQvnlXA==",
         "dependencies": {
           "Avalonia.BuildServices": "11.3.2",
-          "Avalonia.Remote.Protocol": "12.1.5",
+          "Avalonia.Remote.Protocol": "12.1.6",
           "MicroCom.Runtime": "0.11.6"
         }
       },

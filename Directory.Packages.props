@@ -9,7 +9,7 @@
     <RoslynServerVersion>5.13.0-1.26514.10</RoslynServerVersion>
     <!-- Avalonia's dotnet new templates at the Avalonia version below, downloaded for the tests' local feed so no test
          reaches nuget.org for them. -->
-    <AvaloniaTemplatesVersion>12.1.5</AvaloniaTemplatesVersion>
+    <AvaloniaTemplatesVersion>12.1.6</AvaloniaTemplatesVersion>
     <!-- Avalonia 11's last release, for the previewer's test of an app still on it (tests/AvaloniaGraphs). -->
     <AvaloniaOlderVersion>11.3.22</AvaloniaOlderVersion>
     <!-- The MVVM Toolkit at the version Avalonia's MVVM template above writes, downloaded for the tests' package cache, so
@@ -94,18 +94,25 @@
     <ProjectEvaluationSerilogVersion>4.0.0</ProjectEvaluationSerilogVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Avalonia" Version="12.1.5" />
-    <PackageVersion Include="Avalonia.Desktop" Version="12.1.5" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.5" />
+    <PackageVersion Include="Avalonia" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.6" />
     <!-- An HTML file's preview beside its text, the system's own web view (MIT since it left Accelerate, at 11.4.0). -->
-    <PackageVersion Include="Avalonia.Controls.WebView" Version="12.1.1" />
-    <PackageVersion Include="Avalonia.HarfBuzz" Version="12.1.5" />
+    <PackageVersion Include="Avalonia.Controls.WebView" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.HarfBuzz" Version="12.1.6" />
     <!-- XAML Hot Reload's compiler, carried by the inspector into an app that has none: at Avalonia's version, as it reaches
          into Avalonia's own insides. -->
-    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="12.1.5" />
-    <PackageVersion Include="Avalonia.Headless" Version="12.1.5" />
-    <PackageVersion Include="Avalonia.Skia" Version="12.1.5" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.5" />
+    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Headless" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Skia" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <!-- Skia and HarfBuzz under Avalonia's renderer, Svg.Skia and the MAUI previewer, at their newest stable line rather
+         than the older ones Avalonia.Skia and Avalonia.Controls.Maui name as their least, each with the Linux native
+         library of its own version (macOS's and Windows' come with the managed package). -->
+    <PackageVersion Include="SkiaSharp" Version="4.156.0" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="4.156.0" />
+    <PackageVersion Include="HarfBuzzSharp" Version="14.4.0.100" />
+    <PackageVersion Include="HarfBuzzSharp.NativeAssets.Linux" Version="14.4.0.100" />
     <!-- The MAUI previewer's (src/Passenger.MauiPreview): Avalonia's backend for .NET MAUI, which draws MAUI's controls with
          Avalonia's on every system. Its newest release candidate, as it has no stable release yet. -->
     <PackageVersion Include="Avalonia.Controls.Maui" Version="11.0.0-rc.3.26301.1434" />
@@ -130,8 +137,8 @@
          still a pre-release. -->
     <PackageVersion Include="NVorbis" Version="0.10.5" />
     <PackageVersion Include="NLayer" Version="3.0.1" />
-    <!-- An SVG file's picture: 5.1, the last line on the SkiaSharp 3 Avalonia's Skia carries (5.2 takes SkiaSharp 4). -->
-    <PackageVersion Include="Svg.Skia" Version="5.1.1" />
+    <!-- An SVG file's picture. -->
+    <PackageVersion Include="Svg.Skia" Version="5.2.3" />
     <!-- TextMate grammars' tokenizer, with GregsEx's managed regular expressions: colour for every
          language but C#. -->
     <PackageVersion Include="Tint" Version="0.2.3" />
@@ -197,7 +204,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEfVersion)" />
-    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.5" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.6" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <!-- The analyzers' (src/Passenger.Analyzers): the last release, MIT where netstandard2.0's 1.1.0 is not. -->
     <PackageVersion Include="Microsoft.NETCore.Platforms" Version="7.0.4" />
