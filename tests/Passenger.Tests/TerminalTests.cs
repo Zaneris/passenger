@@ -609,6 +609,8 @@ public sealed class TerminalTests
             {
                 OwnEnvironment.Set(variable, null);
             }
+            // Read again with neither given, so later tests in this process run as a start no agent made.
+            Passenger.App.Mcp.McpProxy.CheckVariable();
             TestFolders.Delete(folder);
         }
     }

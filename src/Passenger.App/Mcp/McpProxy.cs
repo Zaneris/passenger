@@ -94,13 +94,17 @@ public sealed partial class McpProxy
     }
 
     /// <summary>Fails a start whose <see cref="StartVariable"/> or <see cref="StartedForVariable"/> is not one this build
-    /// knows, as a malformed flag does; the second is read into <see cref="StartedForAgent"/> and taken out.</summary>
+    /// knows, as a malformed flag does; the second is read into <see cref="StartedForAgent"/>, and <see cref="SessionVariable"/>
+    /// into the session followed, each taken out: what the environment gives now, so read with neither given, the process
+    /// was started for no agent and follows no relay's session.</summary>
     public static void CheckVariable()
     {
         if (Environment.GetEnvironmentVariable(StartVariable) is { Length: > 0 } how && how != "headless")
         {
             throw new FormatException($"{StartVariable} takes headless (the test run's), not '{how}'");
         }
+        StartedForAgent = false;
+        followed = null;
         if (Environment.GetEnvironmentVariable(StartedForVariable) is { Length: > 0 } started)
         {
             if (started != "agent")
