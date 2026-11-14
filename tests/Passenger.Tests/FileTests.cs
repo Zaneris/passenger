@@ -286,7 +286,7 @@ public sealed partial class FileTests : IDisposable
             Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the second save", TimeSpan.FromSeconds(10));
             Assert.True(File.ReadAllText(path) == "class One { }\n", "A save landed in a file another program held, sharing no writes");
         }
-        Ui.WaitFor(() => File.ReadAllText(path) == "sealed public class One { }\n", () => $"the saves to land once the file was let go: '{File.ReadAllText(path)}', {window.Status}");
+        Ui.WaitFor(() => Ui.Shared(path) == "sealed public class One { }\n", () => $"the saves to land once the file was let go: '{Ui.Shared(path)}', {window.Status}");
         Assert.Empty(Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix));
         Passenger.App.History.LocalHistory history = window.LocalHistory!;
         string canonical = PathNames.Canonical(path);
