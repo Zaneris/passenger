@@ -3364,7 +3364,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return new Workspace(
             session.Folder,
             session.Workspace?.Filter?.Path ?? session.Solution?.Path,
-            [.. (session.Workspace?.Projects ?? []).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.OutputType, p.TargetFrameworks)
+            [.. (session.Workspace?.Projects ?? []).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.IsAndroidApp ? "Exe" : p.OutputType, p.TargetFrameworks)
             {
                 Unloaded = session.Unloaded.Contains(p.Path) ? true : null,
                 ChosenFramework = session.Frameworks.Of(p),
@@ -3576,6 +3576,8 @@ public sealed record Workspace(
 /// its handler, its parameters ("id:int (route)"), where it is declared, and its body's type.</summary>
 public sealed record RouteInfo(string Project, string Kind, string Route, string Handler, IReadOnlyList<string> Parameters, string Path, int Line, string? Body);
 
+/// <summary>A project as workspace lists it: its output type as evaluated, but Exe for an Android app (a .NET MAUI app's
+/// Android build), which .NET for Android evaluates as Library though it runs.</summary>
 public sealed record ProjectInfo(string Name, string Path, string? OutputType, IReadOnlyList<string> TargetFrameworks)
 {
     /// <summary>True for a project not loaded: one the solution filter opened leaves out, or one the person unloaded; null

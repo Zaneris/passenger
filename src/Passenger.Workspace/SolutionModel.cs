@@ -327,11 +327,15 @@ public sealed record ProjectModel(
     /// references a test SDK, an adapter or a Testing Platform test framework.</summary>
     public bool IsTestProject => DeclaredTest || Packages.Any(p => TestPackages.Contains(p.Name));
 
-    /// <summary>Whether it builds something that runs: an executable or an Android app (<see cref="CarriedProperties.AndroidApplication"/>),
-    /// not a library, a test or a Blazor Web App's client (<see cref="IsBrowserClient"/>).</summary>
+    /// <summary>Whether it builds something that runs: an executable or an Android app (<see cref="IsAndroidApp"/>), not a
+    /// library, a test or a Blazor Web App's client (<see cref="IsBrowserClient"/>).</summary>
     public bool IsRunnable => (string.Equals(OutputType, "Exe", StringComparison.OrdinalIgnoreCase)
         || string.Equals(OutputType, "WinExe", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Property(CarriedProperties.AndroidApplication), "true", StringComparison.OrdinalIgnoreCase)) && !IsTestProject && !IsBrowserClient;
+        || IsAndroidApp) && !IsTestProject && !IsBrowserClient;
+
+    /// <summary>Whether .NET for Android builds an app of it, as evaluated (<see cref="CarriedProperties.AndroidApplication"/>):
+    /// its <see cref="OutputType"/> is then Library, turned from the Exe the project gives.</summary>
+    public bool IsAndroidApp => string.Equals(Property(CarriedProperties.AndroidApplication), "true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Whether it is an Azure Functions app (.NET isolated worker), as its evaluation says
     /// (<see cref="CarriedProperties.AzureFunctionsVersion"/>): a program Azure Functions Core Tools' func runs, never alone.</summary>
