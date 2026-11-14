@@ -100,6 +100,9 @@ public sealed class DebugController : IDisposable
     private bool disposed;
     private bool ending;
 
+    /// <summary>The program whose next attach is refused, and with what, a test's (<see cref="RefuseNextAttach"/>).</summary>
+    private (string Name, string Why)? refusedAttach;
+
     /// <summary>The tabs this debugger placed that are still the Debug window's, whose hooks its end lets go of.</summary>
     private readonly HashSet<DebugTab> placed = [];
 
@@ -740,7 +743,11 @@ public sealed class DebugController : IDisposable
         LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null, string? startedElsewhere = null)
     {
         bool hotReloadOn = hotReload && HotReloadOn();
-        return OpenAsync((built, log, output, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place), name,
+        return OpenAsync((built, log, output, starting) =>
+        {
+            TakeRefusal(name);
+            return DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place);
+        }, name,
             launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits, hook: hotReloadOn ? handlers : Unheld(handlers),
             browser: hotReloadOn ? browser : Unheld(browser), attachedWords: startedElsewhere, stopLetsGo: startedElsewhere is not null);
     }
@@ -748,21 +755,49 @@ public sealed class DebugController : IDisposable
     /// <summary>Debugs a program another starts, which Passenger starts from <paramref name="plan"/> (func, which starts a
     /// Functions app's worker): the starter's output in the session's console from its first line, the debugger attached to
     /// the program <paramref name="started"/> finds among the starter's, or failing with <paramref name="unfound"/> where it
-    /// finds none, and the starter ended with the session. Null once the session is open, else why not.</summary>
+    /// finds none, and the starter ended with the session, or with a start that failed, saying so. Null once the session is
+    /// open, else why not.</summary>
     public Task<string?> StartThroughAsync(Run.LaunchPlan plan, Func<int, CancellationToken, Task<int?>> started, string unfound, BuiltEdits? edits = null)
     {
         System.Diagnostics.Process? starter = null;
+        string by = Path.GetFileNameWithoutExtension(plan.Program);
         return OpenAsync(async (built, log, output, starting) =>
         {
             if (starter is not { } from)
             {
-                throw new InvalidOperationException($"{Path.GetFileNameWithoutExtension(plan.Program)} could not start");
+                throw new InvalidOperationException($"{by} could not start");
             }
             int debuggee = await started(from.Id, CancellationToken.None) is int found ? found
-                : throw new InvalidOperationException(DotnetProcesses.Runs(from) ? unfound : $"{Path.GetFileNameWithoutExtension(plan.Program)} ended before it started {plan.Name}");
-            return await DebugSession.AttachAsync(debuggee, Breakpoints, built, log, output, ColumnOf, starting);
+                : throw new InvalidOperationException(DotnetProcesses.Runs(from) ? Ended(unfound) : $"{by} ended before it started {plan.Name}");
+            try
+            {
+                TakeRefusal(plan.Name);
+                return await DebugSession.AttachAsync(debuggee, Breakpoints, built, log, output, ColumnOf, starting);
+            }
+            catch (Exception failed) when (failed is DapException or IOException or InvalidOperationException or TimeoutException)
+            {
+                throw new InvalidOperationException(Ended(failed is DapException dap ? dap.Reason : failed.Message), failed);
+            }
         }, plan.Name, launched: false, plan: plan, edits: edits, starts: (() => plan.Placed(ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Environment)),
-            process => starter = process), attachedWords: $"{plan.Name} runs as {Path.GetFileNameWithoutExtension(plan.Program)} starts it, whose output is shown here");
+            process => starter = process), attachedWords: $"{plan.Name} runs as {by} starts it, whose output is shown here");
+
+        // What the starter started would wait for a debugger that never comes, so the starter ends with the start.
+        string Ended(string why) => $"{why}; {by} and all it started end, as {plan.Name} would wait for the debugger";
+    }
+
+    /// <summary>The next attach to the program of a session's name fails as the debugger's failing to attach does, saying
+    /// <paramref name="why"/>, for a test of what follows one.</summary>
+    public void RefuseNextAttach(string name, string why) => refusedAttach = (name, why);
+
+    /// <summary>A refusal of the next attach to a program of this name (<see cref="RefuseNextAttach"/>), thrown as the
+    /// debugger's own.</summary>
+    private void TakeRefusal(string name)
+    {
+        if (refusedAttach is { } refused && refused.Name == name)
+        {
+            refusedAttach = null;
+            throw new InvalidOperationException(refused.Why);
+        }
     }
 
     /// <summary>Attaches the debugger to an app on a device through Passenger's relay in it (<see cref="Run.Devices.DeviceLaunches"/>),

@@ -109,6 +109,69 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
         }
     }
 
+    /// <summary>Debug of an AppHost whose attach to its Functions app's worker fails (a refusal standing in for the
+    /// debugger's) says why and starts func again with its worker unheld, which would otherwise wait for a debugger as each
+    /// worker func's host starts again does: the function answers a request, and Stop ends it all.</summary>
+    [AvaloniaFact(Skip = AspireFunctionsApp.AppHostSkipped, SkipType = typeof(AspireFunctionsApp), SkipWhen = nameof(AspireFunctionsApp.IsAppHostUnavailable))]
+    public void Debug_of_an_AppHost_whose_attach_to_its_Functions_worker_fails_runs_the_app_undebugged_saying_why()
+    {
+        MainWindow window = project.Open(project.HostProgram, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Aspire && PathNames.Same(configuration.Project, project.Host)
+                && configuration.LaunchProfile == "http"), "the AppHost's http configuration");
+            Assert.True(window.SelectConfiguration("Aspire: Host: http"));
+            window.Debugger.RefuseNextAttach($"{Path.GetFileNameWithoutExtension(project.Host)}: {Resource}", Refused);
+            Ui.Launched(window, window.DebugAsync(), "the AppHost under the debugger", TimeSpan.FromMinutes(3));
+            ShowResources(window);
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Any(app => app.Console.Document.Snapshot.ToString().Contains(Refused, StringComparison.Ordinal))
+                && window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == Resource && resource.State == "Running"
+                    && window.AspireRuntime.FindService(new(project.Host, resource)) is AspireResourceRun { ProcessId: > 0, Worker: null }),
+                () => $"the refused attach said and func started again unheld ({window.Status}; {Seen(window)}; {Said(window)})", TimeSpan.FromMinutes(3));
+            string said = string.Concat(window.AspireRuntime.Apps.Select(app => app.Console.Document.Snapshot.ToString()));
+            Assert.True(said.Contains("func was started again, its worker not held", StringComparison.Ordinal), $"The AppHost's console does not say func started again unheld:\n{Last(said)}");
+            Assert.DoesNotContain(window.Debugger.Tabs, tab => tab.IsLive && tab.Name.EndsWith($": {Resource}", StringComparison.Ordinal));
+            using HttpClient http = new() { Timeout = TimeSpan.FromMinutes(2).Scaled() };
+            Assert.Equal(AspireFunctionsApp.Answer, Ui.AwaitPumped(http.GetStringAsync(Listening(new Uri(HttpUrl(Snapshot(window)), "/api/Hello"))),
+                "the function's answer, its worker undebugged"));
+
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Count == 0 && Leftovers().Count == 0, () => $"Stop to end the AppHost, func and its worker: {string.Join("; ", Leftovers().Values)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A Functions project's own Debug whose attach to the worker fails (a refusal standing in for the debugger's)
+    /// says why, and that func ends with what it started, which would otherwise wait for a debugger; nothing is left
+    /// running.</summary>
+    [AvaloniaFact(Skip = AspireFunctionsApp.FuncSkipped, SkipType = typeof(AspireFunctionsApp), SkipWhen = nameof(AspireFunctionsApp.IsUnavailable))]
+    public void A_Functions_projects_own_Debug_whose_attach_to_the_worker_fails_ends_func_saying_why()
+    {
+        MainWindow window = project.Open(project.Function, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(configuration => PathNames.Same(configuration.Project, project.FunctionProject) && configuration.LaunchProfile == "Fn"),
+                "the Functions app's own configuration");
+            string own = window.Configurations.First(configuration => PathNames.Same(configuration.Project, project.FunctionProject) && configuration.LaunchProfile == "Fn").Name;
+            Assert.True(window.SelectConfiguration(own));
+            window.Debugger.RefuseNextAttach(own, Refused);
+            string? refused = Ui.Await(window.DebugAsync(), "func's start, the attach to its worker refused", TimeSpan.FromMinutes(3));
+            Assert.True(refused is not null && refused.Contains(Refused, StringComparison.Ordinal) && refused.Contains("all it started end", StringComparison.Ordinal),
+                $"Debug with the attach to the worker refused said \"{refused}\", not why and that func ends");
+            Ui.WaitFor(() => Leftovers().Count == 0, () => $"func and its worker to end with the refused start: {string.Join("; ", Leftovers().Values)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>What a refused attach to the worker says, standing in for the debugger's own failure.</summary>
+    private const string Refused = "A stand-in for the debugger refused to attach";
+
     /// <summary>The Functions app's start under the debugger, once its resource runs: func, the worker it started, and the
     /// session attached to that worker in its tab; another than <paramref name="before"/>'s, after a restart.</summary>
     private AspireResourceRun Debugged(MainWindow window, AspireResourceRun? before)

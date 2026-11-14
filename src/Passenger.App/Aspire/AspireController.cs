@@ -1022,6 +1022,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 Inspected?.Invoke(inspection);
             }
             LaunchPlan inspected = resource.Inspection?.Plan ?? plan;
+            LaunchPlan unheld = inspected;
             if (request.Functions && held is not null)
             {
                 inspected = FunctionsHost.Debugged(inspected);
@@ -1057,15 +1058,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 // Those the AppHost marks sensitive are known secrets before its command line is echoed and logged.
                 await ArgumentsSaidAsync(app, resource, cancellation);
             }
-            ProcessRunner runner = resource.Runner = new ProcessRunner(resource.Console, takesInput: true);
-            runner.OutputReceived += (_, output) => app.Execution?.NotifyServiceLog(request.DcpInstanceId, request.SessionId, output.Text, output.IsError);
-            runner.Exited += (_, code) => Finished(app, resource, code);
-            string? refused = await runner.StartAsync(inspected.Start(), inspected.Environment);
-            if (refused is not null)
-            {
-                throw new LaunchException(refused);
-            }
-            resource.ProcessId = runner.ProcessId;
+            await StartedAsync(inspected);
             resource.Held = held == RunStart.Profile ? null : held;
             // The run of services' one attach to this start, whose session (or recording) lets it go: a Functions app's to its worker.
             if (held is { } purpose && (request.Functions && (resource.Worker = await FunctionsHost.StartedWorkerAsync(resource.ProcessId ?? throw new LaunchException(BuildRunController.StoppedStarting(serviceName)), cancellation)) is null
@@ -1079,8 +1072,16 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 // Held for a debugger that could not reach it, it would wait for good: it runs on unheld, said.
                 await app.HoldAsync(resource, null, CancellationToken.None);
                 resource.Held = null;
-                await LetGoAsync(resource.ProcessId);
-                string said = $"{serviceName} of {app.Name} runs without the debugger, which could not attach: {unattached}";
+                if (request.Functions)
+                {
+                    await UnheldFunctionsAsync(unheld);
+                }
+                else
+                {
+                    await LetGoAsync(resource.ProcessId);
+                }
+                string said = $"{serviceName} of {app.Name} runs without the debugger, which could not attach: {unattached}"
+                    + (request.Functions ? "; func was started again, its worker not held for one" : string.Empty);
                 app.Console.Append(said + "\n", error: true);
                 RunsUndebugged?.Invoke(this, said);
             }
@@ -1101,6 +1102,41 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         finally
         {
             app.Landed(resource, failure);
+        }
+
+        // The resource's program started from the plan, its runner the resource's: only the runner it has now ends it.
+        async Task StartedAsync(LaunchPlan started)
+        {
+            ProcessRunner runner = resource.Runner = new ProcessRunner(resource.Console, takesInput: true);
+            runner.OutputReceived += (_, output) => app.Execution?.NotifyServiceLog(request.DcpInstanceId, request.SessionId, output.Text, output.IsError);
+            runner.Exited += (_, code) =>
+            {
+                if (resource.Runner == runner)
+                {
+                    Finished(app, resource, code);
+                }
+            };
+            if (await runner.StartAsync(started.Start(), started.Environment) is { } refused)
+            {
+                throw new LaunchException(refused);
+            }
+            resource.ProcessId = runner.ProcessId;
+        }
+
+        // A held worker, and each func's host starts as the last times out, waits for a debugger: func starts again unheld.
+        async Task UnheldFunctionsAsync(LaunchPlan unheld)
+        {
+            if (resource.Runner is not { } held)
+            {
+                return;
+            }
+            resource.Runner = null;
+            resource.Worker = null;
+            held.Stop();
+            await held.Ended;
+            held.Dispose();
+            cancellation.ThrowIfCancellationRequested();
+            await StartedAsync(unheld);
         }
     }
 
