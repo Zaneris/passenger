@@ -302,7 +302,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
   on attach (a split rebuilds the frame).
-- **C#.** `CSharpService`, `CodeAssist`; completion ranks through `CompletionRanking` (its order held equal to scoring
+- **C#.** `CSharpService`, `CodeAssist`; completion ranks through `CompletionRanking` (how well an item fits from Roslyn's `MatchPriority` through the extension's `passenger/completion`, `CompletionPriorities` runs beside the items, ranked within a way of matching, `FuzzyMatch.LabelWay`) (its order held equal to scoring
   afresh by `CompletionRankingTests`) and reads an answer once (`CompletionAnswer`, list defaults by `WithDefaults`); each language's answers a `LanguageAssist` in `LanguageAssists`' one order. A
   server's edit to a file written moments before waits for the server to read it (`WorkspaceEdits`); one written as it
   worked is refused. A generated document is never opened in the server (it would freeze its text into the compilation):
