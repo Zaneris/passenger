@@ -1381,10 +1381,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Until(() => ended.IsCompleted || app is { State: not LiveTree.LiveAppState.Waiting } || game is { Monitors: not null } or { State: LiveTree.LiveAppState.Ended }
                 || serving.Serves() || (onDevice = device?.App!.StartedIn(Session.Runner.Shown())) is not null, TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
         }
-        if (app is { State: LiveTree.LiveAppState.Refused })
+        if (app is { State: LiveTree.LiveAppState.Refused or LiveTree.LiveAppState.Ended })
         {
-            // An app ended for the person's screen says so as it exits, and an answer is not to call it running.
-            await Until(() => ended.IsCompleted, Waits.Of(TimeSpan.FromSeconds(3)), cancel);
+            // An app ended for the person's screen says so as it exits, its inspector's end heard before the run's or after: an answer is not to call it running.
+            await When(() => ended.IsCompleted, Waits.Of(TimeSpan.FromSeconds(3)), cancel, Ends(ended));
         }
         int? code = ended.IsCompletedSuccessfully ? ended.Result : null;
         string output = AppHostOutput(200) ?? RunOutput(200);
