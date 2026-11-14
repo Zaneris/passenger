@@ -41,27 +41,6 @@
           "Microsoft.Maui.Controls.Xaml": "11.0.0"
         }
       },
-      "Microsoft.Maui.Controls.Core": {
-        "type": "Transitive",
-        "resolved": "11.0.0",
-        "contentHash": "C4iAu2tT8ZJcpFUtM5/Wi0l7W1UtYiqt09PHJftG5lzkQWY1Bjt7bpWDEO6O4tDbnWhAzmDTLKnASt8TAzosEQ==",
-        "dependencies": {
-          "Microsoft.Extensions.Configuration": "11.0.0",
-          "Microsoft.Extensions.DependencyInjection": "11.0.0",
-          "Microsoft.Extensions.Logging": "11.0.0",
-          "Microsoft.Maui.Core": "11.0.0"
-        }
-      },
-      "Microsoft.Maui.Controls.Xaml": {
-        "type": "Transitive",
-        "resolved": "11.0.0",
-        "contentHash": "l6Y3LBL2WzEhABK0WhR5K7WIRKbwVjqCRMtZ1hVXH8ysT+xYxhFJeRsmofWxOZ1ufukSN1pUCefiRcybhwOAPw==",
-        "dependencies": {
-          "Microsoft.Extensions.Configuration": "11.0.0",
-          "Microsoft.Maui.Controls.Core": "11.0.0",
-          "Microsoft.Maui.Core": "11.0.0"
-        }
-      },
       "Microsoft.Maui.Core": {
         "type": "Transitive",
         "resolved": "11.0.0",
@@ -91,6 +70,29 @@
         "type": "Transitive",
         "resolved": "11.0.0",
         "contentHash": "QRuyC19EKN3Bw1m7d3WzKqbcCFmFg5XNjd9f2hStDQEN5A4NJqXWHRUVWkMl5tHMLqvxbbvyhNyc40GnDX49uQ=="
+      },
+      "Microsoft.Maui.Controls.Core": {
+        "type": "CentralTransitive",
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "C4iAu2tT8ZJcpFUtM5/Wi0l7W1UtYiqt09PHJftG5lzkQWY1Bjt7bpWDEO6O4tDbnWhAzmDTLKnASt8TAzosEQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "11.0.0",
+          "Microsoft.Extensions.DependencyInjection": "11.0.0",
+          "Microsoft.Extensions.Logging": "11.0.0",
+          "Microsoft.Maui.Core": "11.0.0"
+        }
+      },
+      "Microsoft.Maui.Controls.Xaml": {
+        "type": "CentralTransitive",
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "l6Y3LBL2WzEhABK0WhR5K7WIRKbwVjqCRMtZ1hVXH8ysT+xYxhFJeRsmofWxOZ1ufukSN1pUCefiRcybhwOAPw==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "11.0.0",
+          "Microsoft.Maui.Controls.Core": "11.0.0",
+          "Microsoft.Maui.Core": "11.0.0"
+        }
       }
     }
   }

@@ -133,6 +133,11 @@
                       SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
     <!-- The previewer's messages, one definition for both ends. -->
     <Compile Include="../Passenger.WpfPreview/Protocol.cs" Link="Xaml/WpfPreviewProtocol.cs" />
+    <!-- Built first and carried under mauipreview/, never linked: MAUI's previewer runs in its own process on Passenger's
+         runtime (Xaml/MauiPreviewHost.cs), built for the publish's system or this machine's. -->
+    <ProjectReference Include="../Passenger.MauiPreview/Passenger.MauiPreview.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="SelfContained;PublishReadyToRun" />
+    <Compile Include="../Passenger.MauiPreview/Protocol.cs" Link="Xaml/MauiPreviewProtocol.cs" />
   </ItemGroup>
 
   <!-- TraceEvent's props give a build its Windows natives under x86/, amd64/ and arm64/: msdia140 (the DIA SDK, for
@@ -159,7 +164,7 @@
     <None Include="../../docs/release-notes/*.md" Link="release-notes/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
-  <Target Name="NoticeInputs" DependsOnTargets="ResolvePackageAssets;ResolveRuntimePackAssets;IncludeDebugAdapter;IncludeProjectHost">
+  <Target Name="NoticeInputs" DependsOnTargets="ResolvePackageAssets;ResolveRuntimePackAssets;IncludeDebugAdapter;IncludeProjectHost;IncludeMauiPreview">
     <MSBuild Projects="../../tools/Passenger.Notices/Passenger.Notices.csproj" Targets="GetTargetPath"
              RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
       <Output TaskParameter="TargetOutputs" ItemName="NoticesTool" />
@@ -183,6 +188,7 @@
       <NoticePackage Include="@(RuntimePackAsset->'%(NuGetPackageId)/%(NuGetPackageVersion)')" Condition="'$(SelfContained)' == 'true'" />
       <NoticeDebuggerDeps Include="$(DebugAdapterFolder)*.deps.json" />
       <NoticeHostDeps Include="$(ProjectHostFolder)*.deps.json" />
+      <NoticeMauiPreviewDeps Include="$(MauiPreviewFolder)*.deps.json" />
       <NoticesServerPackage Include="@(NoticesServer->WithMetadataValue('Kind', 'package'))" />
       <NoticeServerDeps Include="%(NoticesServerPackage.Folder)**/*.deps.json" />
       <NoticeWebStamp Include="@(NoticesWeb->'%(Stamp)')" />
@@ -200,6 +206,7 @@
       <NoticeLine Include="@(NoticePackageOnce->'package=%(Identity)')" />
       <NoticeLine Include="@(NoticeDebuggerDeps->'debugger=%(FullPath)')" />
       <NoticeLine Include="@(NoticeHostDeps->'host=%(FullPath)')" />
+      <NoticeLine Include="@(NoticeMauiPreviewDeps->'mauipreview=%(FullPath)')" />
       <NoticeLine Include="@(NoticesServerPackage->'server=%(Identity)')" />
       <NoticeLine Include="@(NoticesServerPackage->'serverFolder=%(Folder)')" />
       <NoticeLine Include="@(NoticesServer->WithMetadataValue('Kind', 'leftOut')->'serverLeftOut=%(Identity)')" />
@@ -211,7 +218,7 @@
   </Target>
 
   <Target Name="WriteNotices" DependsOnTargets="NoticeInputs"
-          Inputs="$(NoticesArguments);@(NoticesTool);@(NoticeText);@(NoticeDebuggerDeps);@(NoticeHostDeps);@(NoticeServerDeps);@(NoticeWebStamp)" Outputs="$(NoticesFile)">
+          Inputs="$(NoticesArguments);@(NoticesTool);@(NoticeText);@(NoticeDebuggerDeps);@(NoticeHostDeps);@(NoticeMauiPreviewDeps);@(NoticeServerDeps);@(NoticeWebStamp)" Outputs="$(NoticesFile)">
     <Exec Command="&quot;$(NoticesHost)&quot; &quot;@(NoticesTool)&quot; &quot;$(NoticesArguments)&quot;" />
   </Target>
 
@@ -296,6 +303,23 @@
     <ItemGroup>
       <WpfPreviewFile Include="$(WpfPreviewFolder)Passenger.WpfPreview.*" Exclude="$(WpfPreviewFolder)*.runtimeconfig.dev.json" />
       <None Include="@(WpfPreviewFile)" Link="wpfpreview/%(WpfPreviewFile.Filename)%(WpfPreviewFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- MAUI's previewer becomes this project's output under mauipreview/: all its build writes for the system, Avalonia's
+       backend for MAUI, MAUI's controls and Skia's and HarfBuzz's natives with it, as it shares no assembly with the app. -->
+  <Target Name="IncludeMauiPreview" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="../Passenger.MauiPreview/Passenger.MauiPreview.csproj" Targets="GetTargetPath"
+             RemoveProperties="SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="MauiPreviewAssembly" />
+    </MSBuild>
+    <PropertyGroup>
+      <MauiPreviewFolder>@(MauiPreviewAssembly->'%(RootDir)%(Directory)')</MauiPreviewFolder>
+    </PropertyGroup>
+    <ItemGroup>
+      <MauiPreviewFile Include="$(MauiPreviewFolder)**/*" Exclude="$(MauiPreviewFolder)*.runtimeconfig.dev.json" />
+      <None Include="@(MauiPreviewFile)" Link="mauipreview/%(MauiPreviewFile.RecursiveDir)%(MauiPreviewFile.Filename)%(MauiPreviewFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

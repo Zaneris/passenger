@@ -9,8 +9,8 @@ using Passenger.Xaml.Syntax;
 namespace Passenger.App.Xaml;
 
 /// <summary>One XAML file's design view, drawn from its project's last build by the previewer of its framework: Avalonia's
-/// own (<see cref="AvaloniaPreviewHost"/>) or, on Windows, Passenger's own WPF previewer (<see cref="WpfPreviewHost"/>),
-/// each in a process of its own, sent the file's text as it stands. What the pane shows is here, whichever draws it: the
+/// own (<see cref="AvaloniaPreviewHost"/>), Passenger's own .NET MAUI previewer (<see cref="MauiPreviewHost"/>) or, on
+/// Windows, Passenger's own WPF previewer (<see cref="WpfPreviewHost"/>), each in a process of its own, sent the file's text as it stands. What the pane shows is here, whichever draws it: the
 /// last frame, what the preview is doing, the error that kept the XAML from loading, and the file's elements with their
 /// boxes in the frame (WPF's), kept on their XAML as it is typed. Its previewer rests while the preview is not shown,
 /// the last frame kept, and starts again as it is shown. A UI-thread object.</summary>
@@ -103,7 +103,7 @@ public sealed class XamlPreview : IDisposable
         lapsed = false;
         if (await document.Loading.Builder is not { } builder || await document.Loaded is null || disposed)
         {
-            Say("Previews are for the XAML of an Avalonia or WPF project");
+            Say("Previews are for the XAML of an Avalonia, WPF or .NET MAUI project");
             return;
         }
         if (start != starts)
@@ -150,6 +150,15 @@ public sealed class XamlPreview : IDisposable
                     return;
                 }
                 Adopt(started);
+                break;
+            case MauiDialect:
+                IPreviewHost? maui = await MauiPreviewHost.StartAsync(this, builder);
+                if (disposed || start != starts)
+                {
+                    maui?.Dispose();
+                    return;
+                }
+                Adopt(maui);
                 break;
             default:
                 Say($"{builder.Dialect.Name} XAML has no preview");
@@ -244,6 +253,34 @@ public sealed class XamlPreview : IDisposable
     }
 
     private Passenger.Xaml.Features.PreviewSize? size;
+
+    /// <summary>What a MAUI file's preview is drawn as (its screen, platform and theme), sent the file again as it changes.</summary>
+    public MauiLook Look
+    {
+        get => look;
+        set
+        {
+            UiThread.Check();
+            if (value == look)
+            {
+                return;
+            }
+            look = value;
+            if (!disposed)
+            {
+                host?.Update();
+            }
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private MauiLook look = MauiLook.AsBuilt;
+
+    /// <summary>The platform a MAUI preview is drawn for where <see cref="Look"/> chooses none: that of the build drawn.</summary>
+    public string BuiltPlatform { get; internal set; } = Passenger.MauiPreview.MauiPreviewDevices.Android;
+
+    /// <summary>Whether the file's previewer is MAUI's, which draws it as <see cref="Look"/> says.</summary>
+    public bool TakesLooks => host is MauiPreviewHost;
 
     /// <summary>Whether the file's previewer draws its root at a size given it: Avalonia's, while the root is a control's
     /// (<see cref="Passenger.Xaml.Features.PreviewSize.Fits"/>).</summary>
@@ -571,7 +608,7 @@ public sealed class XamlPreview : IDisposable
 
     /// <summary>What a previewer's process last said, its last five lines, heard on any thread: once it ends, they go to
     /// passenger.log with its end, and the pane says the last of them.</summary>
-    /// <param name="previewer">Whose previewer it is, as the log names it: Avalonia or WPF.</param>
+    /// <param name="previewer">Whose previewer it is, as the log names it: Avalonia, WPF or MAUI.</param>
     internal sealed class PreviewerLog(XamlPreview preview, string previewer)
     {
         private readonly Queue<string> said = new();

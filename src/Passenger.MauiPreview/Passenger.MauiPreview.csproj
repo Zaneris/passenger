@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- .NET MAUI's previewer, Passenger's own: draws one XAML file of a MAUI project as it is typed, from the project's last
+       build of any target, with Avalonia's backend for MAUI on Avalonia's headless platform with Skia, so it draws on every
+       system Passenger runs on. Run as a helper on Passenger's runtime (ChildProcesses.HelperCommand); the app carries it
+       under mauipreview/, built for its system. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Passenger.MauiPreview</RootNamespace>
+    <!-- Run by Passenger's helper host, never by its own. -->
+    <UseAppHost>false</UseAppHost>
+    <RollForward>Major</RollForward>
+    <!-- Always for one system, the publish's or this machine's, its natives flat beside it: built for none, it would carry
+         Skia's and HarfBuzz's for every system the packages know, about 550 MB. -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Its build targets and source generator are for an app that runs on it, not for a host that loads one. -->
+    <PackageReference Include="Avalonia.Controls.Maui" ExcludeAssets="build;buildTransitive;analyzers" />
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Headless" />
+    <PackageReference Include="Avalonia.Skia" />
+    <PackageReference Include="Avalonia.HarfBuzz" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Microsoft.Maui.Controls.Core" />
+    <!-- Its runtime loader, without the targets that compile an app's XAML. -->
+    <PackageReference Include="Microsoft.Maui.Controls.Xaml" ExcludeAssets="build;buildTransitive" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Passenger's requests read as every JSON-lines peer reads its messages. -->
+    <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <!-- The project's .deps.json read as every other program's JSON is. -->
+    <Compile Include="../Passenger.Core/JsonMembers.cs" Link="JsonMembers.cs" />
+    <Compile Include="../Passenger.Core/LenientJson.cs" Link="LenientJson.cs" />
+  </ItemGroup>
+</Project>

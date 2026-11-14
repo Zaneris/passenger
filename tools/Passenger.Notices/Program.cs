@@ -82,6 +82,9 @@ public sealed class Inputs
     /// <summary>The project host's .deps.json files.</summary>
     public List<string> HostDeps { get; } = [];
 
+    /// <summary>MAUI's previewer's .deps.json files.</summary>
+    public List<string> MauiPreviewDeps { get; } = [];
+
     /// <summary>Roslyn's server package's folder, and the folder its server is in.</summary>
     public string? Server { get; private set; }
 
@@ -142,6 +145,9 @@ public sealed class Inputs
                 case "host":
                     inputs.HostDeps.Add(value);
                     break;
+                case "mauipreview":
+                    inputs.MauiPreviewDeps.Add(value);
+                    break;
                 case "server":
                     inputs.Server = value;
                     break;
@@ -175,6 +181,7 @@ public static class Place
     public const string App = "the app";
     public const string Debugger = "debugger/";
     public const string Host = "host/";
+    public const string MauiPreview = "mauipreview/";
     public const string Server = "roslyn/";
     public const string Web = "web/";
     public const string Tools = "the container tools";
@@ -188,10 +195,10 @@ public sealed class Entry(string id, string version)
 
     public string Version => version;
 
-    /// <summary>The app first, then debugger/, host/ and roslyn/.</summary>
+    /// <summary>The app first, then debugger/, host/, mauipreview/ and roslyn/.</summary>
     public SortedSet<string> Places { get; } = new(Comparer<string>.Create((a, b) => Order(a).CompareTo(Order(b))));
 
-    private static int Order(string place) => Array.IndexOf([Place.App, Place.Debugger, Place.Host, Place.Server, Place.Web, Place.Tools], place);
+    private static int Order(string place) => Array.IndexOf([Place.App, Place.Debugger, Place.Host, Place.MauiPreview, Place.Server, Place.Web, Place.Tools], place);
 
     public string Copyright { get; set; } = "";
 
@@ -236,6 +243,13 @@ public static partial class NoticesFile
             foreach ((string id, string version, string? path) in Dependencies(deps))
             {
                 Restored(id, version, path, Place.Host);
+            }
+        }
+        foreach (string deps in inputs.MauiPreviewDeps)
+        {
+            foreach ((string id, string version, string? path) in Dependencies(deps))
+            {
+                Restored(id, version, path, Place.MauiPreview);
             }
         }
         foreach (string deps in inputs.ToolsDeps)
@@ -309,9 +323,9 @@ public static partial class NoticesFile
             named below, each part under its own licence:
 
             1. Packages: each with where Passenger carries it (the app; its debugger, under debugger/; its project host,
-               under host/; Roslyn's language server, under roslyn/; the npm packages of the JavaScript, TypeScript,
-               HTML, CSS and JSON language servers, under web/), the copyright its package states, and the full text
-               of its licence.
+               under host/; its .NET MAUI previewer, under mauipreview/; Roslyn's language server, under roslyn/; the
+               npm packages of the JavaScript, TypeScript, HTML, CSS and JSON language servers, under web/), the
+               copyright its package states, and the full text of its licence.
             2. The notices the packages carry of their own.
             3. Source and assets Passenger copied from other projects, and the licences of its typefaces.
 

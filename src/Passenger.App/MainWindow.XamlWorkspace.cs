@@ -81,7 +81,7 @@ public partial class MainWindow
     /// Visual Tree beside both while an app runs, shown behind, so the keys stay where they are.</summary>
     private void OpenWorkspace()
     {
-        if (!settings.XamlWorkspace || Editors.Active is not { } shown || session.Xaml.For(shown) is not { Previewed: true } xaml || !workspaced.Add(shown))
+        if (!settings.XamlWorkspace || Editors.Active is not { } shown || session.Xaml.For(shown) is not { } xaml || !workspaced.Add(shown))
         {
             return;
         }

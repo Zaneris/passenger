@@ -10,7 +10,7 @@ the solution restores, Roslyn's language server carries, the container tools car
 
 What `just publish` carries for macOS, Windows and Linux: the app, the debugger beside it under `debugger/`, the
 project host under `host/` (MSBuild's evaluation in a process of its own, run on the .NET it carries with the installed
-SDK's MSBuild, of which it carries nothing), Roslyn's language server under `roslyn/` and Passenger's own extension to
+SDK's MSBuild, of which it carries nothing), the .NET MAUI previewer under `mauipreview/` (its own process, on that .NET), Roslyn's language server under `roslyn/` and Passenger's own extension to
 it under `roslyn-extension/` (compiled against the server's assemblies and carrying none), the JavaScript, TypeScript,
 HTML, CSS, JSON, Dockerfile and YAML language servers' npm packages under `web/` (listed below), on Windows what Velopack's installer
 adds to it (`just package-win`), and in the Linux archive Passenger's own launcher, install script, desktop entry and
@@ -33,6 +33,8 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `Tmds.DBus.Protocol` | Avalonia's D-Bus client, for Linux desktops | MIT | Tom Deseyn |
 | `SkiaSharp`, `SkiaSharp.NativeAssets.macOS`, `SkiaSharp.NativeAssets.Win32`, `SkiaSharp.NativeAssets.Linux` | drawing, with Skia (BSD-3-Clause) | MIT | © Microsoft Corporation. All rights reserved. |
 | `HarfBuzzSharp`, `HarfBuzzSharp.NativeAssets.macOS`, `HarfBuzzSharp.NativeAssets.Win32`, `HarfBuzzSharp.NativeAssets.Linux` | text shaping, with HarfBuzz (Old MIT) | MIT | © Microsoft Corporation. All rights reserved. |
+| `Avalonia.Controls.Maui` | the .NET MAUI previewer (`mauipreview/`): Avalonia's backend for .NET MAUI, which draws a MAUI page's controls with Avalonia's, headless, on every system, with its own notice of the ASP.NET Core table its Essentials part derives from (Apache-2.0), which the previewer never uses | MIT | Copyright 2025-2026 © The AvaloniaUI Project |
+| `Microsoft.Maui.Controls.Core`, `Microsoft.Maui.Controls.Xaml`, `Microsoft.Maui.Core`, `Microsoft.Maui.Essentials`, `Microsoft.Maui.Graphics`, `Microsoft.Maui.Graphics.Skia` | the .NET MAUI previewer (`mauipreview/`): MAUI's controls, layout and runtime XAML loader, which a MAUI project's page is made and laid out with; with Avalonia's Skia, SkiaSharp's 4 line and HarfBuzzSharp's beside them (above), and Avalonia's own assemblies again | MIT | © Microsoft Corporation. All rights reserved. |
 | `Svg.Skia`, `Svg.Model`, `Svg.Animation`, `Svg.SceneGraph`, `ShimSkiaSharp` | an SVG file's picture beside its text, drawn with Skia | MIT | Copyright © Wiesław Šoltés 2026 |
 | `Svg.Custom` | Svg.Skia's model of an SVG document, a build of SVG.NET's (https://github.com/svg-net/SVG) | MS-PL | Copyright © Wiesław Šoltés 2026 |
 | `ExCSS` | Svg.Custom's reading of an SVG's CSS | MIT | no copyright line; its author: Tyler Brinks |
@@ -240,7 +242,7 @@ Packages the build or the tests use that no app carries.
 | `Mono.TextTemplating` | the EF Core Design package's template engine, restored for the tests' local feed | MIT | no copyright line; its author: Mikayla Hutchinson |
 | `SQLitePCLRaw.bundle_e_sqlite3`, `SQLitePCLRaw.lib.e_sqlite3`, `SQLitePCLRaw.provider.e_sqlite3` | SQLite for EF Core's SQLite provider, restored for the tests' local feed | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
 | `SQLitePCLRaw.config.e_sqlite3` | SQLite's configuration for EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | Apache-2.0 | Copyright 2014-2026 SourceGear, LLC |
-| `Microsoft.Maui.Controls`, `Microsoft.Maui.Controls.Build.Tasks`, `Microsoft.Maui.Controls.Core`, `Microsoft.Maui.Controls.Xaml`, `Microsoft.Maui.Core`, `Microsoft.Maui.Essentials`, `Microsoft.Maui.Graphics`, `Microsoft.Maui.Resizetizer` | .NET MAUI's controls and their XAML source generator, which the MAUI XAML tests' app builds against without MAUI's workload: restored for the tests' package cache (tests/MauiGraphs); Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.Maui.Controls`, `Microsoft.Maui.Controls.Build.Tasks`, `Microsoft.Maui.Resizetizer` | .NET MAUI's controls and their XAML source generator, which the MAUI XAML tests' app builds against without MAUI's workload: restored for the tests' package cache (tests/MauiGraphs); Passenger carries only the controls' own assemblies, in its MAUI previewer (above) | MIT | © Microsoft Corporation. All rights reserved. |
 | `gdUnit4.api`, `gdUnit4.test.adapter` | GdUnit4's API and its VSTest adapter, which the Godot tests write into a game: downloaded for the tests' package cache (tests/GodotGraphs); Passenger never carries them | MIT | © 2026 Mike Schulze |
 | `Chickensoft.GoDotTest` | GoDotTest, the test runner inside a Godot C# game, which the Godot tests write into a game: downloaded for the tests' package cache (tests/GodotGraphs); Passenger never carries it | MIT | © 2023 Chickensoft |
 | `Chickensoft.Log`, `Chickensoft.Collections` | GoDotTest's dependencies, downloaded for the tests' package cache (tests/GodotGraphs) | MIT | © 2025 Chickensoft |

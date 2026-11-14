@@ -4,7 +4,6 @@ using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Xaml;
-using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Features;
 using Passenger.Xaml.Localization;
 using Passenger.Xaml.Projects;
@@ -69,10 +68,6 @@ public sealed class XamlDocument : IDisposable
 
     /// <summary>Whether the project's types have been read and are XAML Passenger reads.</summary>
     public bool IsLoaded => Loading.Loaded is { IsCompletedSuccessfully: true } loaded && loaded.Result is not null;
-
-    /// <summary>Whether the file's XAML is of a dialect the previewer draws (Avalonia's, WPF's), not MAUI's; taken to be
-    /// until its project's dialect is known.</summary>
-    public bool Previewed => Loading.Builder is not { IsCompletedSuccessfully: true } made || made.Result?.Dialect is not MauiDialect;
 
     /// <summary>The problems last found in the file, each with its fix when it has one.</summary>
     public IReadOnlyList<XamlDiagnostic> Diagnostics { get; private set; } = [];

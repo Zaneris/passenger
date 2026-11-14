@@ -9,8 +9,8 @@ using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
 
-/// <summary>The XAML previewer beside the editor: View, XAML Preview shows each editor group's XAML file of an Avalonia
-/// or WPF project with its design view to its right, drawn from the project's last build by its framework's previewer
+/// <summary>The XAML previewer beside the editor: View, XAML Preview shows each editor group's XAML file of an Avalonia,
+/// WPF or .NET MAUI project with its design view to its right, drawn from the project's last build by its framework's previewer
 /// and following the text as typing pauses. Where the previewer places the file's elements, a click on one
 /// selects its start tag in the editor and the element at the caret is outlined. A file's preview is kept while the file
 /// is open and the preview on, and ends as either goes; its previewer runs while the preview is shown, or was the last
@@ -27,6 +27,9 @@ public partial class MainWindow
     private readonly Dictionary<OpenDocument, ShownPreview> previews = [];
     private bool previewing;
 
+    /// <summary>What the last MAUI page's preview was chosen to be drawn as, which each MAUI preview opened since starts as.</summary>
+    private MauiLook mauiLook = MauiLook.AsBuilt;
+
     /// <summary>Counts the times the previews shown were followed, which says the preview shown last.</summary>
     private long previewsFollowed;
 
@@ -41,18 +44,18 @@ public partial class MainWindow
         actions!.Add(new IdeAction(A.XamlPreview, "XAML Preview", "Editor", _ => TogglePreview())
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
-                : session.Xaml.For(context.File) is not { Previewed: true } ? "The previewer is for the XAML of an Avalonia or WPF project" : null,
+                : session.Xaml.For(context.File) is null ? "The previewer is for the XAML of an Avalonia, WPF or .NET MAUI project" : null,
             IsChecked = _ => previewing,
             Menus = [new MenuPlace("View", 4, 0)],
         });
         actions.Add(new IdeAction(A.BuildForPreview, XamlPreviewPane.BuildForPreviewTitle, "Editor", context => IdeErrors.Observe(BuildForPreviewAsync(context.File!)))
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
-                : session.Xaml.For(context.File) is not { Previewed: true } || ProjectModel.Owning(session.Projects, context.File.Path) is null ? "The previewer is for the XAML of an Avalonia or WPF project"
+                : session.Xaml.For(context.File) is null || ProjectModel.Owning(session.Projects, context.File.Path) is null ? "The previewer is for the XAML of an Avalonia, WPF or .NET MAUI project"
                 : null,
             Words = ["preview", "build", "framework"],
         });
-        Editors.HasXamlPreview = document => session.Xaml.For(document) is { Previewed: true };
+        Editors.HasXamlPreview = document => session.Xaml.For(document) is not null;
         Editors.PreviewToggleClicked += (_, group) => Request(group.PreviewAction ?? A.XamlPreview);
         Editors.ActiveChanged += (_, _) => FollowPreviews();
         Editors.Closed += (_, document) => EndPreview(document);
@@ -175,8 +178,9 @@ public partial class MainWindow
         {
             return kept.Pane;
         }
-        XamlPreview preview = new(document) { ProgramsRunning = ProgramsRunning };
+        XamlPreview preview = new(document) { ProgramsRunning = ProgramsRunning, Look = mauiLook };
         XamlPreviewPane pane = new(preview);
+        pane.LookChosen += (_, look) => mauiLook = look;
         pane.ElementChosen += (_, element) => ChooseInEditor(pane, element);
         pane.ActionRequested += (_, action) => Request(action);
         preview.Changed += (_, _) => OutlineAtCaret(pane, preview);
