@@ -345,7 +345,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   writes no scoped CSS bundle once a project has no sheet left. Razor forwards `_vs_onAutoInsert` to the client's HTML
   only for `=`: its `>` is Razor's own answer, its `</` closed over its HTML.
 - **Build and run.** The build configuration and platform are one choice (`BuildConfigurationChoices`, `WorkspaceModel.Build`):
-  command lines take it through `WorkspaceModel.BuildArgumentsFor`, evaluations through `ProjectModels.Properties`/`Each`;
+  command lines take it through `WorkspaceModel.BuildArgumentsFor` (a publish building as the folder builds through `PublishArgumentsFor`), evaluations through `ProjectModels.Properties`/`Each`;
   never a `-c` written anywhere else. Godot runs only a game's Debug build (`GodotLaunch.RunsConfiguration`).
   `BuildRunController`, every console through `ConsoleSink.PumpAsync`, `LaunchPlan` (one resolution
   for Run, Debug, Profile, Hot Reload and a debugged test host), `UpToDate`; a Passenger it launches keeps its state in
@@ -357,7 +357,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   solution's multi-project launch profiles live only in Visual Studio's `.slnLaunch`/`.slnLaunch.user` beside it
   (`SolutionLaunch`, written as text where each stands), each project started as its own configuration
   (`RunConfigurations.ProjectOf`). What a mobile project needs is asked of its own workloads (`MobileQuestions`, said by `MobileBanner`), and a workload
-  installed reloads every project (`ProjectHosts.EndUnderAsync`, `ProjectModels.EvaluateAll`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`), its target chosen per project; a launch profile naming one platform belongs to it (`DeviceTargets.TiedTo`), taken by the project's configuration where that platform is the target, never a configuration of its own;
+  installed reloads every project (`ProjectHosts.EndUnderAsync`, `ProjectModels.EvaluateAll`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`), where a project runs one answer (`DeviceChoices.InForce`); a launch profile naming one platform belongs to it (`DeviceTargets.TiedTo`), taken by the project's configuration where that platform is the target, never a configuration of its own;
   Android's only through the workload's `ComputeAvailableDevices`, `DeployToDevice` and `ComputeRunArguments`, adb through
   `ChildProcesses`.
 - **Runs of services.** `ServiceRun` is the one model: Debug, Attach, Restart and Profile written once; one start at a
@@ -380,7 +380,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   asked: without the plugin docker answers `scout … --format` with "unknown flag", so find it by `docker scout version`.
   docker exec's end ends nothing it started, only closing its standard input; a container's first process takes no
   SIGKILL from inside it, so Stop lets one attached to go (`ManagedDebugger.Unending`).
-- **Aspire.** `AspireController` checks bearer tokens first; deploy logins are read from each tool's files, never by
+- **Aspire.** `AspireController` checks bearer tokens first; an AppHost's Functions app runs through `func start`, the debugger attached to the worker func starts (`FunctionsHost`); deploy logins are read from each tool's files, never by
   running a cloud CLI; metrics only while shown. MetricsEventSource's CollectionStart and Stop reach TraceEvent as
   `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
@@ -406,7 +406,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   Testing Platform host through `PlatformRunSettings`, never `--settings`. VSTest ends a discovery at the first assembly
   whose test host cannot start, so each it did not look through whole is asked again alone; an assembly a runner could
   not look through is an `UnfoundTests`, said wherever its tests are missed.
-- **The rest.** `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
+- **The rest.** a project's transitive packages come from its assets file (`RestoredVersions.Transitive`, `FolderPackages.TransitiveAsync`), never a restore; `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
   only to their feed's host); under central package management Passenger writes each version where the evaluation keeps
   it (`CentralWrites`), never dotnet add package, which drops a props file's blank lines and turns a property to a literal;
   EF Core's own packages move as one set, another maker's provider only when asked (`MigrationsController.UpdateAsync`);
@@ -628,7 +628,7 @@ a new name, and `just site-shots` retakes its images.
   `poll` never says a named pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `Screen.Scaling` is 1
   on Retina, so a pixel size goes with `RenderScaling`, and Avalonia's `PointToScreen` is in points whatever its
   `PixelPoint` says; `codesign` takes a dotted folder under `Contents/MacOS` for a bundle (so the web servers live in
-  Resources); TMPDIR goes through the /var link, so build a test's project by its real path (two spellings restored at
+  Resources); TMPDIR goes through the /var link, so build or restore a test's project by its real path (a restore by /var writes an assets file with no projectReferences) (two spellings restored at
   once collide).
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (dotnet/runtime#136577), so a folder is
   watched only through `WatchedTree`, never a bare `FileSystemWatcher` (#607, #609); settings.json, watched alone, is
@@ -808,7 +808,7 @@ to the window's tests.
   `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name), `Grey` (greyed, its tip saying why); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
   `MutedText`; `ListKeys.Move`; `Plural.Of`/`Listed`; `Border.kindBadge`/`tag`/`box` (never a literal radius);
   `RunRows`; `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
-  `ToolWindows.FilterBox`; `ToolFlow`; `PaneSplit`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
+  `ToolWindows.FilterBox`; `FilterMenu` (a list's Sort and Filter, placed in its search); `DropDownSearch` (every ComboBox's search, never per control); `ToolFlow`; `PaneSplit`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
   `ReusedRows` (`Use`, `Showing`); `RowIcon` and `RowGlyphs`, drawn as `PathIcon` draws for a fraction of its cost,
   never `PathIcon` (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, its least size that times the display
