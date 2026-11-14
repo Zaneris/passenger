@@ -453,7 +453,11 @@ a new name, and `just site-shots` retakes its images.
   second each, before any answer needing the compilation (dotnet/roslyn#86236). A reload adds new files before it drops
   those gone, and the solution finds a path's documents ignoring case: a file renamed in letter case alone loads first
   without it (`Recased`), and a document found by path is checked with `PathNames.Same`.
-- **Roslyn's server reruns every project's generators** a second after its projects load and for each 5 s batch of
+- **Roslyn's server reruns a project's generators 1.5 s after a load changes its analyzers**, answering for their code as
+  made before until then: whether the queued runs have run is asked of the extension (`RoslynSession.GeneratorsRunAsync`),
+  never read from a diagnostics refresh, which comes 2 s after a batch's first change and so may be of changes before the
+  load. A server taken up from the head start is ready only once what it said before then has landed on the window's
+  thread (`CSharpService.Heard`). It reruns every project's generators a second after its projects load and for each 5 s batch of
   `.dll` changes under .NET's packs folders, which moves every project's version, then says its diagnostics may have changed (`LanguageServer.RefreshedNote` in its log, from the server's start where an `--mcp` lsp.log begins only with the window's settings), bringing no pull of a file no tab shows: solution-wide analysis drops a pull
   under way at the server's diagnostic refresh (`CSharpService.SolutionMoved`), and its first round ends at the
   extension's word that it analysed everything, never at the answer. A change under such a `**/*.dll` watch reaches the server only for a

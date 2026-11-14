@@ -1661,3 +1661,12 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   2,000 files' searches did; alone the search costs about 350 to 430 bytes a file more. Started beside it on purpose it
   failed 3 of 3 on the Mac with CI's words. It runs alone now (`FindInFilesBytesTests`), its bound as it was, as does
   `GitFileFormsTests`' 100 MB binary file's measure (`GitFileFormsBytesTests`) (#1649).
+- `McpNavigationTests`' `Definition_of_a_maui_pages_initialize_component_answers_the_generators_declaration_in_a_copy_of_its_code`,
+  the Mac under a three-process run of the MCP, logs and settings classes (#1640): "No symbol at MainPage.xaml.cs:9:9, and
+  line 9 declares none". **Two races in the IDE.** After the server's load again with what its restore brought, an agent's
+  question waited for the server's next word that its diagnostics moved, taken as the sign the generators had run; the
+  server sends that word 2 s after a batch's first change and runs the generators 1.5 s after the load, so a word of
+  changes before the load, heard 6 to 82 ms after it, let the question through before MAUI's generator ran (5 of 40 in a
+  loop). The extension now answers once the generators' queued runs have run (`GeneratorsRun`). And a window taking up a
+  server started ahead that had already restored was ready before it heard what the server said meanwhile; C# is now
+  ready only once those words have landed (`CSharpService.Heard`). Each has a test that failed before its fix (#1640).
