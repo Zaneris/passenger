@@ -631,12 +631,12 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     public async Task A_second_diagnostics_of_an_unchanged_file_answers_from_the_servers_last_pull_sending_none()
     {
         await TakeFolderAsync();
-        await using McpClient client = await Start(["--mcp", Folder]);
-        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["traceProtocols"] = true } });
+        await using McpClient client = await StartTracedAsync();
         string first = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
         Assert.Contains("unused", first, StringComparison.Ordinal);
         string trace = Path.Combine(OwnState, "logs", "lsp.log");
-        // The window's own pulls of the file just opened, and one a refresh of the server's as it read the file brings, come first.
+        // The window's own pulls of the file just opened come first, then the server's word after its load: the ask after that word pulls again.
+        await MovedAfterLoadAsync();
         await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" });
         int pulls = -1;
         for (int round = 0; round < 20 && Pulls(trace, "Helper.cs") != pulls; round++)
@@ -658,13 +658,13 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     public async Task Diagnostics_asked_again_after_a_completion_answer_from_the_pull_before_it_sending_none()
     {
         await TakeFolderAsync();
-        await using McpClient client = await Start(["--mcp", Folder]);
-        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["traceProtocols"] = true } });
+        await using McpClient client = await StartTracedAsync();
         await Call(client, McpTools.Open, new() { ["path"] = "Helper.cs", ["line"] = 6, ["column"] = 16 });
         string first = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
         Assert.Contains("unused", first, StringComparison.Ordinal);
         string trace = Path.Combine(OwnState, "logs", "lsp.log");
-        // The window's own pulls of the file just opened, and one a refresh of the server's as it read the file brings, come first.
+        // The window's own pulls of the file just opened come first, then the server's word after its load: the ask after that word pulls again.
+        await MovedAfterLoadAsync();
         await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" });
         int pulls = -1;
         for (int round = 0; round < 20 && Pulls(trace, "Helper.cs") != pulls; round++)
@@ -729,6 +729,42 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             int offset = text.IndexOf(what, StringComparison.Ordinal) + into;
             return (text[..offset].Count(c => c == '\n') + 1, offset - text.LastIndexOf('\n', offset - 1));
         }
+    }
+
+    /// <summary>Passenger started as the agent's server over the Sum project, tracing what it says to its language servers
+    /// (lsp.log) from the moment its window takes its settings.</summary>
+    private async Task<McpClient> StartTracedAsync()
+    {
+        File.WriteAllText(Path.Combine(OwnState, StateStore.SettingsFile), new System.Text.Json.Nodes.JsonObject
+        {
+            ["version"] = global::Passenger.App.Settings.AppSettings.Upgrades.Count,
+            ["traceProtocols"] = true,
+        }.ToJsonString());
+        return await Start(["--mcp", Folder]);
+    }
+
+    /// <summary>Waits until the C# server's log, kept from its start, notes its word that its diagnostics may have changed
+    /// since it last said its projects loaded: it runs its generators again a second after a load, then says so, and from
+    /// that word on, while nothing else changes, a pull it answered stands.</summary>
+    private async Task MovedAfterLoadAsync()
+    {
+        string folder = Path.Combine(OwnState, "logs", "roslyn");
+        string[] said = [];
+        Assert.True(await Waiting.UntilAsync(() =>
+            {
+                said = Directory.Exists(folder) && Directory.EnumerateFiles(folder, "server-*.log").Order(StringComparer.Ordinal).LastOrDefault() is { } log ? TraceLines(log) : [];
+                int loaded = Array.FindLastIndex(said, l => l.TrimEnd().EndsWith(Passenger.Lsp.LanguageServer.LoadedNote, StringComparison.Ordinal));
+                return loaded >= 0 && said.Skip(loaded + 1).Any(l => l.TrimEnd().EndsWith(Passenger.Lsp.LanguageServer.RefreshedNote, StringComparison.Ordinal));
+            }, TimeSpan.FromSeconds(30).Scaled(), Cancel),
+            $"The C# server never said its diagnostics may have changed after it last said its projects loaded, as it does once its generators have run again; its log:\n{string.Join('\n', said.TakeLast(20))}");
+    }
+
+    /// <summary>A log's lines as they stand, the file read however Passenger holds it.</summary>
+    private static string[] TraceLines(string trace)
+    {
+        using FileStream read = new(trace, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using StreamReader reader = new(read);
+        return reader.ReadToEnd().Split('\n');
     }
 
     /// <summary>How many pulls of a file's diagnostics lsp.log's trace says the language server was sent.</summary>

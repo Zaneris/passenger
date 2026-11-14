@@ -291,6 +291,13 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>A line of the client's own in the server's log, timed as the server's are.</summary>
     internal void Note(string line) => log.Write($"{DateTime.Now:HH:mm:ss.fff} {line}");
 
+    /// <summary>What the server's log notes as the server says its projects loaded.</summary>
+    public const string LoadedNote = "The server said its projects loaded";
+
+    /// <summary>What the server's log notes as the server says its diagnostics may have changed, every pull before it standing
+    /// for nothing (<see cref="Changes"/>).</summary>
+    public const string RefreshedNote = "The server said its diagnostics may have changed";
+
     /// <summary>Why Passenger's extension to the server (<see cref="RoslynExtension"/>) cannot be asked, or null when every
     /// handler of it is active.</summary>
     public string? ExtensionProblem { get; private set; } = "the C# language server has not started";
@@ -1709,6 +1716,7 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.ProjectInitializationComplete)]
         public void ProjectsLoaded(JsonElement? message = null)
         {
+            Owner?.Note(LoadedNote);
             Owner?.Changing(LspMethods.ProjectInitializationComplete);
             Owner?.WatchedFiles.Loaded();
             Owner?.ProjectsLoaded?.Invoke(Owner, EventArgs.Empty);
@@ -1743,6 +1751,7 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.DiagnosticRefresh)]
         public object? RefreshDiagnostics(JsonElement? request = null)
         {
+            Owner?.Note(RefreshedNote);
             Owner?.Changing(LspMethods.DiagnosticRefresh);
             Owner?.DiagnosticsRefreshRequested?.Invoke(Owner, EventArgs.Empty);
             return null;
