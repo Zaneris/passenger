@@ -173,6 +173,18 @@ public sealed class CommandLineTests : IDisposable
             $"A click on a name no control has was to end the screenshot with exit code 2 saying so; it exited {code} and wrote:\n{error}");
     }
 
+    /// <summary>A screenshot's picture is of the dialog its steps left in front, so a crop that fits the main window but
+    /// reaches past that dialog ends it with exit code 2, saying so, and writes no picture.</summary>
+    [Fact]
+    public async Task A_crop_reaching_past_the_dialog_the_steps_left_in_front_ends_the_screenshot_with_exit_code_2_saying_so()
+    {
+        string settingsKey = OperatingSystem.IsMacOS() ? "meta+comma" : "ctrl+alt+s";
+        (int code, string error) = await Run($". --key {settingsKey} --size 1600x1000 --scale 1 --crop 0,950,800,40 --screenshot cut.png");
+        Assert.True(code == 2 && error.Contains("screenshot: --crop 0,950,800,40 reaches past the", StringComparison.Ordinal)
+            && error.Contains("window the steps left in front (Settings)", StringComparison.Ordinal) && !File.Exists(Path.Combine(folder, "cut.png")),
+            $"A crop past the Settings dialog in front was to end the screenshot with exit code 2 saying so; it exited {code} and wrote:\n{error}");
+    }
+
     /// <summary>The headless capture has none of the system's chrome, so on macOS the traffic lights are missing unless
     /// --window-buttons draws them, where macOS puts them on the merged bar, at any scale. Windows and Linux draw the bar's
     /// own buttons, so there the flag changes nothing. The places and colours are AppKit's own drawing of an active Dark

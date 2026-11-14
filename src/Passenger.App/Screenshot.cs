@@ -44,9 +44,26 @@ public static class Screenshot
         window.OpenOnNamedSettings(launch, Settings.SettingsStore.KeptWhereNamed());
         window.SetRenderScaling(options.Scale);
         bool settled;
+        Avalonia.Controls.Window front;
         try
         {
             settled = Prepare(window, launch, options.Steps);
+            // A diff or a dialog the steps opened is what the person would be looking at, drawn at the window's scale.
+            front = window.Frontmost;
+            if (front != window)
+            {
+                front.SetRenderScaling(options.Scale);
+                settled &= Settle();
+            }
+            else if (options.WindowButtons && window.DrawTrafficLights())
+            {
+                settled &= Settle();
+            }
+            if (options.Crop is { } crop && front != window && (crop.Right > front.ClientSize.Width || crop.Bottom > front.ClientSize.Height))
+            {
+                throw new StepRefused(FormattableString.Invariant(
+                    $"--crop {crop.X},{crop.Y},{crop.Width},{crop.Height} reaches past the {front.ClientSize.Width}x{front.ClientSize.Height} window the steps left in front ({front.Title}), which the picture is of"));
+            }
         }
         catch (StepRefused refused)
         {
@@ -58,17 +75,6 @@ public static class Screenshot
             return 2;
         }
 
-        // A diff or a dialog the steps opened is what the person would be looking at, drawn at the window's scale.
-        Avalonia.Controls.Window front = window.Frontmost;
-        if (front != window)
-        {
-            front.SetRenderScaling(options.Scale);
-            settled &= Settle();
-        }
-        else if (options.WindowButtons && window.DrawTrafficLights())
-        {
-            settled &= Settle();
-        }
         WriteableBitmap frame = front.CaptureRenderedFrame()
             ?? throw new InvalidOperationException("The headless window rendered no frame.");
         using (frame)
