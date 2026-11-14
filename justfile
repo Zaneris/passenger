@@ -14,9 +14,10 @@ export MSBUILDUSESERVER := "0"
 # The checkout as the disk names it, for recipes' shells and dotnet, which take a PWD naming their folder as its path.
 export PWD := justfile_directory()
 
-# Build everything (Debug). Warnings are errors.
+# Build everything (Debug). Warnings are errors. Its MSBuild nodes end with it, as several worktrees' idle ones held
+# gigabytes between builds.
 build:
-    dotnet build
+    dotnet build -nodeReuse:false
 
 # The suite dealt to several test processes at once, then the Alone classes in one (tools/test-run.py; results in
 # artifacts/test-results/local). PROCESSES is PASSENGER_TEST_PROCESSES by default, else a quarter of the processors, at
