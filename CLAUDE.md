@@ -302,7 +302,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
   on attach (a split rebuilds the frame).
-- **C#.** `CSharpService`, `CodeAssist`; completion ranks through `CompletionRanking` (how well an item fits from Roslyn's `MatchPriority` through the extension's `passenger/completion`, `CompletionPriorities` runs beside the items, ranked within a way of matching, `FuzzyMatch.LabelWay`); a C# list comes in two parts, what is in scope then the types of namespaces not imported (`CompletionParts`, `LaterCompletions`, the later part's sort texts after the first's by `CompletionOrder.Later`, a list waiting for it open with no row, `Completion.Coming`), and the popup is laid out ahead as the window opens (`CompletionPopup.LayOutAhead`) and held to the editor's width (`CompletionPopup.Within`) (its order held equal to scoring
+- **C#.** `CSharpService`, `CodeAssist`; completion ranks through `CompletionRanking` (how well an item fits from Roslyn's `MatchPriority` through the extension's `passenger/completion`, `CompletionPriorities` runs beside the items, ranked within a way of matching, `FuzzyMatch.LabelWay`); a C# list comes in two parts, what is in scope then the types of namespaces not imported (`CompletionParts`, `LaterCompletions`, the later part's sort texts after the first's by `CompletionOrder.Later`, a list waiting for it open with no row, `Completion.Coming`), and the popup is laid out ahead as the window opens (`CompletionPopup.LayOutAhead`) and held to the editor's width (`CompletionPopup.Within`), as every card placed at a line (`PopupPlacement.Place` → `InfoCard.Within(Widest)`) and a value card (`QuickInfo.PlaceValues`) are (its order held equal to scoring
   afresh by `CompletionRankingTests`) and reads an answer once (`CompletionAnswer`, list defaults by `WithDefaults`); each language's answers a `LanguageAssist` in `LanguageAssists`' one order. A
   server's edit to a file written moments before waits for the server to read it (`WorkspaceEdits`); one written as it
   worked is refused. A generated document is never opened in the server (it would freeze its text into the compilation):
@@ -316,7 +316,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   solution-wide analysis pulls in it through the extension (`ChosenFrameworksHandler`), its reports kept by project:
   Roslyn's own `workspace/diagnostic`, pulled only without the extension, analyses every framework and names no
   project. A C# file no tab shows is pulled when shown or asked, never at a refresh. Edits added to a server's edit join
-  that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command runs through
+  that file's entry (`TypeRename.With`): `documentChanges` apply in order. A whole-project read in the extension keeps each document's result through `DocumentReadsKept` (its text, parse options and the project's dependent semantic version), never the project's version alone, a reader binding only what its syntax and the compilation's references allow. A server's own command runs through
   `ServerCommands`, its `workspace/applyEdit` one command of Undo; a code action's edit through
   `CodeActions.ApplyEditAsync`, so a type it renames takes its files along as Rename's (`TypeRename.RenamedByAsync`).
 - **Godot code.** `GodotScenes`, `GodotSceneIndex` (never a walk of every file on the window's thread; an autoload by
@@ -356,7 +356,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   solution build's output is evaluated with them (the host's `SolutionBuild`, `WorkspaceModel.BuiltSolution`). A
   solution's multi-project launch profiles live only in Visual Studio's `.slnLaunch`/`.slnLaunch.user` beside it
   (`SolutionLaunch`, written as text where each stands), each project started as its own configuration
-  (`RunConfigurations.ProjectOf`). What a mobile project needs is asked of its own workloads (`MobileQuestions`, said by `MobileBanner`; an Apple project's simulator runtimes of the workload's own Xcode's `simctl`), and a workload
+  (`RunConfigurations.ProjectOf`). Whether this machine builds Android apps is `AndroidHosts` (Linux on any processor but x64 builds none; an installed pack's aapt2 answers for itself); a workload install's downloads and words go through `WorkloadInstalls`. What a mobile project needs is asked of its own workloads (`MobileQuestions`, said by `MobileBanner`; an Apple project's simulator runtimes of the workload's own Xcode's `simctl`), and a workload
   installed reloads every project (`ProjectHosts.EndUnderAsync`, `ProjectModels.EvaluateAll`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`; the inspector and relay put in `files/.passenger` by `PutInspectorAsync`/`PutRelayAsync`, never over the app's own assemblies, reached through `adb forward`; its end registered with `ProjectSession.EndsOnDevices`, never left to a session's end event), where a project runs one answer (`DeviceChoices.InForce`); a launch profile naming one platform belongs to it (`DeviceTargets.TiedTo`), taken by the project's configuration where that platform is the target, never a configuration of its own;
   Android's only through the workload's `ComputeAvailableDevices`, `DeployToDevice` and `ComputeRunArguments`, adb through
   `ChildProcesses`.
@@ -577,7 +577,7 @@ a new name, and `just site-shots` retakes its images.
   after 10 s).
 - **Godot's game.** Stop ends a game before its debug session: wait for the session too; a session is ended once its
   adapter says so or its process is gone after Exited without Terminated (`ProgramGone`). An agent's call on a game has
-  one limit (`GodotGame.Within`); app_ tools wait for the first scene, no evaluation; on a device the inspector's hello comes before the activity's view, so app_ tools wait for its first top level (`ViewShownAsync`). The frame counter runs on while
+  one limit (`GodotGame.Within`); app_ tools wait for the first scene, no evaluation; an answer about a run whose app's inspector ended waits for the run's own end, heard after it; on a device the inspector's hello comes before the activity's view, so app_ tools wait for its first top level (`ViewShownAsync`). The frame counter runs on while
   paused: count the helper's frames. Node selection, once set up, takes the game's clicks until turned off; 4.8 renamed
   `runtime_node_select_set_type` to `set_node_type` and a game passes over one it lacks (`GodotPicks.TypeMessages`); the
   Live tree's follow keeps its own count and never drops a refresh's answer. Godot reads the debugger's messages between
