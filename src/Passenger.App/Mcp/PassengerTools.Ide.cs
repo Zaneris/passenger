@@ -47,8 +47,12 @@ public sealed partial class PassengerTools
             Type type = Nullable.GetUnderlyingType(p.Value.PropertyType) ?? p.Value.PropertyType;
             (double Min, double Max)? range = SettingRange(p.Key, p.Value);
             (IReadOnlyList<string> Choices, string? Note)? font = fonts.TryGetValue(p.Value.Name, out (IReadOnlyList<string>, string?) offered) ? offered : null;
-            IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type) : font?.Choices;
-            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max) { Note = font?.Note ?? ThemeNote(p.Value.Name) ?? ThemesUntilSet(own[p.Key], values[p.Key]) };
+            bool vimKeys = p.Value.Name == Declared.VimKeysToKeymap.Property;
+            IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type) : vimKeys ? VimKeysSetting.Keys : font?.Choices;
+            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max)
+            {
+                Note = font?.Note ?? ThemeNote(p.Value.Name) ?? (vimKeys ? VimKeysNote() : null) ?? ThemesUntilSet(own[p.Key], values[p.Key]),
+            };
         })]);
     });
 
@@ -102,6 +106,11 @@ public sealed partial class PassengerTools
             return new SettingChange(name, JsonSerializer.SerializeToElement(was[name]), JsonSerializer.SerializeToElement(shown[name]), note ?? ThemesUntilSet(now[name], shown[name]));
         })]);
     });
+
+    /// <summary>How the Ctrl keys Vim mode shares with the keymap are given, and what each does on either side.</summary>
+    private string VimKeysNote() =>
+        "the keys the keymap takes from Vim mode, any of choices with a space between each, the rest Vim mode's: "
+        + VimKeysSetting.Described(stroke => SettingsDialog.KeymapDoes(window.Actions, stroke));
 
     /// <summary>What says a value in force is the theme's, where the person's own is unset.</summary>
     private static string? ThemesUntilSet(JsonNode? own, JsonNode? inForce) =>

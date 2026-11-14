@@ -130,6 +130,10 @@ public static class Declared
     public static readonly ToggleSetting VimMode = new(s => s.VimMode, (s, v) => s with { VimMode = v },
         new(D.EditorPage, "Vim mode", "vim vi modal normal insert keys emulation"));
 
+    public static readonly VimKeysSetting VimKeysToKeymap = new(nameof(AppSettings.VimKeysToKeymap), s => s.VimKeysToKeymap, (s, v) => s with { VimKeysToKeymap = v },
+        new(D.EditorPage, "Vim mode's Ctrl keys", "vim keys ctrl control conflict keymap redo visual block jump back forward older newer",
+            "Each key does what Vim mode does with it, or what the keymap does.") { When = new(s => s.VimMode, "Vim mode is off") });
+
     public static readonly ToggleSetting CloseTags = new(s => s.CloseTags, (s, v) => s with { CloseTags = v },
         new(D.EditorPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html razor blazor msbuild elements"));
 

@@ -308,7 +308,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.ShowLineNumbers);
         Add(Declared.RainbowBraces);
         Add(Declared.VimMode);
-        AddVimKeys();
+        Add(Declared.VimKeysToKeymap, Declared.VimKeysToKeymap.Box(Working, Change, stroke => KeymapDoes(actions, stroke)));
         Add(Declared.CloseTags);
         Add(Declared.XamlWorkspace);
         Add(Declared.SolutionWideAnalysis);
@@ -438,10 +438,12 @@ public sealed partial class SettingsDialog : IdeWindow
     }
 
     /// <summary>A declared setting's own row, on its page, its editor made from the declaration.</summary>
-    private void Add(Setting setting)
+    private void Add(Setting setting) => Add(setting, setting.Editor(Working, Change));
+
+    /// <summary>A declared setting's own row, its editor made by the dialog round what only the dialog knows.</summary>
+    private void Add(Setting setting, Control editor)
     {
         SettingRow row = setting.Row ?? throw new ArgumentException("A setting with no row of its own goes in a row the dialog builds", nameof(setting));
-        Control editor = setting.Editor(Working, Change);
         Add(row.Page, row.Label, editor, row.Words, row.Note);
         if (row.When is { } when)
         {

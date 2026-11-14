@@ -171,11 +171,4 @@ public sealed partial class SettingsDialog
         ThemeSourceWords.Classes.Set(StyleClasses.Error, problem);
         ThemeSourceWords.Classes.Set(StyleClasses.Muted, !problem);
     }
-
-    /// <summary>A declared setting's own row, its editor made by the dialog.</summary>
-    private void Add(Setting setting, Control editor)
-    {
-        SettingRow row = setting.Row ?? throw new ArgumentException("A setting with no row of its own goes in a row the dialog builds", nameof(setting));
-        Add(row.Page, row.Label, editor, row.Words, row.Note);
-    }
 }

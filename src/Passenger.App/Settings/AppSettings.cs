@@ -89,12 +89,8 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     public bool VimMode { get; init; }
 
     /// <summary>Vim mode's Ctrl keys (<see cref="Passenger.Editor.Vim.CtrlKeys"/>) the keymap takes instead, by Vim's names ("&lt;C-r&gt;"),
-    /// a space between each; Vim mode takes those not named.</summary>
+    /// a space between each; Vim mode takes those not named (<see cref="Declared.VimKeysToKeymap"/>).</summary>
     public string VimKeysToKeymap { get; init; } = string.Empty;
-
-    /// <summary>The keys <see cref="VimKeysToKeymap"/> names, those Vim mode has.</summary>
-    public IReadOnlySet<string> VimKeymapKeys() =>
-        VimKeysToKeymap.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(k => Passenger.Editor.Vim.CtrlKeys.Any(c => c.Key == k)).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>In XAML, XML, MSBuild's files and HTML, a start tag's '>' writes its end tag after the caret, and "&lt;/"
     /// the open element's name.</summary>

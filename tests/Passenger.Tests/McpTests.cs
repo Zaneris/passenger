@@ -977,6 +977,31 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(WindowFontNames.SystemUi, system.GetProperty("after").GetString());
     }
 
+    /// <summary>settings lists the Ctrl keys Vim mode may give the keymap, saying what each does on either side; settings_set
+    /// gives one to the keymap as Settings does and refuses a key Vim mode has no say over, nothing changed.</summary>
+    [Fact]
+    public async Task Settings_lists_the_ctrl_keys_vim_mode_may_give_the_keymap_and_settings_set_gives_one_as_settings_does()
+    {
+        string folder = TestFolders.Create("mcp-vimkeys-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement listed = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "vimKeysToKeymap");
+        Assert.True(listed.GetProperty("choices").EnumerateArray().Select(c => c.GetString()).SequenceEqual(["<C-r>", "<C-v>", "<C-o>", "<C-i>"]),
+            $"settings listed Vim mode's Ctrl keys as: {listed.GetRawText()}");
+        Assert.True(listed.GetProperty("note").GetString()!.Contains("<C-v> (Vim mode: Visual block mode; keymap: ", StringComparison.Ordinal),
+            $"settings said nothing of what each Ctrl key does on either side: {listed.GetRawText()}");
+
+        CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-v> <C-x>" } });
+        Assert.True(refused.IsError == true && Text(refused).Contains("Vim mode's Ctrl keys (Settings | Editor) has no key <C-x>", StringComparison.Ordinal),
+            $"settings_set of a Ctrl key Vim mode does not give answered: {Text(refused)}");
+        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-o> <C-v>" } })).EnumerateArray());
+        Assert.True((changed.GetProperty("before").GetString(), changed.GetProperty("after").GetString()) == ("", "<C-o> <C-v>")
+            && (!changed.TryGetProperty("note", out JsonElement note) || note.ValueKind == JsonValueKind.Null),
+            $"settings_set giving the keymap Ctrl+O and Ctrl+V answered: {changed.GetRawText()}");
+        JsonElement read = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "vimKeysToKeymap");
+        Assert.Equal("<C-o> <C-v>", read.GetProperty("value").GetString());
+    }
+
     /// <summary>settings says how an agent names a theme, by its source and name, and some of Passenger's themes
     /// repository's; settings_set takes one of them, which the windowless Passenger fetches and keeps.</summary>
     [Fact]

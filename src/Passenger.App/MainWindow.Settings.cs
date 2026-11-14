@@ -231,7 +231,7 @@ public partial class MainWindow
         editor.ShowTypeHints = with.TypeHints;
         editor.RainbowBraces = with.RainbowBraces;
         editor.UsesVim = with.VimMode;
-        editor.VimLeavesKeys = with.VimKeymapKeys();
+        editor.VimLeavesKeys = Declared.VimKeysToKeymap.Given(with);
         editor.ClosesTags = with.CloseTags;
         editor.WrapIndent = with.SoftWrapIndent;
         editor.ZoomsWithWheel = with.WheelZoom;

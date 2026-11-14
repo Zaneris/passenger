@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Settings;
@@ -194,6 +195,74 @@ public sealed class ThemedChoiceSetting<T>(Func<AppSettings, T?> own, Func<AppSe
     public override AppSettings Clamp(AppSettings settings) => own(settings) is { } chosen && !Enum.IsDefined(chosen) ? set(settings, null) : settings;
 
     public override AppSettings FilledIn(AppSettings settings) => own(settings) is null ? set(settings, inForce(settings)) : settings;
+}
+
+/// <summary>Vim mode's Ctrl keys (<see cref="Vim.CtrlKeys"/>), each Vim mode's or the keymap's: the setting names those the
+/// keymap takes by Vim's names ("&lt;C-v&gt;"), a space between each, edited by a drop-down per key naming what each side
+/// does with it. A name that is none of the keys is refused, saying which there are; one read from settings.json is
+/// passed over.</summary>
+public sealed class VimKeysSetting(string property, Func<AppSettings, string> get, Func<AppSettings, string, AppSettings> set, SettingRow row) : Setting(row)
+{
+    /// <summary>The AppSettings property it reads.</summary>
+    public string Property => property;
+
+    /// <summary>The keys it gives, by Vim's names, in Settings' order.</summary>
+    public static IReadOnlyList<string> Keys { get; } = [.. Vim.CtrlKeys.Select(k => k.Key)];
+
+    /// <summary>The keys the keymap takes, of those it gives alone.</summary>
+    public IReadOnlySet<string> Given(AppSettings settings) => Named(get(settings)).Where(Keys.Contains).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>What a person presses for a key it gives: Ctrl and the key's letter.</summary>
+    public static Keystroke StrokeOf(string key) => new(Avalonia.Input.Key.A + (key[3] - 'a'), Avalonia.Input.KeyModifiers.Control);
+
+    public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) => Box(now, change, _ => null);
+
+    /// <summary>The rows alone, a key's keymap side naming what <paramref name="keymapDoes"/> says the keymap in force does
+    /// with it (null to name nothing), for the dialog, which knows that keymap.</summary>
+    public StackPanel Box(AppSettings now, Action<Func<AppSettings, AppSettings>> change, Func<Keystroke, string?> keymapDoes)
+    {
+        StackPanel rows = new() { Spacing = 4 };
+        IReadOnlySet<string> given = Given(now);
+        foreach ((string key, string does) in Vim.CtrlKeys)
+        {
+            Keystroke stroke = StrokeOf(key);
+            ComboBox choice = new()
+            {
+                ItemsSource = new[] { $"Vim mode: {does}", keymapDoes(stroke) is { } keymaps ? $"Keymap: {keymaps}" : "Keymap" },
+                SelectedIndex = given.Contains(key) ? 1 : 0,
+                Classes = { StyleClasses.Form },
+            };
+            choice.SelectionChanged += (_, _) => change(s => set(s, Joined(Given(s), key, choice.SelectedIndex == 1)));
+            Avalonia.Automation.AutomationProperties.SetName(choice, stroke.Display());
+            rows.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children = { new TextBlock { Text = stroke.Display(), MinWidth = 56, VerticalAlignment = VerticalAlignment.Center }, choice },
+            });
+        }
+        return rows;
+    }
+
+    /// <summary>What each key does on either side, as an agent is told it: "&lt;C-r&gt; (Vim mode: Redo; keymap: …)".</summary>
+    public static string Described(Func<Keystroke, string?> keymapDoes) =>
+        string.Join(", ", Vim.CtrlKeys.Select(k => $"{k.Key} (Vim mode: {k.Does}; keymap: {keymapDoes(StrokeOf(k.Key)) ?? "its own"})"));
+
+    public override AppSettings Clamp(AppSettings settings) =>
+        Named(get(settings)) is var named && named.All(Keys.Contains) && named.Distinct(StringComparer.Ordinal).Count() == named.Length && get(settings) == string.Join(' ', named)
+            ? settings
+            : set(settings, string.Join(' ', named.Where(Keys.Contains).Distinct(StringComparer.Ordinal)));
+
+    public override string? Refused(AppSettings was, AppSettings now) =>
+        get(now) != get(was) && Named(get(now)).FirstOrDefault(k => !Keys.Contains(k)) is { } unknown
+            ? $"{Row!.Label} ({SettingsDialog.PlaceOfPage(Row.Page)}) has no key {unknown}: its keys are {Plural.Listed(Keys)}, a space between each"
+            : null;
+
+    /// <summary>The keys given with <paramref name="key"/> given to the keymap or taken back, as the setting keeps them.</summary>
+    private static string Joined(IReadOnlySet<string> given, string key, bool toKeymap) =>
+        string.Join(' ', Keys.Where(k => k == key ? toKeymap : given.Contains(k)));
+
+    private static string[] Named(string? keys) => (keys ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
 }
 
 /// <summary>A program to start and its arguments, written as one command line (<see cref="Run.CommandLine"/>), or null for
