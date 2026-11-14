@@ -229,8 +229,17 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>Whether a restore the server ran as it loaded has ended and the projects it restored are still to load again,
     /// which until then the server answers for as loaded before their restore (with no package's build files, its
     /// generators among them); or have loaded again, and the server, whose generators run again a second after a load,
-    /// has not yet said its solution moved, for <see cref="GeneratorsRerun"/> at most.</summary>
-    public bool ReloadingRestored => reloadingRestored || (restoredLoaded is { } at && Stopwatch.GetElapsedTime(at) < Waits.Of(GeneratorsRerun));
+    /// has not yet said its solution moved, for <see cref="GeneratorsRerun"/> at most: none for a file of a project the
+    /// restore failed for, which loads again with nothing it brought.</summary>
+    public bool ReloadingRestored(string path)
+    {
+        UiThread.Check();
+        if (!reloadingRestored && (restoredLoaded is not { } at || Stopwatch.GetElapsedTime(at) >= Waits.Of(GeneratorsRerun)))
+        {
+            return false;
+        }
+        return workspace is not { } opened || ProjectModel.Owning(ProjectsNow?.Invoke() ?? opened.Projects, path) is not { } project || !restoreFailedFor.Contains(project.Path);
+    }
 
     /// <summary>How long after a load the server's generators are waited for to run again.</summary>
     private static readonly TimeSpan GeneratorsRerun = TimeSpan.FromSeconds(5);
@@ -242,6 +251,13 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     /// <summary>Whether a restore failed since the last batch's end, after which nothing loads again.</summary>
     private bool restoreFailed;
+
+    /// <summary>The projects (or solution) each restore of the one under way restored and those of them it restored none of,
+    /// one that restored some (a project of a solution's among them) having them load again; and the projects the last
+    /// restore failed for.</summary>
+    private readonly HashSet<string> restoring = new(PathNames.Comparer);
+    private readonly HashSet<string> restoredNone = new(PathNames.Comparer);
+    private readonly HashSet<string> restoreFailedFor = new(PathNames.Comparer);
 
     /// <summary>Whether the restore under way is of the person's projects, whose end starts their load again.</summary>
     private bool restoringTheirs;
@@ -981,6 +997,9 @@ public sealed partial class CSharpService : IAsyncDisposable
         starting = cancel;
         IsStopped = false;
         reloadingRestored = restoreFailed = restoringTheirs = false;
+        restoring.Clear();
+        restoredNone.Clear();
+        restoreFailedFor.Clear();
         restoredLoaded = null;
         SetState("Starting C#…");
         BackgroundWork.Begin();
@@ -1481,11 +1500,14 @@ public sealed partial class CSharpService : IAsyncDisposable
                 UiThread.Post(() => OnLoadReport(server, unwritable is null ? report
                     : report with { Problem = report.Problem! with { Message = Unwritable(unwritable, report.Problem.Message) } }));
             }
-            foreach (ProjectLoadProblem failed in restores.Hear(message.Message))
+            foreach (LoadReport failure in restores.Hear(message.Message))
             {
+                ProjectLoadProblem failed = failure.Problem!;
                 string? unwritable = FolderAccess.Unwritable(failed, folder);
-                UiThread.Post(() => OnLoadReport(server, new LoadReport(LoadReportKind.RestoreFailed,
-                    failed with { Message = unwritable is null ? InFolder(failed.Message) : Unwritable(unwritable, failed.Message) }, null)));
+                UiThread.Post(() => OnLoadReport(server, failure with
+                {
+                    Problem = failed with { Message = unwritable is null ? InFolder(failed.Message) : Unwritable(unwritable, failed.Message) },
+                }));
             }
         };
         EventHandler<LogMessageParams> shown = (_, message) =>
@@ -1557,16 +1579,31 @@ public sealed partial class CSharpService : IAsyncDisposable
                 if (report.Kind == LoadReportKind.RestoreFailed)
                 {
                     restoreFailed = true;
-                    reloadingRestored = false;
+                    restoreFailedFor.Add(problem.Project);
+                    // Its errors named by the path restored, not a project of it: it restored none.
+                    if (report.Project is { } restored && PathNames.Same(restored, problem.Project))
+                    {
+                        restoredNone.Add(restored);
+                    }
                     SayLoadProblems();
                 }
                 break;
             case { Kind: LoadReportKind.Restoring }:
+                if (!restoringTheirs)
+                {
+                    restoreFailedFor.Clear();
+                }
                 restoringTheirs = true;
+                if (report.Project is { } begun)
+                {
+                    restoring.Add(begun);
+                }
                 break;
             case { Kind: LoadReportKind.Restored }:
-                reloadingRestored = restoringTheirs && !restoreFailed;
+                reloadingRestored = restoringTheirs && restoring.Any(r => !restoredNone.Contains(r));
                 restoringTheirs = false;
+                restoring.Clear();
+                restoredNone.Clear();
                 break;
             case { Kind: LoadReportKind.Loaded, Project: { } project }:
                 bool hadProblems = loadProblems.Remove(project);

@@ -93,6 +93,46 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"definition of a MAUI page's InitializeComponent answered no place in the generator's code with its text: {made.GetRawText()}");
     }
 
+    /// <summary>Two projects each given a package once loaded: the server loads both again and restores both, one restore
+    /// failing (its package no feed holds), the other bringing code by the package's build files, which its project loads
+    /// again with after. An agent's question of that code asked while the restores run waits for that load, whatever the
+    /// other's restore did, so definition of the package's class goes to its declaration in the package.</summary>
+    [Fact]
+    public async Task Definition_of_what_a_restore_brings_waits_for_its_projects_load_again_beside_a_restore_that_fails()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-restored-"));
+        DeleteAtEnd(folder);
+        await using StandInFeed feed = new();
+        feed.Add("Passenger.Sample", "1.0.0", new Dictionary<string, string>
+        {
+            ["build/Passenger.Sample.targets"] = "<Project>\n  <ItemGroup>\n    <Compile Include=\"$(MSBuildThisFileDirectory)Brought.cs\" />\n  </ItemGroup>\n</Project>\n",
+            ["build/Brought.cs"] = "namespace Sample;\n\npublic static class Brought\n{\n    public static string Say() => \"brought\";\n}\n",
+        });
+        TaskCompletionSource answering = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        feed.Hold("Passenger.Missing", answering.Task);
+        // Only the stand-in, and restores kept out of the person's own package cache.
+        TestFolders.Write(folder, "nuget.config", $"<configuration>\n  <packageSources>\n    <clear />\n    <add key=\"stand-in\" value=\"{feed.Index}\" protocolVersion=\"3\" allowInsecureConnections=\"true\" />\n"
+            + "  </packageSources>\n  <config>\n    <add key=\"globalPackagesFolder\" value=\"packages\" />\n  </config>\n</configuration>\n");
+        TestFolders.Write(folder, "Uses/Uses.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Uses/Caller.cs", "namespace Uses;\n\npublic static class Caller\n{\n    public static string Call() => Sample.Brought.Say();\n}\n");
+        TestFolders.Write(folder, "Lacks/Lacks.csproj", TestProjects.Library());
+        await using McpClient client = await Start(["--mcp", folder]);
+        Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Caller", ["exact"] = true })).EnumerateArray());
+
+        TestFolders.Write(folder, "Uses/Uses.csproj", TestProjects.Library().With("  <ItemGroup>\n    <PackageReference Include=\"Passenger.Sample\" Version=\"1.0.0\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "Lacks/Lacks.csproj", TestProjects.Library().With("  <ItemGroup>\n    <PackageReference Include=\"Passenger.Missing\" Version=\"1.0.0\" />\n  </ItemGroup>\n"));
+        Assert.True(await Waiting.UntilAsync(() => feed.Requests.Any(r => r.Path.StartsWith("/flat/passenger.missing/", StringComparison.Ordinal)), TimeSpan.FromMinutes(3), Cancel),
+            $"Lacks's restore never asked the feed for its package{Said()}");
+        Heard heard = new();
+        Task<CallToolResult> asked = Result(client, McpTools.Definition, new() { ["path"] = "Uses/Caller.cs", ["line"] = 5, ["column"] = 43 }, heard: heard);
+        // Told of the call a moment on, the agent's question waits on the restores; Lacks's then fails, no feed holding its package.
+        Assert.True(await Waiting.UntilAsync(() => heard.Told.Count > 0 || asked.IsCompleted, TimeSpan.FromMinutes(1), Cancel), $"The agent's definition was never under way{Said()}");
+        answering.SetResult();
+        string said = Text(await asked);
+        Assert.True(said.Contains($"{Path.DirectorySeparatorChar}Brought.cs", StringComparison.Ordinal) || said.Contains("/Brought.cs", StringComparison.Ordinal),
+            $"definition of a class a restore brought, asked as it ran beside a restore that failed, answered: {said}");
+    }
+
     /// <summary>The solution a filter leaves a library out of, as a fresh clone opens it: the assembly of the library is
     /// not there as C# loads the app, so nothing of it is known, and the first build, however quick, takes it in with no
     /// restart, what the agent asks next finding the library's types; each build after that brings what it added.</summary>

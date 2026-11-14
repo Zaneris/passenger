@@ -19,6 +19,11 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
     private readonly List<(string Path, bool Authorized, string? Authorization)> requests = [];
     private string? accepted;
 
+    /// <summary>A package whose requests wait (<see cref="Hold"/>), by its id in lower case, with when they may be answered.</summary>
+    private HeldPackage? held;
+
+    private sealed record HeldPackage(string Id, Task Until);
+
     public StandInFeed(string? user = null, string? password = null)
     {
         Password = password;
@@ -81,6 +86,10 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>Answers every request for a package's versions or files only once <paramref name="until"/> has ended, as a
+    /// slow feed keeps a restore waiting on it.</summary>
+    public void Hold(string id, Task until) => Volatile.Write(ref held, new HeldPackage(id.ToLowerInvariant(), until));
+
     /// <summary>Takes these credentials from now on, in place of the ones it was made with.</summary>
     public void Accept(string user, string password) => Volatile.Write(ref accepted, Basic(user, password));
 
@@ -126,7 +135,7 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
 
     private static string Basic(string user, string password) => "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
 
-    private Task AnswerAsync(StandInHttp.Exchange exchange)
+    private async Task AnswerAsync(StandInHttp.Exchange exchange)
     {
         string? authorization = exchange.Header("Authorization");
         string? wanted = Volatile.Read(ref accepted);
@@ -135,8 +144,12 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         {
             requests.Add((exchange.Path, authorized, authorization));
         }
+        if (Volatile.Read(ref held) is { } hold && exchange.Path.StartsWith($"/flat/{hold.Id}/", StringComparison.Ordinal))
+        {
+            await hold.Until;
+        }
         (int status, string type, byte[] body) = authorized ? Route(exchange.Path) : (401, "text/plain", Encoding.UTF8.GetBytes("Who are you?"));
-        return exchange.ReplyAsync(status, type, body, status == 401 ? "WWW-Authenticate: Basic realm=\"private\"\r\n" : string.Empty);
+        await exchange.ReplyAsync(status, type, body, status == 401 ? "WWW-Authenticate: Basic realm=\"private\"\r\n" : string.Empty);
     }
 
     /// <summary>A package's registration index, its one page by reference, or that page, each version listed with its

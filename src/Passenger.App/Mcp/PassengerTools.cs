@@ -3057,7 +3057,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException(Refusals.TooDeep(Path.GetFileName(document.Path)));
         }
         await Until(() => Session.CSharp is not { } csharp || csharp.IsStopped
-            || csharp.IsReady && !csharp.ReloadingRestored && !csharp.AwaitsRestore(document.Path) && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
+            || csharp.IsReady && !csharp.ReloadingRestored(document.Path) && !csharp.AwaitsRestore(document.Path) && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
         if (Session.CSharp is { IsStopped: true })
         {
             throw new InvalidOperationException(Refusals.CSharpStopped);
