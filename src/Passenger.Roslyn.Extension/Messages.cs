@@ -53,6 +53,7 @@ public static class Handlers
     public const string MauiExpressionSymbol = "Passenger.Roslyn.Extension.MauiExpressionSymbol";
     public const string MauiXamlChecks = "Passenger.Roslyn.Extension.MauiXamlChecks";
     public const string MauiExpressionUses = "Passenger.Roslyn.Extension.MauiExpressionUses";
+    public const string CompletionCall = "Passenger.Roslyn.Extension.CompletionCall";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -61,6 +62,7 @@ public static class Handlers
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses,
+        CompletionCall,
     ];
 }
 
@@ -1097,3 +1099,22 @@ public sealed record MembersMove(
     [property: JsonPropertyName("target")] string Target,
     [property: JsonPropertyName("members")] IReadOnlyList<string> Members,
     [property: JsonPropertyName("abstract")] IReadOnlyList<string> Abstract);
+
+/// <summary>A completion's edits about to be made, in order, and which of them writes the name chosen: whether that name,
+/// once written, is a method called there is asked.</summary>
+public sealed record CallAsked(
+    [property: JsonPropertyName("edits")] IReadOnlyList<PlacedText> Edits,
+    [property: JsonPropertyName("item")] int Item);
+
+/// <summary>Text in place of a span of a document, its ends as the server counts places.</summary>
+public sealed record PlacedText(
+    [property: JsonPropertyName("start")] Place Start,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("text")] string Text);
+
+/// <summary>Whether the name a completion writes is a method called where it goes, so its call's parentheses follow it,
+/// and whether any of its overloads takes arguments, so the caret goes between them.</summary>
+public sealed record CallFound([property: JsonPropertyName("call")] bool Call, [property: JsonPropertyName("arguments")] bool Arguments)
+{
+    public static readonly CallFound None = new(false, false);
+}
