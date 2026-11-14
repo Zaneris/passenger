@@ -258,7 +258,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   through Passenger's own gpg (`GpgLoopback`; gpgsm's for X.509; Git for Windows' MSYS gpg given its home as MSYS reads
   one, `MsysGpg`, its agent inheriting none of Passenger's handles, `StandardHandles.NotInherited`; every gpg found by
   `GpgPrograms`); signatures read for the rows shown, never by `%G?` in a read; a git that may ask ends with its folder
-  (`GitQuestions`); the status bar's Git reads `VcsController.Upstream` and `Divergence`, counted only when the branch, upstream or refs move; an agent's `vcs_commit` lines go through `PartialCommit.Touched`; a partial commit's own index starts from `read-tree -m --index-output` (the real index's stats), never
+  (`GitQuestions`); the status bar's Git reads `VcsController.Upstream` and `Divergence`, counted only when the branch, upstream or refs move; an agent's `vcs_commit` lines go through `PartialCommit.Touched`; moves reach the index only through `VcsController.Moved`, batched (`Git.MoveInIndexAsync`, `IndexMoves`), never one git per file; a partial commit's own index starts from `read-tree -m -i --index-output` (without `-i` a staged file changed since is refused) (the real index's stats), never
   a plain `read-tree`, which reads every file again.
 - `Passenger.Dap`, `Passenger.Debugger`, `Passenger.DebugAdapter`: Passenger's own debugger behind its own DAP. On a
   device it runs through `Passenger.DebugRelay` (relay.c), loaded by the Debug app as its profiler, which knows only the
