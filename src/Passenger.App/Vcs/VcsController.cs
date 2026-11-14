@@ -882,7 +882,7 @@ public sealed class VcsController : IDisposable
             }
             VcsOutcome done = Report(true, $"{committed}: {ChildResult.FirstLineOf(message)}");
             await RefreshAsync();
-            return new CommitResult(done, made, null);
+            return new CommitResult(done, made, null) { Moves = first };
         }, refused => new CommitResult(refused, null, null));
         // Pushed once the commit has let go of the tree and ended its work, so a remote that does not answer holds neither.
         held?.Dispose();
@@ -2075,4 +2075,7 @@ public sealed record VcsOutcome(bool Succeeded, string Message)
 public sealed record CommitResult(VcsOutcome Commit, CommitInfo? Made, VcsOutcome? Push)
 {
     public bool Succeeded => Commit.Succeeded && Push?.Succeeded != false;
+
+    /// <summary>The commit of the moves alone made before <see cref="Made"/>, where they went first; null where they did not.</summary>
+    public CommitInfo? Moves { get; init; }
 }

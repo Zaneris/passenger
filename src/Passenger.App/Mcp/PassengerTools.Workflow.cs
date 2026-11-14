@@ -134,11 +134,16 @@ public sealed partial class PassengerTools
         "Commits the paths given, else every changed file but the unversioned (saved first), with message; amend changes the " +
         "last commit (with paths [], its message alone), push pushes after; signed as git's config says and signed off as the Commit window's Sign-off is, " +
         "as the window commits. lines maps a modified file to the lines of the changes of it to commit (\"3,12-14\", as vcs_status's diff " +
-        "numbers it now), each change they touch whole, the rest left uncommitted; with lines and no paths, only its files. Returns the commit and how the push went; a push the remote refuses is an error with " +
-        "git's reason, the commit made all the same.")]
+        "numbers it now), each change they touch whole, the rest left uncommitted; with lines and no paths, only its files. With movesFirst, where git would no " +
+        "longer see a moved file as moved once committed with its edits, the moves go first in a commit of their own with that message, as the Commit window offers. " +
+        "Returns the commit (the moves' before it, where made) and how the push went; a push the remote refuses is an error with git's reason, the commit made all the same.")]
     public Task<string> VcsCommit(string message, IReadOnlyList<string>? paths = null, Dictionary<string, string>? lines = null, bool amend = false, bool push = false,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        string? movesFirst = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        if (movesFirst?.Trim().Length == 0)
+        {
+            throw new ArgumentException("movesFirst is empty: it is the message of the moves' own commit", nameof(movesFirst));
+        }
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
         await vcs.RefreshAsync();
@@ -162,8 +167,10 @@ public sealed partial class PassengerTools
                 left.Add($"{Plural.Of(rest, "change")} of {Relative(full)}");
             }
         }
-        AgentCall.Say($"Committing {Plural.Of(chosen.Count, "file")}{(push ? " and pushing" : string.Empty)}");
-        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false, signing: new CommitSigning(SignOff: vcs.SignOff), partial: partial);
+        // The moves go first only where git would lose one, as the Commit window offers it.
+        string? first = movesFirst is not null && !amend && (await vcs.LostMovesAsync(chosen, partial)).Count > 0 ? movesFirst : null;
+        AgentCall.Say($"Committing {Plural.Of(chosen.Count, "file")}{(first is null ? string.Empty : ", their moves first")}{(push ? " and pushing" : string.Empty)}");
+        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false, signing: new CommitSigning(SignOff: vcs.SignOff), partial: partial, movesFirst: first);
         if (!result.Commit.Succeeded)
         {
             // A rebase stopped for conflicts goes on by its own action, which an agent runs by its id.
@@ -172,6 +179,10 @@ public sealed partial class PassengerTools
                 : result.Commit.Message);
         }
         string made = result.Made is { } head ? $"{head.Short} {head.Subject}" : result.Commit.Message;
+        if (result.Moves is { } moves)
+        {
+            made = $"{moves.Short} {moves.Subject} (the moves), then {made}";
+        }
         if (left.Count > 0)
         {
             made = $"{made}; left uncommitted: {Plural.Listed(left)}";

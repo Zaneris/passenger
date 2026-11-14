@@ -1667,6 +1667,34 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             && tracked.GetProperty("ahead").GetInt32() == 1 && tracked.GetProperty("behind").GetInt32() == 0, $"vcs_status of a branch one commit ahead of its upstream answered: {tracked}");
     }
 
+    /// <summary>vcs_commit with movesFirst commits a file git mv moved and then rewrote past what git finds alike as a rename,
+    /// as the Commit window offers: the move first, a commit of its own with that message, then the edits with the
+    /// message, the answer naming both; a commit whose moves git keeps with their edits makes no commit of them first.</summary>
+    [Fact]
+    public async Task An_agents_commit_of_a_moved_and_rewritten_file_with_moves_first_commits_the_move_as_a_rename_first()
+    {
+        string repository = TestFolders.Create("mcp-moves-first-");
+        DeleteAtEnd(repository);
+        File.WriteAllText(Path.Combine(repository, "Shop.cs"), "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n");
+        File.WriteAllText(Path.Combine(repository, "Till.cs"), "class Till\n{\n    int total;\n\n    void Ring(int price) { total += price; }\n}\n");
+        await TestGit.InitAsync(repository);
+        await TestGit.RunAsync(repository, "mv", "Shop.cs", "Store.cs");
+        File.WriteAllText(Path.Combine(repository, "Store.cs"), "record Store(string Name, decimal Takings);\n\nstatic class Stores\n{\n    public static Store Open(string name) => new(name, 0m);\n}\n");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        string made = Text(await Call(client, McpTools.VcsCommit, new() { ["message"] = "Rework the store", ["movesFirst"] = "Rename the shop" }));
+        Assert.Matches("^[0-9a-f]{7,} Rename the shop \\(the moves\\), then [0-9a-f]{7,} Rework the store$", made);
+        Assert.Equal("Rework the store\nRename the shop\nFirst", (await TestGit.RunAsync(repository, "log", "-3", "--format=%s")).Trim());
+        Assert.Equal("R100\tShop.cs\tStore.cs", (await TestGit.RunAsync(repository, "show", "--name-status", "--format=", "-M", "HEAD~1")).Trim());
+
+        // A move git still finds alike once its edit goes in with it is committed with the edit, as one.
+        await TestGit.RunAsync(repository, "mv", "Till.cs", "Register.cs");
+        File.AppendAllText(Path.Combine(repository, "Register.cs"), "// rung up\n");
+        string kept = Text(await Call(client, McpTools.VcsCommit, new() { ["message"] = "Rename the till", ["movesFirst"] = "Move the till" }));
+        Assert.Matches("^[0-9a-f]{7,} Rename the till$", kept);
+        Assert.Matches("^R[0-9]{3}\tTill.cs\tRegister.cs$", (await TestGit.RunAsync(repository, "show", "--name-status", "--format=", "-M", "HEAD")).Trim());
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]
