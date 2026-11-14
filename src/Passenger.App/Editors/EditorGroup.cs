@@ -483,10 +483,17 @@ public sealed class EditorGroup : DockPanel
         }
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
-    /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
     /// <summary>The width Vim's gq wraps a file at where textwidth is not set: its .editorconfig's max_line_length, 0 for none.</summary>
     private static int LineLengthOf(OpenDocument document) => EditorConfig.Number(document.Conventions["max_line_length"]) ?? 0;
 
+    /// <summary>The editor refusing changes while the file shown is read-only, Vim mode saying why in Refusals' words.</summary>
+    private void FollowReadOnly(OpenDocument document)
+    {
+        Editor.IsReadOnly = document.IsReadOnly;
+        Editor.ReadOnlyWhy = document.IsReadOnly ? Refusals.ReadOnly(document.Name) : null;
+    }
+
+    /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
     private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null && document.Tool is null;
 
     /// <summary>Gives the keys to what shows the file: a diff's file's side, its preview or rendered notes, which its keys
@@ -576,7 +583,7 @@ public sealed class EditorGroup : DockPanel
         AutomationProperties.SetName(Editor, document.Title);
         Gutter.Show(document);
         Editor.ContextLabel = ContextShown(document);
-        Editor.IsReadOnly = document.IsReadOnly;
+        FollowReadOnly(document);
         ShowBanner(document);
         Editor.IsVisible = true;
         tabBar.IsVisible = true;
@@ -830,12 +837,12 @@ public sealed class EditorGroup : DockPanel
                 Editor.ContextLabel = ContextShown(document);
                 break;
             case nameof(OpenDocument.IsReadOnly):
-                Editor.IsReadOnly = document.IsReadOnly;
+                FollowReadOnly(document);
                 ShowBanner(document);
                 break;
             case nameof(OpenDocument.Path):
                 ShowTable(document);
-                Editor.IsReadOnly = document.IsReadOnly;
+                FollowReadOnly(document);
                 ShowBanner(document);
                 AttachFind();
                 Editor.LineCommentPrefix = document.Language.LineComment;

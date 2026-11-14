@@ -69,6 +69,8 @@ public sealed class DiffView : DockPanel, IOwnKeys
 
         Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
         named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
+        Left.ReadOnlyWhy = Refusals.ReadOnly(named.Left);
+        Right.ReadOnlyWhy = editable ? null : Refusals.ReadOnly(named.Right);
         sides.Children.Add(DiffLines.Title(named.Left, 0));
         sides.Children.Add(DiffLines.Title(named.Right, 3));
         Grid.SetRow(Left, 1);

@@ -165,7 +165,7 @@ public sealed partial class Vim(VimRegisters registers)
         {
             int redo = CountOnly();
             pending.Clear();
-            return new VimResult(true, Action: EditorActions.Redo, Repeat: Math.Clamp(redo, 1, MostRepeated));
+            return view.Refuses is { } why ? Refused(why) : new VimResult(true, Action: EditorActions.Redo, Repeat: Math.Clamp(redo, 1, MostRepeated));
         }
         if (key == "<Del>" && pending.Count > 0)
         {
@@ -212,6 +212,11 @@ public sealed partial class Vim(VimRegisters registers)
         }
         return searchSaid is { } said && result.Message is null ? result with { Message = said.Text, MessageIsError = said.Error } : result;
     }
+
+    /// <summary>A change the text refuses (a file shown read-only), as Vim refuses a change where the buffer may not be
+    /// changed: nothing changed, kept for . or written to a register, its words said, and the carets where given (at the
+    /// start of what an operator took, as Vim leaves them).</summary>
+    private static VimResult Refused(string why, SelectionSet? carets = null) => new(true, carets) { Message = why.Length > 0 ? why : null, MessageIsError = true };
 
     /// <summary>The put a p or P from + or * asked for, with the clipboard's text the editor read.</summary>
     public VimResult PutClipboard(string clipboard, TextSnapshot text, SelectionSet selections, IVimView? view = null)

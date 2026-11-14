@@ -17,6 +17,10 @@ public sealed partial class Vim
 
     private static readonly HashSet<string> Simple = ["x", "X", "s", "S", "C", "D", "Y", "J", "~", "i", "a", "I", "A", "o", "O", "u", "p", "P", ".", "v", "V", "<C-v>", "R", "<C-o>", "<C-i>", "<Tab>"];
 
+    /// <summary>The commands that change the text, or begin insert or replace mode, without an operator: refused alone where the
+    /// text refuses changes (x and its kind are operators' and refused by the operator).</summary>
+    private static readonly HashSet<string> Changing = ["i", "a", "I", "A", "o", "O", "R", "u", "p", "P", "gp", "gP", "r", "J", "gJ", "~"];
+
     /// <summary>The commands g begins that are neither motions nor operators.</summary>
     private static readonly HashSet<string> GCommands = ["v", "J", "p", "P"];
 
@@ -206,6 +210,10 @@ public sealed partial class Vim
         if (command.Operator is { } op)
         {
             return Operate(command, op, text, selections, view);
+        }
+        if (view.Refuses is { } why && (Changing.Contains(command.Name) || command.Name == "." && lastChange is not null))
+        {
+            return Refused(why);
         }
         switch (command.Name)
         {

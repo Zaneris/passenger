@@ -887,6 +887,59 @@ public class VimTests
         Assert.Equal(["<C-o>"], Press(vim, "@a", text, carets).Replay);
     }
 
+    /// <summary>The words a read-only text's refusals say in these tests.</summary>
+    private const string ReadOnlyWords = "One.txt is read-only";
+
+    [Theory]
+    [InlineData("|one two\nthree", "x", "|one two\nthree")]
+    [InlineData("o|ne two\nthree", "X", "|one two\nthree")]
+    [InlineData("one |two\nthree", "db", "|one two\nthree")]
+    [InlineData("one |two\nthree", "dw", "one |two\nthree")]
+    [InlineData("on|e two\nthree", "dd", "|one two\nthree")]
+    [InlineData("on|e two\nthree", "dj", "on|e two\nthree")]
+    [InlineData("on|e two\nthree", "cc", "|one two\nthree")]
+    [InlineData("on|e two\nthree", ">>", "|one two\nthree")]
+    [InlineData("on|e two\nthree", "gUU", "|one two\nthree")]
+    [InlineData("on|e two\nthree", "~", "on|e two\nthree")]
+    [InlineData("|one two\nthree", "J", "|one two\nthree")]
+    [InlineData("one |two\nthree", "vhd", "one| two\nthree")]
+    [InlineData("on|e two\nthree", "Vd", "|one two\nthree")]
+    [InlineData("one two\nt|hree", "<C-v>kld", "o|ne two\nthree")]
+    [InlineData("on|e two\nthree", "A", "on|e two\nthree")]
+    [InlineData("on|e two\nthree", "o", "on|e two\nthree")]
+    [InlineData("on|e two\nthree", "u", "on|e two\nthree")]
+    public void A_read_only_text_refuses_each_change_leaving_the_caret_where_vim_leaves_it(string before, string keys, string after)
+    {
+        Vim vim = new();
+        vim.Registers.Yank(null, new VimRegister(["REG"], false));
+        Assert.Equal(after, Run(vim, before, keys, new VimTextView(new IndentOptions()) { Refuses = ReadOnlyWords }));
+        Assert.Equal(VimMode.Normal, vim.Mode);
+        Assert.Equal("REG", vim.Registers.Get(null)!.Text);
+    }
+
+    [Fact]
+    public void A_read_only_text_says_why_it_refuses_and_lets_motions_and_yanks_be()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|one two\nthree");
+        Vim vim = new();
+        VimTextView readOnly = new(new IndentOptions()) { Refuses = ReadOnlyWords };
+        VimResult refused = vim.Press("x", text, carets, readOnly);
+        Assert.True(refused is { Taken: true, Edits: null, Message: ReadOnlyWords, MessageIsError: true }, $"x on a read-only text came to {refused}");
+        Assert.Equal(EditorActions.Undo, vim.Press("u", text, carets).Action);
+        Assert.Null(vim.Press("u", text, carets, readOnly).Action);
+        Assert.Null(vim.Press("<C-r>", text, carets, readOnly).Action);
+        // A change made where the text took it is refused again by . where it refuses.
+        Assert.NotNull(vim.Press("x", text, carets).Edits);
+        Assert.Equal(ReadOnlyWords, vim.Press(".", text, carets, readOnly).Message);
+        Assert.Equal("one |two\nthree", Run(vim, "|one two\nthree", "wyw", readOnly));
+        Assert.Equal("two", vim.Registers.Get(null)!.Text);
+        foreach ((string command, string after) in new[] { (":s/one/1/", "|one two\nthree"), (":%d", "|one two\nthree"), (":g/t/d", "one two\n|three"),
+            (":1,2j", "|one two\nthree"), (":normal x", "|one two\nthree") })
+        {
+            Assert.Equal(after, Run(vim, "|one two\nthree", command + "<CR>", readOnly));
+        }
+    }
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
@@ -906,10 +959,10 @@ public class VimTests
     /// <summary>The keys pressed in turn on the marked text, insert mode's typing standing in for the editor's.</summary>
     private static string Run(string before, string keys) => Run(new Vim(), before, keys);
 
-    private static string Run(Vim vim, string before, string keys)
+    private static string Run(Vim vim, string before, string keys, IVimView? view = null)
     {
         (TextSnapshot text, SelectionSet carets) = Marked.Parse(before);
-        (text, carets) = Drive(vim, text, carets, keys);
+        (text, carets) = Drive(vim, text, carets, Keys(keys), stopAtFailure: false, view);
         return Marked.Show(text, carets);
     }
 
@@ -918,14 +971,15 @@ public class VimTests
     public static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, string keys, bool stopAtFailure = false) =>
         Drive(vim, text, carets, Keys(keys), stopAtFailure);
 
-    private static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, IEnumerable<string> keys, bool stopAtFailure)
+    private static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, IEnumerable<string> keys, bool stopAtFailure,
+        IVimView? view = null)
     {
         foreach (string key in keys)
         {
-            VimResult result = vim.Press(key, text, carets);
+            VimResult result = vim.Press(key, text, carets, view);
             if (result.Replay is { } replay)
             {
-                (text, carets) = Drive(vim, text, carets, replay, stopAtFailure);
+                (text, carets) = Drive(vim, text, carets, replay, stopAtFailure, view);
                 continue;
             }
             if (stopAtFailure && ReferenceEquals(result, VimResult.Held) && vim.Pending.Length == 0 && vim.Mode == VimMode.Normal && key != Vim.Escape)

@@ -11,7 +11,14 @@ namespace Passenger.Editor;
 /// mode doesn't do is said.</summary>
 public sealed partial class Vim
 {
+    /// <summary>An ex command run; a change it makes refused where the text refuses changes.</summary>
     private VimResult Ex(string line, TextSnapshot text, SelectionSet selections, IVimView view)
+    {
+        VimResult result = ExCommand(line, text, selections, view);
+        return view.Refuses is { } why && result.Edits is { Count: > 0 } ? Refused(why) : result;
+    }
+
+    private VimResult ExCommand(string line, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         if (line.Trim().Length > 0)
         {
@@ -459,6 +466,9 @@ public sealed partial class Vim
         {
             case "" or "p" or "print":
                 return new VimResult(true) { Highlight = SearchShown() };
+            case "d" or "de" or "del" or "delete" when view.Refuses is { } why:
+                // Each line's :d refused in turn, the caret ends on the last, as Vim's does.
+                return Refused(why, SelectionSet.Single(text.GetLineStart(lines[^1])));
             case "d" or "de" or "del" or "delete":
                 // Lines next to each other go as one, so the last line's going takes the break before it.
                 List<Stretch> taken = [];

@@ -45,6 +45,10 @@ public sealed partial class Vim
     private VimResult Act(Command command, string op, List<Stretch> stretches, TextSnapshot text, SelectionSet selections, IVimView view, bool block = false)
     {
         stretches.Sort((a, b) => a.Start.CompareTo(b.Start));
+        if (op != "y" && view.Refuses is { } why)
+        {
+            return Refused(why, SelectionSet.Create([.. stretches.Select(t => Selection.At(Settled(text, t.Landing)))], Math.Min(selections.PrimaryIndex, stretches.Count - 1)));
+        }
         VimRegister taken = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
         VimResult result = op switch
         {

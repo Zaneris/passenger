@@ -45,6 +45,11 @@ public sealed partial class Vim
         }
         string basic = op switch { "X" or "D" => "d", "C" or "S" or "R" => "c", "Y" => "y", "~" => "g~", "u" => "gu", "U" => "gU", _ => op };
         Command acting = command with { Name = "visual" };
+        if (basic != "y" && view.Refuses is { } why)
+        {
+            // Visual mode ends as it would with the change made, the carets at the stretches' starts.
+            return Refused(why, block ? SelectionSet.Single(VimMotions.OffsetAtColumn(text, top, left, tab)) : RegionStretches(text, taken, lines).Item2);
+        }
         if (op is "I" or "A")
         {
             return VisualInsert(acting, op == "A", mode, taken, text, view, top, bottom, left, right);

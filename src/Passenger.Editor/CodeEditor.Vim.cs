@@ -401,6 +401,8 @@ public sealed partial class CodeEditor
 
         public int LineLength => editor.LineLength;
 
+        public string? Refuses => editor.IsReadOnly ? editor.ReadOnlyWhy ?? string.Empty : null;
+
         public int RowsAway(TextSnapshot text, int offset, int rows)
         {
             (int row, double x) = editor.Place(text, offset, editor.LeansBack(offset));

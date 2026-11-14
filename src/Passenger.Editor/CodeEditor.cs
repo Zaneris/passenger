@@ -373,6 +373,10 @@ public sealed partial class CodeEditor : Control
 
     public bool IsReadOnly { get; set; }
 
+    /// <summary>Why the text refuses changes while <see cref="IsReadOnly"/>, in the host's words, which Vim mode says as it
+    /// refuses one; null for none.</summary>
+    public string? ReadOnlyWhy { get; set; }
+
     /// <summary>Whether the gutter shows line numbers; a console's output goes without.</summary>
     public bool ShowLineNumbers { get; set; } = true;
 

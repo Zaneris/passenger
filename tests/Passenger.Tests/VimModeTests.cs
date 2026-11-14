@@ -570,6 +570,44 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>A file shown read-only refuses Vim mode's every change as it refuses every other, the status bar saying
+    /// so in Refusals' words: x, dd, an insert, u and :s leave its text as it was and normal mode as it was, while a motion
+    /// and a yank work, the yank put in a file that takes changes.</summary>
+    [AvaloniaFact]
+    public void A_read_only_file_refuses_vims_every_change_saying_why()
+    {
+        string decompiled = Path.Combine(folder, "MetadataAsSource");
+        Directory.CreateDirectory(decompiled);
+        string other = Path.Combine(folder, "Two.txt");
+        File.WriteAllText(other, "x\n");
+        (MainWindow window, CodeEditor editor) = Open("one two\nthree\n", into: decompiled);
+        try
+        {
+            Assert.True(window.EditorArea.Active!.IsReadOnly, "A file under MetadataAsSource was not shown read-only");
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            foreach (string keys in new[] { "x", "dd", "i", "u", ":s/one/1/<CR>" })
+            {
+                Keys(window, ":set ic?<CR>");
+                Assert.Equal("noignorecase", StatusWords(window));
+                Keys(window, keys);
+                Assert.True(Text(editor) == "one two\nthree\n" && Status(window).Mode == "NORMAL",
+                    $"{keys} on a read-only file left \"{Text(editor)}\" in {Status(window).Mode}");
+                Assert.Equal("One.txt is read-only", StatusWords(window));
+            }
+            Keys(window, "wyw");
+            Assert.Equal(("NORMAL", "1:5"), Status(window));
+            window.OpenFile(other);
+            Ui.Settle();
+            Keys(window, "p");
+            Assert.Equal("xtwo\n", Text(window.EditorArea.CodeEditor));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A Ctrl key Settings gives the keymap is the keymap's, Vim mode taking it no more (Ctrl+V entered visual
     /// block mode until then), and Settings' row of Vim mode's Ctrl keys greys while Vim mode is off.</summary>
     [AvaloniaFact]
