@@ -30,6 +30,8 @@ internal static class Program
         {
             return signed;
         }
+        // Before anything of the IDE starts, so a start that fails before its log is set up still leaves why.
+        CrashFile.Watch();
         // First, as Velopack asks; an update never installs as a second Passenger starts, which would end the first.
         if (Installation.Installed)
         {

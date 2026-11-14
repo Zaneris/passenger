@@ -128,26 +128,36 @@ public static class IdeErrors
     /// one line in the log, its details being there from the first time.</summary>
     public static void Report(Exception error)
     {
-        string details = error.ToString();
-        IdeError reported;
         lock (Gate)
         {
             if (!Seen.TryAdd(error, Gate))
             {
                 return;
             }
-            DateTime now = DateTime.Now;
-            if (Places.TryGetValue(details, out int place))
+        }
+        List(new IdeError(DateTime.Now, error.GetType().Name, error.Message, error.ToString()));
+    }
+
+    /// <summary>Logs and shows, from any thread, an error a run before this one ended on (<see cref="CrashFile"/>), at the
+    /// time it came, as one caught now is.</summary>
+    public static void Recall(IdeError past) => List(past);
+
+    private static void List(IdeError error)
+    {
+        IdeError reported;
+        lock (Gate)
+        {
+            if (Places.TryGetValue(error.Details, out int place))
             {
-                reported = Reported[place] with { Count = Reported[place].Count + 1, Last = now };
+                reported = Reported[place] with { Count = Reported[place].Count + 1, Last = error.At };
                 Reported[place] = reported;
             }
             else
             {
-                reported = new IdeError(now, error.GetType().Name, error.Message, details);
+                reported = error;
                 if (Reported.Count < Limit)
                 {
-                    Places[details] = Reported.Count;
+                    Places[error.Details] = Reported.Count;
                     Reported.Add(reported);
                 }
                 else
@@ -156,7 +166,7 @@ public static class IdeErrors
                 }
             }
         }
-        Write(reported.Count == 1 ? $"Error: {details}" : $"Error, occurred {reported.Count} times: {reported.Kind}: {reported.Message}");
+        Write(reported.Count == 1 ? $"Error: {error.Details}" : $"Error, occurred {reported.Count} times: {reported.Kind}: {reported.Message}");
         Dispatcher.UIThread.Post(() => Raised?.Invoke(null, reported));
     }
 

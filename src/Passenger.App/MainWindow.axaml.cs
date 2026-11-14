@@ -394,6 +394,10 @@ public partial class MainWindow : IdeWindow
         }
         PreloadTemplates();
         IdeErrors.Observe(ForgetUnmaskedCopiesAsync());
+        if (SaysLastCrash)
+        {
+            IdeErrors.Observe(CrashFile.SayLastAsync());
+        }
     }
 
     private string? followed;
@@ -786,6 +790,10 @@ public partial class MainWindow : IdeWindow
     /// IDE; off for a window that asks nothing of C#, an <c>--mcp</c> Passenger's through
     /// <see cref="Mcp.McpHost.LanguageServerVariable"/>.</summary>
     public bool StartsLanguageServer { get; init; } = true;
+
+    /// <summary>Whether <see cref="Start"/> says what ended the last run on this state (<see cref="CrashFile"/>): the
+    /// person's first window does, and a screenshot's, which draws it.</summary>
+    public bool SaysLastCrash { get; init; }
 
     /// <summary>Whether nobody sees the window, as nobody sees any of this process's (<see cref="PassengerApp.ShowsNoWindow"/>):
     /// every Godot game and editor it starts then runs headless, and it plays no sound.</summary>

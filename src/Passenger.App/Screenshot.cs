@@ -39,7 +39,8 @@ public static class Screenshot
         // A capture lets in only its own agent: no socket at all without one.
         Written written = new();
         FileText.Writing += written.Add;
-        MainWindow window = new() { Width = options.Size.Width, Height = options.Size.Height, Autosaves = false, AgentsAllowed = options.Steps.OfType<ScriptStep.Agent>().Any(), TakesLaunches = false };
+        MainWindow window = new() { Width = options.Size.Width, Height = options.Size.Height, Autosaves = false, AgentsAllowed = options.Steps.OfType<ScriptStep.Agent>().Any(), TakesLaunches = false,
+            SaysLastCrash = true };
         window.OpenOnNamedSettings(launch);
         window.SetRenderScaling(options.Scale);
         bool settled;

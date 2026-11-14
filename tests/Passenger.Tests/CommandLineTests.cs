@@ -470,6 +470,39 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    /// <summary>A start that fails before its log is set up, made to throw in App.Initialize as a font or a theme read may,
+    /// still ends as the runtime ends it, saying why on standard error, and keeps the exception in the log folder's
+    /// crash.log; the next start lists it among the IDE's errors, its red mark shown for a click, writes it to the log and
+    /// removes the file, and the start after says nothing more of it.</summary>
+    [Fact]
+    public async Task A_start_failing_before_its_log_is_set_up_leaves_why_in_the_log_folder_and_the_next_start_says_it_once()
+    {
+        const string Failure = "a stand-in for a font that would not load";
+        string crash = Path.Combine(settings, "logs", CrashFile.Name);
+        string[] look = ["notes.txt", "--click-name", "ErrorsButton", "--size", "800x500", "--scale", "1", "--screenshot", "out.png"];
+
+        (int code, string error) = await Run(["notes.txt", "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], settings,
+            new Dictionary<string, string> { [global::Passenger.App.App.FailVariable] = Failure });
+
+        Assert.True(code is not (0 or 2) && error.Contains($"System.InvalidOperationException: {Failure}", StringComparison.Ordinal),
+            $"A start made to throw in App.Initialize was to end as the runtime ends one, saying why; it exited {code} and wrote:\n{error}");
+        Assert.True(File.Exists(crash), $"The start that failed before its log was set up left nothing in {Path.GetDirectoryName(crash)}");
+        string kept = await File.ReadAllTextAsync(crash, TestContext.Current.CancellationToken);
+        Assert.True(kept.Contains($"System.InvalidOperationException: {Failure}", StringComparison.Ordinal) && kept.Contains("App.Initialize", StringComparison.Ordinal),
+            $"{CrashFile.Name} does not keep the exception the start ended on, thrown in App.Initialize:\n{kept}");
+
+        (code, error) = await Run(look, settings);
+        Assert.True(code == 0, $"The start after the failed one did not show the IDE's errors' mark for a click: it exited {code}, saying: {error}");
+        Assert.False(File.Exists(crash), $"The start that said the crash left {CrashFile.Name} to say it again");
+        string log = await File.ReadAllTextAsync(Path.Combine(settings, "logs", "passenger.log"), TestContext.Current.CancellationToken);
+        Assert.True(log.Contains("ended on this error:", StringComparison.Ordinal) && log.Contains(Failure, StringComparison.Ordinal),
+            "The start that said the crash did not write it to the log, which keeps it once its file is gone");
+
+        (code, error) = await Run(look, settings);
+        Assert.True(code == 2 && error.Contains("no control named ErrorsButton is shown in the window", StringComparison.Ordinal),
+            $"The start after the one that said the crash still showed an IDE error: it exited {code}, saying: {error}");
+    }
+
     private Task<(int Code, string Error)> Run(string arguments) => Run(arguments.Split(' '), settings);
 
     /// <summary>Passenger run in the test's folder with these arguments and its state in a folder of their own, with these

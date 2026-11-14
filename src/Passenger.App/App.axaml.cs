@@ -20,8 +20,17 @@ public partial class App : Application
     /// make several Apps, and each adding them again would make every template applied anywhere ask each one.</summary>
     private static bool classHandlersAdded;
 
+    /// <summary>Makes the start fail in <see cref="Initialize"/>, the exception's message its value: what a start that fails
+    /// before the log is set up leaves (<see cref="CrashFile"/>) is held by making one.</summary>
+    [IdentifierHome]
+    public const string FailVariable = "PASSENGER_START_FAILS";
+
     public override void Initialize()
     {
+        if (Environment.GetEnvironmentVariable(FailVariable) is { Length: > 0 } failure)
+        {
+            throw new InvalidOperationException(failure);
+        }
         AvaloniaXamlLoader.Load(this);
         if (OperatingSystem.IsMacOS())
         {
@@ -63,7 +72,7 @@ public partial class App : Application
         {
             // Only the person's window updates Passenger, and only a copy its installer or disk image put in place.
             Updates.Updater? updater = Updates.Updater.OfThisCopy(State.StateStore.DefaultRoot, out string notUpdating);
-            MainWindow window = new() { AgentsAllowed = Program.Options.ListenForAgents, SelfUpdate = updater };
+            MainWindow window = new() { AgentsAllowed = Program.Options.ListenForAgents, SelfUpdate = updater, SaysLastCrash = true };
             // The person's windows open on the layout and settings they left; headless ones keep the defaults.
             window.KeepLayout();
             window.KeepSettings();
