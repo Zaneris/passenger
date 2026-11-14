@@ -223,7 +223,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `IVimView` (`Vim.Commands`, `Vim.Operators`, `VimMotions`, `VimTextObjects`) and `CodeEditor.PressVim` takes it before
   any keymap; an insert session is one `EditKind.Joined` step, `.`'s edits one too (`FollowVim`); normal-mode carets
   settle in `SetSelections`; registers are each window's own (`CodeEditor.VimRegisters`), `+`/`*` the clipboard; visual mode's stretches are the editor's selections, a selection made
-  otherwise entering it (`Vim.FollowSelections`); macros are pressed again by `CodeEditor.ReplayVim`; mappings come from the state folder's vimrc (`VimMappings`, read through `VimMappingsFile`), `gq` wraps through `VimWrapping`, `=` lays out through `CodeActions.ReformatLinesAsync`, and its Ctrl keys go to Vim or the keymap by `AppSettings.VimKeysToKeymap` (`Vim.CtrlKeys`); search and the ex command line are Vim's own (`Vim.Search`, `Vim.Ex`,
+  otherwise entering it (`Vim.FollowSelections`); macros are pressed again by `CodeEditor.ReplayVim`; mappings come from the state folder's vimrc (`VimMappings`, read through `VimMappingsFile`), `gq` wraps through `VimWrapping`, `=` lays out through `CodeActions.ReformatLinesAsync`, its Ctrl keys go to Vim or the keymap by `Declared.VimKeysToKeymap`, a read-only file refuses through `IVimView.Refuses` (`CodeEditor.ReadOnlyWhy`), a mapping's key waits `timeoutlen` through `CodeEditor.FollowVimTimeout`, and `:bufdo`/`:windo` are one command of global undo (`MainWindow.InEach`); search and the ex command line are Vim's own (`Vim.Search`, `Vim.Ex`,
   `VimPatterns`) over `TextSearch`, and what only the window can do comes as a `VimRequest` (`MainWindow.Vim.cs`);
   `VimTests`' expected texts are the system Vim 9.1's. Wide characters are counted by `WideCharacters` (Passenger.Text).
 - **A key costs what it changed, not the file's size**: keep it so. Wraps, rows, folds, hints and built lines move only
@@ -346,7 +346,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   only for `=`: its `>` is Razor's own answer, its `</` closed over its HTML.
 - **Build and run.** The build configuration and platform are one choice (`BuildConfigurationChoices`, `WorkspaceModel.Build`):
   command lines take it through `WorkspaceModel.BuildArgumentsFor` (a publish building as the folder builds through `PublishArgumentsFor`), evaluations through `ProjectModels.Properties`/`Each`;
-  never a `-c` written anywhere else; a run configuration's own is read only through `ProjectSession.WorkspaceOfAsync`, the plan's `LaunchPlan.Workspace` carrying it to its build, dotnet watch and device install, never `session.Workspace` in a start's path. Godot runs only a game's Debug build (`GodotLaunch.RunsConfiguration`).
+  never a `-c` written anywhere else; a kept choice is dropped only once the workspace read has projects each evaluated (`BuildConfigurationChoices.ReadAsync`); a run configuration's own is read only through `ProjectSession.WorkspaceOfAsync`, the plan's `LaunchPlan.Workspace` carrying it to its build, dotnet watch and device install, never `session.Workspace` in a start's path. Godot runs only a game's Debug build (`GodotLaunch.RunsConfiguration`).
   `BuildRunController`, every console through `ConsoleSink.PumpAsync`, `LaunchPlan` (one resolution
   for Run, Debug, Profile, Hot Reload and a debugged test host), `UpToDate`; a Passenger it launches keeps its state in
   `sandbox/`; `PASSENGER_DOTNET_RELEASES` is dead in tests. Godot: `GodotLaunch`, `GodotGame`; the Game window is an
@@ -380,7 +380,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   asked: without the plugin docker answers `scout … --format` with "unknown flag", so find it by `docker scout version`.
   docker exec's end ends nothing it started, only closing its standard input; a container's first process takes no
   SIGKILL from inside it, so Stop lets one attached to go (`ManagedDebugger.Unending`).
-- **Aspire.** `AspireController` checks bearer tokens first; a Functions app, its own or an AppHost's, runs through `func start`, the debugger attached to the worker func starts (`FunctionsHost`; Debug through `DebugController.StartThroughAsync`, func ending with its session, `DebugTab.FollowedStarts`); deploy logins are read from each tool's files, never by
+- **Aspire.** `AspireController` checks bearer tokens first; a Functions app, its own or an AppHost's, runs through `func start`, the debugger attached to the worker func starts (`FunctionsHost`; Debug through `DebugController.StartThroughAsync`, func ending with its session, `DebugTab.FollowedStarts`); func's host restarts a held worker every 60 s, so one no debugger reaches is never let go and func is started again unheld (`AspireController.UnheldFunctionsAsync`; `DebugController.RefuseNextAttach` in tests); deploy logins are read from each tool's files, never by
   running a cloud CLI; metrics only while shown. MetricsEventSource's CollectionStart and Stop reach TraceEvent as
   `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
@@ -406,7 +406,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   Testing Platform host through `PlatformRunSettings`, never `--settings`. VSTest ends a discovery at the first assembly
   whose test host cannot start, so each it did not look through whole is asked again alone; an assembly a runner could
   not look through is an `UnfoundTests`, said wherever its tests are missed.
-- **The rest.** a project's transitive packages come from its assets file (`RestoredVersions.Transitive`, `FolderPackages.TransitiveAsync`), never a restore; `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
+- **The rest.** a version's deprecation comes from its registration, read only through `FolderPackages.DeprecationsAsync` while the NuGet window is shown; a project's transitive packages come from its assets file (`RestoredVersions.Transitive`, `FolderPackages.TransitiveAsync`), never a restore; `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
   only to their feed's host); under central package management Passenger writes each version where the evaluation keeps
   it (`CentralWrites`), never dotnet add package, which drops a props file's blank lines and turns a property to a literal;
   EF Core's own packages move as one set, another maker's provider only when asked (`MigrationsController.UpdateAsync`);
@@ -456,6 +456,7 @@ a new name, and `just site-shots` retakes its images.
 - **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
   references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`, which moves
   `LanguageServer.Changes` itself (`AnswersMoved`).
+- **Roslyn's server begins a completion item's sort text with its place in four digits**: past 10,000 items the extension widens them (`CompletionOrder`), which a `.razor` list, asked through `textDocument/completion`, doesn't get.
 - **Roslyn's server cuts a completion list at 1,000 items and marks it incomplete** (`dotnet_lsp_max_completion_list_size`,
   never asked through `workspace/configuration`): Passenger's extension sets it uncut (`WholeCompletionLists`), so a name
   asks once and each key narrows here; without the extension every key asks again.
@@ -515,6 +516,7 @@ a new name, and `just site-shots` retakes its images.
   through `AgentAnswers` and says what it left out. `save_all` stays a tool of its own, never asked about on a person's
   window (#278). `debug_evaluate`, `debug_input` and `breakpoint_set` are `Destructive` and ask the person the first
   time; every question closes unanswered after 2 minutes; calls send progress every 10 s (OpenCode gives up after 60 s).
+- **An await's continuation on the window's thread runs before work `UiThread.Post` queued earlier** (Avalonia's context posts at Normal, `UiThread.Post` at Default): take in what's pending first, as `ProjectModels.Land` before `Keep`.
 - **An await of a task the window's thread completes continues on the thread pool**, even with ConfigureAwait(false):
   what must happen where the answer lands is an awaited `ContinueWith(…, ExecuteSynchronously)`; an await of work that
   may have ended continues inline, so a view filling on its own turn awaits with `ConfigureAwaitOptions.ForceYielding`.

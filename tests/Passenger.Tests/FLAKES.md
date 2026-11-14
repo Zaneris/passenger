@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-13
 
+- `BuildConfigurationTests`' `The_configuration_chosen_is_kept_with_the_folder_and_a_window_opening_it_again_builds_as_it`,
+  CI 43532468832 (Windows shard 4, after 42111102a): "The folder opened again building as what MSBuild takes given
+  none, not the Staging chosen before". **A race in the IDE.** A folder without a solution opens with no projects until
+  its walk for them lands, and its kept evaluations are read off the window's thread; the window's first round of
+  evaluations, over that empty workspace, said every project's evaluation was in, and the build configuration choice
+  took that word for whatever workspace it read next. When the kept evaluations or the walk landed after that round
+  (on a loaded runner the evaluations are read slower than the round), the choice read a workspace whose project had
+  no evaluation yet, found nothing declaring Staging, fell back to the default and kept that. The choice is now given up
+  only once the workspace it reads has projects and each one's evaluation is in; a round also takes in its last
+  evaluations before keeping them (their landing is posted below the round's continuation), so the next opening
+  doesn't evaluate them again. A new test opening the folder with its evaluations not kept failed so every time on the
+  Mac and the Windows VM before the fix (b8add7f31, #1447).
 - `ComposeProjectEditingTests`' `A_Docker_Compose_project_at_the_solutions_root_shows_only_the_files_it_holds`, CI
   43502088783, 43512738427 and 43523153568 (Linux shard 4 and Windows shard 2, each run): "Waited 180 s for README.md
   in place of launchSettings.json once the .dcproj named it". **A bug in the IDE, which the Mac hid.** A .dcproj is
