@@ -221,7 +221,8 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         {
             text.Append($"Paragraph {i}: ").Append(Words).Append('\n');
         }
-        MainWindow window = Open("long.md", text.ToString());
+        // Plain text, wrapped as Markdown is, has no preview to stand under it and widen the editor as the window narrows.
+        MainWindow window = Open("long.txt", text.ToString());
         CodeEditor editor = window.EditorArea.CodeEditor;
         TextSnapshot snapshot = editor.Document.Snapshot;
         int rows = editor.RowsShown;

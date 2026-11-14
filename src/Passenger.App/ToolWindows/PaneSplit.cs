@@ -6,7 +6,7 @@ namespace Passenger.App.ToolWindows;
 /// <summary>Two panes, a tool window's or an editor's and its file's own (a preview): side by side, and in a place narrow
 /// and tall, as a side dock or the editors beside it are, the first over the second, where side by side would leave
 /// neither room for its words. Each way keeps its own shares, which its divider moves. With no second pane the first
-/// takes it all.</summary>
+/// takes it all, no divider of its own standing in the tree.</summary>
 public sealed class PaneSplit : Grid
 {
     private readonly Control first;
@@ -29,7 +29,7 @@ public sealed class PaneSplit : Grid
         ColumnDefinitions = new ColumnDefinitions(across);
         RowDefinitions = new RowDefinitions(this.down);
         this.second = second;
-        Children.AddRange(second is null ? [first, beside, under] : [first, beside, under, second]);
+        Children.AddRange(second is null ? [first] : [first, beside, under, second]);
         Lay();
     }
 
@@ -48,15 +48,20 @@ public sealed class PaneSplit : Grid
             {
                 Children.Remove(second);
             }
-            else if (value is not null)
+            else
             {
                 ColumnDefinitions = new ColumnDefinitions(across);
                 RowDefinitions = new RowDefinitions(down);
+                Children.AddRange([beside, under]);
             }
             second = value;
             if (value is not null)
             {
                 Children.Add(value);
+            }
+            else
+            {
+                Children.RemoveAll([beside, under]);
             }
             Lay();
         }
