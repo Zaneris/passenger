@@ -299,7 +299,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - **Docking.** A theme's default layout is the dock's default (`DockHost.UseDefault`/`Default`, `Themes.Layout`): what a
   window with no kept layout opens on and what Restore Default Layout goes to, never laid over a kept layout. A window
   closed off its stripe (`ToolWindow.IsClosed`, set only through `DockHost.SetOnStripe`: Close and the stripe's checklist, `DockHost.StripeMenu`; `ClosesOffStripe` governs only ×) is kept in the saved layout; the stripes and titled tabs list only
-  `OnStripes`. A kept layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
+  `OnStripes`. A stripe with no icon folds away and shows while a tool window is dragged (`DockHost.Dragging`, fed by
+  `DragGesture.DraggingChanged`); drop places are measured on the editors and the open areas (`DockDrag.Target`), never the frame's quarters. A kept layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
   on attach (a split rebuilds the frame).
@@ -816,7 +817,7 @@ to the window's tests.
   `PopupFrame` (`Framed`), `popupTitle`; a popup placed through `PopupPlacement.Place` (laid out first), a card beside a list narrowed by `InfoCard.Within`; `ListRow.Height` (24); `TextBlock.emptyText`, `EmptyState`;
   `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name), `Grey` (greyed, its tip saying why); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
   `MutedText`; `ListKeys.Move`; `Plural.Of`/`Listed`; `Border.kindBadge`/`tag`/`box` (never a literal radius);
-  `RunRows`; `ChangedFileRow` (`Show` of a `FileChange`, every list of changed files); `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
+  `RunRows`; `ShrinkingRow.KeepsWidth` (a row's version and tags kept whole, its name cut first); `ChangedFileRow` (`Show` of a `FileChange`, every list of changed files); `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
   `ToolWindows.FilterBox`; `FilterMenu` (a list's Sort and Filter, placed in its search); `DropDownSearch` (every ComboBox's search, never per control); `ToolFlow`; `PaneSplit`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
   `ReusedRows` (`Use`, `Showing`); `RowIcon` and `RowGlyphs`, drawn as `PathIcon` draws for a fraction of its cost,
   never `PathIcon` (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
