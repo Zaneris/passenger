@@ -434,6 +434,40 @@ public sealed class CommandLineTests : IDisposable
 
     /// <summary>Passenger run in the test's folder with the arguments split at spaces and nothing on standard input, its
     /// exit code and what it wrote to standard error; one still running after two minutes was not refused.</summary>
+    /// <summary>On a Linux whose fontconfig lists no font (none installed, or its cache out of date), Passenger starts drawing
+    /// in the fonts it carries and says why on standard error and in the log, naming fc-cache -f, where Avalonia's font
+    /// manager ended it at once. The run's fontconfig is the test's own, its one folder of fonts empty.</summary>
+    [Fact]
+    public async Task On_a_Linux_whose_fontconfig_lists_no_font_a_start_draws_in_the_carried_fonts_and_says_why_naming_fc_cache()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "fontconfig gives the default font on Linux alone");
+        string fonts = TestFolders.Create("no-fonts-");
+        try
+        {
+            string configuration = Path.Combine(fonts, "fonts.conf");
+            await File.WriteAllTextAsync(configuration, $"""
+                <?xml version="1.0"?>
+                <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+                <fontconfig><dir>{Directory.CreateDirectory(Path.Combine(fonts, "fonts")).FullName}</dir><cachedir>{Path.Combine(fonts, "cache")}</cachedir></fontconfig>
+                """, TestContext.Current.CancellationToken);
+
+            (int code, string error) = await Run(["notes.txt", "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], settings,
+                new Dictionary<string, string> { ["FONTCONFIG_FILE"] = configuration });
+
+            Assert.True(code == 0 && File.Exists(Path.Combine(folder, "out.png")),
+                $"With fontconfig listing no font, Passenger did not start: it exited {code}, saying: {error}");
+            Assert.True(error.Contains($"passenger: {NoSystemFont.Said}", StringComparison.Ordinal),
+                $"With fontconfig listing no font, Passenger did not say why on standard error: {error}");
+            string log = await File.ReadAllTextAsync(Path.Combine(settings, "logs", "passenger.log"), TestContext.Current.CancellationToken);
+            Assert.True(log.Contains($"Fonts: {NoSystemFont.Said}", StringComparison.Ordinal), "With fontconfig listing no font, Passenger's log did not say why");
+            Assert.Contains("fc-cache -f", NoSystemFont.Said, StringComparison.Ordinal);
+        }
+        finally
+        {
+            TestFolders.Delete(fonts);
+        }
+    }
+
     private Task<(int Code, string Error)> Run(string arguments) => Run(arguments.Split(' '), settings);
 
     /// <summary>Passenger run in the test's folder with these arguments and its state in a folder of their own, with these

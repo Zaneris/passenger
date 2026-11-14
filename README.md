@@ -264,8 +264,8 @@ in each look's colours.
 - **Windows:** an installer for x64 or Arm64, which installs for you alone, with no administrator.
 - **Linux:** an archive for x64 or Arm64. Unpack it and run its `install.sh`, for you alone or with `--system` for
   everyone; the command is `passenger-ide`, so it never meets Phusion Passenger's `passenger`. Its
-  [Linux page](https://passenger-ide.net/linux) names the libraries it needs, and `install.sh` names your
-  distribution's font package where it finds no font.
+  [Linux page](https://passenger-ide.net/linux) names the libraries it needs; `install.sh` names your distribution's
+  font package where it finds no font, and refreshes fontconfig's cache where it lists none of those installed.
 
 A copy the installer, the disk image or `install.sh` put in place updates itself, then shows what's new. Passenger
 needs:

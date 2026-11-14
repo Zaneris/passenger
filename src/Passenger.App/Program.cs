@@ -100,6 +100,7 @@ internal static class Program
             return Apart(() => Screenshot.Run(options, screenshot));
         }
         int code = BuildAvaloniaApp()
+            .Checked()
             .AfterSetup(builder => ApplyTheme(builder.Instance!, options))
             .StartWithClassicDesktopLifetime(args);
         // What the windows ended (debuggers, Roslyn's servers) has a moment; then an update made ready installs, last of all.

@@ -269,6 +269,57 @@ public sealed class LinuxInstallTests
             $"The install keeping the release replaced left {string.Join(", ", Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(installed)!).Select(Path.GetFileName))} in ~/.local/opt");
     }
 
+    /// <summary>A font installed that fontconfig lists not, its cache being out of date: the install refreshes the cache with
+    /// <c>fc-cache -f</c> and says so, never that no font is installed; where fontconfig still lists none after it, the
+    /// install says to run <c>fc-cache -f</c>. Stand-ins of fontconfig's tools list the font only once the cache is
+    /// refreshed, or never.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_install_finding_fonts_fontconfig_lists_not_refreshes_its_cache_or_says_to(bool refreshes)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip(NoShell);
+            return;
+        }
+        string root = PathNames.Canonical(TestFolders.Create("install-"));
+        string home = Directory.CreateDirectory(Path.Combine(root, "home")).FullName;
+        File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(home, ".local", "share", "fonts")).FullName, "DejaVuSans.ttf"), "font");
+        string programs = Directory.CreateDirectory(Path.Combine(root, "programs")).FullName;
+        string cached = Path.Combine(root, "cached");
+        string asked = Path.Combine(root, "fc-cache-asked");
+        Script(Path.Combine(programs, "fc-list"), $"#!/bin/sh\n[ -f '{cached}' ] && echo 'DejaVu Sans'\nexit 0\n");
+        Script(Path.Combine(programs, "fc-cache"), $"#!/bin/sh\necho \"$*\" >> '{asked}'\n{(refreshes ? $"touch '{cached}'\n" : string.Empty)}exit 0\n");
+
+        ChildResult install = await Install(Unpacked(Path.Combine(root, "download"), "1"), home, programs);
+
+        Assert.True(install.Succeeded, $"The install with fontconfig's cache out of date failed: {install.Said}");
+        Assert.True(File.Exists(asked) && File.ReadAllText(asked) == "-f\n",
+            $"The install with fonts fontconfig lists not ran fc-cache {(File.Exists(asked) ? $"as '{File.ReadAllText(asked).Trim()}'" : "not at all")}, not once as fc-cache -f");
+        Assert.False(install.Error.Contains("No font is installed", StringComparison.Ordinal),
+            $"The install said no font is installed where one is, fontconfig's cache being out of date: {install.Error}");
+        if (refreshes)
+        {
+            Assert.True(install.Output.Contains("refreshed it with fc-cache -f", StringComparison.Ordinal),
+                $"The install refreshed fontconfig's cache without saying so: {install.Output}");
+            Assert.False(install.Error.Contains("fontconfig", StringComparison.Ordinal),
+                $"The install whose fc-cache -f listed the fonts again still warned of them: {install.Error}");
+        }
+        else
+        {
+            Assert.True(install.Error.Contains("refresh it with fc-cache -f", StringComparison.Ordinal),
+                $"The install whose fonts fontconfig still lists not after fc-cache -f did not say to run it: {install.Error}");
+        }
+    }
+
+    [UnsupportedOSPlatform("windows")]
+    private static void Script(string path, string text)
+    {
+        File.WriteAllText(path, text);
+        File.SetUnixFileMode(path, Runnable);
+    }
+
     /// <summary>Runs an unpacked folder's install.sh for one person, <paramref name="home"/> theirs, with a folder of
     /// programs before the PATH's own where one is given, installing another unpacked folder where one is (keeping the
     /// release it replaces where asked), or removing the install.</summary>

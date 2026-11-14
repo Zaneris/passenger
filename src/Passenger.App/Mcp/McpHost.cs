@@ -261,6 +261,7 @@ public static partial class McpHost
             .UseSkia()
             .UseHarfBuzz()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+            .Checked()
             .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
             .SetupWithoutStarting();
 
@@ -296,6 +297,7 @@ public static partial class McpHost
             .UseSkia()
             .UseHarfBuzz()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+            .Checked()
             .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
             .SetupWithoutStarting();
 

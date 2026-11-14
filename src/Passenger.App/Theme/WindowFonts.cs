@@ -16,8 +16,11 @@ public static class WindowFonts
     [IdentifierHome]
     public const string Key = "Passenger.WindowFont";
 
+    /// <summary>The Inter Passenger carries, by the name a font family takes it.</summary>
+    public const string CarriedName = "avares://Passenger/Fonts#Inter";
+
     /// <summary>Inter as Passenger carries it, the platform's own fallback drawing what it lacks (<see cref="FallbackFonts"/>).</summary>
-    public static readonly FontFamily Carried = FallbackFonts.Carry(new FontFamily("avares://Passenger/Fonts#Inter"));
+    public static readonly FontFamily Carried = FallbackFonts.Carry(new FontFamily(CarriedName));
 
     // Unheld: one list for every window, each asker holding its own wait for it (InstalledAsync).
     private static readonly Lazy<Task<IReadOnlyList<string>>> Found = new(() => BackgroundWork.Unheld(() => WindowFontNames.Choosable(Families())));

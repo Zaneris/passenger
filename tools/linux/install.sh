@@ -90,13 +90,22 @@ leads_to_passenger() {
     [ "$to" = "$dest/passenger" ] || { [ "${led##*/}" = passenger ] && is_passenger "${led%/*}"; }
 }
 
-# Whether fontconfig, or else the font folders, know a font: Passenger takes the system's default font from fontconfig as
-# it starts, and draws in installed fonts what its own faces (Inter, JetBrains Mono) lack.
+# Whether fontconfig, or else the font folders, know a font: Passenger draws in installed fonts what its own faces (Inter,
+# JetBrains Mono) lack, which fontconfig names.
 has_font() {
     if command -v fc-list > /dev/null 2>&1; then
-        [ -n "$(fc-list : family 2> /dev/null | head -n 1)" ]
+        lists_font
         return
     fi
+    font_files
+}
+
+lists_font() {
+    [ -n "$(fc-list : family 2> /dev/null | head -n 1)" ]
+}
+
+# Whether a font file is in the folders fonts are installed in, whatever fontconfig's cache says of them.
+font_files() {
     for fonts in /usr/share/fonts /usr/local/share/fonts "${XDG_DATA_HOME:-${HOME:-/root}/.local/share}/fonts" "${HOME:-/root}/.fonts"; do
         if [ -d "$fonts" ] && [ -n "$(find "$fonts" -type f \( -name '*.ttf' -o -name '*.otf' -o -name '*.ttc' \) 2> /dev/null | head -n 1)" ]; then
             return 0
@@ -261,11 +270,20 @@ if [ -n "$missing" ]; then
     echo "Passenger's window needs$missing, which this system lacks: see https://passenger-ide.net/linux" >&2
 fi
 if ! has_font; then
-    hint=$(font_command)
-    if [ -n "$hint" ]; then
-        echo "No font is installed, and Passenger takes its default font from the system's as it starts: install one, as with: $hint" >&2
+    if command -v fc-list > /dev/null 2>&1 && font_files; then
+        # Fonts installed that fontconfig's cache leaves out (out of date): built again, the user's own unless root's.
+        if command -v fc-cache > /dev/null 2>&1 && fc-cache -f > /dev/null 2>&1 && lists_font; then
+            echo "fontconfig listed none of the fonts installed, its cache being out of date: refreshed it with fc-cache -f."
+        else
+            echo "Fonts are installed, but fontconfig lists none, its cache being out of date: refresh it with fc-cache -f (sudo fc-cache -f for every user's), then start Passenger." >&2
+        fi
     else
-        echo "No font is installed, and Passenger takes its default font from the system's as it starts: install one, such as your distribution's DejaVu Sans." >&2
+        hint=$(font_command)
+        if [ -n "$hint" ]; then
+            echo "No font is installed, so Passenger draws in the fonts it carries alone, which lack most scripts and emoji: install one, as with: $hint" >&2
+        else
+            echo "No font is installed, so Passenger draws in the fonts it carries alone, which lack most scripts and emoji: install one, such as your distribution's DejaVu Sans." >&2
+        fi
     fi
 fi
 if ! command -v dotnet > /dev/null 2>&1 && [ -z "${DOTNET_ROOT:-}" ]; then
