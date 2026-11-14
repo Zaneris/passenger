@@ -732,7 +732,7 @@ public sealed class ExplorerTree
             .Order(StringComparer.OrdinalIgnoreCase)];
         string items = Path.GetFileName(SharedProjects.ItemsFileOf(project.Path));
         return importing.Count == 0 ? $"Shared project: no project imports {items}, so none compiles its files"
-            : $"Shared project: its files are compiled into each project importing {items}, {Plural.Listed(importing)}";
+            : $"Shared project: its files are compiled into {Plural.Listed(importing)}, which {Plural.Agreeing(importing.Count, "imports", "import")} {items}";
     }
 
     /// <summary>The shared projects' items files a project imports, as evaluated, each with the shared project shown for it

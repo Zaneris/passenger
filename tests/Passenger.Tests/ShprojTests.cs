@@ -98,6 +98,7 @@ public sealed class ShprojTests : IDisposable
         {
             ExplorerNode shared = Row(window, "Shop.Shared");
             Assert.True(shared is { Kind: NodeKind.Project, Detail: "shared" }, $"Shop.Shared shows as a {shared.Kind} saying '{shared.Detail}', not as a shared project");
+            Assert.Equal("Shared project: its files are compiled into Shop.Api and Shop.Web, which import Shop.Shared.projitems", shared.Tip);
             Assert.Equal(["Models", "Greeting.cs"], shared.Children!.Select(r => r.Name));
             Assert.Equal(["Order.cs"], shared.Children![0].Children!.Select(r => r.Name));
             foreach (string importing in (string[])["Shop.Api", "Shop.Web"])
