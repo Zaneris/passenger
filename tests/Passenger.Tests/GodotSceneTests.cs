@@ -750,6 +750,58 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path is { } row && PathNames.Same(row, shown)));
     }
 
+    /// <summary>A res:// string's list is made off the UI thread: the project's files made into items and the server's matched
+    /// against them there, so with 2,000 files more in the project the list costs the UI thread, from Complete to the list
+    /// open, what it did before them, counted rather than timed.</summary>
+    [AvaloniaFact]
+    public void A_res_paths_list_of_the_projects_files_is_made_off_the_UI_thread()
+    {
+        string crates = game.PathOf("crates");
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            long few = Listed();
+            Directory.CreateDirectory(crates);
+            for (int i = 0; i < 2_000; i++)
+            {
+                File.WriteAllText(Path.Combine(crates, $"crate{i:0000}.txt"), "crate\n");
+            }
+            string under = "crates" + Path.DirectorySeparatorChar;
+            Ui.WaitFor(() => window.FileIndex.Files.Count(f => f.StartsWith(under, StringComparison.Ordinal)) == 2_000,
+                () => $"the 2,000 files come to the folder's index, which lists {window.FileIndex.Files.Count(f => f.StartsWith(under, StringComparison.Ordinal))}");
+            long many = Listed();
+            TestContext.Current.TestOutputHelper?.WriteLine($"A res:// string's list opened with {few / 1024} KB on the UI thread; with 2,000 files more in the project, {many / 1024} KB");
+            // Less than the least object for each file more: whatever is made of a file is made off it.
+            Assert.True(many - few < 2_000 * 24L,
+                $"With 2,000 files more in the project a res:// string's list opened with {many / 1024} KB allocated on the UI thread, against {few / 1024} KB before them: "
+                + $"{(many - few) / 2_000} bytes for each file more, so its files were made into items or matched there");
+        }
+        finally
+        {
+            window.Close();
+            Directory.Delete(crates, recursive: true);
+        }
+
+        // The least the UI thread allocates from Complete in a res:// string to its list open.
+        long Listed()
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            long least = long.MaxValue;
+            for (int round = 0; round < 3; round++)
+            {
+                Ui.PlaceAfter(editor, "GD.Load<PackedScene>(\"res://");
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Ui.Run(window, AppActions.Complete, settle: false);
+                Ui.Pumped(() => window.Assist.CompletionNarrowedBy == "res://" && window.Assist.CompletionLabels.Contains("res://player.tscn"), TimeSpan.FromSeconds(60));
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                Assert.True(window.Assist.CompletionNarrowedBy == "res://" && window.Assist.CompletionLabels.Contains("res://player.tscn"),
+                    $"Complete in a res:// string offers {string.Join(", ", window.Assist.CompletionLabels.Take(5))}, not the project's files");
+                Ui.Press(window, "ESCAPE");
+            }
+            return least;
+        }
+    }
+
     /// <summary>A res:// string in a scene completes from the project's files as its "res://" is typed, the scene itself and
     /// Godot's own folders left out, and the file chosen goes in whole in place of the string.</summary>
     [AvaloniaFact]

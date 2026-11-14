@@ -61,9 +61,13 @@ public sealed class GodotSceneIndex
 
     /// <summary>The files of a Godot project's folder a res:// path may name: the folder's index's under it, but those in
     /// hidden folders (.godot's imports) and Godot's own beside each file (.import, .uid).</summary>
-    public IReadOnlyList<string> FilesUnder(string folder)
+    public IReadOnlyList<string> FilesUnder(string folder) => FilesUnder(folder, Files());
+
+    /// <summary>The files a res:// path may name (<see cref="FilesUnder(string)"/>) among a listing the index handed out
+    /// (<see cref="Files"/>), which no one changes, so they are found off the UI thread.</summary>
+    public static IReadOnlyList<string> FilesUnder(string folder, (string? Root, IReadOnlyList<string> Files) listing)
     {
-        (string? root, IReadOnlyList<string> files) = Files();
+        (string? root, IReadOnlyList<string> files) = listing;
         if (root is null || !PathNames.Within(folder, root))
         {
             return [];

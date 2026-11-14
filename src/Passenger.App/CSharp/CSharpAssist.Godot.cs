@@ -137,11 +137,10 @@ internal sealed partial class CSharpAssist
         {
             Task<IReadOnlyList<string>> resources = EditorNamesAsync(read, document.Path, GodotIdeKind.ResourcePaths, cancel);
             Task<IReadOnlyList<string>> scenes = EditorNamesAsync(read, document.Path, GodotIdeKind.ScenePaths, cancel);
-            List<CompletionItem> files = [.. index.FilesUnder(read.Folder).Select(f => GodotResPaths.Of(read.Folder, f)).OfType<string>()
-                .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = Path.GetExtension(res), FilterText = res, SortText = " " + res })];
-            HashSet<string> listed = [.. files.Select(f => f.Label)];
-            files.AddRange((await resources).Concat(await scenes).Where(res => res.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && listed.Add(res))
-                .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = $"{Path.GetExtension(res)} · the open Godot editor's", FilterText = res, SortText = " " + res }));
+            (string? Root, IReadOnlyList<string> Files) listing = index.Files();
+            IReadOnlyList<string> resourcesEdited = await resources;
+            IReadOnlyList<string> scenesEdited = await scenes;
+            IReadOnlyList<CompletionItem> files = await BackgroundWork.Run(() => ResItems(read.Folder, listing, [resourcesEdited, scenesEdited]), cancel);
             return files.Count == 0 ? null : new CodeCompletion.OwnItems(start, files, tail) { WordCharacters = PathCharacters };
         }
         if (CallAt(lsp, read, caret, start) is not { } call || call.Class >= read.Found.Classes.Count)
@@ -185,6 +184,18 @@ internal sealed partial class CSharpAssist
             SortText = " " + p,
         }));
         return offered.Count == 0 ? null : new CodeCompletion.OwnItems(start, offered, tail) { WordCharacters = PathCharacters };
+    }
+
+    /// <summary>A res:// string's list: the project's files the folder's index lists (a listing it handed out), then those the
+    /// person's Godot editor names that it lacks. Made off the UI thread, as a project may have thousands of files.</summary>
+    private static IReadOnlyList<CompletionItem> ResItems(string folder, (string? Root, IReadOnlyList<string> Files) listing, IReadOnlyList<string>[] edited)
+    {
+        List<CompletionItem> files = [.. GodotSceneIndex.FilesUnder(folder, listing).Select(f => GodotResPaths.Of(folder, f)).OfType<string>()
+            .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = Path.GetExtension(res), FilterText = res, SortText = " " + res })];
+        HashSet<string> listed = [.. files.Select(f => f.Label)];
+        files.AddRange(edited.SelectMany(names => names).Where(res => res.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && listed.Add(res))
+            .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = $"{Path.GetExtension(res)} · the open Godot editor's", FilterText = res, SortText = " " + res }));
+        return files;
     }
 
     /// <summary>The string naming a signal of the class's own node that holds an offset (<c>EmitSignal("Scored")</c> in a
