@@ -573,7 +573,9 @@ public sealed class Snapshot
         {
             return OfFrames(nettrace);
         }
-        string etlx = TraceLog.CreateFromEventPipeDataFile(nettrace, null, new TraceLogOptions { ContinueOnError = true });
+        // Each read's index of its own, never beside the trace: a folder it cannot write, or another read of it, is no matter.
+        string etlx = TraceLog.CreateFromEventPipeDataFile(nettrace, Path.Combine(Path.GetTempPath(), $"passenger-{Guid.NewGuid():N}.etlx"),
+            new TraceLogOptions { ContinueOnError = true });
         try
         {
             using TraceLog log = new(etlx);

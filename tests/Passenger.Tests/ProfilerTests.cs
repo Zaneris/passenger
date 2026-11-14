@@ -1072,6 +1072,41 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
+    /// <summary>A snapshot kept where Passenger cannot write (a read-only folder, a mounted image) opens as any other, and
+    /// two reads of one snapshot at once both open it: reading one writes nothing beside it.</summary>
+    [AvaloniaFact]
+    public void A_snapshot_in_a_folder_passenger_cannot_write_opens_and_two_reads_of_it_at_once_both_open()
+    {
+        string kept = Directory.CreateDirectory(Path.Combine(folder, "kept")).FullName;
+        string trace = Path.Combine(kept, "MemoryOnly.nettrace");
+        Ui.Await(Waiting.Apart(() => RecordMemory(trace)), "the allocations' and collections' trace");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(kept, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        }
+        MainWindow window = new() { Width = 1300, Height = 900 };
+        window.Show();
+        try
+        {
+            Snapshot? alone = Ui.Await(window.OpenSnapshotAsync(trace), "the snapshot to open");
+            Assert.True(alone is not null, $"A snapshot in a folder Passenger cannot write did not open: {window.Status}");
+            Task<Snapshot?> first = window.OpenSnapshotAsync(trace);
+            Task<Snapshot?> second = window.OpenSnapshotAsync(trace);
+            Snapshot? one = Ui.Await(first, "the first of two reads at once");
+            Snapshot? other = Ui.Await(second, "the second of two reads at once");
+            Assert.True(one is not null && other is not null, $"Of two reads of one snapshot at once, one did not open it: {window.Status}");
+            Assert.Equal([trace], Directory.GetFiles(kept));
+        }
+        finally
+        {
+            window.Close();
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(kept, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+        }
+    }
+
     /// <summary>This process's allocations of 8 MB of small byte arrays and three full collections, recorded by an EventPipe
     /// session of its own into a .nettrace with the runtime's GC events alone: no sampler, so no samples. Small, since on Linux
     /// the runtime can leave most large objects' ticks out once its process has allocated large objects before.</summary>
