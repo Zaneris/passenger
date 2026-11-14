@@ -681,8 +681,12 @@ a new name, and `just site-shots` retakes its images.
 - **Avalonia's font fallback sweeps every loaded font in name order before asking the platform** (AvaloniaUI#22464), and
   never calls a `FontCollectionBase`'s own `TryMatchCharacter`: `FallbackFonts` is an `IFontCollection`. Apple's fonts
   shape by `morx`, which `CanShapeScript` doesn't count.
-- **Svg.Skia stays at 5.1** while Avalonia's Skia is SkiaSharp 3 (5.2 needs SkiaSharp 4); its `SKSvg` disposes its
-  picture, so a picture is never let go while a frame may still draw it.
+- **SkiaSharp and HarfBuzzSharp are taken newer than Avalonia names** (Passenger.App and Passenger.MauiPreview reference
+  both and the Linux natives; the tests' Avalonia apps keep Avalonia's, `tests/AvaloniaGraphs/Avalonia12`): a move checks
+  that every member Avalonia.Skia, Avalonia.HarfBuzz and Avalonia.Controls.Maui call still resolves. Svg.Skia's `SKSvg`
+  disposes its picture, so a picture is never let go while a frame may still draw it.
+- **HarfBuzz applies a font's 'trak' itself** (at 12 pt when told no size, a lone track too), where Core Text takes the
+  normal track alone: the window's letter spacing makes up only the difference (`FontTracking.Shaped`).
 - **Avalonia renders a visual again when its Bounds, ZIndex or RenderTransform change**, and on `InvalidateArrange`:
   retained content moves through its parent layer. Two visuals invalidated in one frame draw again all that lies between
   them: invalidate only what changed (`CodeEditor.RefreshStripe`).
