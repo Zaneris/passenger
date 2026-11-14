@@ -150,7 +150,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   `FileText.Save` (atomic, metadata kept, a hard-linked file in place, a read-only one refused, Local History given the
   old bytes); a file the IDE makes `SaveNew` (its .editorconfig's end_of_line and charset), again `SaveOver`; one the
   window changes itself `MainWindow.ChangeFileAsync`; a file landed byte for byte (a publisher's output) `LandedFiles`;
-  a file handed to git for one call (a commit's message, a private index, the data Passenger's gpg signs: `CommitFile.Signed`, beside the operation's socket, deleted at its end) `CommitFile`, never `GetTempFileName` and a replace; any other whole file `AtomicFile.Write`, a written file put in another's place `AtomicFile.Move`, never `File.Move(…, overwrite: true)`, a file that may be a link (a shell's startup file) written to the file it
+  a file handed to git for one call (a commit's message, a private index, the data Passenger's gpg signs: `CommitFile.Signed`, beside the operation's socket, deleted at its end) `CommitFile`, never `GetTempFileName` and a replace; any other whole file `AtomicFile.Write`, a written file put in another's place `AtomicFile.Move`, never `File.Move(…, overwrite: true)` (PSG0009), a file that may be a link (a shell's startup file) written to the file it
   names (`AtomicFile.Target`); a state file only the person may read `OwnFiles`; never `File.WriteAll*`. An open
   project, solution, filter, nuget.config or Directory.Packages.props is saved before Passenger writes it and loaded
   after (`SaveBeforeWriting`). Server edits pass `LineEndings.Fit` then `Indentation.Fit`.
