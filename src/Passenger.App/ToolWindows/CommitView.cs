@@ -141,6 +141,20 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>The merge's message the box was given, taken away again if the merge ends some other way.</summary>
     private string? prefilled;
 
+    /// <summary>The offer to commit the chosen files' moves first, shown where git would lose one: the box, why, and the
+    /// first commit's message, which the person may change.</summary>
+    private readonly StackPanel movesOffer;
+    private readonly CheckBox movesFirst;
+    private readonly TextBlock movesSaid;
+    private readonly TextBox movesMessage;
+
+    /// <summary>The first commit's message as the window last wrote it, kept until the person types another.</summary>
+    private string movesWritten = string.Empty;
+
+    /// <summary>What the last look for lost moves was of (the status and the chosen files), and how many have begun.</summary>
+    private (IReadOnlyList<FileChange> Changes, string Chosen)? lostOf;
+    private int lostLooks;
+
     public CommitView(VcsController git)
     {
         vcs = git;
@@ -256,6 +270,11 @@ public sealed class CommitView : DockPanel, IOwnKeys
         WrapPanel options = new() { Margin = new Thickness(10, 4, 10, 0), ItemSpacing = 16, Children = { amend, signOff, sign, setUp } };
         unsigned = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(10, 2, 10, 0) };
         unsigned.Classes.Add(StyleClasses.Error);
+        movesFirst = new CheckBox { Content = MovesFirstTitle, IsChecked = true };
+        movesSaid = MutedText.Wrapped(string.Empty);
+        movesMessage = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Message of the moves' commit" };
+        movesFirst.IsCheckedChanged += (_, _) => movesMessage.IsEnabled = movesFirst.IsChecked == true;
+        movesOffer = new StackPanel { Margin = new Thickness(10, 6, 10, 0), Spacing = 4, IsVisible = false, Children = { movesSaid, movesFirst, movesMessage } };
         message = new TextBox
         {
             Classes = { StyleClasses.Search },
@@ -293,7 +312,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         {
             [DockProperty] = Dock.Bottom,
             BorderThickness = new Thickness(0, 1, 0, 0),
-            Child = new ScrollViewer { Content = new StackPanel { Children = { underWay, options, unsigned, message, buttons } } },
+            Child = new ScrollViewer { Content = new StackPanel { Children = { underWay, options, unsigned, movesOffer, message, buttons } } },
         };
         form.Bind(Border.BorderBrushProperty, form.GetResourceObservable(TokenKeys.Divider));
 
@@ -444,6 +463,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             beforeAmend = null;
         }
         UpdateButtons();
+        LookForLostMoves();
     }
 
     private void OnBusyChanged(object? sender, EventArgs e) => UpdateButtons();
@@ -552,9 +572,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
         {
             return false;
         }
-        Dictionary<string, PartialCommit> partial = rows.OfType<CommitRow>().Where(r => r.IsChosen && r.Partial is not null)
-            .ToDictionary(r => r.Change.Path, r => r.Partial!, PathNames.Comparer);
-        CommitResult made = await vcs.CommitAsync(Chosen, Message, Amend, push, signing: Signing, partial: partial);
+        Dictionary<string, PartialCommit> partial = Partial();
+        string? first = movesOffer.IsVisible && movesFirst.IsChecked == true && !Amend
+            ? (movesMessage.Text is { } typed && typed.Trim().Length > 0 ? typed : movesWritten) : null;
+        CommitResult made = await vcs.CommitAsync(Chosen, Message, Amend, push, signing: Signing, partial: partial, movesFirst: first);
         bool notSigned = !made.Commit.Succeeded && made.Commit.Message.StartsWith(SigningFailure.Unsigned, StringComparison.Ordinal);
         unsigned.Text = notSigned ? made.Commit.Message : null;
         unsigned.IsVisible = notSigned;
@@ -572,6 +593,76 @@ public sealed class CommitView : DockPanel, IOwnKeys
         signTurned = false;
         ShowSigning();
         return true;
+    }
+
+    private Dictionary<string, PartialCommit> Partial() => rows.OfType<CommitRow>().Where(r => r.IsChosen && r.Partial is not null)
+        .ToDictionary(r => r.Change.Path, r => r.Partial!, PathNames.Comparer);
+
+    /// <summary>The words of the box that commits the moves first.</summary>
+    public const string MovesFirstTitle = "Commit the moves first, then the edits";
+
+    /// <summary>Whether the window offers to commit the chosen files' moves first, as git would lose one of them.</summary>
+    public bool OffersMovesFirst => movesOffer.IsVisible;
+
+    /// <summary>Why it offers to commit the moves first, as it says it; null while it offers nothing.</summary>
+    public string? MovesSaid => movesOffer.IsVisible ? movesSaid.Text : null;
+
+    /// <summary>Whether the moves go first, in a commit of their own, where the window offers it.</summary>
+    public bool MovesFirst
+    {
+        get => movesFirst.IsChecked == true;
+        set => movesFirst.IsChecked = value;
+    }
+
+    /// <summary>The message of the moves' own commit, as written in its box.</summary>
+    public string MovesMessage
+    {
+        get => movesMessage.Text ?? string.Empty;
+        set => movesMessage.Text = value;
+    }
+
+    /// <summary>Looks again, where what it was of changed, for chosen moves git would lose committed with their edits, off
+    /// the window's thread, and offers to commit the moves first where it finds one; the latest look's answer wins.</summary>
+    private void LookForLostMoves()
+    {
+        IReadOnlyList<FileChange> chosen = Amend || vcs.Merge.CommitsWhole ? [] : Chosen;
+        string moved = string.Join('\0', chosen.Where(c => c.From is not null).Select(c => $"{c.From}\0{c.Path}"));
+        if (lostOf is { } last && ReferenceEquals(last.Changes, vcs.Changes) && last.Chosen == moved)
+        {
+            return;
+        }
+        lostOf = (vcs.Changes, moved);
+        IdeErrors.Observe(LookForLostMovesAsync(chosen, ++lostLooks));
+    }
+
+    private async Task LookForLostMovesAsync(IReadOnlyList<FileChange> chosen, int look)
+    {
+        IReadOnlyList<FileChange> lost = chosen.Any(c => c.From is not null) ? await vcs.LostMovesAsync(chosen, Partial()) : [];
+        if (look != lostLooks)
+        {
+            return;
+        }
+        movesOffer.IsVisible = lost.Count > 0;
+        if (lost.Count == 0)
+        {
+            return;
+        }
+        movesSaid.Text = lost is [{ } one]
+            ? $"Committed with its edits, {one.Name} would no longer be seen by Git as {Moved(one)}: too much of it changed. Committing the moves first, on their own, keeps its history."
+            : $"Committed with their edits, {Plural.Of(lost.Count, "moved file")} would no longer be seen by Git as moved: too much of them changed. Committing the moves first, on their own, keeps their history.";
+        List<FileChange> moves = [.. chosen.Where(c => c.From is not null && !Partial().ContainsKey(c.Path))];
+        string written = moves is [{ } only] ? $"{(InPlace(only) ? "Rename" : "Move")} {Path.GetFileName(only.From)} to {(InPlace(only) ? only.Name : Shown(only.Path))}"
+            : $"{(moves.All(InPlace) ? "Rename" : "Move")} {Plural.Of(moves.Count, "file")}";
+        // The window's own words follow the moves; what the person typed stays.
+        if (MovesMessage.Length == 0 || MovesMessage == movesWritten)
+        {
+            MovesMessage = written;
+        }
+        movesWritten = written;
+
+        string Moved(FileChange change) => InPlace(change) ? $"renamed from {Path.GetFileName(change.From)}" : $"moved from {Shown(change.From!)}";
+        static bool InPlace(FileChange change) => Path.GetDirectoryName(change.From) == Path.GetDirectoryName(change.Path);
+        string Shown(string path) => vcs.Repository is { } repository ? repository.Relative(path) : Path.GetFileName(path);
     }
 
     /// <summary>Rollback of the files selected, else of those chosen: refused where a chosen file goes in only in part, as
@@ -658,6 +749,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             prefilled = null;
         }
         UpdateButtons();
+        LookForLostMoves();
 
         CommitRow Row(FileChange change, bool byDefault)
         {
@@ -722,6 +814,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             group.Update();
         }
         UpdateButtons();
+        LookForLostMoves();
     }
 
     private void UpdateButtons()

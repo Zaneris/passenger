@@ -125,6 +125,39 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         window.Close();
     }
 
+    /// <summary>A class renamed with its file in the editor, and another an agent renames, each list as renamed, and the
+    /// Commit window commits both as renames: Till.cs, whose class and uses of the first both changed, changed past what
+    /// git finds alike, so the window offers the moves first, and they are a commit of their own before the edits.</summary>
+    [AvaloniaFact]
+    public void A_class_renamed_with_its_file_and_one_an_agent_renames_commit_as_renames_the_moves_first_where_git_would_lose_one()
+    {
+        string till = Path.Combine(folder, "Till.cs");
+        string register = Path.Combine(folder, "Register.cs");
+        MainWindow window = Open("Order.cs");
+        Answer(window);
+
+        RenameAt(window, "class Ord", "Purchase");
+        Ui.WaitFor(() => window.Vcs.Changes.Any(c => c.Kind == ChangeKind.Renamed && c.Path == PurchasePath && c.From == OrderPath), "Git to list Order.cs renamed to Purchase.cs");
+        string said = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Rename("Register", symbol: "Till"), "the agent's rename");
+        Assert.True(File.Exists(register), $"The agent's rename left Till.cs: {said}");
+        Ui.WaitFor(() => window.Vcs.Changes.Any(c => c.Kind == ChangeKind.Renamed && c.Path == register && c.From == till), "Git to list Till.cs renamed to Register.cs");
+
+        Passenger.App.ToolWindows.CommitView commit = window.CommitView;
+        window.Perform(AppActions.Commit);
+        Ui.WaitFor(() => commit.OffersMovesFirst, () => $"the offer to commit the moves first, where Git lists {string.Join(", ", window.Vcs.Changes.Select(c => $"{c.Name} ({c.Kind})"))}");
+        Assert.Equal("Committed with its edits, Register.cs would no longer be seen by Git as renamed from Till.cs: too much of it changed. "
+            + "Committing the moves first, on their own, keeps its history.", commit.MovesSaid);
+        Assert.Equal("Rename 2 files", commit.MovesMessage);
+        commit.Message = "Rename the order and the till";
+        Ui.ClickButton(commit, "Commit");
+        Ui.WaitFor(() => window.Vcs.Changes.Count == 0 && !window.Vcs.IsBusy, () => $"the commits, where the status bar says '{window.Status}'");
+
+        Assert.Equal("Rename the order and the till\nRename 2 files", Git("log", "-2", "--format=%s").Trim());
+        Assert.Equal(["R100\tOrder.cs\tPurchase.cs", "R100\tTill.cs\tRegister.cs"], Shown("HEAD~1"));
+        Assert.Equal(["M\tPurchase.cs", "M\tRegister.cs"], Shown("HEAD"));
+        window.Close();
+    }
+
     /// <summary>Every part of a partial class in a file named after it is renamed with it, a part named otherwise is not;
     /// then, with Also rename files to reflect this change turned off, only the code is renamed, and the option stays off
     /// for the next rename.</summary>
@@ -779,4 +812,8 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     }
 
     private string Git(params string[] arguments) => TestGit.Run(folder, arguments);
+
+    /// <summary>What a commit changed as git shows it, renames found.</summary>
+    private string[] Shown(string commit) =>
+        [.. Git("show", "--name-status", "--format=", "-M", commit).Split('\n', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal)];
 }

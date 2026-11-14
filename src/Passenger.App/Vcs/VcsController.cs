@@ -797,11 +797,13 @@ public sealed class VcsController : IDisposable
         return labels;
     }
 
-    /// <summary>Commits the chosen files with a message, signed and signed off as <paramref name="signing"/> says (as git's
-    /// config says where it is null), a signing key's passphrase asked in the window, then pushes when asked (Commit, and
-    /// Commit and Push; the remote asked for as <see cref="PushAsync"/> asks): the commit's outcome with the commit made,
-    /// and the push's once the commit is made and one was asked for. A commit not signed says why and how to mend it.</summary>
-    public async Task<CommitResult> CommitAsync(IReadOnlyList<FileChange> chosen, string message, bool amend, bool push, bool ask = true, CommitSigning? signing = null, IReadOnlyDictionary<string, PartialCommit>? partial = null)
+    /// <summary>Commits the chosen files with a message, signed as <paramref name="signing"/> says (as git's config says
+    /// where it is null), a key's passphrase asked in the window, then pushes when asked (the remote asked for as
+    /// <see cref="PushAsync"/> asks): the commit's outcome with the commit made, and the push's. A commit not signed says
+    /// why. Given <paramref name="movesFirst"/>, the moves of the files chosen whole are a commit of their own first, with
+    /// that message (<see cref="Git.CommitMovesAsync"/>), unless amending or finishing a merge.</summary>
+    public async Task<CommitResult> CommitAsync(IReadOnlyList<FileChange> chosen, string message, bool amend, bool push, bool ask = true, CommitSigning? signing = null,
+        IReadOnlyDictionary<string, PartialCommit>? partial = null, string? movesFirst = null)
     {
         UiThread.Check();
         if (git is not { } repository)
@@ -846,15 +848,23 @@ public sealed class VcsController : IDisposable
             string[] excluded = merging ? [.. Paths(Changes.Where(c => c.Kind is not ChangeKind.Unversioned && !chosen.Contains(c)))] : [];
             (Signer signer, SigningSetup setup) = await SignerAsync(repository, signing ?? CommitSigning.AsConfigured);
             CommitSigning given = signer.Signing;
-            GitResult commit = await repository.CommitAsync(paths, message, amend, merging, excluded, given, signer.Asker, partial);
-            commit = commit with { Output = ContainerSecrets.InSaid(commit.Output), Error = ContainerSecrets.InSaid(commit.Error) };
-            if (!commit.Succeeded)
+            List<(string From, string To)> moved = movesFirst is null || amend || merging ? [] : [.. Moves(chosen, partial)];
+            CommitInfo? first = null;
+            if (moved.Count > 0)
             {
-                bool signs = given.Sign ?? setup.Signs;
-                string said = !signs ? commit.Message
-                    : commit.Unanswered is { } unanswered ? SigningFailure.Unsigned + unanswered
-                    : SigningFailure.Of(commit.Error, setup) ?? commit.Message;
-                VcsOutcome failed = Report(false, said);
+                if (Failed(await repository.CommitMovesAsync(moved, movesFirst!, given, signer.Asker), given, setup) is { } unmoved)
+                {
+                    VcsOutcome refused = Report(false, unmoved);
+                    await RefreshAsync();
+                    return new CommitResult(refused, null, null);
+                }
+                first = await repository.HeadAsync();
+                // The last commit has them where they went now, and their old names no more.
+                paths = [.. paths.Except(moved.Select(m => m.From), PathNames.Comparer)];
+            }
+            if (Failed(await repository.CommitAsync(paths, message, amend, merging, excluded, given, signer.Asker, partial), given, setup) is { } unmade)
+            {
+                VcsOutcome failed = Report(false, first is null ? unmade : $"The moves were committed as {first.Short}, but not the rest: {unmade}");
                 await RefreshAsync();
                 return new CommitResult(failed, null, null);
             }
@@ -866,6 +876,10 @@ public sealed class VcsController : IDisposable
                 1 => "1 file committed",
                 _ => $"{count} files committed",
             };
+            if (moved.Count > 0)
+            {
+                committed = $"{Plural.Of(moved.Count, "move")} committed, then {committed}";
+            }
             VcsOutcome done = Report(true, $"{committed}: {ChildResult.FirstLineOf(message)}");
             await RefreshAsync();
             return new CommitResult(done, made, null);
@@ -875,6 +889,39 @@ public sealed class VcsController : IDisposable
         return push && result.Commit.Succeeded ? result with { Push = await PushAsync(ask) } : result;
 
         static IEnumerable<string> Paths(IEnumerable<FileChange> changes) => changes.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]);
+    }
+
+    /// <summary>Why a commit failed in the person's words (its signing's, where it was to be signed); null once it was made.</summary>
+    private static string? Failed(GitResult commit, CommitSigning given, SigningSetup setup)
+    {
+        commit = commit with { Output = ContainerSecrets.InSaid(commit.Output), Error = ContainerSecrets.InSaid(commit.Error) };
+        if (commit.Succeeded)
+        {
+            return null;
+        }
+        bool signs = given.Sign ?? setup.Signs;
+        return !signs ? commit.Message
+            : commit.Unanswered is { } unanswered ? SigningFailure.Unsigned + unanswered
+            : SigningFailure.Of(commit.Error, setup) ?? commit.Message;
+    }
+
+    /// <summary>The chosen files' moves, each where it was and where it is: those of renamed files chosen whole.</summary>
+    private static IEnumerable<(string From, string To)> Moves(IEnumerable<FileChange> chosen, IReadOnlyDictionary<string, PartialCommit>? partial) =>
+        chosen.Where(c => c is { Kind: ChangeKind.Renamed, From: not null } && partial?.ContainsKey(c.Path) != true).Select(c => (c.From!, c.Path));
+
+    /// <summary>The chosen files moved whose content changed so far since that git, comparing the last commit with them as
+    /// the disk has them, would find them no longer moved once committed (<see cref="Git.LostMovesAsync"/>): those a commit
+    /// of the moves first keeps as renames. None where it takes none (an amend, a merge's commit).</summary>
+    public async Task<IReadOnlyList<FileChange>> LostMovesAsync(IReadOnlyList<FileChange> chosen, IReadOnlyDictionary<string, PartialCommit>? partial = null)
+    {
+        UiThread.Check();
+        List<(string From, string To)> moved = [.. Moves(chosen, partial)];
+        if (git is not { } repository || moved.Count == 0 || Merge.CommitsWhole)
+        {
+            return [];
+        }
+        IReadOnlyList<(string From, string To)> lost = await repository.LostMovesAsync(moved);
+        return [.. chosen.Where(c => lost.Any(l => l.To == c.Path && l.From == c.From))];
     }
 
     /// <summary>Push: the branch to the one it tracks, or where it tracks none, to the only remote or the one of several
@@ -1821,30 +1868,48 @@ public sealed class VcsController : IDisposable
 
     /// <summary>A file or folder moved here (a rename, a code fix): until a commit has its files at their new paths,
     /// their change bars, diff and rollback compare with what the last commit has where they were. What the index has of
-    /// it moves with it, as git mv moves it, so the status shows a rename; the next read waits for that.</summary>
+    /// it moves with it, as git mv moves it, so the status shows a rename; the next read waits for that. The moves made
+    /// together (a refactoring's, an Undo's) go to the index together, in one write.</summary>
     public void Moved(string from, string to)
     {
         moves.Add((from, to));
         heads.Clear();
-        if (git is { } repository)
+        if (git is not { } repository)
         {
-            indexed = MoveInIndexAsync(indexed, repository, from, to);
+            return;
         }
+        if (unindexed is { } gathering)
+        {
+            gathering.Add((from, to));
+            return;
+        }
+        List<(string From, string To)> batch = [(from, to)];
+        unindexed = batch;
+        indexed = MoveInIndexAsync(indexed, repository, batch);
     }
 
     /// <summary>The index's moves still under way, which a read waits out so it never shows a move half made.</summary>
     private Task indexed = Task.CompletedTask;
 
-    /// <summary>One move made in the index after those before it; it never fails, so the reads waiting on it go on.</summary>
-    private async Task MoveInIndexAsync(Task before, Git repository, string from, string to)
+    /// <summary>The moves heard since the last batch for the index was taken, which the next takes with it.</summary>
+    private List<(string From, string To)>? unindexed;
+
+    /// <summary>One batch of moves made in the index after those before it, gathering the moves made on the window's thread
+    /// until it next runs; it never fails, so the reads waiting on it go on.</summary>
+    private async Task MoveInIndexAsync(Task before, Git repository, List<(string From, string To)> batch)
     {
+        await Task.Yield();
+        if (unindexed == batch)
+        {
+            unindexed = null;
+        }
         await before;
         try
         {
-            GitResult moved = await repository.MoveInIndexAsync(from, to);
+            GitResult moved = await repository.MoveInIndexAsync(batch);
             if (!moved.Succeeded)
             {
-                Message?.Invoke(this, $"Git did not take {Path.GetFileName(from)}'s move: {moved.Message}");
+                Message?.Invoke(this, $"Git did not take {(batch.Count == 1 ? $"{Path.GetFileName(batch[0].From)}'s move" : Plural.Of(batch.Count, "move"))}: {moved.Message}");
             }
         }
         catch (Exception error)

@@ -19,7 +19,7 @@ namespace Passenger.Tests;
 /// branch made from the toolbar is checked out, and going back reloads the open file; Commit, Stash and Unstash run one
 /// at a time, a drop asked first and the log leaving the stash out; a status older than a commit never lands after it,
 /// nor lists a save's temporary file, and the last commit's texts are read again only when HEAD moves.</summary>
-public sealed class VcsTests : IDisposable
+public sealed partial class VcsTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";
 

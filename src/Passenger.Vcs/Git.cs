@@ -326,10 +326,11 @@ public sealed partial class Git
     }
 
     /// <summary>The branch, HEAD's commit, and the changed and unversioned files (ignored ones and a save's temporary file
-    /// left out, renames with where they came from), in one git so the three agree.</summary>
+    /// left out, renames with where they came from, however many files moved), in one git so the three agree.</summary>
     public async Task<GitStatus> StatusAsync()
     {
-        (GitResult ran, PooledBytes? output) = await RunAsync(Root, ["status", "--porcelain=v2", "-z", "--branch", "--no-ahead-behind", "--untracked-files=all"], PooledAsync);
+        (GitResult ran, PooledBytes? output) = await RunAsync(Root,
+            [.. Unlimited, "status", "--porcelain=v2", "-z", "--branch", "--no-ahead-behind", "--untracked-files=all"], PooledAsync);
         StatusRead read;
         using (output)
         {
@@ -350,6 +351,10 @@ public sealed partial class Git
         }
         return new GitStatus(read.Branch, read.Head, read.Changes, conflicts, read.Upstream, read.Even);
     }
+
+    /// <summary>The setting that has a status look for renames however many files were added and deleted (a limit of 0 is
+    /// none), for that read alone: past its limit git lists the moves it would otherwise find as deletions and additions.</summary>
+    private static readonly string[] Unlimited = ["-c", "status.renameLimit=0"];
 
     /// <summary>A status as read from git's bytes: the branch, HEAD's commit, the files, the conflicts and, for each
     /// conflict, the blobs of the stages git has a version at; the upstream and whether HEAD is where it is.</summary>
@@ -1346,49 +1351,38 @@ public sealed partial class Git
     /// <summary>Whether a path is in the working tree, where git has a last commit's text for it.</summary>
     public bool IsInside(string path) => PathNames.Within(path, Root);
 
-    /// <summary>What the index has at a path (a file, or a folder's files) moved to where the file now is, as git mv
-    /// moves it with the file: each keeps its staged content under the new name, so the status shows the move as a
-    /// rename and the change the file has beyond that as its own. A path the index does not have, or has in conflict,
-    /// is left alone.</summary>
-    public async Task<GitResult> MoveInIndexAsync(string from, string to)
+    /// <summary>What the index has at moved paths (files, or folders' files) moved to where they now are, in order, as git
+    /// mv moves them with the files: each keeps its staged content under its new name, so the status shows the move as a
+    /// rename and the change the file has beyond that as its own. One git reads the index and one writes it, however many
+    /// moved; a move into or out of the tree, of a path the index does not have, or of one in conflict, is left alone.</summary>
+    public async Task<GitResult> MoveInIndexAsync(IReadOnlyList<(string From, string To)> moves) =>
+        await MoveInIndexAsync(moves, environment: null) is { Ran: var ran } ? ran : Done;
+
+    /// <summary><see cref="MoveInIndexAsync(IReadOnlyList{ValueTuple{string, string}})"/> in the index the environment names
+    /// (GIT_INDEX_FILE), with whether any move took an entry.</summary>
+    private async Task<(GitResult Ran, bool Moved)> MoveInIndexAsync(IReadOnlyList<(string From, string To)> moves, IReadOnlyDictionary<string, string>? environment)
     {
-        if (!IsInside(from) || !IsInside(to))
+        List<(string From, string To)> inside = [.. moves.Where(m => IsInside(m.From) && IsInside(m.To)).Select(m => (Relative(m.From), Relative(m.To)))];
+        if (inside.Count == 0)
         {
-            return new GitResult(0, string.Empty, string.Empty);
+            return (Done, false);
         }
-        string source = Relative(from);
-        string target = Relative(to);
-        target = GitForm(target, !Ascii.IsValid(target) && await ComposesAsync());
-        // The index's names below the source, in the index's form, keep what follows its own names.
-        int below = source.Split('/').Length;
-        GitResult staged = await RunAsync(Root, ["ls-files", "--stage", "-z", "--", Literal(source)]);
-        if (!staged.Succeeded)
+        bool composed = inside.Any(m => !Ascii.IsValid(m.From) || !Ascii.IsValid(m.To)) && await ComposesAsync();
+        inside = [.. inside.Select(m => (GitForm(m.From, composed), GitForm(m.To, composed)))];
+        string plan;
+        using (GitOutput staged = await OutputOfAsync(Root, ["ls-files", "--stage", "-z"], environment))
         {
-            return staged;
-        }
-        StringBuilder moves = new();
-        foreach (string entry in staged.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries))
-        {
-            // "<mode> <object> <stage>\t<path>"
-            int tab = entry.IndexOf('\t', StringComparison.Ordinal);
-            string[] fields = tab < 0 ? [] : entry[..tab].Split(' ');
-            if (fields.Length != 3)
+            if (!staged.Succeeded)
             {
-                continue;
+                return (new GitResult(1, string.Empty, "git could not read the index"), false);
             }
-            string path = entry[(tab + 1)..];
-            if (fields[2] != "0")
-            {
-                return new GitResult(0, string.Empty, string.Empty);
-            }
-            // Mode 0 takes the old path out of the index, as update-index --index-info reads it.
-            moves.Append(System.Globalization.CultureInfo.InvariantCulture, $"0 {new string('0', fields[1].Length)}\t{path}\0");
-            string[] names = path.Split('/');
-            string rest = string.Concat(names.Skip(below).Select(n => "/" + n));
-            moves.Append(System.Globalization.CultureInfo.InvariantCulture, $"{fields[0]} {fields[1]}\t{target}{rest}\0");
+            plan = IndexMoves.Plan(staged.Bytes, inside);
         }
-        return moves.Length == 0 ? staged : await RunAsync(Root, ["update-index", "-z", "--index-info"], moves.ToString());
+        return plan.Length == 0 ? (Done, false) : (await RunAsync(Root, ["update-index", "-z", "--index-info"], plan, environment), true);
     }
+
+    /// <summary>What a call that had nothing to do gives.</summary>
+    private static readonly GitResult Done = new(0, string.Empty, string.Empty);
 
     /// <summary>Update Project's first half: the remote the branch's upstream is on fetched (origin where it has none),
     /// which changes no file of the tree. Canceled, git is ended with all it started and the task is canceled; what git
@@ -1497,6 +1491,78 @@ public sealed partial class Git
         }
     }
 
+    /// <summary>The files of <paramref name="moves"/> (each where it came from and where it is) that git would find no
+    /// longer moved once committed as the disk has them, their content changed past what its rename search finds alike (a
+    /// half): the last commit's files against the working tree's, as a look at such a commit later compares them, within
+    /// the person's limits.</summary>
+    public Task<IReadOnlyList<(string From, string To)>> LostMovesAsync(IReadOnlyList<(string From, string To)> moves) =>
+        BackgroundWork.Run<IReadOnlyList<(string From, string To)>>(async () =>
+        {
+            if (moves.Count == 0)
+            {
+                return [];
+            }
+            GitResult compared = await RunAsync(Root, ["diff", "HEAD", "-z", "--name-status", "--find-renames", "--no-ext-diff"]);
+            if (!compared.Succeeded)
+            {
+                return [];
+            }
+            // "R<score>\0<from>\0<to>\0" for each rename found, "<letter>\0<path>\0" for the rest (a copy names two).
+            HashSet<(string, string)> found = [];
+            DiskNames names = new(Root);
+            string[] fields = compared.Output.Split('\0');
+            for (int i = 0; i < fields.Length; i++)
+            {
+                if (fields[i].Length > 0 && fields[i][0] is 'R' or 'C' && i + 2 < fields.Length)
+                {
+                    if (fields[i][0] == 'R')
+                    {
+                        found.Add((names.Full(fields[i + 1]), names.Full(fields[i + 2])));
+                    }
+                    i += 2;
+                }
+                else if (fields[i].Length > 0)
+                {
+                    i++;
+                }
+            }
+            return [.. moves.Where(m => !found.Contains((m.From, m.To)))];
+        });
+
+    /// <summary>Commits files' moves alone, before what changed in them, so git finds each a rename however much changed:
+    /// through an index of its own from the last commit, where each file's entry goes from where it was to where it is,
+    /// with the last commit's content; the real index stays as it was and the files' own changes are left to commit
+    /// after. Signed and signed off as <paramref name="signing"/> says.</summary>
+    public async Task<GitResult> CommitMovesAsync(IReadOnlyList<(string From, string To)> moves, string message, CommitSigning? signing = null, GitAsker? asker = null)
+    {
+        signing ??= CommitSigning.AsConfigured;
+        string index = System.IO.Path.Combine(GitDir, $"passenger-moves-{Guid.NewGuid():N}");
+        string file = System.IO.Path.GetTempFileName();
+        Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index };
+        try
+        {
+            // The real index's stats go along, or the commit reads every file again; -i asks nothing of a file staged and changed since.
+            GitResult read = await RunAsync(Root, ["read-tree", "-m", "-i", $"--index-output={index}", "HEAD"]);
+            if (!read.Succeeded)
+            {
+                return read;
+            }
+            (GitResult moved, bool any) = await MoveInIndexAsync(moves, environment);
+            if (!moved.Succeeded || !any)
+            {
+                return moved.Succeeded ? new GitResult(1, string.Empty, "The last commit has none of the moved files where they were") : moved;
+            }
+            AtomicFile.Write(file, Encoding.UTF8.GetBytes(message), UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            return await RunAsync(Root, [.. signing.Before, "commit", "-F", file, .. signing.After], environment: environment, asker: asker);
+        }
+        finally
+        {
+            File.Delete(index);
+            File.Delete(index + ".lock");
+            File.Delete(file);
+        }
+    }
+
     /// <summary>A private index keeps excluded changes out of the commit and leaves the real index untouched on failure.</summary>
     private async Task<GitResult> CommitPartialAsync(IReadOnlyList<string> paths, string message, bool amend, CommitSigning signing, GitAsker? asker,
         IReadOnlyDictionary<string, PartialCommit> partial)
@@ -1519,8 +1585,8 @@ public sealed partial class Git
         Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index };
         try
         {
-            // The real index's stats of the files unchanged since HEAD go along, or the commit would read every file again.
-            GitResult read = await RunAsync(Root, ["read-tree", "-m", $"--index-output={index}", "HEAD"]);
+            // The real index's stats go along, or the commit reads every file again; -i asks nothing of a file staged and changed since.
+            GitResult read = await RunAsync(Root, ["read-tree", "-m", "-i", $"--index-output={index}", "HEAD"]);
             if (!read.Succeeded)
             {
                 return read;
@@ -2135,9 +2201,9 @@ public sealed partial class Git
 
     /// <summary>What git writes, read into a buffer of the pool's as it comes, and whether git succeeded; nothing where it
     /// did not run, or what it wrote could not be read.</summary>
-    private static async Task<GitOutput> OutputOfAsync(string folder, IReadOnlyList<string> arguments)
+    private static async Task<GitOutput> OutputOfAsync(string folder, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? environment = null)
     {
-        (GitResult ran, PooledBytes? bytes) = await RunAsync(folder, arguments, PooledAsync);
+        (GitResult ran, PooledBytes? bytes) = await RunAsync(folder, arguments, PooledAsync, environment: environment);
         return new GitOutput(ran.Succeeded, bytes);
     }
 
