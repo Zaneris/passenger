@@ -263,6 +263,97 @@ public class VimTests
     public void Less_common_corners_do_what_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>Visual block mode over lines of other lengths: a line too short for the column aimed at puts the block's
+    /// cursor just past its end, an operator leaves the caret at the block's top left, I, c and C reach a line ending
+    /// where the block begins, and whole lines put over a block go above or below it.</summary>
+    [Theory]
+    [InlineData("int main(void)\n{\n   | foo(a, b);\n    if (x) { return \"hi\"; }\n}", "<C-v>krk", "int main(void)\n|{\n kkkfoo(a, b);\n    if (x) { return \"hi\"; }\n}")]
+    [InlineData("def f(x):\n   | return x + 1\n\n\nclass A:\n    pass", "<C-v>jrk3l", "def f(x):\nkkk|kreturn x + 1\n\n\nclass A:\n    pass")]
+    [InlineData("foo_bar = baz(qux[0], {k: v})\n\n | // comment here\nend", "<C-v>kox3l", "foo_bar = baz(qux[0], {k: v})\n|\n// comment here\nend")]
+    [InlineData("foo_bar = baz(qux[0], {k: v})\n\n  // co|mment here\nend", "<C-v>jy", "foo_bar = baz(qux[0], {k: v})\n\n  /|/ comment here\nend")]
+    [InlineData("int main(void)\n{\n    foo(a, b);\n    if (x) { retu|rn \"hi\"; }\n}", "yy<C-v>koU4|", "int main(void)\n{\n   | foo(a, b);\n    if (x) { rETURn \"hi\"; }\n}")]
+    [InlineData("abcdef\nab\nabc|def", "<C-v>kkd", "abc|ef\nab\nabcef")]
+    [InlineData("abcdef\nab\nabc|def", "<C-v>kd", "abcdef\na|b\nabef")]
+    [InlineData("abcdef\nab\nabc|def", "<C-v>kkjd", "abcdef\na|b\nabef")]
+    [InlineData("abcdef\n\nabc|def", "<C-v>kkd", "abc|ef\n\nabcef")]
+    [InlineData("ab\n\n|cd", "<C-v>kkIQ<Esc>", "|Qab\nQ\nQcd")]
+    [InlineData("ab\n\n|cd", "<C-v>kIQ<Esc>", "ab\n|Q\nQcd")]
+    [InlineData("abc\nab\n|abcd", "<C-v>kklIQ<Esc>", "|Qabc\nQab\nQabcd")]
+    [InlineData("abc|d\nab\nxy", "<C-v>jjCQ<Esc>", "ab|Q\nabQ\nxyQ")]
+    [InlineData("ab|cd\nab\nxy", "<C-v>jjCQ<Esc>", "ab|Q\nabQ\nxyQ")]
+    [InlineData("ab|cd\nab\nxy", "<C-v>jjcQ<Esc>", "ab|Qd\nabQ\nxyQ")]
+    [InlineData("ab|cd\nab\nxy", "<C-v>jjAQ<Esc>", "ab|cQd\nab Q\nxy Q")]
+    [InlineData("ab|cd\nab\nxy", "<C-v>jj$AQ<Esc>", "ab|cdQ\nabQ\nxyQ")]
+    [InlineData("ab|cd\na\nxyz", "<C-v>jjIQ<Esc>", "ab|Qcd\na\nxyQz")]
+    [InlineData("a b c d e f\ng h i j k l\nm n o p| q r", "yy<C-v>hPd$", "a b c d e f\ng h i j k l\n|\nm n o q r")]
+    [InlineData("def f(x):\n    return x + 1\n\n\ncl|ass A:\n    pass", "yG<C-v>2lp", "def f(x):\n    return x + 1\n\n\ncl A:\n|class A:\n    pass\n    pass")]
+    [InlineData("  alpha.beta(gamma, delta)\n  [1|, 2, 3]\n  'quoted text' and \"more\"", "<C-v>h$dy_", "  alpha.beta(gamma, delta)\n  [|1\n  'quoted text' and \"more\"")]
+    [InlineData("ab|c\nxyz", "<C-v>$d", "a|b\nxyz")]
+    [InlineData("ab|c\nxyz", "<C-v>h$d", "a|b\nxyz")]
+    [InlineData("ab|c\nxyz", "<C-v>h$dy_", "a|b\nxyz")]
+    [InlineData("abcd\nab\nab|cd", "<C-v>kkIQ<Esc>", "ab|Qcd\nabQ\nabQcd")]
+    [InlineData("abcd\na\nab|cd", "<C-v>kkIQ<Esc>", "ab|Qcd\na\nabQcd")]
+    [InlineData("abcd|e\nab\nxyzw", "<C-v>jjcQ<Esc>", "abcd|Q\nab\nxyzwQ")]
+    [InlineData("abcd|e\nab\nxyzwv", "<C-v>jjlcQ<Esc>", "abcd|Q\nab\nxyzwQ")]
+    [InlineData("abcd|e\nab\nxyzwv", "<C-v>jjCQ<Esc>", "abcd|Q\nab\nxyzwQ")]
+    [InlineData("ab|cd\nab\nxy", "<C-v>jjsQ<Esc>", "ab|Qd\nabQ\nxyQ")]
+    [InlineData("ab|cd\n\nxy", "<C-v>jjcQ<Esc>", "ab|Qd\n\nxyQ")]
+    [InlineData("|abcd\n\nxy", "<C-v>jjcQ<Esc>", "|Qbcd\nQ\nQy")]
+    [InlineData("|abcd\n\nxy", "<C-v>jjCQ<Esc>", "|Q\nQ\nQ")]
+    [InlineData("abcd|e\nab\nxyzwv", "<C-v>jjcQ<Esc>j.", "abcdQ\na|Q\nxQzwQ")]
+    [InlineData("ab|cd\nxy\nzz", "yy<C-v>jP", "|abcd\nabd\nxy\nzz")]
+    [InlineData("ab|cd\nxy\nzz", "yy<C-v>jp", "abd\nxy\n|abcd\nzz")]
+    [InlineData("ab|cd\nxy", "yy<C-v>jp", "abd\nxy\n|abcd")]
+    [InlineData("|abcd\nxy", "jyyk<C-v>lP", "|xy\ncd\nxy")]
+    [InlineData("one two three\nfour five six\n\nseven eigh|t", "<C-v>$kP", "one two three\nfour five six\n|\n")]
+    [InlineData("one two three\nfour five six\n\nseven eigh|t", "<C-v>$kd", "one two three\nfour five six\n|\n")]
+    [InlineData("ab\n\nab|cd", "<C-v>k$d", "ab\n|\n")]
+    [InlineData("ab\n\nab|cd", "<C-v>kd", "ab\n|\nd")]
+    public void A_block_over_lines_of_other_lengths_acts_as_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A yank over _ leaves the caret where it was, as yy does.</summary>
+    [Theory]
+    [InlineData("a b|c\nxyz", "yy", "a b|c\nxyz")]
+    [InlineData("a b|c\nxyz", "y_", "a b|c\nxyz")]
+    [InlineData("a b|c\nxyz", "yj", "a b|c\nxyz")]
+    [InlineData("a b\nxy|z", "yk", "a |b\nxyz")]
+    [InlineData("  a b|c\nxyz", "y_", "  a b|c\nxyz")]
+    public void A_yank_of_the_caret_line_leaves_the_caret(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A change of case over nothing at a line's start takes the first character on the text's first line and
+    /// the whole line on any other, as Vim's does.</summary>
+    [Theory]
+    [InlineData("f|oo_bar = baz(qux[0], {k: v})\n\n  // comment here\nend", "bg~|", "|Foo_bar = baz(qux[0], {k: v})\n\n  // comment here\nend")]
+    [InlineData("one two three\nfour five six\n\n|seven eight", "Gg~0", "one two three\nfour five six\n\n|SEVEN EIGHT")]
+    [InlineData("x = (a + (b * c)) - d;\ny = [e, f];\n|z = \"g (h) i\";", "gU03~", "x = (a + (b * c)) - d;\ny = [e, f];\nz =| \"G (H) I\";")]
+    [InlineData("|seven eight", "g~0", "|Seven eight")]
+    [InlineData("a\n|seven eight", "gu0", "a\n|seven eight")]
+    public void A_change_of_case_over_nothing_at_a_lines_start_does_what_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A sentence ending its line where the next one begins the next line, or an empty line does, ends there:
+    /// an operator from the line's start takes whole lines, from inside it the text to the line's end, and visual mode
+    /// selects to the line's end; as takes the blanks before where only a line break stands after.</summary>
+    [Theory]
+    [InlineData("foo_bar = baz(|qux[0], {k: v})\n\n  // comment here\nend", "das", "|\n  // comment here\nend")]
+    [InlineData("foo_ba|r = baz(qux[0], {k: v})\n\n  // comment here\nend", "dis", "|\n  // comment here\nend")]
+    [InlineData("one two |three\nfour five six\n\nseven eight", "das", "|\nseven eight")]
+    [InlineData("one two |three\nfour five six\n\nseven eight", "dis", "|\nseven eight")]
+    [InlineData("one two |three\nfour five six\n\nseven eight", "yisP", "|one two three\nfour five six\none two three\nfour five six\n\nseven eight")]
+    [InlineData("one. two |three\n\nfour", "das", "one|.\n\nfour")]
+    [InlineData("one. two |three\n\nfour", "vas<Esc>", "one. two thre|e\n\nfour")]
+    [InlineData("fo|o.\nbar", "das", "|bar")]
+    [InlineData("fo|o.\nbar", "dis", "|bar")]
+    [InlineData("a. fo|o.\nbar", "das", "a|.\nbar")]
+    [InlineData("fo|o.\n\nbar", "vasd", "|\n\nbar")]
+    [InlineData("fo|o.\n\nbar", "yasP", "|foo.\nfoo.\n\nbar")]
+    [InlineData("One two. Three |four.  Five", "das", "One two. |Five")]
+    [InlineData("one. |two\nthree. four", "dis", "one. | four")]
+    public void A_sentence_ending_its_line_ends_there_as_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     /// <summary>A text whose file keeps no final line break: where a change leaves its last line empty, that line is a
     /// line, as Vim's buffer holds it, which the caret stands on and j, G and dd reach.</summary>
     [Theory]

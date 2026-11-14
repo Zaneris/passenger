@@ -26,6 +26,13 @@ public sealed partial class Vim
             Stretch stretch = span.Linewise
                 ? Whole(text, text.GetLineFromOffset(span.Start), text.GetLineFromOffset(span.End), s.Caret) with { Landing = landing }
                 : new Stretch(span.Start, span.End, false, text.GetLineFromOffset(span.Start), text.GetLineFromOffset(span.End), s.Caret, landing);
+            if (op is "g~" or "gu" or "gU" && !stretch.Lines && stretch.End == stretch.Start && stretch.Start == text.GetLineStart(stretch.First)
+                && text.GetLine(stretch.First).Length > 0)
+            {
+                // Case over nothing at a line's start takes its first character on the first line, else the whole line.
+                LineSpan line = text.GetLine(stretch.First);
+                stretch = stretch with { End = stretch.First == 0 ? TextNavigation.NextGrapheme(text, line.Start) : line.End };
+            }
             if (op == "d" && !stretch.Lines && stretch.Last > stretch.First && VimMotions.InIndent(text, stretch.Start) && OnlyBlanksFrom(text, stretch.End))
             {
                 // A delete over lines from the indent to the line's blanks takes the lines whole.

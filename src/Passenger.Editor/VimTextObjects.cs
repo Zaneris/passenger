@@ -180,14 +180,50 @@ public static class VimTextObjects
             }
             end = inner ? (i % 2 == 0 ? body : next) : next;
         }
-        if (!inner && !onWhite && end == BodyEnd(text, start) && end == SentenceBodyLimit(text, end))
+        int bodyOfStart = BodyEnd(text, start);
+        if (!inner && !onWhite && (end == bodyOfStart || BreaksOnly(text, bodyOfStart, end)) && end == SentenceBodyLimit(text, end))
         {
             while (start > VimMotions.LineOf(text, start).Start && White(text[start - 1]))
             {
                 start--;
             }
         }
-        return new VimSpan(start, Math.Max(start, end), false);
+        end = Math.Max(start, end);
+        LineSpan last = VimMotions.LineOf(text, end);
+        if (end == last.End && last.Length > 0 && last.BreakLength > 0 && last.Line + 1 < text.LineCount
+            && text.GetLine(last.Line + 1) is var below && (below.Length == 0 || !char.IsWhiteSpace(text[below.Start])))
+        {
+            // Text ending at a line's end runs to the next sentence where that begins the next line, as its first column.
+            end = last.EndIncludingBreak;
+        }
+        return new VimSpan(start, end, false);
+    }
+
+    /// <summary>A sentence object's stretch as an operator takes it: an end in a later line's first column ends at the
+    /// end of the line before, and from a line's indent the stretch is whole lines, as Vim's exclusive end there is.</summary>
+    public static VimSpan EndingInFirstColumn(TextSnapshot text, VimSpan span)
+    {
+        LineSpan last = VimMotions.LineOf(text, span.End);
+        if (span.Linewise || span.End <= span.Start || span.End != last.Start || last.Line <= VimMotions.LineOf(text, span.Start).Line)
+        {
+            return span;
+        }
+        return VimMotions.InIndent(text, span.Start)
+            ? new VimSpan(VimMotions.LineOf(text, span.Start).Start, text.GetLineStart(last.Line - 1), true)
+            : span with { End = text.GetLine(last.Line - 1).End };
+    }
+
+    /// <summary>Whether only line breaks stand from <paramref name="from"/> to <paramref name="to"/>.</summary>
+    private static bool BreaksOnly(TextSnapshot text, int from, int to)
+    {
+        for (int p = from; p < to; p++)
+        {
+            if (text[p] is not ('\r' or '\n'))
+            {
+                return false;
+            }
+        }
+        return from < to;
     }
 
     private static int SentenceAfter(TextSnapshot text, int offset)

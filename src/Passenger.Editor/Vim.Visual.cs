@@ -480,7 +480,8 @@ public sealed partial class Vim
             switch (command.Name)
             {
                 case "j" or "k":
-                    aim = block ? (blockColumns.ToEnd ? int.MaxValue : blockColumns.Cursor) : visualAims[i] >= 0 ? visualAims[i] : CaretColumn(text, cursor, tab);
+                    aim = block ? (blockColumns.ToEnd ? int.MaxValue : visualAims[i] >= 0 ? visualAims[i] : blockColumns.Cursor)
+                        : visualAims[i] >= 0 ? visualAims[i] : CaretColumn(text, cursor, tab);
                     moved = VimMotions.LinesAway(text, cursor, command.Name == "j" ? n : -n, breakEnds) is { } line
                         ? aim == int.MaxValue ? LineEndOf(text, line) : VimMotions.OffsetAtColumn(text, line, aim, tab)
                         : null;
@@ -508,12 +509,25 @@ public sealed partial class Vim
             visualAims[i] = aim;
             if (block)
             {
+                // Onto a line too short for the column aimed at, the block's cursor stands just past its end.
                 blockColumns = command.Name is "j" or "k" or "gj" or "gk"
-                    ? blockColumns with { Cursor = blockColumns.ToEnd ? blockColumns.Cursor : aim >= 0 && aim != int.MaxValue ? aim : VimMotions.ColumnOf(text, to, tab) }
+                    ? blockColumns with
+                    {
+                        Cursor = blockColumns.ToEnd ? VimMotions.ColumnOf(text, LastCharOf(text, to), tab)
+                            : aim >= 0 && aim != int.MaxValue ? Math.Min(aim, VimMotions.ColumnOf(text, VimMotions.LineOf(text, to).End, tab))
+                            : VimMotions.ColumnOf(text, to, tab),
+                    }
                     : blockColumns with { Cursor = VimMotions.ColumnOf(text, to, tab), ToEnd = command.Name == "$" };
             }
         }
         return ShowVisual(text, view);
+    }
+
+    /// <summary>The last character of the line an offset is on, its start where it is empty.</summary>
+    private static int LastCharOf(TextSnapshot text, int offset)
+    {
+        LineSpan line = VimMotions.LineOf(text, offset);
+        return line.Length == 0 ? line.Start : VimMotions.StepBack(text, line.End);
     }
 
     /// <summary>Where a visual cursor stands at a line's end: on its line break, at the start of an empty line.</summary>
@@ -546,6 +560,10 @@ public sealed partial class Vim
                 {
                     regions[i] = r with { Cursor = back };
                     Mode = Mode == VimMode.VisualLine ? VimMode.Visual : Mode;
+                    if (Mode == VimMode.VisualBlock)
+                    {
+                        blockColumns = blockColumns with { Cursor = VimMotions.ColumnOf(text, back, view.Indent.TabWidth), ToEnd = false };
+                    }
                 }
                 continue;
             }
@@ -562,7 +580,12 @@ public sealed partial class Vim
                 regions[i] = single ? new Region(span.Start, span.End) : r with { Cursor = span.End };
                 continue;
             }
-            int last = Math.Max(span.Start, VimMotions.StepBack(text, span.End));
+            LineSpan endLine = VimMotions.LineOf(text, span.End);
+            // A sentence ending in a later line's first column stops at the end of the line before.
+            int end = key == "s" && span.End > span.Start && span.End == endLine.Start && endLine.Line > text.GetLineFromOffset(span.Start)
+                ? text.GetLine(endLine.Line - 1).End
+                : span.End;
+            int last = Math.Max(span.Start, VimMotions.StepBack(text, end));
             regions[i] = single || enclosing ? new Region(span.Start, last) : r with { Cursor = last };
             if (enclosing ? was != VimMode.Visual : was == VimMode.VisualLine && (single || (key is "w" or "W" && r.Cursor >= r.Anchor)))
             {

@@ -91,7 +91,7 @@ public sealed partial class Vim
         }
         if (op is "p" or "P")
         {
-            return PutOver(acting, op == "P", text, stretches, carets, block, view);
+            return PutOver(acting, op == "P", text, stretches, carets, block, view, top, bottom);
         }
         return Act(acting, basic, stretches, text, carets, view, block && !lines);
     }
@@ -167,12 +167,20 @@ public sealed partial class Vim
         {
             if (BlockPiece(text, line, left, right, tab) is not { } piece)
             {
+                LineSpan span = text.GetLine(line);
+                if (perLine && VimMotions.ColumnOf(text, span.End, tab) == left)
+                {
+                    // A line ending just where the block begins takes what a change types there, at its end.
+                    stretches.Add(new Stretch(span.End, span.End, false, line, line, span.End, span.End));
+                    carets.Add(Selection.At(span.End));
+                }
                 continue;
             }
             stretches.Add(new Stretch(piece.Start, piece.End, false, line, line, piece.Start, piece.Start));
             if (perLine || carets.Count == 0)
             {
-                carets.Add(Selection.At(piece.Start));
+                // The caret goes to the block's top left, at the end of a top line too short to reach it.
+                carets.Add(Selection.At(perLine || line == top ? piece.Start : VimMotions.OffsetAtColumn(text, top, left, tab)));
             }
         }
         if (carets.Count == 0)
@@ -204,9 +212,10 @@ public sealed partial class Vim
             int width = VimMotions.ColumnOf(text, span.End, tab);
             if (!after)
             {
-                if (width > left)
+                // A line ending just where the block begins takes it at its end; one ending before is passed over.
+                if (width >= left)
                 {
-                    places.Add(BlockPiece(text, line, left, right, tab)!.Value.Start);
+                    places.Add(width == left ? span.End : BlockPiece(text, line, left, right, tab)!.Value.Start);
                 }
                 continue;
             }
@@ -312,7 +321,7 @@ public sealed partial class Vim
     /// <summary>p and P over a visual stretch: the register's text in place of what is shown, which p keeps in the
     /// unnamed register and P doesn't; whole lines put over characters go on lines of their own. From an empty register
     /// the stretch is deleted alone, as a d into the unnamed register (for P into none), which . makes again.</summary>
-    private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view)
+    private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view, int top, int bottom)
     {
         if (VimRegisters.IsClipboard(command.Register))
         {
@@ -328,6 +337,10 @@ public sealed partial class Vim
         stretches.Sort((a, b) => a.Start.CompareTo(b.Start));
         VimRegister replaced = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
         string eol = view.LineEnding;
+        if (block && value.Linewise)
+        {
+            return PutLinesBy(value, keep, text, stretches, top, bottom, eol, replaced);
+        }
         List<TextEdit> edits = [];
         List<int> landed = [];
         bool dealt = stretches.Count > 1 && value.Parts.Count == stretches.Count && !block;
@@ -362,7 +375,7 @@ public sealed partial class Vim
             else
             {
                 put = piece;
-                landing = piece.Contains('\n', StringComparison.Ordinal) ? 0 : Math.Max(0, piece.Length - 1);
+                landing = value.Blockwise || piece.Contains('\n', StringComparison.Ordinal) ? 0 : Math.Max(0, piece.Length - 1);
             }
             edits.Add(new TextEdit(s.Start, s.End - s.Start, put));
             landed.Add(s.Start + shift + landing);
@@ -377,6 +390,34 @@ public sealed partial class Vim
             Registers.Delete(null, replaced, always: false);
         }
         return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Create(putCarets, 0), EditKind.Other)]);
+    }
+
+    /// <summary>Whole lines put over a block: the block deleted, the lines put above its top line for P, below its bottom
+    /// line for p, the caret on the first one's first non-blank.</summary>
+    private VimResult PutLinesBy(VimRegister value, bool above, TextSnapshot text, List<Stretch> stretches, int top, int bottom, string eol, VimRegister replaced)
+    {
+        string lines = LineEndings.In(value.Text, eol);
+        LineSpan end = text.GetLine(bottom);
+        (int at, string put) = above ? (text.GetLineStart(top), lines)
+            : end.BreakLength > 0 ? (end.EndIncludingBreak, lines) : (end.End, eol + lines[..^eol.Length]);
+        List<TextEdit> edits = [.. stretches.Where(t => t.End > t.Start).Select(t => new TextEdit(t.Start, t.End - t.Start, string.Empty))];
+        int merged = edits.FindIndex(e => e.Start == at);
+        if (merged >= 0)
+        {
+            edits[merged] = edits[merged] with { Text = put };
+        }
+        else
+        {
+            edits.Add(new TextEdit(at, 0, put));
+            edits.Sort((a, b) => a.Start.CompareTo(b.Start));
+        }
+        TextSnapshot after = text.Apply(edits);
+        int first = after.GetLineFromOffset(Math.Min(TextEditing.MapOffset(at, edits, false) + (above || end.BreakLength > 0 ? 0 : eol.Length), after.Length));
+        if (!above)
+        {
+            Registers.Delete(null, replaced, always: false);
+        }
+        return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Single(VimMotions.FirstNonBlank(after, first, breakEnds)), EditKind.Other)]);
     }
 
     /// <summary>A block's put: its lines one below another from the caret's column (after the caret's character for p),

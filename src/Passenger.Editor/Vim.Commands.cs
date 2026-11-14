@@ -481,7 +481,12 @@ public sealed partial class Vim
         }
         if (command.Name is "i" or "a")
         {
-            return VimTextObjects.Of(text, caret, command.Argument!, command.Name == "i", n, breakEnds) is { } found ? (found, found.Start) : null;
+            if (VimTextObjects.Of(text, caret, command.Argument!, command.Name == "i", n, breakEnds) is not { } found)
+            {
+                return null;
+            }
+            VimSpan taken = command.Argument == "s" ? VimTextObjects.EndingInFirstColumn(text, found) : found;
+            return (taken, taken.Start);
         }
         if (op == "c" && command.Name is "w" or "W" && caret < text.Length && !char.IsWhiteSpace(text[caret]))
         {
@@ -506,7 +511,9 @@ public sealed partial class Vim
         {
             int from = Math.Min(text.GetLineFromOffset(caret), text.GetLineFromOffset(target.Offset));
             int to = Math.Max(text.GetLineFromOffset(caret), text.GetLineFromOffset(target.Offset));
-            return (new VimSpan(text.GetLineStart(from), text.GetLineStart(to), true), Math.Min(caret, target.Offset));
+            // A yank over _, which never leaves the caret's line, leaves the caret where it was.
+            int landing = command.Name == "_" && op == "y" ? caret : Math.Min(caret, target.Offset);
+            return (new VimSpan(text.GetLineStart(from), text.GetLineStart(to), true), landing);
         }
         int start = Math.Min(caret, target.Offset);
         int stop = Math.Max(caret, target.Offset);
