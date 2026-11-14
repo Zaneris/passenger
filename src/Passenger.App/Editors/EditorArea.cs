@@ -40,9 +40,18 @@ public sealed partial class EditorArea : UserControl
         Commands = new CommandHistory(this);
         activeGroup = NewGroup();
         activeGroup.IsCurrent = true;
-        emptyTitle = new TextBlock { Text = "Passenger", FontSize = 28, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
+        // In a narrow editor the title ends in an ellipsis and the hint, just under it, wraps as empty places' words do.
+        emptyTitle = new TextBlock
+        {
+            Text = "Passenger",
+            FontSize = 28,
+            FontWeight = FontWeight.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(16, 0),
+        };
         emptyTitle.Bind(TextBlock.ForegroundProperty, emptyTitle.GetResourceObservable(TokenKeys.Text));
-        emptyHint = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Open a solution, project or folder to start.", HorizontalAlignment = HorizontalAlignment.Center };
+        emptyHint = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Open a solution, project or folder to start.", Margin = new Thickness(16, 0) };
         folderHint = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { emptyTitle, emptyHint } };
         emptyState.Content = folderHint;
         main = NewFrame(new EditorFrame.Leaf(activeGroup), activeGroup, emptyState);

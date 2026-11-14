@@ -214,6 +214,40 @@ public sealed class SmallestWindowTests
             commit.GetLogicalDescendants().OfType<CheckBox>().Single(c => c.Content as string == "Amend").FindLogicalAncestorOfType<ScrollViewer>()!;
     }
 
+    /// <summary>At the smallest width with no file open, the empty editors' hint wraps inside them and a folder's long name
+    /// ends in an ellipsis there, where both ran past the editors' edge, cut mid-word; at a wide window the hint is one line.</summary>
+    [AvaloniaFact]
+    public void At_the_smallest_width_the_empty_editors_hint_wraps_inside_them_and_a_long_folder_name_ends_in_an_ellipsis()
+    {
+        string folder = TestFolders.Create("smallest-hint-Contoso.Inventory.Management.Service.Api-");
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(1);\n");
+        MainWindow window = Ui.OpenFolder(folder, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
+        try
+        {
+            Rect editors = Placed(window, window.EditorArea);
+            TextBlock hint = window.EditorArea.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.StartsWith("Open a file from the Explorer", StringComparison.Ordinal) == true);
+            TextBlock title = window.EditorArea.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == Path.GetFileName(folder));
+            foreach (TextBlock words in (TextBlock[])[title, hint])
+            {
+                Rect at = Placed(window, words);
+                Assert.True(words.IsEffectivelyVisible && at.Left >= editors.Left && at.Right <= editors.Right && words.TextLayout.TextLines.All(l => l.Width <= at.Width + 0.5),
+                    $"'{words.Text}' stands at {at}, {words.TextLayout.Width:0.#} wide, past the editors at {editors}: it is cut at their edge");
+            }
+            Assert.True(hint.TextLayout.TextLines.Count > 1 && hint.TextLayout.TextLines.All(l => !l.HasCollapsed),
+                $"The hint is {hint.TextLayout.TextLines.Count} line(s) in editors {editors.Width:0.#} wide: it is cut, never wrapped");
+            Assert.True(title.TextLayout.TextLines is [{ HasCollapsed: true }], $"The folder's name '{title.Text}', wider than the editors, does not end in an ellipsis");
+
+            window.Width = 1400;
+            Ui.Settle();
+            Assert.True(hint.TextLayout.TextLines.Count == 1, $"At a wide window the hint is {hint.TextLayout.TextLines.Count} lines where one holds it");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
     private static Control Named(MainWindow window, string name) =>
         window.GetVisualDescendants().OfType<Control>().FirstOrDefault(c => c.Name == name) ?? throw new Xunit.Sdk.XunitException($"The window has no {name}");
 
