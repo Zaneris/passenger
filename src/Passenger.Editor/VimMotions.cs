@@ -451,60 +451,102 @@ public static class VimMotions
     /// <summary>Whether a line is empty, a paragraph's bound; a line of blanks is not.</summary>
     public static bool Blank(TextSnapshot text, int line) => text.GetLine(line).Length == 0;
 
-    /// <summary>) and (: the start of the next sentence, or of this one or the one before; exclusive. Run past the last
-    /// sentence, ) stands on the text's last character and takes it; a count reaching the text's edge early fails.</summary>
+    /// <summary>) and (: the start of the next sentence, or of this one or the one before; exclusive. An empty line is a
+    /// sentence, ) stopping at the first of a run of them and ( at the last. Past the last sentence ) stands on the text's
+    /// last character and takes it, from there too; ( stops at the text's very start, twice where the text begins with an
+    /// empty line. A count with sentences left over at the text's edge fails.</summary>
     public static VimTarget? Sentence(TextSnapshot text, int caret, int n, bool forward, bool breakEnds)
     {
-        int to = caret;
+        int at = caret;
+        if (forward)
+        {
+            int end = Settled(text, text.Length, breakEnds);
+            for (int i = 0; i < n; i++)
+            {
+                int next = i == 0 ? SentenceStartAfter(text, caret) : NextSentenceStart(text, at);
+                if (next < text.Length && next > at)
+                {
+                    at = next;
+                    continue;
+                }
+                // The text's last character is one more place after the last sentence's start, even where it is that start.
+                if (i < n - 1 || end < at)
+                {
+                    return null;
+                }
+                return new VimTarget(end, VimMotionKind.Inclusive);
+            }
+            return new VimTarget(at, VimMotionKind.Exclusive);
+        }
+        bool topAgain = Blank(text, 0);
         for (int i = 0; i < n; i++)
         {
-            int next = forward ? NextSentenceStart(text, to) : NearestEmptyLine(text, PreviousSentenceStart(text, AboveEmptyLines(text, to)), to);
-            if (i < n - 1 && (next == to || next == (forward ? text.Length : 0)))
+            if (at == 0)
             {
-                // A count running into the text's edge with sentences still to go fails, as Vim's does.
-                return null;
+                if (i == 0 || !topAgain)
+                {
+                    return null;
+                }
+                topAgain = false;
+                continue;
             }
-            to = next;
+            at = SentenceStartBefore(text, at);
         }
-        if (to == caret)
-        {
-            return null;
-        }
-        return to == text.Length && Settled(text, to, breakEnds) < to ? new VimTarget(Settled(text, to, breakEnds), VimMotionKind.Inclusive) : new VimTarget(to, VimMotionKind.Exclusive);
+        return new VimTarget(at, VimMotionKind.Exclusive);
     }
 
-    /// <summary>( from an empty line goes back over the empty lines before it: the end of the line with text above them,
-    /// the text's start where none is; any other offset as it is.</summary>
-    private static int AboveEmptyLines(TextSnapshot text, int offset)
+    /// <summary>The start of the first sentence after the offset, from wherever the offset stands in its own (on its end,
+    /// or in the white after it, or in the white between a run of empty lines and the sentence after them, which is that
+    /// sentence's); the text's end where none is.</summary>
+    private static int SentenceStartAfter(TextSnapshot text, int offset)
     {
-        if (!EmptyLineAt(text, offset))
+        int start = PreviousSentenceStart(text, offset + 1);
+        if (EmptyLineAt(text, start) && !EmptyLineAt(text, offset))
         {
-            return offset;
+            start = NextSentenceStart(text, start);
+            offset = Math.Max(offset, start);
         }
-        int line = text.GetLineFromOffset(offset);
-        while (line > 0 && text.GetLine(line).Length == 0)
+        while (start <= offset)
         {
-            line--;
+            int next = NextSentenceStart(text, start);
+            if (next <= start)
+            {
+                return text.Length;
+            }
+            start = next;
         }
-        return text.GetLine(line).Length == 0 ? 0 : text.GetLine(line).End;
+        return start;
     }
 
-    /// <summary>( from text landing on a run of empty lines that ends just above it: the last of them, the nearest.</summary>
-    private static int NearestEmptyLine(TextSnapshot text, int found, int from)
+    /// <summary>Where ( goes from a place past the text's start: the start of the sentence before, but the last of a run
+    /// of empty lines where that run is the sentence before, and from an empty line the sentence before its whole run.</summary>
+    private static int SentenceStartBefore(TextSnapshot text, int offset)
     {
-        int line = text.GetLineFromOffset(from) - 1;
-        if (!EmptyLineAt(text, found) || EmptyLineAt(text, from) || line < 0 || text.GetLineStart(line) <= found)
+        int limit = offset;
+        if (EmptyLineAt(text, offset))
         {
-            return found;
-        }
-        for (int between = text.GetLineFromOffset(found); between <= line; between++)
-        {
-            if (text.GetLine(between).Length > 0)
+            int line = text.GetLineFromOffset(offset);
+            while (line > 0 && Blank(text, line - 1))
             {
-                return found;
+                line--;
             }
+            limit = text.GetLineStart(line);
         }
-        return text.GetLineStart(line);
+        if (limit == 0)
+        {
+            return 0;
+        }
+        int start = PreviousSentenceStart(text, limit);
+        if (EmptyLineAt(text, start))
+        {
+            int line = text.GetLineFromOffset(start);
+            while (line + 1 < text.LineCount && Blank(text, line + 1) && text.GetLineStart(line + 1) < limit)
+            {
+                line++;
+            }
+            start = text.GetLineStart(line);
+        }
+        return start;
     }
 
     /// <summary>The start of the first sentence after the offset: past a sentence's end and the blanks after it, an empty
@@ -541,39 +583,39 @@ public static class VimMotions
         return n;
     }
 
-    /// <summary>The start of the sentence the offset is in when past it, else of the one before: sentences counted
-    /// forward from the top of the run of lines two runs before, as far back as one can be.</summary>
+    /// <summary>The start of the sentence the offset is in when past it, else of the one before (the text's start, blanks
+    /// and all, where none is before): the sentences counted forward from the first empty line above.</summary>
     public static int PreviousSentenceStart(TextSnapshot text, int offset)
     {
-        int line = text.GetLineFromOffset(offset);
-        for (int runs = 0; runs < 3 && line > 0; runs++)
+        int start = ParagraphTop(text, offset);
+        while (NextSentenceStart(text, start) is var next && next > start && next < offset)
         {
-            bool blank = Blank(text, line);
-            while (line > 0 && Blank(text, line - 1) == blank)
-            {
-                line--;
-            }
-            if (runs < 2 && line > 0)
-            {
-                line--;
-            }
+            start = next;
         }
-        int start = text.GetLineStart(line);
-        // The text's first sentence begins at its very start, blanks before it and all.
-        int best = Blank(text, line) || line == 0 ? start : SkipBlanks(text, start);
-        if (best >= offset)
+        return start;
+    }
+
+    /// <summary>Where the nearest run of empty lines beginning before the offset begins, a sentence's start whatever came
+    /// before it; the text's start where there is none.</summary>
+    private static int ParagraphTop(TextSnapshot text, int offset)
+    {
+        if (offset <= 0)
         {
             return 0;
         }
-        while (true)
+        int line = text.GetLineFromOffset(Math.Min(offset, text.Length));
+        for (int l = text.GetLineStart(line) < offset ? line : line - 1; l >= 0; l--)
         {
-            int next = NextSentenceStart(text, best);
-            if (next >= offset || next <= best)
+            if (Blank(text, l))
             {
-                return best;
+                while (l > 0 && Blank(text, l - 1))
+                {
+                    l--;
+                }
+                return text.GetLineStart(l);
             }
-            best = next;
         }
+        return 0;
     }
 
     /// <summary>Whether the '.', '!' or '?' at the offset ends a sentence: closers after it, then a blank or a line's end;

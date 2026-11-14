@@ -391,6 +391,32 @@ public class VimTests
     public void Back_a_sentence_over_empty_lines_goes_where_vims_does(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A count of ( or ) goes sentence by sentence as Vim's does: ) from a sentence's end or the white after it
+    /// to the next sentence, from the white before a paragraph's first sentence past it, and on to the text's last
+    /// character after the last sentence's start, even where that is the same character; ( reaching the start of a text
+    /// that begins with an empty line counts it twice.</summary>
+    [Theory]
+    [InlineData("one.| two three", ")", "one. |two three")]
+    [InlineData("one.| two three", "2)", "one. two thre|e")]
+    [InlineData("one.| two three", "d)", "one.|two three")]
+    [InlineData("a (b.|) c. \"d\" e!  f? g", "3)", "a (b.) c. \"d\" e!  |f? g")]
+    [InlineData("a.\n |  \nb. c", ")", "a.\n   \n|b. c")]
+    [InlineData("a.\n |  \nb. c", "3)", "a.\n   \nb. |c")]
+    [InlineData("a. b\n\n\n|  c d", ")", "a. b\n\n\n  c |d")]
+    [InlineData("one.  two.\n\n|  three. four\nfive.\n\n\n\nsix", "d2)", "one.  two.\n\n|\n\n\nsix")]
+    [InlineData("a b\n\n\n\nc d. |e", "2)", "a b\n\n\n\nc d. |e")]
+    [InlineData("a b\n\n\n\nc d.| e", "2)", "a b\n\n\n\nc d. |e")]
+    [InlineData("a b\n\n\n\nc d.| e", "3)", "a b\n\n\n\nc d.| e")]
+    [InlineData("a b\n  \n\n|c", "2)", "a b\n  \n\n|c")]
+    [InlineData("|a b\n  \n\nc", "3)", "a b\n  \n\n|c")]
+    [InlineData("\n\nc d. e |f", "5(", "|\n\nc d. e f")]
+    [InlineData("\n\nc d. e |f", "6(", "\n\nc d. e |f")]
+    [InlineData("\n|\nc d. e f", "2(", "|\n\nc d. e f")]
+    [InlineData("\nc |d", "3(", "|\nc d")]
+    [InlineData("x.\n\na b\n\n\nc |d", "5(", "|x.\n\na b\n\n\nc d")]
+    public void Counts_of_sentences_go_where_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     /// <summary>A text whose file keeps no final line break: where a change leaves its last line empty, that line is a
     /// line, as Vim's buffer holds it, which the caret stands on and j, G and dd reach.</summary>
     [Theory]
