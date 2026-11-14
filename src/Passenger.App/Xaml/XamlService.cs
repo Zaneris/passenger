@@ -118,6 +118,17 @@ public sealed class XamlService : IDisposable
         }
     }
 
+    /// <summary>The C# language server has loaded the projects, first or again: each open file whose check asks it is checked
+    /// again, as one checked while it loaded was answered nothing, and one checked before a restore had no generator to run.</summary>
+    public void ServerLoaded()
+    {
+        UiThread.Check();
+        foreach (XamlDocument document in documents.Values.Where(d => d.AsksServer))
+        {
+            document.Recheck();
+        }
+    }
+
     /// <summary>Whether a path is a XAML file Passenger reads, by its name.</summary>
     public static bool IsXaml(string path) => Languages.Language.ForPath(path) == Languages.Language.Xaml;
 

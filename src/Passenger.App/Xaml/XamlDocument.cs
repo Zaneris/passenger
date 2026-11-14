@@ -84,6 +84,10 @@ public sealed class XamlDocument : IDisposable
     /// <summary>Whether its last check found it reads localized strings, so a .resx or XLIFF file's change checks it again.</summary>
     internal bool ReadsLocalized { get; private set; }
 
+    /// <summary>Whether its check asks the C# language server (a MAUI file's, whose source generator the server reruns over
+    /// it), so the server's load of the projects checks it again.</summary>
+    internal bool AsksServer { get; private set; }
+
     /// <summary>The file checked again as it stands, as typing pausing checks it (a language's file it reads was written).</summary>
     internal void Recheck()
     {
@@ -218,10 +222,12 @@ public sealed class XamlDocument : IDisposable
 
     /// <summary>A MAUI file checked by the language server as its text stands (<see cref="Passenger.Lsp.RoslynSession.MauiChecksAsync"/>):
     /// MAUI's source generator run again over it, before any build, its problems placed on the attribute they name, and
-    /// each C# expression's compiled as the generator writes it, placed in the expression. Nothing without a server loaded.</summary>
+    /// each C# expression's compiled as the generator writes it, placed in the expression. Nothing without a server loaded,
+    /// until its load checks the file again (<see cref="XamlService.ServerLoaded"/>).</summary>
     private async Task GeneratorCheckAsync(XamlFile file, int version)
     {
-        if (!file.Dialect.ReadsExpressions || service.Server?.Invoke() is not { IsLoaded: true } server)
+        AsksServer = file.Dialect.ReadsExpressions;
+        if (!AsksServer || service.Server?.Invoke() is not { IsLoaded: true } server)
         {
             return;
         }

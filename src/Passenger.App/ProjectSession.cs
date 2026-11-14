@@ -1558,6 +1558,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 {
                     Web?.Checks.CodeChanged();
                     GodotMarks.Changed();
+                    Xaml.ServerLoaded();
                 }
             };
             // A project the server loaded again (a script moved or added) is code the open scenes were read against as it was.
@@ -1566,6 +1567,10 @@ public sealed class ProjectSession : IAsyncDisposable
                 if (CSharp == started)
                 {
                     GodotMarks.Changed();
+                    if (started.IsReady)
+                    {
+                        Xaml.ServerLoaded();
+                    }
                     // The test projects' files are read at full pace once the server says the whole solution loaded.
                     Tests.Finder.ServerLoading = !started.IsReady;
                 }

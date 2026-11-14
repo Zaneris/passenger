@@ -241,11 +241,14 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     }
 
     /// <summary>A data template given no x:DataType has its bindings compiled against the page's by MAUI's source
-    /// generator, which Passenger's own check leaves to it: its warning of each is on the binding's line as the page opens,
-    /// the generator run over it before any build, and after a build listed with its code, marked once.</summary>
+    /// generator, which Passenger's own check leaves to it: its warning of each is on the binding's line as the page opens
+    /// while the language server loads, the generator run over it once loaded, before any build, and after a build listed
+    /// with its code, marked once.</summary>
     [AvaloniaFact]
     public void Mauis_source_generators_warning_is_marked_on_its_line_before_a_build_and_after_it_listed_with_its_code()
     {
+        // A server of the window's own, so the page is first checked as it loads: one taken up warm has loaded already.
+        app.Drop();
         app.Rewrite("PeoplePage.xaml", Gallery.People.Replace("<DataTemplate x:DataType=\"vm:Person\">", "<DataTemplate>", StringComparison.Ordinal));
         MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
