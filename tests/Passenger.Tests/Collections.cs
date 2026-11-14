@@ -5,10 +5,11 @@
 namespace Passenger.Tests;
 
 /// <summary>What runs beside nothing: a class with a test that holds what it tests to a time (a key's, a frame's, a diff's,
-/// how soon the window answered, a profile's samples, how long the debugger gives an evaluation) or that debugs a program
-/// through the window, its debuggee waiting on timings a busy machine stretches. These run after the rest, one class at a
-/// time. Beside the window tests run only the debug adapter's protocol tests (DebugSession.Collection) and <see
-/// cref="Beside"/>'s classes.</summary>
+/// how soon the window answered, a profile's samples, how long the debugger gives an evaluation), that debugs a program
+/// through the window, its debuggee waiting on timings a busy machine stretches, or that counts what every thread
+/// allocates, where a class beside it would count as its own. These run after the rest, one class at a time. Beside the
+/// window tests run only the debug adapter's protocol tests (DebugSession.Collection) and <see cref="Beside"/>'s
+/// classes.</summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class Alone
 {
