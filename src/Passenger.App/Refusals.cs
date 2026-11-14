@@ -1,4 +1,5 @@
 using System.Globalization;
+using Passenger.App.Mobile;
 using Passenger.App.Settings;
 using Passenger.Core;
 using Passenger.Text;
@@ -474,6 +475,9 @@ public static class Refusals
     /// <summary>A target of a platform Passenger does not run apps on yet.</summary>
     public static string NotYetOn(string target) =>
         $"Passenger does not run apps on {target} yet: it runs them on Android devices and emulators";
+
+    /// <summary>An Android app run where this machine (<paramref name="host"/>, "Linux on Arm64") builds none.</summary>
+    public static string AndroidBuiltElsewhere(string host) => $"Android apps are built only on {AndroidHosts.Builders}: {AndroidHosts.Why(host)}";
 
     /// <summary>The Android workload could not list devices (no workload, no Android SDK, no Java), with how to get them.</summary>
     public static string NoAndroid(string problem) =>

@@ -368,6 +368,7 @@
     <Compile Include="../../src/Passenger.App/Mobile/MobileNeeds.cs" Link="App/MobileNeeds.cs" />
     <Compile Include="../../src/Passenger.App/Mobile/MobileWant.cs" Link="App/MobileWant.cs" />
     <Compile Include="../../src/Passenger.App/Mobile/AndroidLicences.cs" Link="App/AndroidLicences.cs" />
+    <Compile Include="../../src/Passenger.App/Mobile/AndroidHosts.cs" Link="App/AndroidHosts.cs" />
   </ItemGroup>
 
   <!-- Whether a plan starts a project's apphost and with which variable of its .NET, from an evaluation's properties alone,

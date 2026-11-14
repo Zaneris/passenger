@@ -3376,6 +3376,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging")
         {
             SdkMissing = SdkMissingSaid(session),
+            MobileNeeds = window.MobileWant.Said,
             UnreadSolution = session.Workspace?.Unread is { } unread ? UnreadSolutionSaid(unread) : null,
             BuildConfiguration = session.BuildChoices.Chosen is not { } built ? null
                 : session.BuildChoices.Offered.Where(o => !o.Is(built)).Select(o => o.Key).ToList() is { Count: > 0 } others
@@ -3534,6 +3535,10 @@ public sealed record Workspace(
     /// <summary>What .NET the machine or the folder lacks (no .NET, a runtime alone, global.json's SDK, an SDK older than a
     /// project's framework) and how the person mends it; null lacking nothing.</summary>
     public string? SdkMissing { get; init; }
+
+    /// <summary>What the folder's mobile projects need that the machine lacks, and where they build if not on it, as the
+    /// banner over Passenger's window says it; null with nothing to say.</summary>
+    public string? MobileNeeds { get; init; }
 
     /// <summary>The container run under way, beside the AppHosts, its services as their resources are; null with none.</summary>
     public ContainerRunInfo? ContainerRun { get; init; }

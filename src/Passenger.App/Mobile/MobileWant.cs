@@ -5,8 +5,8 @@ namespace Passenger.App.Mobile;
 /// <summary>What the folder's mobile projects need that this machine lacks, from what their workloads answered
 /// (<see cref="ProjectNeeds"/>): the .NET workloads to install, the Android SDK, its packages and the JDK to install
 /// through the Android workload's installer, the Xcode the Apple workloads want and the simulator runtimes it lacks, the
-/// projects on a .NET whose mobile apps
-/// run on Mono, and those whose Apple apps build only on a Mac. Said once, in the banner over the window.</summary>
+/// projects on a .NET whose mobile apps run on Mono, those whose Apple apps build only on a Mac, and those whose Android
+/// apps this machine builds none of (<see cref="AndroidHosts"/>). Said once, in the banner over the window.</summary>
 public sealed record MobileWant
 {
     public static MobileWant Nothing { get; } = new();
@@ -49,20 +49,31 @@ public sealed record MobileWant
     /// <summary>The projects whose every app is an Apple platform's, off a Mac.</summary>
     public IReadOnlyList<string> AppleOffMac { get; init; } = [];
 
+    /// <summary>The projects with an Android app, where this machine builds none (<see cref="AndroidHost"/>).</summary>
+    public IReadOnlyList<string> AndroidElsewhere { get; init; } = [];
+
+    /// <summary>This machine as a person names it where it builds no Android app ("Linux on Arm64"); null where it does.</summary>
+    public string? AndroidHost { get; init; }
+
     /// <summary>Whether the Android workload's installer has something to install.</summary>
     public bool AndroidLacks => NoAndroidSdk || AndroidPackages.Count > 0 || Java is not null;
 
     /// <summary>Whether anything is said.</summary>
-    public bool Says => Workloads.Count > 0 || AndroidLacks || Xcode is not null || Simulators.Count > 0 || OnMono.Count > 0 || AppleOffMac.Count > 0;
+    public bool Says => Workloads.Count > 0 || AndroidLacks || Xcode is not null || Simulators.Count > 0 || OnMono.Count > 0 || AppleOffMac.Count > 0
+        || AndroidElsewhere.Count > 0;
 
     /// <summary>What the folder's projects need, from their answers: <paramref name="usualSdk"/> is where the Android SDK
-    /// is looked for where the workload found none, <paramref name="exists"/> whether a file or folder is there.</summary>
-    public static MobileWant Of(IReadOnlyList<ProjectNeeds> projects, bool onMac, Func<string, string?> environment, string usualSdk, Func<string, bool> exists)
+    /// is looked for where the workload found none, <paramref name="exists"/> whether a file or folder is there, and
+    /// <paramref name="androidHost"/> this machine where it builds no Android app (<see cref="AndroidHosts.Unbuilt(string?)"/>),
+    /// whose projects' workloads are still offered, as they let them load to be edited, and never the Android SDK or a JDK.</summary>
+    public static MobileWant Of(IReadOnlyList<ProjectNeeds> projects, bool onMac, Func<string, string?> environment, string usualSdk, Func<string, bool> exists,
+        string? androidHost = null)
     {
         List<string> needing = [];
         List<string> workloads = [];
         List<(string, string)> mono = [];
         List<string> offMac = [];
+        List<string> androidElsewhere = [];
         string? sdk = null;
         bool noSdk = false;
         List<string> packages = [];
@@ -94,7 +105,13 @@ public sealed record MobileWant
                 offMac.Add(project.Name);
                 needs = true;
             }
-            if (project.Android is { } android)
+            bool androidHere = androidHost is null || !mobile.Any(f => MobilePlatforms.Of(f) == MobilePlatforms.Android);
+            if (!androidHere)
+            {
+                androidElsewhere.Add(project.Name);
+                needs = true;
+            }
+            if (androidHere && project.Android is { } android)
             {
                 string folder = AndroidFolders.Of(android, environment, usualSdk);
                 bool none = android.Sdk is null && !exists(Path.Combine(folder, "platform-tools")) && !exists(Path.Combine(folder, "platforms"));
@@ -137,6 +154,8 @@ public sealed record MobileWant
             Simulators = simulators,
             OnMono = mono,
             AppleOffMac = offMac,
+            AndroidElsewhere = androidElsewhere,
+            AndroidHost = androidElsewhere.Count > 0 ? androidHost : null,
         };
     }
 
@@ -175,7 +194,7 @@ public sealed record MobileWant
                 lacks.Add($"the {Plural.Listed([.. Simulators])} simulator {Plural.Noun(Simulators.Count, "runtime")}, which Xcode installs "
                     + $"(Xcode › Settings › Components, or {Plural.Listed([.. Simulators.Select(r => r.Split(' ')[0]).Distinct().Select(p => $"xcodebuild -downloadPlatform {p}")])})");
             }
-            List<string> needing = [.. Projects.Where(p => !OnMono.Any(m => m.Project == p) && !AppleOffMac.Contains(p))];
+            List<string> needing = [.. Projects.Where(p => !OnMono.Any(m => m.Project == p) && !AppleOffMac.Contains(p) && !AndroidElsewhere.Contains(p))];
             if (lacks.Count > 0 && needing.Count > 0)
             {
                 sentences.Add($"{Plural.Listed([.. needing])} {Plural.Agreeing(needing.Count, "needs", "need")} {Plural.Listed([.. lacks])}");
@@ -191,6 +210,11 @@ public sealed record MobileWant
             if (AppleOffMac.Count > 0)
             {
                 sentences.Add($"{Plural.Listed([.. AppleOffMac])} {Plural.Agreeing(AppleOffMac.Count, "builds", "build")} only on a Mac, with Xcode");
+            }
+            if (AndroidElsewhere.Count > 0)
+            {
+                sentences.Add($"{Plural.Listed([.. AndroidElsewhere])} {Plural.Agreeing(AndroidElsewhere.Count, "builds", "build")} for Android only on "
+                    + $"{AndroidHosts.Builders}: {AndroidHosts.Why(AndroidHost!)}");
             }
             return sentences.Count == 0 ? null : string.Join(". ", sentences);
         }

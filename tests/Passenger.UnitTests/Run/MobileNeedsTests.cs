@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml;
 using Passenger.App.Mobile;
@@ -7,7 +8,7 @@ namespace Passenger.UnitTests.Run;
 
 /// <summary>What a mobile project needs, worked out from what its workloads answer and what is on disk: the workloads the
 /// SDK names, the Android SDK's packages and the JDK the Android workload wants, the Xcode an Apple workload could not
-/// find, a project on Mono, and the Android SDK's licences of what is to be installed.</summary>
+/// find, a project on Mono, where Android apps are built, and the Android SDK's licences of what is to be installed.</summary>
 public class MobileNeedsTests
 {
     /// <summary>_GetRequiredWorkloads of a project targeting tvOS and macOS where neither workload is installed.</summary>
@@ -63,8 +64,9 @@ public class MobileNeedsTests
         Path.Combine(Sdk, "build-tools", "36.1.0")];
 
     private static MobileWant Want(IReadOnlyList<ProjectNeeds> projects, bool onMac = true, IReadOnlySet<string>? disk = null, string? androidHome = null,
-        string? javaHome = null) =>
-        MobileWant.Of(projects, onMac, name => name switch { "ANDROID_HOME" => androidHome, "JAVA_HOME" => javaHome, _ => null }, Sdk, (disk ?? OnDisk).Contains);
+        string? javaHome = null, string? androidHost = null) =>
+        MobileWant.Of(projects, onMac, name => name switch { "ANDROID_HOME" => androidHome, "JAVA_HOME" => javaHome, _ => null }, Sdk, (disk ?? OnDisk).Contains,
+            androidHost);
 
     [Fact]
     public void The_workloads_the_SDK_names_are_each_taken_once_with_the_framework_that_needs_it()
@@ -205,6 +207,51 @@ public class MobileNeedsTests
         Assert.Equal(["tvos"], Want([tv], onMac: false).Workloads);
         Assert.Equal(["tvos"], Want([tv]).Workloads);
         Assert.Equal("IosApp needs Xcode (Could not find a valid Xcode developer path)", Want([ios]).Said);
+    }
+
+    /// <summary>The first bytes of the Android workload's Linux aapt2 (37.2.31), an x64 program's ELF header.</summary>
+    private static readonly byte[] X64Aapt2 = [0x7F, (byte)'E', (byte)'L', (byte)'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 62, 0];
+
+    [Fact]
+    public void Linux_on_any_processor_but_x64_builds_no_Android_app_unless_the_installed_packs_aapt2_is_its_own()
+    {
+        ushort? x64 = AndroidHosts.Machine(X64Aapt2);
+        byte[] arm64 = [.. X64Aapt2[..18], 183, 0];
+        byte[] bigEndian = [.. X64Aapt2[..5], 2, .. X64Aapt2[6..18], 0, 183];
+
+        Assert.Equal((ushort)62, x64);
+        Assert.Equal((ushort)183, AndroidHosts.Machine(arm64));
+        Assert.Equal((ushort)183, AndroidHosts.Machine(bigEndian));
+        Assert.Null(AndroidHosts.Machine("#!/bin/bash -e\nexec as\n"u8));
+        Assert.Null(AndroidHosts.Machine(X64Aapt2[..12]));
+
+        Assert.Equal("Linux on Arm64", AndroidHosts.Unbuilt(Architecture.Arm64, null));
+        Assert.Equal("Linux on Arm64", AndroidHosts.Unbuilt(Architecture.Arm64, x64));
+        Assert.Null(AndroidHosts.Unbuilt(Architecture.Arm64, AndroidHosts.Machine(arm64)));
+        Assert.Null(AndroidHosts.Unbuilt(Architecture.X64, null));
+        Assert.Null(AndroidHosts.Unbuilt(Architecture.X64, x64));
+        Assert.Equal("Linux on RISC-V", AndroidHosts.Unbuilt(Architecture.RiscV64, null));
+    }
+
+    [Fact]
+    public void On_Linux_on_Arm64_an_Android_app_is_said_to_build_elsewhere_its_workload_still_offered_and_no_Android_SDK_or_JDK_asked()
+    {
+        const string Elsewhere = "builds for Android only on Windows, a Mac or x64 Linux: .NET's Android build tools are x64 programs, which Linux on Arm64 does not run";
+        ProjectNeeds lacking = new("AndroidApp", ["net11.0-android"]) { Workloads = [new WorkloadLacked("android", "net11.0-android")] };
+        ProjectNeeds installed = new("AndroidApp", ["net11.0-android"]) { Android = MobileAnswers.Android(AndroidSaid, AndroidWarned) };
+
+        MobileWant offered = Want([lacking], onMac: false, androidHost: "Linux on Arm64");
+        MobileWant loaded = Want([installed], onMac: false, androidHost: "Linux on Arm64");
+
+        Assert.Equal(["android"], offered.Workloads);
+        Assert.Equal([lacking.Name], offered.AndroidElsewhere);
+        Assert.Equal($"AndroidApp {Elsewhere}", offered.Said);
+        Assert.False(loaded.AndroidLacks, "The Android SDK and a JDK, which build nothing here, were offered");
+        Assert.Equal($"AndroidApp {Elsewhere}", loaded.Said);
+        Assert.Equal($"MauiApp1 and AndroidApp build{Elsewhere["builds".Length..]}",
+            Want([new ProjectNeeds(Maui, MauiFrameworks), lacking], onMac: false, androidHost: "Linux on Arm64").Said);
+        Assert.Null(Want([new ProjectNeeds("Desktop", ["net11.0"])], onMac: false, androidHost: "Linux on Arm64").Said);
+        Assert.Equal("AndroidApp needs the .NET workload android", Want([lacking], onMac: false).Said);
     }
 
     [Fact]

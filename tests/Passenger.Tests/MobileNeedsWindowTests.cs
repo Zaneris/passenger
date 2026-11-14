@@ -52,25 +52,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
     [AvaloniaFact]
     public void A_project_whose_workload_is_missing_says_so_and_Install_Workloads_asks_installs_and_loads_it_again()
     {
-        // A platform this system builds, whose workload neither this Mac nor CI's runners have: tvOS builds only on a Mac.
-        (string name, string platform) = OperatingSystem.IsMacOS() ? ("Tv", "tvos") : ("Droid", "android");
-        File.WriteAllText(Path.Combine(folder, $"{name}.csproj"), $"""
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>{Mobile}-{platform}</TargetFramework>
-                <OutputType>Exe</OutputType>
-              </PropertyGroup>
-            </Project>
-            """);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
-        Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
-        if (window.MobileWant.Workloads.Count == 0)
-        {
-            Assert.Skip($"This .NET has the {platform} workload, so nothing is lacking to say");
-        }
-        Assert.Equal([platform], window.MobileWant.Workloads);
-        Assert.Equal($"{name} needs the .NET workload {platform}", window.MobileSaid);
+        (MainWindow window, string name, string platform, string said) = LackingWorkload();
 
         List<IReadOnlyList<string>> installed = [];
         MainWindow.WorkloadInstallStandIn = ids =>
@@ -93,13 +75,48 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Assert.True(window.Session.Models.Rounds > rounds, "The project was not evaluated again after the install");
         // The stand-in installs nothing, so the project still lacks it, and says so.
         Assert.Equal($"dotnet workload install ended, but the projects still lack {platform}", window.Status);
-        Assert.Equal($"{name} needs the .NET workload {platform}", window.MobileSaid);
+        Assert.Equal(said, window.MobileSaid);
         window.Close();
+    }
+
+    /// <summary>Skips a test of the Android SDK's install where this machine builds no Android app, which offers none.</summary>
+    private void SkipWhereAndroidIsNotBuilt() =>
+        Assert.SkipWhen(AndroidHosts.Unbuilt(folder) is not null, $"{AndroidHosts.Unbuilt(folder)} builds no Android app, so nothing of the Android SDK is offered there");
+
+    /// <summary>A window on a project of a platform whose workload this .NET lacks, as it is said; skipped where it has it.
+    /// tvOS on a Mac, which neither this Mac nor CI's runners have, else Android, which builds there (on Linux on Arm, it
+    /// says too that it builds only elsewhere).</summary>
+    private (MainWindow Window, string Name, string Platform, string Said) LackingWorkload()
+    {
+        (string name, string platform) = OperatingSystem.IsMacOS() ? ("Tv", "tvos") : ("Droid", "android");
+        File.WriteAllText(Path.Combine(folder, $"{name}.csproj"), $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>{Mobile}-{platform}</TargetFramework>
+                <OutputType>Exe</OutputType>
+              </PropertyGroup>
+            </Project>
+            """);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
+        Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
+        if (window.MobileWant.Workloads.Count == 0)
+        {
+            window.Close();
+            Assert.Skip($"This .NET has the {platform} workload, so nothing is lacking to say");
+        }
+        Assert.Equal([platform], window.MobileWant.Workloads);
+        string said = AndroidHosts.Unbuilt(folder) is { } host && platform == MobilePlatforms.Android
+            ? $"{name} builds for Android only on {AndroidHosts.Builders}: .NET's Android build tools are x64 programs, which {host} does not run"
+            : $"{name} needs the .NET workload {platform}";
+        Assert.Equal(said, window.MobileSaid);
+        return (window, name, platform, said);
     }
 
     [AvaloniaFact]
     public void An_Android_project_lacking_its_platform_and_a_JDK_installs_them_only_once_the_person_accepted_the_SDKs_licences()
     {
+        SkipWhereAndroidIsNotBuilt();
         string sdk = Directory.CreateDirectory(Path.Combine(folder, "android-sdk")).FullName;
         Directory.CreateDirectory(Path.Combine(sdk, "platform-tools"));
         Environment.SetEnvironmentVariable("ANDROID_HOME", sdk);
@@ -146,6 +163,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
     [AvaloniaFact]
     public void Install_Android_SDK_and_Java_puts_the_JDK_where_a_window_opened_after_finds_it_with_no_JAVA_HOME()
     {
+        SkipWhereAndroidIsNotBuilt();
         if (OperatingSystem.IsWindows())
         {
             // Windows' folder for it is under the person's own LocalApplicationData, which no variable moves.
@@ -197,6 +215,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
     [AvaloniaFact]
     public void A_JAVA_HOME_where_the_Android_workload_finds_no_JDK_is_said_and_never_given_to_its_installer_to_install_over()
     {
+        SkipWhereAndroidIsNotBuilt();
         string sdk = Directory.CreateDirectory(Path.Combine(folder, "android-sdk")).FullName;
         Directory.CreateDirectory(Path.Combine(sdk, "platform-tools"));
         Environment.SetEnvironmentVariable("ANDROID_HOME", sdk);

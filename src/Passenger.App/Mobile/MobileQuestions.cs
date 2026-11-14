@@ -6,7 +6,8 @@ namespace Passenger.App.Mobile;
 /// through MSBuild's questions as the .NET CLI's (no build, no restore): the workloads it lacks
 /// (<c>_GetRequiredWorkloads</c>), what its Android app needs (<c>GetAndroidDependencies</c>, Java's too) and whether its
 /// Apple apps have the Xcode their workload wants (<c>_DetectSdkLocations</c>) and its simulator runtimes (that Xcode's
-/// <c>simctl</c>). Only a framework on CoreCLR whose workload is installed is asked past the first.</summary>
+/// <c>simctl</c>). Only a framework on CoreCLR whose workload is installed is asked past the first, an Android one only
+/// where this machine builds Android apps.</summary>
 public static class MobileQuestions
 {
     /// <summary>Where Xcode is installed when it is, on a Mac.</summary>
@@ -14,7 +15,7 @@ public static class MobileQuestions
 
     /// <summary>The project's needs, its MSBuild run with the solution's global properties.</summary>
     public static async Task<ProjectNeeds> AskAsync(string project, string name, IReadOnlyList<string> frameworks, IReadOnlyDictionary<string, string> globals,
-        bool onMac, CancellationToken cancel)
+        bool onMac, bool buildsAndroid, CancellationToken cancel)
     {
         IReadOnlyList<string> mobile = MobilePlatforms.FrameworksOf(frameworks);
         ChildResult required = await MSBuildAsync(project, null, ["-target:_GetRequiredWorkloads", "-getTargetResult:_GetRequiredWorkloads"], globals, cancel);
@@ -23,7 +24,7 @@ public static class MobileQuestions
             && MobilePlatforms.DotnetOf(framework) is null or >= MobilePlatforms.FirstOnCoreClr
             && !workloads.Any(w => w.Framework is null || string.Equals(w.Framework, framework, StringComparison.OrdinalIgnoreCase));
         AndroidAnswer? android = null;
-        if (mobile.FirstOrDefault(f => Asked(f, p => p == MobilePlatforms.Android)) is { } forAndroid)
+        if (buildsAndroid && mobile.FirstOrDefault(f => Asked(f, p => p == MobilePlatforms.Android)) is { } forAndroid)
         {
             ChildResult said = await MSBuildAsync(project, forAndroid, ["-target:GetAndroidDependencies", "-property:AndroidInstallJavaDependencies=true",
                 "-getItem:AndroidDependency", "-getItem:JavaDependency", "-getProperty:AndroidSdkDirectory", "-getProperty:JavaSdkDirectory", "-getProperty:JavaSdkVersion"], globals, cancel);

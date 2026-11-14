@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Passenger.App.Mobile;
 using Passenger.Core;
 
 namespace Passenger.App.Run.Devices;
@@ -17,14 +18,19 @@ public static class AndroidDevices
     /// <summary>How long an emulator started here is waited for, to its system's boot.</summary>
     private static readonly TimeSpan BootLimit = TimeSpan.FromMinutes(5);
 
-    /// <summary>The project's Android targets and the SDK's tools, or why none could be listed (no workload, no SDK, no
-    /// platform to build against) in words for the person. The project is restored first with no framework given: one
-    /// given to a restore reaches the projects the app references, restoring them for the app's platform alone (a shared
-    /// library of net11.0 as net11.0-android), which its install's build then finds without its own framework.</summary>
+    /// <summary>The project's Android targets and the SDK's tools, or why none could be listed (a machine that builds no
+    /// Android app, no workload, no SDK, no platform to build against) in words for the person. The project is restored
+    /// first with no framework given: one given to a restore reaches the projects the app references, restoring them for
+    /// the app's platform alone (a shared library of net11.0 as net11.0-android), which its install's build then finds
+    /// without its own framework.</summary>
     public static async Task<(IReadOnlyList<DeviceTarget> Targets, AndroidTools? Tools, string? Problem)> ListAsync(string project, string framework,
         IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
     {
         string folder = Path.GetDirectoryName(project)!;
+        if (AndroidHosts.Unbuilt(folder) is { } host)
+        {
+            return ([], null, Refusals.AndroidBuiltElsewhere(host));
+        }
         string[] given = [.. globals.Where(g => g.Key != MSBuildNames.TargetFramework).Select(g => $"-property:{g.Key}={g.Value}")];
         ChildResult listed = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(["msbuild", project, "-nologo", "-target:Restore", .. given], folder), cancel: cancel);
         if (listed.Succeeded)

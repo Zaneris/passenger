@@ -134,14 +134,16 @@ public partial class MainWindow
         {
             bool onMac = OperatingSystem.IsMacOS();
             string usual = AndroidFolders.Usual(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+            string? folder = Folder;
             MobileWant want = await BackgroundWork.Run(async () =>
             {
+                string? androidHost = AndroidHosts.Unbuilt(folder);
                 List<ProjectNeeds> needs = [];
                 foreach ((string path, string name, IReadOnlyList<string> frameworks, Dictionary<string, string> globals) in asked)
                 {
                     try
                     {
-                        needs.Add(await MobileQuestions.AskAsync(path, name, frameworks, globals, onMac, CancellationToken.None));
+                        needs.Add(await MobileQuestions.AskAsync(path, name, frameworks, globals, onMac, androidHost is null, CancellationToken.None));
                     }
                     catch (Exception error) when (error is IOException or FileNotFoundException or InvalidOperationException or System.ComponentModel.Win32Exception)
                     {
@@ -149,7 +151,7 @@ public partial class MainWindow
                         IdeErrors.Write($"What {name} needs could not be asked: {error.Message}");
                     }
                 }
-                return MobileWant.Of(needs, onMac, Environment.GetEnvironmentVariable, usual, at => File.Exists(at) || Directory.Exists(at));
+                return MobileWant.Of(needs, onMac, Environment.GetEnvironmentVariable, usual, at => File.Exists(at) || Directory.Exists(at), androidHost);
             });
             if (mine != mobileAsks || session != asking || asking.IsEnded)
             {
