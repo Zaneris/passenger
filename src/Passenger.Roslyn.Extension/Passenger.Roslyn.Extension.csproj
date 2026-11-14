@@ -30,6 +30,9 @@
     <Compile Include="../Passenger.Workspace/GodotSharpIl.cs" Link="GodotSharpIl.cs" />
     <!-- The names the MVVM Toolkit's generators give, as Passenger's XAML reads them. -->
     <Compile Include="../Passenger.Xaml/Metadata/ToolkitNames.cs" Link="ToolkitNames.cs" />
+    <!-- MAUI's expressions in XAML read as its source generator reads them, as Passenger's XAML reads them. -->
+    <Compile Include="../Passenger.Xaml/Dialects/MauiExpressionCode.cs" Link="MauiExpressionCode.cs" />
+    <Compile Include="../Passenger.Text/XmlEntities.cs" Link="XmlEntities.cs" />
   </ItemGroup>
 
   <PropertyGroup>

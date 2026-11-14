@@ -120,6 +120,12 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             return null;
         }
+        if (await ExpressionPlaceAsync(xaml, offset) is { } expression)
+        {
+            return expression.Place is { } reached
+                ? new Declared(Declared.Served([reached], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
+                : new Declared([], expression.Said ?? Refusals.NoDeclaration);
+        }
         if (await XamlSymbolAt(xaml, offset, null) is not { } found)
         {
             return new Declared([], Refusals.NoDeclaration);
@@ -221,12 +227,14 @@ internal sealed partial class XamlAssist : LanguageAssist
         xamlAsked = at;
         try
         {
-            XamlCompletionList? list = await xaml.CompleteAsync(caret, cancel.Token);
+            (int Start, IReadOnlyList<(CompletionItem Item, XamlItem Offered)> Items, bool Head)? code = await ExpressionItemsAsync(xaml, caret, cancel.Token);
+            // In an expression's code the server's list stands alone; in the name it starts with, a markup extension's may still be meant.
+            XamlCompletionList? list = code is { Head: false } ? null : await xaml.CompleteAsync(caret, cancel.Token);
             if (cancel.IsCancellationRequested || Editor.Document != asked)
             {
                 return;
             }
-            if (list is null || list.Items.Count == 0)
+            if ((list is null || list.Items.Count == 0) && (code is null || code.Value.Items.Count == 0))
             {
                 completion.Close();
                 // Nothing, perhaps for want of the types a restore landing now brings: asked again once the project is read anew.
@@ -235,16 +243,23 @@ internal sealed partial class XamlAssist : LanguageAssist
             }
             xamlOffered.Clear();
             List<CompletionItem> items = [];
-            foreach (XamlItem offered in list.Items)
+            foreach (XamlItem offered in list?.Items ?? [])
             {
-                CompletionItem item = new() { Label = offered.Label, Kind = KindOf(offered.Kind), Detail = offered.Detail };
+                // Beside an expression's code, the markup extensions its name may still become come first.
+                CompletionItem item = new() { Label = offered.Label, Kind = KindOf(offered.Kind), Detail = offered.Detail, SortText = code is null ? null : "!" + offered.Label };
                 xamlOffered[item] = offered;
                 items.Add(item);
             }
-            completion.Open(new CodeCompletion.Completion(items, Math.Min(list.Start, Editor.Selections.Primary.Caret), [], false)
+            foreach ((CompletionItem item, XamlItem offered) in code?.Items ?? [])
+            {
+                xamlOffered[item] = offered;
+                items.Add(item);
+            }
+            int start = Math.Min(list?.Start ?? int.MaxValue, code?.Start ?? int.MaxValue);
+            completion.Open(new CodeCompletion.Completion(items, Math.Min(start, Editor.Selections.Primary.Caret), [], false)
             {
                 Own = this,
-                WordCharacters = list.WordCharacters,
+                WordCharacters = list?.WordCharacters ?? string.Empty,
             });
         }
         catch (OperationCanceledException)
@@ -312,6 +327,18 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// string's generated property and each language's entry of its key).</summary>
     private async Task XamlGoTo(XamlDocument xaml, int offset)
     {
+        if (await ExpressionPlaceAsync(xaml, offset) is { } expression)
+        {
+            if (expression.Place is { } place)
+            {
+                context.Navigate(place);
+            }
+            if (expression.Said is { } said)
+            {
+                context.Say(said);
+            }
+            return;
+        }
         if (await XamlSymbolAt(xaml, offset, Refusals.NoDeclaration) is not { } found)
         {
             return;
@@ -490,6 +517,10 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// folder's C# where its C# and XAML use it.</summary>
     private async Task XamlUsages(XamlDocument xaml, int offset, bool inPopup)
     {
+        if (await ExpressionUsagesAsync(xaml, offset, inPopup))
+        {
+            return;
+        }
         if (await XamlSymbolAt(xaml, offset, "No usages found") is not { } found)
         {
             return;

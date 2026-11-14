@@ -123,6 +123,7 @@ public sealed class ProjectSession : IAsyncDisposable
         // A XAML file's localized strings read from the .resx and XLIFF files as the editor has them.
         Xaml.Snapshots = () => setup.Editors.Texts().Open;
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
+        Xaml.Server = () => CSharp?.Session;
         Frameworks.Changed += (_, project) => FollowFramework(project);
         BuildChoices.Changed += (_, _) => FollowBuildChoice();
         GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), FilesWhole = () => Index.IsWhole, GameOf = GodotOf };

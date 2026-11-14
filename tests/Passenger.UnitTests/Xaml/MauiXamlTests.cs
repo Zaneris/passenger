@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Xaml;
 using Passenger.Xaml.Dialects;
+using Passenger.Xaml.Features;
 using Passenger.Xaml.Metadata;
 using Passenger.Xaml.Syntax;
 
@@ -97,6 +98,73 @@ public sealed class MauiXamlTests
         HashSet<string> extensions = ["Binding", "StaticResource"];
         Assert.Equal(expression, MauiDialect.Instance.IsExpression(value, extensions.Contains));
         Assert.False(WpfDialect.Instance.IsExpression(value, extensions.Contains), $"WPF read {value} as a C# expression");
+    }
+
+    [Theory]
+    [InlineData("{Greeting}", "Greeting")]
+    [InlineData(" {= Owner.Name } ", "Owner.Name")]
+    [InlineData("{Count GT 0 AND Count lte 9}", "Count > 0 && Count <= 9")]
+    [InlineData("{$'{First} {Last}'}", "$\"{First} {Last}\"")]
+    [InlineData("{'it\\'s' + 'say \"hi\"'}", "\"it's\" + \"say \\\"hi\\\"\"")]
+    [InlineData("{A &amp;&amp; B}", "A && B")]
+    [InlineData("{'GT' + Total}", "\"GT\" + Total")]
+    [InlineData("{Owner.", "Owner.")]
+    public void An_expressions_code_is_read_as_mauis_source_generator_reads_it(string value, string code)
+    {
+        Assert.Equal(code, MauiExpressionCode.Of(value)?.Code);
+    }
+
+    [Fact]
+    public void Each_place_of_an_expressions_code_is_a_place_of_its_value_as_written()
+    {
+        MauiExpressionCode code = MauiExpressionCode.Of("{A &amp;&amp; B GT 'c'}")!;
+        Assert.Equal("A && B > \"c\"", code.Code);
+        Assert.Equal(1, code.Start);
+        Assert.Equal(22, code.End);
+        Assert.Equal(14, code.WrittenAt(code.Code.IndexOf('B', StringComparison.Ordinal)));
+        Assert.Equal(code.Code.IndexOf('B', StringComparison.Ordinal), code.CodeAt(14));
+        Assert.Equal(16, code.WrittenAt(code.Code.IndexOf('>', StringComparison.Ordinal)));
+        Assert.Equal(code.Code.IndexOf('&', StringComparison.Ordinal), code.CodeAt(3));
+        Assert.Null(MauiExpressionCode.Of("{}"));
+        Assert.Null(MauiExpressionCode.Of("Plain"));
+    }
+
+    [Fact]
+    public void A_caret_in_an_expression_being_typed_finds_it_with_the_page_its_x_data_type_and_whether_its_first_name_is_still_open()
+    {
+        const string Typed = """
+            <ContentPage x:Class="App.MainPage" x:DataType="local:MainViewModel" xmlns:local="clr-namespace:App" Title="{">
+                <Label Text="{Owner.Na" Clicked="{(s, e) => Count++}" />
+                <Label Text="{Gr}" />
+                <Label Text="Plain" Style="{{StaticResource Headline}" />
+            </ContentPage>
+            """;
+        const string Code = """
+            namespace App
+            {
+                public partial class MainPage { }
+
+                public class MainViewModel
+                {
+                    public string Greeting { get; set; } = "";
+                }
+            }
+            """;
+        XamlFile file = XamlFiles.Read("MainPage.xaml", Typed, MauiDialect.Instance, ("MainPage.cs", Code));
+        (XamlExpression owner, bool ownerHead) = XamlExpressions.At(file, Typed.IndexOf("Owner.Na", StringComparison.Ordinal) + "Owner.Na".Length)!.Value;
+        Assert.False(ownerHead, "A caret past the expression's first name was read as in it");
+        Assert.Equal("Owner.Na", owner.Code.Code);
+        Assert.Equal("App.MainPage", owner.RootType);
+        Assert.Equal("App.MainViewModel", owner.DataType);
+        (XamlExpression greeting, bool greetingHead) = XamlExpressions.At(file, Typed.IndexOf("{Gr", StringComparison.Ordinal) + 2)!.Value;
+        Assert.True(greetingHead, "A caret in the expression's first name was read as past it");
+        Assert.Equal("Gr", greeting.Code.Code);
+        Assert.Null(XamlExpressions.At(file, Typed.IndexOf("Plain", StringComparison.Ordinal) + 2));
+        Assert.Null(XamlExpressions.At(file, Typed.IndexOf("{StaticResource ", StringComparison.Ordinal) + "{StaticResource ".Length));
+        (XamlExpression title, bool titleHead) = XamlExpressions.At(file, Typed.IndexOf("Title=\"{", StringComparison.Ordinal) + "Title=\"{".Length)!.Value;
+        Assert.True(titleHead, "A caret right after an expression's brace was read as past its first name");
+        Assert.Equal("App.MainViewModel", title.DataType);
+        Assert.Equal(["{Gr}"], XamlExpressions.In(file).Select(e => e.Attribute.Value).Where(v => v.StartsWith("{G", StringComparison.Ordinal)));
     }
 
     [Fact]

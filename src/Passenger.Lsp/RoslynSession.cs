@@ -381,6 +381,27 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             ? (await ExtensionAsync<Roslyn.Extension.GeneratedDocumentsFound>(Roslyn.Extension.Handlers.GeneratedDocuments, new Roslyn.Extension.GeneratedDocumentsAsked(uris), cancel).ConfigureAwait(false)).Generated
             : null;
 
+    /// <summary>What completion offers at a place in a MAUI XAML file's C# expression (Passenger's extension's
+    /// <see cref="Roslyn.Extension.MauiExpressionCompletion"/>); null when the server has no extension to ask.</summary>
+    public async Task<Roslyn.Extension.MauiCompletions?> MauiCompletionAsync(string path, Roslyn.Extension.MauiExpression expression, int at, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? await ExtensionAsync<Roslyn.Extension.MauiCompletions>(Roslyn.Extension.Handlers.MauiExpressionCompletion, new Roslyn.Extension.MauiExpressionAsked(path, expression, at), cancel).ConfigureAwait(false)
+            : null;
+
+    /// <summary>The symbol a place in a MAUI XAML file's C# expression names (Passenger's extension's
+    /// <see cref="Roslyn.Extension.MauiExpressionSymbol"/>); null for none, or when the server has no extension to ask.</summary>
+    public async Task<Roslyn.Extension.NamedSymbol?> MauiSymbolAsync(string path, Roslyn.Extension.MauiExpression expression, int at, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.MauiExpressionSymbol, new Roslyn.Extension.MauiExpressionAsked(path, expression, at), cancel).ConfigureAwait(false)).Symbols.FirstOrDefault()
+            : null;
+
+    /// <summary>A MAUI XAML file's problems as its text stands, MAUI's source generator's and C#'s in its expressions
+    /// (Passenger's extension's <see cref="Roslyn.Extension.MauiXamlChecks"/>); null when the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.MauiCheck>?> MauiChecksAsync(string path, string text, IReadOnlyList<Roslyn.Extension.MauiExpression> expressions, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.MauiChecksFound>(Roslyn.Extension.Handlers.MauiXamlChecks, new Roslyn.Extension.MauiChecksAsked(path, text, expressions), cancel).ConfigureAwait(false)).Checks
+            : null;
+
     /// <summary>The class a Razor component's file makes, and where the server takes it (Passenger's extension's
     /// <see cref="Roslyn.Extension.ComponentAsked"/>); null when the server has no extension to ask.</summary>
     public async Task<Roslyn.Extension.ComponentFound?> ComponentAsync(string path, CancellationToken cancel = default) =>

@@ -32,6 +32,10 @@ public sealed class XamlDocument : IDisposable
     private readonly AnchoredList<Marker> live = new(m => m.Range, (m, range) => m with { Range = range });
     private readonly AnchoredList<BuiltMarker> built = new(b => b.Marker.Range, (b, range) => b with { Marker = b.Marker with { Range = range } });
 
+    /// <summary>What the language server found as the file was last checked: MAUI's source generator's problems, and C#'s
+    /// in its expressions (<see cref="GeneratedMarker.Own"/>), which the file's own check leaves to it.</summary>
+    private readonly AnchoredList<GeneratedMarker> generated = new(g => g.Marker.Range, (g, range) => g with { Marker = g.Marker with { Range = range } });
+
     /// <summary>The framework chosen for the file's multi-targeted project, whose inner build's problems alone are shown;
     /// null for a project of one.</summary>
     private string? framework;
@@ -209,11 +213,75 @@ public sealed class XamlDocument : IDisposable
         })]);
         Show();
         Checked?.Invoke(this, EventArgs.Empty);
+        await GeneratorCheckAsync(file, version);
         IReadOnlyList<ColourUse> colours = await BackgroundWork.Run(() => Colours.InXaml(file, file.Variant));
         if (!disposed && Document.Text.Version == version)
         {
             Document.ColourMarks = XamlService.Marks(Document.Text.Snapshot, colours);
         }
+    }
+
+    /// <summary>A MAUI file checked by the language server as its text stands (<see cref="Passenger.Lsp.RoslynSession.MauiChecksAsync"/>):
+    /// MAUI's source generator run again over it, before any build, its problems placed on the attribute they name, and
+    /// each C# expression's compiled as the generator writes it, placed in the expression. Nothing without a server loaded.</summary>
+    private async Task GeneratorCheckAsync(XamlFile file, int version)
+    {
+        if (!file.Dialect.ReadsExpressions || service.Server?.Invoke() is not { IsLoaded: true } server)
+        {
+            return;
+        }
+        IReadOnlyList<XamlExpression> expressions = await BackgroundWork.Run(() => XamlExpressions.In(file));
+        IReadOnlyList<Roslyn.Extension.MauiCheck>? checks;
+        try
+        {
+            checks = await server.MauiChecksAsync(file.Path, file.Text, [.. expressions.Select(XamlService.Asked)]);
+        }
+        catch (Passenger.Lsp.LanguageServerFailed)
+        {
+            return;
+        }
+        if (checks is null || disposed || Document.Text.Version != version)
+        {
+            return;
+        }
+        TextSnapshot text = Document.Text.Snapshot;
+        List<GeneratedMarker> found = [];
+        HashSet<XmlAttribute> named = [];
+        foreach (Roslyn.Extension.MauiCheck check in checks.Where(c => c.At is not null))
+        {
+            if (check.At!.Line >= text.LineCount)
+            {
+                continue;
+            }
+            LineSpan line = text.GetLine(check.At.Line);
+            int at = line.Start + Math.Min(check.At.Character, line.Length);
+            XmlPlace place = file.Tree.PlaceAt(at);
+            TextRange range = place.Attribute is { } attribute ? attribute.HasValue ? attribute.ValueRange : attribute.NameRange : WordAt(text, at, line);
+            if (place.Attribute is not null)
+            {
+                named.Add(place.Attribute);
+            }
+            found.Add(new GeneratedMarker(Marker.Coded(range, check.Error ? MarkerKind.Error : MarkerKind.Warning, check.Code, check.Message) with
+            {
+                StartGravity = AnchorGravity.After,
+            }, false));
+        }
+        foreach (Roslyn.Extension.MauiCheck check in checks.Where(c => c.At is null && c.Expression >= 0 && c.Expression < expressions.Count))
+        {
+            XamlExpression expression = expressions[check.Expression];
+            if (named.Contains(expression.Attribute))
+            {
+                continue;
+            }
+            int start = expression.ValueStart + check.Start;
+            int end = Math.Max(expression.ValueStart + check.End, Math.Min(start + 1, expression.Attribute.ValueEnd));
+            found.Add(new GeneratedMarker(Marker.Coded(TextRange.FromBounds(start, end), MarkerKind.Error, check.Code, check.Message) with
+            {
+                StartGravity = AnchorGravity.After,
+            }, true));
+        }
+        generated.Set(Document.Text, found);
+        Show();
     }
 
     /// <summary>The XAML compiler's problems in this file from the build that just ended, placed on their lines, those of
@@ -270,7 +338,7 @@ public sealed class XamlDocument : IDisposable
     {
         due = true;
         // Shown again only when a build's problem went, or when what is shown is none of this file's.
-        if ((built.Count > 0 && DropEditedLines(e)) || (live.Count + built.Count == 0 && Document.Markers.Count > 0))
+        if ((built.Count > 0 && DropEditedLines(e)) || (live.Count + built.Count + generated.Count == 0 && Document.Markers.Count > 0))
         {
             Show();
         }
@@ -302,10 +370,13 @@ public sealed class XamlDocument : IDisposable
     private void Show()
     {
         TextSnapshot text = Document.Text.Snapshot;
+        bool Clear(HashSet<int> lines, Marker marker) => marker.Range.Start > text.Length || !lines.Contains(text.GetLineFromOffset(marker.Range.Start));
         IReadOnlyList<Marker> found = live.Items;
         HashSet<int> lines = [.. found.Where(m => m.Range.Start <= text.Length).Select(m => text.GetLineFromOffset(m.Range.Start))];
-        Document.Markers = [.. found, .. built.Items.Where(b => b.Framework is null || framework is null || string.Equals(b.Framework, framework, StringComparison.OrdinalIgnoreCase))
-            .Select(b => b.Marker).Where(m => m.Range.Start > text.Length || !lines.Contains(text.GetLineFromOffset(m.Range.Start)))];
+        List<Marker> server = [.. generated.Items.Where(g => g.Own || Clear(lines, g.Marker)).Select(g => g.Marker)];
+        lines.UnionWith(server.Where(m => m.Range.Start <= text.Length).Select(m => text.GetLineFromOffset(m.Range.Start)));
+        Document.Markers = [.. found, .. server, .. built.Items.Where(b => b.Framework is null || framework is null || string.Equals(b.Framework, framework, StringComparison.OrdinalIgnoreCase))
+            .Select(b => b.Marker).Where(m => Clear(lines, m))];
     }
 
     /// <summary>Another framework chosen for the file's project: its build's problems of that framework shown in place of the last's.</summary>
@@ -320,6 +391,10 @@ public sealed class XamlDocument : IDisposable
 
     /// <summary>A marker of a build's problem, with the framework of the inner build that found it (null for a build of one).</summary>
     private sealed record BuiltMarker(Marker Marker, string? Framework);
+
+    /// <summary>A marker of a problem the language server found: C#'s in an expression (<paramref name="Own"/>), shown
+    /// always, or MAUI's source generator's, shown where the file's own check found nothing on its line.</summary>
+    private sealed record GeneratedMarker(Marker Marker, bool Own);
 
     /// <summary>The project was read again (its C# changed, another XAML file did): the file is checked against it.</summary>
     internal void ProjectChanged()

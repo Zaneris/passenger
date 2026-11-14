@@ -89,6 +89,14 @@ public sealed class XamlService : IDisposable
         }
     }
 
+    /// <summary>The C# language server of the session, which checks a MAUI file's expressions and reruns MAUI's source
+    /// generator over it as it is typed; null before one has started.</summary>
+    public Func<Passenger.Lsp.RoslynSession?>? Server { get; set; }
+
+    /// <summary>A XAML file's C# expression as Passenger's extension in the server takes it.</summary>
+    internal static Roslyn.Extension.MauiExpression Asked(XamlExpression expression) =>
+        new(expression.Attribute.RawValue, expression.RootType, expression.DataType, expression.EventOwner, expression.EventName);
+
     /// <summary>The open files' texts as the editor has them now, each a snapshot any thread reads, for the .resx and XLIFF
     /// files a XAML file's localized strings are read from off the UI thread; none open without it.</summary>
     public Func<Func<string, TextSnapshot?>>? Snapshots { get; set; }

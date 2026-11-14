@@ -103,6 +103,8 @@ public sealed class MauiDialect : XamlDialect
     /// always, else any whose first name is no extension's (a prefixed one is, but for an attached property's
     /// <c>target.(Type.Property)</c>), a binding's path, a member of the page, a static one, an interpolation, a lambda
     /// or an operator's operands. The generator judges it; the live check leaves it be.</summary>
+    public override bool ReadsExpressions => true;
+
     public override bool IsExpression(string value, Func<string, bool> extension)
     {
         string trimmed = value.Trim();

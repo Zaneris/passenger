@@ -113,6 +113,9 @@ public abstract class XamlDialect
     /// says whether a name is one of the file's markup extensions.</summary>
     public virtual bool IsExpression(string value, Func<string, bool> extension) => false;
 
+    /// <summary>Whether its compiler reads C# expressions in braces at all (<see cref="IsExpression"/>).</summary>
+    public virtual bool ReadsExpressions => false;
+
     /// <summary>Whether an attribute's value names a file by its path in the project, which is checked to be there (an
     /// include's <c>Source</c>, an image's).</summary>
     public virtual bool NamesFile(XmlAttribute attribute) => true;

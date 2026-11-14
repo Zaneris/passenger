@@ -216,7 +216,7 @@ public static class XamlDiagnostics
         {
             return;
         }
-        if (file.Dialect.IsExpression(attribute.Value, name => file.ResolveType(element, name, extension: true) is { } made && file.Dialect.IsMarkupExtension(file.Types, made)))
+        if (XamlExpressions.Is(file, attribute))
         {
             return;
         }

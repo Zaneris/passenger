@@ -48,6 +48,9 @@ public static class Handlers
     public const string GodotNameStrings = "Passenger.Roslyn.Extension.GodotNameStrings";
     public const string GodotFix = "Passenger.Roslyn.Extension.GodotFix";
     public const string ToolkitRenames = "Passenger.Roslyn.Extension.ToolkitRenames";
+    public const string MauiExpressionCompletion = "Passenger.Roslyn.Extension.MauiExpressionCompletion";
+    public const string MauiExpressionSymbol = "Passenger.Roslyn.Extension.MauiExpressionSymbol";
+    public const string MauiXamlChecks = "Passenger.Roslyn.Extension.MauiXamlChecks";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -55,6 +58,7 @@ public static class Handlers
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
+        MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks,
     ];
 }
 
@@ -204,6 +208,57 @@ public sealed record GeneratedDocumentsAsked([property: JsonPropertyName("uris")
 
 /// <summary>Whether each document asked about is generated code, in order: false for a URI of no C# document.</summary>
 public sealed record GeneratedDocumentsFound([property: JsonPropertyName("generated")] IReadOnlyList<bool> Generated);
+
+/// <summary>A C# expression of a MAUI XAML file: its attribute's value as the file writes it, the class the file makes,
+/// the <c>x:DataType</c> in scope, and for an event's handler the element's type and the event; types by their full
+/// metadata names.</summary>
+public sealed record MauiExpression(
+    [property: JsonPropertyName("value")] string Value,
+    [property: JsonPropertyName("root")] string? Root,
+    [property: JsonPropertyName("dataType")] string? DataType,
+    [property: JsonPropertyName("eventOwner")] string? EventOwner,
+    [property: JsonPropertyName("event")] string? Event);
+
+/// <summary>A place in an expression of a MAUI XAML file, by its place in the attribute's value as written.</summary>
+public sealed record MauiExpressionAsked(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("expression")] MauiExpression Expression,
+    [property: JsonPropertyName("at")] int At);
+
+/// <summary>What completion offers at a place in an expression, and where in the value the text it replaces starts.</summary>
+public sealed record MauiCompletions(
+    [property: JsonPropertyName("start")] int Start,
+    [property: JsonPropertyName("items")] IReadOnlyList<MauiCompletion> Items);
+
+/// <summary>One thing completion offers: what it shows, what goes in, its kind as Roslyn tags it, what it says beside, and
+/// what it sorts by.</summary>
+public sealed record MauiCompletion(
+    [property: JsonPropertyName("label")] string Label,
+    [property: JsonPropertyName("insert")] string Insert,
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("detail")] string? Detail,
+    [property: JsonPropertyName("sort")] string Sort);
+
+/// <summary>A MAUI XAML file as the editor has it, and its expressions, to be checked as MAUI's source generator and C#'s
+/// compiler would.</summary>
+public sealed record MauiChecksAsked(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("expressions")] IReadOnlyList<MauiExpression> Expressions);
+
+/// <summary>What the checks found.</summary>
+public sealed record MauiChecksFound([property: JsonPropertyName("checks")] IReadOnlyList<MauiCheck> Checks);
+
+/// <summary>A problem found: the generator's at a place of the file (<paramref name="At"/>, <paramref name="Expression"/>
+/// -1), or C#'s in an expression asked of, from <paramref name="Start"/> to <paramref name="End"/> of its value.</summary>
+public sealed record MauiCheck(
+    [property: JsonPropertyName("expression")] int Expression,
+    [property: JsonPropertyName("at")] Place? At,
+    [property: JsonPropertyName("start")] int Start,
+    [property: JsonPropertyName("end")] int End,
+    [property: JsonPropertyName("error")] bool Error,
+    [property: JsonPropertyName("code")] string Code,
+    [property: JsonPropertyName("message")] string Message);
 
 /// <summary>A Razor component's file, whose class is asked for.</summary>
 public sealed record ComponentAsked([property: JsonPropertyName("path")] string Path);

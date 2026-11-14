@@ -240,16 +240,17 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     }
 
     /// <summary>A data template given no x:DataType has its bindings compiled against the page's by MAUI's source
-    /// generator, which the live check leaves to it: after a build, its warning of each is on the binding's line.</summary>
+    /// generator, which Passenger's own check leaves to it: its warning of each is on the binding's line as the page opens,
+    /// the generator run over it before any build, and after a build listed with its code, marked once.</summary>
     [AvaloniaFact]
-    public void After_a_build_mauis_source_generators_warning_is_marked_on_its_line_and_listed_with_its_code()
+    public void Mauis_source_generators_warning_is_marked_on_its_line_before_a_build_and_after_it_listed_with_its_code()
     {
         app.Rewrite("PeoplePage.xaml", Gallery.People.Replace("<DataTemplate x:DataType=\"vm:Person\">", "<DataTemplate>", StringComparison.Ordinal));
         MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
         OpenDocument document = window.EditorArea.Active!;
-        Ui.Settle();
-        Assert.Empty(document.Markers);
+        Ui.WaitFor(() => document.Markers.Any(m => m.Code == "MAUIG2045"), () => $"the generator's warning marked before any build: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        Assert.Contains(document.Markers, m => m.Message.StartsWith("MAUIG2045: Binding: Property \"Name\" not found on", StringComparison.Ordinal));
         Ui.Run(window, AppActions.Build);
         Ui.Settle();
         int line = editor.Document.Snapshot.GetLineFromOffset(editor.Document.Snapshot.ToString().IndexOf("{Binding Name}", StringComparison.Ordinal));
@@ -259,6 +260,76 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         Marker marked = Assert.Single(document.Markers, m => editor.Document.Snapshot.GetLineFromOffset(m.Range.Start) == line);
         Assert.Equal(MarkerKind.Warning, marked.Kind);
         Assert.StartsWith("MAUIG2045: Binding: Property \"Name\" not found on", marked.Message, StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>.NET 11's C# expressions are C# to completion and navigation, as the language server reads the code MAUI's
+    /// source generator writes of them: where an expression's name starts, x:DataType's members beside the markup
+    /// extensions the name may still become; after a step's dot, its type's members; and Go to Declaration and Find Usages
+    /// from a name in one.</summary>
+    [AvaloniaFact]
+    public void In_a_csharp_expression_completion_offers_the_data_types_members_and_its_names_lead_to_their_declarations_and_usages()
+    {
+        MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Replace(editor, "Title=\"{Binding Greeting}\"", "Title=\"\"");
+        Ui.PlaceAfter(editor, "Title=\"");
+        window.KeyTextInput("{");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Greeting"), () => $"x:DataType's members after a value's brace: {string.Join(", ", window.Assist.CompletionLabels.Take(30))}");
+        Assert.Contains("Owner", window.Assist.CompletionLabels);
+        Assert.Contains("StaticResource", window.Assist.CompletionLabels);
+        Assert.DoesNotContain(window.Assist.CompletionLabels, l => l.StartsWith("__", StringComparison.Ordinal));
+        Ui.Press(window, "ESCAPE");
+
+        Replace(editor, "Title=\"{\"", "Title=\"{Owner.}\"");
+        Ui.PlaceAfter(editor, "{Owner.");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Age"), () => $"Person's members after Owner's dot: {string.Join(", ", window.Assist.CompletionLabels.Take(30))}");
+        Assert.Contains("Name", window.Assist.CompletionLabels);
+        Assert.DoesNotContain("Greeting", window.Assist.CompletionLabels);
+        window.KeyTextInput("Na");
+        Ui.Settle();
+        Assert.Equal("Name", window.Assist.CompletionLabels.FirstOrDefault());
+        Ui.Press(window, "ENTER");
+        Assert.Contains("Title=\"{Owner.Name|}\"", CaretLine(editor), StringComparison.Ordinal);
+
+        Replace(editor, "{Owner.Name}", "{Greeting}");
+        Ui.PlaceAfter(editor, "{Gree");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.Equal("MainViewModel.cs", window.EditorArea.Active?.Name);
+        Assert.Contains("public string |Greeting", CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
+
+        window.OpenFile(app.PathOf("PeoplePage.xaml"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "{Gree");
+        Assert.Contains("MainViewModel.cs:14 public string Greeting { get; set; } = \"Hello\";", FoundUsages(window));
+        window.Close();
+    }
+
+    /// <summary>MAUI's source generator runs over the page as it is typed, before any build: its error for an expression
+    /// naming what neither the page nor its x:DataType has is marked on the expression, and C#'s for a member a step's
+    /// type lacks on that member's name, the expression compiled as the generator writes it; each goes once fixed.</summary>
+    [AvaloniaFact]
+    public void Before_any_build_mauis_source_generators_error_and_csharps_in_an_expression_are_marked_as_typed()
+    {
+        MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument page = window.EditorArea.Active!;
+        Ui.Settle();
+        Assert.True(page.Markers.Count == 0, $"The page, which compiles, is marked: {string.Join("; ", page.Markers.Select(m => m.Message))}");
+        Replace(editor, "Title=\"{Binding Greeting}\"", "Title=\"{Greting}\"");
+        Replace(editor, "<Label Text=\"{Binding Owner.Name}\"", "<Label Text=\"{Owner.Nam}\"");
+        Ui.WaitFor(() => page.Markers.Count == 2, () => $"the two mistakes marked once typing paused: {string.Join("; ", page.Markers.Select(m => m.Message))}");
+        Marker generator = MarkerOn(editor, page, "{Greting}");
+        Assert.Equal(MarkerKind.Error, generator.Kind);
+        Assert.Equal("MAUIX2009: 'Greting' not found on 'PeoplePage' or 'MainViewModel'.", generator.Message);
+        Marker member = MarkerOn(editor, page, "Nam");
+        Assert.Equal(MarkerKind.Error, member.Kind);
+        Assert.StartsWith("CS1061: 'Person' does not contain a definition for 'Nam'", member.Message, StringComparison.Ordinal);
+        Replace(editor, "{Greting}", "{Greeting}");
+        Replace(editor, "{Owner.Nam}", "{$'{Owner.Name} ({Owner.Age})'}");
+        Ui.WaitFor(() => page.Markers.Count == 0, () => $"the fixed expressions' marks gone: {string.Join("; ", page.Markers.Select(m => m.Message))}");
         window.Close();
     }
 
