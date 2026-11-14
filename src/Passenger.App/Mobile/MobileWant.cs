@@ -168,7 +168,7 @@ public sealed record MobileWant
             if (Simulators.Count > 0)
             {
                 lacks.Add($"the {Plural.Listed([.. Simulators])} simulator {Plural.Noun(Simulators.Count, "runtime")}, which Xcode installs "
-                    + $"(Xcode › Settings › Components, or {string.Join(" and ", Simulators.Select(r => r.Split(' ')[0]).Distinct().Select(p => $"xcodebuild -downloadPlatform {p}"))})");
+                    + $"(Xcode › Settings › Components, or {Plural.Listed([.. Simulators.Select(r => r.Split(' ')[0]).Distinct().Select(p => $"xcodebuild -downloadPlatform {p}")])})");
             }
             List<string> needing = [.. Projects.Where(p => !OnMono.Any(m => m.Project == p) && !AppleOffMac.Contains(p))];
             if (lacks.Count > 0 && needing.Count > 0)
