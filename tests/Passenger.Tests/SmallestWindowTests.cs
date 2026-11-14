@@ -1,11 +1,13 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Editors;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
@@ -286,6 +288,44 @@ public sealed class SmallestWindowTests
             TestFolders.Delete(folder);
         }
     }
+
+    /// <summary>At the smallest width with the Explorer open, a tool window dropped on the right half of the editors opens
+    /// among them as a tab, as the overlay says over them, where the frame's right quarter reached into the editors and
+    /// docked it on the right; one dropped on the Explorer docks on the left beside it, where the Explorer's right part took
+    /// no drop.</summary>
+    [AvaloniaFact]
+    public void At_the_smallest_width_a_tool_window_dropped_on_the_editors_right_half_is_an_editor_tab_and_on_the_Explorer_docks_left()
+    {
+        string folder = TestFolders.Create("smallest-drop-");
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+        MainWindow window = Ui.OpenFolder(folder, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "One.cs"));
+            Ui.Settle();
+            DockHost dock = window.DockHost;
+            Assert.True(dock.IsShown(ToolWindowIds.Explorer), "The Explorer is not open beside the editors: the test no longer reaches narrow editors");
+            Rect editors = Placed(window, window.EditorArea);
+            Point onEditors = new(editors.Left + (editors.Width * 0.7), editors.Top + (editors.Height * 0.4));
+            Ui.Drag(window, Ui.Centre(StripeIcon(window, ToolWindowIds.Tests), window), onEditors);
+            Assert.True(dock[ToolWindowIds.Tests] is { Mode: ToolMode.Editor, IsShown: true },
+                $"Unit Tests dropped at {onEditors} on the editors at {editors} stands {dock[ToolWindowIds.Tests].Mode} at {dock[ToolWindowIds.Tests].Anchor}, not among them as a tab");
+
+            Point onExplorer = new(editors.Left - 30, editors.Top + 60);
+            Ui.Drag(window, Ui.Centre(StripeIcon(window, ToolWindowIds.Problems), window), onExplorer);
+            Assert.True(dock[ToolWindowIds.Problems] is { Mode: ToolMode.Docked, Anchor: ToolAnchor.LeftTop },
+                $"Problems dropped at {onExplorer}, on the Explorer, stands {dock[ToolWindowIds.Problems].Mode} at {dock[ToolWindowIds.Problems].Anchor}, not on the left");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    private static ToggleButton StripeIcon(MainWindow window, string id) =>
+        window.DockHost.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(b => Equals(b.Tag, id))
+            ?? throw new Xunit.Sdk.XunitException($"No stripe shows {id}'s icon");
 
     private static Control Named(MainWindow window, string name) =>
         window.GetVisualDescendants().OfType<Control>().FirstOrDefault(c => c.Name == name) ?? throw new Xunit.Sdk.XunitException($"The window has no {name}");

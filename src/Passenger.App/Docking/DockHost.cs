@@ -131,8 +131,17 @@ public sealed class DockHost : Grid
     /// would have.</summary>
     internal double LeftAreaWidth => ColumnDefinitions[1].ActualWidth > 0 ? ColumnDefinitions[1].ActualWidth : leftWidth;
 
+    /// <summary>The right area's width as laid out, or as kept while it is closed.</summary>
+    internal double RightAreaWidth => ColumnDefinitions[5].ActualWidth > 0 ? ColumnDefinitions[5].ActualWidth : rightWidth;
+
     /// <summary>The bottom area's height as kept, open or not.</summary>
     internal double BottomAreaHeight => bottomHeight;
+
+    /// <summary>The left stripe's width as laid out.</summary>
+    internal double LeftStripeWidth => ColumnDefinitions[0].ActualWidth;
+
+    /// <summary>The right stripe's width as laid out.</summary>
+    internal double RightStripeWidth => ColumnDefinitions[6].ActualWidth;
 
     /// <summary>The editor area, between the side areas and above the bottom one.</summary>
     public Control? Center
