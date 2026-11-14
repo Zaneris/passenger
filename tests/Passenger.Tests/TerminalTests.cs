@@ -414,6 +414,8 @@ public sealed class TerminalTests
         TerminalScreen screen = shell.Screen;
         RunCase(window, "long", (screen.Columns + 4).ToString(CultureInfo.InvariantCulture));
         WaitForLine(shell, "200", "the program's lines");
+        // Cleared before the shell's prompt came, the screen would be left empty, the prompt coming after it.
+        WaitForPromptBelow(window, shell, "200");
         Assert.True(screen.Scrollback.Count > 0 && screen.LineAt(screen.FirstLine).Text() != "1",
             $"the program's first lines left nothing in the scrollback: it holds {screen.Scrollback.Count}");
         Assert.Contains(new string('0', screen.Columns + 4) + "7", Lines(screen));
