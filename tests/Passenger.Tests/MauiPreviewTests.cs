@@ -132,6 +132,33 @@ public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>In the XAML workspace a MAUI page opens beside its preview, which shows under its frame what the caret's
+    /// element sets itself, as its XAML says it.</summary>
+    [AvaloniaFact]
+    public void In_the_xaml_workspace_a_maui_page_shows_what_the_carets_element_sets_itself_under_its_preview()
+    {
+        MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Butt");
+        window.ApplySettings(window.Settings with { XamlWorkspace = true });
+        Ui.WaitFor(() => window.PreviewPaneOf(document) is { PropertiesShown.Element: "Button #CounterBtn" },
+            () => $"the button's own values under the preview, where it shows {window.PreviewPaneOf(document)?.PropertiesShown.Element}");
+        XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+        Assert.Contains(("Text", "Click me", "Local"), pane.PropertiesShown.Values);
+        Assert.Contains(pane.PropertiesShown.Values, v => v.Property == "HorizontalOptions" && v.Value == "Fill");
+        XamlPreview preview = window.PreviewOf(document)!;
+        Ui.WaitFor(() => preview.Frame is not null, () => $"the page's frame beside it ({preview.Status} {preview.Error})", FirstFrame);
+        window.ApplySettings(window.Settings with { XamlWorkspace = false });
+        Ui.Settle();
+        if (window.PreviewOf(document) is not null)
+        {
+            Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        }
+        window.Close();
+    }
+
     /// <summary>A colour edited in Colors.xaml and not saved is drawn in the page that takes it through App.xaml's merged
     /// dictionaries, which the build's compiled dictionary would otherwise give the previewer as it was built.</summary>
     [AvaloniaFact]
