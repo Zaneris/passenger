@@ -395,6 +395,14 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             ? (await ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.MauiExpressionSymbol, new Roslyn.Extension.MauiExpressionAsked(path, expression, at), cancel).ConfigureAwait(false)).Symbols.FirstOrDefault()
             : null;
 
+    /// <summary>Where a MAUI XAML file's expressions name a C# symbol, by its documentation id (Passenger's extension's
+    /// <see cref="Roslyn.Extension.MauiExpressionUses"/>); null when the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.MauiUse>?> MauiUsesAsync(string path, IReadOnlyList<Roslyn.Extension.MauiExpression> expressions, string id,
+        CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.MauiUsesFound>(Roslyn.Extension.Handlers.MauiExpressionUses, new Roslyn.Extension.MauiUsesAsked(path, expressions, id), cancel).ConfigureAwait(false)).Uses
+            : null;
+
     /// <summary>A MAUI XAML file's problems as its text stands, MAUI's source generator's and C#'s in its expressions
     /// (Passenger's extension's <see cref="Roslyn.Extension.MauiXamlChecks"/>); null when the server has no extension to ask.</summary>
     public async Task<IReadOnlyList<Roslyn.Extension.MauiCheck>?> MauiChecksAsync(string path, string text, IReadOnlyList<Roslyn.Extension.MauiExpression> expressions, CancellationToken cancel = default) =>

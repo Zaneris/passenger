@@ -623,7 +623,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             return [];
         }
-        return [.. (await xaml.UsesAsync(projects, symbol)).SelectMany(file =>
+        return [.. (await xaml.UsesAsync(projects, symbol)).Concat(await xaml.ExpressionUsesAsync(projects, symbol, id)).SelectMany(file =>
         {
             ServerLines lines = ServerLines.Of(file.Text);
             string uri = DocumentUris.FromPath(file.Path);

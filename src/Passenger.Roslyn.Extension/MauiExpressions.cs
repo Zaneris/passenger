@@ -20,7 +20,7 @@ public sealed class MauiExpressionCompletion : IExtensionWorkspaceMessageHandler
     public async Task<MauiCompletions> ExecuteAsync(MauiExpressionAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         if (MauiExpressionDocument.ProjectOf(context.Solution, message.Path) is not { } project
-            || MauiExpressionCode.Of(message.Expression.Value) is not { } code)
+            || MauiExpressionCode.Of(message.Expression.Value, message.Expression.Types) is not { } code)
         {
             return new MauiCompletions(message.At, []);
         }
@@ -75,7 +75,7 @@ public sealed class MauiExpressionSymbol : IExtensionWorkspaceMessageHandler<Mau
     public async Task<SymbolsFound> ExecuteAsync(MauiExpressionAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         if (MauiExpressionDocument.ProjectOf(context.Solution, message.Path) is not { } project
-            || MauiExpressionCode.Of(message.Expression.Value) is not { } code
+            || MauiExpressionCode.Of(message.Expression.Value, message.Expression.Types) is not { } code
             || await MauiExpressionDocument.MakeAsync(project, [message.Expression], null, cancellationToken).ConfigureAwait(false) is not { } made)
         {
             return new SymbolsFound([], 0);
@@ -90,15 +90,51 @@ public sealed class MauiExpressionSymbol : IExtensionWorkspaceMessageHandler<Mau
     }
 }
 
+/// <summary>Where a MAUI XAML file's expressions name a C# symbol, each bound as MAUI's source generator writes it: a name
+/// whose symbol, or the definition it was made from, has the documentation id asked for.</summary>
+public sealed class MauiExpressionUses : IExtensionWorkspaceMessageHandler<MauiUsesAsked, MauiUsesFound>
+{
+    public async Task<MauiUsesFound> ExecuteAsync(MauiUsesAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
+    {
+        if (MauiExpressionDocument.ProjectOf(context.Solution, message.Path) is not { } project
+            || await MauiExpressionDocument.MakeAsync(project, message.Expressions, null, cancellationToken).ConfigureAwait(false) is not { } made
+            || await made.Document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false) is not { } model
+            || await made.Document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false) is not { } root)
+        {
+            return new MauiUsesFound([]);
+        }
+        List<MauiUse> uses = [];
+        foreach (MauiExpressionDocument.Placed placed in made.Expressions)
+        {
+            foreach (SimpleNameSyntax name in root.DescendantNodes(TextSpan.FromBounds(placed.Start, placed.End)).OfType<SimpleNameSyntax>())
+            {
+                if (!placed.Holds(name.Identifier.SpanStart) || name.Identifier.ValueText.StartsWith("__", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                SymbolInfo bound = model.GetSymbolInfo(name, cancellationToken);
+                if ((bound.Symbol is { } symbol ? [symbol] : bound.CandidateSymbols).Any(s => Named(s, message.Id)))
+                {
+                    TextSpan span = name.Identifier.Span;
+                    uses.Add(new MauiUse(placed.Index, placed.Code.WrittenAt(placed.CodeAt(span.Start)), placed.Code.WrittenAt(placed.CodeAt(span.End))));
+                }
+            }
+        }
+        return new MauiUsesFound(uses);
+    }
+
+    /// <summary>Whether a symbol, a method made from a generic or extension one, or a type's constructor is the one asked.</summary>
+    private static bool Named(ISymbol symbol, string id) =>
+        symbol.OriginalDefinition.GetDocumentationCommentId() == id
+        || (symbol is IMethodSymbol { ReducedFrom: { } reduced } && reduced.OriginalDefinition.GetDocumentationCommentId() == id)
+        || (symbol is IMethodSymbol { MethodKind: MethodKind.Constructor } made && made.ContainingType.OriginalDefinition.GetDocumentationCommentId() == id);
+}
+
 /// <summary>A MAUI XAML file checked as the editor has it, before any build: MAUI's source generator run again over it
-/// for its own diagnostics of the file, and each of its C# expressions compiled as the generator writes it, for what C#
-/// says of it there, placed in the expression. Errors alone, but an argument's conversion, which the generator settles by
-/// the parameter's type (a one-character string as a char), are said of an expression.</summary>
+/// for its own diagnostics of the file, and each of its C# expressions compiled as the generator writes it, for the
+/// errors C# finds there, placed in the expression.</summary>
 public sealed class MauiXamlChecks : IExtensionWorkspaceMessageHandler<MauiChecksAsked, MauiChecksFound>
 {
-    /// <summary>What C# says that the generator's own writing may settle otherwise: an argument's conversion.</summary>
-    private static readonly HashSet<string> Settled = ["CS1503"];
-
     public async Task<MauiChecksFound> ExecuteAsync(MauiChecksAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         Solution solution = context.Solution;
@@ -130,7 +166,7 @@ public sealed class MauiXamlChecks : IExtensionWorkspaceMessageHandler<MauiCheck
         {
             foreach (Diagnostic diagnostic in model.GetDiagnostics(cancellationToken: cancellationToken))
             {
-                if (diagnostic.Severity != DiagnosticSeverity.Error || Settled.Contains(diagnostic.Id)
+                if (diagnostic.Severity != DiagnosticSeverity.Error
                     || made.Expressions.FirstOrDefault(p => p.Holds(diagnostic.Location.SourceSpan.Start)) is not { } placed)
                 {
                     continue;
@@ -233,7 +269,7 @@ internal sealed class MauiExpressionDocument
         for (int i = 0; i < expressions.Count; i++)
         {
             MauiExpression expression = expressions[i];
-            if (MauiExpressionCode.Of(expression.Value) is not { } code || DeepText.TooDeep(code.Code, csharp: true))
+            if (MauiExpressionCode.Of(expression.Value, expression.Types) is not { } code || DeepText.TooDeep(code.Code, csharp: true))
             {
                 continue;
             }
@@ -252,9 +288,10 @@ internal sealed class MauiExpressionDocument
             }
             text.Append(partOfRoot ? $"partial class {root!.Name} {{\n" : "internal static class __PassengerXaml {\n");
             text.Append(partOfRoot ? "private void " : "private static void ").Append("__PassengerExpression").Append(i.ToString(CultureInfo.InvariantCulture)).Append("() {\n");
+            string chars = Chars(code.Code, compilation, data, root);
             (string written, int[] codeOf, int[] writtenOf) = owner is not null || data is null
-                ? Plain(code.Code)
-                : Qualified(code.Code, data, i == 0 ? bound : null);
+                ? (chars, [.. Enumerable.Range(0, chars.Length + 1)], [.. Enumerable.Range(0, chars.Length + 1)])
+                : Qualified(chars, data, i == 0 ? bound : null);
             if (owner is not null && expression.Event is { } name)
             {
                 text.Append("default(").Append(owner.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).Append(")!.").Append(name).Append(" += (");
@@ -282,8 +319,52 @@ internal sealed class MauiExpressionDocument
         return new MauiExpressionDocument(document, placed);
     }
 
-    private static (string Written, int[] CodeOf, int[] WrittenOf) Plain(string code) =>
-        (code, [.. Enumerable.Range(0, code.Length + 1)], [.. Enumerable.Range(0, code.Length + 1)]);
+    /// <summary>The code with each one-character string given as a method's argument where the parameter is a char written as
+    /// a char, as the generator writes it: the method found by its name and argument count on the data type, the page, then
+    /// <c>string</c>. A character whose char is written longer than its string is left a string.</summary>
+    private static string Chars(string code, Compilation compilation, ITypeSymbol? data, ITypeSymbol? root)
+    {
+        ExpressionSyntax parsed = DeepText.Read(code.Length, () => SyntaxFactory.ParseExpression(code));
+        char[] chars = code.ToCharArray();
+        foreach (LiteralExpressionSyntax literal in parsed.DescendantNodesAndSelf().OfType<LiteralExpressionSyntax>())
+        {
+            if (literal.IsKind(SyntaxKind.StringLiteralExpression) && literal.Token.ValueText.Length == 1 && literal.Span.Length == 3
+                && literal.Token.ValueText[0] is not '\'' and not '\\' && ParameterOf(literal, compilation, data, root)?.SpecialType == SpecialType.System_Char)
+            {
+                chars[literal.SpanStart] = '\'';
+                chars[literal.Span.End - 1] = '\'';
+            }
+        }
+        return new string(chars);
+    }
+
+    /// <summary>The type of the parameter a literal is given as, of a method of the data type, the page or <c>string</c>
+    /// with as many parameters as the call has arguments; null where it is no argument of such a call.</summary>
+    private static ITypeSymbol? ParameterOf(LiteralExpressionSyntax literal, Compilation compilation, ITypeSymbol? data, ITypeSymbol? root)
+    {
+        if (literal.Parent is not ArgumentSyntax { Parent: ArgumentListSyntax { Parent: InvocationExpressionSyntax call } arguments } argument)
+        {
+            return null;
+        }
+        string? name = call.Expression switch
+        {
+            IdentifierNameSyntax identifier => identifier.Identifier.Text,
+            MemberAccessExpressionSyntax access => access.Name.Identifier.Text,
+            _ => null,
+        };
+        int index = arguments.Arguments.IndexOf(argument);
+        foreach (ITypeSymbol? type in (ITypeSymbol?[])[data, root, compilation.GetSpecialType(SpecialType.System_String)])
+        {
+            for (ITypeSymbol? at = type; at is not null && name is not null; at = at.BaseType)
+            {
+                if (at.GetMembers(name).OfType<IMethodSymbol>().FirstOrDefault(m => m.Parameters.Length == arguments.Arguments.Count) is { } method)
+                {
+                    return index < method.Parameters.Length ? method.Parameters[index].Type : null;
+                }
+            }
+        }
+        return null;
+    }
 
     /// <summary>The code with each root name the data type has qualified as <c>__source.Name</c>, as MAUI's generator
     /// writes it: not a member's name after a dot, an argument's name, nor a lambda's parameter; a leading <c>.</c> or
@@ -347,6 +428,7 @@ internal sealed class MauiExpressionDocument
         MemberAccessExpressionSyntax access => access.Name == name,
         MemberBindingExpressionSyntax => true,
         QualifiedNameSyntax qualified => qualified.Right == name,
+        AliasQualifiedNameSyntax aliased => aliased.Name == name,
         NameColonSyntax or NameEqualsSyntax => true,
         _ => false,
     };

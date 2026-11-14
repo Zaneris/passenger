@@ -51,6 +51,7 @@ public static class Handlers
     public const string MauiExpressionCompletion = "Passenger.Roslyn.Extension.MauiExpressionCompletion";
     public const string MauiExpressionSymbol = "Passenger.Roslyn.Extension.MauiExpressionSymbol";
     public const string MauiXamlChecks = "Passenger.Roslyn.Extension.MauiXamlChecks";
+    public const string MauiExpressionUses = "Passenger.Roslyn.Extension.MauiExpressionUses";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -58,7 +59,7 @@ public static class Handlers
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
-        MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks,
+        MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses,
     ];
 }
 
@@ -229,14 +230,15 @@ public sealed record GeneratedDocumentsAsked([property: JsonPropertyName("uris")
 public sealed record GeneratedDocumentsFound([property: JsonPropertyName("generated")] IReadOnlyList<bool> Generated);
 
 /// <summary>A C# expression of a MAUI XAML file: its attribute's value as the file writes it, the class the file makes,
-/// the <c>x:DataType</c> in scope, and for an event's handler the element's type and the event; types by their full
-/// metadata names.</summary>
+/// the <c>x:DataType</c> in scope, for an event's handler the element's type and the event, types by their full metadata
+/// names; and each type its code names by a XAML prefix, by its C# name.</summary>
 public sealed record MauiExpression(
     [property: JsonPropertyName("value")] string Value,
     [property: JsonPropertyName("root")] string? Root,
     [property: JsonPropertyName("dataType")] string? DataType,
     [property: JsonPropertyName("eventOwner")] string? EventOwner,
-    [property: JsonPropertyName("event")] string? Event);
+    [property: JsonPropertyName("event")] string? Event,
+    [property: JsonPropertyName("types")] IReadOnlyDictionary<string, string>? Types = null);
 
 /// <summary>A place in an expression of a MAUI XAML file, by its place in the attribute's value as written.</summary>
 public sealed record MauiExpressionAsked(
@@ -264,6 +266,21 @@ public sealed record MauiChecksAsked(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("text")] string Text,
     [property: JsonPropertyName("expressions")] IReadOnlyList<MauiExpression> Expressions);
+
+/// <summary>A MAUI XAML file's expressions, in which the uses of a C# symbol, by its documentation id, are asked for.</summary>
+public sealed record MauiUsesAsked(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("expressions")] IReadOnlyList<MauiExpression> Expressions,
+    [property: JsonPropertyName("id")] string Id);
+
+/// <summary>Where the expressions asked of name the symbol: each use's expression, by its place in those asked of, and its
+/// span in that expression's value.</summary>
+public sealed record MauiUsesFound([property: JsonPropertyName("uses")] IReadOnlyList<MauiUse> Uses);
+
+public sealed record MauiUse(
+    [property: JsonPropertyName("expression")] int Expression,
+    [property: JsonPropertyName("start")] int Start,
+    [property: JsonPropertyName("end")] int End);
 
 /// <summary>What the checks found.</summary>
 public sealed record MauiChecksFound([property: JsonPropertyName("checks")] IReadOnlyList<MauiCheck> Checks);

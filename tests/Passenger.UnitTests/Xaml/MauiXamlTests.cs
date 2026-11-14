@@ -109,9 +109,27 @@ public sealed class MauiXamlTests
     [InlineData("{A &amp;&amp; B}", "A && B")]
     [InlineData("{'GT' + Total}", "\"GT\" + Total")]
     [InlineData("{Owner.", "Owner.")]
+    [InlineData("{$'{IsOn ? 'on' : 'off'} now'}", "$\"{(IsOn ? \"on\" : \"off\")} now\"")]
+    [InlineData("{$'{Name ?? 'none'} {Price:F2} {A?.B}'}", "$\"{Name ?? \"none\"} {Price:F2} {A?.B}\"")]
+    [InlineData("{IsOn ? 'on' : 'off'}", "IsOn ? \"on\" : \"off\"")]
     public void An_expressions_code_is_read_as_mauis_source_generator_reads_it(string value, string code)
     {
         Assert.Equal(code, MauiExpressionCode.Of(value)?.Code);
+    }
+
+    [Fact]
+    public void A_prefixed_type_is_written_by_its_csharp_name_and_an_attached_property_read_as_its_getters_call()
+    {
+        Dictionary<string, string> types = new() { ["local:Helper"] = "global::App.Helper" };
+        MauiExpressionCode code = MauiExpressionCode.Of("{local:Helper.Shout(Name) + label.(Grid.Row) + \"local:Helper\"}", types)!;
+        Assert.Equal("global::App.Helper.Shout(Name) + Grid.GetRow(label) + \"local:Helper\"", code.Code);
+        Assert.Equal(["local:Helper"], MauiExpressionCode.PrefixedNames(MauiExpressionCode.Of("{local:Helper.Shout(x:Null) + \"vm:Person\"}")!.Code));
+        int row = code.Code.IndexOf("Row", StringComparison.Ordinal);
+        Assert.Equal("{local:Helper.Shout(Name) + label.(Grid.Row)".IndexOf("Row", StringComparison.Ordinal), code.WrittenAt(row));
+        int label = code.Code.IndexOf("label", StringComparison.Ordinal);
+        Assert.Equal("{local:Helper.Shout(Name) + ".Length, code.WrittenAt(label));
+        Assert.Equal("{local:".Length, code.WrittenAt(code.Code.IndexOf("Helper", StringComparison.Ordinal)));
+        Assert.Equal("{this.(Grid.Row)}", "{" + MauiExpressionCode.Of("{this.(Grid.Row)}")!.Code.Replace("Grid.GetRow(this)", "this.(Grid.Row)", StringComparison.Ordinal) + "}");
     }
 
     [Fact]

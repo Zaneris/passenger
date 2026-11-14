@@ -426,6 +426,36 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     /// <summary>How long a project's restore from the package cache may take.</summary>
     private static readonly TimeSpan Restoring = TimeSpan.FromMinutes(4);
 
+    /// <summary>An expression is read as MAUI's source generator writes it: a type named by a XAML prefix is that type (Go to
+    /// Declaration reaches it), an attached property read from an element is its getter's call, and a one-character string
+    /// given to a char parameter is a char, where a longer one is marked as C# marks it (CS1503); and Find Usages from the
+    /// C# lists the expressions that name a member.</summary>
+    [AvaloniaFact]
+    public void Prefixed_types_attached_properties_and_char_arguments_read_as_mauis_generator_writes_them_and_find_usages_from_csharp_lists_expressions()
+    {
+        MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument page = window.EditorArea.Active!;
+        Replace(editor, "Title=\"{Binding Greeting}\"", "Title=\"{vm:Helper.Shout(Greeting)}\"");
+        Replace(editor, "<Label Text=\"{Binding Owner.Name}\"", "<Label Text=\"{Repeat('ab', 2)}\" IsVisible=\"{this.(Grid.Row) GT 0}\"");
+        Ui.WaitFor(() => page.Markers.Count == 1, () => $"the string given to a char marked once typing paused: {string.Join("; ", page.Markers.Select(m => m.Message))}");
+        Marker conversion = MarkerOn(editor, page, "'ab'");
+        Assert.Equal("CS1503", conversion.Code);
+        Replace(editor, "{Repeat('ab', 2)}", "{Repeat('a', 2)}");
+        Ui.WaitFor(() => page.Markers.Count == 0, () => $"a character given to a char unmarked: {string.Join("; ", page.Markers.Select(m => m.Message))}");
+
+        Ui.PlaceAfter(editor, "{vm:Helper.Sho");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.Equal("MainViewModel.cs", window.EditorArea.Active?.Name);
+        Assert.Contains("public static string |Shout(", CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
+
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "public string Repe");
+        IReadOnlyList<string> found = FoundUsages(window);
+        Assert.Contains(found, u => u.StartsWith("PeoplePage.xaml:9 <Label Text=\"{Repeat('a', 2)}\"", StringComparison.Ordinal));
+        window.Close();
+    }
+
     private static IReadOnlyList<string> FoundUsages(MainWindow window)
     {
         int searches = window.Find.Searches.Count;
@@ -770,6 +800,13 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
                 public Person Owner { get; } = new();
 
                 public ObservableCollection<Person> People { get; } = [];
+
+                public string Repeat(char c, int count) => new(c, count);
+            }
+
+            public static class Helper
+            {
+                public static string Shout(string text) => text.ToUpperInvariant();
             }
 
             """;

@@ -11,6 +11,10 @@ public sealed record XamlExpression(XmlAttribute Attribute, MauiExpressionCode C
 {
     /// <summary>Where the value starts in the file, which the code's places count from.</summary>
     public int ValueStart => Attribute.ValueStart;
+
+    /// <summary>Each type the code names by a XAML prefix (<c>local:Helper</c>) that resolves, by its C# name
+    /// (<c>global::App.Helper</c>), as the generator writes it.</summary>
+    public IReadOnlyDictionary<string, string> Types { get; init; } = new Dictionary<string, string>();
 }
 
 /// <summary>The C# expressions of a XAML file whose dialect reads them (<see cref="XamlDialect.IsExpression"/>), and the
@@ -78,8 +82,19 @@ public static class XamlExpressions
         {
             return null;
         }
+        Dictionary<string, string> types = new(StringComparer.Ordinal);
+        foreach (string named in MauiExpressionCode.PrefixedNames(code.Code))
+        {
+            if (file.ResolveType(attribute.Owner, named) is { } type)
+            {
+                types[named] = "global::" + type.FullName.Replace('+', '.');
+            }
+        }
         return new XamlExpression(attribute, code, file.ClassType?.FullName ?? file.ClassName, data,
-            handler ? file.ObjectOf(attribute.Owner)?.FullName : null, handler ? meaning.Event!.Name : null);
+            handler ? file.ObjectOf(attribute.Owner)?.FullName : null, handler ? meaning.Event!.Name : null)
+        {
+            Types = types,
+        };
     }
 
     /// <summary>Whether a code's place is in the name it starts with, or where a name would start in code still empty.</summary>

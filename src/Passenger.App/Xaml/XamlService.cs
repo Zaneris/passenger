@@ -95,7 +95,7 @@ public sealed class XamlService : IDisposable
 
     /// <summary>A XAML file's C# expression as Passenger's extension in the server takes it.</summary>
     internal static Roslyn.Extension.MauiExpression Asked(XamlExpression expression) =>
-        new(expression.Attribute.RawValue, expression.RootType, expression.DataType, expression.EventOwner, expression.EventName);
+        new(expression.Attribute.RawValue, expression.RootType, expression.DataType, expression.EventOwner, expression.EventName, expression.Types);
 
     /// <summary>The open files' texts as the editor has them now, each a snapshot any thread reads, for the .resx and XLIFF
     /// files a XAML file's localized strings are read from off the UI thread; none open without it.</summary>
@@ -661,6 +661,66 @@ public sealed class XamlService : IDisposable
                     && (uses.Count > 0 || file.Tree.Stopped is not null))
                 {
                     found.Add((path, text, file, uses));
+                }
+            }
+        }
+        return found;
+    }
+
+    /// <summary>Where the MAUI XAML of the projects that can use a C# symbol names it in one of its C# expressions, as the
+    /// language server binds each expression the way MAUI's source generator writes it: the files whose expressions write
+    /// one of the symbol's names, asked of the server a file at a time. None with no server loaded.</summary>
+    public async Task<IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)>> ExpressionUsesAsync(IEnumerable<string> projectFiles,
+        CodeSymbol symbol, string id)
+    {
+        if (Server?.Invoke() is not { IsLoaded: true } server)
+        {
+            return [];
+        }
+        IReadOnlyList<XamlProject> read = await ReadAsync(projectFiles, symbol);
+        Func<string, TextSnapshot?> open = OpenSnapshots();
+        List<(string Path, TextSnapshot Text, IReadOnlyList<XamlExpression> Expressions)> written = await BackgroundWork.Run(() => ExpressionsNaming(read, symbol, open));
+        List<(string, TextSnapshot, IReadOnlyList<TextRange>)> found = [];
+        foreach ((string path, TextSnapshot text, IReadOnlyList<XamlExpression> expressions) in written)
+        {
+            IReadOnlyList<Roslyn.Extension.MauiUse>? uses;
+            try
+            {
+                uses = await server.MauiUsesAsync(path, [.. expressions.Select(Asked)], id);
+            }
+            catch (Passenger.Lsp.LanguageServerFailed)
+            {
+                continue;
+            }
+            if (uses is { Count: > 0 })
+            {
+                found.Add((path, text, [.. uses.Where(u => u.Expression < expressions.Count)
+                    .Select(u => TextRange.FromBounds(expressions[u.Expression].ValueStart + u.Start, expressions[u.Expression].ValueStart + u.End))]));
+            }
+        }
+        return found;
+    }
+
+    /// <summary>Each XAML file of the projects reading expressions whose expressions write one of a symbol's names, with those.</summary>
+    private static List<(string Path, TextSnapshot Text, IReadOnlyList<XamlExpression> Expressions)> ExpressionsNaming(IReadOnlyList<XamlProject> read, CodeSymbol symbol,
+        Func<string, TextSnapshot?> open)
+    {
+        List<(string, TextSnapshot, IReadOnlyList<XamlExpression>)> found = [];
+        HashSet<string> seen = new(PathNames.Comparer);
+        foreach (XamlProject project in read.Where(p => p.Dialect.ReadsExpressions))
+        {
+            IReadOnlyList<string> names = symbol.NamesIn(project.Types);
+            foreach (string path in project.Files.Keys.Order(StringComparer.Ordinal))
+            {
+                if (!seen.Add(path) || (open(path) ?? EditorArea.Read(path)) is not { } text || !names.Any(n => text.ToString().Contains(n, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+                XamlFile file = XamlDocument.Read(path, text.ToString(), project, null);
+                List<XamlExpression> naming = [.. XamlExpressions.In(file).Where(e => names.Any(n => e.Code.Code.Contains(n, StringComparison.Ordinal)))];
+                if (naming.Count > 0)
+                {
+                    found.Add((path, text, naming));
                 }
             }
         }
