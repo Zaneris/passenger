@@ -63,8 +63,9 @@ public sealed class BuildConfigurationChoices
 
     /// <summary>Reads what the workspace offers again (the solution's configurations through the folder's project host, else
     /// the projects' as evaluated), and the chosen one's mapping: a choice no longer offered falls back to the default, but a
-    /// project's only once every project's evaluation is in (<paramref name="evaluated"/>).</summary>
-    public async Task ReadAsync(string folder, WorkspaceModel workspace, bool evaluated)
+    /// project's only once the workspace has projects and each one's evaluation is in, as a folder opening has none until its
+    /// walk for them lands, and a project not yet evaluated says nothing of what it declares.</summary>
+    public async Task ReadAsync(string folder, WorkspaceModel workspace)
     {
         UiThread.Check();
         int mine = ++reads;
@@ -76,6 +77,8 @@ public sealed class BuildConfigurationChoices
             IReadOnlyList<BuildConfiguration> declared = evaluatedProjects.Count == 0 ? []
                 : BuildConfigurations.Declared(evaluatedProjects.Select(p => (p.Property(CarriedProperties.Configurations), p.Property(CarriedProperties.Platforms))));
             Take(declared, BuildConfigurations.DefaultOf(declared), ofSolution: false, problem: null);
+            List<ProjectModel> standing = [.. workspace.Projects.Where(p => p.Exists)];
+            bool evaluated = standing.Count > 0 && standing.All(p => p.Evaluated is { Complete: true });
             if (evaluated || wanted is null || declared.Any(d => d.Is(wanted)))
             {
                 Apply(BuildConfigurations.Chosen(Offered, Default, wanted?.Key), []);

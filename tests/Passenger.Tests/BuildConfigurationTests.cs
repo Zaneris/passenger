@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.State;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -125,9 +126,21 @@ public sealed class BuildConfigurationTests
     /// <summary>The configuration chosen is the folder's: a window keeping state opens it again building as Staging, its
     /// widget naming it and its projects evaluated under it from the start.</summary>
     [AvaloniaFact]
-    public void The_configuration_chosen_is_kept_with_the_folder_and_a_window_opening_it_again_builds_as_it()
+    public void The_configuration_chosen_is_kept_with_the_folder_and_a_window_opening_it_again_builds_as_it() =>
+        OpenedAgainUnderStaging("configuration-kept-", (_, _) => { });
+
+    /// <summary>The configuration kept stands while the folder opened again finds its projects and evaluates them afresh, its
+    /// evaluations not kept: until a project's evaluation is in, nothing says it no longer declares Staging.</summary>
+    [AvaloniaFact]
+    public void The_configuration_kept_stands_while_the_folder_opened_again_finds_and_evaluates_its_projects_afresh() =>
+        OpenedAgainUnderStaging("configuration-afresh-", (settings, folder) => File.Delete(Path.Combine(ProjectState.FolderOf(settings, folder), "projectModels.json")));
+
+    /// <summary>Staging chosen in a window keeping state, then <paramref name="between"/> (given the state folder and the
+    /// folder) before another window opens the folder again: it builds as Staging from the start, its widget naming it and
+    /// its project evaluated under it.</summary>
+    private static void OpenedAgainUnderStaging(string prefix, Action<string, string> between)
     {
-        string folder = PathNames.Canonical(TestFolders.Create("configuration-kept-"));
+        string folder = PathNames.Canonical(TestFolders.Create(prefix));
         string settings = TestFolders.Create("configuration-settings-");
         TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console("<Configurations>Debug;Release;Staging</Configurations>"));
         try
@@ -135,7 +148,12 @@ public sealed class BuildConfigurationTests
             MainWindow first = Keeping(settings, folder);
             Ui.WaitFor(() => Offered(first) == "Debug, Release, Staging", () => $"Debug, Release and Staging offered, where the widget offers {Offered(first)}");
             Choose(first, "Staging");
+            Ui.WaitFor(() => first.Session.Projects.Single().Property(Passenger.Host.CarriedProperties.TargetPath)?.Contains("Staging", StringComparison.Ordinal) == true,
+                "the project evaluated under Staging in the first window");
             first.Close();
+            Assert.True(KeptEvaluation(settings, folder) is { } kept && kept.Contains("Staging", StringComparison.Ordinal),
+                $"The folder kept no evaluation of its project under Staging, so its next opening evaluates it again: {KeptEvaluation(settings, folder) ?? "none kept"}");
+            between(settings, folder);
 
             MainWindow second = Keeping(settings, folder);
             try
@@ -154,6 +172,21 @@ public sealed class BuildConfigurationTests
         finally
         {
             TestFolders.Delete(settings);
+        }
+    }
+
+    /// <summary>Where the build of the folder's one project kept in the store puts it, as its evaluation said; null for none kept.</summary>
+    private static string? KeptEvaluation(string settings, string folder)
+    {
+        StateStore store = StateStore.Open(settings);
+        try
+        {
+            return store.Hold(folder).ProjectModels.Value.Projects.Values.SingleOrDefault()?.Properties?.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value;
+        }
+        finally
+        {
+            store.LetGo(folder);
+            store.Release();
         }
     }
 

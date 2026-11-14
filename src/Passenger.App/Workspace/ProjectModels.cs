@@ -414,6 +414,8 @@ public sealed class ProjectModels
             }
             if (mine == generation)
             {
+                // What the round evaluated may still wait in a posted landing, which this continuation can come before.
+                Land();
                 Keep(projects);
                 IdeErrors.Write($"Project host (process {host.ProcessId}) evaluated {stale.Count} of the {projects.Count} projects of {following} in {done.Seconds:0.00} s, {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s after they were checked");
             }

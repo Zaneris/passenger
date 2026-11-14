@@ -514,7 +514,7 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         if (!IsEnded && Folder is { } folder && Workspace is { } now)
         {
-            IdeErrors.Observe(BuildChoices.ReadAsync(folder, now, Models.IsComplete));
+            IdeErrors.Observe(BuildChoices.ReadAsync(folder, now));
         }
     }
 
