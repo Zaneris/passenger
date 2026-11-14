@@ -242,7 +242,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
   binding's path is read once (`BindingPath`) for the check, Go to Declaration, uses and completion. MAUI's XAML is a
   dialect of it (`MauiDialect`, its implied namespaces in `XamlFile`); a `{…}` a dialect reads as a C# expression is the
-  compiler's to check (`XamlDialect.IsExpression`). A MAUI expression is answered through the extension's `MauiExpressionDocument`, written from the editor's text as MAUI's generator writes it, never from its `.xsg.cs`; the live check reruns the generator in a fork (`MauiXamlChecks`).
+  compiler's to check (`XamlDialect.IsExpression`). A MAUI expression is answered through the extension's `MauiExpressionDocument`, written from the editor's text as MAUI's generator writes it, never from its `.xsg.cs`; the live check reruns the generator in a fork (`MauiXamlChecks`); a namespace whose `targetPlatform=` names another platform is passed over (`XamlDialect.TargetPlatformOf`, `BuildsFor`), and a framework's reference pack is the one the SDK's `KnownFrameworkReference` names (`FrameworkDependencies.TargetingPacks`), never `<framework>.Ref` built by hand.
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project), `LspDocument` (never a change
   between a "\r\n"'s halves), Roslyn's server (`RoslynServer.targets`), the web servers under `web/` (to move a pin:
   edit `WebServers/package.json`, `npm install --package-lock-only --ignore-scripts`, the notices' "Inside web/").
@@ -440,7 +440,7 @@ a new name, and `just site-shots` retakes its images.
 - **Roslyn's server makes a C# file opened before its project loads a Miscellaneous File** (with no SDK, of no
   references), so a loading project's files open only once it loaded, a file come since once a load that read it ended
   (`CSharpService.Arrivals`), and an agent's code tool waits for every one its file's project and references hold
-  (`SeenFrom`), never its own alone; references come from `CSharpService.ProjectsNow`, never the start-time `workspace`.
+  (`SeenFrom`), and through a first restore, the load after it and its generators' rerun (`CSharpService.AwaitsRestore`, `ReloadingRestored`), never its own alone; references come from `CSharpService.ProjectsNow`, never the start-time `workspace`.
   A reload sent while it loads is one more load to wait for: its word that a load ended names none. A server ending
   during its start is started again, and StreamJsonRpc drops a faulted answer (`LanguageServer.IsDroppedAnswer`).
 - **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself. A deleted file reaches
