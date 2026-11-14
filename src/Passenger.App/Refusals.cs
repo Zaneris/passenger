@@ -495,9 +495,13 @@ public static class Refusals
         $"{project} is an Azure Functions app, which Azure Functions Core Tools' func runs, and none is on the PATH: install them "
         + "(https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools)";
 
-    /// <summary>Profile of an AppHost's Functions app, whose worker func starts and the profiler does not reach.</summary>
+    /// <summary>Profile of a Functions app (its own project's, or an AppHost's), whose worker func starts and the profiler
+    /// does not reach.</summary>
     public static string FunctionsUnprofiled(string service) =>
         $"{service} is an Azure Functions app, whose worker Azure Functions Core Tools start: Passenger does not profile it yet";
+
+    /// <summary>Run with Hot Reload of a Functions app, whose worker func starts, which runs on without it.</summary>
+    public const string FunctionsUnreloaded = "Passenger does not apply Hot Reload to an Azure Functions app's worker, which Azure Functions Core Tools start, yet";
 
     /// <summary>A debugged Functions app whose host started no worker within its time.</summary>
     public static string NoFunctionsWorker(TimeSpan limit) =>

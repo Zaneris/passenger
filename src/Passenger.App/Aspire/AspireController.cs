@@ -907,25 +907,11 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         return true;
     }
 
-    /// <summary>How long func is given to start a Functions app's worker once it has started, longer on a slower machine.</summary>
-    private static readonly TimeSpan FunctionsWorkerLimit = TimeSpan.FromMinutes(1);
-
     /// <summary>The launch profile a Functions app runs in, as its AppHost takes one for it: the AppHost's own profile's name
     /// where the app has one of it, else its first that runs a program; null for none.</summary>
     private static LaunchProfile? FunctionsProfile(IReadOnlyList<LaunchProfile> profiles, string? appHosts) =>
         profiles.FirstOrDefault(p => p.Name == appHosts)
         ?? profiles.FirstOrDefault(p => string.IsNullOrEmpty(p.Command) || p.RunsProject || p.Is(LaunchProfile.ExecutableCommand));
-
-    /// <summary>The worker func started for a Functions app, off the window's thread, while func runs and within its limit;
-    /// null where none came.</summary>
-    private static async Task<int?> FunctionsWorkerAsync(int func, CancellationToken cancellation)
-    {
-        using CancellationTokenSource within = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        within.CancelAfter(Waits.Of(FunctionsWorkerLimit));
-        int? worker = await BackgroundWork.Run(() => FunctionsHost.WorkerAsync(func, within.Token), cancellation);
-        cancellation.ThrowIfCancellationRequested();
-        return worker;
-    }
 
     private async Task<AspireProjectSession> StartRequestedAsync(AspireAppRun app, AspireProjectLaunch request, bool profiling, CancellationToken cancellation)
     {
@@ -982,7 +968,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             ? [.. plan.Arguments.Take(plan.Leading), .. given]
             : plan.Arguments;
         plan = plan with { Name = $"{app.Configuration.Name} / {project.Name}", Environment = environment, Arguments = arguments };
-        if (request.Functions)
+        // A project not loaded in the folder, whose evaluation has not said it is a Functions app.
+        if (request.Functions && !plan.Functions)
         {
             string func = await BackgroundWork.Run(FunctionsHost.Func, cancellation) ?? throw new LaunchException(Refusals.NoFunc(project.Name));
             plan = FunctionsHost.Plan(plan, func, [.. plan.Arguments.Skip(plan.Leading)]);
@@ -1072,8 +1059,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             resource.ProcessId = runner.ProcessId;
             resource.Held = held == RunStart.Profile ? null : held;
             // The run of services' one attach to this start, whose session (or recording) lets it go: a Functions app's to its worker.
-            if (held is { } purpose && (request.Functions && (resource.Worker = await FunctionsWorkerAsync(resource.ProcessId ?? throw new LaunchException(BuildRunController.StoppedStarting(serviceName)), cancellation)) is null
-                ? Refusals.NoFunctionsWorker(Waits.Of(FunctionsWorkerLimit))
+            if (held is { } purpose && (request.Functions && (resource.Worker = await FunctionsHost.StartedWorkerAsync(resource.ProcessId ?? throw new LaunchException(BuildRunController.StoppedStarting(serviceName)), cancellation)) is null
+                ? FunctionsHost.NoWorker
                 : await (AttachStart ?? throw new LaunchException("The debugger is unavailable"))(app, resource, purpose, cancellation)) is { } unattached)
             {
                 if (purpose == RunStart.Profile)

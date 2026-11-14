@@ -63,6 +63,10 @@ public sealed partial record LaunchPlan
     /// <summary>Set over the IDE's own environment, which the program inherits.</summary>
     public IReadOnlyDictionary<string, string> Environment { get; init; } = new Dictionary<string, string>();
 
+    /// <summary>Whether it runs an Azure Functions app by Azure Functions Core Tools' func (<see cref="Aspire.FunctionsHost"/>),
+    /// which starts the app's own program, its worker, the one a debugger attaches to.</summary>
+    public bool Functions { get; init; }
+
     /// <summary>The project, and the framework of it that runs; null for a test host VSTest describes.</summary>
     public string? Project { get; init; }
 
@@ -406,7 +410,7 @@ public sealed partial record LaunchPlan
         {
             environment[StateStore.Variable] = sandbox;
         }
-        return new LaunchPlan
+        LaunchPlan plan = new()
         {
             Name = configuration.Name,
             Program = program,
@@ -433,6 +437,13 @@ public sealed partial record LaunchPlan
             Notes = underDotnet is null ? [] : [$"{configuration.Name} runs as dotnet {System.IO.Path.GetFileName(target)}, not by its apphost: {underDotnet}"],
             Device = device is { Kind: not Devices.TargetKind.ThisMachine } && configuration.Program.Length == 0 ? new Devices.DeviceLaunch(device, framework ?? project.TargetFrameworks[0]) : null,
         };
+        if (configuration.Program.Length > 0 || !project.IsFunctionsApp)
+        {
+            return plan;
+        }
+        // A Functions app runs as dotnet run runs it, by func, whose SDK names it only in a target no evaluation runs.
+        string func = await BackgroundWork.Run(Aspire.FunctionsHost.Func, cancel) ?? throw new LaunchException(Refusals.NoFunc(project.Name));
+        return Aspire.FunctionsHost.Plan(plan, func, [.. plan.OwnArguments]);
     }
 
     /// <summary>A configuration's variables, on Linux with no display in them where nobody is to see what they start.</summary>

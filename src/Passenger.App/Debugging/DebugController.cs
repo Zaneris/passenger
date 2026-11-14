@@ -745,6 +745,26 @@ public sealed class DebugController : IDisposable
             browser: hotReloadOn ? browser : Unheld(browser), attachedWords: startedElsewhere, stopLetsGo: startedElsewhere is not null);
     }
 
+    /// <summary>Debugs a program another starts, which Passenger starts from <paramref name="plan"/> (func, which starts a
+    /// Functions app's worker): the starter's output in the session's console from its first line, the debugger attached to
+    /// the program <paramref name="started"/> finds among the starter's, or failing with <paramref name="unfound"/> where it
+    /// finds none, and the starter ended with the session. Null once the session is open, else why not.</summary>
+    public Task<string?> StartThroughAsync(Run.LaunchPlan plan, Func<int, CancellationToken, Task<int?>> started, string unfound, BuiltEdits? edits = null)
+    {
+        System.Diagnostics.Process? starter = null;
+        return OpenAsync(async (built, log, output, starting) =>
+        {
+            if (starter is not { } from)
+            {
+                throw new InvalidOperationException($"{Path.GetFileNameWithoutExtension(plan.Program)} could not start");
+            }
+            int debuggee = await started(from.Id, CancellationToken.None) is int found ? found
+                : throw new InvalidOperationException(DotnetProcesses.Runs(from) ? unfound : $"{Path.GetFileNameWithoutExtension(plan.Program)} ended before it started {plan.Name}");
+            return await DebugSession.AttachAsync(debuggee, Breakpoints, built, log, output, ColumnOf, starting);
+        }, plan.Name, launched: false, plan: plan, edits: edits, starts: (() => plan.Placed(ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Environment)),
+            process => starter = process), attachedWords: $"{plan.Name} runs as {Path.GetFileNameWithoutExtension(plan.Program)} starts it, whose output is shown here");
+    }
+
     /// <summary>Attaches the debugger to an app on a device through Passenger's relay in it (<see cref="Run.Devices.DeviceLaunches"/>),
     /// with Hot Reload as Settings has it (a Debug build's runtime takes edits); its console is the app's log, which its start
     /// writes there. Null once the session is open, else why it could not.</summary>
@@ -972,7 +992,7 @@ public sealed class DebugController : IDisposable
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
         Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null,
         BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null, bool copy = false,
-        bool stopLetsGo = false)
+        bool stopLetsGo = false, (Func<System.Diagnostics.ProcessStartInfo> Start, Action<System.Diagnostics.Process> Started)? starts = null)
     {
         UiThread.Check();
         // A start that opens no session lets go of its update handlers' hook and its pages' refresh with it.
@@ -1066,6 +1086,15 @@ public sealed class DebugController : IDisposable
         if (inTerminal)
         {
             shown.Append($"{name} runs in the Terminal window, which it reads from and writes to\n");
+        }
+        else if (!launched && starts is { } starter)
+        {
+            shown.Append($"{attachedWords}\n");
+            if (await FollowAsync(starter.Start, shown, tab) is { } process)
+            {
+                tab.FollowedStarts = true;
+                starter.Started(process);
+            }
         }
         else if (!launched && place?.Output is { } follow)
         {
@@ -1180,7 +1209,7 @@ public sealed class DebugController : IDisposable
 
     /// <summary>A program's output followed from outside into its console (a container's log, which an attach gets none of
     /// through the protocol), from before the debugger lets it go until its session's end has let its last words land.</summary>
-    private async Task FollowAsync(Func<System.Diagnostics.ProcessStartInfo> follow, OutputView console, DebugTab tab)
+    private async Task<System.Diagnostics.Process?> FollowAsync(Func<System.Diagnostics.ProcessStartInfo> follow, OutputView console, DebugTab tab)
     {
         System.Diagnostics.Process process;
         try
@@ -1194,19 +1223,20 @@ public sealed class DebugController : IDisposable
         catch (Exception failed) when (ChildFailures.Of(failed))
         {
             console.Append($"Its output could not be followed: {failed.Message}\n");
-            return;
+            return null;
         }
         if (disposed || !view.Sessions.Contains(tab))
         {
             // Its tab went as it started (closed, taken by another, its folder left), and its follower with it.
             ChildProcesses.Kill(process);
-            return;
+            return null;
         }
         tab.Following = process;
         ConsoleSink sink = console.Sink;
         // For the program's life, as its output is: no screenshot waits on it. Its last words land as its follower ends.
         IdeErrors.Observe(BackgroundWork.Unheld(() => sink.PumpAsync(ChildProcesses.Output(process), ConsoleStream.Output)));
         IdeErrors.Observe(BackgroundWork.Unheld(() => sink.PumpAsync(ChildProcesses.Errors(process), ConsoleStream.Error)));
+        return process;
     }
 
     /// <summary>Ends a tab's following of its program's output a moment after its session ended, its last words in.</summary>
@@ -1217,6 +1247,7 @@ public sealed class DebugController : IDisposable
             return;
         }
         tab.Following = null;
+        tab.FollowedStarts = false;
         IdeErrors.Observe(Task.Delay(TimeSpan.FromSeconds(2)).ContinueWith(_ => ChildProcesses.Kill(process), TaskScheduler.Default));
     }
 
@@ -1602,11 +1633,17 @@ public sealed class DebugController : IDisposable
 
     /// <summary>Stop on one tab: the program the debugger started ends, at once while the debugger still waits for its
     /// runtime; one it is still attaching to is let go, running on, as nothing of the session has reached it, as is one
-    /// another program keeps (<see cref="DebugTab.StopLetsGo"/>) unless Hot Reload changed it.</summary>
+    /// another program keeps (<see cref="DebugTab.StopLetsGo"/>) unless Hot Reload changed it; one Passenger started through
+    /// another (<see cref="DebugTab.FollowedStarts"/>) ends with that one, at any point.</summary>
     public async Task StopAsync(DebugTab tab)
     {
         UiThread.Check();
         tab.OpeningStopped = true;
+        // What started its program ends first, with all it started, so it starts no other in its place (func, a worker).
+        if (tab.FollowedStarts && tab.Following is { } starter)
+        {
+            ChildProcesses.Kill(starter);
+        }
         if (tab.Session is not { State: not DebugState.Ended } session)
         {
             return;
@@ -1621,7 +1658,7 @@ public sealed class DebugController : IDisposable
         if (session.State == DebugState.Starting)
         {
             stoppedStarting.Add(session);
-            if (session.Attached)
+            if (session.Attached && !tab.FollowedStarts)
             {
                 await session.DetachAsync();
                 return;
@@ -1632,9 +1669,9 @@ public sealed class DebugController : IDisposable
 
     /// <summary>Ends a tab's program as another session takes its place, or its tab closes, or the folder is left: one the
     /// debugger attached to is let go, running on, as Detach does, unless Hot Reload changed it, whose runtime would then
-    /// hold it for good; that one, and one it started, stop, as Stop stops them.</summary>
+    /// hold it for good; that one, one it started and one Passenger started through another, stop, as Stop stops them.</summary>
     private Task EndAsync(DebugTab tab) =>
-        tab.Session is { Attached: true, State: DebugState.Running or DebugState.Paused } attached && !HotReloadChanged(attached) ? attached.DetachAsync() : StopAsync(tab);
+        tab.Session is { Attached: true, State: DebugState.Running or DebugState.Paused } attached && !HotReloadChanged(attached) && !tab.FollowedStarts ? attached.DetachAsync() : StopAsync(tab);
 
     /// <summary>The run of services Detach acts on (a container run: whole, its containers left running, or the chosen one of
     /// its services), the window's: whether it takes Detach given where it runs and the session chosen, why it cannot now,
@@ -1678,6 +1715,7 @@ public sealed class DebugController : IDisposable
     /// Hot Reload changed it (<see cref="LetsNoDebuggerGo"/>).</summary>
     private string? WhyNotDetach(DebugSession? session) => session is not { State: not DebugState.Ended } ? NothingDebugged
         : !session.Attached ? "The debugger started this program: Stop ends it, and Detach lets go only of a program attached to"
+        : TabOf(session) is { FollowedStarts: true } ? "Passenger started this program through the one that starts it, which ends with it: Stop ends both, and Detach lets go only of a program attached to as it ran"
         : session.State == DebugState.Starting ? StillStarting
         : HotReloadChanged(session) ? LetsNoDebuggerGo(TabOf(session)?.Name ?? running.FirstOrDefault(r => r.Session == session)?.Name ?? session.Program)
         : null;

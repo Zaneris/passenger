@@ -333,6 +333,10 @@ public sealed record ProjectModel(
         || string.Equals(OutputType, "WinExe", StringComparison.OrdinalIgnoreCase)
         || string.Equals(Property(CarriedProperties.AndroidApplication), "true", StringComparison.OrdinalIgnoreCase)) && !IsTestProject && !IsBrowserClient;
 
+    /// <summary>Whether it is an Azure Functions app (.NET isolated worker), as its evaluation says
+    /// (<see cref="CarriedProperties.AzureFunctionsVersion"/>): a program Azure Functions Core Tools' func runs, never alone.</summary>
+    public bool IsFunctionsApp => IsRunnable && Property(CarriedProperties.AzureFunctionsVersion) is { Length: > 0 };
+
     /// <summary>Whether its code runs in the browser on .NET's WebAssembly runtime: it references Blazor's WebAssembly host.</summary>
     public bool RunsInBrowser => Packages.Any(p => p.Name.Equals(BlazorWebAssembly, StringComparison.OrdinalIgnoreCase));
 

@@ -13,9 +13,9 @@ using Passenger.Text;
 
 namespace Passenger.Tests;
 
-/// <summary>An Azure Functions app debugged through the window, as Azure Functions Core Tools' func runs it with the
-/// debugger on its worker: added to an AppHost with AddAzureFunctionsProject. The class shares one restored app
-/// (<see cref="AspireFunctionsApp"/>); a window starts no C# language server, as nothing here reads C#.</summary>
+/// <summary>An Azure Functions app run and debugged through the window, as Azure Functions Core Tools' func runs it with the
+/// debugger on its worker: added to an AppHost with AddAzureFunctionsProject, and as its own project. The class shares one
+/// restored app (<see cref="AspireFunctionsApp"/>); a window starts no C# language server, as nothing here reads C#.</summary>
 [Collection(Alone.Name)]
 public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, IDisposable
 {
@@ -60,6 +60,48 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
             int[] owned = [.. window.AspireRuntime.Apps.SelectMany(app => new[] { app.ProcessId, app.Runner.ProcessId }).Append(second.ProcessId).Append(second.Worker).OfType<int>()];
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => window.AspireRuntime.Apps.Count == 0 && owned.All(pid => !Processes.IsRunning(pid)), "Stop to end the AppHost, func and its worker");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(Skip = AspireFunctionsApp.FuncSkipped, SkipType = typeof(AspireFunctionsApp), SkipWhen = nameof(AspireFunctionsApp.IsUnavailable))]
+    public void A_Functions_projects_own_Run_serves_its_function_through_func_and_its_Debug_stops_in_it()
+    {
+        MainWindow window = project.Open(project.Function, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(configuration => PathNames.Same(configuration.Project, project.FunctionProject) && configuration.LaunchProfile == "Fn"),
+                "the Functions app's own configuration");
+            string own = window.Configurations.First(configuration => PathNames.Same(configuration.Project, project.FunctionProject) && configuration.LaunchProfile == "Fn").Name;
+            Assert.True(window.SelectConfiguration(own));
+            // Hot Reload on, which a Functions app runs without, saying so.
+            window.ApplySettings(window.Settings with { HotReload = true });
+            Uri function = new($"http://localhost:{project.OwnPort}/api/Hello");
+            using HttpClient http = new() { Timeout = TimeSpan.FromMinutes(2).Scaled() };
+            Ui.Launched(window, window.RunAsync(), "the Functions app's build and func's start", TimeSpan.FromMinutes(3));
+            Func<string> ran = () => window.BottomPanel.Run.Document.Snapshot.ToString();
+            Ui.WaitFor(() => ran().Contains(function.AbsolutePath, StringComparison.Ordinal), () => $"func to serve the function; the Run window shows:\n{ran()}",
+                TimeSpan.FromMinutes(2));
+            Assert.Contains("Azure Functions Core Tools", ran(), StringComparison.Ordinal);
+            Assert.Equal(AspireFunctionsApp.Answer, Ui.AwaitPumped(http.GetStringAsync(Listening(function)), "the function's answer under Run"));
+            Assert.Contains(Refusals.FunctionsUnreloaded, window.Status, StringComparison.Ordinal);
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => Leftovers().Count == 0, () => $"Stop to end func and its worker: {string.Join("; ", Leftovers().Values)}");
+
+            int line = BreakAt(window, project.Function, AspireFunctionsApp.Answering);
+            Ui.Launched(window, window.DebugAsync(), "func's start with the debugger on its worker", TimeSpan.FromMinutes(3));
+            DebugTab tab = Assert.Single(window.Debugger.Tabs, tab => tab.Name == own && tab.IsLive);
+            DebugSession session = Assert.IsType<DebugSession>(tab.Session);
+            Assert.True(session.Attached, "The debugger launched func, not attached to the worker func started");
+            Assert.NotNull(window.Debugger.WhyNotDetachOf(session));
+            StopsAndAnswers(window, tab, function, line, http);
+            Assert.Contains("Azure Functions Core Tools", tab.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging && Leftovers().Count == 0,
+                () => $"Stop to end the session, func and its worker: {string.Join("; ", Leftovers().Values)}");
         }
         finally
         {

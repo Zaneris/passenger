@@ -288,7 +288,7 @@ public sealed class ProfilerCommands
             return problem;
         }
         parts.Dock.Show(ToolWindowIds.Profiler);
-        if ((plan is null ? problem : plan.WhyNot("profile")) is { } why)
+        if ((plan is null ? problem : plan.Functions ? Refusals.FunctionsUnprofiled(plan.Name) : plan.WhyNot("profile")) is { } why)
         {
             plan?.Dashboard?.Dispose();
             View.Stopped(why);

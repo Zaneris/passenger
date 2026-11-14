@@ -163,7 +163,7 @@ public sealed partial class BuildRunController
                 }
                 else
                 {
-                    notStarted = await RunProjectAsync(chosen, configuration, plan, i + 1, hotReload && configuration.NamesNoOtherProgram(session.Projects), work, its, ran);
+                    notStarted = await RunProjectAsync(chosen, configuration, plan, i + 1, hotReload && configuration.NamesNoOtherProgram(session.Projects) && !plan.Functions, work, its, ran);
                     if (notStarted is null && ran.Count > 0 && ran[^1].Name == plan.Name)
                     {
                         TerminalRun run = ran[^1];

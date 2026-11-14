@@ -96,6 +96,10 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     /// <summary>What follows its program's output from outside into its console (a container's log), while it does.</summary>
     internal System.Diagnostics.Process? Following { get; set; }
 
+    /// <summary>Whether what it follows (<see cref="Following"/>) started its program, which ends with it (func, which starts a
+    /// Functions app's worker): Stop and the session's end end it, and its program is never let go to run on alone.</summary>
+    internal bool FollowedStarts { get; set; }
+
     /// <summary>Whether it is the tab shown: its frames, values, console and toolbar are the window's.</summary>
     public bool IsChosen
     {

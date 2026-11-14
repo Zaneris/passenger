@@ -22,7 +22,11 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeted, ForgetAll, ForgetUncarried, ForgetUnpublishable, ForgetAll,
         ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved, ForgetUncentral, ForgetGodotless,
-        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered, ForgetUnconfigured, ForgetUndeclared];
+        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered, ForgetUnconfigured, ForgetUndeclared, ForgetFunctionless];
+
+    /// <summary>Every evaluation, kept before they carried the Azure Functions version a Functions app sets, by which func
+    /// runs it.</summary>
+    private static void ForgetFunctionless(JsonObject document) => document.Remove("projects");
 
     /// <summary>Every evaluation, kept before they carried the configurations and platforms a project declares, which a
     /// folder with no solution chooses its builds' from.</summary>

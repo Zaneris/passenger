@@ -238,6 +238,11 @@ public sealed record RunConfiguration
     public bool RunsGodot(IEnumerable<ProjectModel> projects) =>
         Kind == RunKind.Project && (Program.Length == 0 || NamesGodot) && (RunsScriptGame || projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.GodotFolder is not null);
 
+    /// <summary>Whether it runs an Azure Functions app among these projects, which func runs (<see cref="Aspire.FunctionsHost"/>):
+    /// one of a Functions project that names no program of its own.</summary>
+    public bool RunsFunctions(IEnumerable<ProjectModel> projects) =>
+        Kind == RunKind.Project && Program.Length == 0 && projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.IsFunctionsApp == true;
+
     /// <summary>Whether the program it names is Godot (%GODOT%, a path to a Godot executable: <see cref="GodotExecutables.NamesGodot"/>),
     /// which for a Godot project's runs its game as one naming no program does, on the Godot Settings names or the one found.</summary>
     [JsonIgnore]

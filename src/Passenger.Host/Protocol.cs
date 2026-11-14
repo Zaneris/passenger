@@ -292,13 +292,17 @@ public static class CarriedProperties
     /// <summary>The platforms the project declares, separated by ';' (the SDK's AnyCPU unless it names others).</summary>
     public const string Platforms = "Platforms";
 
+    /// <summary>The version of Azure Functions' host a Functions app runs on (v4), which every Functions SDK sets: a
+    /// runnable project with one is a .NET isolated worker, which Azure Functions Core Tools' func runs.</summary>
+    public const string AzureFunctionsVersion = "AzureFunctionsVersion";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
         DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, UsingGodotNETSdk, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
-        AndroidApplication, Configurations, Platforms,
+        AndroidApplication, Configurations, Platforms, AzureFunctionsVersion,
     ];
 }
 

@@ -3,10 +3,11 @@ using Passenger.Core;
 
 namespace Passenger.App.Aspire;
 
-/// <summary>An Azure Functions app (.NET isolated worker) an AppHost adds with AddAzureFunctionsProject, which it asks the IDE
-/// to start as a launch of its own type: run as dotnet run runs one, by Azure Functions Core Tools' <c>func start</c> in its
-/// build's output folder, which starts the app's own program, its worker. Debugged, the worker waits at its start for a
-/// debugger (<see cref="Debugged"/>), which attaches to it once found among what func started (<see cref="WorkerAsync"/>).</summary>
+/// <summary>An Azure Functions app (.NET isolated worker): its own project's run, and one an AppHost adds with
+/// AddAzureFunctionsProject, which it asks the IDE to start as a launch of its own type. Run as dotnet run runs one, by
+/// Azure Functions Core Tools' <c>func start</c> in its build's output folder, which starts the app's own program, its
+/// worker. Debugged, the worker waits at its start for a debugger (<see cref="Debugged"/>), which attaches to it once
+/// found among what func started (<see cref="StartedWorkerAsync"/>).</summary>
 public static class FunctionsHost
 {
     /// <summary>The launch configuration's type an AppHost gives a Functions app, which the IDE says it starts.</summary>
@@ -35,15 +36,34 @@ public static class FunctionsHost
             ArgumentsOfProject = false,
             ByAppHost = false,
             WorkingDirectory = Path.GetDirectoryName(app.Target ?? app.Built ?? app.Program)!,
+            Functions = true,
+            Notes = [],
         };
     }
 
     /// <summary>The plan with its worker held at its start until a debugger attaches.</summary>
     public static LaunchPlan Debugged(LaunchPlan functions) => functions with { Arguments = [.. functions.Arguments, DebugFlag] };
 
+    /// <summary>How long func is given to start a Functions app's worker once it has started, longer on a slower machine.</summary>
+    private static readonly TimeSpan WorkerLimit = TimeSpan.FromMinutes(1);
+
+    /// <summary>Why a debugged Functions app runs undebugged: func started no worker within its time.</summary>
+    public static string NoWorker => Refusals.NoFunctionsWorker(Waits.Of(WorkerLimit));
+
+    /// <summary>The worker func started for a Functions app, off the window's thread, while func runs and within its limit;
+    /// null where none came.</summary>
+    public static async Task<int?> StartedWorkerAsync(int func, CancellationToken cancellation)
+    {
+        using CancellationTokenSource within = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        within.CancelAfter(Waits.Of(WorkerLimit));
+        int? worker = await BackgroundWork.Run(() => WorkerAsync(func, within.Token), cancellation);
+        cancellation.ThrowIfCancellationRequested();
+        return worker;
+    }
+
     /// <summary>The worker func started, by the argument its host gives each, waited for while func runs until
     /// <paramref name="stop"/>; null where none came.</summary>
-    public static async Task<int?> WorkerAsync(int func, CancellationToken stop)
+    private static async Task<int?> WorkerAsync(int func, CancellationToken stop)
     {
         while (!stop.IsCancellationRequested && DotnetProcesses.Runs(func))
         {

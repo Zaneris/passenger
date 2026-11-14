@@ -1163,7 +1163,8 @@ public sealed partial class BuildRunController
             ShowInRun(null);
             UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
-            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects) && !RunsOnDevice(chosen);
+            bool functions = chosen.RunsFunctions(session.Projects);
+            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects) && !RunsOnDevice(chosen) && !functions;
             bool godot = chosen.RunsGodot(session.Projects);
             // A game's errors, which Godot writes every frame they happen, folded in its console.
             parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
@@ -1209,6 +1210,7 @@ public sealed partial class BuildRunController
             session.RunPlan = plan;
             string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
                 : wanted && godot && !plan.ScriptsAlone ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
+                : functions && (hotReload ?? parts.Settings().HotReload) ? $"Running {chosen.Name} without Hot Reload: {Refusals.FunctionsUnreloaded}"
                 : $"Running {chosen.Name}";
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
@@ -2415,6 +2417,10 @@ public sealed partial class BuildRunController
         {
             return await DebugOnDeviceAsync(plan, device, work, edits);
         }
+        if (plan.Functions)
+        {
+            return await DebugFunctionsAsync(plan, work, edits);
+        }
         work.Say($"Starting {chosen.Name} under the debugger…");
         parts.Dock.Show(ToolWindowIds.Debug);
         parts.Views.Debug.ShowTab(console: true);
@@ -2470,6 +2476,23 @@ public sealed partial class BuildRunController
         else if (refused is null)
         {
             parts.OpenBrowser(plan, ended);
+        }
+        return refused;
+    }
+
+    /// <summary>Debugs a Functions app as func runs it (<see cref="Aspire.FunctionsHost"/>): func started with the app's worker
+    /// held for the debugger, which attaches to the worker once func has started it, func's output the session's console,
+    /// and func ended with the session. Null once the session is open, else why not.</summary>
+    private async Task<string?> DebugFunctionsAsync(LaunchPlan plan, Working work, BuiltEdits? edits)
+    {
+        work.Say($"Starting {plan.Name} by func, its worker held for the debugger…");
+        parts.Dock.Show(ToolWindowIds.Debug);
+        parts.Views.Debug.ShowTab(console: true);
+        DebugProject = Path.GetDirectoryName(plan.Project);
+        string? refused = await session.Debug.StartThroughAsync(Aspire.FunctionsHost.Debugged(plan), Aspire.FunctionsHost.StartedWorkerAsync, Aspire.FunctionsHost.NoWorker, edits);
+        if (refused is null)
+        {
+            parts.OpenBrowser(plan, DebugEnded(session.Debug.SessionNamed(plan.Name)));
         }
         return refused;
     }
