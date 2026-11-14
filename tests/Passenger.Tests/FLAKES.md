@@ -1654,3 +1654,10 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   elsewhere and written again, a batch every 160 ms while the window stayed open; the test went on only where a settle
   caught a gap. The stripe fold played no part. Local History now takes its state folder canonical (`LocalHistory.Open`);
   the test takes 2.7 s, and LocalHistoryTests holds a state folder inside the open folder named through a link (#1644).
+- `FindInFilesTests`' `A_search_over_two_thousand_files_reads_as_text_only_those_whose_bytes_may_match`, CI 43625091784
+  (Linux): "allocated 9,144 KB over 2,000 files, 436 KB over 20: 4,503 bytes for each file more". **The test counted other
+  tests' allocations**: it counts every thread's (`GC.GetTotalAllocatedBytes`), and only Linux's shards put it in one
+  process with `ChildKillTests`, a Beside class listing the system's processes at 135 to 390 MB a second, running as the
+  2,000 files' searches did; alone the search costs about 350 to 430 bytes a file more. Started beside it on purpose it
+  failed 3 of 3 on the Mac with CI's words. It runs alone now (`FindInFilesBytesTests`), its bound as it was, as does
+  `GitFileFormsTests`' 100 MB binary file's measure (`GitFileFormsBytesTests`) (#1649).

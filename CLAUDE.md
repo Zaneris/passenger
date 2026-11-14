@@ -765,7 +765,8 @@ session's thread (`await Task.Yield()` before throwing). `just test` keeps the M
 
 **Collections and shared projects** (`Collections.cs`). Window tests run one at a time on the session's thread; beside
 them only `DebugSession.Collection` and `Beside` classes (no window, nothing shared changed, nothing held to a time). A
-class with a test held to a time, or that debugs through the window, is `[Collection(Alone.Name)]`, run last alone. A
+class with a test held to a time, that debugs through the window, or that counts every thread's allocations
+(`GC.GetTotalAllocatedBytes`: a Beside class's are counted as its own), is `[Collection(Alone.Name)]`, run last alone. A
 class sharing one project derives from `SharedProject` (one warm server; a new file through `project.Write`, which ends
 the server unless `loadsAgain`; `PrepareAsync(restore: false)` where nothing reads a restore, `byRealPath: true` where
 projects name each other by real path). xunit v3 calls only `DisposeAsync` on a class with both. `RestoredFolders` hands
