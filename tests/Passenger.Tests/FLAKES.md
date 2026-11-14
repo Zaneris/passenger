@@ -1675,3 +1675,11 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   `McpProxy.CheckVariable()`, which left `McpProxy.StartedForAgent` true for the rest of the process, and a first start
   is never asked of a Passenger started for an agent; the shard first dealt FirstStartTests after it. `CheckVariable` now
   sets both from what the environment gives each time, and the test calls it again as it ends (#1543).
+- `StepTests`' `A_step_over_an_await_stops_at_its_next_line_though_asking_the_builder_which_run_leaves_would_wait_on_a_paused_thread`,
+  the Mac (an agent's four-process run of every debugger class): "The step was lost to a breakpoint that did not stop, and
+  the program ran on". **A race in the IDE**: under load the runtime handed the debugger the stepping thread's breakpoints
+  at the await only once the thread had run on past them, in one batch with its step's end; the engine took the yield
+  for a breakpoint at the step's own place and let it go, so the breakpoint where the method resumes was never set, and
+  the method ran on to the next breakpoint (once in about 1,500 looped steps under load). The yield is now the async
+  step's however late it comes, and a Debug build's run is watched where it resumes from the step's start;
+  `PASSENGER_ENGINE_LATE_YIELD` holds the yield back as the runtime did, failing StepTests' new test 3 of 3 before (#1650).

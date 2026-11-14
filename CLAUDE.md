@@ -476,7 +476,7 @@ a new name, and `just site-shots` retakes its images.
   or a read-only folder it runs from a copy in `cache/roslyn/` (`RoslynServerFolder`); nothing a Passenger runs may
   write inside the app.
 - **The debugger's engine.** `EngineLock` is not re-entrant; a read of the stop waits behind continue, steps, pause and
-  disconnect. Never leave `_stepper` set but inactive (async stepping reads it as a queued StepComplete). Abort an
+  disconnect. Never leave `_stepper` set but inactive (async stepping reads it as a queued StepComplete). Under load the runtime may hand a stepping thread's breakpoints over only after it ran on past them, in one batch with its step's end: an async step's own breakpoint is told by the breakpoint, never by where its thread stands (`PASSENGER_ENGINE_LATE_YIELD` holds it so in a test). Abort an
   evaluation past its time only where the abort takes, never rudely (one left pending fires later inside a lock, #238).
   Before letting a program go, run it off patch and step stops (CET would fault it) and wait out abandoned evaluations.
   Never decompile under the lock. Returned partway through a statement, a frame's IL offset reads as its start: seek the
