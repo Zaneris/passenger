@@ -356,8 +356,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   solution build's output is evaluated with them (the host's `SolutionBuild`, `WorkspaceModel.BuiltSolution`). A
   solution's multi-project launch profiles live only in Visual Studio's `.slnLaunch`/`.slnLaunch.user` beside it
   (`SolutionLaunch`, written as text where each stands), each project started as its own configuration
-  (`RunConfigurations.ProjectOf`). What a mobile project needs is asked of its own workloads (`MobileQuestions`, said by `MobileBanner`), and a workload
-  installed reloads every project (`ProjectHosts.EndUnderAsync`, `ProjectModels.EvaluateAll`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`), where a project runs one answer (`DeviceChoices.InForce`); a launch profile naming one platform belongs to it (`DeviceTargets.TiedTo`), taken by the project's configuration where that platform is the target, never a configuration of its own;
+  (`RunConfigurations.ProjectOf`). What a mobile project needs is asked of its own workloads (`MobileQuestions`, said by `MobileBanner`; an Apple project's simulator runtimes of the workload's own Xcode's `simctl`), and a workload
+  installed reloads every project (`ProjectHosts.EndUnderAsync`, `ProjectModels.EvaluateAll`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`; the inspector and relay put in `files/.passenger` by `PutInspectorAsync`/`PutRelayAsync`, never over the app's own assemblies, reached through `adb forward`; its end registered with `ProjectSession.EndsOnDevices`, never left to a session's end event), where a project runs one answer (`DeviceChoices.InForce`); a launch profile naming one platform belongs to it (`DeviceTargets.TiedTo`), taken by the project's configuration where that platform is the target, never a configuration of its own;
   Android's only through the workload's `ComputeAvailableDevices`, `DeployToDevice` and `ComputeRunArguments`, adb through
   `ChildProcesses`.
 - **Runs of services.** `ServiceRun` is the one model: Debug, Attach, Restart and Profile written once; one start at a
@@ -509,7 +509,7 @@ a new name, and `just site-shots` retakes its images.
   `.user` (`FileText.SaveSuffix`), which `DefaultItemExcludes` leaves out, or dotnet watch hears it as added, reloads
   and loses the next edit.
 - **The inspector** never touches `Dispatcher.UIThread` before the app makes it, never waits on Passenger, and readies
-  its wire's types before the app's Main (System.Text.Json's lock against a thread the debugger stopped). An app the
+  its wire's types before the app's Main (System.Text.Json's lock against a thread the debugger stopped). A library's view previews in a program that runs it (`XamlPreview.ProgramsRunning`). An app the
   previewer loads needs `BuildAvaloniaApp()`, or HostApp aborts.
 - **MCP's tool list** is paid for by every agent session (45.6 KB, held under 62 KB by McpDebuggingTests): say each
   thing once (shared parameters in `McpHost.Instructions`), add no tool another covers; an answer that can run long goes
@@ -611,7 +611,7 @@ a new name, and `just site-shots` retakes its images.
   through run-as and puts the build's link back after; `am set-debug-app` (kept only in the activity manager: clear only
   your own) keeps a long stop of the main thread from ending the app; the relay calls the DBI's `DllMain` itself, or
   `ICorDebug::Initialize` hangs; without the workload's platform (`platforms;android-37.0`) its device listing fails with
-  XA5207. AndroidDeviceTests needs that platform, a JDK in `JAVA_HOME`, an AVD (booted `-no-window`)
+  XA5207. The workload's JDK installer, given no folder, puts it where the workload's search finds it again on macOS and Windows but has none on Linux. AndroidDeviceTests needs that platform, a JDK in `JAVA_HOME`, an AVD (booted `-no-window`)
   and the relays a build carries only after `just debug-relay android`.
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so hold a child whose descendants must end with it with `ChildProcesses.HoldFamily`; a write waits out a
