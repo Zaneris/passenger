@@ -824,9 +824,9 @@ public sealed class LanguageServer : IAsyncDisposable
         return hold.Holding.Task;
     }
 
-    /// <summary>Sends the next request of a method whose parameters <paramref name="which"/> takes and holds its answer until
-    /// <paramref name="until"/> ends, as one the server worked out before what goes on meanwhile, for a test of that. Done
-    /// once the answer has come and is held.</summary>
+    /// <summary>Holds the next answer to come of a method whose parameters <paramref name="which"/> takes until
+    /// <paramref name="until"/> ends, as one the server worked out before what goes on meanwhile, for a test of that: a
+    /// request let go before its answer came leaves it to the next. Done once an answer is held.</summary>
     public Task HoldNextAnswer(string method, Func<object, bool> which, Task until)
     {
         Hold hold = new(method, which, until, Answered: true, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
@@ -840,11 +840,11 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>A request a test holds: unsent, or its answer once it has come; <see cref="Holding"/> done once it is held.</summary>
     private sealed record Hold(string Method, Func<object, bool> Which, Task Until, bool Answered, TaskCompletionSource Holding);
 
-    private Hold? Held(string method, object parameters)
+    private Hold? Held(string method, object parameters, bool answered)
     {
         lock (holding)
         {
-            int at = holding.FindIndex(h => h.Method == method && h.Which(parameters));
+            int at = holding.FindIndex(h => h.Method == method && h.Answered == answered && h.Which(parameters));
             if (at < 0)
             {
                 return null;
@@ -881,20 +881,19 @@ public sealed class LanguageServer : IAsyncDisposable
             {
                 throw new LanguageServerFailed("the language server refused it: as a test asked", method);
             }
-            Hold? held = Held(method, parameters);
-            if (held is { Answered: false })
+            if (Held(method, parameters, answered: false) is { } unsent)
             {
-                held.Holding.TrySetResult();
-                await held.Until.WaitAsync(cancel).ConfigureAwait(false);
+                unsent.Holding.TrySetResult();
+                await unsent.Until.WaitAsync(cancel).ConfigureAwait(false);
             }
             Task<T?> answer = rpc.InvokeWithParameterObjectAsync<T?>(method, parameters, cancel);
             try
             {
                 T? answered = await answer.WaitAsync(cancel).ConfigureAwait(false);
-                if (held is { Answered: true })
+                if (Held(method, parameters, answered: true) is { } kept)
                 {
-                    held.Holding.TrySetResult();
-                    await held.Until.WaitAsync(cancel).ConfigureAwait(false);
+                    kept.Holding.TrySetResult();
+                    await kept.Until.WaitAsync(cancel).ConfigureAwait(false);
                 }
                 return answered;
             }
@@ -963,7 +962,7 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         try
         {
-            if (Held(method, parameters) is { Answered: false } held)
+            if (Held(method, parameters, answered: false) is { } held)
             {
                 held.Holding.TrySetResult();
                 await held.Until.ConfigureAwait(false);
