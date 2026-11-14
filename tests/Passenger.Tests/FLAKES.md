@@ -1594,3 +1594,9 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   nothing narrowed the rows `@` alone gave; an Escape then was lost too. A list is now open from the moment a language
   opens it; `Keys_typed_while_a_lists_first_rows_are_made_narrow_the_list_or_dismiss_it` holds the first rows to show it
   (#1628).
+- `StateProcessesTests`' two writers, CI 43579072335 (Windows x64): "Writer b lost 1 of its 150 changes to the other's
+  writes over them: 57". **A race in the IDE**: `StateDocument.ChangeNow` read the file outside the lock every Passenger
+  takes to write, and Windows refuses a move over a file any program has open however it shares it, so one writer's read
+  refused the other's replace; that change was kept to try again, but the next `ChangeNow` read the file without it and
+  set its own in its place. Reads now hold the lock (`StateFile.ReadHeld`) and a change is made over any still waiting;
+  the test reads the file all the while, which lost 47 of 150 on the Windows VM before the fix (#1627).

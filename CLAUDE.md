@@ -170,7 +170,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   a package folder an evaluation names, `PackageFolders`); an action on it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned, `Clamped`, debounced, merged, a bad file set aside
   as `.bad`), read off the UI thread, never a file of its own; per-folder state under `workspaces/<name>-<hash>/`, held
-  by each window with it open; writes hold a lock every process honours (`StateFile.Hold`); a renamed key moves in
+  by each window with it open; reads and writes hold a lock every process honours (`StateFile.Hold`, a read through `StateFile.ReadHeld`); a renamed key moves in
   `IStateDocument.Renamed`; a value of the wrong kind is passed over alone. A Settings row is an `OptionRow` (its label above its editor on a narrow page), an editor narrowing by `MaxWidth` and a drop-down with its button through `NarrowingField`, never a fixed `Width`. A new setting: an `AppSettings` property,
   its row and range in `Declared` (refused values `Refused`, which Settings and `settings_set` ask), `Add`ed in
   `SettingsDialog`, a line in `MainWindow.Follow` or `SettingsStore.InForce`, a look's in `SettingsPreview.Over` and
@@ -615,7 +615,7 @@ a new name, and `just site-shots` retakes its images.
   `ICorDebug::Initialize` hangs; without the workload's platform (`platforms;android-37.0`) its device listing fails with
   XA5207. A start Passenger couldn't end leaves its own environment file in place of fast deployment's link: the build's is the one beside what the assembly links point to (`AndroidApp.PutIn`). The installer is given its JDK folder (`AndroidFolders.Jdk`), never JAVA_HOME's, and `AndroidInstallJavaDependencies=false` where no JDK lacks; the workload's JDK installer, given no folder, puts it where the workload's search finds it again on macOS and Windows but has none on Linux. AndroidDeviceTests needs that platform, a JDK in `JAVA_HOME`, an AVD (booted `-no-window`)
   and the relays a build carries only after `just debug-relay android`.
-- **Windows**: a fresh file another program opens a moment after it is written refuses a replace over it and its deletion, so such a file is written once and its deletion never fails what was done. A folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
+- **Windows**: a move over a file another program has open is refused however it shares it (deletion too). A fresh file another program opens a moment after it is written refuses a replace over it and its deletion, so such a file is written once and its deletion never fails what was done. A folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so hold a child whose descendants must end with it with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket with
   unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
