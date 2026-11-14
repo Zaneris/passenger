@@ -68,6 +68,7 @@ public static class AdapterProgram
         try
         {
             Passenger.Debugger.Extensions.EvaluationTimeout = AdapterEnvironment.EvaluationTimeout;
+            Passenger.Debugger.ManagedDebugger.LateYield = AdapterEnvironment.LateYield;
             _ = Passenger.Core.Waits.Scale;
         }
         catch (FormatException error)

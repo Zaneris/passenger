@@ -649,6 +649,7 @@ public partial class ManagedDebugger
         // A step's calls' values are shown at its own stop; one that stops anywhere else stops showing them.
         EndReturnWatch();
         EndSmartStep();
+        _heldYield = null;
         if (reason != StopReasons.Step)
         {
             ForgetReturnedValues();
@@ -712,6 +713,15 @@ public partial class ManagedDebugger
     }
 
     private ICorDebugStepper? _stepper;
+
+    /// <summary>A test's hold: the stepping thread's breakpoint where it leaves an async method at an await is let go
+    /// unhandled, the thread running on, and handed over only as its step's end comes, as the runtime once handed both under
+    /// load.</summary>
+    public static bool LateYield { get; set; }
+
+    /// <summary>The breakpoint <see cref="LateYield"/> holds back, and the one it is handing over, which is not held again.</summary>
+    private BreakpointCorDebugManagedCallbackEventArgs? _heldYield;
+    private BreakpointCorDebugManagedCallbackEventArgs? _handedYield;
 
     internal void Log(string message) => _logger?.Invoke(message);
 

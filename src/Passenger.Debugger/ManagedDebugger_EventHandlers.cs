@@ -253,6 +253,14 @@ public partial class ManagedDebugger
         {
             return;
         }
+        if (LateYield && _heldYield is null && breakpointCorDebugManagedCallbackEventArgs != _handedYield && breakpoint is ICorDebugFunctionBreakpoint late
+            && _asyncStepper?.IsYield(late) is true)
+        {
+            _logger?.Invoke($"Held back: the yield on thread {breakpointCorDebugManagedCallbackEventArgs.Thread.Id}, until its step's end comes");
+            _heldYield = breakpointCorDebugManagedCallbackEventArgs;
+            Continue(clearVariables: false);
+            return;
+        }
 
         if (breakpoint is ICorDebugFunctionBreakpoint afterCall && WatchedCallOf(afterCall) is { } watched)
         {
@@ -269,7 +277,9 @@ public partial class ManagedDebugger
         }
 
         ICorDebugThread corThread = breakpointCorDebugManagedCallbackEventArgs.Thread;
-        if (_stepper is { IsActive: false } && Stepping is (int stepping, _))
+        // The stepping thread leaving at an await, handed over only with its step's end, is the async step's wherever that end is.
+        bool leavesAtAwait = breakpoint is ICorDebugFunctionBreakpoint leaving && _asyncStepper?.IsYield(leaving) is true;
+        if (!leavesAtAwait && _stepper is { IsActive: false } && Stepping is (int stepping, _))
         {
             if (stepping == corThread.Id)
             {
@@ -421,6 +431,16 @@ public partial class ManagedDebugger
     private async Task HandleStepComplete(object? sender, StepCompleteCorDebugManagedCallbackEventArgs stepCompleteEventArgs)
     {
         ICorDebugThread corThread = stepCompleteEventArgs.Thread;
+        if (_heldYield is { } late && late.Thread.Id == corThread.Id && !EvalStatus.IsRunning)
+        {
+            // LateYield's hand-over: the yield first, this end then in place of its continue.
+            _heldYield = null;
+            _handedYield = late;
+            _logger?.Invoke($"Handed over: the yield held back on thread {corThread.Id}, with its step's end");
+            _deferredEvents.Enqueue(stepCompleteEventArgs);
+            await HandleBreakpoint(sender, late);
+            return;
+        }
         bool evaluatedHere = EvalStatus.ThreadId == corThread.Id || EvalStatus.Abandoned.ContainsKey(corThread.Id);
         if (PutOffDuringEvaluation(stepCompleteEventArgs, corThread))
         {

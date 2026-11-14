@@ -39,10 +39,16 @@ internal sealed partial class AsyncStepper
         public StepType InitialStepType;
         public uint ResumeOffset;
 
+        /// <summary>The method's code the step's breakpoints are set in, where it stepped from.</summary>
+        public required ICorDebugCode Code;
+        public CORDB_ADDRESS ModuleAddress;
+        public mdMethodDef MethodToken;
+
         /// <summary>Where the stepping thread leaves the method at the await, before the awaiter is told to go on with it.</summary>
         public AsyncBreakpoint? Yield;
 
-        /// <summary>Where the method's runs go on after the await, set as the stepping thread leaves it.</summary>
+        /// <summary>Where the method's runs go on after the await: set as the step begins when its run is told by its state
+        /// machine, else as the stepping thread leaves the method.</summary>
         public AsyncBreakpoint? Resume;
 
         /// <summary>Which run of the method the step is in; none when it could not be told, and the method's first resume
@@ -277,12 +283,19 @@ internal sealed partial class AsyncStepper
                 return (false, null);
             }
 
+            // Watched from now, as the stepping thread's leaving at the await may be told only once its run has resumed.
+            RunId? run = StateMachineOf(ilFrame);
             _currentAsyncStep = new AsyncStep
             {
                 ThreadId = thread.Id,
                 InitialStepType = stepType,
                 ResumeOffset = awaitInfo.ResumeOffset,
+                Code = ilCode,
+                ModuleAddress = moduleAddress,
+                MethodToken = methodToken,
                 Yield = Arm(ilCode, moduleAddress, methodToken, awaitInfo.YieldOffset),
+                Run = run,
+                Resume = run is null ? null : Arm(ilCode, moduleAddress, methodToken, awaitInfo.ResumeOffset),
             };
 
             // The simple stepper steps on until the yield breakpoint is reached.
@@ -327,45 +340,70 @@ internal sealed partial class AsyncStepper
         {
             return (false, null);
         }
-        bool atYield = step.Yield is { } yield && MatchesBreakpoint(breakpoint, yield, thread);
-        if (!atYield && (step.Resume is not { } resume || !MatchesBreakpoint(breakpoint, resume, thread)))
+        bool atYield = step.Yield is { } yield && yield.Breakpoint == breakpoint;
+        if (!atYield && (step.Resume is not { } resume || resume.Breakpoint != breakpoint))
         {
             // Another breakpoint ends the async step only if it stops, which the debugger tells once its condition is tested.
             return (false, null);
         }
 
+        AsyncBreakpoint met = atYield ? step.Yield! : step.Resume!;
         ICorDebugILFrame? frame = thread.ActiveFrame as ICorDebugILFrame;
-        if (frame is null || frame.IP.pnOffset != (atYield ? step.Yield! : step.Resume!).ILOffset)
+        bool there = frame is not null && Stands(frame, met);
+        if (atYield)
         {
-            _debugger.Log($"The async step's breakpoint at IL_{(atYield ? step.Yield! : step.Resume!).ILOffset:X4} was met on thread {thread.Id} "
+            // Another run of the method leaving it at the await is not the step's.
+            return step.ThreadId == thread.Id ? (true, await HandleYieldBreakpoint(step, there ? frame : null)) : (false, null);
+        }
+        if (!there)
+        {
+            _debugger.Log($"The async step's breakpoint at IL_{met.ILOffset:X4} was met on thread {thread.Id} "
                 + $"at {(frame is null ? "no IL frame" : $"IL_{frame.IP.pnOffset:X4}")}: the async step ends");
             step.Dispose();
             _currentAsyncStep = null;
             return (false, null);
         }
-
-        if (atYield)
-        {
-            // Another run of the method leaving it at the await is not the step's.
-            return step.ThreadId == thread.Id ? (true, await HandleYieldBreakpoint(step, frame)) : (false, null);
-        }
-        await HandleResumeBreakpoint(step, thread, frame);
+        await HandleResumeBreakpoint(step, thread, frame!);
         return (true, false);
+    }
+
+    /// <summary>Whether the yield breakpoint of the async step under way is this one: the stepping thread leaving the
+    /// method at the await, which the step goes on from however late the runtime hands it over.</summary>
+    public bool IsYield(ICorDebugFunctionBreakpoint breakpoint) => _currentAsyncStep?.Yield is { } yield && yield.Breakpoint == breakpoint;
+
+    /// <summary>Whether a frame stands where an async step's breakpoint is: in its method, at its offset.</summary>
+    private static bool Stands(ICorDebugILFrame frame, AsyncBreakpoint at)
+    {
+        try
+        {
+            ICorDebugFunction function = frame.Function;
+            return function.Module.BaseAddress == at.ModuleAddress && function.Token == at.MethodToken && frame.IP.pnOffset == at.ILOffset;
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return false;
+        }
     }
 
     /// <summary>The stepping thread is leaving the method at the await (Roslyn's yield point comes before the awaiter is
     /// told to go on with it): its stepper goes, and the step waits where the run resumes, its run told first. Never stops,
-    /// and never fails: a run not told makes the method's first resume the step's.</summary>
-    private async Task<bool> HandleYieldBreakpoint(AsyncStep step, ICorDebugILFrame frame)
+    /// and never fails: a run not told makes the method's first resume the step's. The runtime may hand the yield over
+    /// only once the thread has run on past it (<paramref name="frame"/> none), its step's end with it: the step still
+    /// goes on where the run resumes, and that end is let go.</summary>
+    private async Task<bool> HandleYieldBreakpoint(AsyncStep step, ICorDebugILFrame? frame)
     {
         _debugger.EndStepper();
         step.Yield!.Dispose();
         step.Yield = null;
-        ICorDebugFunction function = frame.Function;
-        step.Run = StateMachineOf(frame) ?? await BuilderRunOf(frame);
-        step.Resume = Arm(function.ILCode, function.Module.BaseAddress, function.Token, step.ResumeOffset);
-        _debugger.Log($"Thread {step.ThreadId} leaves the method at the await: the step waits where its run resumes, IL_{step.ResumeOffset:X4}, "
-            + (step.Run is not { } run ? "the run not told" : run.IsStateMachine ? "the run told by its state machine" : "the run told by its builder"));
+        if (step.Run is null && frame is not null)
+        {
+            step.Run = StateMachineOf(frame) ?? await BuilderRunOf(frame);
+        }
+        step.Resume ??= Arm(step.Code, step.ModuleAddress, step.MethodToken, step.ResumeOffset);
+        string told = step.Run is not { } run ? "the run not told" : run.IsStateMachine ? "the run told by its state machine" : "the run told by its builder";
+        _debugger.Log(frame is null
+            ? $"Thread {step.ThreadId} left the method at the await, told only once it had run on: the step waits where its run resumes, IL_{step.ResumeOffset:X4}, {told}"
+            : $"Thread {step.ThreadId} leaves the method at the await: the step waits where its run resumes, IL_{step.ResumeOffset:X4}, {told}");
         return false;
     }
 

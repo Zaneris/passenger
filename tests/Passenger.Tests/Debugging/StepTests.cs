@@ -280,6 +280,21 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         AssertStepEnded(host, await host.WaitForStoppedEvent(), "the waiting builder's step ends here");
     }
 
+    [Fact]
+    public async Task A_step_over_an_await_stops_at_its_next_line_though_the_stepping_thread_leaving_at_it_is_told_only_with_its_steps_end()
+    {
+        // The engine holds the yield back as the runtime once did under load: the thread runs on past it, its step ending
+        // later. This await always suspends, so the yield always comes.
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper,
+            environment: new Dictionary<string, string> { [AdapterEnvironment.LateYieldVariable] = "1" });
+        await StepOverWhileAnotherThreadPasses(host, "elsewhere", "step over the await that goes on elsewhere",
+            "a step over the await that goes on elsewhere lost runs on to here",
+            new DapSourceBreakpoint(Debuggees.Line(Looping, "passed by another thread"), Condition: "pass < 0"));
+        AssertStepEnded(host, await host.WaitForStoppedEvent(), "the step over the await that goes on elsewhere ends here");
+        Assert.True(host.EngineLog().Contains("Held back: the yield", StringComparison.Ordinal),
+            "The engine never held the stepping thread's yield back, so the step was never told of it late");
+    }
+
     [Gate]
     [Fact]
     public async Task A_step_over_an_await_whose_method_goes_on_on_another_thread_shows_what_the_statement_called_there_returned()
