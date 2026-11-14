@@ -516,15 +516,15 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         }
     }
 
-    /// <summary>Puts the written file in the target's place: a move, but on Windows over a target with what a move would
-    /// lose (<see cref="WindowsFileMetadata.MoveKeeps"/>: its attributes, its own ACL, its streams, Zone.Identifier's too),
-    /// where ReplaceFile keeps them. The old file it sets aside meanwhile is named as a save's own
-    /// (<see cref="IsSaving(string)"/>), never as a file come and gone, and deleted once the new one has its place.</summary>
+    /// <summary>Puts the written file in the target's place: a move (<see cref="AtomicFile.Move"/>), but on Windows over a
+    /// target with what a move would lose (<see cref="WindowsFileMetadata.MoveKeeps"/>: its attributes, its own ACL, its
+    /// streams, Zone.Identifier's too), where ReplaceFile keeps them. The old file it sets aside meanwhile is named as a
+    /// save's own (<see cref="IsSaving(string)"/>), never as a file come and gone, and deleted once the new one has its place.</summary>
     private static void Over(string temporary, string target)
     {
         if (!OperatingSystem.IsWindows() || !File.Exists(target) || WindowsFileMetadata.MoveKeeps(target, temporary))
         {
-            File.Move(temporary, target, overwrite: true);
+            AtomicFile.Move(temporary, target);
             return;
         }
         string setAside = Path.Join(Path.GetDirectoryName(target), Guid.NewGuid().ToString("N") + SaveSuffix);

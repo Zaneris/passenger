@@ -40,7 +40,7 @@ public static class Sounds
             if (!File.Exists(wav))
             {
                 Directory.CreateDirectory(cache);
-                AtomicFile.Write(wav, stream => Decode(file, extension, stream), null, AtomicFile.Temporary, static (temporary, target) => File.Move(temporary, target, overwrite: true));
+                AtomicFile.Write(wav, stream => Decode(file, extension, stream), null, AtomicFile.Temporary, AtomicFile.Move);
                 Prune(cache);
             }
             return (wav, null);

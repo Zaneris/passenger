@@ -187,8 +187,7 @@ public static class GodotExports
             cancel.ThrowIfCancellationRequested();
             stage($"Installing {name} ({Sizes.Said(size)}), {++done} of {chosen.Count}");
             ZipArchiveEntry entry = zip.GetEntry(Inside + name)!;
-            AtomicFile.Write(Path.Combine(folder, name), stream => Copy(entry, stream, cancel), null, AtomicFile.Temporary,
-                static (temporary, target) => File.Move(temporary, target, overwrite: true));
+            AtomicFile.Write(Path.Combine(folder, name), stream => Copy(entry, stream, cancel), null, AtomicFile.Temporary, AtomicFile.Move);
         }
         return null;
     }

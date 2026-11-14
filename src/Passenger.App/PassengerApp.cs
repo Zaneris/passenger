@@ -335,7 +335,8 @@ public static class PassengerApp
     internal static MainWindow? UpdatesWatcher => updates;
 
     /// <summary>Once every window has closed: waits, for at most each one's limit, for what they started to end
-    /// (<see cref="MainWindow.Ended"/>), then installs an update made ready, last of all. It needs no UI thread.</summary>
+    /// (<see cref="MainWindow.Ended"/>), then installs an update made ready, and last writes the state's changes whose
+    /// writes were refused (<see cref="State.StateStore.LandWaiting"/>). It needs no UI thread.</summary>
     public static void End()
     {
         updates?.HoldRelaysForUpdate();
@@ -347,6 +348,7 @@ public static class PassengerApp
         // Main's last act before the process ends, with no loop left to await on; a save still landing is never cut short.
         Synchronously.Run(() => Task.WhenAll([.. ending, FileText.AllLanded()]));
         updates?.InstallUpdate();
+        State.StateStore.LandWaiting();
     }
 
     /// <summary>Discord's presence for the windows looking for it at one place.</summary>

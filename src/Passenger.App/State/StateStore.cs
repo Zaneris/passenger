@@ -180,6 +180,10 @@ public sealed class StateStore
         }
     }
 
+    /// <summary>Writes again, for 2 s at most, each change still waiting after its write failed (a program holding its file
+    /// sharing no deletion): Passenger's last wait as it ends, after which no try would come.</summary>
+    public static void LandWaiting() => StateFile.LandWaiting();
+
     /// <summary>The step from a file written before documents had versions to the first version, which has its shape.</summary>
     public static void Unversioned(JsonObject document)
     {

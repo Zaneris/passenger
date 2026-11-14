@@ -340,7 +340,7 @@ public sealed class GameProfile
                     writer.Write(area.GpuMs);
                 }
             }
-        }, null, AtomicFile.Temporary, static (temporary, target) => File.Move(temporary, target, overwrite: true));
+        }, null, AtomicFile.Temporary, AtomicFile.Move);
     }
 }
 

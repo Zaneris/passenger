@@ -3,7 +3,8 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>A file that may be a symbolic link is written to the file it names: the link, made by a relative path as a
-/// dotfiles manager makes one, stays the link it was, and the file at the end of its links takes the bytes.</summary>
+/// dotfiles manager makes one, stays the link it was, and the file at the end of its links takes the bytes. A write lands
+/// over a file another program reads sharing its deletion; on Windows one sharing none refuses it, the file kept.</summary>
 public sealed class AtomicFileTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -66,6 +67,36 @@ public sealed class AtomicFileTests : IDisposable
         Assert.Equal(file, AtomicFile.Target(file));
         string missing = Path.Join(root, "missing", "settings.json");
         Assert.Equal(missing, AtomicFile.Target(missing));
+    }
+
+    [Fact]
+    public void A_write_lands_over_a_file_another_program_reads_sharing_its_deletion_which_reads_on_in_the_old_one()
+    {
+        string file = Write(Path.Join(root, "layout.json"), "old\n");
+        using FileStream reading = new(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        AtomicFile.Write(file, "new\n"u8);
+
+        Assert.Equal("new\n", File.ReadAllText(file));
+        using StreamReader opened = new(reading);
+        Assert.Equal("old\n", opened.ReadToEnd());
+        string[] beside = Directory.GetFiles(root);
+        Assert.True(beside.Length == 1, $"The write left {string.Join(", ", beside)} beside the file it wrote");
+    }
+
+    [Fact]
+    public void On_Windows_a_write_over_a_file_another_program_reads_sharing_no_deletion_is_refused_and_the_file_kept()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses a move over a file another program has open");
+        string file = Write(Path.Join(root, "layout.json"), "old\n");
+        using FileStream reading = new(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+        Exception? refused = Record.Exception(() => AtomicFile.Write(file, "new\n"u8));
+
+        Assert.True(refused is IOException or UnauthorizedAccessException, $"The write over the held file was not refused as one the writer tries again: {refused?.GetType().Name ?? "it went ahead"}");
+        Assert.Equal("old\n", File.ReadAllText(file));
+        string[] beside = Directory.GetFiles(root);
+        Assert.True(beside.Length == 1, $"The refused write left {string.Join(", ", beside)} beside the file");
     }
 
     private static string Write(string path, string text)

@@ -344,7 +344,7 @@ public static partial class PathNames
     }
 
     /// <summary>A Windows path as it opens: past MAX_PATH only with the prefix that turns Win32's parsing of it off.</summary>
-    private static string Openable(string path) =>
+    internal static string Openable(string path) =>
         path.Length < 260 || path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path
             : path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..]
             : @"\\?\" + path;
@@ -368,7 +368,7 @@ public static partial class PathNames
     }
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
+    internal static partial SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true)]
     private static unsafe partial uint GetFinalPathNameByHandle(SafeFileHandle file, char* buffer, uint length, uint flags);

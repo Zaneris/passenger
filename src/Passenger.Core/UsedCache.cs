@@ -214,7 +214,7 @@ public sealed class UsedCache(string folder, UsedEntries entries, UsedLimits lim
     {
         try
         {
-            File.Move(temporary, path, overwrite: true);
+            AtomicFile.Move(temporary, path);
         }
         catch (Exception error) when ((error is IOException or UnauthorizedAccessException) && File.Exists(path))
         {

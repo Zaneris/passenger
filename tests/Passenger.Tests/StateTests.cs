@@ -246,6 +246,61 @@ public sealed class StateTests : IDisposable
         }
     }
 
+    /// <summary>A change made while another program reads the file sharing its deletion (a scanner, an indexer, a backup)
+    /// lands at once, that program reading on in the file it opened, where Windows refused a move over it.</summary>
+    [AvaloniaFact]
+    public void A_change_lands_at_once_while_another_program_reads_the_file_sharing_its_deletion()
+    {
+        StateStore store = StateStore.Open(settings);
+        try
+        {
+            StateDocument<DockLayout> layout = store.Layout;
+            layout.ChangeNow(Docking("first"));
+            using FileStream reading = new(layout.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            layout.ChangeNow(Docking("next"));
+            Assert.True(Docked(layout.Path).Contains("next"),
+                $"The change was refused while another program read layout.json sharing its deletion, so it waits to be tried again: it holds {string.Join(", ", Docked(layout.Path))}");
+            Assert.DoesNotContain($"{layout.Path} could not be written", Ui.IdeLog(), StringComparison.Ordinal);
+            using StreamReader opened = new(reading);
+            Assert.DoesNotContain("\"next\"", opened.ReadToEnd(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            store.Release();
+        }
+    }
+
+    /// <summary>A change refused at the flush as Passenger closes, while another program holds the file a moment sharing no
+    /// deletion, is written again as Passenger ends and lands once that program lets go, where it was lost with the process.</summary>
+    [AvaloniaFact]
+    public void A_change_refused_as_Passenger_closes_lands_as_it_ends_once_the_file_is_let_go()
+    {
+        StateStore store = StateStore.Open(settings);
+        StateDocument<DockLayout> layout = store.Layout;
+        layout.ChangeNow(Docking("first"));
+        IDisposable held = Held(layout.Path);
+        try
+        {
+            layout.Set(Docking("closing")(layout.Value));
+            store.Release();
+            Assert.True(Ui.IdeLog().Contains($"{layout.Path} could not be written as it was flushed", StringComparison.Ordinal),
+                "The flush as Passenger closed went ahead while layout.json was held, so nothing here was refused");
+            Task lettingGo = Waiting.Apart(() =>
+            {
+                Waiting.For(TimeSpan.FromMilliseconds(200), "the holder to let go a moment after Passenger's end began");
+                held.Dispose();
+            });
+            StateStore.LandWaiting();
+            Assert.True(Docked(layout.Path).Contains("closing"),
+                $"Passenger's end did not write again the change refused as it closed, so the next start comes up without it: layout.json holds {string.Join(", ", Docked(layout.Path))}");
+            Ui.Await(lettingGo, "the holder to let go");
+        }
+        finally
+        {
+            held.Dispose();
+        }
+    }
+
     [AvaloniaFact]
     public void What_a_person_kept_before_the_store_is_there_on_the_first_run()
     {

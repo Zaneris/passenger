@@ -104,7 +104,7 @@ internal sealed class TestsCache(string path)
                 return;
             }
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            AtomicFile.Write(path, stream => Write(stream, kept), mode: null, AtomicFile.Temporary, static (temporary, target) => File.Move(temporary, target, overwrite: true));
+            AtomicFile.Write(path, stream => Write(stream, kept), mode: null, AtomicFile.Temporary, AtomicFile.Move);
         }
     }
 

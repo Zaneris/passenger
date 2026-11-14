@@ -244,6 +244,27 @@ public sealed partial class FileTests : IDisposable
         Assert.Empty(Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix));
     }
 
+    /// <summary>A save of a file another program reads sharing its deletion (a scanner, an indexer) lands at once as a new
+    /// file in its place, that program reading on in the file it opened, never a write into the file it reads.</summary>
+    [AvaloniaFact]
+    public void A_file_another_program_reads_sharing_its_deletion_is_saved_at_once_and_that_program_reads_on_in_the_old_one()
+    {
+        string path = Path.Combine(folder, "One.cs");
+        File.WriteAllText(path, "class One { }\n");
+        MainWindow window = Open();
+        Edit(window, "One.cs", "public ");
+        using (FileStream reading = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        {
+            Ui.Press(window, Ui.Shortcut(AppActions.Save));
+            Assert.True(File.ReadAllText(path) == "public class One { }\n",
+                $"The save did not land while another program read One.cs sharing its deletion: it holds '{File.ReadAllText(path)}', {window.Status}");
+            using StreamReader opened = new(reading);
+            Assert.True(opened.ReadToEnd() == "class One { }\n", "The save wrote into the file another program was reading, which saw the bytes change under it");
+        }
+        Assert.Empty(Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix));
+        window.Close();
+    }
+
     /// <summary>Windows refuses a save while another program holds the file sharing neither writes nor its deletion, as a
     /// build reading it does: the save lands once the program lets go, the window's thread running on meanwhile, a save
     /// made meanwhile landing after it, and Local History keeping each one's old bytes.</summary>
