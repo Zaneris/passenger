@@ -576,7 +576,7 @@ a new name, and `just site-shots` retakes its images.
   after 10 s).
 - **Godot's game.** Stop ends a game before its debug session: wait for the session too; a session is ended once its
   adapter says so or its process is gone after Exited without Terminated (`ProgramGone`). An agent's call on a game has
-  one limit (`GodotGame.Within`); app_ tools wait for the first scene, no evaluation. The frame counter runs on while
+  one limit (`GodotGame.Within`); app_ tools wait for the first scene, no evaluation; on a device the inspector's hello comes before the activity's view, so app_ tools wait for its first top level (`ViewShownAsync`). The frame counter runs on while
   paused: count the helper's frames. Node selection, once set up, takes the game's clicks until turned off; 4.8 renamed
   `runtime_node_select_set_type` to `set_node_type` and a game passes over one it lacks (`GodotPicks.TypeMessages`); the
   Live tree's follow keeps its own count and never drops a refresh's answer. Godot reads the debugger's messages between
@@ -611,7 +611,7 @@ a new name, and `just site-shots` retakes its images.
   through run-as and puts the build's link back after; `am set-debug-app` (kept only in the activity manager: clear only
   your own) keeps a long stop of the main thread from ending the app; the relay calls the DBI's `DllMain` itself, or
   `ICorDebug::Initialize` hangs; without the workload's platform (`platforms;android-37.0`) its device listing fails with
-  XA5207. The workload's JDK installer, given no folder, puts it where the workload's search finds it again on macOS and Windows but has none on Linux. AndroidDeviceTests needs that platform, a JDK in `JAVA_HOME`, an AVD (booted `-no-window`)
+  XA5207. A start Passenger couldn't end leaves its own environment file in place of fast deployment's link: the build's is the one beside what the assembly links point to (`AndroidApp.PutIn`). The installer is given its JDK folder (`AndroidFolders.Jdk`), never JAVA_HOME's, and `AndroidInstallJavaDependencies=false` where no JDK lacks; the workload's JDK installer, given no folder, puts it where the workload's search finds it again on macOS and Windows but has none on Linux. AndroidDeviceTests needs that platform, a JDK in `JAVA_HOME`, an AVD (booted `-no-window`)
   and the relays a build carries only after `just debug-relay android`.
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so hold a child whose descendants must end with it with `ChildProcesses.HoldFamily`; a write waits out a

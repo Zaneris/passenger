@@ -190,7 +190,7 @@ public sealed class ExplorerTree
         string kind = members > 0 ? $"{manager} workspace of {Plural.Of(members, "package")}" : manager;
         string detail = package.Name == folder ? kind : $"{package.Name} · {kind}";
         string[] scripts = [.. package.Runnable.Select(s => s.Name)];
-        string runs = scripts.Length == 0 ? "it has no scripts" : $"{(scripts.Length == 1 ? "its script" : "its scripts")} {Plural.Listed(scripts)} run from the run configurations";
+        string runs = scripts.Length == 0 ? "it has no scripts" : $"{Plural.Agreeing(scripts.Length, "its script", "its scripts")} {Plural.Listed(scripts)} {Plural.Agreeing(scripts.Length, "runs", "run")} from the run configurations";
         return (detail, $"Node package {package.Name}, run with {manager} ({package.ManagerSource}): {runs}");
     }
 
