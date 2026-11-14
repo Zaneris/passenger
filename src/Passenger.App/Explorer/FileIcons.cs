@@ -57,7 +57,7 @@ public static class FileIcons
         NodeKind.Folder => FileIconSet.ForFolder(node.Name),
         NodeKind.SolutionFolder or NodeKind.Framework => null,
         NodeKind.Dependencies or NodeKind.Package => FileIconSet.Packages,
-        NodeKind.ProjectReference => FileIconSet.ForFile(Path.GetFileName(node.Referenced ?? node.Name)),
+        NodeKind.ProjectReference or NodeKind.SharedProject => FileIconSet.ForFile(Path.GetFileName(node.Referenced ?? node.Name)),
         _ => FileIconSet.ForFile(Path.GetFileName(node.Path ?? node.Name)),
     };
 

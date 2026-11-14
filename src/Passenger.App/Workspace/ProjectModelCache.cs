@@ -22,7 +22,24 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeted, ForgetAll, ForgetUncarried, ForgetUnpublishable, ForgetAll,
         ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved, ForgetUncentral, ForgetGodotless,
-        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered, ForgetUnconfigured, ForgetUndeclared, ForgetFunctionless];
+        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered, ForgetUnconfigured, ForgetUndeclared, ForgetFunctionless, ForgetUnshared];
+
+    /// <summary>The evaluations of projects importing a shared project's items, kept before each item said whether a shared
+    /// project brings it in, by which the shared files show under the shared project rather than among the project's own.</summary>
+    private static void ForgetUnshared(JsonObject document)
+    {
+        if (document["projects"] is not JsonObject projects)
+        {
+            return;
+        }
+        foreach (string path in projects.Where(p => p.Value?["inputs"] is JsonArray inputs && inputs.Any(i => i?["path"] is JsonValue named
+            && named.GetValueKind() == System.Text.Json.JsonValueKind.String
+            && named.GetValue<string>().EndsWith(EvaluatedItem.SharedItemsExtension, StringComparison.OrdinalIgnoreCase)))
+            .Select(p => p.Key).ToList())
+        {
+            projects.Remove(path);
+        }
+    }
 
     /// <summary>Every evaluation, kept before they carried the Azure Functions version a Functions app sets, by which func
     /// runs it.</summary>

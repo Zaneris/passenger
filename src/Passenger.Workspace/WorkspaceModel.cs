@@ -163,11 +163,16 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         {
             path = filter?.Solution;
         }
-        // A Docker Compose project (.dcproj) is read as XML for its run configurations, never loaded as a project.
+        // A Docker Compose project is read as XML for its run configurations, a shared project for its files: neither loads.
         return path is not null && SolutionModel.Load(path, out unread) is { } solution
-            ? new WorkspaceModel(folder, solution, [.. solution.Projects.Where(p => !IsComposeProject(p.Path))]) { Filter = filter }
+            ? new WorkspaceModel(folder, solution, [.. solution.Projects.Where(p => !IsComposeProject(p.Path) && !Workspace.SharedProjects.Is(p.Path))]) { Filter = filter }
             : null;
     }
+
+    /// <summary>The solution's shared projects (.shproj), each the home of the files its items file brings into the projects
+    /// importing it (<see cref="Workspace.SharedProjects"/>).</summary>
+    public IReadOnlyList<string> SharedProjects => Solution is null ? []
+        : [.. Solution.Projects.Where(p => p.Exists && Workspace.SharedProjects.Is(p.Path)).Select(p => p.Path)];
 
     /// <summary>The solution's Docker Compose projects (.dcproj), each a compose configuration of its own.</summary>
     public IReadOnlyList<string> ComposeProjects => Solution is null ? []

@@ -312,11 +312,11 @@ public static class ProjectEdits
             ? PropertyGroups(xml).SelectMany(g => g.Elements()).FirstOrDefault(e => e.Name.LocalName == name && !e.HasElements)?.Value.Trim()
             : null;
 
-    /// <summary>The project (at its path now) following files and folders that moved or were renamed: each path it names
-    /// from its folder (an item's Include, Update, Remove or Exclude, a glob by its folder; an Import's Project and the
-    /// Exists of its Condition, not an SDK's; a HintPath) names where that went, a list or a property staying as written,
-    /// and a DependentUpon or LastGenOutput (from its item's file) names it there. A project that moved reads its paths
-    /// from where it was, so one naming a file outside it still finds it. Whether it changed.</summary>
+    /// <summary>The project (at its path now) following files and folders moved or renamed: each path it names from its
+    /// folder, or from $(MSBuildThisFileDirectory) (an item's Include, Update, Remove or Exclude, a glob by its folder; an
+    /// Import's Project and the Exists of its Condition, not an SDK's; a HintPath), names where that went, a list or another
+    /// property staying as written, and a DependentUpon or LastGenOutput (from its item's file) names it there. A project
+    /// that moved reads its paths from where it was, so one naming a file outside it still finds it. Whether it changed.</summary>
     public static bool MoveItems(string project, IReadOnlyList<(string From, string To)> moves)
     {
         ProjectText file = new(project);
@@ -354,7 +354,7 @@ public static class ProjectEdits
                 {
                     continue;
                 }
-                own ??= kind is "Include" or "Update" && ItemPaths.Read(XmlEntities.DecodeText(xml.Written(span)).Trim()) is { Glob: false, Path.Length: > 0 } one ? one.Path : null;
+                own ??= kind is "Include" or "Update" && ItemPaths.Read(FromThisFolder(XmlEntities.DecodeText(xml.Written(span)).Trim())) is { Glob: false, Path.Length: > 0 } one ? one.Path : null;
                 Follow(span, once: kind == "Exclude");
             }
             if (own is null)
@@ -398,6 +398,9 @@ public static class ProjectEdits
             string raw = xml.Written(span);
             string written = raw.Trim();
             int start = span.Start + raw.Length - raw.TrimStart().Length;
+            // A path from the file's own folder named as such is a path from the project's: only what follows it changes.
+            int own = written.Length - FromThisFolder(written).Length;
+            (start, written) = (start + own, written[own..]);
             if (ItemPaths.Read(XmlEntities.DecodeText(written), once) is not { Path.Length: > 0 } item)
             {
                 return;
@@ -412,6 +415,10 @@ public static class ProjectEdits
 
         static string Full(string folder, string relative) => Path.GetFullPath(Path.Combine(folder, relative.Replace('\\', '/')));
     }
+
+    /// <summary>A value without the <c>$(MSBuildThisFileDirectory)</c> it may begin with, which names the file's own folder.</summary>
+    private static string FromThisFolder(string written) =>
+        written.StartsWith("$(MSBuildThisFileDirectory)", StringComparison.OrdinalIgnoreCase) ? written["$(MSBuildThisFileDirectory)".Length..] : written;
 
     /// <summary>Reads the project, makes a change on its text, and writes it back unless the change says why not.</summary>
     private static string? Change(string project, Func<XmlText, string?> change)
@@ -507,7 +514,7 @@ public static class ProjectEdits
 
     /// <summary>A project file read for one change as a save reads a file: its encoding, byte order mark and line breaks,
     /// which go back as they came.</summary>
-    private sealed class ProjectText
+    internal sealed class ProjectText
     {
         private readonly string path;
         private readonly FileText file;

@@ -272,7 +272,7 @@ internal static class Evaluation
     }
 
     /// <summary>The project's files, every evaluation's, each once: of the file item types and those the project names as
-    /// such, but those it hides (Visible false).</summary>
+    /// such, but those it hides (Visible false), each a shared project brings in naming its items file.</summary>
     internal static List<EvaluatedItem> Items(IReadOnlyList<Project> evaluations)
     {
         List<EvaluatedItem> items = [];
@@ -293,7 +293,9 @@ internal static class Evaluation
                     {
                         continue;
                     }
-                    items.Add(new EvaluatedItem(type, full, NonEmpty(item.GetMetadataValue("Link")), NonEmpty(item.GetMetadataValue("DependentUpon"))));
+                    string? shared = item.Xml?.ContainingProject?.FullPath is { } from && from.EndsWith(EvaluatedItem.SharedItemsExtension, StringComparison.OrdinalIgnoreCase)
+                        ? from : null;
+                    items.Add(new EvaluatedItem(type, full, NonEmpty(item.GetMetadataValue("Link")), NonEmpty(item.GetMetadataValue("DependentUpon")), shared));
                 }
             }
         }

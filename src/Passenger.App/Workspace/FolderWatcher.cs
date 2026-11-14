@@ -1,4 +1,5 @@
 using Passenger.Core;
+using Passenger.Host;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -279,9 +280,10 @@ public sealed class FolderWatcher : WatchedTree
         return above;
     }
 
-    /// <summary>Whether a file is a solution, project, props or targets file, which the solution is read again for.</summary>
+    /// <summary>Whether a file is a solution, project, props or targets file, or a shared project's or its items file, which
+    /// the solution is read again for.</summary>
     private static bool IsProjectFile(string path) =>
-        WorkspaceModel.IsSolution(path) || WorkspaceModel.IsProjectFile(path) || PathNames.HasExtension(path, [".props", ".targets"]);
+        WorkspaceModel.IsSolution(path) || WorkspaceModel.IsProjectFile(path) || PathNames.HasExtension(path, [".props", ".targets", SharedProjects.Extension, EvaluatedItem.SharedItemsExtension]);
 
     protected override FolderChanges? Gathered(bool lost, bool overflowed)
     {

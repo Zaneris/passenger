@@ -336,9 +336,14 @@ public sealed record FrameworkSymbols(string Framework, IReadOnlyList<string> Sy
 /// <summary>A package reference, its version as restore takes it: its own, its VersionOverride, or the central one.</summary>
 public sealed record PackageDependency(string Name, string? Version, bool Implicit);
 
-/// <summary>A file of the project: its item type, full path, its Link (where it shows when it lives elsewhere) and the file
-/// it depends on, relative to its own folder, as MSBuild's DependentUpon is.</summary>
-public sealed record EvaluatedItem(string Type, string Path, string? Link = null, string? DependentUpon = null);
+/// <summary>A file of the project: its item type, full path, its Link (where it shows when it lives elsewhere), the file
+/// it depends on, relative to its own folder, as MSBuild's DependentUpon is, and the shared project's items file
+/// (<see cref="SharedItemsExtension"/>) that names it, for a file a shared project brings in.</summary>
+public sealed record EvaluatedItem(string Type, string Path, string? Link = null, string? DependentUpon = null, string? Shared = null)
+{
+    /// <summary>A shared project's items file (.projitems), which each project sharing its files imports.</summary>
+    public const string SharedItemsExtension = ".projitems";
+}
 
 /// <summary>The request to end, by its id.</summary>
 public sealed record CancelParams(int Request);

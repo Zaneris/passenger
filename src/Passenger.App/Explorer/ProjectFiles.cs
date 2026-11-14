@@ -10,7 +10,8 @@ namespace Passenger.App.Explorer;
 /// nor its folder unless something of the project is in it. A folder on disk with nothing in it at all shows too, since
 /// MSBuild has nothing to say of it and one just made would otherwise vanish; once shown, it shows until the project is
 /// evaluated again, a file come into it since being that evaluation's to judge, so its row stays the row it was. A
-/// Docker Compose project's are the items its text names (<see cref="Containers.ContainerConfigurations.ItemsOf"/>).</summary>
+/// Docker Compose project's are the items its text names (<see cref="Containers.ContainerConfigurations.ItemsOf"/>), a
+/// shared project's its items file's, and the files a shared project brings into a project are that shared project's.</summary>
 internal sealed class ProjectFiles
 {
     private readonly string root;
@@ -36,7 +37,7 @@ internal sealed class ProjectFiles
     public Dictionary<string, string> DependentUpon { get; } = new(PathNames.Comparer);
 
     public ProjectFiles(ProjectModel project)
-        : this(project.Folder, project.Evaluated?.Items ?? [], project.IsProgram)
+        : this(project.Folder, project.Evaluated?.Items.Where(i => i.Shared is null) ?? [], project.IsProgram)
     {
     }
 

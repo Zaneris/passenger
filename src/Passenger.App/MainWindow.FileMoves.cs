@@ -174,6 +174,20 @@ public partial class MainWindow
         {
             refused.Add($"{Path.GetFileName(unwritten)} could not follow the files moved: {notLanded.Message}");
         }
+        if (copy && put.Count > 0 && InShared(put))
+        {
+            // Copies made in a shared project's folder go into its items file, Undo taking back both.
+            using CommandHistory.Recording copied = Editors.Commands.Record($"Copy {Plural.Listed([.. put.Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
+            List<string> files = [.. put.SelectMany(FilesAt)];
+            foreach (string file in files)
+            {
+                copied.Made(file);
+            }
+            if (IntoShared(files, copied) is { } unshared)
+            {
+                refused.Add(unshared);
+            }
+        }
         if (put.Count > 0)
         {
             CameOrWent([.. came, .. put]);
@@ -227,10 +241,10 @@ public partial class MainWindow
     }
 
     /// <summary>What names the files moved follows them: the solution's projects and files, the open solution filter's
-    /// solution and projects, the projects of the solution's launch profiles, every project's paths naming one (an item, a
-    /// DependentUpon, an Import or a HintPath, a reference to a project moved), and every program's directives naming one
-    /// (a <c>#:project</c>, <c>#:include</c> or <c>#:ref</c>), each file watched first by the command recording, for its
-    /// undo. A project or program moved is read again at its new path. Null once they follow, else why one could not.</summary>
+    /// solution and projects, the solution's launch profiles, every project's paths naming one (an item, a DependentUpon, an
+    /// Import or a HintPath, a reference to a project moved), every shared project's items (<see cref="SharedProjects.Follow"/>)
+    /// and every program's directives naming one, each file watched first by the command recording, for its undo. A project
+    /// or program moved is read again at its new path. Null once they follow, else why one could not.</summary>
     private string? FollowMoved(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording? recording)
     {
         string Now(string path) => moved.FirstOrDefault(m => PathNames.Within(path, m.From)) is { From: not null } move ? PathNames.Moved(path, move.From, move.To) : path;
@@ -264,12 +278,19 @@ public partial class MainWindow
             string now = Now(project.Path);
             naming.Add((now, now != project.Path, project.IsProgram ? path => ProgramEdits.MoveDirectives(path, moved) : path => ProjectEdits.MoveItems(path, moved)));
         }
+        // A shared project names its items file, which names its files, those come into its folder from elsewhere too.
+        foreach (string shared in session.Workspace?.SharedProjects ?? [])
+        {
+            string now = Now(shared);
+            naming.Add((now, now != shared, path => ProjectEdits.MoveItems(path, moved)));
+            naming.Add((SharedProjects.ItemsFileOf(now), false, path => SharedProjects.Follow(path, moved, FilesAt)));
+        }
         bool reread = naming.Any(n => n.Moved);
         foreach ((string path, bool itself, Func<string, bool> follow) in naming)
         {
             try
             {
-                if (!File.Exists(path) || !itself && !Names(path))
+                if (!File.Exists(path) || !itself && !Names(path) && !SharedProjects.IsItemsFile(path))
                 {
                     continue;
                 }

@@ -66,8 +66,8 @@ public partial class MainWindow
     }
 
     /// <summary>What New Item made, one command Undo takes back whole: Passenger's own file written, or what dotnet new
-    /// wrote taken in (its files made, its folders made whole), then followed and opened, the first in front. Null once
-    /// added, else why not.</summary>
+    /// wrote taken in (its files made, its folders made whole, those in a shared project's folder written into its items
+    /// file), then followed and opened, the first in front. Null once added, else why not.</summary>
     private async Task<string?> AddItemAsync(MadeItem made)
     {
         List<string> files = [.. made.Files];
@@ -99,6 +99,10 @@ public partial class MainWindow
             if (made.Own is null)
             {
                 CameOrWent([.. made.Files, .. made.Folders]);
+            }
+            if (IntoShared(files, recording) is { } unshared)
+            {
+                status.Text = unshared;
             }
         }
         // Opened last first, so the first is in front.

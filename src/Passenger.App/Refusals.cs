@@ -332,6 +332,9 @@ public static class Refusals
     /// <summary>A row of the Explorer (named as it is shown) that is no project, which an action on a project was asked of.</summary>
     public static string NotAProject(string name) => $"{name} is not a project";
 
+    /// <summary>A shared project (named as it is shown), which an action on a project that builds was asked of.</summary>
+    public static string SharedProject(string name) => $"{name} is a shared project: its files build in the projects importing it";
+
     /// <summary>A program, container, resource, game or run (named as it is shown) that has not started, or has ended.</summary>
     public static string NotRunning(string name) => $"{name} is not running";
 

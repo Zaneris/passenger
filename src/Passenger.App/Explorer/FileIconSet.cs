@@ -152,6 +152,8 @@ public static class FileIconSet
         [".fsproj"] = new("Stack", Cyan),
         [".vbproj"] = new("Stack", Purple),
         [".proj"] = new("Stack", Grey),
+        [".shproj"] = new("Stack", Green),
+        [".projitems"] = new("Config", Green),
         [".props"] = new("Config", Cyan),
         [".targets"] = new("Config", Red),
         [".nuspec"] = new("NuGet", Blue),

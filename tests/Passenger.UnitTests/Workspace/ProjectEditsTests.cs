@@ -59,6 +59,7 @@ public sealed class ProjectEditsTests : IDisposable
         Assert.Equal(App.Replace("\"..\\..\\build", "\"..\\..\\..\\build", StringComparison.Ordinal)
             .Replace("'..\\..\\build", "'..\\..\\..\\build", StringComparison.Ordinal)
             .Replace("\"../../build/targets", "\"../../../build/targets", StringComparison.Ordinal)
+            .Replace("$(MSBuildThisFileDirectory)..\\..\\build", "$(MSBuildThisFileDirectory)..\\..\\..\\build", StringComparison.Ordinal)
             .Replace("..\\..\\lib\\", "..\\..\\..\\lib\\", StringComparison.Ordinal)
             .Replace("..\\Lib\\Lib.csproj", "..\\..\\Lib\\Lib.csproj", StringComparison.Ordinal), File.ReadAllText(app));
 

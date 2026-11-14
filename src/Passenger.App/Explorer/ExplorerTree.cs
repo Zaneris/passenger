@@ -20,6 +20,9 @@ public enum NodeKind
     Framework,
     Package,
     ProjectReference,
+
+    /// <summary>A shared project a project imports the items of, under its Dependencies.</summary>
+    SharedProject,
 }
 
 /// <summary>A folder at a project's top that the .NET SDK reads by its name, in the order the Explorer lists them before
@@ -142,13 +145,22 @@ public sealed class ExplorerTree
     /// <summary>Each evaluated project's files by where they show, made the first time they are wanted.</summary>
     private readonly Dictionary<string, ProjectFiles> files = new(StringComparer.Ordinal);
 
+    /// <summary>The shared projects shown, by the items file each imports: each is the home of the files it brings into
+    /// the projects importing that file, which their Dependencies name it by.</summary>
+    private readonly Dictionary<string, string> shared = new(PathNames.Comparer);
+
     private void Take(IEnumerable<ProjectModel> shown)
     {
         projects.Clear();
         files.Clear();
+        shared.Clear();
         foreach (ProjectModel project in shown)
         {
             projects[project.Path] = project;
+            if (SharedProjects.Is(project.Path))
+            {
+                shared.TryAdd(SharedProjects.ItemsFileOf(project.Path), project.Path);
+            }
         }
     }
 
@@ -201,6 +213,12 @@ public sealed class ExplorerTree
             // Never evaluated: what it holds is read again from its text and its folder each time, as cheap as reading a folder.
             return new ProjectFiles(project.Folder, Containers.ContainerConfigurations.ItemsOf(project.Path), onlyItems: true);
         }
+        if (SharedProjects.Is(project.Path) || SharedProjects.IsItemsFile(project.Path))
+        {
+            // Never evaluated either: its items file's, read again each time; a folder made in its own shows as one empty.
+            string items = SharedProjects.Is(project.Path) ? SharedProjects.ItemsFileOf(project.Path) : project.Path;
+            return new ProjectFiles(project.Folder, SharedProjects.ItemsOf(items), onlyItems: false);
+        }
         if (!project.IsEvaluated)
         {
             return null;
@@ -247,6 +265,8 @@ public sealed class ExplorerTree
                 files.Remove(project.Path);
                 changed.Add(project.Path);
             }
+            // A project evaluated again after a shared project's items file changed: that shared project shows it too.
+            changed.UnionWith(SharedImports(project).Select(s => s.Project).OfType<string>());
         }
         if (solution is not null)
         {
@@ -626,10 +646,11 @@ public sealed class ExplorerTree
         _ => throw new InvalidOperationException($"Unknown solution entry {entry}"),
     };
 
-    /// <summary>The projects a row stands for: a project, or the loaded ones anywhere under a solution folder.</summary>
+    /// <summary>The projects a row stands for: a project, or the loaded ones anywhere under a solution folder; never a shared
+    /// project, which builds nothing of its own.</summary>
     public IEnumerable<string> ProjectsOf(ExplorerNode node) => node.Kind switch
     {
-        NodeKind.Project when node.Path is { } project => [project],
+        NodeKind.Project when node.Path is { } project && !node.IsShared => [project],
         NodeKind.SolutionFolder => (node.Children ?? []).SelectMany(ProjectsOf).Where(p => !Unloaded.Contains(p)),
         _ => [],
     };
@@ -661,8 +682,9 @@ public sealed class ExplorerTree
         ? new(NodeKind.Project, given.Name, given.Path, depth, dimmed: true, null, "(unloaded)")
         : new(NodeKind.Project, given.Name, given.Path, depth, !given.Exists, node =>
         {
-            // A Docker Compose project references nothing: it holds files alone.
-            List<ExplorerNode> children = Containers.ContainerConfigurations.IsComposeProject(given.Path) ? [] : [Dependencies(given, node.Depth + 1)];
+            // A Docker Compose project and a shared project reference nothing: they hold files alone.
+            List<ExplorerNode> children = Containers.ContainerConfigurations.IsComposeProject(given.Path) || SharedProjects.Is(given.Path) ? []
+                : [Dependencies(given, node.Depth + 1)];
             children.AddRange(HeldIn(given, string.Empty, node.Depth + 1));
             return children;
         }, DetailOf(Current(given))) { Tip = TipOf(Current(given)), ProjectKind = ProjectKinds.Of(Current(given)) };
@@ -672,6 +694,10 @@ public sealed class ExplorerTree
     /// not.</summary>
     private string? DetailOf(ProjectModel project)
     {
+        if (SharedProjects.Is(project.Path))
+        {
+            return "shared";
+        }
         if (noSdk is not null)
         {
             return "(no SDK)";
@@ -694,13 +720,44 @@ public sealed class ExplorerTree
 
     /// <summary>What hovering a project's row says: why the folder has no SDK; else, for a Windows-only one, why, and
     /// what Passenger still does with it here.</summary>
-    private string? TipOf(ProjectModel project) =>
-        noSdk ?? (project.WindowsOnly is [(string framework, _), ..] && project.RunsOnlyOnWindows(framework) is { } why
+    private string? TipOf(ProjectModel project) => SharedProjects.Is(project.Path) ? SharedTip(project)
+        : noSdk ?? (project.WindowsOnly is [(string framework, _), ..] && project.RunsOnlyOnWindows(framework) is { } why
             ? $"{why}: Passenger builds {project.Name} here for its code help (EnableWindowsTargeting), and Run, Debug and Profile need Windows"
             : null);
 
+    /// <summary>What hovering a shared project's row says: whose code its files are, as the projects shown import its items.</summary>
+    private string SharedTip(ProjectModel project)
+    {
+        List<string> importing = [.. projects.Values.Where(p => SharedImports(p).Any(s => s.Project == project.Path)).Select(p => p.Name)
+            .Order(StringComparer.OrdinalIgnoreCase)];
+        string items = Path.GetFileName(SharedProjects.ItemsFileOf(project.Path));
+        return importing.Count == 0 ? $"Shared project: no project imports {items}, so none compiles its files"
+            : $"Shared project: its files are compiled into each project importing {items}, {Plural.Listed(importing)}";
+    }
+
+    /// <summary>The shared projects' items files a project imports, as evaluated, each with the shared project shown for it
+    /// (null for one the view shows none for).</summary>
+    private IEnumerable<(string Items, string? Project)> SharedImports(ProjectModel project) =>
+        (project.Evaluated?.Inputs ?? []).Select(i => i.Path).Where(SharedProjects.IsItemsFile).Distinct(PathNames.Comparer)
+            .Select(items => (items, shared.GetValueOrDefault(items)));
+
+    /// <summary>A shared project a project imports, under its Dependencies: a name alone where the view shows that shared
+    /// project, else what it holds under it, as nowhere else shows its files.</summary>
+    private ExplorerNode SharedLeaf(ProjectModel owner, string items, string? project, int depth)
+    {
+        string named = project ?? items;
+        string name = Path.GetFileNameWithoutExtension(named);
+        ProjectModel holder = ProjectModel.Unevaluated(named);
+        return new(NodeKind.SharedProject, name, null, depth, false, project is null ? node => HeldIn(holder, string.Empty, node.Depth + 1) : null, "shared")
+        {
+            Owner = owner.Path,
+            Referenced = named,
+        };
+    }
+
     /// <summary>A project's dependencies as MSBuild evaluates them: for a project of one framework, it with the
-    /// projects and packages it references; for a multi-targeted one, each framework with its own.</summary>
+    /// projects and packages it references; for a multi-targeted one, each framework with its own; then the shared
+    /// projects it imports the items of.</summary>
     private ExplorerNode Dependencies(ProjectModel given, int depth) =>
         new(NodeKind.Dependencies, "Dependencies", null, depth, false, node =>
         {
@@ -720,10 +777,14 @@ public sealed class ExplorerTree
                 {
                     Owner = given.Path,
                 }));
-                return children;
             }
-            children.AddRange(project.TargetFrameworks.Select(f => Leaf(NodeKind.Framework, f, null, below, project)));
-            children.AddRange(Referenced(project, project.ProjectReferences, frameworks is [{ } one] ? one.Packages : [], below));
+            else
+            {
+                children.AddRange(project.TargetFrameworks.Select(f => Leaf(NodeKind.Framework, f, null, below, project)));
+                children.AddRange(Referenced(project, project.ProjectReferences, frameworks is [{ } one] ? one.Packages : [], below));
+            }
+            children.AddRange(SharedImports(project).OrderBy(s => Path.GetFileName(s.Items), StringComparer.OrdinalIgnoreCase)
+                .Select(s => SharedLeaf(project, s.Items, s.Project, below)));
             return children;
         }) { Owner = given.Path };
 
@@ -765,9 +826,9 @@ public sealed class ExplorerTree
     private const string WebRootFolder = "wwwroot";
 
     /// <summary>What the SDK makes of a folder of a project, by where it is in it ('/' between folders): Properties at the
-    /// top of a project (a file-based program has its own launch profiles), the wwwroot at a web project's top.</summary>
+    /// top of a project (a file-based program and a shared project have their own), the wwwroot at a web project's top.</summary>
     private static SdkFolder? SdkFolderOf(ProjectModel project, string relative) =>
-        Names(project, relative, PropertiesFolder) && !project.IsProgram ? SdkFolder.Properties
+        Names(project, relative, PropertiesFolder) && !project.IsProgram && !SharedProjects.Is(project.Path) ? SdkFolder.Properties
         : Names(project, relative, WebRootFolder) && project.IsWeb ? SdkFolder.WebRoot
         : null;
 
@@ -1006,6 +1067,9 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>A file-based program beside the solution, which is no solution's to rename or take out: its C# file is,
     /// as the row under it.</summary>
     public bool IsProgram => Kind == NodeKind.Project && Path is { } program && ProgramFiles.IsProgram(program);
+
+    /// <summary>A shared project, whose files build in the projects importing its items, never on their own.</summary>
+    public bool IsShared => Kind == NodeKind.Project && Path is { } project && SharedProjects.Is(project);
 
     /// <summary>What Rename renames: what is on disk, but a file only the solution lists and a folder the SDK reads, and a
     /// solution folder.</summary>

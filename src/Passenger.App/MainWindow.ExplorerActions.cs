@@ -37,9 +37,11 @@ public partial class MainWindow
         Row(A.AddExistingItem, "Add Existing Item…", row => IdeErrors.Observe(AddExistingItemsAsync(row.SolutionPath!)),
             row => row is { Kind: NodeKind.SolutionFolder, SolutionPath: not null } ? null : "An existing item is added to a solution folder", _ => "Existing Item…");
         Row(A.AddReference, "Add Reference…", row => ShowAddReference(Referencing(row)!),
-            row => Referencing(row) is null ? $"{row.Name} takes no reference" : null, row => row.Kind == NodeKind.Project ? "Reference…" : "Add Reference…");
+            row => row.IsShared ? Refusals.SharedProject(row.Name) : Referencing(row) is null ? $"{row.Name} takes no reference" : null,
+            row => row.Kind == NodeKind.Project ? "Reference…" : "Add Reference…");
         Row(A.AddDockerSupport, "Add Docker Support…", row => ShowDockerSupport(row.Path!),
-            row => row is { Kind: NodeKind.Project, Path: { } project, IsProgram: false } ? DockerSupportWhyNot(project) : "Docker support is added to a project", _ => "Docker Support…");
+            row => row.IsShared ? Refusals.SharedProject(row.Name)
+                : row is { Kind: NodeKind.Project, Path: { } project, IsProgram: false } ? DockerSupportWhyNot(project) : "Docker support is added to a project", _ => "Docker Support…");
         Row(A.AddDockerCompose, "Add Docker Compose…", _ => ShowDockerCompose(),
             row => row.Kind == NodeKind.Solution ? null : "Docker Compose is added to the solution", _ => "Docker Compose…");
         // The solution's, from its row or a solution folder's, and from Find Action wherever a solution is open.
@@ -51,7 +53,7 @@ public partial class MainWindow
             TitleIn = c => c.ExplorerRow is null ? "Add Aspire Orchestration…" : "Aspire Orchestration…",
         });
         Row(A.ManageNuGet, "Manage NuGet Packages", _ => ShowToolWindow(ToolWindowIds.NuGet),
-            row => row is { Kind: NodeKind.Project } or { Kind: NodeKind.Dependencies, Owner: not null } ? null : $"{row.Name} has no packages");
+            row => row.IsShared ? Refusals.SharedProject(row.Name) : row is { Kind: NodeKind.Project } or { Kind: NodeKind.Dependencies, Owner: not null } ? null : $"{row.Name} has no packages");
         // The solution's row, and Find Action wherever a solution is open: the NuGet window over every project.
         actions!.Add(new IdeAction(A.ManageNuGetForSolution, "Manage NuGet Packages for Solution", ExplorerGroup, ManageSolutionPackages)
         {
@@ -59,11 +61,15 @@ public partial class MainWindow
                 ? row.Kind == NodeKind.Solution ? null : "The solution's packages are managed from its row"
                 : Solution is null ? Refusals.NoSolution : null,
         });
-        Row(A.EditProjectFile, "Edit Project File", row => OpenFile(row.Path!), row => row is { Kind: NodeKind.Project, Path: not null } ? null : Refusals.NotAProject(row.Name));
+        // A shared project's file is its items file, which names its files.
+        Row(A.EditProjectFile, "Edit Project File", row => OpenFile(row.IsShared ? Passenger.Workspace.SharedProjects.ItemsFileOf(row.Path!) : row.Path!),
+            row => row is { Kind: NodeKind.Project, Path: not null } ? null : Refusals.NotAProject(row.Name));
         Row(A.UnloadProject, "Unload Project", row => SetUnloaded(row.Path!, true),
-            row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : Explorer.Tree.Unloaded.Contains(project) ? $"{row.Name} is unloaded" : null);
+            row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : row.IsShared ? Refusals.SharedProject(row.Name)
+                : Explorer.Tree.Unloaded.Contains(project) ? $"{row.Name} is unloaded" : null);
         Row(A.ReloadProject, "Reload Project", row => SetUnloaded(row.Path!, false),
-            row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : Explorer.Tree.Unloaded.Contains(project) ? null : $"{row.Name} is loaded");
+            row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : row.IsShared ? Refusals.SharedProject(row.Name)
+                : Explorer.Tree.Unloaded.Contains(project) ? null : $"{row.Name} is loaded");
         // Compare With... for one file, Compare Files for two chosen together.
         actions!.Add(new IdeAction(A.CompareFiles, "Compare Files", ExplorerGroup, c => IdeErrors.Observe(CompareAsync(RowOf(c)!)))
         {
@@ -327,7 +333,7 @@ public partial class MainWindow
             return Made([Item(E.Delete)]);
         }
         List<MenuEntry> entries = [];
-        if (node.Kind is NodeKind.Solution or NodeKind.Project or NodeKind.SolutionFolder)
+        if (node.Kind is NodeKind.Solution or NodeKind.Project or NodeKind.SolutionFolder && !node.IsShared)
         {
             entries.AddRange(node.Kind == NodeKind.Solution
                 ? [Item(A.Build), Item(A.RebuildSolution), Item(A.CleanSolution)]
@@ -356,7 +362,11 @@ public partial class MainWindow
         {
             entries.AddRange([Item(A.RunTests), Item(A.DebugTests), separator]);
         }
-        if (node.Kind == NodeKind.Project)
+        if (node.Kind == NodeKind.Project && node.IsShared)
+        {
+            entries.AddRange([Item(A.EditProjectFile), separator]);
+        }
+        else if (node.Kind == NodeKind.Project)
         {
             bool unloaded = node.Path is { } project && Explorer.Tree.Unloaded.Contains(project);
             entries.AddRange([Item(A.ManageNuGet), Item(A.ManageUserSecrets), Item(A.EditProjectFile), Item(unloaded ? A.ReloadProject : A.UnloadProject), separator]);
@@ -384,7 +394,7 @@ public partial class MainWindow
                 }
                 add.AddRange([Item(A.NewFile), Item(A.NewFolder), Item(A.NewType), Item(A.NewItem)]);
             }
-            if (node.Kind == NodeKind.Project)
+            if (node.Kind == NodeKind.Project && !node.IsShared)
             {
                 add.AddRange([separator, Item(A.AddReference), Item(A.AddDockerSupport)]);
             }

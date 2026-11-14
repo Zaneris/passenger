@@ -87,7 +87,8 @@ public partial class MainWindow
         return Navigation.SymbolPopup.KindBadge(kind == "Record" ? "R" : letter, brush);
     }
 
-    /// <summary>Makes a file in a folder (folders in its name made too) and opens it; null when it worked, else why not.</summary>
+    /// <summary>Makes a file in a folder (folders in its name made too) and opens it; null when it worked, else why not. One
+    /// made in a shared project's folder goes into its items file too, the two one command Undo takes back whole.</summary>
     public string? CreateFile(string into, string name, string text)
     {
         if (Invalid(name) is { } problem)
@@ -99,13 +100,25 @@ public partial class MainWindow
         {
             return $"{name} is already there";
         }
+        using CommandHistory.Recording? recording = InShared([path]) ? Editors.Commands.Record($"New File {Path.GetFileName(path)}") : null;
+        recording?.Made(path);
+        string? unshared = null;
         try
         {
-            Following([path], () => FileText.SaveNew(path, text));
+            Following([path], () =>
+            {
+                FileText.SaveNew(path, text);
+                unshared = recording is null ? null : IntoShared([PathNames.Canonical(path)], recording);
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
+            recording?.Unwritten(path);
             return NotMade(name, error);
+        }
+        if (unshared is not null)
+        {
+            status.Text = unshared;
         }
         OpenFile(path);
         Explorer.Reveal(PathNames.Canonical(path));
@@ -165,15 +178,19 @@ public partial class MainWindow
     }
 
     /// <summary>The namespace a folder's code takes: its project's evaluated RootNamespace (until it is evaluated, its
-    /// name, "Shop.App"), then the folders below, each name a C# identifier or dotted ones.</summary>
+    /// name, "Shop.App"), a shared project's as its items file names it, then the folders below, each name a C#
+    /// identifier or dotted ones.</summary>
     private string NamespaceFor(string into)
     {
         string full = PathNames.Canonical(into);
         ProjectModel? project = ProjectOf(full);
-        string root = project is null ? Path.GetFileName(Folder ?? full)
+        string? shared = project is null ? SharedItemsOf(Path.Combine(full, "_")) : null;
+        string root = shared is not null ? SharedProjects.RootNamespaceOf(shared) ?? Path.GetFileNameWithoutExtension(shared)
+            : project is null ? Path.GetFileName(Folder ?? full)
             : project.Property(Passenger.Host.CarriedProperties.RootNamespace) is { Length: > 0 } named ? named
             : Path.GetFileNameWithoutExtension(project.Path);
-        string below = project is null ? string.Empty : Path.GetRelativePath(project.Folder, full);
+        string below = shared is not null ? Path.GetRelativePath(Path.GetDirectoryName(shared)!, full)
+            : project is null ? string.Empty : Path.GetRelativePath(project.Folder, full);
         IEnumerable<string> parts = [root, .. below == "." ? [] : below.Split(Path.DirectorySeparatorChar)];
         return string.Join('.', parts.SelectMany(p => p.Split('.', StringSplitOptions.RemoveEmptyEntries)).Select(Identifier));
 
@@ -496,7 +513,8 @@ public partial class MainWindow
     /// <summary>Deletes files and folders to the Trash, none inside another, once asked in one question (unless it was
     /// already); their open files are saved first, and again just before they go with what was typed while it waited, so
     /// the Trash and Local History have what the editor showed, and close once gone, or keep their tabs where one could not
-    /// go. The design-time builds of the projects in them are held off, those running waited out. True once all went.</summary>
+    /// go. The design-time builds of the projects in them are held off, those running waited out. Those of a shared project
+    /// leave its items file in a command Undo takes back whole, files and all. True once all went.</summary>
     public async Task<bool> DeleteAsync(IReadOnlyList<string> paths, bool asked = false)
     {
         List<string> names = [.. paths.Select(Path.GetFileName).OfType<string>()];
@@ -519,6 +537,8 @@ public partial class MainWindow
         }
         List<string> gone = [];
         List<(string Path, string Why)> refused = [];
+        // What goes from a shared project's folder leaves its items file too, in a command whose Undo writes both back.
+        using CommandHistory.Recording? sharing = InShared(paths) ? Editors.Commands.Record($"Delete {Plural.Listed(names)}") : null;
         for (int i = 0; i < paths.Count; i++)
         {
             string path = paths[i];
@@ -528,8 +548,14 @@ public partial class MainWindow
             }
             try
             {
+                List<(string File, byte[] Bytes)> held = sharing is not null && SharedItemsOf(path) is not null
+                    ? [.. FilesAt(path).Select(f => (f, FileText.Read(f)))] : [];
                 Trash.Move(path);
                 gone.Add(path);
+                foreach ((string file, byte[] bytes) in held)
+                {
+                    sharing!.Deleted(file, bytes);
+                }
                 if (taken[i] is { } kept)
                 {
                     keeping!.Deleted(kept);
@@ -549,6 +575,10 @@ public partial class MainWindow
             CameOrWent(gone);
         }
         List<string> said = gone.Count == 0 ? [] : [$"Moved {Plural.Listed([.. gone.Select(Path.GetFileName).OfType<string>()])} to the Trash"];
+        if (sharing is not null && gone.Count > 0 && OutOfShared(gone, sharing) is { } unshared)
+        {
+            said.Add(unshared);
+        }
         // Those refused for one reason are named together, as the Trash refusing every one would be.
         List<(string Name, string Why)> why = [];
         foreach ((string path, string message) in refused)
