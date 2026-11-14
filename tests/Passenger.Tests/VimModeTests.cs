@@ -441,6 +441,35 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>In the smallest window a command line longer than the status bar is cut at its start, so its end, where it
+    /// is typed, stays in sight; once it closes, what the bar says is cut at its end again.</summary>
+    [AvaloniaFact]
+    public void A_command_line_longer_than_the_status_bar_keeps_its_end_in_sight()
+    {
+        (MainWindow window, _) = Open("one two\nfoo two\ntwo three\n");
+        try
+        {
+            window.Width = MainWindow.SmallestWidth;
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, ":%s/two/one two three four five six seven eight nine ten eleven twelve/g");
+            Assert.Equal((":%s/two/one two three four five six seven eight nine ten eleven twelve/g", true), (StatusWords(window), Cut(window)));
+            Assert.True(Shown(window).EndsWith("twelve/g", StringComparison.Ordinal),
+                $"the command line showed \"{Shown(window)}\", out of sight where it is typed");
+            Keys(window, "<Esc>:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz<CR>");
+            Assert.True(Cut(window) && Shown(window).StartsWith("Vim mode does not do", StringComparison.Ordinal),
+                $"what the bar said after the command line read \"{Shown(window)}\", cut at its start");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static TextBlock Status(MainWindow window) => window.FindControl<TextBlock>("StatusText")!;
+        static bool Cut(MainWindow window) => Status(window).TextLayout.TextLines is [{ HasCollapsed: true }];
+        static string Shown(MainWindow window) => string.Concat(Status(window).TextLayout.TextLines[0].TextRuns.Select(r => r.Text.ToString()));
+    }
+
     /// <summary>:s over a range is one step of undo, : in visual mode names its lines, :w saves as Save does, :e opens a
     /// file and :q closes its tab as Close Tab does.</summary>
     [AvaloniaFact]

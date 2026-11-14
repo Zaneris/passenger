@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using Passenger.App.Docking;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
@@ -244,7 +245,8 @@ public sealed class StatusBar
     }
 
     /// <summary>Vim mode's command line in the place of what the status bar says, what it said put back once the line
-    /// closes unless the command said something of its own.</summary>
+    /// closes unless the command said something of its own. A line longer than the bar is cut at its start, so what is
+    /// being typed stays in sight.</summary>
     private void ShowCommandLine(string? line)
     {
         if (line == shownLine)
@@ -255,6 +257,7 @@ public sealed class StatusBar
         {
             coveredBy = Said;
         }
+        text.TextTrimming = line is null ? TextTrimming.CharacterEllipsis : TextTrimming.LeadingCharacterEllipsis;
         if (line is not null)
         {
             text.Text = line;
