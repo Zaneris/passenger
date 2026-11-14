@@ -150,7 +150,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   `FileText.Save` (atomic, metadata kept, a hard-linked file in place, a read-only one refused, Local History given the
   old bytes); a file the IDE makes `SaveNew` (its .editorconfig's end_of_line and charset), again `SaveOver`; one the
   window changes itself `MainWindow.ChangeFileAsync`; a file landed byte for byte (a publisher's output) `LandedFiles`;
-  any other whole file `AtomicFile.Write`, a file that may be a link (a shell's startup file) written to the file it
+  a file handed to git for one call (a commit's message, a private index) `CommitFile`, never `GetTempFileName` and a replace; any other whole file `AtomicFile.Write`, a file that may be a link (a shell's startup file) written to the file it
   names (`AtomicFile.Target`); a state file only the person may read `OwnFiles`; never `File.WriteAll*`. An open
   project, solution, filter, nuget.config or Directory.Packages.props is saved before Passenger writes it and loaded
   after (`SaveBeforeWriting`). Server edits pass `LineEndings.Fit` then `Indentation.Fit`.
@@ -280,7 +280,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `PassengerApp.OpenProject`; a `.slnf`'s left-out projects are never saved as the
   person's; a handler acts only while its session is bound (`ProjectSession.Bind`). A Passenger nobody sees
   (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`; what a start
-  runs read by `DesktopPrograms`, never `Built` alone), and plays no sound; a start where fontconfig lists no font takes the carried Inter as Avalonia's default (`NoSystemFont.Checked`, on every AppBuilder); a Linux display is taken by `NoDisplay`,
+  runs read by `DesktopPrograms`, never `Built` alone), and plays no sound; a start where fontconfig lists no font takes the carried Inter as Avalonia's default (`NoSystemFont.Checked`, on every AppBuilder); an exception that ends Passenger is kept in `logs/crash.log` (`CrashFile`, watched from Main's start) and said once by the person's first window and a screenshot's (`MainWindow.SaysLastCrash`); a Linux display is taken by `NoDisplay`,
   never by unsetting `WAYLAND_DISPLAY`: a client named no socket connects to the session's `wayland-0`. A toolbar widget that may go at the narrowest takes `ShrinkingRow.GoesWhole`, its menu opening elsewhere once it has (`ShrinkingRow.HasGone`). Anything new on
   the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's. Windows' jump list and macOS's Dock menu follow the recent list only through `RecentShortcuts`, and the installer's `--aumid` (package-win.sh) stays the AppUserModelID Velopack gives the process. The display scale is
   one `InterfaceScale` transform per window, which its popups take from it.
@@ -302,7 +302,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
   on attach (a split rebuilds the frame).
-- **C#.** `CSharpService`, `CodeAssist`; completion ranks through `CompletionRanking` (how well an item fits from Roslyn's `MatchPriority` through the extension's `passenger/completion`, `CompletionPriorities` runs beside the items, ranked within a way of matching, `FuzzyMatch.LabelWay`); a C# list comes in two parts, what is in scope then the types of namespaces not imported (`CompletionParts`, `LaterCompletions`, the later part's sort texts after the first's by `CompletionOrder.Later`, a list waiting for it open with no row, `Completion.Coming`), and the popup is laid out ahead as the window opens (`CompletionPopup.LayOutAhead`) (its order held equal to scoring
+- **C#.** `CSharpService`, `CodeAssist`; completion ranks through `CompletionRanking` (how well an item fits from Roslyn's `MatchPriority` through the extension's `passenger/completion`, `CompletionPriorities` runs beside the items, ranked within a way of matching, `FuzzyMatch.LabelWay`); a C# list comes in two parts, what is in scope then the types of namespaces not imported (`CompletionParts`, `LaterCompletions`, the later part's sort texts after the first's by `CompletionOrder.Later`, a list waiting for it open with no row, `Completion.Coming`), and the popup is laid out ahead as the window opens (`CompletionPopup.LayOutAhead`) and held to the editor's width (`CompletionPopup.Within`) (its order held equal to scoring
   afresh by `CompletionRankingTests`) and reads an answer once (`CompletionAnswer`, list defaults by `WithDefaults`); each language's answers a `LanguageAssist` in `LanguageAssists`' one order. A
   server's edit to a file written moments before waits for the server to read it (`WorkspaceEdits`); one written as it
   worked is refused. A generated document is never opened in the server (it would freeze its text into the compilation):
@@ -453,6 +453,7 @@ a new name, and `just site-shots` retakes its images.
   under way at the server's diagnostic refresh (`CSharpService.SolutionMoved`), and its first round ends at the
   extension's word that it analysed everything, never at the answer. A change under such a `**/*.dll` watch reaches the server only for a
   file a project references (`WatchedFiles.ReferencedAsync`, the extension's `ReferencedFiles`).
+- **`LanguageServer.Changes` moves only for what changes the server's answers**: a request that changes them counts itself (`AnswersMoved`), a read never does; and `lsp.log` is written up to 250 ms late, so a test counting its lines first waits for a later request to show there.
 - **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
   references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`, which moves
   `LanguageServer.Changes` itself (`AnswersMoved`).
@@ -613,14 +614,14 @@ a new name, and `just site-shots` retakes its images.
   `ICorDebug::Initialize` hangs; without the workload's platform (`platforms;android-37.0`) its device listing fails with
   XA5207. A start Passenger couldn't end leaves its own environment file in place of fast deployment's link: the build's is the one beside what the assembly links point to (`AndroidApp.PutIn`). The installer is given its JDK folder (`AndroidFolders.Jdk`), never JAVA_HOME's, and `AndroidInstallJavaDependencies=false` where no JDK lacks; the workload's JDK installer, given no folder, puts it where the workload's search finds it again on macOS and Windows but has none on Linux. AndroidDeviceTests needs that platform, a JDK in `JAVA_HOME`, an AVD (booted `-no-window`)
   and the relays a build carries only after `just debug-relay android`.
-- **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
+- **Windows**: a fresh file another program opens a moment after it is written refuses a replace over it and its deletion, so such a file is written once and its deletion never fails what was done. A folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so hold a child whose descendants must end with it with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket with
   unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener`); a folder can't be renamed
   while any file under it is open, however it is shared, where a file opened sharing deletion can be (`DotnetMerge`
   moves what others may read file by file); what holds a file is `FileHolders`.
-- **macOS**: Avalonia takes the application's menu once, as setup ends and before any window, showing its own About where none is set: App sets the one menu in `Initialize`, windows only fill it (`MainWindow.FollowApplicationMenu`). A `DispatcherTimer` or `Stopwatch` counts only time awake on macOS and Linux, so a wait of hours or days is measured on the wall clock (`MainWindow.UpdateClock`). An x64 Passenger under Rosetta loads MSBuild only from an x64 SDK (`DOTNET_ROOT_X64`,
+- **macOS**: `diskutil image attach` (the update's, from macOS 26) opens an image another program holds, answers one already attached with exit 0 and its existing mount point, and says its errors as "Error: …" in the Mac's language. Avalonia takes the application's menu once, as setup ends and before any window, showing its own About where none is set: App sets the one menu in `Initialize`, windows only fill it (`MainWindow.FollowApplicationMenu`). A `DispatcherTimer` or `Stopwatch` counts only time awake on macOS and Linux, so a wait of hours or days is measured on the wall clock (`MainWindow.UpdateClock`). An x64 Passenger under Rosetta loads MSBuild only from an x64 SDK (`DOTNET_ROOT_X64`,
   `/usr/local/share/dotnet/x64`), and MSBuildLocator finds its SDK by DOTNET_ROOT, so the host is given the chosen root;
   a zombie gives no process info (`DotnetProcesses.Runs` counts it gone); `SystemFonts` lists the hidden
   `.AppleSystemUIFont` only once loaded and `TryGetGlyphTypeface` answers an unknown name with Helvetica (`WindowFonts`

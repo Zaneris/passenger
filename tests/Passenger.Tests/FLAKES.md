@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-13
 
+- `ProblemsTests`' `A_files_project_wide_pull_waiting_on_the_server_is_named_by_its_source`, CI 43556370791 (Linux
+  shard 3 of the report lane): "The file's project-wide pull waiting on the server was not named by its source: ... 1
+  request waits on it (textDocument/diagnostic (DocumentAnalyzerSemantic) 0 s)". **The test waited wrong.** It held the
+  file's NonLocal pull unsent (`HoldNext`) and read the server's conversation once it saw the hold taken, up to a frame
+  of the window's loop later (`Ui.PumpUntil`). Roslyn's server sends `workspace/diagnostic/refresh` 1 to 3 s after
+  solution-wide analysis is turned on; the window's answer asks the open file's diagnostics again and cancels the pull
+  under way, so when the refresh landed between the hold and the look, the held pull had ended and the conversation
+  named only the new round's pulls. A probe on the Ubuntu VM under load (three busy loops) timed it: 11 of 12 runs heard
+  the refresh before the hold, and the one that failed with CI's words heard it 9 ms before the hold, its pull running
+  after it. `HoldNext` was untouched by 3f1dbee14, which changed only how an answer is held. The test now reads the
+  conversation as the pull is held, inside the hold's own choice of the pull, where it surely waits; a probe giving the
+  window the refresh as the pull was held failed with CI's words on the Mac before and passes with it (7ecade024, #1475).
 - `BuildConfigurationTests`' `The_configuration_chosen_is_kept_with_the_folder_and_a_window_opening_it_again_builds_as_it`,
   CI 43532468832 (Windows shard 4, after 42111102a): "The folder opened again building as what MSBuild takes given
   none, not the Staging chosen before". **A race in the IDE.** A folder without a solution opens with no projects until
