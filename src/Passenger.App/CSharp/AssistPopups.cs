@@ -265,11 +265,15 @@ internal sealed class CompletionPopup : Border
     /// <summary>Whether the list is being laid out ahead (<see cref="LayOutAhead"/>), its choice no one's to hear of.</summary>
     private bool ahead;
 
+    /// <summary>The least and the most a list is wide of itself, as its rows make it, in an editor that has the room.</summary>
+    private const double LeastWidth = 280;
+    private const double MostWidth = 620;
+
     public CompletionPopup()
     {
         Classes.Add(StyleClasses.Popup);
-        MinWidth = 280;
-        MaxWidth = 620;
+        MinWidth = LeastWidth;
+        MaxWidth = MostWidth;
         Padding = new Thickness(0, 4);
         List = new ListBox
         {
@@ -283,6 +287,14 @@ internal sealed class CompletionPopup : Border
     }
 
     public ListBox List { get; }
+
+    /// <summary>Held to a room narrower than it would be, even than its least width, its names and details ending in an
+    /// ellipsis rather than past the editor's edge; as wide as its rows make it in a wider one.</summary>
+    public void Within(double room)
+    {
+        MinWidth = Math.Min(LeastWidth, Math.Max(0, room));
+        MaxWidth = Math.Min(MostWidth, Math.Max(0, room));
+    }
 
     /// <summary>The selection moved to another item: another row chosen, or the row chosen showing another item.</summary>
     public event EventHandler? SelectedChanged;
@@ -411,26 +423,28 @@ internal sealed class CompletionRowView : DockPanel
             VerticalAlignment = VerticalAlignment.Center,
             Child = letter,
         };
-        detail = new TextBlock
-        {
-            [DockPanel.DockProperty] = Dock.Right,
-            Foreground = InfoCard.Brush(TokenKeys.TextMuted),
-            FontSize = 12,
-            Margin = new Thickness(12, 0, 4, 0),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 200,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+        // The name first, the detail at the row's end in what it leaves: a list narrowed to its room cuts the detail first.
         label = new TextBlock
         {
+            [DockPanel.DockProperty] = Dock.Left,
             FontFeatures = Fonts.NoLigatures,
             FontSize = 12.5,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
         }.InCodeFont();
+        detail = new TextBlock
+        {
+            Foreground = InfoCard.Brush(TokenKeys.TextMuted),
+            FontSize = 12,
+            Margin = new Thickness(12, 0, 4, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 200,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         Children.Add(badge);
-        Children.Add(detail);
         Children.Add(label);
+        Children.Add(detail);
         this.Showing<CompletionSlot>(slot => Show(slot.Row));
     }
 

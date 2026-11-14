@@ -39,6 +39,9 @@ internal sealed class PopupPlacement
     /// <summary>The size of the layer the popups are placed in.</summary>
     public Size Room => layer.Bounds.Size;
 
+    /// <summary>The widest a popup placed at a line is shown whole in the editor (<see cref="Place(Control, Point, bool)"/>).</summary>
+    public double Widest => Math.Max(0, layer.Bounds.Width - RightEdge);
+
     /// <summary>The list of choices or the rename box open, null with none.</summary>
     public Control? Modal => modal;
 
@@ -96,7 +99,7 @@ internal sealed class PopupPlacement
         Size size = popup.DesiredSize;
         Size room = layer.Bounds.Size;
         double lineHeight = Editor.LineHeight;
-        double x = Math.Clamp(at.X - 4, 0, Math.Max(0, room.Width - size.Width - 8));
+        double x = Math.Clamp(at.X - 4, 0, Math.Max(0, room.Width - size.Width - RightEdge));
         double below = at.Y + lineHeight + 2;
         double over = at.Y - size.Height - 2;
         double y = above ? (over >= 0 ? over : below) : (below + size.Height <= room.Height || over < 0 ? below : over);
@@ -152,6 +155,9 @@ internal sealed class PopupPlacement
         Canvas.SetLeft(card, x);
         Canvas.SetTop(card, Math.Max(room.Y, Math.Min(y, room.Bottom - card.DesiredSize.Height)));
     }
+
+    /// <summary>How far a popup placed at a line keeps from the editor's right edge.</summary>
+    private const double RightEdge = 8;
 
     /// <summary>How far a card sits from the popup it describes, and from the editor's edge.</summary>
     private const double Gap = 4;

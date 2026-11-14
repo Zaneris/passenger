@@ -57,6 +57,12 @@ internal sealed partial class CodeCompletion
             ? (new Rect(list, completion.Bounds.Size), new Rect(card, itemCard.Bounds.Size))
             : null;
 
+    /// <summary>Where the completion list lies in its window, as last laid out, while it shows.</summary>
+    public Rect? Place =>
+        completion.IsVisible && TopLevel.GetTopLevel(completion) is { } window && completion.TranslatePoint(default, window) is { } at
+            ? new Rect(at, completion.Bounds.Size)
+            : null;
+
     /// <summary>The completion list's labels, in order, while it shows.</summary>
     public IReadOnlyList<string> Labels => completion.IsVisible ? [.. completion.Rows.Select(r => r.Item.Label)] : [];
 
@@ -518,6 +524,7 @@ internal sealed partial class CodeCompletion
         completion.Show(rows, chosen);
         filtered = (narrowing.List, narrowing.Typed);
         completion.IsVisible = true;
+        completion.Within(popups.Widest);
         popups.Place(completion, narrowing.List.Start, above: false);
         if (opening && narrowing.List.DescribedAsItOpens)
         {

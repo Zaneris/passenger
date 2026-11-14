@@ -232,6 +232,9 @@ public sealed class CodeAssist
     /// <summary>Where the completion list and the card beside it lie in their window, as last laid out, while the card shows.</summary>
     public (Rect List, Rect Card)? ItemCardPlace => completion.ItemCardPlace;
 
+    /// <summary>Where the completion list lies in its window, as last laid out, while it shows.</summary>
+    public Rect? CompletionPlace => completion.Place;
+
     /// <summary>The completion list's labels, in order, while it shows.</summary>
     public IReadOnlyList<string> CompletionLabels => completion.Labels;
 

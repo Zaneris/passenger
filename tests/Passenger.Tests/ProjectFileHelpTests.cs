@@ -237,6 +237,51 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
+    /// <summary>In a window at its smallest with the default layout, the Explorer open leaving the editor narrower than the
+    /// completion list's least width, a project file's list of properties opens whole in the editor, narrowed to it: every
+    /// row's name and detail inside the list, a name shown whole before its detail, a longer one ending in an ellipsis,
+    /// never cut at the editor's edge.</summary>
+    [AvaloniaFact]
+    public void A_completion_list_in_an_editor_narrower_than_its_least_width_shows_whole_each_name_before_its_detail()
+    {
+        MainWindow window = Open("App/App.csproj", width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<OutputType>Exe</OutputType>");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("<");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("TargetFramework"), "the properties a PropertyGroup takes after a tag's '<'");
+
+        Avalonia.Controls.Canvas assist = window.EditorArea.AssistLayer;
+        Rect layer = new(assist.TranslatePoint(default, window) ?? default, assist.Bounds.Size);
+        Rect list = window.Assist.CompletionPlace ?? throw new InvalidOperationException("The completion list shows, yet has no place");
+        Assert.True(layer.Width < 280, $"The default layout at the window's smallest width was to leave the editor narrower than the list's least width, 280; it is {layer.Width} wide");
+        Assert.True(list.X >= layer.X && list.Y >= layer.Y && list.Right <= layer.Right && list.Bottom <= layer.Bottom,
+            $"The completion list runs past the editor's edge, cut there: it lies at {list} in the editor at {layer}");
+        Avalonia.Controls.TextBlock? name = null;
+        Avalonia.Controls.TextBlock? detail = null;
+        foreach (Avalonia.Controls.Panel row in window.Assist.CompletionRowControls.OfType<Avalonia.Controls.Panel>())
+        {
+            Avalonia.Controls.TextBlock[] words = [.. row.Children.OfType<Avalonia.Controls.TextBlock>()];
+            foreach (Avalonia.Controls.TextBlock said in words)
+            {
+                Rect at = new(said.TranslatePoint(default, window) ?? default, said.Bounds.Size);
+                Assert.True(said.Bounds.Width == 0 || (at.X >= list.X && at.Right <= list.Right),
+                    $"'{said.Text}' runs past the list at {list}: it lies at {at}");
+            }
+            if (words is [{ Text: "TargetFramework" } label, var beside])
+            {
+                (name, detail) = (label, beside);
+            }
+        }
+        Assert.True(name is not null && detail is not null, "TargetFramework's row, its name and its detail, is not among those the list shows");
+        Avalonia.Controls.TextBlock whole = new() { Text = name.Text, FontFamily = name.FontFamily, FontSize = name.FontSize, FontFeatures = name.FontFeatures };
+        whole.Measure(Size.Infinity);
+        Assert.True(name.Bounds.Width >= whole.DesiredSize.Width - 0.5 && detail.Bounds.X >= name.Bounds.Right,
+            $"TargetFramework's name was to show whole ({whole.DesiredSize.Width} wide) before its detail '{detail.Text}'; it has {name.Bounds.Width}, the detail at {detail.Bounds.X}");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
     /// <summary>Completes Passenger.Other's version, chooses 2.0.0 and waits for its card, checking it says the advisory and
     /// the deprecation in full: where the list, the card and the editor's layer lie in the window.</summary>
     private static (Rect List, Rect Card, Rect Layer) VersionCard(MainWindow window, CodeEditor editor)
