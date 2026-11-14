@@ -1621,3 +1621,14 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   Windows VM under three and four busy loops (2 of 4 runs at 9d847c0a2): "after Clear Buffer the screen is not the prompt
   alone at its top", the screen empty. **The test waited wrong**, the same late prompt: it cleared as soon as the program's
   last line read so, and the prompt came after the clear. It now clears once the prompt is below (3c6124a82, #1634).
+- `McpTests`' `An_agent_asking_of_a_project_that_did_not_load_hears_why_and_the_loaded_one_answers`, the Mac under a
+  three-process `just test` (#1640): "Bad/Caller.cs is not loaded into Bad yet: the C# language server has not taken it in
+  after 15 s". **A race in the IDE**: a C# file heard come under a project, or written a moment before, was waited for
+  until a load of the project that read the disk after it came had ended, and under a project whose load failed only a
+  later load asked for after the file came decided it, slow under load and never coming where nothing loaded it again or
+  where the server was started ahead of the window. As the server takes nothing of a load that met an error, a file under
+  a project whose last load failed is now decided as it comes, unless a load was asked for since, and every file waiting
+  under a project is decided once a load of it fails; a test holding the server's load again
+  (`ProjectBuilds.HoldNextAsked`) failed with the run's words before. The same look found every code tool's question of a
+  project the server could not load or restore waiting out two minutes for a restore never to come (`AwaitsRestore`), now
+  answered at once (#1640).

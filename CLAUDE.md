@@ -445,6 +445,9 @@ a new name, and `just site-shots` retakes its images.
   (`SeenFrom`), and through a first restore, the load after it and its generators' rerun (`CSharpService.AwaitsRestore`, `ReloadingRestored`), never its own alone; references come from `CSharpService.ProjectsNow`, never the start-time `workspace`.
   A reload sent while it loads is one more load to wait for: its word that a load ended names none. A server ending
   during its start is started again, and StreamJsonRpc drops a faulted answer (`LanguageServer.IsDroppedAnswer`).
+- **Roslyn's server takes nothing of a load that met an error** ("Error while loading", `ProjectLoadProblem.FailedLoad`,
+  never a restore's, `Restoring`) and restores only what it loaded: a file come under such a project is in none until a
+  load of it succeeds, so nothing waits for it (`Arrival.Decided`) or for the project's restore (`RestoresNone`).
 - **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself. A deleted file reaches
   it only once its projects loaded again without it (`ProjectMethods.Deleted`): told first, it reads the missing file, a
   second each, before any answer needing the compilation (dotnet/roslyn#86236). A reload adds new files before it drops
