@@ -1899,7 +1899,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.DebugStart, Title = "Debug a configuration", Destructive = true), Description(
         "Builds and launches a configuration under the debugger, as Debug does, and waits for a stop, its end, an Avalonia " +
-        "or WPF app's UI or its host's start (where it listens). Returns where it is. With resource, that one alone, restarted.")]
+        "or WPF app's UI, its host's start (where it listens) or its app's start on a device. Returns where it is. With " +
+        "resource, that one alone, restarted.")]
     public Task<DebugSnapshot> DebugStart(
         string? configuration = null,
         string? arguments = null,
@@ -1998,12 +1999,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>Where a program just launched under the debugger is once it stops or ends, or, for an app with a window,
     /// which runs until it is closed, once its UI is up, for a Godot game once it has connected (a breakpoint set in its
-    /// files waited for as a stop), and for a host that serves until it is stopped, once it has started, saying so and where
-    /// it listens: an agent waits for no more than it needs.</summary>
+    /// files waited for as a stop), for a host that serves until it is stopped, once it has started, saying so and where it
+    /// listens, and for an app on a device, once it has started there: an agent waits for no more than it needs.</summary>
     private async Task<DebugSnapshot> AfterLaunch(TimeSpan limit, CancellationToken cancel)
     {
         LiveTree.LiveApp? app = Session.LiveApp;
         Godot.GodotGame? game = Session.Game is { Debugged: not null } debugged ? debugged : null;
+        // An app debugged on a device or emulator, up once its shell there found its process, which its tab's console says.
+        ToolWindows.DebugTab? device = Session.Debug.Chosen is { Plan.Device.App: not null } onDevice ? onDevice : null;
+        string? process = null;
         DateTime until = DateTime.UtcNow + limit;
         // Running, its GDScript or C# beside it running too: a game stopped in either language is stopped.
         Func<bool> going = () => Session.Debug.Session is { State: DebugState.Running or DebugState.Starting } chosen && !Companions(chosen).Any(b => b.State == DebugState.Paused);
@@ -2016,14 +2020,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         bool Done()
         {
             bool done = !going() || app is { State: not LiveTree.LiveAppState.Waiting } || (!breaks && game is { Monitors: not null })
-                || game is { State: LiveTree.LiveAppState.Ended } || serving.Serves();
+                || game is { State: LiveTree.LiveAppState.Ended } || serving.Serves()
+                || (device is not null && Session.Debug.Session is { State: DebugState.Running } && (process = StartedOnDevice(device)) is not null);
             // What the call waits for now, told as its progress over whatever the launch's own work says meanwhile.
             int now = Session.Debug.Session is not { State: not DebugState.Starting } ? 0 : game is { State: LiveTree.LiveAppState.Connected } ? 1
-                : app is { State: LiveTree.LiveAppState.Waiting } ? 2 : 3;
+                : app is { State: LiveTree.LiveAppState.Waiting } ? 2 : device is not null ? 4 : 3;
             if (!done && now != phase)
             {
                 phase = now;
-                call?.Waits(Awaited(now, game?.Name, stops, limit));
+                call?.Waits(Awaited(now, game?.Name, stops, limit, device?.Plan?.Device?.Target.Name));
             }
             return done;
         }
@@ -2043,6 +2048,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 : app is { State: LiveTree.LiveAppState.Connected } ? started with { Status = $"{started.Status}, {UiUp(app)}" }
                 : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? started with { Status = $"{started.Status}, {GameUp}" }
                 : serving.Said is { } said ? started with { Status = $"{started.Status}, {said}" }
+                : process is not null && device?.Plan?.Device is { App: { } onIt } launch
+                    ? started with { Status = $"{started.Status}, {onIt.Package} started on {launch.Target.Name} as process {process}" }
                 : started;
             // The whole wait out with the program running: what it was waited for never stopped it.
             return waitedOut && shown.Debugged == DebugState.Running && stops is not null
@@ -2055,9 +2062,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     /// <summary>What a launch under the debugger is waited for at a phase of its start, within <paramref name="limit"/> in
-    /// all: the program to start, a game that runs to stop or end, an app's UI, else a stop, the end or a host's start;
-    /// <paramref name="stops"/> names the breakpoints it may stop at.</summary>
-    private static string Awaited(int phase, string? game, string? stops, TimeSpan limit)
+    /// all: the program to start, a game that runs to stop or end, an app's UI, its start on <paramref name="device"/>, else
+    /// a stop, the end or a host's start; <paramref name="stops"/> names the breakpoints it may stop at.</summary>
+    private static string Awaited(int phase, string? game, string? stops, TimeSpan limit, string? device = null)
     {
         string stop = stops is null ? "a stop" : $"a stop at {stops}";
         string within = $"up to {limit.TotalSeconds:0} s in all";
@@ -2066,8 +2073,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             0 => $"Debugging: waiting for the program to start, then for {stop}, its end, its UI or its host's start ({within})",
             1 => $"Debugging: {game} runs; waiting for {stop} or its end ({within})",
             2 => $"Debugging: the program runs; waiting for its UI, {stop} or its end ({within})",
+            4 => $"Debugging: the program runs; waiting for its start on {device}, {stop} or its end ({within})",
             _ => $"Debugging: the program runs; waiting for {stop}, its end or its host's start ({within})",
         };
+    }
+
+    /// <summary>The app's process on its device as its shell said it started there, in its Debug tab's console; null until it has.</summary>
+    private static string? StartedOnDevice(ToolWindows.DebugTab tab)
+    {
+        tab.Console.Flush();
+        return tab.Plan?.Device?.App?.StartedIn(tab.Console.Document.Snapshot);
     }
 
     /// <summary>The breakpoints that may stop a program launched under the debugger (a game's, those in its folder), as an
