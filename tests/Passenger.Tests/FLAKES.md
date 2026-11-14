@@ -1605,3 +1605,17 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   a program's first LINQ evaluation taking 1.65 s of it while System.Linq loaded. **The test's limit**: the run shortened
   the evaluation limit to 3 s of a developer machine's time but never scaled it, as every other limit of the run is; it
   is now 3 s times `TimeScale` (7.5 s on that runner), the person's 5 s as it was.
+- `TerminalTests`' `An_address_in_the_terminal_opens_with_a_click_or_cmd_click_and_a_files_path_with_cmd_click(copyOnSelection:
+  False)`, the Windows VM beside another agent's runs (the SkiaSharp 4 move's checks): "(named, 11, named, 21, True)"
+  expected, nothing hovered over `notes.txt:2`. **The test waited wrong.** It pointed at the path's line as soon as the line
+  read so, but cmd, through ConPTY, sends the blank line and prompt after a command's output in a frame of their own, late
+  on a loaded machine; by the path the screen is full, so they scrolled it and the still pointer lay over another line,
+  which the view rightly hovers as output moves (`TerminalView.OnOutput`). The address hovers before it pointed while the
+  screen had room. Holding the shell's prompt back (`printf` and `sleep` in sh on the Mac, `ping` in cmd on the Windows
+  VM) lost the hover with CI's words when pointing at once and kept it pointing once the prompt was below; the test now
+  waits for the prompt below each line it points at (`WaitForPromptBelow`), and the class passed 3 of 3 runs on the
+  Windows VM under four busy loops (67b1a459a, #1634).
+- `TerminalTests`' `Output_past_the_screen_goes_to_the_scrollback_and_clear_buffer_leaves_only_the_prompt_at_the_top`, the
+  Windows VM under three and four busy loops (2 of 4 runs at 9d847c0a2): "after Clear Buffer the screen is not the prompt
+  alone at its top", the screen empty. **The test waited wrong**, the same late prompt: it cleared as soon as the program's
+  last line read so, and the prompt came after the clear. It now clears once the prompt is below (3c6124a82, #1634).
