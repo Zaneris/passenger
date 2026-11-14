@@ -97,6 +97,9 @@ internal sealed class Stripe : Border
     /// <summary>Whether any window's icon stands on the stripe, shown or behind More.</summary>
     public bool HasIcons => groups.Values.Any(group => group.Children.Count > 0);
 
+    /// <summary>Whether the windows of a place have their icons on this stripe and their checklist on its right click.</summary>
+    public bool Lists(ToolAnchor place) => groups.ContainsKey(place);
+
     /// <summary>The group a point (in the stripe's coordinates) is over: the bottom group's at or below it, the
     /// lower side group's past the upper's end, else the upper's.</summary>
     public ToolAnchor AnchorAt(Point at)

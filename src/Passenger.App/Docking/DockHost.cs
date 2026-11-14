@@ -819,12 +819,13 @@ public sealed class DockHost : Grid
     }
 
     /// <summary>A stripe with no icon (each of its windows named by a titled tab, or none docked at its places) folds away,
-    /// leaving its width to the areas and the editors, and shows again while a window is dragged, as a place to drop it.</summary>
+    /// leaving its width to the areas and the editors, and shows again while a window is dragged, as a place to drop it. A
+    /// stripe one of whose windows the person took off it stays shown, icon or none, so its checklist can put it back.</summary>
     private void FoldStripes()
     {
         foreach ((Stripe stripe, int column) in ((Stripe, int)[])[(leftStripe, 0), (rightStripe, 6)])
         {
-            bool shown = dragged || stripe.HasIcons;
+            bool shown = dragged || stripe.HasIcons || windows.Any(w => w.IsClosed && stripe.Lists(w.Anchor));
             stripe.IsVisible = shown;
             ColumnDefinitions[column].Width = new GridLength(shown ? StripeWidth : 0);
         }

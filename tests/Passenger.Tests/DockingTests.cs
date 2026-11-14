@@ -831,6 +831,43 @@ public sealed class DockingTests
         }
     }
 
+    /// <summary>A stripe whose every icon the person unchecked on its checklists stays shown, holding none, where it folded
+    /// away with them and its checklist could no longer be opened: a right click on it lists its places' windows, and one
+    /// checked there comes back to it.</summary>
+    [AvaloniaFact]
+    public void A_stripe_whose_every_icon_was_unchecked_stays_and_its_checklist_puts_one_back()
+    {
+        MainWindow window = Open();
+        try
+        {
+            DockHost dock = window.DockHost;
+            Control stripe = StripeBar(window, right: true);
+            for (int taken = 0; taken < dock.Windows.Count && Icons(stripe).FirstOrDefault() is { } icon; taken++)
+            {
+                Ui.RightClick(icon);
+                Ui.Choose(dock.StripeMenu, dock[(string)icon.Tag!].Title);
+            }
+            Assert.Empty(Icons(stripe));
+            Assert.True(dock.ColumnDefinitions[6].ActualWidth == 40 && stripe.IsEffectivelyVisible,
+                $"The right stripe, every icon unchecked, takes {dock.ColumnDefinitions[6].ActualWidth:0.#} units: its checklist is out of reach");
+
+            Ui.RightClick(stripe, new Point(stripe.Bounds.Width / 2, 60));
+            string title = Listed(dock.StripeMenu).FirstOrDefault()
+                ?? throw new Xunit.Sdk.XunitException("A right click on the emptied stripe lists no window to put back");
+            Ui.Choose(dock.StripeMenu, title);
+            ToolWindow back = dock.Windows.Single(w => w.Title == title);
+            Assert.True(StripeButton(window, back.Id) is { IsEffectivelyVisible: true } && !back.IsClosed,
+                $"{title}, checked on the emptied stripe's checklist, has no icon on it");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static IEnumerable<ToggleButton> Icons(Control stripe) =>
+            stripe.GetVisualDescendants().OfType<ToggleButton>().Where(b => b.Tag is string && b.IsEffectivelyVisible);
+    }
+
     [AvaloniaFact]
     public void A_stripe_button_dropped_between_two_of_its_places_lands_between_them_past_a_window_off_the_stripe_and_its_own_place()
     {
