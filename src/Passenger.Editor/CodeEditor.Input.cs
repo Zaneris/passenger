@@ -74,13 +74,11 @@ public sealed partial class CodeEditor
         }
         if (vim is { CommandLine: not null })
         {
-            // Text no key press typed (an input method's, a dead key's) goes on the command line, whatever the file allows.
+            // What is typed (a key's, an input method's, a dead key's) goes on the command line, whatever the file allows.
             e.Handled = true;
-            string? typedByKey = vimLineTyped;
-            vimLineTyped = null;
-            if (Printable(e.Text) is { Length: > 0 } committed && committed != typedByKey)
+            if (Printable(e.Text) is { Length: > 0 } onLine)
             {
-                TypeOnVimCommandLine(committed);
+                TypeOnVimCommandLine(onLine);
             }
             return;
         }
@@ -88,10 +86,9 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        if (vim is { Mode: not Editor.VimMode.Insert } || vimTookText)
+        if (vim is { Mode: not Editor.VimMode.Insert })
         {
-            // Keys outside insert mode are commands, taken at the key press; their text must not type, nor a key a mapping took.
-            vimTookText = false;
+            // Keys outside insert mode are commands, taken at the key press; their text must not type.
             e.Handled = true;
             return;
         }

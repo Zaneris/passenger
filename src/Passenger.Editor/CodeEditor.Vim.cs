@@ -18,12 +18,6 @@ public sealed partial class CodeEditor
     /// <summary>Set while the editor does what Vim asked, so the selections it sets are Vim's own.</summary>
     private bool followingVim;
 
-    /// <summary>Set once Vim took the key just pressed in insert mode (a mapping holding it), so its text does not type.</summary>
-    private bool vimTookText;
-
-    /// <summary>What the key just pressed typed on Vim's command line, or the prompt it opened it with, so its text, where
-    /// the platform still sends it, is not typed there again; null for none.</summary>
-    private string? vimLineTyped;
 
     private VimRegisters vimRegisters = new();
 
@@ -101,14 +95,13 @@ public sealed partial class CodeEditor
     /// <summary>A key through Vim mode before any keymap: true when Vim took it, with <paramref name="action"/> (one of
     /// <see cref="EditorActions"/>) for the host to run <paramref name="repeat"/> times as its keymap would, so undo stays
     /// the window's. A modifier pressed alone, every key while an input method composes, and on the command line a key the
-    /// input method took, are left to the keymap.</summary>
+    /// input method took or one that types (its text, a dead key's composed with the next, comes as text input) are left
+    /// to the keymap.</summary>
     public bool PressVim(KeyEventArgs e, out string? action, out int repeat)
     {
         action = null;
         repeat = 0;
-        vimTookText = false;
-        vimLineTyped = null;
-        if (vim is null || KeymapDispatcher.IsModifierOnly(e.Key) || Composition.Length > 0 || (e.Key == Key.ImeProcessed && vim.CommandLine is not null))
+        if (vim is null || KeymapDispatcher.IsModifierOnly(e.Key) || Composition.Length > 0 || (vim.CommandLine is not null && (e.Key == Key.ImeProcessed || Types(e))))
         {
             // A modifier pressed on its own comes before the key it changes, so it must not end a count or operator.
             return false;
@@ -122,8 +115,6 @@ public sealed partial class CodeEditor
         string pendingWas = VimPending;
         string? lineWas = vim.CommandLine;
         VimResult result = vim.Press(key, document.Snapshot, selections, VimView);
-        vimTookText = result.Taken && was is VimMode.Insert or VimMode.Replace;
-        vimLineTyped = result.Taken && vim.CommandLine is not null && vim.CommandLine != lineWas ? key : null;
         FollowVim(result, was);
         action = result.Action;
         repeat = action is null ? 0 : result.Repeat;
@@ -184,8 +175,8 @@ public sealed partial class CodeEditor
         return result.Message is { } said ? new VimMessage(said, result.MessageIsError) : null;
     }
 
-    /// <summary>Text typed on Vim's command line that no key press brought: an input method's committed text, a dead
-    /// key's character. A stretch at its end the input method chose (press and hold's letter) is typed over.</summary>
+    /// <summary>Text typed on Vim's command line: a key's, an input method's committed text, a dead key's character. A
+    /// stretch at its end the input method chose (press and hold's letter) is typed over.</summary>
     private void TypeOnVimCommandLine(string typed)
     {
         inputMethod?.Committed();
@@ -402,6 +393,13 @@ public sealed partial class CodeEditor
             FollowVim(vim.PutClipboard(pasted ?? string.Empty, document.Snapshot, selections, VimView), vim.Mode);
         }
     }
+
+    /// <summary>Whether a press types a character: one of its own with no modifier but Shift, AltGr's on Windows, Option's
+    /// on macOS.</summary>
+    private static bool Types(KeyEventArgs e) =>
+        e.KeySymbol is { Length: > 0 } typed && !char.IsControl(typed[0])
+        && ((e.KeyModifiers & ~KeyModifiers.Shift) == KeyModifiers.None || KeymapDispatcher.IsAltGrTyping(e)
+            || (OperatingSystem.IsMacOS() && (e.KeyModifiers & ~KeyModifiers.Shift) == KeyModifiers.Alt));
 
     /// <summary>A key press in Vim's notation: a character typed with no modifier but Shift (or the AltGr a layout types
     /// it with), Escape, Backspace, Enter, Delete, Tab, Ctrl+R; anything else a name Vim mode leaves to the keymap.</summary>
