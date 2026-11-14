@@ -48,6 +48,7 @@ public sealed partial class NuGetView
     private async Task CheckUpdatesAsync(CancellationTokenSource cancel, string? chosen)
     {
         FolderPackages folder = model;
+        Task deprecating = Task.CompletedTask;
         checkingUpdates = true;
         updateRows = [];
         List([], null);
@@ -109,6 +110,7 @@ public sealed partial class NuGetView
                 result += $"; check incomplete: {string.Join("; ", problems.Distinct())}";
             }
             Tell(result);
+            deprecating = DeprecatedAsync(updateRows, cancel);
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -122,6 +124,7 @@ public sealed partial class NuGetView
                 EnableActions();
             }
         }
+        await deprecating;
     }
 
     public async Task UpdateAllAsync()

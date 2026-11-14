@@ -14,7 +14,7 @@ namespace Passenger.Tests;
 /// reaches nuget.org: a package is shown, compared and audited at each of a project's frameworks' versions, a range at the
 /// version its restore resolved, else its least, and a change of a pinned version keeps it pinned; a change runs one at a
 /// time, the projects' actions disabled meanwhile, one refused says why, and one that failed says so until the person
-/// next asks for a list.</summary>
+/// next asks for a list; a version its owner deprecated is marked with why and what to use instead.</summary>
 public sealed class NuGetTests : IDisposable
 {
     private const string Id = "Passenger.Vulnerable";
@@ -866,6 +866,65 @@ public sealed class NuGetTests : IDisposable
         Assert.False(nuget.Selected!.IsVulnerable, "A package was marked from advisories that were never read");
         window.Close();
     }
+
+    /// <summary>A version its owner deprecated, as the stand-in's registration says, is marked so in the list, on the line of
+    /// the project that has it (never of one with a later version) and in the package's details, with why, the owner's
+    /// words and the package to use instead, which a click searches for; Deprecated Only lists it alone. Nothing asks the
+    /// registrations before the window is shown.</summary>
+    [AvaloniaFact]
+    public void A_deprecated_version_is_marked_with_why_and_what_to_use_instead_and_found_by_its_filter()
+    {
+        const string Legacy = "Passenger.Legacy";
+        const string Modern = "Passenger.Modern";
+        const string Words = "Kept no more: Passenger.Modern does all it did.";
+        feed.Add(Legacy, "1.0.0");
+        feed.Add(Legacy, "2.0.0");
+        feed.Add(Modern, "2.0.0");
+        feed.Deprecate(Legacy, "1.0.0", ["Legacy", "CriticalBugs"], Words, Modern, "[2.0.0, )");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Legacy}\" Version=\"1.0.0\" /></ItemGroup>");
+        Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Legacy}\" Version=\"2.0.0\" /><PackageReference Include=\"{Modern}\" Version=\"2.0.0\" /></ItemGroup>");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Assert.DoesNotContain(feed.Requests, r => r.Path.StartsWith("/registrations/", StringComparison.Ordinal));
+        window.Perform(AppActions.ShowNuGet);
+        Ui.Settle();
+        NuGetView nuget = window.NuGet;
+        const string Why = "1.0.0 is deprecated: legacy, no longer maintained, critical bugs";
+        string told = $"{Why}\nUse {Modern} 2.0.0 or later instead\n{Words}";
+
+        PackageRow legacy = nuget.Rows.Single(r => r.Id == Legacy);
+        Border? tag = Tag(Ui.Row(nuget.PackageList, legacy), "deprecated");
+        Assert.True(tag is { IsVisible: true } && ToolTip.GetTip(tag) as string == told,
+            $"{Legacy}'s row is {(tag?.IsVisible == true ? $"tagged deprecated, telling \"{ToolTip.GetTip(tag)}\"" : "not tagged deprecated")}: {nuget.Status}");
+        Assert.False(Tag(Ui.Row(nuget.PackageList, nuget.Rows.Single(r => r.Id == Modern)), "deprecated")?.IsVisible == true, $"{Modern}, which nothing deprecates, is tagged deprecated");
+        Assert.Equal("2 packages installed, 1 deprecated", nuget.Status);
+
+        ChoosePackage(nuget, legacy);
+        Border? onLib = Line(nuget, "Lib")?.Children.OfType<Border>().FirstOrDefault(b => b.Child is TextBlock { Text: "deprecated" });
+        Assert.True(onLib is not null && ToolTip.GetTip(onLib) as string == told, $"Lib's line for its deprecated 1.0.0 is {(onLib is null ? "untagged" : $"tagged telling \"{ToolTip.GetTip(onLib)}\"")}");
+        Assert.DoesNotContain(Line(nuget, "App")!.Children.OfType<Border>(), b => b.Child is TextBlock { Text: "deprecated" });
+        string[] words = [.. Said(nuget).GetLogicalDescendants().OfType<TextBlock>().Select(t => t.Text).OfType<string>()];
+        Assert.True(words.Contains($"{Why}.") && words.Contains(Words) && words.Contains("2.0.0 or later"),
+            $"{Legacy}'s details say [{string.Join(" | ", words)}], not why it is deprecated, its owner's words and the versions of {Modern} to use");
+
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Deprecated Only");
+        Assert.Equal([Legacy], nuget.Rows.Select(r => r.Id));
+        Assert.Contains("1 of 2 shown: deprecated", nuget.Status, StringComparison.Ordinal);
+        Ui.Click(nuget.Filters.Button);
+        Ui.Choose(nuget.Filters.OpenMenu, "Deprecated Only");
+        Assert.Equal([Legacy, Modern], nuget.Rows.Select(r => r.Id));
+
+        Ui.Click(Said(nuget).GetLogicalDescendants().OfType<Button>().Single(b => b.Name == "Alternative"));
+        Ui.Landed(() => nuget.Query == Modern && nuget.Rows.Any(r => r.Id == Modern && r.Feeds.Contains("stand-in")), $"{Modern} searched for: {nuget.Status}");
+        window.Close();
+
+        static Border Said(NuGetView nuget) => nuget.GetLogicalDescendants().OfType<Border>().SingleOrDefault(b => b.Name == "Deprecation")
+            ?? throw new Xunit.Sdk.XunitException($"{nuget.Selected?.Id}'s details say nothing of a deprecated version");
+    }
+
+    /// <summary>A tag of a package's row shown in the list, by its words.</summary>
+    private static Border? Tag(Control row, string words) =>
+        row.GetLogicalDescendants().OfType<Border>().FirstOrDefault(b => b.Child is TextBlock { Text: { } text } && text == words);
 
     /// <summary>A project of the folder's own for its frameworks, with the item groups given, in the folder of its path from
     /// the folder's, named as that folder is.</summary>

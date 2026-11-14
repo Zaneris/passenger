@@ -14,7 +14,7 @@ namespace Passenger.App.ToolWindows;
 
 /// <summary>A package as the NuGet window lists it: what the feeds say of it, the feeds that have it, the versions
 /// the solution's projects have of it (by project, each framework's), those they get only through another package or
-/// project, and the known vulnerabilities of those versions.</summary>
+/// project, the known vulnerabilities of those versions, and whether their owner deprecated one.</summary>
 public sealed record PackageRow(string Id, string Version, string Description, string Authors, long Downloads,
     IReadOnlyDictionary<string, IReadOnlyList<InstalledVersion>> Installed)
 {
@@ -40,6 +40,12 @@ public sealed record PackageRow(string Id, string Version, string Description, s
 
     public bool IsVulnerable => Advisories.Count > 0;
 
+    /// <summary>The newest version a project has that its owner deprecated, with what they say of it; null where none is,
+    /// or none is known yet.</summary>
+    public (string Version, Deprecation Said)? Deprecated { get; init; }
+
+    public bool IsDeprecated => Deprecated is not null;
+
     public string? UpdateVersion { get; init; }
 
     public IReadOnlyList<string> AvailableVersions { get; init; } = [];
@@ -49,7 +55,8 @@ public sealed record PackageRow(string Id, string Version, string Description, s
 /// typed, else what the feed chosen beside the query finds; the chosen package's versions and a row per project to Install,
 /// Update or Remove it through the .NET command line, whose restore uses those feeds and their credentials. A version with
 /// a known vulnerability (the audit's VulnerabilityInfo, as restore reads it) is marked with its advisories, and Update
-/// offers the least version that fixes it. Sources: the files and their feeds (<see cref="NuGetSourcesView"/>). A view over
+/// offers the least version that fixes it; one its owner deprecated (the feed's registration, read while the window is
+/// shown) with why and what to use instead. Sources: the files and their feeds (<see cref="NuGetSourcesView"/>). A view over
 /// the folder's <see cref="FolderPackages"/>, its session's.</summary>
 public sealed partial class NuGetView : DockPanel
 {
@@ -433,7 +440,6 @@ public sealed partial class NuGetView : DockPanel
                     .Select(p => new PackageRow(p.Key, string.Join(", ", p.Value.Values.SelectMany(v => v).Select(v => v.Version).Distinct(StringComparer.OrdinalIgnoreCase)),
                         string.Empty, string.Empty, 0, new Dictionary<string, IReadOnlyList<InstalledVersion>>()));
                 found = [.. referenced.Concat(brought).OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase).Select(r => Brought(r, transitive))];
-                Tell(Counted(found, null));
             }
             else
             {
@@ -451,19 +457,19 @@ public sealed partial class NuGetView : DockPanel
                 return;
             }
             Task<VulnerabilityData>? auditing = found.Any(r => r.IsInstalled || r.IsTransitive) ? model.Audit() : null;
-            if (auditing is { IsCompletedSuccessfully: true })
+            VulnerabilityData? audited = auditing is { IsCompletedSuccessfully: true } ? auditing.Result : null;
+            found = Marked(found, audited ?? VulnerabilityData.None);
+            if (Query.Trim().Length == 0)
             {
-                found = Marked(found, auditing.Result);
-                if (Query.Trim().Length == 0)
-                {
-                    Tell(Counted(found, auditing.Result));
-                }
+                Tell(Counted(found, audited));
             }
             List(found, chosen);
+            Task deprecating = DeprecatedAsync(found, cancel);
             if (auditing is { IsCompleted: false })
             {
                 await MarkAsync(auditing, cancel);
             }
+            await deprecating;
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -520,9 +526,57 @@ public sealed partial class NuGetView : DockPanel
         }
     }
 
-    /// <summary>Rows with the advisories that affect the versions their projects have, referenced or brought in.</summary>
-    private static IReadOnlyList<PackageRow> Marked(IReadOnlyList<PackageRow> found, VulnerabilityData known) =>
-        [.. found.Select(r => r with { Advisories = [.. r.AuditedVersions.SelectMany(v => known.Of(r.Id, v)).Distinct().OrderByDescending(a => a.Severity)] })];
+    /// <summary>Rows with the advisories that affect the versions their projects have, referenced or brought in, and the
+    /// newest of those versions deprecated, as far as known.</summary>
+    private IReadOnlyList<PackageRow> Marked(IReadOnlyList<PackageRow> found, VulnerabilityData known) =>
+        [.. found.Select(r => r with
+        {
+            Advisories = [.. r.AuditedVersions.SelectMany(v => known.Of(r.Id, v)).Distinct().OrderByDescending(a => a.Severity)],
+            Deprecated = DeprecatedOf(r.Id, r.AuditedVersions),
+        })];
+
+    /// <summary>The newest of a package's versions its owner deprecated, with what they say of it, as far as known.</summary>
+    private (string Version, Deprecation Said)? DeprecatedOf(string id, IEnumerable<string> versions) =>
+        versions.OrderByDescending(v => v, VersionOrder.Instance).Select(v => (Version: v, Said: model.DeprecationOf(id, v))).FirstOrDefault(d => d.Said is not null)
+            is { Version: { } version, Said: { } said } ? (version, said) : null;
+
+    /// <summary>Reads, while the window is shown, whether the versions the rows' projects have are deprecated, and once they
+    /// are known marks the rows the list holds, unless another list took their place or nothing changed.</summary>
+    private async Task DeprecatedAsync(IReadOnlyList<PackageRow> found, CancellationTokenSource cancel)
+    {
+        if (!IsShown || Asked(found) is not { Length: > 0 } wanted || model.DeprecationsAsync(wanted) is not { IsCompleted: false } reading)
+        {
+            return;
+        }
+        await reading;
+        if (cancel.IsCancellationRequested || asking != cancel)
+        {
+            return;
+        }
+        IReadOnlyList<PackageRow> held = showsUpdates ? updateRows : all;
+        IReadOnlyList<PackageRow> marked = Marked(held, Known);
+        if (marked.Select(r => r.Deprecated?.Version).SequenceEqual(held.Select(r => r.Deprecated?.Version)) && DeprecationsUnknown(held).Count == 0)
+        {
+            return;
+        }
+        if (showsUpdates)
+        {
+            updateRows = marked;
+            FilterUpdates();
+            return;
+        }
+        List(marked, Selected?.Id);
+        if (Query.Trim().Length == 0)
+        {
+            Tell(Counted(all, Known));
+        }
+    }
+
+    /// <summary>Each package and version a project has among the rows, referenced or brought in.</summary>
+    private static (string Id, string Version)[] Asked(IReadOnlyList<PackageRow> found) => [.. found.SelectMany(r => r.AuditedVersions.Select(v => (r.Id, v)))];
+
+    /// <summary>The feeds that did not say whether a version the rows' projects have is deprecated.</summary>
+    private IReadOnlyList<string> DeprecationsUnknown(IReadOnlyList<PackageRow> found) => model.DeprecationsUnknown(Asked(found));
 
     /// <summary>A row with the projects that get its package through others, those referencing it aside.</summary>
     private static PackageRow Brought(PackageRow row, Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive) =>
@@ -531,8 +585,8 @@ public sealed partial class NuGetView : DockPanel
             : row;
 
     /// <summary>The status over the installed packages: how many, how many of them are transitive, how many have a known
-    /// vulnerability, and the audit's feeds that did not say.</summary>
-    private static string Counted(IReadOnlyList<PackageRow> found, VulnerabilityData? known)
+    /// vulnerability, how many a deprecated version, and the feeds that did not say.</summary>
+    private string Counted(IReadOnlyList<PackageRow> found, VulnerabilityData? known)
     {
         string text = $"{Plural.Of(found.Count, "package")} installed";
         if (found.Count(r => r.IsTransitive) is int brought and > 0)
@@ -543,9 +597,17 @@ public sealed partial class NuGetView : DockPanel
         {
             text += $", {vulnerable} vulnerable";
         }
+        if (found.Count(r => r.IsDeprecated) is int deprecated and > 0)
+        {
+            text += $", {deprecated} deprecated";
+        }
         if (known?.Failed is { Count: > 0 } failed)
         {
             text += $"; vulnerabilities unknown: {string.Join(", ", failed.Select(f => f.Feed))} did not answer";
+        }
+        if (DeprecationsUnknown(found) is { Count: > 0 } unread)
+        {
+            text += $"; deprecations unknown: {string.Join(", ", unread)} did not answer";
         }
         return text;
     }
@@ -724,6 +786,10 @@ public sealed partial class NuGetView : DockPanel
         {
             details.Children.Add(Vulnerability(known.Of(row.Id, vulnerable), vulnerable, fix));
         }
+        if (row.Deprecated is { } deprecated)
+        {
+            details.Children.Add(Deprecated(deprecated.Version, deprecated.Said));
+        }
         details.Children.Add(new StackPanel { Name = "projects", Spacing = 4, Margin = new Thickness(0, 8, 0, 0) });
         ShowProjects(row);
     }
@@ -774,8 +840,60 @@ public sealed partial class NuGetView : DockPanel
         return block;
     }
 
+    /// <summary>The word on a deprecated version: why, its owner's own words, and the package they name to use instead,
+    /// which a click searches the feeds for.</summary>
+    private Border Deprecated(string version, Deprecation deprecation)
+    {
+        PathIcon warning = new() { Width = 14, Height = 14, Margin = new Thickness(0, 1, 8, 0), VerticalAlignment = VerticalAlignment.Top, [DockProperty] = Dock.Left };
+        warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
+        warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable(TokenKeys.Warning));
+        StackPanel said = new() { Spacing = 4 };
+        said.Children.Add(new TextBlock { Text = $"{version} is deprecated: {deprecation.Why}.", TextWrapping = TextWrapping.Wrap });
+        if (deprecation.Message.Length > 0)
+        {
+            said.Children.Add(new TextBlock { Text = deprecation.Message, TextWrapping = TextWrapping.Wrap });
+        }
+        if (deprecation.Alternative is { } alternative)
+        {
+            Button search = new() { Name = "Alternative", Classes = { StyleClasses.Link }, Content = alternative, VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(search, $"Search for {alternative}");
+            search.Click += (_, _) => SearchFor(alternative);
+            StackPanel instead = new()
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children = { new TextBlock { Text = "Use instead:", FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, search },
+            };
+            if (deprecation.AlternativeVersions is { } versions)
+            {
+                instead.Children.Add(new TextBlock { Text = versions, VerticalAlignment = VerticalAlignment.Center });
+            }
+            said.Children.Add(instead);
+        }
+        Border block = new()
+        {
+            Name = "Deprecation",
+            Classes = { StyleClasses.Box },
+            Padding = new Thickness(10, 8),
+            Child = new DockPanel { Children = { warning, said } },
+        };
+        block.Bind(Border.BackgroundProperty, block.GetResourceObservable(TokenKeys.Banner));
+        return block;
+    }
+
+    /// <summary>The feeds searched for a package, in the Packages tab.</summary>
+    private void SearchFor(string id)
+    {
+        if (showsUpdates || body.Content != packages)
+        {
+            ShowPackages();
+        }
+        Query = id;
+    }
+
     /// <summary>The chosen package's line per project as the pane's filters leave them: its version (a version brought in
-    /// by another package or project tagged so), a mark where it is vulnerable, and Install, Update, Downgrade or Remove.</summary>
+    /// by another package or project tagged so), a mark where it is vulnerable, a tag where it is deprecated, and Install,
+    /// Update, Downgrade or Remove.</summary>
     private void ShowProjects(PackageRow row)
     {
         if (ProjectsPanel is not { } panel)
@@ -834,12 +952,19 @@ public sealed partial class NuGetView : DockPanel
                 }
                 line.Children.Add(Action("Remove", () => RemoveAsync(project)));
             }
-            // After the buttons, so they stand in one column whichever lines have the tag.
+            // After the buttons, so they stand in one column whichever lines have the tags.
             if (through is not null)
             {
                 Border tag = Tagged("transitive");
                 tag.Margin = new Thickness(0);
                 ToolTip.SetTip(tag, through.Value.Told);
+                line.Children.Add(tag);
+            }
+            if (DeprecatedOf(row.Id, has ? at.Select(v => v.Version).OfType<string>() : brought.Select(b => b.Version)) is { } deprecated)
+            {
+                Border tag = Tagged("deprecated");
+                tag.Margin = new Thickness(0);
+                ToolTip.SetTip(tag, DeprecationTip(deprecated.Version, deprecated.Said));
                 line.Children.Add(tag);
             }
             panel.Children.Add(line);
@@ -879,8 +1004,8 @@ public sealed partial class NuGetView : DockPanel
     }
 
     /// <summary>A package's row: its icon, its id (strong where a project references it), its version muted, a tag on one
-    /// projects get only through others, its description or what brings it in on hover, and a warning saying the gravest
-    /// advisory where a version a project has is vulnerable.</summary>
+    /// projects get only through others and on one a project has a deprecated version of, its description or what brings
+    /// it in on hover, and a warning saying the gravest advisory where a version a project has is vulnerable.</summary>
     private Control Row()
     {
         TextBlock version = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
@@ -889,13 +1014,14 @@ public sealed partial class NuGetView : DockPanel
         icon.DataKey = IconKeys.Package;
         TextBlock id = new() { VerticalAlignment = VerticalAlignment.Center };
         Border transitive = Tagged("transitive");
+        Border deprecated = Tagged("deprecated");
         RowIcon warning = Warning(string.Empty);
         warning.Margin = new Thickness(6, 0, 0, 0);
         StackPanel line = new()
         {
             Orientation = Orientation.Horizontal,
             Height = ListRow.Height,
-            Children = { icon, id, version, transitive, warning },
+            Children = { icon, id, version, transitive, deprecated, warning },
         };
         return line.Showing<PackageRow>(row =>
         {
@@ -903,6 +1029,8 @@ public sealed partial class NuGetView : DockPanel
             id.FontWeight = row.IsInstalled ? FontWeight.SemiBold : FontWeight.Normal;
             version.Text = row.UpdateVersion is { } latest ? $"{row.Version} → {latest}" : row.Version;
             transitive.IsVisible = row.IsTransitive;
+            deprecated.IsVisible = row.IsDeprecated;
+            ToolTip.SetTip(deprecated, row.Deprecated is { } said ? DeprecationTip(said.Version, said.Said) : null);
             ToolTip.SetTip(line, row.IsTransitive ? $"Brought in by {BroughtBy(row.Transitive.Values.SelectMany(v => v))}"
                 : row.Description.Length > 0 ? row.Description : null);
             warning.IsVisible = row.IsVulnerable;
@@ -917,6 +1045,11 @@ public sealed partial class NuGetView : DockPanel
         text.Classes.Add(StyleClasses.Muted);
         return new Border { Classes = { StyleClasses.Tag }, Padding = new Thickness(4, 0), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }
+
+    /// <summary>What a deprecated version's tag tells on hover: why, what to use instead, and its owner's own words.</summary>
+    private static string DeprecationTip(string version, Deprecation deprecation) =>
+        $"{version} is deprecated: {deprecation.Why}" + (deprecation.Instead is { } instead ? $"\nUse {instead} instead" : string.Empty)
+            + (deprecation.Message.Length > 0 ? $"\n{deprecation.Message}" : string.Empty);
 
     /// <summary>What brings a package in, each once, in order.</summary>
     private static string BroughtBy(IEnumerable<TransitiveUse> uses) =>

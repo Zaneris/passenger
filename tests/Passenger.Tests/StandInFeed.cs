@@ -6,8 +6,8 @@ using Passenger.Packages;
 namespace Passenger.Tests;
 
 /// <summary>A NuGet v3 feed on a loopback port, so no test reaches nuget.org: its service index, search and flat container,
-/// and once an advisory is given its VulnerabilityInfo resource, which restore's audit and the NuGet window read as they
-/// read nuget.org's. Made with a user and password, it answers only a request with those Basic credentials (401 and a
+/// once an advisory is given its VulnerabilityInfo resource, which restore's audit and the NuGet window read as they read
+/// nuget.org's, and once a version is deprecated its registrations, each package's one page given by reference. Made with a user and password, it answers only a request with those Basic credentials (401 and a
 /// challenge otherwise, as a private feed asks); every request is kept with whether it had them and the Authorization it
 /// carried.</summary>
 public sealed class StandInFeed : IDisposable, IAsyncDisposable
@@ -15,6 +15,7 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
     private readonly StandInHttp http;
     private readonly Dictionary<string, Dictionary<string, byte[]>> packages = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<string>> advisories = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> deprecations = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(string Path, bool Authorized, string? Authorization)> requests = [];
     private string? accepted;
 
@@ -66,6 +67,17 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         {
             (advisories.TryGetValue(id, out List<string>? known) ? known : advisories[id] = []).Add(
                 $$"""{ "severity": {{severity}}, "url": "{{url}}", "versions": "{{versions}}" }""");
+        }
+    }
+
+    /// <summary>A version its owner deprecated for NuGet's reasons given (Legacy, CriticalBugs, Other), with their words
+    /// and the package to use instead at a range ("*" any), as a registration's catalog entry says it.</summary>
+    public void Deprecate(string id, string version, string[] reasons, string message, string? alternative = null, string range = "*")
+    {
+        string instead = alternative is null ? string.Empty : $$""", "alternatePackage": { "id": "{{alternative}}", "range": "{{range}}" }""";
+        lock (deprecations)
+        {
+            deprecations[$"{id}/{version}"] = $$"""{ "reasons": [{{string.Join(", ", reasons.Select(r => $"\"{r}\""))}}], "message": "{{message}}"{{instead}} }""";
         }
     }
 
@@ -127,6 +139,29 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         return exchange.ReplyAsync(status, type, body, status == 401 ? "WWW-Authenticate: Basic realm=\"private\"\r\n" : string.Empty);
     }
 
+    /// <summary>A package's registration index, its one page by reference, or that page, each version listed with its
+    /// deprecation where it has one.</summary>
+    private string Registration(string id, IReadOnlyList<string> versions, bool page)
+    {
+        string at = $"{Root}/registrations/{id.ToLowerInvariant()}";
+        string bounds = $$""" "lower": "{{versions[0]}}", "upper": "{{versions[^1]}}", "count": {{versions.Count}} """;
+        if (!page)
+        {
+            return $$"""{ "count": 1, "items": [ { "@id": "{{at}}/page.json", {{bounds}} } ] }""";
+        }
+        IEnumerable<string> leaves = versions.Select(version =>
+        {
+            string? deprecation;
+            lock (deprecations)
+            {
+                deprecation = deprecations.GetValueOrDefault($"{id}/{version}");
+            }
+            string deprecated = deprecation is null ? string.Empty : $$""", "deprecation": {{deprecation}}""";
+            return $$"""{ "@id": "{{at}}/{{version}}.json", "catalogEntry": { "id": "{{id}}", "version": "{{version}}", "listed": true{{deprecated}} } }""";
+        });
+        return $$"""{ "@id": "{{at}}/page.json", {{bounds}}, "items": [{{string.Join(", ", leaves)}}] }""";
+    }
+
     private (int Status, string Type, byte[] Body) Route(string path)
     {
         const string Json = "application/json";
@@ -136,16 +171,22 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         {
             advising = advisories.Count > 0;
         }
+        bool deprecating;
+        lock (deprecations)
+        {
+            deprecating = deprecations.Count > 0;
+        }
         if (path == "/v3/index.json")
         {
             string search = SearchAt?.AbsoluteUri ?? $"{Root}/query";
             string vulnerabilities = advising ? $$""", { "@id": "{{Root}}/vulnerabilities/index.json", "@type": "VulnerabilityInfo/6.7.0" }""" : string.Empty;
+            string registrations = deprecating ? $$""", { "@id": "{{Root}}/registrations/", "@type": "RegistrationsBaseUrl/3.6.0" }""" : string.Empty;
             return (200, Json, Encoding.UTF8.GetBytes($$"""
                 {
                   "version": "3.0.0",
                   "resources": [
                     { "@id": "{{search}}", "@type": "SearchQueryService/3.5.0" },
-                    { "@id": "{{Root}}/flat/", "@type": "PackageBaseAddress/3.0.0" }{{vulnerabilities}}
+                    { "@id": "{{Root}}/flat/", "@type": "PackageBaseAddress/3.0.0" }{{vulnerabilities}}{{registrations}}
                   ]
                 }
                 """));
@@ -161,6 +202,10 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
                 IEnumerable<string> known = advisories.Select(a => $"\"{a.Key.ToLowerInvariant()}\": [{string.Join(", ", a.Value)}]");
                 return (200, Json, Encoding.UTF8.GetBytes($"{{ {string.Join(", ", known)} }}"));
             }
+        }
+        if (deprecating && parts is ["registrations", string registered, "index.json" or "page.json"] && packages.TryGetValue(registered, out Dictionary<string, byte[]>? listed))
+        {
+            return (200, Json, Encoding.UTF8.GetBytes(Registration(registered, [.. listed.Keys.Order(VersionOrder.Instance)], parts[2] == "page.json")));
         }
         if (parts is ["query"])
         {

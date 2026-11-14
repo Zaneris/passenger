@@ -12,9 +12,9 @@ namespace Passenger.App.Packages;
 
 /// <summary>The folder's NuGet, whoever asks of it (the NuGet window, MSBuild files' code help, Migrations, an agent): the
 /// package sources its nuget.config files give, read when first asked for and again after one changes, their feeds, the
-/// audit's known vulnerabilities, and the one way a package goes in, moves or comes out of a project, through the .NET
-/// command line (under central package management written by Passenger, then restored), one change at a time, each one
-/// command of Undo. A session's own, ended with it; a UI-thread object.</summary>
+/// audit's known vulnerabilities, the versions their owners deprecated, and the one way a package goes in, moves or comes
+/// out of a project, through the .NET command line (under central package management written by Passenger, then
+/// restored), one change at a time, each one command of Undo. A session's own, ended with it; a UI-thread object.</summary>
 public sealed partial class FolderPackages
 {
     /// <summary>What a package change's work is held under in the window, which no action names.</summary>
@@ -113,6 +113,7 @@ public sealed partial class FolderPackages
         Sources = loaded;
         feeds = made;
         audit = null;
+        deprecations = new(StringComparer.OrdinalIgnoreCase);
         SourcesChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }

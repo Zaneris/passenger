@@ -21,8 +21,8 @@ public enum PackageKinds
     TransitiveOnly,
 }
 
-/// <summary>The package list's Sort and Filter: its order, the kinds of package it lists, the vulnerable alone, and one
-/// project's alone; each applied at once to the rows the list holds, never asking a feed again, and kept as the person
+/// <summary>The package list's Sort and Filter: its order, the kinds of package it lists, the vulnerable alone, the
+/// deprecated alone, and one project's alone; each applied at once to the rows the list holds, never asking a feed again, and kept as the person
 /// moves between packages, tabs and searches.</summary>
 public sealed partial class NuGetView
 {
@@ -30,6 +30,7 @@ public sealed partial class NuGetView
     private PackageOrder order;
     private PackageKinds kinds;
     private bool vulnerableOnly;
+    private bool deprecatedOnly;
     private string? usedBy;
 
     /// <summary>Every row the last list found, before the filters narrowed it to <see cref="Rows"/>.</summary>
@@ -66,6 +67,13 @@ public sealed partial class NuGetView
         set => Narrow(() => vulnerableOnly = value);
     }
 
+    /// <summary>Whether only packages a project has a deprecated version of are listed.</summary>
+    public bool DeprecatedOnly
+    {
+        get => deprecatedOnly;
+        set => Narrow(() => deprecatedOnly = value);
+    }
+
     /// <summary>The project whose packages alone are listed (its path), or null for every project's.</summary>
     public string? UsedBy
     {
@@ -74,7 +82,8 @@ public sealed partial class NuGetView
     }
 
     /// <summary>Whether the list is narrowed or ordered otherwise than at first.</summary>
-    private bool IsNarrowed => order != PackageOrder.BestMatch || kinds != PackageKinds.Referenced || vulnerableOnly || usedBy is not null;
+    private bool IsNarrowed => order != PackageOrder.BestMatch || kinds != PackageKinds.Referenced || vulnerableOnly || deprecatedOnly
+        || usedBy is not null;
 
     /// <summary>Manage NuGet Packages for Solution: the Packages tab, over every project.</summary>
     public void ShowSolution()
@@ -96,7 +105,7 @@ public sealed partial class NuGetView
     }
 
     /// <summary>The rows a list found as the filters show them: a project's alone (those it gets through another too while
-    /// they are listed), the vulnerable alone, the transitive alone, in the order chosen.</summary>
+    /// they are listed), the vulnerable alone, the deprecated alone, the transitive alone, in the order chosen.</summary>
     private IReadOnlyList<PackageRow> Filtered(IReadOnlyList<PackageRow> rows)
     {
         IEnumerable<PackageRow> shown = rows;
@@ -107,6 +116,10 @@ public sealed partial class NuGetView
         if (vulnerableOnly)
         {
             shown = shown.Where(r => r.IsVulnerable);
+        }
+        if (deprecatedOnly)
+        {
+            shown = shown.Where(r => r.IsDeprecated);
         }
         if (kinds == PackageKinds.TransitiveOnly && !showsUpdates)
         {
@@ -137,6 +150,10 @@ public sealed partial class NuGetView
         {
             by.Add("vulnerable");
         }
+        if (deprecatedOnly)
+        {
+            by.Add("deprecated");
+        }
         if (kinds == PackageKinds.TransitiveOnly && !showsUpdates)
         {
             by.Add("transitive");
@@ -145,7 +162,7 @@ public sealed partial class NuGetView
     }
 
     /// <summary>The Sort and Filter menu as the list now stands: the order, the kinds (the Updates tab's being the
-    /// referenced packages alone), the vulnerable alone, a project's alone, and Clear Filters.</summary>
+    /// referenced packages alone), the vulnerable alone, the deprecated alone, a project's alone, and Clear Filters.</summary>
     private IReadOnlyList<Control> FilterItems()
     {
         List<Control> items =
@@ -168,6 +185,7 @@ public sealed partial class NuGetView
         }
         items.Add(new Separator());
         items.Add(FilterMenu.Toggle("Vulnerable Only", vulnerableOnly, on => VulnerableOnly = on));
+        items.Add(FilterMenu.Toggle("Deprecated Only", deprecatedOnly, on => DeprecatedOnly = on));
         List<Control> projects = [MenuChoice.Of("All Projects", usedBy is null, () => UsedBy = null), new Separator()];
         foreach (ProjectModel project in model.Projects.Where(p => p.Exists).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
@@ -176,7 +194,7 @@ public sealed partial class NuGetView
         items.Add(new MenuItem { Header = "Used By", ItemsSource = projects });
         items.Add(new Separator());
         MenuItem clear = new() { Header = "Clear Filters", IsEnabled = filters.Narrowed };
-        clear.Click += (_, _) => Narrow(() => (order, vulnerableOnly, usedBy) = (PackageOrder.BestMatch, false, null));
+        clear.Click += (_, _) => Narrow(() => (order, vulnerableOnly, deprecatedOnly, usedBy) = (PackageOrder.BestMatch, false, false, null));
         items.Add(clear);
         if (kinds != PackageKinds.Referenced)
         {

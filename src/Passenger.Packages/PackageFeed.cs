@@ -29,6 +29,11 @@ public interface IPackageFeed
     /// <summary>What a version of a package depends on, as its own metadata says, by target framework; null when the feed
     /// has no such version, or cannot say.</summary>
     Task<PackageDependencies?> DependenciesAsync(string id, string version, CancellationToken cancel) => Task.FromResult<PackageDependencies?>(null);
+
+    /// <summary>The versions among those asked that the feed says their owner deprecated, each keyed as asked; none where
+    /// the feed cannot say.</summary>
+    Task<IReadOnlyDictionary<string, Deprecation>> DeprecationsAsync(string id, IReadOnlyCollection<string> versions, CancellationToken cancel) =>
+        Task.FromResult(FeedDeprecations.None.Deprecated);
 }
 
 /// <summary>A package version's dependencies as its nuspec groups them: by target framework (null for the group that
@@ -187,6 +192,33 @@ public sealed class FeedSet(string name, IReadOnlyList<IPackageFeed> feeds, Func
         }
         return null;
     }
+
+    /// <summary>The deprecated versions among those asked, from the feeds the package source mapping allows, asked at once
+    /// (a version any of them deprecates is deprecated, the first one's words kept), with the feeds that did not answer.</summary>
+    public async Task<FeedDeprecations> DeprecationsEachAsync(string id, IReadOnlyCollection<string> versions, CancellationToken cancel)
+    {
+        IPackageFeed[] asked = [.. feeds.Where(f => allows(f.Name, id))];
+        (IReadOnlyDictionary<string, Deprecation> Found, string? Problem)[] answers = await Task.WhenAll(asked.Select(async feed =>
+        {
+            try
+            {
+                return (await feed.DeprecationsAsync(id, versions, cancel), (string?)null);
+            }
+            catch (Exception failed) when (!cancel.IsCancellationRequested && IsFeedFailure(failed))
+            {
+                return (FeedDeprecations.None.Deprecated, failed.Message);
+            }
+        }));
+        Dictionary<string, Deprecation> merged = new(StringComparer.OrdinalIgnoreCase);
+        foreach ((string version, Deprecation deprecation) in answers.SelectMany(a => a.Found))
+        {
+            merged.TryAdd(version, deprecation);
+        }
+        return new FeedDeprecations(merged, [.. answers.Select((a, i) => (Feed: asked[i].Name, a.Problem)).Where(a => a.Problem is not null).Select(a => (a.Feed, a.Problem!))]);
+    }
+
+    public async Task<IReadOnlyDictionary<string, Deprecation>> DeprecationsAsync(string id, IReadOnlyCollection<string> versions, CancellationToken cancel) =>
+        (await DeprecationsEachAsync(id, versions, cancel)).Deprecated;
 
     /// <summary>What a feed throws when it cannot answer: it is down, refuses, says what is no feed, or is no folder.</summary>
     public static bool IsFeedFailure(Exception failed) =>
@@ -403,6 +435,47 @@ public sealed class V3Feed(FeedClient client) : IPackageFeed
             }
             return new PackageDependencies(groups);
         }
+    }
+
+    /// <summary>The deprecated versions among those asked, from the package's registration: its index, and of the pages it
+    /// gives by reference only those that may hold a version asked; none from a feed without registrations, or without the
+    /// package.</summary>
+    public async Task<IReadOnlyDictionary<string, Deprecation>> DeprecationsAsync(string id, IReadOnlyCollection<string> versions, CancellationToken cancel)
+    {
+        if (versions.Count == 0 || (await ServicesAsync(cancel)).Registrations is not { } registrations
+            || await client.GetJsonAsync<JsonDocument>(new Uri(registrations, $"{id.ToLowerInvariant()}/index.json"), Json, cancel) is not { } index)
+        {
+            return FeedDeprecations.None.Deprecated;
+        }
+        List<(string Version, Deprecation Deprecation)> read = [];
+        List<Uri> referenced = [];
+        using (index)
+        {
+            foreach (JsonElement page in JsonMembers.Items(index.RootElement, "items"))
+            {
+                if (JsonMembers.Value(page, "items") is not null)
+                {
+                    read.AddRange(Deprecation.OnPage(page, versions));
+                }
+                else if (Deprecation.MayHold(page, versions) && JsonMembers.Text(page, "@id") is { } at)
+                {
+                    referenced.Add(new Uri(registrations, at));
+                }
+            }
+        }
+        // A page it lists that is not there leaves its versions unknown, never not deprecated.
+        IReadOnlyList<(string, Deprecation)>[] pages = await Task.WhenAll(referenced.Select(async at =>
+        {
+            using JsonDocument page = await client.GetJsonAsync<JsonDocument>(at, Json, cancel)
+                ?? throw new HttpRequestException($"{Name} lists a registration page at {at} that is not there (404 Not Found)", null, HttpStatusCode.NotFound);
+            return (IReadOnlyList<(string, Deprecation)>)[.. Deprecation.OnPage(page.RootElement, versions)];
+        }));
+        Dictionary<string, Deprecation> found = new(StringComparer.OrdinalIgnoreCase);
+        foreach ((string version, Deprecation deprecation) in read.Concat(pages.SelectMany(p => p)))
+        {
+            found.TryAdd(version, deprecation);
+        }
+        return found;
     }
 
     /// <summary>The advisories the feed's VulnerabilityInfo resource gives, by package; none from a feed without the
