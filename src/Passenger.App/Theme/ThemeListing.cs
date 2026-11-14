@@ -135,6 +135,54 @@ public static class ThemeListing
         }
     }
 
+    /// <summary>A theme or scheme named by its source and name made ready to wear, as choosing it in Settings does: one carried
+    /// or kept as it is, another found in its source's listing (read again where the last read lacks it) and kept; why not,
+    /// naming what the source lists, where it is no source Passenger reads, lists none of that name or cannot be read.</summary>
+    public static async Task<string?> TakeAsync(SourcedTheme theme, bool code)
+    {
+        string kind = code ? "code colour scheme" : "theme";
+        if (theme.From is not { } source)
+        {
+            return $"{theme.Source} names no folder, repository or address a {kind} comes from";
+        }
+        if (source == ThemeSource.BuiltIn ? BuiltInThemes.Bytes(code, theme.Name) is not null : KeptThemes.Holds(source, code, theme.Name))
+        {
+            return null;
+        }
+        IEnumerable<string?> names;
+        if (source.Kind is ThemeSourceKind.Folder or ThemeSourceKind.GitHub or ThemeSourceKind.Web)
+        {
+            SourceRead read = Read(source) is { } last && Find(last) is not null ? last : await ReadAsync(source);
+            if (read.Refused is { } refused)
+            {
+                return $"{source.Shown} could not be read: {refused}";
+            }
+            if (Find(read) is { } found)
+            {
+                return await KeepAsync(found, theme.Name);
+            }
+            names = read.Listed.Where(l => l.Code == code).Select(l => l.Read.Read?.Name);
+        }
+        else
+        {
+            names = source == ThemeSource.BuiltIn ? BuiltInThemes.Listed(ThemeResources.Kinds).Listed.Where(l => l.Code == code).Select(l => l.Read.Read?.Name)
+                : Kept(source, code).Select(f => f.Name);
+        }
+        string[] listed = [.. names.OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        return $"{source.Shown} lists no {kind} named {theme.Name}" + (listed.Length == 0 ? string.Empty : $"; it lists {Plural.Listed(listed)}");
+
+        ListedTheme? Find(SourceRead read) => read.Listed.FirstOrDefault(l => l.Code == code && l.Read.Read?.Name == theme.Name && l.Bytes is not null);
+    }
+
+    /// <summary>A theme or scheme a source listed, kept from what was read of it with its pictures and its VS Code base, so
+    /// it is worn at once; why not where they cannot be had.</summary>
+    public static Task<string?> KeepAsync(ListedTheme listed, string name) => BackgroundWork.Run(async () =>
+    {
+        (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, listed.Source.Reached, CancellationToken.None);
+        return unseen ?? (listed.Read.Read is { } file ? await VsCodeBases.KeepAsync(listed.Source, listed.Code, name, file, CancellationToken.None) : null)
+            ?? KeptThemes.Keep(listed.Source, listed.Code, name, listed.Bytes!, images);
+    });
+
     /// <summary>The themes or schemes kept from a source, each as read, for a list made without reading the source.</summary>
     public static IReadOnlyList<ThemeFile> Kept(ThemeSource source, bool code) =>
         [.. KeptThemes.Of(source, code).Select(bytes => code ? ThemeFiles.ReadCodeColours(source.Shown, bytes, ThemeResources.Kinds) : ThemeFiles.ReadTheme(source.Shown, bytes, ThemeResources.Kinds))

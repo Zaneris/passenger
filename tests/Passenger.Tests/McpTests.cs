@@ -1124,6 +1124,32 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"Slate set by an agent was not fetched from the themes repository and kept as {kept}");
     }
 
+    /// <summary>settings_set of a theme its source does not list, a name mistyped or Cubicle named from the themes repository,
+    /// is refused naming those the source lists, nothing changed; a code colour scheme the source lists is kept from it
+    /// before settings_set answers, as choosing it in Settings keeps it.</summary>
+    [Fact]
+    public async Task Settings_set_refuses_a_theme_its_source_does_not_list_naming_those_it_does()
+    {
+        string folder = TestFolders.Create("mcp-unlisted-theme-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        foreach (string name in (string[])["Slat", "Cubicle"])
+        {
+            Dictionary<string, object> look = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = name };
+            CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = look } });
+            Assert.True(refused.IsError == true && Text(refused).Contains($"{ThemeSource.RepositoryName} lists no theme named {name}; it lists Bonbon, Harbour, ", StringComparison.Ordinal)
+                && Text(refused).Contains(", Slate and Sorbet; nothing changed", StringComparison.Ordinal), $"settings_set of {name}, a theme the themes repository does not list, answered: {Text(refused)}");
+        }
+        JsonElement kept = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "look");
+        Assert.True(kept.GetProperty("value").ValueKind == JsonValueKind.Null, $"A theme refused was set all the same: {kept.GetRawText()}");
+
+        Dictionary<string, object> reef = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = ThemeSource.FormerScheme };
+        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["colourScheme"] = reef } })).EnumerateArray());
+        Assert.Equal(ThemeSource.FormerScheme, changed.GetProperty("after").GetProperty("name").GetString());
+        string scheme = Path.Combine(OwnState, Path.GetRelativePath(Passenger.App.State.StateStore.DefaultRoot, KeptThemes.PathOf(ThemeSource.Repository, true, ThemeSource.FormerScheme)));
+        Assert.True(File.Exists(scheme), $"settings_set answered before {ThemeSource.FormerScheme} was fetched from the themes repository and kept as {scheme}");
+    }
+
     /// <summary>vcs_log gives each signed commit's signature as the Git log's details say it: a good one by its signer
     /// and key, one by a signer no allowed signers file lists with its key, and none for a commit unsigned.</summary>
     [Fact]

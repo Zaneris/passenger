@@ -63,16 +63,48 @@ public sealed partial class PassengerTools
         "change is theirs, kept; Enable MCP Server and agentFolders are theirs alone. Returns each as it was and is now.")]
     public Task<IReadOnlyList<SettingChange>> SetSettings(
         Dictionary<string, JsonElement> changes,
-        CancellationToken cancel = default) => OnUi(cancel, () =>
+        CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (changes is not { Count: > 0 })
         {
             throw new ArgumentException("Name at least one setting to change, with its new value; settings lists them");
         }
+        // A theme is taken from its source first, as choosing it in Settings takes it, so the change below wears it at once.
+        AppSettings first = window.Settings;
+        AppSettings themed = Asked(first, changes, []);
+        foreach ((SourcedTheme? theme, SourcedTheme? worn, bool code) in ((SourcedTheme?, SourcedTheme?, bool)[])[(themed.Look, first.Look, false), (themed.ColourScheme, first.ColourScheme, true)])
+        {
+            if (theme is not null && theme != worn && await ThemeListing.TakeAsync(theme, code) is { } unlisted)
+            {
+                throw new ArgumentException($"{unlisted}; nothing changed");
+            }
+        }
         AppSettings before = window.Settings;
         JsonObject was = SettingsNode(Declared.InForce(before));
-        JsonObject next = SettingsNode(before);
         List<string> named = [];
+        AppSettings asked = Asked(before, changes, named);
+        if (Declared.All.Select(s => s.Refused(before, asked)).FirstOrDefault(r => r is not null) is { } refused)
+        {
+            throw new ArgumentException($"{refused}; Settings refuses it too, and nothing changed");
+        }
+        window.ApplySettings(asked);
+        JsonObject now = SettingsNode(window.Settings);
+        JsonObject shown = SettingsNode(Declared.InForce(window.Settings));
+        JsonObject wanted = SettingsNode(asked);
+        return (IReadOnlyList<SettingChange>)[.. named.Distinct().Select(name =>
+        {
+            (double Min, double Max)? range = SettingRange(name, SettingProperties[name]);
+            string? note = JsonNode.DeepEquals(now[name], wanted[name]) ? null
+                : range is { } bounds ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"brought into its range, {bounds.Min} to {bounds.Max}") : "set back to what Settings allows";
+            return new SettingChange(name, JsonSerializer.SerializeToElement(was[name]), JsonSerializer.SerializeToElement(shown[name]), note ?? ThemesUntilSet(now[name], shown[name]));
+        })];
+    });
+
+    /// <summary>The settings an agent's changes make of <paramref name="before"/>, each setting changed added to
+    /// <paramref name="named"/>; one Settings lacks, or the person's alone, refused.</summary>
+    private static AppSettings Asked(AppSettings before, Dictionary<string, JsonElement> changes, List<string> named)
+    {
+        JsonObject next = SettingsNode(before);
         foreach ((string given, JsonElement value) in changes)
         {
             string name = SettingProperties.Keys.FirstOrDefault(k => k == given) ?? SettingProperties.Keys.FirstOrDefault(k => k.Equals(given, StringComparison.OrdinalIgnoreCase))
@@ -89,23 +121,8 @@ public sealed partial class PassengerTools
             next[name] = SettingValue(name, property, next[name], value);
             named.Add(name);
         }
-        AppSettings asked = SettingsOf(next);
-        if (Declared.All.Select(s => s.Refused(before, asked)).FirstOrDefault(r => r is not null) is { } refused)
-        {
-            throw new ArgumentException($"{refused}; Settings refuses it too, and nothing changed");
-        }
-        window.ApplySettings(asked);
-        JsonObject now = SettingsNode(window.Settings);
-        JsonObject shown = SettingsNode(Declared.InForce(window.Settings));
-        JsonObject wanted = SettingsNode(asked);
-        return Task.FromResult<IReadOnlyList<SettingChange>>([.. named.Distinct().Select(name =>
-        {
-            (double Min, double Max)? range = SettingRange(name, SettingProperties[name]);
-            string? note = JsonNode.DeepEquals(now[name], wanted[name]) ? null
-                : range is { } bounds ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"brought into its range, {bounds.Min} to {bounds.Max}") : "set back to what Settings allows";
-            return new SettingChange(name, JsonSerializer.SerializeToElement(was[name]), JsonSerializer.SerializeToElement(shown[name]), note ?? ThemesUntilSet(now[name], shown[name]));
-        })]);
-    });
+        return SettingsOf(next);
+    }
 
     /// <summary>How the Ctrl keys Vim mode shares with the keymap are given, and what each does on either side.</summary>
     private string VimKeysNote() =>

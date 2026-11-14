@@ -263,16 +263,9 @@ public sealed class ThemePicker : StackPanel
 
     private async Task ChooseAsync(Choice choice)
     {
-        if (choice is { Value: { } theme, Listed: { Bytes: { } bytes } } && theme.From is { } source && !KeptThemes.Holds(source, setting.Code, theme.Name))
+        if (choice is { Value: { } theme, Listed: { Bytes: not null } listed } && theme.From is { } source && !KeptThemes.Holds(source, setting.Code, theme.Name))
         {
-            bool code = setting.Code;
-            ListedTheme listed = choice.Listed;
-            string? why = await BackgroundWork.Run(async () =>
-            {
-                (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, source.Reached, CancellationToken.None);
-                return unseen ?? (listed.Read.Read is { } file ? await VsCodeBases.KeepAsync(source, code, theme.Name, file, CancellationToken.None) : null)
-                    ?? KeptThemes.Keep(source, code, theme.Name, bytes, images);
-            });
+            string? why = await ThemeListing.KeepAsync(listed, theme.Name);
             if (why is not null)
             {
                 Say(why);
