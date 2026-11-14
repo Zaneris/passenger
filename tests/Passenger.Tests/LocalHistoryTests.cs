@@ -413,6 +413,52 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A state folder inside the open folder, named through a link to it (as macOS names its temporary folder
+    /// through /var), has what the history writes there heard by the folder's watcher and kept by nothing: a change made
+    /// elsewhere is kept once, and once its write is heard the history neither reads its own files nor writes again.</summary>
+    [AvaloniaFact]
+    public void What_the_history_writes_in_a_state_folder_inside_the_open_folder_is_heard_and_starts_no_more_writes()
+    {
+        string shop = Write("Shop.cs", Original);
+        string linked = Path.Combine(TestFolders.Create("history-link-"), "open");
+        TestFolders.LinkFolder(linked, folder);
+        string state = PathNames.Canonical(Path.Combine(folder, "state"));
+        MainWindow window = Open("Shop.cs", state: Path.Combine(linked, "state"), keeping: new HistoryKeeping());
+        LocalHistory history = window.LocalHistory!;
+        string log = Path.Combine(PathNames.Canonical(history.Root), "changes.log");
+        ConcurrentQueue<string> read = new();
+        history.Reading += read.Enqueue;
+        long heardAt = -1;
+        window.FolderWatcher!.Changed += (_, changes) =>
+        {
+            if (changes.Paths.Contains(log))
+            {
+                heardAt = new FileInfo(log).Length;
+            }
+        };
+        try
+        {
+            File.WriteAllText(shop, Saved1);
+            Ui.WaitFor(() => HistoryRows.OfFile(history.Snapshot().Events, history.Snapshot().Known, shop).Count > 0, "the change made elsewhere kept");
+            Ui.WaitFor(() => File.Exists(log) && heardAt >= new FileInfo(log).Length, () => $"the history's log heard as long as it is ({heardAt} of {new FileInfo(log).Length} bytes)");
+            Ui.Settle();
+            long written = new FileInfo(log).Length;
+            Ui.Hold(TimeSpan.FromSeconds(1), "longer than the watcher takes to hear a write and the history to keep it, for a write heard to bring another");
+
+            Assert.True(new FileInfo(log).Length == written, $"Local History wrote its log again, {new FileInfo(log).Length - written} bytes, after hearing its own write in the state folder: it keeps its own writes, for good");
+            string[] own = [.. read.Where(p => PathNames.Within(p, state))];
+            Assert.True(own.Length == 0, $"Local History read {own.Length} files of its own state folder, which it keeps none of: {string.Join(", ", own.Take(5))}");
+            HistoryRow[] rows = [.. HistoryRows.OfFolder(history.Snapshot().Events, folder)];
+            Assert.True(rows.All(r => r.Files.All(f => !PathNames.Within(f, state))),
+                $"The folder's history lists the state folder's files: {string.Join("; ", rows.Select(r => $"{r.Title} [{string.Join(", ", r.Files)}]"))}");
+        }
+        finally
+        {
+            history.Reading -= read.Enqueue;
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_folders_history_lists_its_files_versions_and_brings_back_a_file_deleted_in_the_explorer()
     {

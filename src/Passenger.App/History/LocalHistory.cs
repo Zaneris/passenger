@@ -150,9 +150,12 @@ public sealed class LocalHistory
     public event Action<string>? Reading;
 
     /// <summary>A folder's history, shared by every window of this process that has the folder open with the same state
-    /// folder; let go with <see cref="Release"/>.</summary>
+    /// folder, however each names it; let go with <see cref="Release"/>. The state folder is made canonical, as the paths
+    /// noticed are, so the history keeps nothing written there: its own writes, heard where the state folder lies inside
+    /// the open folder, would each be kept by another.</summary>
     public static LocalHistory Open(string folder, string stateFolder, HistoryKeeping keeping)
     {
+        stateFolder = PathNames.Canonical(stateFolder);
         string key = State.ProjectState.FolderOf(stateFolder, folder);
         lock (Stores)
         {
