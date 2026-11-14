@@ -1,5 +1,4 @@
 using Avalonia;
-using Avalonia.Controls;
 using Passenger.App.CSharp;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
@@ -38,12 +37,8 @@ public partial class MainWindow
         ColourPicker opened = new(use.Colour, Unwritable(document, use));
         picker = opened;
         opened.DetachedFromVisualTree += (_, _) => swatch.Held?.Remove();
-        Canvas layer = Editors.AssistLayer;
-        layer.Children.Add(opened);
-        Point at = editor.TranslatePoint(click.Position, layer) ?? click.Position;
-        opened.Measure(Size.Infinity);
-        Canvas.SetLeft(opened, Math.Clamp(at.X + 12, 0, Math.Max(0, layer.Bounds.Width - opened.DesiredSize.Width - 8)));
-        Canvas.SetTop(opened, Math.Clamp(at.Y + 12, 0, Math.Max(0, layer.Bounds.Height - opened.DesiredSize.Height - 8)));
+        Editors.AssistLayer.Children.Add(opened);
+        assist.PlaceAtLine(opened, new Point(click.Position.X, editor.PointOf(editor.Document.Snapshot.GetLineStart(click.Line)).Y));
         opened.Chosen += (_, colour) =>
         {
             // Read before the picker goes, which lets go of the swatch's text.

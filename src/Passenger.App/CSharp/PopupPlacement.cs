@@ -83,13 +83,13 @@ internal sealed class PopupPlacement
     public void Place(Control popup, int offset, bool above) => Place(popup, Editor.PointOf(offset), above);
 
     /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked
-    /// or when there is no room below, kept inside the editor. A card is held to the editor's width, its words wrapping
-    /// (<see cref="Widest"/>), and one that fits neither under nor over its line goes where there is more room, moved in
-    /// as far as it must to show whole, though it then hides some of the line.</summary>
+    /// or when there is no room below, kept inside the editor. A card or the colour picker (<see cref="IHeldToEditor"/>) is
+    /// held to the editor's width (<see cref="Widest"/>), and one that fits neither under nor over its line goes where there
+    /// is more room, moved in as far as it must to show whole, though it then hides some of the line.</summary>
     public void Place(Control popup, Point at, bool above)
     {
         at = InLayer(at);
-        (popup as InfoCard)?.Within(Widest);
+        (popup as IHeldToEditor)?.Within(Widest);
         // A list shown again measures as its last rows did until a layout pass measures the rows it shows now.
         if (popup.IsAttachedToVisualTree())
         {
@@ -106,7 +106,7 @@ internal sealed class PopupPlacement
         double below = at.Y + lineHeight + 2;
         double over = at.Y - size.Height - 2;
         double y = above ? (over >= 0 ? over : below) : (below + size.Height <= room.Height || over < 0 ? below : over);
-        if (popup is InfoCard && over < 0 && below + size.Height > room.Height)
+        if (popup is IHeldToEditor && over < 0 && below + size.Height > room.Height)
         {
             y = Math.Clamp(room.Height - below >= at.Y ? below : over, 0, Math.Max(0, room.Height - size.Height));
         }
@@ -313,4 +313,12 @@ internal sealed class PopupPlacement
     private static bool KeysElsewhere(Control open) =>
         TopLevel.GetTopLevel(open) is { } window && window.FocusManager?.GetFocusedElement() is Visual focused
         && focused != window && focused != open && !open.IsVisualAncestorOf(focused);
+}
+
+/// <summary>A popup placed at a line that is held to the editor (<see cref="PopupPlacement.Place(Control, Point, bool)"/>):
+/// narrowed to its width, and moved in to show whole where it fits neither under nor over its line.</summary>
+internal interface IHeldToEditor
+{
+    /// <summary>Held to a room narrower than it would be; as wide as it is of itself in a wider one.</summary>
+    void Within(double room);
 }

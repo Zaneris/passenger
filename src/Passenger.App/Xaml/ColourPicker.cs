@@ -14,8 +14,8 @@ namespace Passenger.App.Xaml;
 /// it, an alpha bar, the colour before and after, and its hex to read or type. Choose (or Enter) gives the colour,
 /// Cancel or Escape leaves it; over a colour that cannot be written, Choose is greyed, saying why, and Enter gives nothing.
 /// Each colour it moves to is told as it moves (<see cref="Changing"/>). Its gradients are the colours being chosen; its
-/// chrome is the theme's.</summary>
-public sealed class ColourPicker : Border
+/// chrome is the theme's. Over a narrow editor it is held to the editor's width (<see cref="Within"/>).</summary>
+public sealed class ColourPicker : Border, CSharp.IHeldToEditor
 {
     private readonly ShadeSquare square;
     private readonly HueBar hue;
@@ -47,13 +47,11 @@ public sealed class ColourPicker : Border
         after = new Border { Width = 28, Height = 28 };
         before.Bind(Border.CornerRadiusProperty, before.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(c.TopLeft, 0, 0, c.BottomLeft) : default(CornerRadius)));
         after.Bind(Border.CornerRadiusProperty, after.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(0, c.TopRight, c.BottomRight, 0) : default(CornerRadius)));
-        // The field takes what the swatches and buttons leave.
         hex = new TextBox { Classes = { StyleClasses.Search } }.InCodeFont();
         Button choose = new() { Content = "Choose", Classes = { StyleClasses.Primary }, IsDefault = chooses, IsEnabled = chooses };
         ToolTip.SetTip(choose, unchangeable);
         choose.Click += (_, _) => Chosen?.Invoke(this, Colour);
         StackPanel answers = DialogFooter.Popup(choose, () => Chosen?.Invoke(this, null));
-        DockPanel.SetDock(answers, Dock.Right);
         hex.TextChanged += (_, _) => FromHex();
         Child = new StackPanel
         {
@@ -63,15 +61,7 @@ public sealed class ColourPicker : Border
                 square,
                 hue,
                 this.alpha,
-                new DockPanel
-                {
-                    Children =
-                    {
-                        new StackPanel { [DockPanel.DockProperty] = Dock.Left, Orientation = Orientation.Horizontal, Children = { before, after } },
-                        answers,
-                        new Panel { Margin = new Thickness(8, 0), Children = { hex } },
-                    },
-                },
+                new Footing(new StackPanel { Orientation = Orientation.Horizontal, Children = { before, after } }, hex, answers),
             },
         };
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
@@ -86,6 +76,10 @@ public sealed class ColourPicker : Border
 
     /// <summary>The colour chosen, or null when the picker was left.</summary>
     public event EventHandler<Argb?>? Chosen;
+
+    /// <summary>Held to a room narrower than its own width, its square and bars narrowing with it and its answers going under
+    /// its hex where the row leaves the hex too little (<see cref="Footing"/>); its own width in a wider one.</summary>
+    public void Within(double room) => Width = Math.Min(PopupFrame.Narrow, Math.Max(0, room));
 
     /// <summary>The square of saturation and brightness, which the pointer drags across.</summary>
     public Control Shades => square;
@@ -199,6 +193,58 @@ public sealed class ColourPicker : Border
             _ => (c, 0.0, x),
         };
         return ((byte)Math.Round((r + m) * 255), (byte)Math.Round((g + m) * 255), (byte)Math.Round((b + m) * 255));
+    }
+
+    /// <summary>The swatches before and after, the hex and the answers in a row, the hex taking what the others leave; where
+    /// that is less than <see cref="LeastHex"/>, the answers go to a row of their own under it, at the right.</summary>
+    private sealed class Footing : Panel
+    {
+        /// <summary>The least the hex is wide beside the answers: a colour's with its alpha, #RRGGBBAA, in the code's font.</summary>
+        private const double LeastHex = 90;
+
+        private const double Gap = 8;
+
+        private readonly Control swatches;
+        private readonly Control field;
+        private readonly Control answers;
+
+        /// <summary>Whether the answers stand in a row of their own, as last measured.</summary>
+        private bool apart;
+
+        public Footing(Control swatches, Control field, Control answers)
+        {
+            this.swatches = swatches;
+            this.field = field;
+            this.answers = answers;
+            Children.AddRange([swatches, field, answers]);
+        }
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            swatches.Measure(Size.Infinity);
+            answers.Measure(Size.Infinity);
+            double beside = availableSize.Width - swatches.DesiredSize.Width - answers.DesiredSize.Width - (2 * Gap);
+            apart = beside < LeastHex;
+            field.Measure(new Size(Math.Max(0, apart ? availableSize.Width - swatches.DesiredSize.Width - Gap : beside), availableSize.Height));
+            double width = double.IsFinite(availableSize.Width) ? availableSize.Width
+                : swatches.DesiredSize.Width + field.DesiredSize.Width + answers.DesiredSize.Width + (2 * Gap);
+            return new Size(width, apart ? Row() + Gap + answers.DesiredSize.Height : Row());
+        }
+
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            double row = Row();
+            Size answered = answers.DesiredSize;
+            swatches.Arrange(new Rect(0, (row - swatches.DesiredSize.Height) / 2, swatches.DesiredSize.Width, swatches.DesiredSize.Height));
+            double left = swatches.DesiredSize.Width + Gap;
+            double right = apart ? finalSize.Width : finalSize.Width - answered.Width - Gap;
+            field.Arrange(new Rect(left, (row - field.DesiredSize.Height) / 2, Math.Max(0, right - left), field.DesiredSize.Height));
+            answers.Arrange(new Rect(finalSize.Width - answered.Width, apart ? row + Gap : (row - answered.Height) / 2, answered.Width, answered.Height));
+            return finalSize;
+        }
+
+        /// <summary>The height of the swatches' row, the answers' too where they stand in it.</summary>
+        private double Row() => Math.Max(Math.Max(swatches.DesiredSize.Height, field.DesiredSize.Height), apart ? 0 : answers.DesiredSize.Height);
     }
 
     /// <summary>A control the pointer drags across, which takes the place it is pressed or dragged to as a fraction of

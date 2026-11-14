@@ -298,6 +298,10 @@ public sealed class CodeAssist
         set => quickInfo.DebuggerValue = value;
     }
 
+    /// <summary>A popup of the window's own on the popups' layer (the colour picker) placed at the line of the active editor
+    /// whose top is <paramref name="at"/>, as a card is (<see cref="PopupPlacement.Place(Control, Point, bool)"/>).</summary>
+    public void PlaceAtLine(Control popup, Point at) => popups.Place(popup, at, above: false);
+
     /// <summary>A value read for the card at an offset of the file shown, its row taking the keys (Quick Evaluate Expression).</summary>
     public void ShowValue(int offset, DebuggerHover value) => quickInfo.ShowValue(offset, value);
 

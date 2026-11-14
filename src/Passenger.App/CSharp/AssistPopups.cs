@@ -13,7 +13,7 @@ namespace Passenger.App.CSharp;
 /// <summary>A card over the editor: hover information, a diagnostic's message, a signature. Code is
 /// set in the editor's font, prose in the interface's, a problem in its severity's colour. A paused program's value with
 /// members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for.</summary>
-internal sealed class InfoCard : Border, IHoverCard
+internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor
 {
     /// <summary>The most a card of words is wide; one of a value's rows takes a width of the popups' (<see cref="PopupFrame"/>).</summary>
     private const double WordsWidth = 640;
