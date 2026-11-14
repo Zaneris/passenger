@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Passenger.App.State;
 using Passenger.App.Updates;
 using Passenger.Core;
+using static Passenger.App.MainWindow;
 
 namespace Passenger.App.Welcome;
 
@@ -125,7 +126,7 @@ internal static class SystemRecents
         NativeMenu menu = new();
         foreach ((string path, string title) in listed)
         {
-            NativeMenuItem item = new(title);
+            NativeMenuItem item = new(NativeWords(title));
             item.Click += (_, _) => PassengerApp.OpenFromSystem([path]);
             menu.Add(item);
         }
