@@ -420,6 +420,10 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException($"{chosen.Name} is paused in the debugger, and its UI answers nothing until it runs: debug_continue");
         }
         await When(() => chosen.State != LiveAppState.Waiting, AppUiLimit, cancel, On(h => chosen.StateChanged += h, h => chosen.StateChanged -= h));
+        if (chosen is { State: LiveAppState.Connected, Device: not null })
+        {
+            await ViewShownAsync(chosen, cancel);
+        }
         return chosen.State switch
         {
             LiveAppState.Connected => chosen,
@@ -427,6 +431,38 @@ public sealed partial class PassengerTools
             LiveAppState.Refused => throw new InvalidOperationException(chosen.Problem ?? $"{chosen.Name} cannot be inspected"),
             _ => throw new InvalidOperationException($"{chosen.Name} has ended"),
         };
+    }
+
+    /// <summary>An app on a device says hello as its Application starts, before its activity makes the view it shows: waited
+    /// for, within the limit, until it has a top level, its tree asked again each time it says its controls changed.</summary>
+    private async Task ViewShownAsync(LiveApp live, CancellationToken cancel)
+    {
+        if ((await live.WindowsAsync()).Count > 0)
+        {
+            return;
+        }
+        int changes = 0;
+        void Changed(object? sender, EventArgs e) => changes++;
+        live.TreeChanged += Changed;
+        try
+        {
+            DateTime until = DateTime.UtcNow + AppUiLimit;
+            // Asking for the tree is what has the app say when its controls next change.
+            while (live.State == LiveAppState.Connected && (await live.TreeAsync()).Roots.Count == 0)
+            {
+                int seen = changes;
+                await When(() => changes != seen || live.State != LiveAppState.Connected, until - DateTime.UtcNow, cancel,
+                    On(h => live.TreeChanged += h, h => live.TreeChanged -= h), On(h => live.StateChanged += h, h => live.StateChanged -= h));
+                if (changes == seen && live.State == LiveAppState.Connected)
+                {
+                    throw new TimeoutException($"{live.Name} has not shown its UI in {AppUiLimit.TotalSeconds:0} s");
+                }
+            }
+        }
+        finally
+        {
+            live.TreeChanged -= Changed;
+        }
     }
 
     /// <summary>Whether the folder runs a program of that kind now (<see cref="ProjectSession.Running"/>).</summary>

@@ -12,9 +12,10 @@ namespace Passenger.Tests;
 /// (<c>--mcp</c>): ide_action app.chooseRunTarget chooses the emulator, and run, or debug_start once the session runs
 /// there, answers once the app has started, naming the emulator and the app's process, rather than waiting out its
 /// whole wait; stop ends it. An agent that goes the moment stop answers a debugged app's leaves nothing of Passenger's on
-/// the emulator: the Passenger waits for the app's end there before it goes. Skips, saying why, without the Android
-/// workload, its SDK and Java, or an emulator (and the relays, for the debugged app). Alone, as AndroidDeviceTests is, the
-/// emulator being one for both.</summary>
+/// the emulator: the Passenger waits for the app's end there before it goes. An Avalonia app's Android head run there
+/// shows its view root as its one window to app_windows asked the moment run answers. Skips, saying why, without the
+/// Android workload, its SDK and Java, or an emulator (and the relays, for the debugged app; Avalonia's Android packages,
+/// for its app). Alone, as AndroidDeviceTests is, the emulator being one for both.</summary>
 [Collection(Alone.Name)]
 public sealed class McpAndroidDeviceTests : McpRig
 {
@@ -78,7 +79,16 @@ public sealed class McpAndroidDeviceTests : McpRig
             Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
             File.Copy(file, copy);
         }
-        string project = Path.Combine(folder, "AndroidApp.csproj");
+        (DeviceTarget target, AndroidTools tools) = await TargetAsync(Path.Combine(folder, "AndroidApp.csproj"));
+        McpClient client = await Start(["--mcp", folder], languageServer: false);
+        await ChooseAsync(client, "AndroidApp", target);
+        return (client, target, tools);
+    }
+
+    /// <summary>The device or emulator a project of the folder runs on, as the Android workload lists them, and its tools;
+    /// skipped, saying why, where there is nothing to run it on.</summary>
+    private static async Task<(DeviceTarget Target, AndroidTools Tools)> TargetAsync(string project)
+    {
         (IReadOnlyList<DeviceTarget> targets, AndroidTools? tools, string? problem) =
             await AndroidDevices.ListAsync(project, "net11.0-android", new Dictionary<string, string>(), Cancel);
         if (tools is null)
@@ -89,25 +99,59 @@ public sealed class McpAndroidDeviceTests : McpRig
         {
             Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
         }
-        if ((targets.FirstOrDefault(t => t.Running) ?? targets.FirstOrDefault(t => t.Kind == TargetKind.Emulator)) is not { } target)
+        DeviceTarget? target = targets.FirstOrDefault(t => t.Running) ?? targets.FirstOrDefault(t => t.Kind == TargetKind.Emulator);
+        if (target is null)
         {
             Assert.Skip("No Android device is connected and no emulator is made (an AVD of an installed system image), so there is nothing to run on");
-            return (null, null, null);
         }
-        McpClient client = await Start(["--mcp", folder], languageServer: false);
-        await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Any(c => c.GetString() == "AndroidApp"),
+        return (target, tools);
+    }
+
+    /// <summary>The agent's Passenger, once it lists the configuration, has it run on the target, through ide_action app.chooseRunTarget.</summary>
+    private async Task ChooseAsync(McpClient client, string configuration, DeviceTarget target)
+    {
+        await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Any(c => c.GetString() == configuration),
             TimeSpan.FromMinutes(3), Cancel, TimeSpan.FromMilliseconds(500));
         string chose = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ChooseRunTarget, ["input"] = target.Name }));
-        Assert.Equal($"AndroidApp runs on {target.Name}", chose);
-        return (client, target, tools);
+        Assert.Equal($"{configuration} runs on {target.Name}", chose);
     }
 
     /// <summary>Waits for the app to have ended on the emulator: its serial once it ran, else the first an emulator started takes.</summary>
-    private async Task EndedAsync(DeviceTarget target, AndroidTools tools)
+    private static async Task EndedAsync(DeviceTarget target, AndroidTools tools, string package = Package)
     {
         string serial = target.Running ? target.Id : "emulator-5554";
-        await Waiting.UntilAsync(async () => (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", Package]))).Output.Trim().Length == 0,
+        await Waiting.UntilAsync(async () => (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", package]))).Output.Trim().Length == 0,
             TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(500));
+    }
+
+    [Fact]
+    public async Task An_agents_app_windows_on_an_avalonia_app_it_ran_on_an_emulator_names_the_apps_view_root_as_its_window()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-avalonia-android-"));
+        DeleteAtEnd(folder);
+        (string project, string? unrestored) = await AvaloniaApp.CreateAndroidHeadAsync(folder, "XApp");
+        if (unrestored is not null)
+        {
+            Assert.Skip(unrestored);
+        }
+        (DeviceTarget target, AndroidTools tools) = await TargetAsync(project);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        await ChooseAsync(client, "XApp.Android", target);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = "XApp.Android", ["waitSeconds"] = 3600 });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"run said the app ended on the emulator: {ran}");
+
+        // Asked the moment run answers, as the app has started on the device and before its activity has made its view.
+        JsonElement windows = await Call(client, McpTools.AppWindows);
+        List<JsonElement> listed = [.. windows.GetProperty("windows").EnumerateArray()];
+        Assert.True(listed is [{ } only] && only.GetProperty("type").GetString() == "EmbeddableControlRoot" && only.GetProperty("visible").GetBoolean(),
+            $"app_windows did not name the app's view root as its one window, so an agent finds nothing to look at or click: {windows}");
+        string id = listed[0].GetProperty("id").GetString()!;
+        string tree = Text(await Call(client, McpTools.AppTree, new() { ["window"] = id, ["depth"] = 2 }));
+        Assert.True(tree.StartsWith($"EmbeddableControlRoot {id} ", StringComparison.Ordinal) && tree.Contains("MainView", StringComparison.Ordinal),
+            $"The window app_windows named is not the one app_tree shows the app's view in: {tree}");
+
+        await Call(client, McpTools.Stop);
+        await EndedAsync(target, tools, "com.CompanyName.XApp");
     }
 
     [Fact]
@@ -123,21 +167,7 @@ public sealed class McpAndroidDeviceTests : McpRig
             Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
             File.Copy(file, copy);
         }
-        (IReadOnlyList<DeviceTarget> targets, AndroidTools? tools, string? problem) =
-            await AndroidDevices.ListAsync(Path.Combine(folder, "AndroidApp.csproj"), "net11.0-android", new Dictionary<string, string>(), Cancel);
-        if (tools is null)
-        {
-            Assert.Skip($"There is nothing to run on: {problem}");
-        }
-        if (tools.Lacks is { } lacks)
-        {
-            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
-        }
-        if ((targets.FirstOrDefault(t => t.Running) ?? targets.FirstOrDefault(t => t.Kind == TargetKind.Emulator)) is not { } target)
-        {
-            Assert.Skip("No Android device is connected and no emulator is made (an AVD of an installed system image), so there is nothing to run on");
-            return;
-        }
+        (DeviceTarget target, AndroidTools tools) = await TargetAsync(Path.Combine(folder, "AndroidApp.csproj"));
         if (!((string[])["android-arm64", "android-x64"]).Any(runtime => File.Exists(Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, AndroidApp.RelayFile))))
         {
             Assert.Skip("This build carries no Android debug relay, which `just debug-relay android` makes before a build carries it");
