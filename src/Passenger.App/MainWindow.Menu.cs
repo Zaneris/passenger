@@ -59,6 +59,10 @@ public partial class MainWindow
     /// <summary>Whether Alt went down alone and nothing else has come since: its release takes the bar.</summary>
     private bool altAlone;
 
+    /// <summary>Whether Alt is held: Windows repeats a held Alt's press, which keeps what a press or another key since its
+    /// first made of it, so Alt released after an Alt-drag never takes the bar.</summary>
+    private bool altHeld;
+
     /// <summary>The bar's titles and button a key moves among, as shown, in order.</summary>
     private List<Button> BarStops() =>
         [.. MainMenuPlace.Children.OfType<Button>().Where(b => b.Tag is string && b.IsHitTestVisible), .. MenuButton.IsHitTestVisible ? [MenuButton] : Array.Empty<Button>()];
@@ -69,6 +73,10 @@ public partial class MainWindow
     /// back when the bar has them. F10 stays Step Over, as the Visual Studio keymap has it.</summary>
     private void OnBarKeyUp(object? sender, KeyEventArgs e)
     {
+        if (e.Key is Key.LeftAlt or Key.RightAlt)
+        {
+            altHeld = false;
+        }
         if (e.Key is not (Key.LeftAlt or Key.RightAlt) || !altAlone || !MainMenuPlace.ShowsBar)
         {
             return;
@@ -89,7 +97,9 @@ public partial class MainWindow
     /// or Space open the title's menu; Escape gives the keys back to what had them.</summary>
     private void OnBarKeyDown(object? sender, KeyEventArgs e)
     {
-        altAlone = e.Key is Key.LeftAlt or Key.RightAlt && (e.KeyModifiers & ~KeyModifiers.Alt) == KeyModifiers.None;
+        bool alt = e.Key is Key.LeftAlt or Key.RightAlt;
+        altAlone = alt && (e.KeyModifiers & ~KeyModifiers.Alt) == KeyModifiers.None && (!altHeld || altAlone);
+        altHeld = alt || altHeld && (e.KeyModifiers & KeyModifiers.Alt) != 0;
         if (!MainMenuPlace.ShowsBar || e.Handled && barMenu is not { IsOpen: true })
         {
             return;

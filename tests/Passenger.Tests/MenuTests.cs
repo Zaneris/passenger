@@ -347,6 +347,42 @@ public sealed class MenuTests : IDisposable
         }
     }
 
+    /// <summary>Alt held through a drag in the editor, a column's selection, gives the bar nothing as it is let go, though
+    /// Windows repeats the held Alt's press during the drag: the keys stay with the editor and its column (#1635).</summary>
+    [AvaloniaFact]
+    public void Alt_let_go_after_an_alt_drag_leaves_the_keys_and_the_column_with_the_editor()
+    {
+        MainWindow.SystemMenuBar = false;
+        File.WriteAllText(Path.Combine(folder, "Columns.txt"), "first line\nsecond line\nthird line\n");
+        MainWindow window = Ui.OpenFolder(folder, width: 1800);
+        try
+        {
+            window.OpenFile("Columns.txt");
+            window.ApplySettings(window.Settings with { MainMenuBar = true });
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            Ui.Settle();
+            Point from = editor.TranslatePoint(editor.PointOf(0) + new Point(1, editor.LineHeight / 2), window)!.Value;
+            Point to = editor.TranslatePoint(editor.PointOf("first line\nsecond line\n".Length + 5) + new Point(1, editor.LineHeight / 2), window)!.Value;
+
+            window.KeyPress(Key.LeftAlt, RawInputModifiers.Alt, PhysicalKey.AltLeft, null);
+            Ui.Drag(window, from, to, MouseButton.Left, RawInputModifiers.Alt);
+            window.KeyPress(Key.LeftAlt, RawInputModifiers.Alt, PhysicalKey.AltLeft, null);
+            window.KeyRelease(Key.LeftAlt, RawInputModifiers.None, PhysicalKey.AltLeft, null);
+            Ui.Settle();
+
+            Assert.True(Focused(window) == editor, $"Alt let go after an Alt-drag gave the keys to {Focused(window)?.GetType().Name}, so the column's selection can't be typed into");
+            Assert.True(editor.Selections.Count == 3, $"Alt let go after an Alt-drag over three lines left {editor.Selections.Count} selections, not the column's three");
+            TapAlt(window);
+            Assert.True(Focused(window) is Button, "Alt tapped alone after the drag no longer takes the bar");
+        }
+        finally
+        {
+            MainWindow.SystemMenuBar = OperatingSystem.IsMacOS();
+            window.Close();
+        }
+    }
+
     private static void TapAlt(MainWindow window)
     {
         window.KeyPress(Key.LeftAlt, RawInputModifiers.Alt, PhysicalKey.AltLeft, null);
