@@ -291,6 +291,10 @@ public sealed class DebugController : IDisposable
     /// <summary>The C# language server whose Edit and Continue computes Hot Reload's updates, when it runs.</summary>
     public Func<Lsp.RoslynSession?> Server { get; init; } = () => null;
 
+    /// <summary>The workspace the language server reads the code as, the folder's with its build configuration, against
+    /// which Hot Reload checks each program's build (<see cref="HotReload.Builds"/>).</summary>
+    public Func<Passenger.Workspace.WorkspaceModel?> Reads { get; init; } = () => null;
+
     /// <summary>Whether a launch is debugged with Hot Reload (Settings' Hot Reload while debugging): its code may change
     /// as it runs, and edits made while it is paused are applied as it goes on.</summary>
     public Func<bool> HotReloadOn { get; init; } = () => false;
@@ -312,7 +316,7 @@ public sealed class DebugController : IDisposable
     {
         UiThread.Check();
         BuiltLines lines = new(path => CSharp.ServerPlaces.TextOf(editors, path));
-        return Followed(lines, hotReload ? new HotReload(lines, Server, editors) : null);
+        return Followed(lines, hotReload ? new HotReload(lines, Server, editors, Reads) : null);
     }
 
     /// <summary>Begins following the edits for a program restarted on the build a live session's program (by its name) was
@@ -329,7 +333,7 @@ public sealed class DebugController : IDisposable
             return null;
         }
         BuiltLines carried = lines.FromBuild();
-        return Followed(carried, hotReload ? reload?.Carried(carried) ?? new HotReload(carried, Server, editors) : null);
+        return Followed(carried, hotReload ? reload?.Carried(carried) ?? new HotReload(carried, Server, editors, Reads) : null);
     }
 
     /// <summary>Begins following the edits made from now for every program a build reading the files now builds, started
@@ -339,7 +343,7 @@ public sealed class DebugController : IDisposable
     {
         UiThread.Check();
         BuiltLines lines = new(path => CSharp.ServerPlaces.TextOf(editors, path));
-        return Followed(lines, HotReload.Kept(lines, Server, editors));
+        return Followed(lines, HotReload.Kept(lines, Server, editors, Reads));
     }
 
     /// <summary>The edits <paramref name="kept"/> for a build's programs, for one of them: its built lines and Hot Reload's
@@ -735,12 +739,13 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>Attaches the debugger to a running .NET process beside any other program debugged. With <paramref name="hotReload"/>
-    /// it was started held with DOTNET_MODIFIABLE_ASSEMBLIES=debug, so Hot Reload is offered while Settings has it on, told
-    /// to <paramref name="handlers"/>; <paramref name="elsewhere"/> runs it on another machine, <paramref name="place"/> the
-    /// adapter where it is; <paramref name="startedElsewhere"/>, said in its console, names another program keeping it, which
-    /// Stop lets it go on in (<see cref="DebugTab.StopLetsGo"/>). Null once the session is open, else why it could not.</summary>
+    /// it was started held with DOTNET_MODIFIABLE_ASSEMBLIES=debug, so Hot Reload is offered while Settings has it on (its
+    /// build checked, <paramref name="builds"/>), told to <paramref name="handlers"/>; <paramref name="elsewhere"/> runs it on
+    /// another machine, <paramref name="place"/> the adapter where it is; <paramref name="startedElsewhere"/>, said in its console,
+    /// names another program keeping it, which Stop lets it go on in (<see cref="DebugTab.StopLetsGo"/>). Null once open, else why not.</summary>
     public Task<string?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
-        LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null, string? startedElsewhere = null)
+        LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null, string? startedElsewhere = null,
+        ProgramBuild? builds = null)
     {
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) =>
@@ -749,7 +754,7 @@ public sealed class DebugController : IDisposable
             return DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place);
         }, name,
             launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits, hook: hotReloadOn ? handlers : Unheld(handlers),
-            browser: hotReloadOn ? browser : Unheld(browser), attachedWords: startedElsewhere, stopLetsGo: startedElsewhere is not null);
+            browser: hotReloadOn ? browser : Unheld(browser), attachedWords: startedElsewhere, stopLetsGo: startedElsewhere is not null, builds: builds);
     }
 
     /// <summary>Debugs a program another starts, which Passenger starts from <paramref name="plan"/> (func, which starts a
@@ -1027,7 +1032,8 @@ public sealed class DebugController : IDisposable
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
         Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null,
         BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null, bool copy = false,
-        bool stopLetsGo = false, (Func<System.Diagnostics.ProcessStartInfo> Start, Action<System.Diagnostics.Process> Started)? starts = null)
+        bool stopLetsGo = false, (Func<System.Diagnostics.ProcessStartInfo> Start, Action<System.Diagnostics.Process> Started)? starts = null,
+        ProgramBuild? builds = null)
     {
         UiThread.Check();
         // A start that opens no session lets go of its update handlers' hook and its pages' refresh with it.
@@ -1091,11 +1097,12 @@ public sealed class DebugController : IDisposable
         // Followed since the build read the files where it began there, else from now: an edit made since is one Apply takes.
         BuiltEdits own = edits ?? Building(hotReloadOn);
         BuiltLines built = own.Lines;
-        HotReload? reload = hotReloadOn ? own.Reload ?? new HotReload(built, Server, editors) : null;
+        HotReload? reload = hotReloadOn ? own.Reload ?? new HotReload(built, Server, editors, Reads) : null;
         if (reload is null)
         {
             own.Reload?.End();
         }
+        reload?.Builds(builds ?? ProgramBuild.Of(plan));
         own.Take();
         tab.Lines = built;
         tab.HotReload = reload;
@@ -1318,11 +1325,11 @@ public sealed class DebugController : IDisposable
 
     /// <summary>Attaches quietly for Hot Reload alone to a program run, which Run with Hot Reload (a run's service, a Godot
     /// game) held at its start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
-    /// <paramref name="says"/>, where its output is, each told to <paramref name="handlers"/> it started with. Null once
-    /// attached, else why not.</summary>
+    /// <paramref name="says"/>, where its output is, each told to <paramref name="handlers"/> it started with; its build,
+    /// which Hot Reload checks, <paramref name="builds"/>. Null once attached, else why not.</summary>
     public async Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
         CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null,
-        LiveTree.LiveApp? app = null)
+        LiveTree.LiveApp? app = null, ProgramBuild? builds = null)
     {
         UiThread.Check();
         if (disposed)
@@ -1335,7 +1342,8 @@ public sealed class DebugController : IDisposable
         // Followed since the build read the files where it began there, else from now: an edit made meanwhile is one Apply takes.
         using BuiltEdits own = edits ?? Building(hotReload: true);
         BuiltLines built = own.Lines;
-        HotReload tracked = own.Reload ?? new HotReload(built, Server, editors);
+        HotReload tracked = own.Reload ?? new HotReload(built, Server, editors, Reads);
+        tracked.Builds(builds);
         DebugSession? attaching = null;
         try
         {

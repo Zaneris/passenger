@@ -255,7 +255,8 @@ public sealed partial class BuildRunController
             edits?.Dispose();
             return null;
         }
-        await AttachForHotReloadAsync(plan.Name, run.Debuggee, null, work, edits, $"Running {plan.Name} with Hot Reload: a save applies its changes");
+        await AttachForHotReloadAsync(plan.Name, run.Debuggee, null, work, edits, $"Running {plan.Name} with Hot Reload: a save applies its changes",
+            builds: ProgramBuild.Of(plan));
         return null;
 
         async Task ProjectEnded()

@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Debugging;
+using Passenger.App.Workspace;
 using Passenger.App.Run;
 using Passenger.Core;
 
@@ -9,7 +11,9 @@ namespace Passenger.Tests;
 /// <summary>A run configuration names a build configuration of its own in Edit Configurations, kept with it, and every start
 /// of it builds and runs as that one while the rest stay on the folder's: Profile of a copy set to Release profiles the Release
 /// build while Run of the project's own stays on Debug, and Run with Hot Reload of one set to x64 has dotnet watch build
-/// the x64 build. Profiles and runs under dotnet watch, held to the profiler's and dotnet watch's times, so run alone.</summary>
+/// the x64 build. Hot Reload while debugging one applies no edit while the editor's code is read as another build, saying
+/// why, and applies them once the folder builds as it does. Profiles, debugs and runs under dotnet watch, held to the
+/// profiler's and dotnet watch's times, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class RunConfigurationBuildTests : IDisposable
 {
@@ -104,6 +108,99 @@ public sealed class RunConfigurationBuildTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>Greets once every 100 ms, numbered, with a line of its own where built as Debug; an x64 build is told by a
+    /// warning the language server says only where it reads the code as x64.</summary>
+    private const string Greeter = """
+        static class Greeter
+        {
+        #if X64
+        #warning read as x64
+        #endif
+            public static void Greet(int i)
+            {
+        #if DEBUG
+                System.Console.WriteLine($"debug {i}");
+        #endif
+                System.Console.WriteLine($"greeting {i}");
+            }
+        }
+
+        """;
+
+    [AvaloniaFact]
+    public void Hot_reload_of_a_debugged_configuration_building_as_another_than_the_folder_applies_nothing_saying_why_until_the_folder_builds_as_it()
+    {
+        TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console("<Platforms>AnyCPU;x64</Platforms>", "<PlatformTarget>AnyCPU</PlatformTarget>",
+            "<DefineConstants Condition=\"'$(Platform)' == 'x64'\">$(DefineConstants);X64</DefineConstants>"));
+        TestFolders.Write(folder, "Hello/Program.cs", "for (int i = 1; ; i++)\n{\n    Greeter.Greet(i);\n    System.Threading.Thread.Sleep(100);\n}\n");
+        TestFolders.Write(folder, "Hello/Greeter.cs", Greeter);
+        Restore.Run(Path.Combine(folder, "Hello", "Hello.csproj"));
+        string greeter = Path.Combine(folder, "Hello", "Greeter.cs");
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            Ui.WaitFor(() => BuildConfigurationTests.Offered(window) == "Debug | AnyCPU, Debug | x64, Release | AnyCPU, Release | x64",
+                () => $"each configuration and platform the project declares offered, where the widget offers {BuildConfigurationTests.Offered(window)}");
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Hello"), () => $"Hello's configuration, where there are {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+            Assert.True(window.SelectConfiguration("Hello"));
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Ui.Click(dialog.CopyButton);
+            Choose(dialog, "Release | AnyCPU");
+            Ui.Click(dialog.CopyButton);
+            dialog.NameBox.Text = "Hello x64";
+            Ui.Settle();
+            Choose(dialog, "Debug | x64");
+            Ui.Click(dialog.OkButton);
+            Ui.Settle();
+
+            // Built as Release, an edit to code only Debug compiles is code the program does not run.
+            Assert.True(window.SelectConfiguration("Hello (1)"));
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => Debugged(window).Contains("greeting 2", StringComparison.Ordinal), () => $"the Release build to greet:\n{Debugged(window)}", TimeSpan.FromMinutes(2));
+            Assert.DoesNotContain("debug 1", Debugged(window), StringComparison.Ordinal);
+            window.OpenFile(greeter);
+            Typing.Replace(window, "$\"debug {i}\"", "$\"debugged {i}\"");
+            string release = Refusals.BuiltUnlike("Hello (1)", "Hello", "Release|AnyCPU", "Debug|AnyCPU");
+            Assert.Equal(release, window.Debugger.WhyNotApply());
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Assert.True(window.Status?.Contains(release, StringComparison.Ordinal) == true, $"Apply Hot Reload Changes did not say why the Release build takes no edit: {window.Status}");
+            Assert.Null(window.Debugger.LastApplied);
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+
+            // Built as x64, its edits wait for the editor's code to be read as x64, and are then applied.
+            Assert.True(window.SelectConfiguration("Hello x64"));
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => Debugged(window).Contains("greeting 2", StringComparison.Ordinal), () => $"the x64 build to greet:\n{Debugged(window)}", TimeSpan.FromMinutes(2));
+            // The edit made under Release is saved as the build begins: Debug's line is said either way.
+            Assert.True(DebugLines(Debugged(window)) > 0, $"the x64 build, a Debug one, did not say Debug's line:\n{Debugged(window)}");
+            window.OpenFile(greeter);
+            OpenDocument document = window.EditorArea.Active!;
+            Typing.Replace(window, "$\"greeting {i}\"", "$\"howdy {i}\"");
+            Assert.Equal(Refusals.BuiltUnlike("Hello x64", "Hello", "Debug|x64", "Debug|AnyCPU"), window.Debugger.WhyNotApply());
+            BuildConfigurationTests.Choose(window, "Debug | x64");
+            Ui.WaitFor(() => window.CSharpService?.For(document)?.Diagnostics.Any(d => d.Code?.ToString() == "CS1030") == true,
+                () => $"the language server to read the code as x64, warning as only x64 does{Ui.ServerLogTail()}", TimeSpan.FromMinutes(2));
+            Assert.Null(window.Debugger.WhyNotApply());
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Debugger.LastApplied is not null, "Hot Reload to say what it applied");
+            Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"the x64 build did not take the edit once the folder built as x64: {window.Debugger.LastApplied.Said}");
+            int from = Debugged(window).Length;
+            Ui.WaitFor(() => Debugged(window)[from..].Contains("howdy", StringComparison.Ordinal), () => $"the program to greet as the edited code does:\n{Debugged(window)}");
+            Ui.WaitFor(() => DebugLines(Debugged(window)[from..]) >= 2, () => $"the edited code to keep what only Debug compiles:\n{Debugged(window)}");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static string Debugged(MainWindow window) => window.Debugger.Output().ToString();
+
+    private static int DebugLines(string output) => output.Split('\n').Count(line => line.StartsWith("debug", StringComparison.Ordinal));
 
     private static IReadOnlyList<string> Items(RunConfigurationsDialog dialog) =>
         [.. dialog.BuildConfigurationBox.Items.OfType<ComboBoxItem>().Select(item => item.Content as string ?? string.Empty)];

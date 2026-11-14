@@ -38,6 +38,35 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         Build is { } chosen ? chosen.PropertiesOf(project, Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.Property(CarriedProperties.Platforms))
             : new Dictionary<string, string>();
 
+    /// <summary>The configuration and platform a project builds as for <see cref="Build"/>: those it is given, else the .NET
+    /// SDK's Debug and AnyCPU, which a build given none takes; a solution's Any CPU as the project's AnyCPU.</summary>
+    public BuildConfiguration BuiltAs(string project)
+    {
+        IReadOnlyDictionary<string, string> given = BuildPropertiesOf(project);
+        string platform = given.GetValueOrDefault(MSBuildNames.Platform) is { Length: > 0 } named
+            && !named.Equals("Any CPU", StringComparison.OrdinalIgnoreCase) ? named : BuildConfigurations.AnyCpu;
+        return new BuildConfiguration(given.GetValueOrDefault(MSBuildNames.Configuration) is { Length: > 0 } configuration ? configuration : "Debug", platform);
+    }
+
+    /// <summary>The first of a project and those it references (as <paramref name="other"/> has them) that it and another
+    /// workspace build as a different configuration or platform (<see cref="BuiltAs"/>), with what each builds it as; null
+    /// where they build them all alike.</summary>
+    public (string Project, BuildConfiguration Here, BuildConfiguration There)? BuiltUnlike(WorkspaceModel other, string project)
+    {
+        IEnumerable<string> paths = other.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is { } model
+            ? model.WithReferenced(other.Projects).Select(p => p.Path) : [project];
+        foreach (string path in paths)
+        {
+            BuildConfiguration here = BuiltAs(path);
+            BuildConfiguration there = other.BuiltAs(path);
+            if (!here.Is(there))
+            {
+                return (path, here, there);
+            }
+        }
+        return null;
+    }
+
     /// <summary>What a dotnet build of a target (the solution, a project, a program) is given for <see cref="Build"/>; none
     /// for the configuration MSBuild takes, or the folder itself. dotnet watch's (<paramref name="watched"/>) in its own words.</summary>
     public IReadOnlyList<string> BuildArgumentsFor(string target, bool watched = false) =>

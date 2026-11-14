@@ -88,6 +88,32 @@ public class BuildConfigurationsTests
         Assert.Equal("Release", chosen.BuildPropertiesOf(Game)["Configuration"]);
     }
 
+    /// <summary>What Hot Reload checks a program's build by: the configuration and platform each workspace builds a project
+    /// and those it references as, the SDK's Debug and AnyCPU where given none, a solution's Any CPU being the project's
+    /// AnyCPU, and the first of them two workspaces build unlike.</summary>
+    [Fact]
+    public void Two_workspaces_build_a_program_unlike_where_its_project_or_a_reference_takes_another_configuration_or_platform()
+    {
+        WorkspaceModel plain = new("/work", null, [Project(Game, "AnyCPU;x64") with { ProjectReferences = [Library] }, Project(Library, null)]);
+        Assert.Equal("Debug|AnyCPU", plain.BuiltAs(Game).Key);
+        Assert.Null(plain.BuiltUnlike(plain with { }, Game));
+
+        WorkspaceModel x64 = plain with { Build = new BuildChoice(new BuildConfiguration("Debug", "x64"), OfSolution: false) };
+        Assert.Equal((Game, "Debug|x64", "Debug|AnyCPU"), x64.BuiltUnlike(plain, Game) is { } game ? (game.Project, game.Here.Key, game.There.Key) : default);
+        Assert.Null(x64.BuiltUnlike(plain, Library));
+
+        WorkspaceModel release = plain with { Build = new BuildChoice(new BuildConfiguration("Release", "AnyCPU"), OfSolution: false) };
+        Assert.Equal((Game, "Release|AnyCPU", "Debug|AnyCPU"), release.BuiltUnlike(plain, Game) is { } built ? (built.Project, built.Here.Key, built.There.Key) : default);
+
+        BuildChoice staging = new(new BuildConfiguration("Staging", "Any CPU"), OfSolution: true)
+        {
+            Mapped = [new SolutionBuilt(Game, "Debug", "Any CPU"), new SolutionBuilt(Library, "Release", "AnyCPU")],
+        };
+        WorkspaceModel mapped = plain with { Build = staging };
+        Assert.Equal("Debug|AnyCPU", mapped.BuiltAs(Game).Key);
+        Assert.Equal(Library, mapped.BuiltUnlike(plain, Game)?.Project);
+    }
+
     /// <summary>dotnet watch runs a project as its build does, its configuration and platform given in its own words: it takes
     /// <c>-p</c> for its project, so the platform goes as <c>--property</c>; none for the default.</summary>
     [Fact]

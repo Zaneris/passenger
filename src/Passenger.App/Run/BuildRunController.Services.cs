@@ -137,11 +137,13 @@ public sealed partial class BuildRunController
             run.Debugged.Add(name);
             // Followed since its build saved the files, or a copy of those its run keeps: its session takes them, else they end here.
             using BuiltEdits? edits = builtEdits.Remove(service.Name, out BuiltEdits? built) ? built : run.KeptFor(service) is { } kept ? session.Debug.Copied(kept) : null;
+            // Built as its run builds, the folder's choice when it started where the run names none of its own.
+            ProgramBuild? builds = (run.Workspace ?? session.Workspace) is { } runs ? new ProgramBuild(name, service.Project, runs) : null;
             refused = purpose == RunStart.HotReload
                 ? await session.Debug.AttachForHotReloadAsync(program.Id, name, (line, error) => run.Say(service, line, error), program.Place, stop, edits, program.Handlers,
-                    program.Browser, program.App)
+                    program.Browser, program.App, builds)
                 : await session.Debug.AttachAsync(program.Id, name, hotReload: program.HotReload, place: program.Place, group: run.Group, app: program.App, edits: edits,
-                    handlers: program.Handlers, browser: program.Browser);
+                    handlers: program.Handlers, browser: program.Browser, builds: builds);
             if (refused is null)
             {
                 DebugTab? tab = purpose == RunStart.HotReload ? null : session.Debug.Tabs.LastOrDefault(t => t.Name == name && t.IsLive);

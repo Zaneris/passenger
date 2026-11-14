@@ -1272,7 +1272,7 @@ public sealed partial class BuildRunController
                         {
                             return Said(unfollowed.Message);
                         }
-                        await AttachForHotReloadAsync(chosen.Name, inTerminal.Debuggee, null, work, Take(ref edits), running, Take(ref handlers), inspected);
+                        await AttachForHotReloadAsync(chosen.Name, inTerminal.Debuggee, null, work, Take(ref edits), running, Take(ref handlers), inspected, ProgramBuild.Of(plan));
                     }
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
@@ -1318,7 +1318,7 @@ public sealed partial class BuildRunController
             }
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {
-                await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running, Take(ref handlers), inspected);
+                await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running, Take(ref handlers), inspected, ProgramBuild.Of(plan));
             }
             return notStarted;
         }
@@ -1412,7 +1412,8 @@ public sealed partial class BuildRunController
             edits?.Dispose();
             return unfollowed.Message;
         }
-        await AttachForHotReloadAsync(each.Name, run.Debuggee, null, work, edits, $"Running {each.Name} with Hot Reload: a save applies its changes");
+        await AttachForHotReloadAsync(each.Name, run.Debuggee, null, work, edits, $"Running {each.Name} with Hot Reload: a save applies its changes",
+            builds: ProgramBuild.Of(each));
         return null;
 
         async Task CopyEnded()
@@ -1600,14 +1601,14 @@ public sealed partial class BuildRunController
     /// the program's own) and the status bar, which says <paramref name="running"/> once attached. One the debugger cannot
     /// reach is let go and runs without Hot Reload, saying why.</summary>
     private async Task AttachForHotReloadAsync(string name, int processId, ConsoleSink? console, Working work, BuiltEdits? edits, string running,
-        UpdateHandlerHook? handlers = null, LiveApp? app = null)
+        UpdateHandlerHook? handlers = null, LiveApp? app = null, ProgramBuild? builds = null)
     {
         work.Say($"Attaching to {name} for Hot Reload…");
         string? refused = await session.Debug.AttachForHotReloadAsync(processId, name, (line, error) =>
         {
             console?.Write($"{line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);
             parts.Say(line);
-        }, cancellation: work.Stopping, edits: edits, handlers: handlers, app: app);
+        }, cancellation: work.Stopping, edits: edits, handlers: handlers, app: app, builds: builds);
         if (refused is null)
         {
             parts.Say(running);

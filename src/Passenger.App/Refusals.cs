@@ -336,6 +336,12 @@ public static class Refusals
     /// <summary>Hot Reload asked of a program the debugger no longer runs, or never ran.</summary>
     public const string ProgramNotRunning = "The program is not running";
 
+    /// <summary>Hot Reload asked of a program whose build (its project, or one it references) is of another configuration or
+    /// platform than the one the language server reads the code as, the folder's: its edits would be made for other code.</summary>
+    public static string BuiltUnlike(string program, string project, string runs, string read) =>
+        $"{program} runs {project} built as {runs}, while the editor's code is read as the folder builds it, as {read}: Hot Reload would make its changes "
+        + $"for code {program} does not run, so it applies none. Choose {runs} for the folder, or start {program} as the folder builds, to apply them";
+
     /// <summary>The container engine's CLI answers, but its engine does not, and it gave no words of its own.</summary>
     public const string EngineNotRunning = "The container engine is not running";
 

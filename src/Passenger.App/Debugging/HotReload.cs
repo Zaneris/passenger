@@ -7,6 +7,7 @@ using Passenger.Dap;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Debugging;
 
@@ -33,20 +34,38 @@ internal interface IHotReloadTarget
     void Say(string line, bool error);
 }
 
+/// <summary>A program's build as Hot Reload checks it against the code the language server reads: the program (as its
+/// session is named), its project, and the workspace its launch was worked out in, whose build configuration it was built
+/// as (a run's own, or the folder's as it was then).</summary>
+public sealed record ProgramBuild(string Name, string Project, WorkspaceModel Workspace)
+{
+    /// <summary>A launch plan's, where it names its project and was worked out in a workspace; null otherwise.</summary>
+    public static ProgramBuild? Of(Run.LaunchPlan? plan) =>
+        plan is { Project: { } project, Workspace: { } workspace } ? new ProgramBuild(plan.Name, project, workspace) : null;
+}
+
 /// <summary>Hot Reload of one debugging session (Edit and Continue): Roslyn's own Edit and Continue service, in the language
 /// server through Passenger's extension, compares the solution as the editors have it with what was built (and applied
 /// since) and emits the deltas; Passenger's debugger applies them to the program, paused or running. The capabilities
-/// Roslyn's rules are given are the ones the program's runtime reports. A UI-thread object.</summary>
+/// Roslyn's rules are given are the ones the program's runtime reports. The server reads the code as the folder builds
+/// it, so a program built as another configuration or platform takes none (<see cref="Builds"/>). A UI-thread object.</summary>
 public sealed class HotReload
 {
     private DebugSession? debug;
     private readonly BuiltLines lines;
     private readonly Func<RoslynSession?> server;
     private readonly EditorArea editors;
+    private readonly Func<WorkspaceModel?> reads;
     private int? id;
     private Task<string?>? starting;
     private RoslynSession? startedOn;
     private bool ended;
+
+    /// <summary>The program's build, once its session is given it (<see cref="Builds"/>); null for one not checked.</summary>
+    private ProgramBuild? programBuild;
+
+    /// <summary>The workspace the language server read the code as when Roslyn's session began (the folder's then).</summary>
+    private WorkspaceModel? startedReading;
 
     /// <summary>Why Hot Reload stopped for the session: the runtime refused an update part way.</summary>
     private string? stopped;
@@ -64,13 +83,15 @@ public sealed class HotReload
     /// <summary>Hot Reload for a session whose built lines are <paramref name="lines"/>, made as its launch begins so an edit
     /// made while the program starts is one it takes; its program given once open (<see cref="Opened"/>). Roslyn's session
     /// begins at the first edit (most sessions have none, and its start reads every document), given each edited file's
-    /// text from before its edits, the build's.</summary>
-    public HotReload(BuiltLines lines, Func<RoslynSession?> server, EditorArea editors, DebugSession? debug = null)
+    /// text from before its edits, the build's. <paramref name="reads"/> is the workspace the language server reads the code
+    /// as, the folder's.</summary>
+    public HotReload(BuiltLines lines, Func<RoslynSession?> server, EditorArea editors, Func<WorkspaceModel?> reads, DebugSession? debug = null)
     {
         this.debug = debug;
         this.lines = lines;
         this.server = server;
         this.editors = editors;
+        this.reads = reads;
     }
 
     /// <summary>Whether it only keeps the edits for the programs of a build still to start (<see cref="Kept"/>), beginning no
@@ -79,16 +100,28 @@ public sealed class HotReload
 
     /// <summary>The edits made since a build kept for each program of it still to start, whose own Hot Reload is
     /// <see cref="Carried"/> from it: each file's text from before its first edit, the edits counted, nothing applied.</summary>
-    public static HotReload Kept(BuiltLines lines, Func<RoslynSession?> server, EditorArea editors) => new(lines, server, editors) { keeps = true };
+    public static HotReload Kept(BuiltLines lines, Func<RoslynSession?> server, EditorArea editors, Func<WorkspaceModel?> reads) =>
+        new(lines, server, editors, reads) { keeps = true };
 
     /// <summary>The program's session is open: Apply Changes takes the edits to it from now.</summary>
     public void Opened(DebugSession session) => debug = session;
+
+    /// <summary>The program's build, checked at each edit and apply against the code the language server reads: while it
+    /// builds the program or what it references as another configuration or platform, no edit is applied, saying why.</summary>
+    public void Builds(ProgramBuild? built) => programBuild = built;
+
+    /// <summary>Why the code the language server reads now is not the code the program runs (<see cref="Builds"/>), naming
+    /// the first project of the program's the two build unlike; null while they build it alike, or with nothing to check.</summary>
+    private string? Unlike() =>
+        programBuild is { } built && reads() is { } read && built.Workspace.BuiltUnlike(read, built.Project) is { } unlike
+            ? Refusals.BuiltUnlike(built.Name, Path.GetFileNameWithoutExtension(unlike.Project), unlike.Here.Key, unlike.There.Key)
+            : null;
 
     /// <summary>Hot Reload for this program restarted on the same build, without the edits it took in, whose built lines are
     /// <paramref name="restarted"/>: the files' texts from before their edits kept, every edit since the build one to apply.</summary>
     public HotReload Carried(BuiltLines restarted)
     {
-        HotReload carried = new(restarted, server, editors);
+        HotReload carried = new(restarted, server, editors, reads);
         foreach ((string path, string text) in originals)
         {
             carried.originals[path] = text;
@@ -120,7 +153,8 @@ public sealed class HotReload
         {
             originals[path] = before.ToString();
         }
-        if (!keeps)
+        // A session begun where the server reads other code than the program's would compare the wrong code.
+        if (!keeps && Unlike() is null)
         {
             starting ??= StartAsync();
         }
@@ -129,7 +163,7 @@ public sealed class HotReload
     /// <summary>Why Apply Changes cannot run now, or null when it can.</summary>
     public string? WhyNot => stopped is not null ? stopped
         : debug?.State is not (DebugState.Running or DebugState.Paused) ? Refusals.ProgramNotRunning
-        : null;
+        : Unlike();
 
     /// <summary>The files' texts from before their edits that Roslyn has not been given yet, marked given.</summary>
     private List<HotReloadOriginal> Ungiven()
@@ -145,6 +179,7 @@ public sealed class HotReload
         {
             return "Hot Reload needs the C# language server, which has not started";
         }
+        startedReading = reads();
         try
         {
             HotReloadStarted started = await roslyn.ExtensionAsync<HotReloadStarted>(HotReloadHandlers.Start, new HotReloadStart([], Ungiven()));
@@ -195,6 +230,24 @@ public sealed class HotReload
         if (id is not int session || startedOn is not { } roslyn || roslyn != server())
         {
             return new HotReloadOutcome(HotReloadResult.Failed, "The C# language server restarted since the program was launched: restart to apply changes");
+        }
+        if (programBuild is { } built && startedReading is { } then && reads() is { } now && then.BuiltUnlike(now, built.Project) is not null)
+        {
+            // Begun over code other than the program's (its build not yet known), so it applied nothing: begun again over the code now.
+            roslyn.TellExtension(HotReloadHandlers.End, new HotReloadSessionMessage(session));
+            id = null;
+            given.Clear();
+            starting = StartAsync();
+            if (await starting is { } notStarted)
+            {
+                return new HotReloadOutcome(HotReloadResult.Failed, notStarted);
+            }
+            if (id is not int again || startedOn is not { } restarted)
+            {
+                return new HotReloadOutcome(HotReloadResult.Failed, "The C# language server restarted since the program was launched: restart to apply changes");
+            }
+            session = again;
+            roslyn = restarted;
         }
         HotReloadStateResponse state;
         try
