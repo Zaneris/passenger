@@ -7,16 +7,16 @@ using Passenger.Core;
 
 namespace Passenger.Tests;
 
-/// <summary>What a mobile project needs, said over the window as it opens and got from there: a project of a platform
-/// whose workload the .NET lacks (tvOS on a Mac, Android elsewhere) says so, and Install Workloads asks, runs the install
-/// (a stand-in of dotnet's) and loads the project again; an Android project whose workload's answers say it lacks its
-/// SDK's platform and a JDK (stand-ins of the workload's targets in the project) offers the workload's installer, which
-/// runs only once the person accepted the licences Google's repository (a stand-in) gives, and the banner goes once nothing
-/// lacks; the JDK it installs (a stand-in installer's) is found after with no JAVA_HOME on a Mac and on Linux, and a
-/// JAVA_HOME where the workload finds no JDK is said and never given to the installer; on a Mac an iOS project whose Xcode has no
-/// simulator runtime of its SDK says so with how Xcode installs one, and one whose Xcode the workload refuses offers Get
-/// Xcode; New Project offers each mobile template a missing workload brings. It sets a process-wide stand-in and the
-/// environment (ANDROID_HOME, DEVELOPER_DIR, HOME, JAVA_HOME), so it runs alone.</summary>
+/// <summary>What a mobile project needs, said over the window as it opens and got from there: a project whose workload the
+/// .NET lacks (tvOS on a Mac, Android elsewhere) says so, and Install Workloads asks, runs the install (a stand-in of
+/// dotnet's), a workload set first where the .NET has none, saying a download out of room plainly, and loads the project
+/// again; an Android project whose workload's answers (stand-ins of its targets) say it lacks its SDK's platform and a JDK
+/// offers the workload's installer, run only once the person accepted the licences Google's repository (a stand-in)
+/// gives; the JDK it installs is found after with no JAVA_HOME, and a JAVA_HOME where the workload finds no JDK is said and
+/// never given to the installer; on a Mac an iOS project lacking its simulator runtime says how Xcode installs one, and one
+/// whose Xcode the workload refuses offers Get Xcode; New Project offers each mobile template a missing workload brings.
+/// It sets a process-wide stand-in and the environment (ANDROID_HOME, DEVELOPER_DIR, HOME, JAVA_HOME, TMPDIR), so it runs
+/// alone.</summary>
 [Collection(Alone.Name)]
 public sealed class MobileNeedsWindowTests : IDisposable
 {
@@ -37,7 +37,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
 
     public void Dispose()
     {
-        MainWindow.WorkloadInstallStandIn = null;
+        MainWindow.WorkloadStandIn = null;
         Environment.SetEnvironmentVariable("ANDROID_HOME", androidHome);
         Environment.SetEnvironmentVariable(AndroidLicences.Variable, repository);
         Environment.SetEnvironmentVariable("DEVELOPER_DIR", developerDir);
@@ -55,9 +55,9 @@ public sealed class MobileNeedsWindowTests : IDisposable
         (MainWindow window, string name, string platform, string said) = LackingWorkload();
 
         List<IReadOnlyList<string>> installed = [];
-        MainWindow.WorkloadInstallStandIn = ids =>
+        MainWindow.WorkloadStandIn = arguments =>
         {
-            installed.Add(ids);
+            installed.Add(arguments);
             return ChildProcesses.DotnetCommand(["--version"]);
         };
         List<string> asked = [];
@@ -71,11 +71,70 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallWorkloads) is null, () => $"the install to end: {window.Status}", Slow);
 
         Assert.Equal([$"Install the .NET workload {platform}?"], asked);
-        Assert.Equal([platform], Assert.Single(installed));
+        Assert.Equal(["workload", "install", platform], Assert.Single(installed));
         Assert.True(window.Session.Models.Rounds > rounds, "The project was not evaluated again after the install");
         // The stand-in installs nothing, so the project still lacks it, and says so.
         Assert.Equal($"dotnet workload install ended, but the projects still lack {platform}", window.Status);
         Assert.Equal(said, window.MobileSaid);
+        window.Close();
+    }
+
+    /// <summary>A .NET with no workload set installed knows no workload until one is (dotnet's own words, from a stand-in):
+    /// Install Workloads installs its newest first, then the workload, whose download running out of room is said plainly
+    /// with the folder it ran out in. Where the temporary folder is held in memory (Linux's /dev/shm stands for a tmpfs
+    /// /tmp), every dotnet it runs downloads into a folder of Passenger's own cache, taken away after; elsewhere into the
+    /// temporary folder.</summary>
+    [AvaloniaFact]
+    public void Install_Workloads_installs_a_workload_set_first_where_the_dotnet_has_none_and_says_a_download_out_of_room_plainly()
+    {
+        (MainWindow window, _, string platform, _) = LackingWorkload();
+        List<IReadOnlyList<string>> asked = [];
+        List<System.Diagnostics.ProcessStartInfo> starts = [];
+        string[] said =
+        [
+            $"Workload installation failed: Workload ID {platform} is not recognized.",
+            "Successfully updated workload(s): .",
+            $"Workload installation failed: One or more errors occurred. (Disk quota exceeded : '{Path.Combine("tmp", "dotnet-sdk-advertising-temp", "pack.nupkg")}')",
+        ];
+        MainWindow.WorkloadStandIn = arguments =>
+        {
+            int round = asked.Count;
+            asked.Add(arguments);
+            System.Diagnostics.ProcessStartInfo start = Saying($"round-{round}", said[Math.Min(round, said.Length - 1)], round == 1 ? 0 : 1);
+            starts.Add(start);
+            return start;
+        };
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        string? temporary = Environment.GetEnvironmentVariable("TMPDIR");
+        string? memory = OperatingSystem.IsLinux() && new DriveInfo("/dev/shm").DriveFormat == "tmpfs" ? "/dev/shm" : null;
+        if (memory is not null)
+        {
+            Environment.SetEnvironmentVariable("TMPDIR", memory);
+        }
+        try
+        {
+            Ui.ClickButton(window, "Install Workloads…");
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallWorkloads) is null, () => $"the install to end: {window.Status}", Slow);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TMPDIR", temporary);
+        }
+
+        Assert.Equal([["workload", "install", platform], ["workload", "update"], ["workload", "install", platform]], asked);
+        Assert.StartsWith($"The .NET workload {platform} could not be installed: its downloads found no room left in ", window.Status, StringComparison.Ordinal);
+        Assert.EndsWith(". Make room there and install again", window.Status, StringComparison.Ordinal);
+        string? given = starts[0].Environment.TryGetValue("TMPDIR", out string? set) ? set : null;
+        Assert.True(starts.All(s => (s.Environment.TryGetValue("TMPDIR", out string? each) ? each : null) == given), "Each dotnet of the install was given its own temporary folder");
+        if (memory is null)
+        {
+            Assert.True(given == temporary, $"With the temporary folder on disk, the install was given {given} in its place");
+            window.Close();
+            return;
+        }
+        string cache = Path.Combine(window.StateFolder, "cache", WorkloadInstalls.Downloads);
+        Assert.True(given is not null && PathNames.IsUnder(given, cache), $"With the temporary folder in memory, the install downloaded into {given}, not a folder under {cache}");
+        Assert.False(Directory.Exists(given), $"The install's downloads folder {given} was left behind");
         window.Close();
     }
 
@@ -111,6 +170,22 @@ public sealed class MobileNeedsWindowTests : IDisposable
             : $"{name} needs the .NET workload {platform}";
         Assert.Equal(said, window.MobileSaid);
         return (window, name, platform, said);
+    }
+
+    /// <summary>A stand-in of dotnet that writes <paramref name="words"/> (from a file, so no shell reads them) and ends with
+    /// <paramref name="code"/>, kept in the project's obj folder, which no project reads.</summary>
+    private System.Diagnostics.ProcessStartInfo Saying(string name, string words, int code)
+    {
+        string kept = Directory.CreateDirectory(Path.Combine(folder, "obj", "stand-in")).FullName;
+        string text = Path.Combine(kept, $"{name}.txt");
+        File.WriteAllText(text, words + "\n");
+        if (OperatingSystem.IsWindows())
+        {
+            string script = Path.Combine(kept, $"{name}.cmd");
+            File.WriteAllText(script, $"@echo off\r\ntype \"{text}\"\r\nexit /b {code}\r\n");
+            return ChildProcesses.Command(script, []);
+        }
+        return ChildProcesses.Command("/bin/sh", ["-c", "cat \"$1\"; exit $2", "sh", text, code.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
     }
 
     [AvaloniaFact]

@@ -45,8 +45,9 @@ public partial class MainWindow
     private Button? androidLink;
     private Button? xcodeLink;
 
-    /// <summary>The workload install a test runs in place of dotnet's, given the ids.</summary>
-    public static Func<IReadOnlyList<string>, ProcessStartInfo>? WorkloadInstallStandIn { get; set; }
+    /// <summary>What a test runs in place of dotnet for Install Workloads, given dotnet's arguments (workload install, workload
+    /// update).</summary>
+    public static Func<IReadOnlyList<string>, ProcessStartInfo>? WorkloadStandIn { get; set; }
 
     /// <summary>Where Xcode comes from.</summary>
     private static readonly Uri XcodePage = new("https://developer.apple.com/xcode/");
@@ -209,7 +210,9 @@ public partial class MainWindow
     }
 
     /// <summary>Install Workloads: the person asked, then dotnet workload install of the workloads lacking into the .NET
-    /// Passenger builds with, its lines said as its stages, and the projects loaded again with them.</summary>
+    /// Passenger builds with, its lines said as its stages, and the projects loaded again with them. A .NET that knows none
+    /// of them, having no workload set installed, first installs its newest (dotnet workload update); the downloads go to a
+    /// folder of Passenger's on disk where the temporary folder is held in memory (<see cref="WorkloadInstalls"/>).</summary>
     private async Task InstallWorkloadsAsync()
     {
         UiThread.Check();
@@ -223,7 +226,7 @@ public partial class MainWindow
             string root = Dotnet.Root(Folder);
             string named = $"{Plural.Noun(ids.Count, "workload")} {Plural.Listed([.. ids])}";
             string command = $"dotnet workload install {string.Join(' ', ids)}";
-            if (WorkloadInstallStandIn is null && !await BackgroundWork.Run(() => Writable(root)))
+            if (WorkloadStandIn is null && !await BackgroundWork.Run(() => Writable(root)))
             {
                 Told(installing, false, Refusals.WorkloadsNeedAdministrator(root, command));
                 return;
@@ -236,8 +239,32 @@ public partial class MainWindow
                 return;
             }
             installing.Say($"Installing the .NET {named}");
-            ProcessStartInfo start = WorkloadInstallStandIn?.Invoke(ids) ?? ChildProcesses.DotnetCommand(["workload", "install", .. ids], Folder);
-            (int code, IReadOnlyList<string> lines) = await RunInstallAsync(start, installing);
+            string temporary = Path.GetTempPath();
+            string cache = Path.Combine(StateFolder, "cache");
+            string? downloads = OperatingSystem.IsLinux() ? await BackgroundWork.Run(() => MadeDownloads(temporary, cache)) : null;
+            int code;
+            IReadOnlyList<string> lines;
+            try
+            {
+                (code, lines) = await RunWorkloadAsync(["workload", "install", .. ids], downloads, installing);
+                if (code != 0 && !installing.IsStopped && WorkloadInstalls.Unknown(lines))
+                {
+                    installing.Say("This .NET has no workload set installed: installing its newest first (dotnet workload update)");
+                    (code, lines) = await RunWorkloadAsync(["workload", "update"], downloads, installing);
+                    if (code == 0 && !installing.IsStopped)
+                    {
+                        installing.Say($"Installing the .NET {named}");
+                        (code, lines) = await RunWorkloadAsync(["workload", "install", .. ids], downloads, installing);
+                    }
+                }
+            }
+            finally
+            {
+                if (downloads is not null)
+                {
+                    await BackgroundWork.Run(() => DeleteDownloads(downloads));
+                }
+            }
             if (installing.IsStopped)
             {
                 Told(installing, false, $"The install of the .NET {named} was stopped");
@@ -245,7 +272,9 @@ public partial class MainWindow
             }
             if (code != 0)
             {
-                Told(installing, false, $"The .NET {named} could not be installed ({ExitCodes.Said(code)}): {LastWords(lines)}");
+                Told(installing, false, WorkloadInstalls.NoRoom(lines)
+                    ? $"The .NET {named} could not be installed: its downloads found no room left in {PathNames.Shown(downloads ?? temporary, null)}. Make room there and install again"
+                    : $"The .NET {named} could not be installed ({ExitCodes.Said(code)}): {LastWords(lines)}");
                 return;
             }
             installing.Say("Loading the projects again");
@@ -321,6 +350,61 @@ public partial class MainWindow
             Told(installing, !MobileWant.AndroidLacks, MobileWant.AndroidLacks
                 ? $"The Android workload's installer ended, but {project.Name} still needs what the banner says"
                 : $"{what} {Plural.Agreeing(packages.Count + (want.Java is null ? 0 : 1) + (want.NoAndroidSdk ? 1 : 0), "is", "are")} installed: the projects loaded again");
+        }
+    }
+
+    /// <summary>dotnet run for Install Workloads with these arguments (or the test's stand-in), downloading into
+    /// <paramref name="downloads"/> where it is given, its lines said as the work's stages.</summary>
+    private Task<(int Code, IReadOnlyList<string> Lines)> RunWorkloadAsync(IReadOnlyList<string> arguments, string? downloads, Working installing)
+    {
+        ProcessStartInfo start = WorkloadStandIn?.Invoke(arguments) ?? ChildProcesses.DotnetCommand(arguments, Folder);
+        if (downloads is not null)
+        {
+            start.Environment["TMPDIR"] = downloads;
+        }
+        return RunInstallAsync(start, installing);
+    }
+
+    /// <summary>The folder a workload install downloads into in place of <paramref name="temporary"/>, made, where that is
+    /// held in memory; null where dotnet takes the temporary folder, or no folder can be made.</summary>
+    private static string? MadeDownloads(string temporary, string cache)
+    {
+        if (WorkloadInstalls.DownloadsFolder(temporary, FormatOf, cache) is not { } downloads)
+        {
+            return null;
+        }
+        try
+        {
+            return Directory.CreateDirectory(downloads).FullName;
+        }
+        catch (Exception unmade) when (unmade is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"A workload install downloads into {temporary}, as {downloads} could not be made: {unmade.Message}");
+            return null;
+        }
+
+        static string? FormatOf(string path)
+        {
+            try
+            {
+                return new DriveInfo(path).DriveFormat;
+            }
+            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                return null;
+            }
+        }
+    }
+
+    private static void DeleteDownloads(string downloads)
+    {
+        try
+        {
+            Directory.Delete(downloads, recursive: true);
+        }
+        catch (Exception kept) when (kept is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"A workload install's downloads were left in {downloads}: {kept.Message}");
         }
     }
 

@@ -8,7 +8,8 @@ namespace Passenger.UnitTests.Run;
 
 /// <summary>What a mobile project needs, worked out from what its workloads answer and what is on disk: the workloads the
 /// SDK names, the Android SDK's packages and the JDK the Android workload wants, the Xcode an Apple workload could not
-/// find, a project on Mono, where Android apps are built, and the Android SDK's licences of what is to be installed.</summary>
+/// find, a project on Mono, where Android apps are built, the Android SDK's licences of what is to be installed, and how a
+/// workload install is run and read.</summary>
 public class MobileNeedsTests
 {
     /// <summary>_GetRequiredWorkloads of a project targeting tvOS and macOS where neither workload is installed.</summary>
@@ -252,6 +253,26 @@ public class MobileNeedsTests
             Want([new ProjectNeeds(Maui, MauiFrameworks), lacking], onMac: false, androidHost: "Linux on Arm64").Said);
         Assert.Null(Want([new ProjectNeeds("Desktop", ["net11.0"])], onMac: false, androidHost: "Linux on Arm64").Said);
         Assert.Equal("AndroidApp needs the .NET workload android", Want([lacking], onMac: false).Said);
+    }
+
+    [Fact]
+    public void A_workload_install_downloads_onto_disk_where_the_temporary_folder_is_held_in_memory_and_reads_dotnets_words()
+    {
+        string cache = Path.Combine("/home", "ann", ".local", "share", "Passenger", "cache");
+
+        string? fromMemory = WorkloadInstalls.DownloadsFolder("/tmp/", _ => "tmpfs", cache);
+
+        string under = Path.Combine(cache, WorkloadInstalls.Downloads) + Path.DirectorySeparatorChar;
+        Assert.True(fromMemory is not null && fromMemory.StartsWith(under, StringComparison.Ordinal) && fromMemory.Length == under.Length + 32,
+            $"With the temporary folder in memory, the install downloads into {fromMemory}, not a new folder of its own under {under}");
+        Assert.Null(WorkloadInstalls.DownloadsFolder("/tmp/", _ => "ext4", cache));
+        Assert.Null(WorkloadInstalls.DownloadsFolder("/tmp/", _ => null, cache));
+        Assert.True(WorkloadInstalls.Unknown(["Workload installation failed: Workload ID android is not recognized."]));
+        Assert.False(WorkloadInstalls.Unknown(["Successfully installed workload(s) android."]));
+        Assert.True(WorkloadInstalls.NoRoom(["Rolling back pack Microsoft.Android.Sdk.Linux installation...",
+            "Workload installation failed: One or more errors occurred. (Disk quota exceeded : '/tmp/Ufo3Jm/dotnet-sdk-advertising-temp/x/11.0.0/x.11.0.0.nupkg')"]));
+        Assert.True(WorkloadInstalls.NoRoom(["Workload installation failed: No space left on device : '/home/ann/.dotnet/packs/x'"]));
+        Assert.False(WorkloadInstalls.NoRoom(["Workload installation failed: One or more errors occurred. (Downloading x version 11.0.0 failed)"]));
     }
 
     [Fact]
