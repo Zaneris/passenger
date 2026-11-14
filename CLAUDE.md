@@ -287,7 +287,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   one `InterfaceScale` transform per window, which its popups take from it.
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; every editor through `ForEachEditor`; the one
   close `CloseTab`). A diff is an `OpenDocument.OfDiff` of no file, never in `Documents`, every one through
-  `MainWindow.ShowDiff`. The Commit window's diff tab follows its choice until pinned or edited in (`DiffTab.Follows`). A tool window as an editor tab is an `OpenDocument.OfTool` of no file, never in `Documents`,
+  `MainWindow.ShowDiff`. The Commit window's diff tab follows its choice until pinned or edited in (`DiffTab.Follows`). A file Git has in conflict says so in its banner (`OpenDocument.InConflict`, followed by `MainWindow.FollowConflicts`), its Merge… through `EditorArea.MergeRequested`; a commit's refusals are `VcsController.WhyNotCommit`, which greys the Commit window's buttons. A tool window as an editor tab is an `OpenDocument.OfTool` of no file, never in `Documents`,
   shown in one place at a time (splitting refused), opened and closed only through `DockHost.EditorTabs`; code treating
   `Editors.Active` as a file passes over `Tool` as it passes over `Diff`. A Markdown preview follows the editor and leads it only after the person's own input in it
   (`MarkdownPreview.Lead`), never because of a layout. An SVG preview is a drawing (`ZoomedPicture`), never a bitmap; an HTML preview is never made in
@@ -829,7 +829,7 @@ to the window's tests.
   `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name), `Grey` (greyed, its tip saying why); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
   `MutedText`; `ListKeys.Move`; `Plural.Of`/`Listed`; `Border.kindBadge`/`tag`/`box` (never a literal radius);
   `RunRows`; `ShrinkingRow.KeepsWidth` (a row's version and tags kept whole, its name cut first); `ChangedFileRow` (`Show` of a `FileChange`, every list of changed files); `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
-  `ToolWindows.FilterBox`; `FilterMenu` (a list's Sort and Filter, placed in its search); `DropDownSearch` (every ComboBox's search, never per control); `ToolFlow`; `PaneSplit`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
+  `ToolWindows.FilterBox`; `FilterMenu` (a list's Sort and Filter, placed in its search); `DropDownSearch` (every ComboBox's search, never per control); `ToolFlow`; `PaneSplit` (a tool window's two panes and an editor's own pane, `EditorGroup.Side`); `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
   `ReusedRows` (`Use`, `Showing`); `RowIcon` and `RowGlyphs`, drawn as `PathIcon` draws for a fraction of its cost,
   never `PathIcon` (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, its least size that times the display
