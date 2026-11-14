@@ -198,7 +198,7 @@ public partial class ManagedDebugger
         return baseTypeName is "System.Enum";
     }
 
-    private sealed class FieldTypeHandleProvider : ISignatureTypeProvider<EntityHandle, object?>
+    internal sealed class FieldTypeHandleProvider : ISignatureTypeProvider<EntityHandle, object?>
     {
         public static FieldTypeHandleProvider Instance { get; } = new();
         public EntityHandle GetArrayType(EntityHandle elementType, ArrayShape shape) => default;

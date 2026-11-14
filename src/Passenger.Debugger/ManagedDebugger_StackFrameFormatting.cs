@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using Passenger.Debugger.Interop;
@@ -7,16 +6,16 @@ namespace Passenger.Debugger;
 
 public partial class ManagedDebugger
 {
-    /// <summary>'Module.dll!Namespace.Type.Method&lt;T&gt;(ParamType paramName, ...)'.</summary>
+    /// <summary>'Module.dll!Namespace.Type.Method&lt;T&gt;(ParamType paramName, ...)', named as <see cref="FrameNames"/> names it.</summary>
     private static string GetMethodFormattedName(ModuleInfo moduleInfo, int methodToken, IReadOnlyList<ICorDebugType> typeAndMethodTypeArguments)
     {
         try
         {
             ICorDebugModule module = moduleInfo.Module;
             MetadataReader reader = moduleInfo.MetadataReader.PeMetadataReader;
-            MethodDefinition methodDefinition = reader.GetMethodDefinition((MethodDefinitionHandle)MetadataTokens.Handle(methodToken));
-            TypeDefinitionHandle declaringTypeHandle = methodDefinition.GetDeclaringType();
-            int typeArgumentCount = reader.GetTypeDefinition(declaringTypeHandle).GetGenericParameters().Count;
+            MethodDefinitionHandle handle = (MethodDefinitionHandle)MetadataTokens.Handle(methodToken);
+            MethodDefinition methodDefinition = reader.GetMethodDefinition(handle);
+            int typeArgumentCount = reader.GetTypeDefinition(methodDefinition.GetDeclaringType()).GetGenericParameters().Count;
             int methodArgumentCount = methodDefinition.GetGenericParameters().Count;
             if (typeAndMethodTypeArguments.Count < typeArgumentCount + methodArgumentCount)
             {
@@ -31,45 +30,11 @@ public partial class ManagedDebugger
                 .Take(methodArgumentCount)
                 .Select(GetCorDebugTypeFriendlyName)
                 .ToList();
-
-            FrameDisplayGenericContext genericContext = new FrameDisplayGenericContext(typeArgumentNames, methodArgumentNames);
-            string className = GetFormattedTypeName(reader, declaringTypeHandle, typeArgumentNames);
-            string methodName = reader.GetString(methodDefinition.Name);
-            if (methodArgumentNames.Count > 0)
-            {
-                methodName += $"<{string.Join(", ", methodArgumentNames)}>";
-            }
-
-            string parameters = GetFormattedParameters(reader, methodDefinition, genericContext);
-            return $"{Path.GetFileName(module.Name)}!{className}.{methodName}({parameters})";
+            return $"{Path.GetFileName(module.Name)}!{FrameNames.Of(reader, handle, typeArgumentNames, methodArgumentNames)}";
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
             return "Unknown";
         }
-    }
-
-    /// <summary>A method's parameters as its source declares them, so a local function's closure, a parameter the compiler
-    /// adds with no name, is left out.</summary>
-    private static string GetFormattedParameters(MetadataReader reader, MethodDefinition methodDefinition, FrameDisplayGenericContext genericContext)
-    {
-        ImmutableArray<string> parameterTypes = methodDefinition.DecodeSignature(FrameDisplaySignatureTypeProvider.Instance, genericContext).ParameterTypes;
-        ImmutableArray<EntityHandle> parameterHandles = methodDefinition.DecodeSignature(FieldTypeHandleProvider.Instance, null).ParameterTypes;
-        Dictionary<int, string> parameterNames = methodDefinition.GetParameters()
-            .Select(reader.GetParameter)
-            .Where(parameter => parameter.SequenceNumber > 0)
-            .ToDictionary(parameter => parameter.SequenceNumber, parameter => reader.GetString(parameter.Name));
-        return string.Join(", ", parameterTypes
-            .Select((type, index) => parameterNames.TryGetValue(index + 1, out string? name) && name.Length > 0 ? $"{type} {name}"
-                : ModuleMetadataReader.IsClosure(reader, parameterHandles[index]) ? null
-                : type)
-            .OfType<string>());
-    }
-
-    /// <summary>A frame's type with the type arguments it runs with, its nested types joined by '.', a nullable spelled out.</summary>
-    private static string GetFormattedTypeName(MetadataReader reader, TypeDefinitionHandle handle, IReadOnlyList<string> typeArguments)
-    {
-        string name = MetadataTypeNames.Of(reader, handle, '.');
-        return CSharpTypeNames.Closed(name, typeArguments, spelledNullable: true) ?? name;
     }
 }

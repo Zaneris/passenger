@@ -273,7 +273,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         {
             StoppedEvent stop = await host.WaitForStoppedEvent();
             Assert.Equal((line, column), (stop.ReadStopInfo().line, stop.ReadStopInfo().column));
-            Assert.Contains(">b__", (await host.TopFrameAsync(stop.ThreadId!.Value)).Name, StringComparison.Ordinal);
+            Assert.EndsWith("!Queries.Run.lambda(int n)", (await host.TopFrameAsync(stop.ThreadId!.Value)).Name, StringComparison.Ordinal);
             Assert.Equal(n, Assert.Single(await host.LocalsAsync(stop), v => v.Name == "n").Value);
             await host.ContinueAsync();
         }

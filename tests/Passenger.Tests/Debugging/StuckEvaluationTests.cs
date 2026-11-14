@@ -207,7 +207,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         EvaluateResponse waits = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Locks.Taken", mayStand: true);
         Assert.Contains("could not be stopped", waits.Result, StringComparison.Ordinal);
         string log = host.EngineLog();
-        Assert.True(log.Contains("Locks.get_Taken()", StringComparison.Ordinal) && log.Contains("<Run>", StringComparison.Ordinal),
+        Assert.True(log.Contains("Locks.get_Taken()", StringComparison.Ordinal) && log.Contains("Locks.Run.lambda()", StringComparison.Ordinal),
             $"An evaluation waiting on a paused thread left no word of where the two stand, so a failure past its time could not say what it waited for:\n{log}");
 
         await host.ContinueAsync();

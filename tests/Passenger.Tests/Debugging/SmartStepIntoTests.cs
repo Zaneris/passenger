@@ -96,7 +96,7 @@ public class SmartStepIntoTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(["Numbers()", "n => Twice(n)"], targets.Select(t => t.Label));
         stop = await host.Step(thread, targets[1]);
         Assert.Equal((StopReasons.Step, line), (stop.Reason, stop.ReadStopInfo().line));
-        Assert.Contains(">b__", (await host.TopFrameAsync(thread)).Name, StringComparison.Ordinal);
+        Assert.EndsWith("!Lambdas.Run.lambda(int n)", (await host.TopFrameAsync(thread)).Name, StringComparison.Ordinal);
         Assert.Equal("1", Assert.Single(await host.LocalsAsync(stop), v => v.Name == "n").Value);
     }
 

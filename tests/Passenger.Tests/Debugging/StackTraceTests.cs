@@ -218,4 +218,27 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
         StoppedEvent stepped = await host.StepOutAsync(thread).WaitForStoppedEvent();
         Assert.Equal((StopReasons.Step, Debuggees.Line("PassengerCases", "callBack(7);")), (stepped.Reason, stepped.ReadStopInfo().line));
     }
+
+    /// <summary>A minimal API's handlers, lambdas the compiler names for itself, are named by the method they are written in,
+    /// the program's top-level code, then "lambda" and their parameters: an async handler's frame, its state machine's, too.</summary>
+    [Fact]
+    public async Task A_minimal_API_handlers_frame_is_named_by_the_method_it_is_written_in()
+    {
+        const string MinimalApi = "MinimalApiApp";
+        int added = Debuggees.Line(MinimalApi, "int sum = a + b;");
+        int doubled = Debuggees.Line(MinimalApi, "int twice = n * 2;");
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host.InitializeAsync().LaunchAsync(Debuggees.Program(MinimalApi), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
+        await host.BreakpointsAsync([added, doubled], Debuggees.Source(MinimalApi, "Program.cs")).ConfigurationDoneAsync();
+
+        foreach ((int line, string handler) in new[] { (added, "lambda(int a, int b)"), (doubled, "lambda(int n)") })
+        {
+            StoppedEvent stop = await host.WaitForStoppedEvent();
+            Assert.Equal(line, stop.ReadStopInfo().line);
+            List<string> names = [.. (await host.StackTraceAsync(stop.ThreadId!.Value, levels: null)).StackFrames.Select(frame => frame.Name)];
+            Assert.True(names[0] == $"{MinimalApi}.dll!Program.<Main>$.{handler}",
+                $"The handler at line {line} is shown as {names[0]}, not by the code it is written in: {string.Join(" < ", names)}");
+            await host.ContinueAsync();
+        }
+    }
 }

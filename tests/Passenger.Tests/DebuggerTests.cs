@@ -564,7 +564,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             Ui.Run(window, AppActions.Resume);
             WaitDebugging(window, () => session.State == DebugState.Paused && session.Stops > stops && Value(window, "i") == i, $"the stop inside the lambda with i at {i}");
             DapStackFrame top = window.BottomPanel.Debug.Frames[0];
-            Assert.True(top.Name.Contains(">b__", StringComparison.Ordinal) && top.Column == body + 1,
+            Assert.True(top.Name.EndsWith("!Program.<Main>$.lambda(int i)", StringComparison.Ordinal) && top.Column == body + 1,
                 $"The lambda's breakpoint stopped in {top.Name} at column {top.Column}, not inside the lambda at column {body + 1}");
         }
         Ui.Run(window, AppActions.Resume);
