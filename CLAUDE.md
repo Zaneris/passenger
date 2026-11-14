@@ -442,7 +442,7 @@ a new name, and `just site-shots` retakes its images.
 - **Roslyn's server makes a C# file opened before its project loads a Miscellaneous File** (with no SDK, of no
   references), so a loading project's files open only once it loaded, a file come since once a load that read it ended
   (`CSharpService.Arrivals`), and an agent's code tool waits for every one its file's project and references hold
-  (`SeenFrom`), and through a first restore, the load after it and its generators' rerun (`CSharpService.AwaitsRestore`, `ReloadingRestored`), never its own alone; references come from `CSharpService.ProjectsNow`, never the start-time `workspace`.
+  (`SeenFrom`), and through a first restore, the load after it and its generators' rerun (`CSharpService.AwaitsRestore`, `ReloadingRestored`), never its own alone; a project the IDE asked the server to load again (`CSharpService.Reload`, files written in the last 2 s evaluated first, `ProjectModels.ReadWrittenNowAsync`) is waited for as an arrival keyed by its project file; references come from `CSharpService.ProjectsNow`, never the start-time `workspace`.
   A reload sent while it loads is one more load to wait for: its word that a load ended names none. A server ending
   during its start is started again, and StreamJsonRpc drops a faulted answer (`LanguageServer.IsDroppedAnswer`).
 - **Roslyn's server takes nothing of a load that met an error** ("Error while loading", `ProjectLoadProblem.FailedLoad`,
