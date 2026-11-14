@@ -1587,3 +1587,10 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   server was stopped just after its load, while the window asked an open file's colours again at the generators' rerun;
   that request reached its limit first, and the IDE names the first. Status, replacement and the log's word were right.
   **The test**: it checks that the log says the server stopped answering, whichever request found it.
+- `GDScriptCompletionTests`' `Keywords_complete_where_a_statement_or_a_class_body_takes_them_and_annotations_by_place`, CI
+  43579072335 (macOS, at fdf7b448e): "No a member's annotation at the class's level first in the list: it held @rpc, @icon,
+  @tool, @export, …". **A race in the IDE**: a list's rows are made on the thread pool, and until its first rows landed
+  `CodeCompletion.Typed` and `CaretMoved` read the list as closed, so `export_r` typed in that moment went past it and
+  nothing narrowed the rows `@` alone gave; an Escape then was lost too. A list is now open from the moment a language
+  opens it; `Keys_typed_while_a_lists_first_rows_are_made_narrow_the_list_or_dismiss_it` holds the first rows to show it
+  (#1628).
