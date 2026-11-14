@@ -208,14 +208,22 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Ui.WaitFor(() => server.DiagnosticSources.Contains(Passenger.Lsp.LspDocument.ProjectWideSource),
             "the server to give files a project-wide source of diagnostics, as it does analysing the whole solution");
         TaskCompletionSource asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        string? conversation = null;
         try
         {
-            Task holding = server.HoldNext(Passenger.Lsp.LspMethods.DocumentDiagnostic,
-                p => p is Passenger.Lsp.DocumentDiagnosticParams { Identifier: Passenger.Lsp.LspDocument.ProjectWideSource }, asked.Task);
+            // Read as the pull is held, where it surely waits: a later pull (the server's refresh) may let go of it before the test looks.
+            Task holding = server.HoldNext(Passenger.Lsp.LspMethods.DocumentDiagnostic, p =>
+            {
+                if (p is not Passenger.Lsp.DocumentDiagnosticParams { Identifier: Passenger.Lsp.LspDocument.ProjectWideSource })
+                {
+                    return false;
+                }
+                conversation = server.Conversation();
+                return true;
+            }, asked.Task);
             window.KeyTextInput(" ");
             Ui.PumpUntil(() => holding.IsCompleted, "the file's project-wide pull to be asked, and held");
-            string conversation = server.Conversation();
-            Assert.True(conversation.Contains($"{Passenger.Lsp.LspMethods.DocumentDiagnostic} ({Passenger.Lsp.LspDocument.ProjectWideSource})", StringComparison.Ordinal),
+            Assert.True(conversation!.Contains($"{Passenger.Lsp.LspMethods.DocumentDiagnostic} ({Passenger.Lsp.LspDocument.ProjectWideSource})", StringComparison.Ordinal),
                 $"The file's project-wide pull waiting on the server was not named by its source: {conversation}");
         }
         finally
