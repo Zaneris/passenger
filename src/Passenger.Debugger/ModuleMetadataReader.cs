@@ -690,6 +690,41 @@ public partial class ModuleMetadataReader : IDisposable
         return result;
     }
 
+    // Roslyn's kind for the IL scopes of a state machine's hoisted locals, one a slot.
+    // https://github.com/dotnet/roslyn/blob/main/src/Dependencies/CodeAnalysis.Debugging/PortableCustomDebugInfoKinds.cs
+    private static readonly Guid _stateMachineHoistedLocalScopes = new("6DA9A61E-F8C7-4874-BE62-68BC5630DF71");
+
+    /// <summary>The slots of a state machine's hoisted locals in scope at an IL offset of its MoveNext, as the compiler
+    /// recorded each slot's scope; null where it recorded none (an optimized build's), which leaves every one in scope.</summary>
+    public IReadOnlySet<int>? HoistedSlotsInScope(int moveNextToken, int ilOffset, int? version = null)
+    {
+        if (DebugOf(moveNextToken, version) is not { Reader: { } reader } debug)
+        {
+            return null;
+        }
+        foreach (CustomDebugInformationHandle cdiHandle in reader.GetCustomDebugInformation(debug.Handle))
+        {
+            CustomDebugInformation cdi = reader.GetCustomDebugInformation(cdiHandle);
+            if (reader.GetGuid(cdi.Kind) != _stateMachineHoistedLocalScopes)
+            {
+                continue;
+            }
+            HashSet<int> slots = [];
+            BlobReader blobReader = reader.GetBlobReader(cdi.Value);
+            for (int slot = 0; blobReader.RemainingBytes >= 8; slot++)
+            {
+                long start = blobReader.ReadUInt32();
+                long length = blobReader.ReadUInt32();
+                if (start <= ilOffset && ilOffset < start + length)
+                {
+                    slots.Add(slot);
+                }
+            }
+            return slots;
+        }
+        return null;
+    }
+
     /// <summary>
     /// Get all source files referenced in the PDB
     /// </summary>

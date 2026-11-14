@@ -74,6 +74,32 @@ public class AsyncVariablesTests(ITestOutputHelper testOutputHelper)
         // The same variables as the first time round the loop: their references reset on continue.
         variables3.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
+
+    /// <summary>A method compiled to a state machine lists the hoisted locals in scope where it stopped: its loop's variable
+    /// inside the loop, and not once the loop is done, where an expression cannot read it either.</summary>
+    [Fact]
+    public async Task A_stop_in_a_state_machine_lists_only_the_hoisted_locals_in_scope_there()
+    {
+        const string program = "RuntimeAsyncConsoleApp";
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host.InitializeAsync().LaunchAsync(Debuggees.Program("StateMachineAsyncConsoleApp"), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
+        await host.BreakpointsAsync(Debuggees.Source(program, "Program.cs"),
+        [
+            new DapSourceBreakpoint(Debuggees.Line(program, "Console.WriteLine($\"after {i} sum {sum}\");"), Condition: "i == 1"),
+            new DapSourceBreakpoint(Debuggees.Line(program, "int done = await DoneAsync(n);")),
+        ]).ConfigurationDoneAsync();
+
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        List<DapVariable> inLoop = await host.LocalsAsync(stop);
+        Assert.True(inLoop.Any(v => (v.Name, v.Value) == ("i", "1")), $"Inside the loop its variable i was not listed as 1: {string.Join(", ", inLoop.Select(v => $"{v.Name} = {v.Value}"))}");
+
+        stop = await host.ContinueAsync().WaitForStoppedEvent();
+        Assert.Equal(Debuggees.Line(program, "int done = await DoneAsync(n);"), stop.ReadStopInfo().line);
+        List<DapVariable> after = await host.LocalsAsync(stop);
+        Assert.True(after.Select(v => v.Name).Order(StringComparer.Ordinal).SequenceEqual(["done", "n", "sum"]),
+            $"Once the loop was done, the variables in scope were not n, sum and done alone: {string.Join(", ", after.Select(v => $"{v.Name} = {v.Value}"))}");
+    }
 }
 
 file static class TestExtensions

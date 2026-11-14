@@ -23,7 +23,9 @@ public partial class ManagedDebugger
         if (classContainingHoistedLocalsValue is not null)
         {
             // Captured variables are fields of the closure chain; the lambda's own locals are still read below.
-            await AddClosureChainMembers(classContainingHoistedLocalsValue, threadId, stackDepth, result);
+            ICorDebugILFrame holding = GetIlFrameForThreadIdAndStackDepth(threadId, stackDepth);
+            IReadOnlySet<int>? inScope = module.MetadataReader.HoistedSlotsInScope(corDebugFunction.Token, holding.IP.pnOffset, ModuleMetadataReader.VersionOf(holding));
+            await AddClosureChainMembers(classContainingHoistedLocalsValue, threadId, stackDepth, result, inScope);
         }
         ICorDebugILFrame corDebugIlFrame = GetIlFrameForThreadIdAndStackDepth(threadId, stackDepth);
         if (corDebugIlFrame.LocalVariables.Length is 0)
@@ -73,7 +75,9 @@ public partial class ManagedDebugger
     /// Walks the compiler-generated closure chain starting at <paramref name="closureValue"/> (a closure or a state
     /// machine), listing each one's fields, the variables it holds, and none of its properties. Parent closures are linked
     /// via a field of kind <see cref="GeneratedNameKind.DisplayClassLocalOrField"/> (e.g. "&lt;&gt;8__1").
-    private async Task AddClosureChainMembers(ICorDebugValue closureValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result)
+    /// A state machine's hoisted locals are listed only where <paramref name="inScope"/> holds their slots, when it is given.
+    private async Task AddClosureChainMembers(ICorDebugValue closureValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result,
+        IReadOnlySet<int>? inScope = null)
     {
         if (closureValue.UnwrapDebugValueToObjectOrNull() is not { } objectValue)
         {
@@ -81,7 +85,7 @@ public partial class ManagedDebugger
         }
         // A captured variable's closure copy is the live one, in place of its own slot, which goes stale.
         List<VariableInfo> members = [];
-        await AddHeldVariables(closureValue, objectValue.ExactType, threadId, stackDepth, members);
+        await AddHeldVariables(closureValue, objectValue.ExactType, threadId, stackDepth, members, inScope);
         foreach (VariableInfo member in members)
         {
             int existing = result.FindIndex(v => v.Name == member.Name);
@@ -115,15 +119,23 @@ public partial class ManagedDebugger
     }
 
     /// <summary>The variables a closure or state machine holds: its instance fields, each a captured or hoisted variable
-    /// under its own name (the compiler's own fields passed over), never a property its interfaces give it.</summary>
-    private async Task AddHeldVariables(ICorDebugValue holder, ICorDebugType holderType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result)
+    /// under its own name (the compiler's own fields passed over), never a property its interfaces give it; a hoisted local
+    /// whose slot <paramref name="inScope"/> leaves out is out of scope where the frame stands, and passed over.</summary>
+    private async Task AddHeldVariables(ICorDebugValue holder, ICorDebugType holderType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result,
+        IReadOnlySet<int>? inScope = null)
     {
         IMetaDataImport metadataImport = holderType.Class.Module.GetMetaDataInterface<IMetaDataImport>();
-        mdFieldDef[] fields = metadataImport.EnumFields(holderType.Class.Token).AsValueEnumerable().Where(field => !field.IsStatic(metadataImport)).ToArray();
+        mdFieldDef[] fields = metadataImport.EnumFields(holderType.Class.Token).AsValueEnumerable()
+            .Where(field => !field.IsStatic(metadataImport) && (inScope is null || InScope(metadataImport.GetFieldProps(field).szField, inScope))).ToArray();
         int first = result.Count;
         await AddFields(fields, metadataImport, holderType, holder, result, threadId, stackDepth);
         Express(result, first, row => RowExpressions.Name(row.Member!));
     }
+
+    /// <summary>Whether a field of a state machine is a variable in scope: any but a hoisted local, which is where its slot is.</summary>
+    private static bool InScope(string? field, IReadOnlySet<int> slots) =>
+        field is null || GeneratedNameParser.GetKind(field) is not GeneratedNameKind.HoistedLocalField
+        || !GeneratedNameParser.TryParseSlotIndex(field, out int slot) || slots.Contains(slot);
 
     /// Returns classContainingHoistedLocalsValue if applicable
     private async Task<ICorDebugValue?> AddArguments(ModuleInfo module, ICorDebugFunction corDebugFunction, List<VariableInfo> result, ThreadId threadId, FrameStackDepth stackDepth)
