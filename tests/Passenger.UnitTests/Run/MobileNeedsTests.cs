@@ -190,6 +190,68 @@ public class MobileNeedsTests
         Assert.Null(MobileAnswers.Apple(new ChildResult(0, "{}", string.Empty)));
     }
 
+    /// <summary>The iOS workload's check of Xcode 27.0, as it answers asked for its developer folder and SDK version.</summary>
+    private const string AppleChecked = """
+        {
+          "Properties": {
+            "_SdkDevPath": "/Applications/Xcode-beta.app/Contents/Developer",
+            "_SdkVersion": "27.0"
+          }
+        }
+        """;
+
+    /// <summary>simctl's listing where Xcode has no simulator runtime, as Xcode 27.0's says it.</summary>
+    private const string NoRuntimes = """
+        {
+          "runtimes" : [
+
+          ]
+        }
+        """;
+
+    /// <summary>simctl's listing of an older iOS runtime, iOS 27.1's, and a tvOS one it can no longer use.</summary>
+    private const string SomeRuntimes = """
+        {
+          "runtimes" : [
+            { "platform" : "iOS", "version" : "18.0", "isAvailable" : true, "name" : "iOS 18.0", "identifier" : "com.apple.CoreSimulator.SimRuntime.iOS-18-0" },
+            { "platform" : "iOS", "version" : "27.1", "isAvailable" : true, "name" : "iOS 27.1", "identifier" : "com.apple.CoreSimulator.SimRuntime.iOS-27-1" },
+            { "platform" : "tvOS", "version" : "27.0", "isAvailable" : false, "availabilityError" : "unavailable, runtime path not found", "name" : "tvOS 27.0" }
+          ]
+        }
+        """;
+
+    [Fact]
+    public void An_Apple_workloads_check_names_its_Xcode_and_SDK_and_simctl_the_simulator_runtimes_it_lacks_of_the_SDKs_major_version()
+    {
+        Assert.Equal(("/Applications/Xcode-beta.app/Contents/Developer", "27.0"), MobileAnswers.AppleSdk(AppleChecked));
+        Assert.Equal((null, null), MobileAnswers.AppleSdk("/packs/Xamarin.Shared.targets(2206,3): error : Could not find a valid Xcode developer path [/src/Ios.csproj]"));
+
+        Assert.Equal(["iOS 27.0"], MobileAnswers.SimulatorsLacking(NoRuntimes, [("iOS", "27.0")]));
+        Assert.Equal(["tvOS 27.0"], MobileAnswers.SimulatorsLacking(SomeRuntimes, [("iOS", "27.0"), ("tvOS", "27.0")]));
+        Assert.Equal(["iOS 28.0"], MobileAnswers.SimulatorsLacking(SomeRuntimes, [("iOS", "28.0")]));
+        Assert.Empty(MobileAnswers.SimulatorsLacking(SomeRuntimes, [("iOS", null)]));
+        Assert.Equal(["tvOS"], MobileAnswers.SimulatorsLacking(SomeRuntimes, [("tvOS", null)]));
+        Assert.Empty(MobileAnswers.SimulatorsLacking("simctl: error: unable to find a developer folder", [("iOS", "27.0")]));
+    }
+
+    [Fact]
+    public void An_iOS_project_whose_Xcode_has_no_simulator_runtime_says_so_with_how_Xcode_installs_one()
+    {
+        ProjectNeeds ios = new("IosApp", ["net11.0-ios"]) { Apple = new AppleAnswer(null) { Simulators = ["iOS 27.0"] } };
+        ProjectNeeds maui = new(Maui, MauiFrameworks) { Apple = new AppleAnswer(null) { Simulators = ["iOS 27.0"] } };
+
+        MobileWant want = Want([ios, maui]);
+
+        Assert.Equal(["iOS 27.0"], want.Simulators);
+        Assert.Null(want.Xcode);
+        Assert.Equal("IosApp and MauiApp1 need the iOS 27.0 simulator runtime, which Xcode installs (Xcode › Settings › Components, or xcodebuild -downloadPlatform iOS)",
+            want.Said);
+        Assert.Equal("Tv needs the iOS 27.0 and tvOS 27.0 simulator runtimes, which Xcode installs (Xcode › Settings › Components, "
+            + "or xcodebuild -downloadPlatform iOS and xcodebuild -downloadPlatform tvOS)",
+            Want([new ProjectNeeds("Tv", ["net11.0-ios", "net11.0-tvos"]) { Apple = new AppleAnswer(null) { Simulators = ["iOS 27.0", "tvOS 27.0"] } }]).Said);
+        Assert.Equal("IosApp builds only on a Mac, with Xcode", Want([ios], onMac: false).Said);
+    }
+
     [Fact]
     public void Load_problems_of_a_workload_the_Android_SDK_a_JDK_or_Xcode_are_those_the_want_explains()
     {

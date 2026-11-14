@@ -4,7 +4,8 @@ namespace Passenger.App.Mobile;
 
 /// <summary>What the folder's mobile projects need that this machine lacks, from what their workloads answered
 /// (<see cref="ProjectNeeds"/>): the .NET workloads to install, the Android SDK, its packages and the JDK to install
-/// through the Android workload's installer, the Xcode the Apple workloads want, the projects on a .NET whose mobile apps
+/// through the Android workload's installer, the Xcode the Apple workloads want and the simulator runtimes it lacks, the
+/// projects on a .NET whose mobile apps
 /// run on Mono, and those whose Apple apps build only on a Mac. Said once, in the banner over the window.</summary>
 public sealed record MobileWant
 {
@@ -35,6 +36,9 @@ public sealed record MobileWant
     /// <summary>An Xcode in Applications that none chose, where the workload found none.</summary>
     public string? UnchosenXcode { get; init; }
 
+    /// <summary>The simulator runtimes the Apple apps need that Xcode has none of ("iOS 27.0"), each once.</summary>
+    public IReadOnlyList<string> Simulators { get; init; } = [];
+
     /// <summary>The projects on .NET 10 or earlier, each with its first such framework.</summary>
     public IReadOnlyList<(string Project, string Framework)> OnMono { get; init; } = [];
 
@@ -45,7 +49,7 @@ public sealed record MobileWant
     public bool AndroidLacks => NoAndroidSdk || AndroidPackages.Count > 0 || Java is not null;
 
     /// <summary>Whether anything is said.</summary>
-    public bool Says => Workloads.Count > 0 || AndroidLacks || Xcode is not null || OnMono.Count > 0 || AppleOffMac.Count > 0;
+    public bool Says => Workloads.Count > 0 || AndroidLacks || Xcode is not null || Simulators.Count > 0 || OnMono.Count > 0 || AppleOffMac.Count > 0;
 
     /// <summary>What the folder's projects need, from their answers: <paramref name="usualSdk"/> is where the Android SDK
     /// is looked for where the workload found none, <paramref name="exists"/> whether a file or folder is there.</summary>
@@ -61,6 +65,7 @@ public sealed record MobileWant
         string? java = null;
         string? xcode = null;
         string? unchosen = null;
+        List<string> simulators = [];
         foreach (ProjectNeeds project in projects)
         {
             bool needs = false;
@@ -98,11 +103,16 @@ public sealed record MobileWant
                 java ??= wanted;
                 needs |= none || lacked.Count > 0 || wanted is not null;
             }
-            if (onMac && project.Apple is { Problem: { } problem } apple)
+            if (onMac && project.Apple is { } apple)
             {
-                xcode ??= problem;
-                unchosen ??= apple.Unchosen;
-                needs = true;
+                if (apple.Problem is { } problem)
+                {
+                    xcode ??= problem;
+                    unchosen ??= apple.Unchosen;
+                    needs = true;
+                }
+                simulators.AddRange(apple.Simulators.Where(r => !simulators.Contains(r)));
+                needs |= apple.Simulators.Count > 0;
             }
             if (needs)
             {
@@ -119,6 +129,7 @@ public sealed record MobileWant
             Java = java,
             Xcode = xcode,
             UnchosenXcode = unchosen,
+            Simulators = simulators,
             OnMono = mono,
             AppleOffMac = offMac,
         };
@@ -153,6 +164,11 @@ public sealed record MobileWant
                 lacks.Add(UnchosenXcode is { } found
                     ? $"Xcode, which is in {found} but not chosen (sudo xcode-select -s {found})"
                     : $"Xcode ({Xcode.TrimEnd('.')})");
+            }
+            if (Simulators.Count > 0)
+            {
+                lacks.Add($"the {Plural.Listed([.. Simulators])} simulator {Plural.Noun(Simulators.Count, "runtime")}, which Xcode installs "
+                    + $"(Xcode › Settings › Components, or {string.Join(" and ", Simulators.Select(r => r.Split(' ')[0]).Distinct().Select(p => $"xcodebuild -downloadPlatform {p}"))})");
             }
             List<string> needing = [.. Projects.Where(p => !OnMono.Any(m => m.Project == p) && !AppleOffMac.Contains(p))];
             if (lacks.Count > 0 && needing.Count > 0)

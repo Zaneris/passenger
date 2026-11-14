@@ -1,4 +1,5 @@
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Mobile;
 using Passenger.App.Templates;
@@ -11,8 +12,9 @@ namespace Passenger.Tests;
 /// (a stand-in of dotnet's) and loads the project again; an Android project whose workload's answers say it lacks its
 /// SDK's platform and a JDK (stand-ins of the workload's targets in the project) offers the workload's installer, which
 /// runs only once the person accepted the licences Google's repository (a stand-in) gives, and the banner goes once nothing
-/// lacks; New Project offers each mobile template a missing workload brings, named by it. It sets a process-wide stand-in
-/// and ANDROID_HOME, so it runs alone.</summary>
+/// lacks; on a Mac an iOS project whose Xcode has no simulator runtime of its SDK says so with how Xcode installs one, and
+/// one whose Xcode the workload refuses offers Get Xcode; New Project offers each mobile template a missing workload
+/// brings, named by it. It sets a process-wide stand-in, ANDROID_HOME and DEVELOPER_DIR, so it runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class MobileNeedsWindowTests : IDisposable
 {
@@ -24,12 +26,14 @@ public sealed class MobileNeedsWindowTests : IDisposable
     private readonly string folder = PathNames.Canonical(TestFolders.Create("mobile-"));
     private readonly string? androidHome = Environment.GetEnvironmentVariable("ANDROID_HOME");
     private readonly string? repository = Environment.GetEnvironmentVariable(AndroidLicences.Variable);
+    private readonly string? developerDir = Environment.GetEnvironmentVariable("DEVELOPER_DIR");
 
     public void Dispose()
     {
         MainWindow.WorkloadInstallStandIn = null;
         Environment.SetEnvironmentVariable("ANDROID_HOME", androidHome);
         Environment.SetEnvironmentVariable(AndroidLicences.Variable, repository);
+        Environment.SetEnvironmentVariable("DEVELOPER_DIR", developerDir);
         TestFolders.Delete(folder);
     }
 
@@ -126,6 +130,90 @@ public sealed class MobileNeedsWindowTests : IDisposable
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void An_iOS_project_whose_Xcode_has_no_simulator_runtime_of_its_SDK_says_so_with_how_Xcode_installs_one()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Xcode and its simulator runtimes are asked of only on a Mac; elsewhere an iOS app is said to build only on one");
+        }
+        // Xcode's own simctl, standing in, lists an older iOS runtime only.
+        string developer = Directory.CreateDirectory(Path.Combine(folder, "Xcode.app", "Contents", "Developer")).FullName;
+        StandInSimctl(developer, """{ "runtimes" : [ { "platform" : "iOS", "version" : "18.0", "isAvailable" : true, "name" : "iOS 18.0" } ] }""");
+        File.WriteAllText(Path.Combine(folder, "Ios.csproj"), StandInIos(developer, error: null));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
+        Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
+
+        Assert.Equal("Ios needs the iOS 27.0 simulator runtime, which Xcode installs (Xcode › Settings › Components, or xcodebuild -downloadPlatform iOS)",
+            window.MobileSaid);
+        Assert.Null(window.MobileWant.Xcode);
+        Assert.DoesNotContain(ShownButtons(window), b => b == "Get Xcode");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_iOS_simulator_runtime_this_Macs_own_Xcode_lacks_is_said_as_its_simctl_lists_them()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Xcode and its simulator runtimes are asked of only on a Mac");
+        }
+        string? xcode = Directory.Exists("/Applications")
+            ? Directory.EnumerateDirectories("/Applications", "Xcode*.app").Order(StringComparer.Ordinal).Select(x => Path.Combine(x, "Contents", "Developer")).FirstOrDefault(Directory.Exists)
+            : null;
+        if (xcode is null)
+        {
+            Assert.Skip("This Mac has no Xcode in Applications to ask of its simulator runtimes");
+        }
+        Environment.SetEnvironmentVariable("DEVELOPER_DIR", xcode);
+        // The workload's own check, its Xcode version passed over, so a Mac's Xcode of another version is asked too.
+        File.WriteAllText(Path.Combine(folder, "Ios.csproj"), $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>{Mobile}-ios</TargetFramework>
+                <OutputType>Exe</OutputType>
+                <ValidateXcodeVersion>false</ValidateXcodeVersion>
+              </PropertyGroup>
+            </Project>
+            """);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
+        Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
+        if (window.MobileWant.Workloads.Count > 0)
+        {
+            Assert.Skip($"This .NET lacks the ios workload, so its Xcode is not asked of: {window.MobileSaid}");
+        }
+        Assert.True(window.MobileWant.Xcode is null, $"The workload refused {xcode}: {window.MobileWant.Xcode}");
+        if (window.MobileWant.Simulators.Count == 0)
+        {
+            Assert.Skip($"{xcode} has an iOS simulator runtime of its SDK's version, so nothing lacks");
+        }
+        Assert.Matches(@"^Ios needs the iOS \d+\.\d+ simulator runtime, which Xcode installs \(Xcode › Settings › Components, or xcodebuild -downloadPlatform iOS\)$",
+            window.MobileSaid);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_iOS_project_whose_Xcode_the_workload_refuses_says_why_and_Get_Xcode_opens_where_Xcode_comes_from()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Xcode is asked of only on a Mac; elsewhere an iOS app is said to build only on one");
+        }
+        string developer = Directory.CreateDirectory(Path.Combine(folder, "Xcode.app", "Contents", "Developer")).FullName;
+        const string refused = "This version of .NET for iOS (27.2.11039) requires Xcode 27.2. The current version of Xcode is 27.0.";
+        File.WriteAllText(Path.Combine(folder, "Ios.csproj"), StandInIos(developer, refused));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
+        Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
+        Assert.Equal($"Ios needs Xcode ({refused.TrimEnd('.')})", window.MobileSaid);
+
+        Ui.ClickButton(window, "Get Xcode");
+        Assert.Equal("https://developer.apple.com/xcode/", Assert.Single(window.Browsed).AbsoluteUri);
+        window.Close();
+    }
+
     [Fact]
     public void New_Project_offers_each_mobile_template_a_missing_workload_brings_naming_the_workload_that_installs_it()
     {
@@ -144,6 +232,44 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Assert.DoesNotContain(again, t => t.ShortNames.Contains("maui"));
         Assert.Contains(again, t => t.ShortNames.Contains("maui-blazor"));
     }
+
+    /// <summary>The words of the buttons the window shows.</summary>
+    private static IEnumerable<string> ShownButtons(MainWindow window) =>
+        window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Where(b => b.IsEffectivelyVisible).Select(b => b.Content).OfType<string>();
+
+    /// <summary>A stand-in of Xcode's simctl in a developer folder, listing these runtimes.</summary>
+    private static void StandInSimctl(string developer, string runtimes)
+    {
+        string simctl = Path.Combine(Directory.CreateDirectory(Path.Combine(developer, "usr", "bin")).FullName, "simctl");
+        File.WriteAllText(simctl, $"#!/bin/sh\ncat <<'LISTED'\n{runtimes}\nLISTED\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(simctl, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    /// <summary>An iOS project whose workload's check of Xcode is a stand-in after the SDK's (whose own check of the Xcode's
+    /// version is passed over): it lacks no workload, and finds the Xcode in <paramref name="developer"/> with the iOS 27.0
+    /// SDK, or refuses it with <paramref name="error"/>.</summary>
+    private static string StandInIos(string developer, string? error) => $"""
+        <Project>
+          <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+          <PropertyGroup>
+            <TargetFramework>{Mobile}-ios</TargetFramework>
+            <OutputType>Exe</OutputType>
+            <ValidateXcodeVersion>false</ValidateXcodeVersion>
+          </PropertyGroup>
+          <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+          <Target Name="_GetRequiredWorkloads" />
+          <Target Name="_DetectSdkLocations">
+            <PropertyGroup>
+              <_SdkDevPath>{developer}</_SdkDevPath>
+              <_SdkVersion>27.0</_SdkVersion>
+            </PropertyGroup>
+            {(error is null ? string.Empty : $"<Error Text=\"{error}\" />")}
+          </Target>
+        </Project>
+        """;
 
     /// <summary>A Google repository of one licence, which the platform uses.</summary>
     private const string Repository = """

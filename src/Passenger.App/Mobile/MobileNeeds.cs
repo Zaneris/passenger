@@ -13,8 +13,12 @@ public sealed record WorkloadLacked(string Id, string? Framework);
 public sealed record AndroidAnswer(string? Sdk, string? Java, IReadOnlyList<string> Packages, string? JavaVersion, bool JavaUnfound, bool SdkUnfound);
 
 /// <summary>What the Apple workload says of the Xcode it builds with: why it cannot (none chosen, another version than
-/// it needs), in its words; null where it can. <see cref="Unchosen"/> names an Xcode in Applications that none chose.</summary>
-public sealed record AppleAnswer(string? Problem, string? Unchosen = null);
+/// it needs), in its words; null where it can. <see cref="Unchosen"/> names an Xcode in Applications that none chose;
+/// <see cref="Simulators"/> the simulator runtimes the project's apps need that this Xcode has none of ("iOS 27.0").</summary>
+public sealed record AppleAnswer(string? Problem, string? Unchosen = null)
+{
+    public IReadOnlyList<string> Simulators { get; init; } = [];
+}
 
 /// <summary>A mobile project as asked of its workloads: its name and frameworks, the workloads it lacks, and what its
 /// Android and Apple workloads say where it has them.</summary>
@@ -53,6 +57,9 @@ public static class MobilePlatforms
 
     /// <summary>Whether Xcode builds the platform's apps.</summary>
     public static bool IsApple(string platform) => platform is Ios or MacCatalyst or Tvos or Macos;
+
+    /// <summary>Whether the platform's apps are built and run with a simulator runtime Xcode installs apart from itself.</summary>
+    public static bool HasSimulator(string platform) => platform is Ios or Tvos;
 
     /// <summary>The major .NET version a framework names (10 for <c>net10.0-android</c>); null where it names none.</summary>
     public static int? DotnetOf(string framework)
@@ -141,6 +148,52 @@ public static class MobileAnswers
     /// <summary>Why an Apple workload's check of Xcode failed, its first error in its own words, less MSBuild's file and
     /// project; null where it passed.</summary>
     public static string? Apple(ChildResult checkedXcode) => checkedXcode.Succeeded ? null : FirstError(checkedXcode.Output + "\n" + checkedXcode.Error);
+
+    /// <summary>The Xcode developer folder and SDK version an Apple workload's check found (<c>_SdkDevPath</c>,
+    /// <c>_SdkVersion</c>); nulls for output that is no such answer.</summary>
+    public static (string? Developer, string? SdkVersion) AppleSdk(string output)
+    {
+        if (Json(output) is not { } read)
+        {
+            return (null, null);
+        }
+        using (read)
+        {
+            JsonElement? properties = JsonMembers.Object(read.RootElement, "Properties");
+            return (JsonMembers.Text(properties, "_SdkDevPath") is { Length: > 0 } developer ? developer : null,
+                JsonMembers.Text(properties, "_SdkVersion") is { Length: > 0 } version ? version : null);
+        }
+    }
+
+    /// <summary>Of the simulator runtimes wanted (a platform as simctl names it, "iOS", and its SDK's version, or null where
+    /// unknown), those <c>simctl list runtimes -j</c> lists none of that is available and of the SDK's major version, each
+    /// named with its version where known ("iOS 27.0"); none for output that is no such answer.</summary>
+    public static IReadOnlyList<string> SimulatorsLacking(string listed, IReadOnlyList<(string Platform, string? SdkVersion)> wanted)
+    {
+        if (Json(listed) is not { } read)
+        {
+            return [];
+        }
+        using (read)
+        {
+            List<(string Platform, string Version)> available = [.. JsonMembers.Items(read.RootElement, "runtimes")
+                .Where(r => JsonMembers.Bool(r, "isAvailable") is true)
+                .Select(r => (JsonMembers.Text(r, "platform") ?? string.Empty, JsonMembers.Text(r, "version") ?? string.Empty))];
+            List<string> lacking = [];
+            foreach ((string platform, string? version) in wanted)
+            {
+                string? major = version?.Split('.')[0];
+                bool found = available.Any(r => string.Equals(r.Platform, platform, StringComparison.OrdinalIgnoreCase)
+                    && (major is null || r.Version.Split('.')[0] == major));
+                string named = version is null ? platform : $"{platform} {version}";
+                if (!found && !lacking.Contains(named))
+                {
+                    lacking.Add(named);
+                }
+            }
+            return lacking;
+        }
+    }
 
     /// <summary>The first error MSBuild wrote, its words alone ("error XA5300: words [project]" gives "words").</summary>
     public static string? FirstError(string said)
