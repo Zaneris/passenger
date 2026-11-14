@@ -338,6 +338,11 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         }
     }
 
+    /// <summary>Done once the source generators' runs the server has queued, as a load changing a project's analyzers queues
+    /// one, have run: before then it answers for a project's generated code as its generators made it before.</summary>
+    public Task GeneratorsRunAsync(CancellationToken cancel = default) =>
+        ExtensionAsync<Roslyn.Extension.GeneratorsRan>(Roslyn.Extension.Handlers.GeneratorsRun, new Roslyn.Extension.GeneratorsAsked(), cancel);
+
     /// <summary>A message to Passenger's extension about the solution that nothing waits on, as a debugging session ends.</summary>
     public void TellExtension(string handler, object message) => RoslynExtension.TellWorkspace(Server, handler, message);
 

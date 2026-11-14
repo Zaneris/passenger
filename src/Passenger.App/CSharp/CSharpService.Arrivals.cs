@@ -437,8 +437,8 @@ public sealed partial class CSharpService
                 arrival.Decided = true;
                 if (!failed && IsReload((path, arrival.Project)))
                 {
-                    // Its generators run again a second after, as after a restore's load: their code is waited for too.
-                    restoredLoaded = Stopwatch.GetTimestamp();
+                    // Its generators run again a moment after, as after a restore's load: their code is waited for too.
+                    WaitForGenerators();
                 }
             }
         }

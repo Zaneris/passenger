@@ -21,6 +21,7 @@ public static class Handlers
     public const string DocumentsWritten = "Passenger.Roslyn.Extension.DocumentsWritten";
     public const string ReferencesRead = "Passenger.Roslyn.Extension.ReferencesRead";
     public const string ReferencedFiles = "Passenger.Roslyn.Extension.ReferencedFiles";
+    public const string GeneratorsRun = "Passenger.Roslyn.Extension.GeneratorsRun";
     public const string AspireProjectDeclaration = "Passenger.Roslyn.Extension.AspireProjectDeclaration";
     public const string AspireCodeHelp = "Passenger.Roslyn.Extension.AspireCodeHelp";
     public const string AspireReferenceFix = "Passenger.Roslyn.Extension.AspireReferenceFix";
@@ -56,7 +57,7 @@ public static class Handlers
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
-        DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
+        DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses,
@@ -140,6 +141,12 @@ public sealed record ReferencedAsked([property: JsonPropertyName("paths")] IRead
 
 /// <summary>The paths asked of that a project references, as an assembly or an analyzer.</summary>
 public sealed record ReferencedFound([property: JsonPropertyName("paths")] IReadOnlyList<string> Paths);
+
+/// <summary>A load of projects ended: the source generators' runs it queued are waited for.</summary>
+public sealed record GeneratorsAsked;
+
+/// <summary>The source generators' runs queued when asked have run.</summary>
+public sealed record GeneratorsRan;
 
 /// <summary>A text's fingerprint as both sides make it: SHA-256 of its characters with every line break as '\n', since a
 /// server's line and column are the same whichever break a line ends in (and Passenger holds a CR file's as '\n').</summary>

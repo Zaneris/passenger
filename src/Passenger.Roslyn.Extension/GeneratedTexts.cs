@@ -8,6 +8,18 @@ using Roslyn.LanguageServer.Protocol;
 
 namespace Passenger.Roslyn.Extension;
 
+/// <summary>Answers once the source generators' runs the server has queued have run: a load that changes a project's
+/// analyzers queues one, run a moment later, and until then the project's generated code is what its generators made
+/// before, none of a generator just come.</summary>
+public sealed class GeneratorsRun : IExtensionWorkspaceMessageHandler<GeneratorsAsked, GeneratorsRan>
+{
+    public async Task<GeneratorsRan> ExecuteAsync(GeneratorsAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
+    {
+        await context.Solution.Workspace._updateSourceGeneratorsQueue.WaitUntilCurrentBatchCompletesAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new GeneratorsRan();
+    }
+}
+
 /// <summary>The texts of documents source generators made, as the server holds them, each with its project and its
 /// generator. A URI whose project the server no longer has (it was started again since) is found by its project's file
 /// and name, its generator and its hint name.</summary>

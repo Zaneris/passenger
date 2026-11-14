@@ -231,27 +231,45 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     /// <summary>Whether a restore the server ran as it loaded has ended and the projects it restored are still to load again,
     /// which until then the server answers for as loaded before their restore (with no package's build files, its
-    /// generators among them); or have loaded again, and the server, whose generators run again a second after a load,
-    /// has not yet said its solution moved, for <see cref="GeneratorsRerun"/> at most: none for a file of a project the
-    /// restore failed for, which loads again with nothing it brought.</summary>
+    /// generators among them); or have loaded again, and the generators' run that load queued has not yet run
+    /// (<see cref="WaitForGenerators"/>): none for a file of a project the restore failed for, which loads again with
+    /// nothing it brought.</summary>
     public bool ReloadingRestored(string path)
     {
         UiThread.Check();
-        if (!reloadingRestored && (restoredLoaded is not { } at || Stopwatch.GetElapsedTime(at) >= Waits.Of(GeneratorsRerun)))
+        if (!reloadingRestored && !GeneratorsWaited())
         {
             return false;
         }
         return workspace is not { } opened || ProjectModel.Owning(ProjectsNow?.Invoke() ?? opened.Projects, path) is not { } project || !restoreFailedFor.Contains(project.Path);
     }
 
-    /// <summary>How long after a load the server's generators are waited for to run again.</summary>
+    /// <summary>How long after a load the generators are waited for, with no extension to say when they have run.</summary>
     private static readonly TimeSpan GeneratorsRerun = TimeSpan.FromSeconds(5);
 
     private bool reloadingRestored;
 
-    /// <summary>When the projects a restore brought, or a project asked to load again, loaded again, until the server says its
-    /// solution moved.</summary>
-    private long? restoredLoaded;
+    /// <summary>When the projects a restore brought, or a project asked to load again, loaded again, and the server's answer
+    /// once the source generators' runs queued by then have run; with no extension to ask, none, the server's next word
+    /// that its solution moved ending the wait.</summary>
+    private (long At, Task? Run)? generatorsRun;
+
+    /// <summary>A load that may have changed projects' generators ended: the server, which runs them again only a moment
+    /// later, answers for their code as made before until then, so its extension is asked when they have run.</summary>
+    private void WaitForGenerators()
+    {
+        Task? run = session is { Server.ExtensionProblem: null } asked ? asked.GeneratorsRunAsync() : null;
+        if (run is not null)
+        {
+            // A server gone, or refusing, has nothing left to run: the wait ends either way.
+            UnawaitedWork.Dismiss(run);
+        }
+        generatorsRun = (Stopwatch.GetTimestamp(), run);
+    }
+
+    /// <summary>Whether a generators' run a load queued is still waited for (<see cref="WaitForGenerators"/>).</summary>
+    private bool GeneratorsWaited() => generatorsRun is { } queued
+        && (queued.Run is { } run ? !run.IsCompleted : Stopwatch.GetElapsedTime(queued.At) < Waits.Of(GeneratorsRerun));
 
     /// <summary>Whether a restore failed since the last batch's end, after which nothing loads again.</summary>
     private bool restoreFailed;
@@ -1004,7 +1022,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         restoring.Clear();
         restoredNone.Clear();
         restoreFailedFor.Clear();
-        restoredLoaded = null;
+        generatorsRun = null;
         SetState("Starting C#…");
         BackgroundWork.Begin();
         IdeErrors.Observe(Run(workspace, cancel.Token));
@@ -1285,27 +1303,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 Each(document => document.ColoursMoved());
                 Generated.Changed();
             });
-            EventHandler onDiagnostics = (_, _) => UiThread.Post(() =>
-            {
-                if (session == started)
-                {
-                    SolutionMoved();
-                    restoredLoaded = null;
-                }
-                foreach ((OpenDocument open, CSharpDocument features) in documents)
-                {
-                    // A file no tab shows (one an agent's calls keep open) is pulled once shown or asked, not at each refresh.
-                    if (Unseen(open))
-                    {
-                        features.Stale = true;
-                    }
-                    else
-                    {
-                        features.RefreshDiagnostics();
-                    }
-                }
-                Generated.Changed();
-            });
+            EventHandler onDiagnostics = (_, _) => UiThread.Post(() => Refreshed(started));
             // Projects loaded: the file shown's first, then the rest, or one loaded again.
             EventHandler onProjects = (_, _) => UiThread.Post(() =>
             {
@@ -1557,6 +1555,70 @@ public sealed partial class CSharpService : IAsyncDisposable
             : message.Message, severity));
     }
 
+    /// <summary>The server said its diagnostics moved: the solution's analysis and each shown file's are pulled again, a file
+    /// no tab shows once shown or asked; held while a test holds it (<see cref="HoldRefreshesPastRestore"/>).</summary>
+    private void Refreshed(RoslynSession from)
+    {
+        if (refreshesHeld is { } held)
+        {
+            refreshHeard = from;
+            held.TrySetResult();
+            return;
+        }
+        if (session == from)
+        {
+            SolutionMoved();
+            if (generatorsRun is { Run: null })
+            {
+                generatorsRun = null;
+            }
+        }
+        foreach ((OpenDocument open, CSharpDocument features) in documents)
+        {
+            // A file no tab shows (one an agent's calls keep open) is pulled once shown or asked, not at each refresh.
+            if (Unseen(open))
+            {
+                features.Stale = true;
+            }
+            else
+            {
+                features.RefreshDiagnostics();
+            }
+        }
+        Generated.Changed();
+    }
+
+    /// <summary>Holds the server's word that its diagnostics moved from now until the loads after its next restore have
+    /// ended, then says it as their end is heard: a word the server sent of changes made before those loads, heard after
+    /// them, as on a loaded machine; for a test. Done once a word is held.</summary>
+    public Task HoldRefreshesPastRestore()
+    {
+        UiThread.Check();
+        refreshesHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        return refreshesHeld.Task;
+    }
+
+    /// <summary>A test's hold on the server's word that its diagnostics moved, done once a word is held, and the server last
+    /// heard to say so meanwhile.</summary>
+    private TaskCompletionSource? refreshesHeld;
+    private RoslynSession? refreshHeard;
+
+    /// <summary>Ends a test's hold on the server's word that its diagnostics moved, the word held said after what is heard
+    /// now.</summary>
+    private void LetGoOfRefreshes()
+    {
+        if (refreshesHeld is null)
+        {
+            return;
+        }
+        refreshesHeld = null;
+        if (refreshHeard is { } heard)
+        {
+            refreshHeard = null;
+            UiThread.Post(() => Refreshed(heard));
+        }
+    }
+
     /// <summary>What the server logged of a project's load: a warning or error replaces what the project's last load
     /// reported (the first of a batch) or joins it; a load with none takes them away; a batch's end says any problems the
     /// toast did not, and a failed restore's are said as it fails.</summary>
@@ -1625,7 +1687,11 @@ public sealed partial class CSharpService : IAsyncDisposable
                 }
                 break;
             case { Kind: LoadReportKind.BatchEnded }:
-                restoredLoaded = reloadingRestored ? Stopwatch.GetTimestamp() : restoredLoaded;
+                if (reloadingRestored)
+                {
+                    WaitForGenerators();
+                    LetGoOfRefreshes();
+                }
                 reloadingRestored = false;
                 restoreFailed = false;
                 if (batch.Count > batchSaid)

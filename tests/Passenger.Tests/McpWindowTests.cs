@@ -402,6 +402,72 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A MAUI page's code-behind asked of as its folder first loads: the server's restore brings MAUI's generator,
+    /// its load after queues the generator's run, and the server's word that its diagnostics moved, sent of changes made
+    /// before that load, is heard just after it ends (held to then). An agent's definition of the InitializeComponent the
+    /// generator declares, asked before the first load, goes to that declaration once the generator has run, never
+    /// answering nothing because the word came first.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_of_what_a_restored_generator_declares_waits_for_its_run_though_the_server_says_its_diagnostics_moved_first()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-maui-refreshed-"));
+        DeleteAtEnd(folder);
+        string project = TestFolders.Write(folder, "MauiApp1.csproj", $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net11.0</TargetFramework>
+                <RootNamespace>MauiApp1</RootNamespace>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="Microsoft.Maui.Controls" Version="{AvaloniaApp.Metadata("MauiVersion")}" />
+              </ItemGroup>
+            </Project>
+
+            """);
+        TestFolders.Write(folder, "MainPage.xaml", MauiXamlTests.Gallery.MainPage);
+        TestFolders.Write(folder, "MainPage.xaml.cs", MauiXamlTests.Gallery.MainPageCode);
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        TaskCompletionSource loading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource reloading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        McpClient? client = null;
+        try
+        {
+            // Pumped, not settled throughout: the server's loads held wait on the window.
+            Task opening = window.OpenFolder(folder);
+            Ui.PumpUntil(() => opening.IsCompleted && window.CSharpService is not null, "the folder to open with a language server", AgentLimit);
+            Task refreshHeld = window.CSharpService!.HoldRefreshesPastRestore();
+            Task loadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, loading.Task);
+            window.ApplySettings(window.Settings with { McpServer = true });
+            Assert.True(window.AgentSocket is not null, $"The window does not listen for agents: {window.Status}");
+            client = Ui.AwaitPumped(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching", AgentLimit);
+            Heard heard = new();
+            Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 }, heard: heard));
+            Ui.PumpUntil(() => loadHeld.IsCompleted && (heard.Told.Count > 0 || asked.IsCompleted), "the server's first load of MauiApp1 to be held while the agent's definition waits", AgentLimit);
+            Task reloadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, reloading.Task);
+            loading.SetResult();
+            Ui.PumpUntil(() => reloadHeld.IsCompleted && refreshHeld.IsCompleted, "the server's load of MauiApp1 after its restore to be held, its word that its diagnostics moved heard", AgentLimit);
+            reloading.SetResult();
+            CallToolResult answer = Ui.AwaitPumped(asked, "the agent's definition of InitializeComponent", AgentLimit);
+            string said = Text(answer);
+            Assert.True(answer.IsError != true && said.Contains("MainPage.xaml.sg.cs", StringComparison.Ordinal)
+                && said.Contains("private partial void InitializeComponent();", StringComparison.Ordinal),
+                $"definition of a MAUI page's InitializeComponent, asked as the restore bringing its generator loaded, answered: {said}");
+        }
+        finally
+        {
+            loading.TrySetResult();
+            reloading.TrySetResult();
+            if (client is not null)
+            {
+                Gone(client);
+            }
+            window.Close();
+        }
+    }
+
     /// <summary>An agent's question of an open file costs the person's window what it asks, not the file's size: the disk,
     /// which the agent's own file tools may have written, is looked at off the UI thread and the file read only once its
     /// length or time changed, so editor_text of one line of an open 20,000-line file allocates on the UI thread about what
