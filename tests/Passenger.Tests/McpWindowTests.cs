@@ -442,6 +442,39 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's call that fails as a file can (an action whose file another program holds), which the agent hears
+    /// in the failure's own words alone, leaves the failure in passenger.log whole: the tool, the exception and the frames it
+    /// was thrown through.</summary>
+    [AvaloniaFact]
+    public void An_agents_call_that_fails_leaves_its_exception_and_stack_in_the_log()
+    {
+        MainWindow window = AgentsWindow(Folder, languageServer: false);
+        window.Actions.Add(new IdeAction("tests.held", "Held", "Tests", _ => ThrowAsHeld()));
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task<CallToolResult> asking = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = "tests.held" }));
+            Press(Question(window, "the question for the agent's action"), "Allow");
+            CallToolResult failed = Await(asking, "the action that fails");
+            Assert.True(failed.IsError == true && Text(failed).Contains("The file is held by another program", StringComparison.Ordinal),
+                $"An agent's call that failed was answered without the failure's words: {Text(failed)}");
+            IdeErrors.Flush();
+            string log = Ui.Shared(IdeErrors.LogPath);
+            int at = log.LastIndexOf($"An agent's {McpTools.IdeAction} failed: ", StringComparison.Ordinal);
+            string logged = at < 0 ? string.Empty : log[at..];
+            Assert.True(logged.Contains("System.IO.IOException: The file is held by another program", StringComparison.Ordinal)
+                && logged.Contains(nameof(ThrowAsHeld), StringComparison.Ordinal),
+                $"An agent's call that failed left no exception with its stack in passenger.log: {(at < 0 ? "no line names the call" : logged)}");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+
+        static void ThrowAsHeld() => throw new IOException("The file is held by another program");
+    }
+
     /// <summary>An agent's remove of "Any exception", the row every folder keeps, turns it off: its answer and the
     /// Breakpoints window show it off, so the program no longer breaks on every exception.</summary>
     [AvaloniaFact]
