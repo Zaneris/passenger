@@ -278,7 +278,7 @@ internal sealed partial class CodeCompletion
             await Task.WhenAll(listing, finding);
             OwnItems? named = await finding;
             (CompletionList? list, _) = await listing;
-            IReadOnlyList<CompletionItem> served = Served(list?.Items ?? [], named, lsp);
+            IReadOnlyList<CompletionItem> served = await ServedAsync(list?.Items ?? [], named, lsp, cancel.Token);
             if (cancel.IsCancellationRequested)
             {
                 return;
@@ -303,7 +303,7 @@ internal sealed partial class CodeCompletion
             {
                 // The items of namespaces not imported, which the server lists after all the rest, added as they come.
                 CompletionList? rest = await coming;
-                IReadOnlyList<CompletionItem> later = Served(rest?.Items ?? [], named, lsp);
+                IReadOnlyList<CompletionItem> later = await ServedAsync(rest?.Items ?? [], named, lsp, cancel.Token);
                 if (!cancel.IsCancellationRequested && ReferenceEquals(open, waiting) && later.Count > 0)
                 {
                     grown = Made(lsp, list, [served, later], named, web, asked, caret, list.IsIncomplete || rest!.IsIncomplete, shown);
@@ -330,16 +330,23 @@ internal sealed partial class CodeCompletion
         }
     }
 
-    /// <summary>The server's items a list offers: those a language's own items leave, and that replace the stretch its name does.</summary>
-    private static IReadOnlyList<CompletionItem> Served(IReadOnlyList<CompletionItem> items, OwnItems? named, LspDocument lsp)
+    /// <summary>The server's items a list offers: those a language's own items leave, and that replace the stretch its name
+    /// does; matched off the UI thread, as a language may list thousands of its own (a resource's keys, a Godot project's
+    /// files), its server as many.</summary>
+    private static async Task<IReadOnlyList<CompletionItem>> ServedAsync(IReadOnlyList<CompletionItem> items, OwnItems? named, LspDocument lsp, CancellationToken cancel)
     {
-        if (named is not { } mine)
+        if (named is not { } mine || items.Count == 0)
         {
             return items;
         }
-        HashSet<string> labels = [.. mine.Items.Select(i => i.Label)];
-        // A server's item that would replace another stretch than the name's could not go in where the name does.
-        return [.. items.Where(i => !labels.Contains(mine.ByName ? NameOf(i.Label) : i.Label) && (i.TextEdit is not { } replaced || lsp.OffsetOf(replaced.Range.Start) == mine.Start))];
+        ServerLines lines = ServerLines.Of(lsp.Text.Snapshot);
+        return await BackgroundWork.Run(() =>
+        {
+            HashSet<string> labels = [.. mine.Items.Select(i => i.Label)];
+            // A server's item that would replace another stretch than the name's could not go in where the name does.
+            return (IReadOnlyList<CompletionItem>)[.. items.Where(i => !labels.Contains(mine.ByName ? NameOf(i.Label) : i.Label)
+                && (i.TextEdit is not { } replaced || lines.OffsetOf(replaced.Range.Start) == mine.Start))];
+        }, cancel);
     }
 
     /// <summary>The list opened of the server's items asked at <paramref name="caret"/>, its parts in order, a language's

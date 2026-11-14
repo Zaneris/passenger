@@ -136,16 +136,37 @@ internal sealed partial class CSharpAssist
         }
         int start = lsp.OffsetOf(new LspPosition(read.At.Line, read.At.Character));
         int end = lsp.OffsetOf(new LspPosition(read.End.Line, read.End.Character));
-        IReadOnlyList<CompletionItem> items = [.. set.Keys.Select(key => new CompletionItem
+        IReadOnlyList<CompletionItem> items = await BackgroundWork.Run(() => KeyItems(set), cancel);
+        return items.Count == 0 ? null : (start, items, caret < end ? asked.GetText(caret, end - caret) : string.Empty);
+    }
+
+    /// <summary>A resource's keys as a localizer's list: each with its neutral value beside it, else the first language's
+    /// that translates it, else the resource's name. Made off the UI thread, each file's entries found by name once, as a
+    /// resource may have thousands of keys.</summary>
+    private static IReadOnlyList<CompletionItem> KeyItems(ResourceSet set)
+    {
+        (ResourceFile File, Dictionary<string, ResourceEntry> Entries)[] files = [.. set.Files.Select(f => (f, EntriesByName(f)))];
+        Dictionary<string, ResourceEntry>? neutral = files.FirstOrDefault(f => f.File.Culture.Length == 0).Entries;
+        return [.. set.Keys.Select(key => new CompletionItem
         {
             Label = key,
             Kind = CompletionItemKind.Value,
-            Detail = (set.Neutral?.Entry(key) ?? set.Files.Select(f => f.Entry(key)).FirstOrDefault(e => e is { Translated: true }))?.Value ?? set.Name,
+            Detail = (neutral?.GetValueOrDefault(key) ?? files.Select(f => f.Entries.GetValueOrDefault(key)).FirstOrDefault(e => e is { Translated: true }))?.Value ?? set.Name,
             InsertText = key.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal),
             SortText = " " + key,
             FilterText = key,
         })];
-        return items.Count == 0 ? null : (start, items, caret < end ? asked.GetText(caret, end - caret) : string.Empty);
+
+        // The first entry of each name, as a key is looked up.
+        static Dictionary<string, ResourceEntry> EntriesByName(ResourceFile file)
+        {
+            Dictionary<string, ResourceEntry> named = new(StringComparer.Ordinal);
+            foreach (ResourceEntry entry in file.Entries)
+            {
+                named.TryAdd(entry.Name, entry);
+            }
+            return named;
+        }
     }
 
     /// <summary>A line up to the caret that ends inside a string given to an indexer or to GetString.</summary>

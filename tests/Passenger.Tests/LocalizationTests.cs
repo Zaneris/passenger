@@ -232,6 +232,51 @@ public sealed class LocalizationTests : IClassFixture<LocalizationTests.Project>
         }
     }
 
+    /// <summary>A localizer's list is made off the UI thread: its resource's keys made into items and the server's matched
+    /// against them there, so a list of 2,000 keys costs the UI thread, from the key typed in the localizer's string to the
+    /// list open, what one of 100 does, counted rather than timed.</summary>
+    [AvaloniaFact]
+    public void A_localizers_keys_are_listed_off_the_UI_thread()
+    {
+        MainWindow window = project.Open(project.PathOf("Shop/Services/Few.cs"));
+        try
+        {
+            long few = Listed(window, "Few", 100);
+            long many = Listed(window, "Many", 200);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A localizer's list of 100 keys opened with {few / 1024} KB on the UI thread from the key; of 2,000 keys, {many / 1024} KB");
+            // Less than the least object for each key more: whatever is made of a key is made off it.
+            Assert.True(many - few < (2_000 - 100) * 24L,
+                $"A localizer's list of 2,000 keys opened with {many / 1024} KB allocated on the UI thread from the key, against {few / 1024} KB for 100 keys: "
+                + $"{(many - few) / 1_900} bytes for each key more, so its keys were made into items or matched there");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The least the UI thread allocates from a key typed in a localizer's string to its list open, showing so many rows.</summary>
+    private long Listed(MainWindow window, string type, int rows)
+    {
+        window.OpenFile(project.PathOf($"Shop/Services/{type}.cs"));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        long least = long.MaxValue;
+        for (int round = 0; round < 3; round++)
+        {
+            Ui.PlaceAfter(editor, "localizer[\"");
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            window.KeyTextInput("K");
+            Ui.Pumped(() => window.Assist.CompletionNarrowedBy == "K", TimeSpan.FromSeconds(60));
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            Assert.True(window.Assist.CompletionNarrowedBy == "K" && window.Assist.CompletionLabels.Count == rows && window.Assist.CompletionLabels[0] == "Key0000",
+                $"{type}'s keys listed after localizer[\"K: {window.Assist.CompletionLabels.Count} rows, {string.Join(", ", window.Assist.CompletionLabels.Take(3))} first, not {rows} from Key0000");
+            Ui.Press(window, "ESCAPE");
+            Ui.Press(window, "BACK_SPACE");
+        }
+        return least;
+    }
+
     private static HashSet<string> Missing(MainWindow window) => [.. window.EditorArea.Active!.Markers
         .Where(m => m.Kind == MarkerKind.Warning && m.Message.Contains(" translat", StringComparison.Ordinal)).Select(m => m.Message)];
 
@@ -395,6 +440,13 @@ public sealed class LocalizationTests : IClassFixture<LocalizationTests.Project>
             TestFolders.Write(Folder, "Shop/Strings.cs", Strings);
             TestFolders.Write(Folder, "Shop/Strings.resx", Resx(oneLine: false, ("Farewell", "Farewell"), ("Hello", "Hello there"), ("Later", "See you later")));
             TestFolders.Write(Folder, "Shop/xlf/Strings.fr.xlf", Xliff);
+            // A localizer of a hundred keys and one of two thousand.
+            foreach ((string type, int keys) in new[] { ("Few", 100), ("Many", 2_000) })
+            {
+                TestFolders.Write(Folder, $"Shop/Services/{type}.cs", "using Microsoft.Extensions.Localization;\n\nnamespace Shop.Services;\n\n"
+                    + $"public sealed class {type}(IStringLocalizer<{type}> localizer)\n{{\n    public string Said => localizer[\"\"];\n}}\n");
+                TestFolders.Write(Folder, $"Shop/Services/{type}.fr.resx", Resx(oneLine: true, [.. Enumerable.Range(0, keys).Select(i => ($"Key{i:0000}", $"Valeur {i}"))]));
+            }
         }
 
         internal static string Resx(bool oneLine, params (string Name, string Value)[] entries) =>
