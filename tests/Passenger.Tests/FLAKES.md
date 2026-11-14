@@ -1603,8 +1603,10 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
 - `EvalTests`' `A_LINQ_watch_evaluates_in_a_program_that_has_called_no_LINQ_method_yet`, the gate on CI's Windows x64
   runner (43489332630 and 43600881157): "The expression took too long to evaluate: it was stopped after 3 s", one call of
   a program's first LINQ evaluation taking 1.65 s of it while System.Linq loaded. **The test's limit**: the run shortened
-  the evaluation limit to 3 s of a developer machine's time but never scaled it, as every other limit of the run is; it
-  is now 3 s times `TimeScale` (7.5 s on that runner), the person's 5 s as it was.
+  the evaluation limit to 3 s of a developer machine's time, and a cold first LINQ evaluation needs a scaled one. The test's
+  own session now gets 3 s times `TimeScale` (7.5 s on that runner); the run keeps 3 s, which the tests of getters
+  outlasting it are built on (scaling the run's, tried first in 3f2b14c06, failed DebuggerTests' slow Message on every
+  system as its 8 s getter then returned within the limit and its abort's wait).
 - `TerminalTests`' `An_address_in_the_terminal_opens_with_a_click_or_cmd_click_and_a_files_path_with_cmd_click(copyOnSelection:
   False)`, the Windows VM beside another agent's runs (the SkiaSharp 4 move's checks): "(named, 11, named, 21, True)"
   expected, nothing hovered over `notes.txt:2`. **The test waited wrong.** It pointed at the path's line as soon as the line
