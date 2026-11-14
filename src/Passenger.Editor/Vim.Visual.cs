@@ -527,7 +527,8 @@ public sealed partial class Vim
             Region r = regions[i];
             bool single = r.Anchor == r.Cursor;
             int at = single ? r.Cursor : Math.Min(CharEnd(text, r.Cursor), text.Length);
-            if (VimTextObjects.Of(text, at, key, inner, n) is not { } found)
+            // A stretch reaching the text's last character has nothing after it to carry on to, and keeps as it is.
+            if (at >= text.Length || VimTextObjects.Of(text, at, key, inner, n) is not { } found)
             {
                 continue;
             }

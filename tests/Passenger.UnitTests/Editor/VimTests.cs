@@ -297,6 +297,9 @@ public class VimTests
     [InlineData("x (a [b|] c) y", "vi(", "x («a [b] c|) y")]
     [InlineData("x (a [b|] c) y", "va[", "x (a «[b]| c) y")]
     [InlineData("a\n|b\nc\n\nd", "vip", "«a\nb\nc\n|\nd")]
+    [InlineData("ab |cd", "veiw", "ab «cd|")]
+    [InlineData("ab |cd", "veaW", "ab «cd|")]
+    [InlineData("ab |cd", "viwiwd", "ab| ")]
     public void Visual_mode_selects_from_where_it_began_to_its_cursor_as_vims_does(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
