@@ -37,7 +37,7 @@ public sealed partial class Vim
         {
             op = "c";
         }
-        bool lines = mode == VimMode.VisualLine || op is "X" or "Y" or "S" or "R" || (op is "D" or "C" && !block);
+        bool lines = mode == VimMode.VisualLine || op is "S" or "R" || (op is "X" or "Y" or "D" or "C" && !block);
         if (block && op is "D" or "C")
         {
             // A block's D and C take each line from the block's left to its end.
