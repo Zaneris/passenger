@@ -1600,3 +1600,8 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   refused the other's replace; that change was kept to try again, but the next `ChangeNow` read the file without it and
   set its own in its place. Reads now hold the lock (`StateFile.ReadHeld`) and a change is made over any still waiting;
   the test reads the file all the while, which lost 47 of 150 on the Windows VM before the fix (#1627).
+- `EvalTests`' `A_LINQ_watch_evaluates_in_a_program_that_has_called_no_LINQ_method_yet`, the gate on CI's Windows x64
+  runner (43489332630 and 43600881157): "The expression took too long to evaluate: it was stopped after 3 s", one call of
+  a program's first LINQ evaluation taking 1.65 s of it while System.Linq loaded. **The test's limit**: the run shortened
+  the evaluation limit to 3 s of a developer machine's time but never scaled it, as every other limit of the run is; it
+  is now 3 s times `TimeScale` (7.5 s on that runner), the person's 5 s as it was.

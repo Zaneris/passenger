@@ -199,7 +199,7 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("ASPIRE_CLI_GENERATE_HTTPS_CERTIFICATE", "false");
         AspireCli.Begin(Root);
         // Waits a person never notices, which a test holding the IDE to them would wait out in full, made short.
-        Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EvaluationTimeoutVariable, "3000");
+        Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EvaluationTimeoutVariable, ((int)(3000 * TimeScale)).ToString(System.Globalization.CultureInfo.InvariantCulture));
         Environment.SetEnvironmentVariable(Passenger.App.MainWindow.WatchSaysLaterVariable, "3000");
         Environment.SetEnvironmentVariable(Passenger.App.Mcp.AgentCall.EveryVariable, "1000");
         Environment.SetEnvironmentVariable(Passenger.Text.TextSearch.ApartVariable, "1000");
