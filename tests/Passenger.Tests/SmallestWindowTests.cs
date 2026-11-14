@@ -6,6 +6,8 @@ using Avalonia.Input;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Editors;
+using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
 
@@ -243,6 +245,43 @@ public sealed class SmallestWindowTests
         }
         finally
         {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Editor tabs down a side take at most a third of a narrow group, the code the rest, where their column kept its
+    /// 220 units at the smallest width with the Explorer open and left the code its line numbers alone; at a wide window
+    /// the column is 220 wide.</summary>
+    [AvaloniaFact]
+    public void At_the_smallest_width_editor_tabs_down_a_side_leave_the_code_two_thirds_of_its_group()
+    {
+        string folder = TestFolders.Create("smallest-side-tabs-");
+        foreach (string name in (string[])["One.cs", "Two.cs"])
+        {
+            File.WriteAllText(Path.Combine(folder, name), $"class {Path.GetFileNameWithoutExtension(name)} {{ }}\n");
+        }
+        MainWindow window = Ui.OpenFolder(folder, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { EditorTabs = EditorTabsPlace.Left });
+            window.OpenFile(Path.Combine(folder, "One.cs"));
+            window.OpenFile(Path.Combine(folder, "Two.cs"));
+            Ui.Settle();
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Explorer), "The Explorer is not open beside the editors: the test no longer reaches a narrow group");
+            EditorGroup group = window.EditorArea.ActiveGroup;
+            double across = group.Bounds.Width;
+            // Within a unit, as the layout rounds to whole pixels.
+            Assert.True(group.TabStrip.Bounds.Width <= (across / 3) + 1 && Placed(window, group.Editor).Width >= (across * 2 / 3) - 1,
+                $"In a group {across:0.#} wide the tabs down its side take {group.TabStrip.Bounds.Width:0.#} and leave the code {Placed(window, group.Editor).Width:0.#}");
+
+            window.Width = 1400;
+            Ui.Settle();
+            Assert.True(Math.Abs(group.TabStrip.Bounds.Width - 220) < 0.5, $"At a wide window the tabs down the side are {group.TabStrip.Bounds.Width:0.#} wide, not 220");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
             window.Close();
             TestFolders.Delete(folder);
         }

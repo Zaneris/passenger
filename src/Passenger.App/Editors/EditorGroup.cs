@@ -373,6 +373,21 @@ public sealed class EditorGroup : DockPanel
         }
     }
 
+    /// <summary>The most of a group's width its tabs down a side take, so a narrow group (a small window's, a split's) keeps
+    /// the rest for the code, the tabs' names ending sooner in their ellipsis.</summary>
+    private const double SideTabsShare = 1.0 / 3;
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        // Set before the column is measured, so it is laid out once at its width.
+        double most = tabsPlace == EditorTabsPlace.Top ? double.PositiveInfinity : availableSize.Width * SideTabsShare;
+        if (!tabBar.MaxWidth.Equals(most))
+        {
+            tabBar.MaxWidth = most;
+        }
+        return base.MeasureOverride(availableSize);
+    }
+
     /// <summary>The theme's open tab down a side: a line its shadow draws inside the tab along its top drawn along the
     /// side toward the editor instead, so the tab still reads as joined to it; a shadow cast outside it stays as it is.</summary>
     private Styles SideShadows(EditorTabsPlace place)

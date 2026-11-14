@@ -235,8 +235,8 @@
         <Setter Property="Background" Value="{DynamicResource Passenger.Frame}" />
         <Setter Property="BorderThickness" Value="0" />
     </Style>
-    <!-- The tabs as a column down an editor's side: as wide as the longer names, each tab as high as the strip is across
-         the top. -->
+    <!-- The tabs as a column down an editor's side: as wide as the longer names, though never more than a third of a
+         narrow group (EditorGroup), each tab as high as the strip is across the top. -->
     <Style Selector="Border.tabStrip.sideTabs">
         <Setter Property="Height" Value="NaN" />
         <Setter Property="Width" Value="220" />
