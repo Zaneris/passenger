@@ -218,7 +218,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - `Passenger.Editor`: `CodeEditor`, `Keymap`, `EditorActions`; the code font is `CodeFonts.Key`, never a `FontFamily`
   written elsewhere; a family code or the window's words are drawn in is named through `FallbackFonts` (`Carry`, `Of`), an emoji's fallback asked in
   `und-Zsye` (`FallbackFonts.LanguageOf`), never the culture's, or fontconfig names a text face,
-  so what it lacks takes the platform's own fallback; the editor names no debugger, test or VCS concept (`IGutterColumn`, EditorRulesTests); a file's
+  so what it lacks takes the platform's own fallback; a view drawing its own text takes the input method through `ViewInputMethod` (CodeEditor, TerminalView); the editor names no debugger, test or VCS concept (`IGutterColumn`, EditorRulesTests); a file's
   editors draw its one `DocumentDecorations`, never fed per split. Vim mode: `Vim` decides a key's meaning purely over the editor's
   `IVimView` (`Vim.Commands`, `Vim.Operators`, `VimMotions`, `VimTextObjects`) and `CodeEditor.PressVim` takes it before
   any keymap; an insert session is one `EditKind.Joined` step, `.`'s edits one too (`FollowVim`); normal-mode carets
