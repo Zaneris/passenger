@@ -72,8 +72,9 @@ public sealed partial class Vim
         {
             Registers.Delete(command.Register, taken, Jumps.Contains(command.Name));
         }
-        else if (op == "y" && !empty)
+        else if (op == "y")
         {
+            // A yank of nothing still yanks, leaving its register empty, as Vim's does.
             Registers.Yank(command.Register, taken);
         }
         if (op is not ("y" or "c"))

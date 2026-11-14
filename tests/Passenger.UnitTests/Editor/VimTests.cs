@@ -312,6 +312,21 @@ public class VimTests
     public void A_block_over_lines_of_other_lengths_acts_as_vims_does(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A yank of nothing (yh at a line's start, y0 there, y` to the caret's own mark) still yanks, leaving the
+    /// unnamed register and 0 empty, so a put after it puts nothing, as Vim's does.</summary>
+    [Theory]
+    [InlineData("|abc def", "ylyhP", "|abc def")]
+    [InlineData("|abc def", "ylyhp", "|abc def")]
+    [InlineData("|abc def", "yly0P", "|abc def")]
+    [InlineData("|abc def", "yly0\"0P", "|abc def")]
+    [InlineData("|abc def", "yly0\"1P", "|abc def")]
+    [InlineData("abc\n|\ndef", "kylj0ylP", "abc\n|\ndef")]
+    [InlineData("abc\n|\ndef", "kylj0ylkp", "|abc\n\ndef")]
+    [InlineData("|abc def", "ylwmby`bP", "abc |def")]
+    [InlineData("|abc def", "ylwmby`bvp", "abc |ef")]
+    public void A_yank_of_nothing_empties_its_register(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     /// <summary>A yank over _ leaves the caret where it was, as yy does.</summary>
     [Theory]
     [InlineData("a b|c\nxyz", "yy", "a b|c\nxyz")]
