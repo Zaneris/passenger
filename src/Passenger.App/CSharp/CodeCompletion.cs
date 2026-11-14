@@ -58,6 +58,9 @@ internal sealed partial class CodeCompletion
     /// <summary>What was typed of the name the completion list shows its rows for, while it shows.</summary>
     public string? NarrowedBy => completion.IsVisible ? filtered?.Typed : null;
 
+    /// <summary>The label of the chosen row, while the list shows.</summary>
+    public string? Chosen => completion.IsVisible ? completion.Selected?.Item.Label : null;
+
     /// <summary>The controls showing the completion list's rows on screen, while it shows.</summary>
     public IReadOnlyList<Control> RowControls => completion.IsVisible
         ? [.. completion.List.GetRealizedContainers().OfType<ListBoxItem>().Select(row => row.Presenter?.Child).OfType<Control>()]
@@ -72,6 +75,11 @@ internal sealed partial class CodeCompletion
         {
             // From the rows of the name as typed, whose filter landing later would have chosen its first row again.
             FilterNow();
+        }
+        if (!completion.IsVisible && open is { Coming: true } && action == EditorActions.Escape)
+        {
+            // A list showing no row while it waits for more is the person's to dismiss too.
+            Close();
         }
         if (completion.IsVisible)
         {
@@ -104,7 +112,7 @@ internal sealed partial class CodeCompletion
     /// opens for it.</summary>
     public void Typed(string text)
     {
-        if (completion.IsVisible)
+        if (completion.IsVisible || open is { Coming: true })
         {
             if (text.All(IsWordChar))
             {
@@ -142,7 +150,7 @@ internal sealed partial class CodeCompletion
         }
         // The item chosen among the rows of the name as typed before the character, its filter landed or not.
         FilterNow(end);
-        if (open is null || completion.Selected is not { } row || templatesOffered.ContainsKey(row.Item) || postfixOffered.ContainsKey(row.Item))
+        if (open is null || !completion.IsVisible || completion.Selected is not { } row || templatesOffered.ContainsKey(row.Item) || postfixOffered.ContainsKey(row.Item))
         {
             return null;
         }
@@ -164,7 +172,7 @@ internal sealed partial class CodeCompletion
     /// typed, and a commit character must find the list still open.</summary>
     public void CaretMoved()
     {
-        if (completion.IsVisible)
+        if (completion.IsVisible || open is { Coming: true })
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(Filter);
         }
@@ -235,58 +243,47 @@ internal sealed partial class CodeCompletion
             await Task.WhenAll(listing, finding);
             OwnItems? named = await finding;
             (CompletionList? list, _) = await listing;
-            IReadOnlyList<CompletionItem> served = list?.Items ?? [];
-            if (named is { } mine)
-            {
-                HashSet<string> labels = [.. mine.Items.Select(i => i.Label)];
-                // A server's item that would replace another stretch than the name's could not go in where the name does.
-                served = [.. served.Where(i => !labels.Contains(mine.ByName ? NameOf(i.Label) : i.Label) && (i.TextEdit is not { } replaced || lsp.OffsetOf(replaced.Range.Start) == mine.Start))];
-            }
-            if (cancel.IsCancellationRequested || (served.Count == 0 && named is null))
-            {
-                if (!cancel.IsCancellationRequested)
-                {
-                    Close();
-                }
-                return;
-            }
-            int start = named?.Start ?? (served.FirstOrDefault(i => i.TextEdit is not null)?.TextEdit is { } edit
-                ? lsp.OffsetOf(edit.Range.Start)
-                : lsp.IsRazor ? RazorWordStart(caret, served) : web is not null ? WebAssist.WebWordStart(web, Editor.Document.Snapshot, caret) : context.WordStart(caret));
-            // The live templates that may go here are listed with the server's items, ahead of a keyword they share.
-            TemplateScope scope = web is null && context.Syntax is { } syntax ? TemplateScopes.At(syntax, caret).Scope : TemplateScope.None;
-            if (templatesFor != (Templates, scope))
-            {
-                templatesOffered.Clear();
-                foreach (LiveTemplate template in Templates.In(scope))
-                {
-                    templatesOffered[new CompletionItem { Label = template.Abbreviation, Kind = CompletionItemKind.Snippet, Detail = template.Description, SortText = "!" + template.Abbreviation }] = template;
-                }
-                templatesFor = (Templates, scope);
-            }
-            postfixOffered.Clear();
-            foreach ((PostfixTemplate postfix, PostfixTarget target) in Templates.PostfixInCompletion ? Postfixes(Math.Min(start, caret), caret) : [])
-            {
-                postfixOffered[new CompletionItem { Label = postfix.Name, Kind = CompletionItemKind.Snippet, Detail = postfix.Example, SortText = "~" + postfix.Name }] = (postfix, target);
-            }
-            IReadOnlyList<CompletionItem> ahead = named?.Items ?? [];
-            CompletionItem[] offered = [.. templatesOffered.Keys, .. postfixOffered.Keys];
-            int listStart = Math.Min(start, Editor.Selections.Primary.Caret);
-            string listTail = named is { Tail: { } tail } ? tail : web is not null ? Tail(asked, served, caret) : string.Empty;
-            string lead = web is not null && start < caret && caret <= asked.Length ? asked.GetText(start, caret - start) : string.Empty;
-            // Gathered on the thread pool: an incomplete list of every type in reach is asked again at each key.
-            CompletionItem[] items = await BackgroundWork.Run<CompletionItem[]>(() => [.. ahead, .. served, .. offered], cancel.Token);
+            IReadOnlyList<CompletionItem> served = Served(list?.Items ?? [], named, lsp);
             if (cancel.IsCancellationRequested)
             {
                 return;
             }
-            open = new Completion(items, listStart, list?.ItemDefaults?.CommitCharacters ?? [], list?.IsIncomplete ?? false)
+            Completion? shown = null;
+            if (served.Count > 0 || named is not null)
             {
-                Tail = listTail,
-                WordCharacters = named?.WordCharacters ?? string.Empty,
-                Lead = lead,
-            };
-            Filter();
+                shown = Made(lsp, list, [served], named, web, asked, caret, list?.IsIncomplete ?? false, before: null);
+            }
+            else if (list?.Later is null)
+            {
+                Close();
+                return;
+            }
+            if (list?.Later is not { } coming)
+            {
+                return;
+            }
+            Completion? waiting = open;
+            Completion? grown = null;
+            try
+            {
+                // The items of namespaces not imported, which the server lists after all the rest, added as they come.
+                CompletionList? rest = await coming;
+                IReadOnlyList<CompletionItem> later = Served(rest?.Items ?? [], named, lsp);
+                if (!cancel.IsCancellationRequested && ReferenceEquals(open, waiting) && later.Count > 0)
+                {
+                    grown = Made(lsp, list, [served, later], named, web, asked, caret, list.IsIncomplete || rest!.IsIncomplete, shown);
+                }
+            }
+            finally
+            {
+                // Nothing more can come: a list with no row goes, as one the server sent none for, or will once its rows land.
+                shown?.Coming = false;
+                if (grown is null && !cancel.IsCancellationRequested && ReferenceEquals(open, waiting)
+                    && (shown is null || (!completion.IsVisible && filtered is { } rowless && ReferenceEquals(rowless.List, shown))))
+                {
+                    Close();
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -296,6 +293,90 @@ internal sealed partial class CodeCompletion
         {
             // No list, as with nothing to offer; typing on asks again.
         }
+    }
+
+    /// <summary>The server's items a list offers: those a language's own items leave, and that replace the stretch its name does.</summary>
+    private static IReadOnlyList<CompletionItem> Served(IReadOnlyList<CompletionItem> items, OwnItems? named, LspDocument lsp)
+    {
+        if (named is not { } mine)
+        {
+            return items;
+        }
+        HashSet<string> labels = [.. mine.Items.Select(i => i.Label)];
+        // A server's item that would replace another stretch than the name's could not go in where the name does.
+        return [.. items.Where(i => !labels.Contains(mine.ByName ? NameOf(i.Label) : i.Label) && (i.TextEdit is not { } replaced || lsp.OffsetOf(replaced.Range.Start) == mine.Start))];
+    }
+
+    /// <summary>The list opened of the server's items asked at <paramref name="caret"/>, its parts in order, a language's
+    /// own first and the templates last; one with items added as they came (<paramref name="before"/>) keeps the choice
+    /// made in it.</summary>
+    private Completion Made(LspDocument lsp, CompletionList? list, IReadOnlyList<CompletionItem>[] parts, OwnItems? named, WebDocument? web,
+        TextSnapshot asked, int caret, bool incomplete, Completion? before)
+    {
+        IReadOnlyList<CompletionItem> served = parts.FirstOrDefault(p => p.Count > 0) ?? parts[0];
+        int start = named?.Start ?? (served.FirstOrDefault(i => i.TextEdit is not null)?.TextEdit is { } edit
+            ? lsp.OffsetOf(edit.Range.Start)
+            : lsp.IsRazor ? RazorWordStart(caret, served) : web is not null ? WebAssist.WebWordStart(web, Editor.Document.Snapshot, caret) : context.WordStart(caret));
+        // The live templates that may go here are listed with the server's items, ahead of a keyword they share.
+        TemplateScope scope = web is null && context.Syntax is { } syntax ? TemplateScopes.At(syntax, caret).Scope : TemplateScope.None;
+        if (templatesFor != (Templates, scope))
+        {
+            templatesOffered.Clear();
+            foreach (LiveTemplate template in Templates.In(scope))
+            {
+                templatesOffered[new CompletionItem { Label = template.Abbreviation, Kind = CompletionItemKind.Snippet, Detail = template.Description, SortText = "!" + template.Abbreviation }] = template;
+            }
+            templatesFor = (Templates, scope);
+        }
+        if (before is null)
+        {
+            postfixOffered.Clear();
+            foreach ((PostfixTemplate postfix, PostfixTarget target) in Templates.PostfixInCompletion ? Postfixes(Math.Min(start, caret), caret) : [])
+            {
+                postfixOffered[new CompletionItem { Label = postfix.Name, Kind = CompletionItemKind.Snippet, Detail = postfix.Example, SortText = "~" + postfix.Name }] = (postfix, target);
+            }
+        }
+        IReadOnlyList<CompletionItem> ahead = named?.Items ?? [];
+        CompletionItem[] offered = [.. templatesOffered.Keys, .. postfixOffered.Keys];
+        int listStart = before?.Start ?? Math.Min(start, Editor.Selections.Primary.Caret);
+        string listTail = named is { Tail: { } tail } ? tail : web is not null ? Tail(asked, served, caret) : string.Empty;
+        string lead = web is not null && start < caret && caret <= asked.Length ? asked.GetText(start, caret - start) : string.Empty;
+        open = new Completion(new Joined([ahead, .. parts, offered]), listStart, list?.ItemDefaults?.CommitCharacters ?? [], incomplete)
+        {
+            Tail = listTail,
+            WordCharacters = named?.WordCharacters ?? string.Empty,
+            Lead = lead,
+            Before = before,
+            Coming = before is null && list?.Later is not null,
+        };
+        Filter();
+        return open;
+    }
+
+    /// <summary>A list's parts read as one list in their order, so a list of every type in reach is made without a copy.</summary>
+    private sealed class Joined(IReadOnlyList<CompletionItem>[] parts) : IReadOnlyList<CompletionItem>
+    {
+        public int Count { get; } = parts.Sum(p => p.Count);
+
+        public CompletionItem this[int index]
+        {
+            get
+            {
+                foreach (IReadOnlyList<CompletionItem> part in parts)
+                {
+                    if (index < part.Count)
+                    {
+                        return part[index];
+                    }
+                    index -= part.Count;
+                }
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
+        }
+
+        public IEnumerator<CompletionItem> GetEnumerator() => parts.SelectMany(p => p).GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     /// <summary>What a list is narrowed by: the text typed since it opened, what of it an item with no filter text of its
@@ -384,8 +465,20 @@ internal sealed partial class CodeCompletion
 
     private void ShowRows(Narrowing narrowing, CompletionRow[] rows)
     {
+        // The choice made among the rows of the name as typed stays on its item as items are added to the list.
+        CompletionItem? chosen = filtered is { } before && ReferenceEquals(before.List, narrowing.List.Before) && before.Typed == narrowing.Typed
+            ? completion.Selected?.Item
+            : null;
         if (rows.Length == 0)
         {
+            if (narrowing.List.Coming)
+            {
+                completion.Show([]);
+                completion.IsVisible = false;
+                itemCard.IsVisible = false;
+                filtered = (narrowing.List, narrowing.Typed);
+                return;
+            }
             Close();
             return;
         }
@@ -396,7 +489,7 @@ internal sealed partial class CodeCompletion
             Close();
             return;
         }
-        completion.Show(rows);
+        completion.Show(rows, chosen);
         filtered = (narrowing.List, narrowing.Typed);
         completion.IsVisible = true;
         popups.Place(completion, narrowing.List.Start, above: false);
@@ -774,6 +867,14 @@ internal sealed partial class CodeCompletion
 
         /// <summary>Whether the first item's documentation shows beside the list as it opens.</summary>
         public bool DescribedAsItOpens { get; init; }
+
+        /// <summary>The list these items were added to as they came, whose choice stays where it is (C#'s types of
+        /// namespaces not imported added to what is in scope); null for a list asked anew.</summary>
+        public Completion? Before { get; init; }
+
+        /// <summary>Whether items are still to be added to the list as they come (<see cref="Before"/>): showing no row
+        /// meanwhile, it stays open for them.</summary>
+        public bool Coming { get; set; }
 
         /// <summary>The text after the caret a web server's items replace as well (a JSON string's closing quote, the rest
         /// of a CSS name the caret is inside), as it stood when the list was asked for; empty for none.</summary>

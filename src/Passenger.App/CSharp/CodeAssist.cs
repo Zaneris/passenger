@@ -234,6 +234,9 @@ public sealed class CodeAssist
     /// <summary>What was typed of the name the completion list shows its rows for, while it shows.</summary>
     public string? CompletionNarrowedBy => completion.NarrowedBy;
 
+    /// <summary>The label of the completion list's chosen row, while it shows.</summary>
+    public string? CompletionChosen => completion.Chosen;
+
     /// <summary>The controls showing the completion list's rows on screen, while it shows.</summary>
     public IReadOnlyList<Control> CompletionRowControls => completion.RowControls;
 

@@ -283,9 +283,9 @@ internal sealed class CompletionPopup : Border
 
     public IReadOnlyList<CompletionRow> Rows => [.. slots.Select(s => s.Row)];
 
-    /// <summary>Rows in the list's places, the first chosen: the places there already show their new rows, the rest are
-    /// added or taken away at the end.</summary>
-    public void Show(IReadOnlyList<CompletionRow> rows)
+    /// <summary>Rows in the list's places, the first chosen, or the row of <paramref name="stays"/> where it is among them:
+    /// the places there already show their new rows, the rest are added or taken away at the end.</summary>
+    public void Show(IReadOnlyList<CompletionRow> rows, Lsp.CompletionItem? stays = null)
     {
         int kept = Math.Min(rows.Count, slots.Count);
         for (int i = 0; i < kept; i++)
@@ -300,15 +300,23 @@ internal sealed class CompletionPopup : Border
         {
             slots.AddRange(rows.Skip(kept).Select(row => new CompletionSlot(row)));
         }
-        int first = rows.Count > 0 ? 0 : -1;
-        if (List.SelectedIndex != first)
+        int chosen = rows.Count > 0 ? 0 : -1;
+        for (int i = 0; stays is not null && i < rows.Count; i++)
         {
-            List.SelectedIndex = first;
+            if (ReferenceEquals(rows[i].Item, stays))
+            {
+                chosen = i;
+                break;
+            }
+        }
+        if (List.SelectedIndex != chosen)
+        {
+            List.SelectedIndex = chosen;
         }
         FollowSelected();
-        if (rows.Count > 0)
+        if (chosen >= 0)
         {
-            List.ScrollIntoView(0);
+            List.ScrollIntoView(chosen);
         }
     }
 

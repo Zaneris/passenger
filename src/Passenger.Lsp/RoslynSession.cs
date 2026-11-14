@@ -684,17 +684,29 @@ public sealed class LspDocument : IDisposable
     }
 
     /// <summary>Completion at an offset: invoked, after a trigger character, or asked again as more is typed into a list
-    /// the server said was incomplete.</summary>
+    /// the server said was incomplete. Through Passenger's extension the list comes in parts, what is in scope first, its
+    /// later part asked for at once (<see cref="CompletionList.Later"/>) and given up with it.</summary>
     public async Task<(CompletionList? List, int Version)> CompletionAsync(int offset, string? trigger, CancellationToken cancel = default, bool incomplete = false)
     {
         int version = Text.Version;
         CompletionContext context = incomplete ? new CompletionContext(CompletionTriggerKind.TriggerForIncompleteCompletions)
             : trigger is null ? new CompletionContext(CompletionTriggerKind.Invoked) : new CompletionContext(CompletionTriggerKind.TriggerCharacter, trigger);
+        string method = CompletionMethod;
         // Sent now, after the changes before it; read off the caller's thread: a list may hold every type in reach.
-        CompletionAnswer? answer = await Read(Server.RequestAsync<CompletionAnswer>(CompletionMethod,
-            new CompletionParams(Identifier, PositionOf(offset), context), cancel));
+        CompletionAnswer? answer = await Read(Server.RequestAsync<CompletionAnswer>(method,
+            new CompletionParams(Identifier, PositionOf(offset), context) { Parts = method == ExtensionMethods.Completion ? true : null }, cancel));
+        if (answer?.List is { LaterId: { } later } first)
+        {
+            // Sent from the thread pool, so this part goes on to the caller while it is written.
+            first.Later = BackgroundWork.Run(() => LaterCompletionAsync(later, cancel), cancel);
+            // A list let go of before its later part came leaves the part unawaited.
+            UnawaitedWork.Dismiss(first.Later);
+        }
         return (answer?.List, version);
     }
+
+    private async Task<CompletionList?> LaterCompletionAsync(long later, CancellationToken cancel) =>
+        (await Read(Server.RequestAsync<CompletionAnswer>(ExtensionMethods.LaterCompletion, new LaterAsked(later), cancel)))?.List;
 
     /// <summary>How completion is asked for: of a C# file, through Passenger's extension once it is up, whose list says how
     /// well each item fits where it is asked for; else as the protocol asks it.</summary>

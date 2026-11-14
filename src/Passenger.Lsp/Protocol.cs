@@ -99,7 +99,13 @@ public sealed record OpenProjectParams(IReadOnlyList<string> Projects);
 
 public sealed record CompletionContext(CompletionTriggerKind TriggerKind, string? TriggerCharacter = null);
 
-public sealed record CompletionParams(TextDocumentIdentifier TextDocument, LspPosition Position, CompletionContext Context);
+public sealed record CompletionParams(TextDocumentIdentifier TextDocument, LspPosition Position, CompletionContext Context)
+{
+    /// <summary>Whether Passenger's extension answers the list in parts (<see cref="Roslyn.Extension.CompletionParts"/>):
+    /// null for any other server.</summary>
+    [JsonPropertyName(Roslyn.Extension.CompletionParts.Asked)]
+    public bool? Parts { get; init; }
+}
 
 public sealed class CompletionList
 {
@@ -112,11 +118,21 @@ public sealed class CompletionList
     [JsonPropertyName(Roslyn.Extension.CompletionPriorities.Member)]
     public int[]? MatchPriorities { get; init; }
 
+    /// <summary>The id the list's later part is asked by, where it was asked in parts and one may come
+    /// (<see cref="Roslyn.Extension.CompletionParts"/>).</summary>
+    [JsonPropertyName(Roslyn.Extension.CompletionParts.Later)]
+    public long? LaterId { get; init; }
+
+    /// <summary>The list's later part, asked for as soon as this part came: the items of namespaces not imported, which
+    /// go after all of this part's; null where none comes.</summary>
+    [JsonIgnore]
+    public Task<CompletionList?>? Later { get; internal set; }
+
     /// <summary>Each item given what the list's defaults say of it and it does not say itself
     /// (<see cref="CompletionItem.TakeDefaults"/>), as though the server had sent it whole.</summary>
     public CompletionList WithDefaults()
     {
-        if (ItemDefaults is { } defaults && (defaults.EditRange is not null || defaults.InsertTextFormat is not null || defaults.Data is not null))
+        if (ItemDefaults is { } defaults && (defaults.EditRange is not null || defaults.InsertTextFormat is not null || defaults.Data is not null || defaults.CommitCharacters is not null))
         {
             foreach (CompletionItem item in Items)
             {
@@ -188,7 +204,7 @@ public sealed class CompletionItem
     public LspTextEdit? TextEdit { get => textEdit; init => textEdit = value; }
     public string? TextEditText { get; init; }
     public List<LspTextEdit>? AdditionalTextEdits { get; init; }
-    public List<string>? CommitCharacters { get; init; }
+    public List<string>? CommitCharacters { get => commitCharacters; init => commitCharacters = value; }
     public bool? Preselect { get; init; }
     public LspCommand? Command { get; init; }
     public JsonElement? Data { get => data; init => data = value; }
@@ -201,9 +217,11 @@ public sealed class CompletionItem
     private InsertTextFormat? insertTextFormat;
     private LspTextEdit? textEdit;
     private JsonElement? data;
+    private List<string>? commitCharacters;
 
     /// <summary>What a list's defaults say of the item that it does not say itself: its edit over the default range,
-    /// putting in its own edit text or its label, its text's format and its data, which resolving it sends back.</summary>
+    /// putting in its own edit text or its label, its text's format, its data, which resolving it sends back, and the
+    /// characters that commit it, so an item keeps its own list's among another's (a list's later part).</summary>
     internal void TakeDefaults(CompletionItemDefaults defaults)
     {
         if (textEdit is null && defaults.EditRange is { } range)
@@ -212,6 +230,7 @@ public sealed class CompletionItem
         }
         insertTextFormat ??= defaults.InsertTextFormat;
         data ??= defaults.Data;
+        commitCharacters ??= defaults.CommitCharacters;
     }
 }
 

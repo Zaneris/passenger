@@ -5,7 +5,7 @@ namespace Passenger.UnitTests.Lsp;
 
 /// <summary>A whole C# list's sort texts as Passenger's extension sends them: in a list of more than 10,000 items each
 /// place is widened so the sort texts keep the server's order, each still ending as the server wrote it; any other list is
-/// sent as the server wrote it.</summary>
+/// sent as the server wrote it; a list's later part sorts after its first.</summary>
 public class CompletionOrderTests
 {
     [Fact]
@@ -39,6 +39,25 @@ public class CompletionOrderTests
         string?[] unsorted = ServersSortTexts(10_001);
         unsorted[500] = null;
         Assert.Null(CompletionOrder.Widened(unsorted));
+    }
+
+    [Fact]
+    public void A_later_parts_sort_texts_sort_after_any_first_parts_and_before_the_postfix_templates_each_ending_as_the_server_wrote_it()
+    {
+        foreach ((int inScope, int notImported) in new[] { (77, 8_577), (12_345, 321), (2_038, 12_448), (0, 5) })
+        {
+            string[] first = CompletionOrder.Widened(ServersSortTexts(inScope)) ?? ServersSortTexts(inScope);
+            string[] written = ServersSortTexts(notImported);
+            string[] later = CompletionOrder.Widened(written, later: true)!;
+            string[] all = [.. first, .. later];
+            Assert.True(Enumerable.Range(0, all.Length).SequenceEqual(SortedPlaces(all)),
+                $"A list of {inScope} items in scope and {notImported} added later sorts out of its order: the items added would sit among the first");
+            for (int i = 0; i < later.Length; i++)
+            {
+                Assert.True(later[i].EndsWith(Own(i), StringComparison.Ordinal) && string.CompareOrdinal(later[i], "~") < 0 && string.CompareOrdinal(later[i], "!") > 0,
+                    $"Later item {i}'s sort text {later[i]} from the server's {written[i]}: it must end as the server wrote it and sort between the templates' '!' and '~'");
+            }
+        }
     }
 
     /// <summary>The sort texts the server writes for a list of <paramref name="count"/>: each item's place in at least four

@@ -74,9 +74,28 @@ public static class ExtensionMethods
     public const string WorkspaceDiagnostic = "passenger/workspaceDiagnostic";
 
     /// <summary>textDocument/completion, its list saying beside its items how well each fits where it is asked for
-    /// (<see cref="CompletionPriorities"/>).</summary>
+    /// (<see cref="CompletionPriorities"/>); asked in parts (<see cref="CompletionParts"/>), what is in scope first.</summary>
     public const string Completion = "passenger/completion";
+
+    /// <summary>The later part of a completion list asked in parts, by the id its first part gave (<see cref="LaterAsked"/>):
+    /// a list of the types and extension members of namespaces not imported, or null where none comes.</summary>
+    public const string LaterCompletion = "passenger/laterCompletion";
 }
+
+/// <summary>A C# completion list asked in two parts: what is in scope first, then the types and extension members of
+/// namespaces not imported, which the server lists after every other item and is slowest to find, worked out at once but
+/// answered when they come. The parts are one list in one order, the later's sort texts after any of the first's.</summary>
+public static class CompletionParts
+{
+    /// <summary>The request's member asking for the list in parts.</summary>
+    public const string Asked = "passengerParts";
+
+    /// <summary>The first part's member giving the id its later part is asked by; missing where none comes.</summary>
+    public const string Later = "later";
+}
+
+/// <summary>The later part of a completion list asked for, by the id its first part gave.</summary>
+public sealed record LaterAsked([property: JsonPropertyName(CompletionParts.Later)] long Later);
 
 /// <summary>Files the solution has, by their paths, whose texts as the server holds them are asked for: an edit to a file
 /// not open is placed by the server's lines and columns, so it lands where meant only on the text the server read.</summary>

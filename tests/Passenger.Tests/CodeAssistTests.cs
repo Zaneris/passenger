@@ -2723,6 +2723,118 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return (items, key);
     }
 
+    /// <summary>A statement's first letters show what is in scope while the server's types of namespaces not imported, held
+    /// unanswered, are still to come; once they come they join the list, the row chosen meanwhile still chosen and the
+    /// caret where it was, and typing on asks the server for no list. A name nothing in scope fits shows no list until
+    /// they come, then theirs.</summary>
+    [AvaloniaFact]
+    public void A_statements_first_rows_show_before_the_types_of_namespaces_not_imported_which_join_them_leaving_the_choice()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        // Roslyn lists the types of namespaces not imported once it has indexed them, so the name is typed again until it has.
+        Ui.WaitFor(() =>
+        {
+            Typed("Str");
+            bool indexed = window.Assist.CompletionLabels.Contains("StringBuilder");
+            Ui.Press(window, "ESCAPE");
+            Erased(3);
+            if (!indexed)
+            {
+                Ui.Hold(TimeSpan.FromMilliseconds(250), "a pause before the name is typed again, as a person retries");
+            }
+            return indexed;
+        }, "StringBuilder, of a namespace Program.cs does not import, in a statement's list");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
+
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.LaterCompletion, _ => true, released.Task);
+        try
+        {
+            TypedPumped("St");
+            Ui.AwaitPumped(held, "the types of namespaces not imported, come and held unanswered");
+            IReadOnlyList<string> inScope = window.Assist.CompletionLabels;
+            Assert.True(inScope.Count > 1 && inScope.Contains("string") && !inScope.Contains("String"),
+                $"Narrowed by 'St' before the types of namespaces not imported came, the list showed [{string.Join(", ", inScope)}]");
+            Ui.Press(window, "DOWN", settle: false);
+            Ui.PumpUntil(() => window.Assist.CompletionChosen == inScope[1], $"{inScope[1]}, the second row, chosen");
+            int caret = editor.Selections.Primary.Caret;
+            released.SetResult();
+            Ui.WaitFor(() => window.Assist.CompletionLabels.Any(label => !inScope.Contains(label)), "the types of namespaces not imported joining the list as they came");
+            IReadOnlyList<string> joined = window.Assist.CompletionLabels;
+            Assert.True(window.Assist.CompletionChosen == inScope[1] && editor.Selections.Primary.Caret == caret && window.Assist.CompletionNarrowedBy == "St",
+                $"As the types of namespaces not imported joined the list, the chosen row went from {inScope[1]} to {window.Assist.CompletionChosen}, the caret from {caret} "
+                + $"to {editor.Selections.Primary.Caret}: Enter would put in another name than the one chosen");
+            Assert.True(inScope.Where(joined.Contains).SequenceEqual(joined.Where(inScope.Contains)),
+                $"What was in scope showed [{string.Join(", ", inScope)}], and joined by the rest [{string.Join(", ", joined.Take(12))}…]: one list in two orders");
+
+            Task asked = server.HoldNext(lsp.CompletionMethod, _ => true, Task.CompletedTask);
+            Typed("r");
+            Assert.True(window.Assist.CompletionLabels.Contains("StringBuilder"), $"Narrowed by 'Str' the list joined showed [{string.Join(", ", window.Assist.CompletionLabels.Take(12))}…]");
+            Assert.False(asked.IsCompleted, "Typing on into the list joined by the types of namespaces not imported asked the server for the list again");
+            Ui.Press(window, "ESCAPE");
+            Erased(3);
+        }
+        finally
+        {
+            released.TrySetResult();
+        }
+
+        TaskCompletionSource releasedAgain = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task heldAgain = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.LaterCompletion, _ => true, releasedAgain.Task);
+        try
+        {
+            TypedPumped("String");
+            window.KeyTextInput("B");
+            window.KeyTextInput("u");
+            Ui.AwaitPumped(heldAgain, "the types of namespaces not imported, come and held unanswered");
+            Ui.PumpUntil(() => !window.Assist.IsCompletionOpen, "the list closed on 'StringBu', which nothing in scope fits");
+            releasedAgain.SetResult();
+            Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "StringBuilder", "StringBuilder listed as the types of namespaces not imported came");
+            Assert.Equal("StringBu", window.Assist.CompletionNarrowedBy);
+            Ui.Press(window, "ESCAPE");
+        }
+        finally
+        {
+            releasedAgain.TrySetResult();
+        }
+        window.Close();
+
+        void Typed(string letters)
+        {
+            foreach (char letter in letters)
+            {
+                window.KeyTextInput(letter.ToString());
+                Ui.Settle();
+            }
+        }
+
+        void Erased(int letters)
+        {
+            for (int i = 0; i < letters; i++)
+            {
+                Ui.Press(window, "BACK_SPACE");
+            }
+        }
+
+        // Each letter's rows awaited without waiting for the IDE to be quiet, which it is not while an answer is held.
+        void TypedPumped(string letters)
+        {
+            string typed = string.Empty;
+            foreach (char letter in letters)
+            {
+                typed += letter;
+                window.KeyTextInput(letter.ToString());
+                Ui.PumpUntil(() => window.Assist.CompletionNarrowedBy == typed, $"the list narrowed by '{typed}'");
+            }
+        }
+    }
+
     /// <summary>A statement's list is the server's whole list, asked for once for the name: each key typed on narrows it here
     /// with no word to the server, and costs the UI thread what a key into a far shorter list does, counted rather than
     /// timed. The lists differ in length alone: a statement in Pantry's method and in Silo's lists each class's fields

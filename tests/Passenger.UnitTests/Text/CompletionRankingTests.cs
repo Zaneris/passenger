@@ -88,6 +88,57 @@ public class CompletionRankingTests
         Assert.NotEqual(Enumerable.Range(3_000, MostShown), unwidened.Shown("Lot", "Lot", 1, MostShown));
     }
 
+    /// <summary>A C# list asked in parts: what is in scope first, ranked alone, then the items of namespaces not imported
+    /// added after it, each part's sort texts as Passenger's extension sends them, with the live and postfix templates last
+    /// as completion lists them. Each key shows the rows the whole list, sent as one, shows.</summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void A_list_whose_later_part_is_added_as_it_comes_ranks_as_the_whole_list_sent_as_one(int seed)
+    {
+        Random random = new(seed);
+        for (int list = 0; list < 6; list++)
+        {
+            int inScope = random.Next(4) == 0 ? random.Next(10_000, 11_000) : random.Next(1, 2500);
+            int notImported = random.Next(4) == 0 ? random.Next(10_000, 11_000) : random.Next(1, 3000);
+            CompletionRanking.Entry[] first = RandomList(random, inScope, prioritized: true);
+            CompletionRanking.Entry[] later = RandomList(random, notImported);
+            CompletionRanking.Entry[] templates = [.. RandomList(random, 6).Select((e, i) => e with { Sort = (i % 2 == 0 ? "!" : "~") + e.Matched })];
+            string[] wholePlaces = Sent(first.Length + later.Length, laterPart: false);
+            CompletionRanking whole = new([.. Placed(first, wholePlaces), .. Placed(later, wholePlaces[first.Length..]), .. templates]);
+            CompletionRanking firstAlone = new([.. Placed(first, Sent(first.Length, laterPart: false)), .. templates]);
+            CompletionRanking parted = new([.. Placed(first, Sent(first.Length, laterPart: false)), .. Placed(later, Sent(later.Length, laterPart: true)), .. templates]);
+            string typed = string.Empty;
+            for (int key = 0; key < 30; key++)
+            {
+                typed = NextTyped(random, first.Length > 0 && random.Next(2) == 0 ? first : later, typed, string.Empty);
+                int[] expected = whole.Shown(typed, typed, 1, MostShown);
+                int[] shown = parted.Shown(typed, typed, 1, MostShown);
+                Assert.True(expected.SequenceEqual(shown),
+                    $"Seed {seed}, list {list}, key {key}: '{typed}' showed {shown.Length} rows, [{string.Join(", ", shown.Take(6))}…], where the whole list "
+                    + $"shows {expected.Length}, [{string.Join(", ", expected.Take(6))}…]: the items added later would sit out of the server's order");
+                int[] alone = firstAlone.Shown(typed, typed, 1, MostShown);
+                int[] wholeOfFirst = [.. expected.Where(i => i < first.Length || i >= first.Length + later.Length).Select(i => i < first.Length ? i : i - later.Length)];
+                Assert.True(wholeOfFirst.Take(alone.Length).SequenceEqual(alone.Take(wholeOfFirst.Length)),
+                    $"Seed {seed}, list {list}, key {key}: '{typed}' showed what is in scope as [{string.Join(", ", alone.Take(6))}…] before the rest came, "
+                    + $"where the whole list orders it [{string.Join(", ", wholeOfFirst.Take(6))}…]");
+            }
+        }
+    }
+
+    /// <summary>A part's entries given the sort texts sent for its items, in order.</summary>
+    private static IEnumerable<CompletionRanking.Entry> Placed(CompletionRanking.Entry[] part, string[] sent) => part.Select((e, i) => e with { Sort = sent[i] });
+
+    /// <summary>The sort texts Passenger's extension sends for a list, or a list's later part, of <paramref name="count"/>
+    /// items: the server's, each its place in four digits and its own sort text, widened or marked.</summary>
+    private static string[] Sent(int count, bool laterPart)
+    {
+        string[] written = [.. Enumerable.Range(0, count).Select(i => i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + (i % 3 == 0 ? string.Empty : "Name"))];
+        return Passenger.Roslyn.Extension.CompletionOrder.Widened(written, laterPart) ?? written;
+    }
+
     [Fact]
     public void A_key_that_lengthens_the_name_scores_only_the_items_the_last_key_matched()
     {
