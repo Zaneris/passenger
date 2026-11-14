@@ -178,7 +178,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         TestFolders.Write(folder, "Bad/Caller.cs", Caller);
         await using McpClient client = await Start(["--mcp", folder]);
         JsonElement fine = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Fine" })).EnumerateArray());
-        Assert.Equal("Good/Fine.cs", fine.GetProperty("path").GetString());
+        Assert.Equal(Path.Combine("Good", "Fine.cs"), fine.GetProperty("path").GetString());
         foreach ((string tool, Dictionary<string, object?> arguments) in CodeAsks("Bad/Greeter.cs", "Bad/Caller.cs"))
         {
             CallToolResult answer = await Result(client, tool, arguments);
