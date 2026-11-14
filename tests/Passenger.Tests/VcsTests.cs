@@ -254,6 +254,22 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file renamed in the Explorer, which stages the rename, commits with its change chosen: the old name, which
+    /// only the last commit still has, is no pathspec git refuses to add.</summary>
+    [AvaloniaFact]
+    public void A_file_renamed_in_the_Explorer_is_committed_as_a_rename()
+    {
+        MainWindow window = Open();
+        Assert.Null(Ui.Await(window.RenameAsync(PathNames.Canonical(Path.Combine(folder, "Shop.cs")), "Store.cs"), "the rename"));
+        Ui.Landed(() => window.Vcs.Changes.Any(c => c.Name == "Store.cs" && c.Kind == ChangeKind.Renamed), "Store.cs listed as renamed from Shop.cs");
+
+        CommitResult made = Ui.Landed(window.Vcs.CommitAsync([.. window.Vcs.Changes.Where(c => c.Name == "Store.cs")], "Rename Shop", amend: false, push: false), "the commit");
+
+        Assert.True(made.Commit.Succeeded, $"Committing the renamed file failed with: {made.Commit.Message}");
+        Assert.Equal("R\tShop.cs\tStore.cs", Git("show", "--name-status", "--format=", "-M", "HEAD").Trim().Replace("R100", "R", StringComparison.Ordinal));
+        window.Close();
+    }
+
     /// <summary>Amend's last-commit message, read while the person types or unticks Amend, never replaces what was typed
     /// meanwhile nor lands once Amend is off.</summary>
     [AvaloniaFact]
