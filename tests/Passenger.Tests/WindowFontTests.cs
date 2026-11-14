@@ -141,13 +141,44 @@ public sealed partial class WindowFontTests : IDisposable
         }
     }
 
-    /// <summary>How wide CoreText sets words in the system's UI font at a size, as the system's own apps draw them.</summary>
-    private static double NativeWidth(string words, double size)
+    /// <summary>On macOS an installed family with tracking of its own at the size its shaper tracks every size at, PingFang
+    /// SC, chosen sets the window's words as wide as the system's own apps set them in it, within a pixel: the shaper's
+    /// tracking and the window's letter spacing together come to the font's own at the row's size, never to both.</summary>
+    [AvaloniaFact]
+    public void On_macos_a_font_its_shaper_tracks_sets_the_windows_words_as_wide_as_the_systems_own_apps_within_a_pixel()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
+        const string Chosen = "PingFang SC";
+        Assert.SkipWhen(WindowFonts.Named(Chosen) is null, $"{Chosen} is not installed");
+        File.WriteAllText(Path.Combine(folder, "Element.cs"), "class Element { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { WindowFontFamily = Chosen });
+            Ui.Settle();
+            TextBlock row = Words(window.ExplorerView.Rows(), "Element.cs");
+            Ui.WaitFor(() => Family(Face(row)) == FamilyOf(WindowFonts.Named(Chosen)!), $"the Explorer's row drawn in {Chosen}");
+            double native = NativeWidth(row.Text!, row.FontSize, Chosen);
+            double drawn = row.TextLayout.WidthIncludingTrailingWhitespace;
+            Assert.True(Math.Abs(drawn - native) <= 1,
+                $"'{row.Text}' at {row.FontSize} px in {Chosen} is {drawn:0.##} wide in the window, its letter spacing {row.LetterSpacing:0.###} px, and {native:0.##} as the system's own apps set it");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { WindowFontFamily = null });
+            window.Close();
+        }
+    }
+
+    /// <summary>How wide CoreText sets words at a size in an installed family, else in the system's UI font, as the system's
+    /// own apps draw them.</summary>
+    private static double NativeWidth(string words, double size, string? family = null)
     {
         IntPtr coreText = System.Runtime.InteropServices.NativeLibrary.Load(CoreText);
         IntPtr coreFoundation = System.Runtime.InteropServices.NativeLibrary.Load(CoreFoundation);
         IntPtr fontKey = System.Runtime.InteropServices.Marshal.ReadIntPtr(System.Runtime.InteropServices.NativeLibrary.GetExport(coreText, "kCTFontAttributeName"));
-        IntPtr font = CTFontCreateUIFontForLanguage(SystemUiFont, size, IntPtr.Zero);
+        IntPtr named = family is null ? IntPtr.Zero : CFStringCreateWithCharacters(IntPtr.Zero, family, family.Length);
+        IntPtr font = family is null ? CTFontCreateUIFontForLanguage(SystemUiFont, size, IntPtr.Zero) : CTFontCreateWithName(named, size, IntPtr.Zero);
         IntPtr text = CFStringCreateWithCharacters(IntPtr.Zero, words, words.Length);
         IntPtr attributes = CFDictionaryCreate(IntPtr.Zero, [fontKey], [font], 1, System.Runtime.InteropServices.NativeLibrary.GetExport(coreFoundation, "kCFTypeDictionaryKeyCallBacks"),
             System.Runtime.InteropServices.NativeLibrary.GetExport(coreFoundation, "kCFTypeDictionaryValueCallBacks"));
@@ -159,9 +190,12 @@ public sealed partial class WindowFontTests : IDisposable
         }
         finally
         {
-            foreach (IntPtr made in (IntPtr[])[line, attributed, attributes, text, font])
+            foreach (IntPtr made in (IntPtr[])[line, attributed, attributes, text, font, named])
             {
-                CFRelease(made);
+                if (made != IntPtr.Zero)
+                {
+                    CFRelease(made);
+                }
             }
         }
     }
@@ -174,6 +208,9 @@ public sealed partial class WindowFontTests : IDisposable
 
     [System.Runtime.InteropServices.LibraryImport(CoreText)]
     private static partial IntPtr CTFontCreateUIFontForLanguage(uint type, double size, IntPtr language);
+
+    [System.Runtime.InteropServices.LibraryImport(CoreText)]
+    private static partial IntPtr CTFontCreateWithName(IntPtr name, double size, IntPtr matrix);
 
     [System.Runtime.InteropServices.LibraryImport(CoreFoundation, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
     private static partial IntPtr CFStringCreateWithCharacters(IntPtr allocator, string characters, nint length);

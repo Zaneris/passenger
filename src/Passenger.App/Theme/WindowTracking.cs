@@ -14,15 +14,19 @@ namespace Passenger.App;
 
 /// <summary>The window's typeface's own tracking and optical size where macOS's text drawing would set them, so words in San
 /// Francisco are as wide as in the system's own apps: a face with a 'trak' table (<see cref="FontTracking"/>), on macOS, has
-/// the letter spacing its table gives each size on every TextBlock and TextPresenter drawing words in it, at its size, as
-/// its size or face changes, and a variable face is shaped at the optical size macOS gives the window's words and at its
-/// own weight, never at its default instance's; any other face, or any other system, keeps Avalonia's own. A UI-thread
-/// object.</summary>
+/// the letter spacing its table gives each size, less what its shaper already sets there, on every TextBlock and
+/// TextPresenter drawing words in it, at its size, as its size or face changes, and a variable face is shaped at the optical
+/// size macOS gives the window's words and at its own weight, never at its default instance's; any other face, or any other
+/// system, keeps Avalonia's own. A UI-thread object.</summary>
 public static partial class WindowTracking
 {
     /// <summary>The size of the window's words whose optical size its faces take: one face draws every size, and San
     /// Francisco's least optical size, 17, is what macOS gives every size up to it.</summary>
     private const double WordsSize = 13;
+
+    /// <summary>The size in points whose tracking the window's shaper sets at every size of a face with a 'trak' table, as it
+    /// is told no size: HarfBuzz's when it is told none.</summary>
+    private const double ShaperTrackingSize = 12;
 
     /// <summary>The weights of the window's words, whose upright faces are shaped as macOS draws them.</summary>
     private static readonly FontWeight[] Weights = [FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold];
@@ -69,8 +73,10 @@ public static partial class WindowTracking
         }
     }
 
-    /// <summary>The letter spacing the window's typeface in force gives words of a size: its table's, else none.</summary>
-    public static double At(double size) => table is not null ? FontTracking.Of(table, unitsPerEm, size) ?? 0 : 0;
+    /// <summary>The letter spacing the window's typeface in force gives words of a size: its table's beyond what its shaper
+    /// sets, else none.</summary>
+    public static double At(double size) =>
+        table is not null ? (FontTracking.Of(table, unitsPerEm, size) ?? 0) - FontTracking.Shaped(table, unitsPerEm, size, ShaperTrackingSize) : 0;
 
     private static void Track(Visual drawn)
     {

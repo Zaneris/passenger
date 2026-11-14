@@ -33,6 +33,16 @@ public class FontTrackingTests
         Assert.Null(FontTracking.Of([], 2048, 13));
     }
 
+    [Fact]
+    public void A_shaper_tracks_every_size_by_the_normal_track_at_its_own_size_else_by_a_lone_track_else_not_at_all()
+    {
+        Assert.Equal(-12.0 / 2048 * 20, FontTracking.Shaped(Table, 2048, 20, 13), 9);
+        byte[] loose = Trak([12, 13, 14], (1, [21, 20, 19]));
+        Assert.Null(FontTracking.Of(loose, 1000, 14));
+        Assert.Equal(21.0 / 1000 * 14, FontTracking.Shaped(loose, 1000, 14, 12), 9);
+        Assert.Equal(0, FontTracking.Shaped(Trak([12, 13], (-1, [-28, -40]), (1, [28, 40])), 2048, 13, 12), 9);
+    }
+
     /// <summary>A 'trak' table of horizontal tracks alone: its header, its track data, each track's entry, its sizes and values.</summary>
     private static byte[] Trak(double[] sizes, params (int Track, short[] Values)[] tracks)
     {
