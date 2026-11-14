@@ -117,6 +117,34 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>An Escape pressed after an annotation's @ while the script is still being read for its list lets the list
+    /// go: once the reading lands, nothing opens.</summary>
+    [AvaloniaFact]
+    public void An_escape_pressed_while_an_annotations_list_is_asked_for_lets_it_go()
+    {
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        TaskCompletionSource read = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "var counter := 0");
+            ClearLine(window, editor);
+            Task held = window.Session.HoldNextScriptReading(read.Task);
+            window.KeyTextInput("@");
+            Ui.AwaitPumped(held, "the script's reading for the annotations' list held", TimeSpan.FromSeconds(60));
+            Ui.Press(window, "ESCAPE", settle: false);
+            read.SetResult();
+            Assert.False(Ui.Pumped(() => window.Assist.IsCompletionOpen, TimeSpan.FromSeconds(2)),
+                $"The annotations' list Escape let go as it was asked for opened once the script was read: {string.Join(", ", window.Assist.CompletionLabels.Take(5))}");
+        }
+        finally
+        {
+            read.TrySetResult();
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     /// <summary>After self's dot, and among the names in scope, the script's own members come before those its engine class
     /// gives it, however their names sort; a function returning nothing says void.</summary>
     [AvaloniaFact]

@@ -94,9 +94,9 @@ internal sealed partial class CodeCompletion
             // From the rows of the name as typed, whose filter landing later would have chosen its first row again.
             FilterNow();
         }
-        if (!completion.IsVisible && open is not null && action == EditorActions.Escape)
+        if (!completion.IsVisible && (open is not null || asking is not null) && action == EditorActions.Escape)
         {
-            // A list showing no row yet, its rows being made or more to come, is the person's to dismiss too.
+            // A list showing no row yet, still asked for, its rows being made or more to come, is the person's to dismiss too.
             Close();
         }
         if (completion.IsVisible)
@@ -187,12 +187,17 @@ internal sealed partial class CodeCompletion
     }
 
     /// <summary>Filters once the move's input is done: a typed character moves the caret before the editor says what was
-    /// typed, and a commit character must find the list still open.</summary>
+    /// typed, and a commit character must find the list still open. A list still asked for is let go at once once the
+    /// caret has left its name, so its answer never opens it.</summary>
     public void CaretMoved()
     {
         if (open is not null)
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(Filter);
+        }
+        else if (asking is { } ask && !StillAsked(ask))
+        {
+            Close();
         }
     }
 
@@ -201,8 +206,80 @@ internal sealed partial class CodeCompletion
     {
         using (BackgroundWork.Scope())
         {
-            await context.Languages.CompleteAsync(trigger, incomplete);
+            Ask ask = AskHere();
+            try
+            {
+                await context.Languages.CompleteAsync(trigger, incomplete);
+            }
+            finally
+            {
+                if (ReferenceEquals(asking, ask))
+                {
+                    LetGoOfAsking();
+                }
+            }
         }
+    }
+
+    /// <summary>A list being asked for, from the key that asks until a language opens it or gives it up: the document it is
+    /// asked in, where its name starts as far as the caret then tells (as an open list's <see cref="Completion.Start"/>,
+    /// where it was asked), and the text's version at the last look, so a caret moved alone is told from one moved by
+    /// typing.</summary>
+    private sealed class Ask(TextDocument document, int from)
+    {
+        public TextDocument Document => document;
+
+        public int From => from;
+
+        public int Seen { get; set; } = document.Version;
+    }
+
+    /// <summary>The list being asked for, while none is open; what Escape, or the caret moved out of its name, lets go.</summary>
+    private Ask? asking;
+
+    /// <summary>A list asked for at the caret, in place of any asked before.</summary>
+    private Ask AskHere()
+    {
+        LetGoOfAsking();
+        TextDocument document = Editor.Document;
+        TextSnapshot text = document.Snapshot;
+        int from = Math.Min(Editor.Selections.Primary.Caret, text.Length);
+        while (from > 0 && IsWordChar(text[from - 1]))
+        {
+            from--;
+        }
+        Ask ask = new(document, from);
+        asking = ask;
+        return ask;
+    }
+
+    private void LetGoOfAsking() => asking = null;
+
+    /// <summary>Whether the caret is still where a list is asked for: one caret, in the same document, not before the name's
+    /// start, and moved with the text typed or, moved alone, still in the name. What is typed is the list's to narrow by its
+    /// own characters as it opens (<see cref="NarrowedTo"/>), as an open list narrows by them.</summary>
+    private bool StillAsked(Ask ask)
+    {
+        int caret = Editor.Selections.Primary.Caret;
+        int from = ask.From;
+        if (Editor.Document != ask.Document || Editor.Selections.HasMultiple || caret < from)
+        {
+            return false;
+        }
+        if (ask.Document.Version != ask.Seen)
+        {
+            ask.Seen = ask.Document.Version;
+            return true;
+        }
+        TextSnapshot text = ask.Document.Snapshot;
+        for (int at = from; at < caret; at++)
+        {
+            if (!IsWordChar(text[at]))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>A list asked for anew, any still coming let go: what tells it it has been asked for again since.</summary>
@@ -234,6 +311,7 @@ internal sealed partial class CodeCompletion
     /// <summary>A list a language made, shown narrowed to what has been typed.</summary>
     public void Open(Completion list)
     {
+        LetGoOfAsking();
         templatesOffered.Clear();
         templatesFor = null;
         postfixOffered.Clear();
@@ -383,6 +461,7 @@ internal sealed partial class CodeCompletion
         int listStart = before?.Start ?? Math.Min(start, Editor.Selections.Primary.Caret);
         string listTail = named is { Tail: { } tail } ? tail : web is not null ? Tail(asked, served, caret) : string.Empty;
         string lead = web is not null && start < caret && caret <= asked.Length ? asked.GetText(start, caret - start) : string.Empty;
+        LetGoOfAsking();
         open = new Completion(new Joined([ahead, .. parts, offered]), listStart, list?.ItemDefaults?.CommitCharacters ?? [], incomplete)
         {
             Tail = listTail,
@@ -781,6 +860,7 @@ internal sealed partial class CodeCompletion
 
     public void Close()
     {
+        LetGoOfAsking();
         completing?.Cancel();
         describing?.Cancel();
         open = null;

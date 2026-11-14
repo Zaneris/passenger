@@ -438,6 +438,41 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
+    /// <summary>A list the server is still answering is let go by an Escape, and by the caret moved back over the dot that
+    /// asked for it: its answer, held until then, opens nothing, where System's members opened after the Escape, or at the
+    /// caret before the dot.</summary>
+    [AvaloniaFact]
+    public void A_list_still_asked_for_is_let_go_by_an_escape_or_the_caret_moved_out_of_its_name()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        string method = server.ExtensionProblem is null ? Passenger.Roslyn.Extension.ExtensionMethods.Completion : Passenger.Lsp.LspMethods.Completion;
+        Ui.PlaceAfter(editor, "static void Main()\n    {\n");
+        window.KeyTextInput("        System");
+        Ui.Settle();
+        foreach (string away in (string[])["ESCAPE", "LEFT"])
+        {
+            TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task held = server.HoldNextAnswer(method, _ => true, answered.Task);
+            try
+            {
+                window.KeyTextInput(".");
+                Ui.AwaitPumped(held, "System's members, answered and held");
+                Ui.Press(window, away, settle: false);
+            }
+            finally
+            {
+                answered.SetResult();
+            }
+            Ui.Settle();
+            Assert.False(window.Assist.IsCompletionOpen,
+                $"System's members asked for and let go by {away} opened once their answer came: {string.Join(", ", window.Assist.CompletionLabels.Take(5))}");
+            Ui.Press(window, away == "LEFT" ? "DELETE" : "BACK_SPACE");
+        }
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_commit_character_types_the_chosen_item_before_it_and_the_items_documentation_shows_beside_the_list()
     {
