@@ -118,6 +118,17 @@ internal static class AvaloniaApp
             && line.Trim() is not ("#if DEBUG" or "#endif"))));
     }
 
+    /// <summary>Makes Avalonia's cross-platform solution (<c>dotnet new avalonia.xplat</c>) in a folder, its projects named
+    /// after <paramref name="name"/> (<c>name.Android</c> beside the shared <c>name</c>), and takes Avalonia Accelerate's
+    /// developer tools out of it as New Solution does; nothing restored.</summary>
+    public static async Task CreateCrossPlatformAsync(string folder, string name)
+    {
+        ChildResult made = await Run(["new", "avalonia.xplat", "--output", folder, "--name", name, "--avalonia-version", Version, "--no-update-check",
+            "--debug:custom-hive", await Hive.Value], null);
+        Assert.True(made.Succeeded, $"dotnet new avalonia.xplat did not make the test's solution (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
+        Passenger.App.Templates.DeveloperTools.TakeOut(folder);
+    }
+
     /// <summary>A value the test project's build put in the assembly (Passenger.Tests.csproj).</summary>
     internal static string Metadata(string key) =>
         typeof(AvaloniaApp).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value

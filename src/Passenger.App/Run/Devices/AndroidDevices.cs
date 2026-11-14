@@ -18,13 +18,21 @@ public static class AndroidDevices
     private static readonly TimeSpan BootLimit = TimeSpan.FromMinutes(5);
 
     /// <summary>The project's Android targets and the SDK's tools, or why none could be listed (no workload, no SDK, no
-    /// platform to build against) in words for the person.</summary>
+    /// platform to build against) in words for the person. The project is restored first with no framework given: one
+    /// given to a restore reaches the projects the app references, restoring them for the app's platform alone (a shared
+    /// library of net11.0 as net11.0-android), which its install's build then finds without its own framework.</summary>
     public static async Task<(IReadOnlyList<DeviceTarget> Targets, AndroidTools? Tools, string? Problem)> ListAsync(string project, string framework,
         IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
     {
-        List<string> arguments = ["msbuild", project, "-nologo", "-restore", "-target:ComputeAvailableDevices", "-getItem:Devices", "-getProperty:AdbToolPath",
-            "-getProperty:EmulatorToolPath", "-getProperty:AndroidSdkDirectory", "-getProperty:TargetPlatformVersion", $"-property:{MSBuildNames.TargetFramework}={framework}", .. globals.Where(g => g.Key != MSBuildNames.TargetFramework).Select(g => $"-property:{g.Key}={g.Value}")];
-        ChildResult listed = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(arguments, Path.GetDirectoryName(project)!), cancel: cancel);
+        string folder = Path.GetDirectoryName(project)!;
+        string[] given = [.. globals.Where(g => g.Key != MSBuildNames.TargetFramework).Select(g => $"-property:{g.Key}={g.Value}")];
+        ChildResult listed = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(["msbuild", project, "-nologo", "-target:Restore", .. given], folder), cancel: cancel);
+        if (listed.Succeeded)
+        {
+            listed = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(["msbuild", project, "-nologo", "-target:ComputeAvailableDevices", "-getItem:Devices",
+                "-getProperty:AdbToolPath", "-getProperty:EmulatorToolPath", "-getProperty:AndroidSdkDirectory", "-getProperty:TargetPlatformVersion",
+                $"-property:{MSBuildNames.TargetFramework}={framework}", .. given], folder), cancel: cancel);
+        }
         if (!listed.Succeeded)
         {
             return ([], null, DeviceTargets.AndroidPlatformLacked(listed.Output + "\n" + listed.Error) is { } lacks
