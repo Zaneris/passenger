@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.ToolWindows;
@@ -12,8 +13,9 @@ namespace Passenger.Tests;
 
 /// <summary>Moves Passenger makes in a Git working tree are moves to git: files and folders dragged together, a project's
 /// folder renamed and twelve hundred files moved at once list as renamed and commit as renames, moved in the index by one
-/// git however many moved; Undo and Redo move the index with them; the status finds renames past git's own limit; and a
-/// moved file edited past what git finds alike commits as a rename through the moves committed first.</summary>
+/// git however many moved; Undo and Redo move the index with them; the status finds renames past git's own limit; a
+/// moved file edited past what git finds alike commits as a rename through the moves committed first; and a moved
+/// file's row names where it came from.</summary>
 public sealed partial class VcsTests
 {
     /// <summary>Files and a folder chosen together and dragged onto a folder in the Explorer move in the index as git mv
@@ -205,6 +207,44 @@ public sealed partial class VcsTests
         Assert.Equal("1 move committed, then 1 file committed: Rework the store", window.Status);
         Ui.Landed(() => !commit.OffersMovesFirst, "the offer gone once the move is committed");
         window.Close();
+    }
+
+    /// <summary>The Commit window's rows of moved files name where each came from after its name: its old name where it was
+    /// renamed in its folder, its old path where it went to another folder, renamed or not, the tip saying the old path
+    /// whole; a file only modified names none.</summary>
+    [AvaloniaFact]
+    public void A_renamed_and_a_moved_files_rows_in_the_Commit_window_name_where_each_came_from()
+    {
+        string tree = PathNames.Canonical(folder);
+        TestFolders.Write(tree, "Old/Basket.cs", "class Basket\n{\n    int count;\n}\n");
+        TestFolders.Write(tree, "Old/Till.cs", "class Till\n{\n    int total;\n}\n");
+        TestFolders.Write(tree, "Old/Price.cs", "class Price\n{\n    int cents;\n}\n");
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "A basket, a till and a price");
+        Directory.CreateDirectory(Path.Combine(tree, "New"));
+        Git("mv", "Shop.cs", "Store.cs");
+        Git("mv", "Old/Basket.cs", "New/Basket.cs");
+        Git("mv", "Old/Till.cs", "New/Register.cs");
+        File.AppendAllText(Path.Combine(tree, "Old", "Price.cs"), "// edited\n");
+        MainWindow window = Ui.OpenFolder(tree, languageServer: false);
+        CommitView commit = window.CommitView;
+        window.Perform(AppActions.Commit);
+        Ui.WaitFor(() => commit.Rows.OfType<CommitRow>().Count() == 4, () => $"the four changes listed in the Commit window, where Git lists {Listed(window)}");
+        Avalonia.Controls.ListBox list = Find(commit, commit.Rows);
+
+        Assert.Equal(("Store.cs  ← Shop.cs", "Renamed from Shop.cs"), Shown("Store.cs"));
+        Assert.Equal(("Basket.cs  ← Old/Basket.cs  New", "Moved from Old/Basket.cs"), Shown("Basket.cs"));
+        Assert.Equal(("Register.cs  ← Old/Till.cs  New", "Moved from Old/Till.cs"), Shown("Register.cs"));
+        Assert.Equal(("Price.cs  Old", null), Shown("Price.cs"));
+        window.Close();
+
+        // The words a file's row shows, in order, and the tip of where it came from.
+        (string Words, string? Tip) Shown(string name)
+        {
+            Avalonia.Controls.Control row = Ui.Row(list, commit.Rows.OfType<CommitRow>().First(r => r.Change.Name == name));
+            Avalonia.Controls.TextBlock[] words = [.. row.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Where(t => t.IsEffectivelyVisible && t.Text is { Length: > 0 })];
+            return (string.Join("  ", words.Select(t => t.Text)), words.FirstOrDefault(t => t.Text!.StartsWith('←')) is { } came ? Avalonia.Controls.ToolTip.GetTip(came) as string : null);
+        }
     }
 
     /// <summary>The git commands that write the index started in <paramref name="tree"/> while <paramref name="act"/> runs.</summary>

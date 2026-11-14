@@ -936,7 +936,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private static void ShowFile(ChangedFileRow line, FileChange change, Git? repository)
     {
         // A change with nothing to commit here says why in its folder's place.
-        line.Show(change.Path, change.Kind, change.Uncommittable ?? (repository is not null ? ChangedFileRow.Folder(repository.Relative(change.Path)) : string.Empty));
+        line.Show(change, repository, change.Uncommittable);
         ToolTip.SetTip(line.Line, change.From is { } from ? $"{change.Kind}: {from} -> {change.Path}"
             : change.Uncommittable is { } why ? $"{change.Kind}: {change.Path}\n{why}"
             : $"{change.Kind}: {change.Path}");

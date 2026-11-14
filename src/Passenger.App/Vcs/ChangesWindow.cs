@@ -76,6 +76,6 @@ public sealed class ChangesWindow : IdeWindow
     private static Control Row(Git repository)
     {
         ChangedFileRow row = new();
-        return row.Line.Showing<FileChange>(change => row.Show(change.Path, change.Kind, ChangedFileRow.Folder(repository.Relative(change.Path))));
+        return row.Line.Showing<FileChange>(change => row.Show(change, repository));
     }
 }

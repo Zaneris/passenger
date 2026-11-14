@@ -590,8 +590,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     private Control FileRow()
     {
         ChangedFileRow row = new();
-        return row.Line.Showing<FileChange>(change =>
-            row.Show(change.Path, change.Kind, vcs.Repository is { } repository ? ChangedFileRow.Folder(repository.Relative(change.Path)) : string.Empty));
+        return row.Line.Showing<FileChange>(change => row.Show(change, vcs.Repository));
     }
 
     /// <summary>The lanes' colours as a theme gives them, and a pen of each.</summary>
