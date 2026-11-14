@@ -72,6 +72,22 @@ public class CompletionRankingTests
         Assert.Equal(["ab", "abc", "aef", "await"], plain.Shown("a", "a", 1, MostShown).Select(i => unsaid[i].Matched));
     }
 
+    /// <summary>A list of more than 10,000 items as Passenger's extension sends a C# list, each sort text its place widened:
+    /// the items the name finds alike rank in the list's order, those past its 10,000th after those before them.</summary>
+    [Fact]
+    public void Items_found_alike_in_a_list_of_more_than_ten_thousand_rank_in_the_lists_order()
+    {
+        string[] labels = [.. Enumerable.Range(0, 3_000).Select(i => $"Other{i:0000}"), .. Enumerable.Range(0, 12_000).Select(i => $"Lot{i:00000}")];
+        string[] written = [.. labels.Select((label, i) => i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + label)];
+        string[] sent = Passenger.Roslyn.Extension.CompletionOrder.Widened(written)!;
+        CompletionRanking ranking = new([.. labels.Select((label, i) => new CompletionRanking.Entry(label, false, false, sent[i]))]);
+        Assert.Equal(Enumerable.Range(3_000, MostShown), ranking.Shown("Lot", "Lot", 1, MostShown));
+        Assert.Equal(Enumerable.Range(14_000, MostShown), ranking.Shown("Lot11", "Lot11", 1, MostShown));
+
+        CompletionRanking unwidened = new([.. labels.Select((label, i) => new CompletionRanking.Entry(label, false, false, written[i]))]);
+        Assert.NotEqual(Enumerable.Range(3_000, MostShown), unwidened.Shown("Lot", "Lot", 1, MostShown));
+    }
+
     [Fact]
     public void A_key_that_lengthens_the_name_scores_only_the_items_the_last_key_matched()
     {

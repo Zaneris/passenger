@@ -2747,6 +2747,59 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A statement's list of more than 10,000 items, a class's 13,500 fields among the types in reach, lists the
+    /// 12,000 the name typed finds alike in the server's order, from its 1,000s on: none of those past its 10,000th item
+    /// ahead of one before; and the server still describes the list's last item, which it finds by its sort text.</summary>
+    [AvaloniaFact]
+    public void A_statements_list_of_more_than_ten_thousand_lists_the_names_found_alike_in_the_servers_order()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("assist-lots-"));
+        TestFolders.Write(folder, "Lots.csproj", TestProjects.Console());
+        string yard = TestFolders.Write(folder, "Yard.cs", "static class Yard\n{\n" + string.Concat(Enumerable.Range(0, 1_500).Select(i => $"    public static int Bin{i:0000};\n"))
+            + string.Concat(Enumerable.Range(0, 12_000).Select(i => $"    public static int Lot{i:00000};\n"))
+            + "\n    public static int Tally()\n    {\n        int total = 0;\n        return total;\n    }\n}\n");
+        Restore.Run(Path.Combine(folder, "Lots.csproj"));
+        MainWindow window = Ui.OpenFolder(folder, autosaves: false);
+        try
+        {
+            window.OpenFile(yard);
+            Ui.Settle();
+            Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "        int total = 0;");
+            editor.Focus();
+            Ui.Press(window, "ENTER");
+            Ui.Settle();
+            string typed = string.Empty;
+            foreach (string letter in new[] { "L", "o", "t" })
+            {
+                typed += letter;
+                window.KeyTextInput(letter);
+                Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == typed, $"a statement's list narrowed by {typed}");
+            }
+            Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
+            int caret = editor.Selections.Primary.Caret;
+            Passenger.Lsp.CompletionList whole = Ui.Await(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "a statement's list").List!;
+            List<string> served = [.. whole.Items.Select(i => i.Label).Where(l => l.StartsWith("Lot", StringComparison.Ordinal))];
+            int first = whole.Items.FindIndex(i => i.Label.StartsWith("Lot", StringComparison.Ordinal));
+            Assert.True(first >= 1_000 && whole.Items.Count > 10_000 && whole.Items.Skip(10_000).Any(i => i.Label.StartsWith("Lot", StringComparison.Ordinal)),
+                $"A statement's list of {whole.Items.Count} items has the fields from its {first}th, not from its 1,000s to past its 10,000th, which this test is about");
+            IReadOnlyList<string> shown = window.Assist.CompletionLabels;
+            Assert.True(shown.Count > 0 && shown.SequenceEqual(served.Take(shown.Count)),
+                $"Narrowed by 'Lot' the list shows {string.Join(", ", shown.Take(5))} first, where the server lists {string.Join(", ", served.Take(5))} first: "
+                + "names the server lists past its 10,000th item go ahead of those it lists before them");
+            Passenger.Lsp.CompletionItem last = whole.Items[^1];
+            Passenger.Lsp.CompletionItem? described = Ui.Await(Waiting.Apart(() => lsp.ResolveAsync(last)), $"{last.Label} described");
+            Assert.True(described?.Documentation is not null,
+                $"The server described nothing of {last.Label}, the list's last item, sorted by {last.SortText}: it found no item of its list that sorts so");
+            Ui.Press(window, "ESCAPE");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A statement begun in a class's own method and its name typed a letter at a time: how many items the list
     /// has, whole, and the least the UI thread allocates from a key to the narrower list shown, the server asked nothing
     /// after the list's first letter.</summary>

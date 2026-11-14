@@ -11,11 +11,11 @@ using RoslynCompletionList = Microsoft.CodeAnalysis.Completion.CompletionList;
 
 namespace Passenger.Roslyn.Extension;
 
-/// <summary><see cref="ExtensionMethods.Completion"/>: textDocument/completion, answered by the server's own handler, with
-/// how well each item fits where it is asked for (<see cref="CompletionPriorities"/>) beside its items. The priorities
-/// are those Roslyn's completion gave the list the server keeps for resolving its items, read in its order, which is the
-/// answer's own while lists are sent whole (<see cref="WholeCompletionLists"/>); a list cut, or no longer kept, is
-/// answered as the server answers it.</summary>
+/// <summary><see cref="ExtensionMethods.Completion"/>: textDocument/completion, answered by the server's own handler, its
+/// sort texts keeping its order past 10,000 items (<see cref="CompletionOrder"/>), with how well each item fits where it
+/// is asked for (<see cref="CompletionPriorities"/>) beside its items. The priorities are those Roslyn's completion gave
+/// the list the server keeps for resolving its items, read in its order, which is the answer's own while lists are sent
+/// whole (<see cref="WholeCompletionLists"/>); a list cut, or no longer kept, is answered as the server answers it.</summary>
 [Method(ExtensionMethods.Completion)]
 internal sealed class PrioritizedCompletionHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<CompletionParams, PrioritizedCompletionList?>
 {
@@ -34,6 +34,13 @@ internal sealed class PrioritizedCompletionHandler(IGlobalOptionService options)
                 kept, cancellationToken).ConfigureAwait(false) is not { } list)
         {
             return null;
+        }
+        if (CompletionOrder.Widened([.. list.Items.Select(i => i.SortText)]) is { } widened)
+        {
+            for (int i = 0; i < widened.Length; i++)
+            {
+                list.Items[i].SortText = widened[i];
+            }
         }
         int[]? priorities = null;
         if (options.GetOption(LspOptionsStorage.MaxCompletionListSize) < 0
