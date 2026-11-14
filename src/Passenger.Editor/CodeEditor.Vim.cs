@@ -9,8 +9,8 @@ using Passenger.Text;
 namespace Passenger.Editor;
 
 /// <summary>Vim mode in the editor: keys through <see cref="Vim"/> before any keymap, carets standing on a character in
-/// normal mode however they were put there, the input method off in normal mode so each key reaches it as a command, and
-/// what insert mode types one step of undo.</summary>
+/// normal mode however they were put there, the input method off in normal mode so each key reaches it as a command but
+/// composing on its command line, and what insert mode types one step of undo.</summary>
 public sealed partial class CodeEditor
 {
     private Vim? vim;
@@ -20,6 +20,10 @@ public sealed partial class CodeEditor
 
     /// <summary>Set once Vim took the key just pressed in insert mode (a mapping holding it), so its text does not type.</summary>
     private bool vimTookText;
+
+    /// <summary>What the key just pressed typed on Vim's command line, or the prompt it opened it with, so its text, where
+    /// the platform still sends it, is not typed there again; null for none.</summary>
+    private string? vimLineTyped;
 
     private VimRegisters vimRegisters = new();
 
@@ -77,8 +81,13 @@ public sealed partial class CodeEditor
     /// <summary>Vim's mode, its half-typed command or its command line changed.</summary>
     public event EventHandler? VimModeChanged;
 
-    /// <summary>The command line Vim mode has open (":s/a/b", "/foo") for the host's status bar; null with none.</summary>
-    public string? VimCommandLine => vim?.CommandLine;
+    /// <summary>The command line Vim mode has open (":s/a/b", "/foo") for the host's status bar, what an input method is
+    /// composing on it after what is typed; null with none.</summary>
+    public string? VimCommandLine => vim?.CommandLine is { } line ? line + Composition : null;
+
+    /// <summary>Where the host shows the end of Vim mode's command line, in the editor's own coordinates, for the input
+    /// method's window while the line takes its text; null opens it at the caret.</summary>
+    public Func<Rect?>? VimCommandLineEnd { get; set; }
 
     /// <summary>Vim mode has words for the host's status bar: a search's wrap or failure, an ex command's answer.</summary>
     public event EventHandler<VimMessage>? VimSaid;
@@ -91,13 +100,15 @@ public sealed partial class CodeEditor
 
     /// <summary>A key through Vim mode before any keymap: true when Vim took it, with <paramref name="action"/> (one of
     /// <see cref="EditorActions"/>) for the host to run <paramref name="repeat"/> times as its keymap would, so undo stays
-    /// the window's. A modifier pressed alone and every key while an input method composes are left to the keymap.</summary>
+    /// the window's. A modifier pressed alone, every key while an input method composes, and on the command line a key the
+    /// input method took, are left to the keymap.</summary>
     public bool PressVim(KeyEventArgs e, out string? action, out int repeat)
     {
         action = null;
         repeat = 0;
         vimTookText = false;
-        if (vim is null || KeymapDispatcher.IsModifierOnly(e.Key) || Preedit.Length > 0)
+        vimLineTyped = null;
+        if (vim is null || KeymapDispatcher.IsModifierOnly(e.Key) || Composition.Length > 0 || (e.Key == Key.ImeProcessed && vim.CommandLine is not null))
         {
             // A modifier pressed on its own comes before the key it changes, so it must not end a count or operator.
             return false;
@@ -112,12 +123,18 @@ public sealed partial class CodeEditor
         string? lineWas = vim.CommandLine;
         VimResult result = vim.Press(key, document.Snapshot, selections, VimView);
         vimTookText = result.Taken && was is VimMode.Insert or VimMode.Replace;
+        vimLineTyped = result.Taken && vim.CommandLine is not null && vim.CommandLine != lineWas ? key : null;
         FollowVim(result, was);
         action = result.Action;
         repeat = action is null ? 0 : result.Repeat;
         if (vim?.Mode == was && (VimPending != pendingWas || vim.CommandLine != lineWas))
         {
             VimModeChanged?.Invoke(this, EventArgs.Empty);
+        }
+        if (vim?.CommandLine is not null)
+        {
+            // The input method's window follows the command line's end, which the host moved as it showed the line.
+            FollowInputMethod();
         }
         FollowVimTimeout();
         return result.Taken;
@@ -167,11 +184,33 @@ public sealed partial class CodeEditor
         return result.Message is { } said ? new VimMessage(said, result.MessageIsError) : null;
     }
 
+    /// <summary>Text typed on Vim's command line that no key press brought: an input method's committed text, a dead
+    /// key's character. A stretch at its end the input method chose (press and hold's letter) is typed over.</summary>
+    private void TypeOnVimCommandLine(string typed)
+    {
+        inputMethod?.Committed();
+        int over = inputMethod?.TakeCommandLineChoice() ?? -1;
+        while (over >= 0 && vim?.CommandLine is { } line && line.Length - 1 > over)
+        {
+            FollowVim(vim.Press("<BS>", document.Snapshot, selections, VimView), vim.Mode);
+        }
+        foreach (System.Text.Rune rune in typed.EnumerateRunes())
+        {
+            if (vim?.CommandLine is null)
+            {
+                break;
+            }
+            FollowVim(vim.Press(rune.ToString(), document.Snapshot, selections, VimView), vim.Mode);
+        }
+        VimModeChanged?.Invoke(this, EventArgs.Empty);
+        FollowInputMethod();
+    }
+
     /// <summary>Leaves insert mode as Escape does, where something else heard the Escape first (the code's choices it
     /// closed); false with Vim mode off or already in normal mode.</summary>
     public bool EndVimInsert()
     {
-        if (vim is not { Mode: VimMode.Insert } || Preedit.Length > 0)
+        if (vim is not { Mode: VimMode.Insert } || Composition.Length > 0)
         {
             return false;
         }
@@ -256,6 +295,23 @@ public sealed partial class CodeEditor
         if (result.Request is { } asked)
         {
             VimAsked?.Invoke(this, asked);
+        }
+        FollowVimComposing();
+    }
+
+    /// <summary>An input method composes in insert mode and on the command line alone, never at normal mode's commands; a
+    /// composition the command line closed under is dropped.</summary>
+    private void FollowVimComposing()
+    {
+        bool composes = vim is null or { Mode: VimMode.Insert } or { CommandLine: not null };
+        if (Avalonia.Input.InputMethod.GetIsInputMethodEnabled(this) != composes)
+        {
+            if (!composes)
+            {
+                EndComposition();
+            }
+            Avalonia.Input.InputMethod.SetIsInputMethodEnabled(this, composes);
+            FollowInputMethod();
         }
     }
 
@@ -381,12 +437,12 @@ public sealed partial class CodeEditor
         };
     }
 
-    /// <summary>What a change of Vim's mode changes: the caret's shape, whether an input method composes (never in normal
-    /// mode, whose keys are commands), and where an insert session's step of undo begins and ends.</summary>
+    /// <summary>What a change of Vim's mode changes: the caret's shape, whether an input method composes (never at normal
+    /// mode's keys, which are commands), and where an insert session's step of undo begins and ends.</summary>
     private void FollowVimMode()
     {
         document.BreakUndoGroup();
-        Avalonia.Input.InputMethod.SetIsInputMethodEnabled(this, vim is null or { Mode: VimMode.Insert });
+        FollowVimComposing();
         VimModeChanged?.Invoke(this, EventArgs.Empty);
         RedrawOverlay();
     }
@@ -406,7 +462,7 @@ public sealed partial class CodeEditor
         if (!followingVim && vim.FollowSelections(document.Snapshot, carets, VimView))
         {
             VimModeChanged?.Invoke(this, EventArgs.Empty);
-            Avalonia.Input.InputMethod.SetIsInputMethodEnabled(this, vim.Mode == VimMode.Insert);
+            FollowVimComposing();
         }
         return vim.Mode == VimMode.Normal ? Vim.Settled(document.Snapshot, carets) : carets;
     }

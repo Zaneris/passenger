@@ -26,8 +26,13 @@ public sealed partial class CodeEditor
 
     private EditorInputMethod InputMethod => inputMethod ??= new EditorInputMethod(this);
 
-    /// <summary>The text the input method is composing at the primary caret; empty when it is composing none.</summary>
-    private string Preedit => inputMethod?.Composition ?? string.Empty;
+    /// <summary>The text the input method is composing, at the primary caret or on Vim's command line; empty when it is
+    /// composing none.</summary>
+    private string Composition => inputMethod?.Composition ?? string.Empty;
+
+    /// <summary>The text the input method is composing at the primary caret, drawn there; empty when it is composing none
+    /// or composes on Vim's command line.</summary>
+    private string Preedit => vim?.CommandLine is null ? Composition : string.Empty;
 
     /// <summary>Where in the composition the input method's cursor is; null at its end.</summary>
     private int? PreeditCursor => inputMethod?.CompositionCursor;
@@ -63,7 +68,23 @@ public sealed partial class CodeEditor
     protected override void OnTextInput(TextInputEventArgs e)
     {
         base.OnTextInput(e);
-        if (e.Handled || IsReadOnly || string.IsNullOrEmpty(e.Text))
+        if (e.Handled || string.IsNullOrEmpty(e.Text))
+        {
+            return;
+        }
+        if (vim is { CommandLine: not null })
+        {
+            // Text no key press typed (an input method's, a dead key's) goes on the command line, whatever the file allows.
+            e.Handled = true;
+            string? typedByKey = vimLineTyped;
+            vimLineTyped = null;
+            if (Printable(e.Text) is { Length: > 0 } committed && committed != typedByKey)
+            {
+                TypeOnVimCommandLine(committed);
+            }
+            return;
+        }
+        if (IsReadOnly)
         {
             return;
         }
@@ -612,10 +633,27 @@ public sealed partial class CodeEditor
 
     /// <summary>What the platform's input method (accents, CJK composition) reads and writes: the
     /// caret's line as the surrounding text, the selection in it, which it may set to type over (press and hold's accents
-    /// replace the letter held), and its composition drawn inline at the caret.</summary>
+    /// replace the letter held), and its composition drawn inline at the caret; while Vim's command line is open, its
+    /// text, its end and the stretch at its end to type over, the composition shown on it.</summary>
     private sealed class EditorInputMethod(CodeEditor editor) : ViewInputMethod(editor)
     {
+        /// <summary>Where on the command line's text the input method chose to type over from, with the text it chose in;
+        /// null for nowhere.</summary>
+        private (int From, string Text)? commandLineChoice;
+
         public override bool SupportsSurroundingText => true;
+
+        /// <summary>The text typed on Vim's command line after its prompt; null while none is open.</summary>
+        private string? CommandLineText => editor.vim?.CommandLine is { } line ? line[1..] : null;
+
+        /// <summary>Where on the command line's text the next committed text begins, typing over what is after it, and
+        /// forgotten; -1 to type at its end, as where the line changed since the choice.</summary>
+        public int TakeCommandLineChoice()
+        {
+            int choice = commandLineChoice is { } chosen && chosen.Text == CommandLineText ? chosen.From : -1;
+            commandLineChoice = null;
+            return choice;
+        }
 
         /// <summary>How much of the caret's line either side of it the input method is given: the whole of a line of
         /// code, a stretch around the caret of a long one.</summary>
@@ -625,6 +663,10 @@ public sealed partial class CodeEditor
         {
             get
             {
+                if (CommandLineText is { } typed)
+                {
+                    return typed;
+                }
                 (TextSnapshot text, LineSpan line, int start) = Surrounding();
                 int end = Math.Min(line.End, Math.Max(start, editor.selections.Primary.Caret) + Around);
                 return text.GetText(start, end - start);
@@ -635,6 +677,10 @@ public sealed partial class CodeEditor
         {
             get
             {
+                if (CommandLineText is not null && editor.VimCommandLineEnd?.Invoke() is { } end)
+                {
+                    return end;
+                }
                 (int row, double at) = editor.CaretPlace(editor.document.Snapshot, editor.selections.Primary.Caret);
                 double x = editor.TextLeft - editor.scroll.X + at;
                 double y = (row * editor.metrics.LineHeight) - editor.scroll.Y;
@@ -646,12 +692,22 @@ public sealed partial class CodeEditor
         {
             get
             {
+                if (CommandLineText is { } typed)
+                {
+                    return new TextSelection(commandLineChoice is { } chosen && chosen.Text == typed ? chosen.From : typed.Length, typed.Length);
+                }
                 (_, _, int start) = Surrounding();
                 Selection primary = editor.selections.Primary;
                 return new TextSelection(Math.Max(0, primary.Anchor - start), primary.Caret - start);
             }
             set
             {
+                if (CommandLineText is { } typed)
+                {
+                    int from = Math.Clamp(Math.Min(value.Start, value.End), 0, typed.Length);
+                    commandLineChoice = from < typed.Length && Math.Max(value.Start, value.End) >= typed.Length ? (from, typed) : null;
+                    return;
+                }
                 (TextSnapshot text, _, int start) = Surrounding();
                 Selection primary = editor.selections.Primary;
                 int anchor = Math.Clamp(start + value.Start, 0, text.Length) - primary.Caret;
@@ -669,6 +725,10 @@ public sealed partial class CodeEditor
 
         protected override void Composed()
         {
+            if (CommandLineText is not null)
+            {
+                editor.VimModeChanged?.Invoke(editor, EventArgs.Empty);
+            }
             editor.RedrawChanged();
             editor.FollowInputMethod();
         }

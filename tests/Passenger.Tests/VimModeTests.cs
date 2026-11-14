@@ -16,10 +16,10 @@ namespace Passenger.Tests;
 /// character as text unless the key was taken): the setting turns it on and off live, the status bar says the mode and a
 /// command half typed, normal mode's keys (Enter and Tab too) move and delete but never type, a Shift pressed on its own
 /// keeps a count, u takes back one x and a whole insert session, Escape leaves insert mode keeping every caret, carets
-/// stand on a character in normal mode however they were put there, and an input method composes only in insert mode;
-/// motions, operators with motions and text objects, registers (the system clipboard's too) and . typed as keys, each
-/// change one step of the window's undo and every caret taking it; and a long random session of normal mode's keys
-/// checked key by key against a small model of Vim's rules. What each key does is VimTests'.</summary>
+/// stand on a character in normal mode however they were put there, and an input method composes only in insert mode and
+/// on the command line; motions, operators with motions and text objects, registers (the system clipboard's too) and .
+/// typed as keys, each change one step of the window's undo and every caret taking it; and a long random session of
+/// normal mode's keys checked key by key against a small model of Vim's rules. What each key does is VimTests'.</summary>
 public sealed class VimModeTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("vim-");
@@ -811,6 +811,72 @@ public sealed class VimModeTests : IDisposable
             Ui.Settle();
             Keys(window, "p");
             Assert.Equal("xtwo\n", Text(window.EditorArea.CodeEditor));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>While the command line is open an input method composes on it: what it composes shows at the line's end
+    /// in the status bar, its window opening there, never in the text, and a key it takes runs nothing; what it commits,
+    /// a dead key's character that comes with no key of its own, and press and hold's accent over the letter held are
+    /// typed on the line, the text left as it was until the command runs; closed, the line leaves the keys to Vim's
+    /// commands again.</summary>
+    [AvaloniaFact]
+    public void The_command_line_takes_what_an_input_method_composes_and_commits_and_leaves_the_text_alone()
+    {
+        (MainWindow window, CodeEditor editor) = Open("alpha 日本 café\nsecond line\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Avalonia.Input.TextInput.TextInputMethodClientRequestedEventArgs asked = new() { RoutedEvent = InputElement.TextInputMethodClientRequestedEvent };
+            editor.RaiseEvent(asked);
+            Avalonia.Input.TextInput.TextInputMethodClient client = asked.Client ?? throw new InvalidOperationException("The editor gave the input method no client");
+            Keys(window, "/");
+            Assert.True(InputMethod.GetIsInputMethodEnabled(editor), "No input method composes on the command line");
+            double after = editor.PointOf(1).X;
+            client.SetPreeditText("にほん");
+            Ui.Settle();
+            Assert.Equal("/にほん", StatusWords(window));
+            Assert.True(editor.PointOf(1).X == after, "The composition was drawn in the text at the caret, moving what follows it aside");
+            TextBlock words = window.FindControl<TextBlock>("StatusText")!;
+            Point end = words.TranslatePoint(new Point(words.TextLayout.WidthIncludingTrailingWhitespace, 0), editor)!.Value;
+            Point told = client.CursorRectangle.TopLeft;
+            Assert.True(Math.Abs(told.X - end.X) < 0.5 && Math.Abs(told.Y - end.Y) < 0.5,
+                $"The input method's window would open at {told}, not at the command line's end in the status bar, {end}");
+
+            window.KeyPress(Avalonia.Input.Key.ImeProcessed, RawInputModifiers.None, PhysicalKey.Enter, null);
+            window.KeyRelease(Avalonia.Input.Key.ImeProcessed, RawInputModifiers.None, PhysicalKey.Enter, null);
+            Ui.Settle();
+            Assert.True(StatusWords(window) == "/にほん" && editor.Selections.Primary.Caret == 0,
+                $"The Enter the input method took ran the search, the status bar saying \"{StatusWords(window)}\" and the caret at {editor.Selections.Primary.Caret}");
+            client.SetPreeditText(null);
+            window.KeyTextInput("日本");
+            Ui.Settle();
+            Assert.Equal("/日本", StatusWords(window));
+            Assert.Equal("alpha 日本 café\nsecond line\n", Text(editor));
+            Assert.True(client.CursorRectangle.X > told.X - (words.TextLayout.WidthIncludingTrailingWhitespace / 2), "The input method's window stayed where the composition began, not at the line's end");
+            Keys(window, "<CR>");
+            Assert.Equal(6, editor.Selections.Primary.Caret);
+            Assert.False(InputMethod.GetIsInputMethodEnabled(editor), "An input method still composes once the command line closed");
+
+            Keys(window, ":s/caf");
+            window.KeyTextInput("é");
+            Ui.Settle();
+            Assert.Equal(":s/café", StatusWords(window));
+            Keys(window, "/cafe");
+            Avalonia.Input.TextInput.TextSelection held = client.Selection;
+            client.Selection = new Avalonia.Input.TextInput.TextSelection(held.End - 1, held.End);
+            window.KeyTextInput("è");
+            Ui.Settle();
+            Assert.Equal(":s/café/cafè", StatusWords(window));
+            Assert.Equal("alpha 日本 café\nsecond line\n", Text(editor));
+            Keys(window, "<CR>");
+            Assert.Equal("alpha 日本 cafè\nsecond line\n", Text(editor));
+            Keys(window, "x");
+            Assert.Equal("lpha 日本 cafè\nsecond line\n", Text(editor));
         }
         finally
         {

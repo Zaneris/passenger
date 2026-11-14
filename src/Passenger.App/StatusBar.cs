@@ -136,6 +136,18 @@ public sealed class StatusBar
         Say(words, said.Severity, said.Place);
     }
 
+    /// <summary>Where what it says ends, as a caret's rectangle in <paramref name="over"/>'s coordinates: where an input
+    /// method's window opens for Vim mode's command line shown there; null while it is out of sight or in another window.</summary>
+    public Avalonia.Rect? EndIn(Avalonia.Visual over)
+    {
+        if (!text.IsEffectivelyVisible)
+        {
+            return null;
+        }
+        double end = Math.Min(text.TextLayout.WidthIncludingTrailingWhitespace, text.Bounds.Width);
+        return Avalonia.VisualExtensions.TranslatePoint(text, new Avalonia.Point(end, 0), over) is { } at ? new Avalonia.Rect(at, new Avalonia.Size(1, text.Bounds.Height)) : null;
+    }
+
     /// <summary>The words a link while they have a place (the hand, the link's look under the pointer, a key's reach), and
     /// their whole on hover, which a narrow bar cuts.</summary>
     private void Placed()
