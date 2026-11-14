@@ -158,13 +158,24 @@ public partial class MainWindow
     /// <summary>Whether an editor group shows a preview's pane beside its file.</summary>
     private bool Shows(XamlPreviewPane pane) => Editors.Groups.Any(g => g.Side == pane);
 
+    /// <summary>The programs on this machine that run a library project's code, in the folder's order: a desktop app's, not
+    /// one of a device or the browser; none for a project that runs itself.</summary>
+    private IReadOnlyList<ProjectModel> ProgramsOf(ProjectModel library) =>
+        library.IsRunnable ? [] : [.. library.ProgramsRunning(session.Projects).Where(p => Run.Devices.DeviceTargets.PlatformsOf(p.TargetFrameworks).Count == 0 && !p.RunsInBrowser)];
+
+    /// <summary>The programs running a library project's code (<see cref="ProgramsOf"/>), each by the assembly its build makes.</summary>
+    private IReadOnlyList<string> ProgramsRunning(string project) =>
+        session.Projects.FirstOrDefault(p => Passenger.Core.PathNames.Same(p.Path, project)) is { } library
+            ? [.. ProgramsOf(library).Select(p => p.Property(Passenger.Host.CarriedProperties.TargetPath)).OfType<string>()]
+            : [];
+
     private XamlPreviewPane PaneFor(OpenDocument shown, XamlDocument document)
     {
         if (previews.TryGetValue(shown, out ShownPreview? kept))
         {
             return kept.Pane;
         }
-        XamlPreview preview = new(document);
+        XamlPreview preview = new(document) { ProgramsRunning = ProgramsRunning };
         XamlPreviewPane pane = new(preview);
         pane.ElementChosen += (_, element) => ChooseInEditor(pane, element);
         pane.ActionRequested += (_, action) => Request(action);
@@ -215,10 +226,12 @@ public partial class MainWindow
     /// framework chosen, so no other framework's build holds the preview up; each preview then draws the build it made.</summary>
     private async Task BuildForPreviewAsync(OpenDocument document)
     {
-        if (ProjectModel.Owning(session.Projects, document.Path) is not { } project)
+        if (ProjectModel.Owning(session.Projects, document.Path) is not { } owning)
         {
             return;
         }
+        // A library's views are drawn in a program that runs them, whose build builds the library too.
+        ProjectModel project = owning.IsRunnable ? owning : ProgramsOf(owning).FirstOrDefault() ?? owning;
         string? framework = session.Frameworks.Of(project);
         if (work.Begin(A.BuildForPreview, framework is null ? $"Building {project.Name} for its preview…" : $"Building {project.Name} for {framework}, which its preview draws…")
             is not { } working)

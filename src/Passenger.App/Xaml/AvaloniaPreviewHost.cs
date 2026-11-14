@@ -23,6 +23,10 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
 {
     private readonly XamlPreview preview;
     private readonly string output;
+
+    /// <summary>The assembly of the file's XAML as the previewer loads it: the app's own, or a library's copy beside the
+    /// program running it (<see cref="PreviewedBuild.Library"/>).</summary>
+    private readonly string xamlAssembly;
     private readonly XamlPreview.PreviewerLog log;
     private IDisposable? listening;
     private IAvaloniaRemoteTransportConnection? connection;
@@ -55,6 +59,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         log = new XamlPreview.PreviewerLog(preview, "Avalonia");
         Build = build;
         output = build.Assembly;
+        xamlAssembly = build.Library ?? build.Assembly;
     }
 
     public PreviewedBuild Build { get; }
@@ -62,10 +67,18 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     /// <summary>Starts the host on the project's last build; null, having said why, when there is none to start.</summary>
     public static async Task<AvaloniaPreviewHost?> StartAsync(XamlPreview preview, ProjectInputs inputs)
     {
-        if (XamlPreview.Output(inputs) is not { } built)
+        string? built = XamlPreview.Output(inputs);
+        string? library = null;
+        if (built is null)
         {
-            preview.SayUnbuilt(inputs);
-            return null;
+            // A library's views, a cross-platform app's shared ones, are drawn in a program that runs them.
+            IReadOnlyList<string> programs = preview.ProgramsRunning(inputs.ProjectPath);
+            if (await BackgroundWork.Run(() => XamlPreview.Hosted(inputs, programs)) is not var (program, copy))
+            {
+                preview.SayUnbuilt(inputs, programs);
+                return null;
+            }
+            (built, library) = (program, copy);
         }
         string? runs = await BackgroundWork.Run(() => RuntimeConfig.Read(built)?.TargetFramework) ?? inputs.TargetFramework;
         if (HostApp(inputs, runs) is not { } designer)
@@ -75,7 +88,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             preview.Say(why);
             return null;
         }
-        AvaloniaPreviewHost started = new(preview, await BackgroundWork.Run(() => PreviewedBuild.Of(built, configured: true)));
+        AvaloniaPreviewHost started = new(preview, await BackgroundWork.Run(() => PreviewedBuild.Of(built, configured: true) with { Library = library }));
         try
         {
             await started.RunAsync(designer);
@@ -141,7 +154,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         TextSnapshot text = preview.Document.Document.Text.Snapshot;
         unanswered.Enqueue(text);
         string xaml = preview.Size is { } size ? size.Sized(text.ToString()) : text.ToString();
-        IdeErrors.Observe(open.Send(new UpdateXamlMessage { Xaml = xaml, AssemblyPath = output, XamlFileProjectPath = preview.ProjectPath() }));
+        IdeErrors.Observe(open.Send(new UpdateXamlMessage { Xaml = xaml, AssemblyPath = xamlAssembly, XamlFileProjectPath = preview.ProjectPath() }));
     }
 
     /// <summary>The host's window drawn again at a scale, screenshots and tests held for its frame where the host has a

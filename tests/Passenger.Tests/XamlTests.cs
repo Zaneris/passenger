@@ -2456,8 +2456,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         {
             pane.Sizes.SelectedIndex = chosen;
             Size wanted = chosen == 0 ? design : new Size(Passenger.Xaml.Features.PreviewSize.Offered[chosen - 1].Width, Passenger.Xaml.Features.PreviewSize.Offered[chosen - 1].Height);
-            Ui.WaitFor(() => Math.Abs(preview.FrameSize.Width - wanted.Width) < 1 && Math.Abs(preview.FrameSize.Height - wanted.Height) < 1,
-                () => $"the frame at {pane.Sizes.SelectedItem} ({wanted.Width} × {wanted.Height}); it is {preview.FrameSize}: {preview.Status} {preview.Error}", TimeSpan.FromSeconds(60));
+            Ui.WaitFor(() => DrawnAt(preview, wanted), () => $"the frame at {pane.Sizes.SelectedItem}; it is {preview.FrameSize} in its units, {preview.Frame?.PixelSize} pixels drawn at "
+                + $"{preview.Scaling:0.####} in the pane {pane.Bounds.Size}: {preview.Status} {preview.Error}", TimeSpan.FromSeconds(60));
             Assert.Null(preview.Error);
         }
         Assert.Equal(written, document.Text.Snapshot.ToString());
@@ -2465,6 +2465,14 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
         window.Close();
     }
+
+    /// <summary>Whether the frame is a root of this size in the window's units drawn at the scale it was: a frame drawn
+    /// smaller for a narrow pane is whole pixels, and Avalonia rounds its layout up to whole pixels, so it stands up to two
+    /// pixels past the size times its scale, which read back in units is several units at a small scale.</summary>
+    internal static bool DrawnAt(Passenger.App.Xaml.XamlPreview preview, Size wanted) =>
+        preview.Frame is { } frame && preview.FrameSize.Width > 0 && preview.FrameSize.Height > 0
+        && Math.Abs(frame.PixelSize.Width - (wanted.Width * frame.PixelSize.Width / preview.FrameSize.Width)) <= 2
+        && Math.Abs(frame.PixelSize.Height - (wanted.Height * frame.PixelSize.Height / preview.FrameSize.Height)) <= 2;
 
     /// <summary>An app still on Avalonia 11, whose package carries its previewer under tools/netstandard2.0 where Avalonia
     /// 12's are under tools/net8.0 and later, and whose Directory.Build.props moves its obj and bin folders, previews as

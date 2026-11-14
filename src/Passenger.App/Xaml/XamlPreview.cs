@@ -408,10 +408,26 @@ public sealed class XamlPreview : IDisposable
         Tell();
     }
 
-    /// <summary>Says the project has no build to draw (<see cref="Unbuilt(ProjectInputs)"/>), which Build for XAML Preview makes.</summary>
-    internal void SayUnbuilt(ProjectInputs inputs)
+    /// <summary>The programs on this machine that run a library's code, by their projects' paths, each by the assembly its
+    /// build makes: what a library's views (a cross-platform app's shared ones) are drawn in. The window gives them; none
+    /// by default.</summary>
+    public Func<string, IReadOnlyList<string>> ProgramsRunning { get; set; } = _ => [];
+
+    /// <summary>A library's build as a program running it carries it: the newest of <paramref name="programs"/>' builds
+    /// that holds the library's assembly beside the program's runtime configuration, and that copy; null where none does.
+    /// Read off the window's thread.</summary>
+    internal static (string Program, string Library)? Hosted(ProjectInputs inputs, IReadOnlyList<string> programs) =>
+        programs.Where(p => File.Exists(p) && File.Exists(Path.ChangeExtension(p, ".runtimeconfig.json")) && File.Exists(Path.ChangeExtension(p, ".deps.json"))
+                && File.Exists(Path.Combine(Path.GetDirectoryName(p)!, inputs.AssemblyName + ".dll")))
+            .OrderByDescending(File.GetLastWriteTimeUtc).Select(p => ((string, string)?)(p, Path.Combine(Path.GetDirectoryName(p)!, inputs.AssemblyName + ".dll"))).FirstOrDefault();
+
+    /// <summary>Says the project has no build to draw (<see cref="Unbuilt(ProjectInputs)"/>), which Build for XAML Preview makes;
+    /// of a library, that the program running it has none (<paramref name="programs"/>, the first of which that builds).</summary>
+    internal void SayUnbuilt(ProjectInputs inputs, IReadOnlyList<string>? programs = null)
     {
-        Say(Unbuilt(inputs));
+        Say(programs is [{ } program, ..]
+            ? $"Build {Path.GetFileNameWithoutExtension(program)}, which runs {Path.GetFileNameWithoutExtension(inputs.ProjectPath)}, to preview its XAML: the previewer draws it in that program's last build"
+            : Unbuilt(inputs));
         WantsBuild = true;
         Tell();
     }
@@ -612,13 +628,17 @@ internal interface IPreviewHost : IDisposable
 /// it references changes.</summary>
 internal sealed record PreviewedBuild(string Assembly, DateTime Written, bool Configured)
 {
+    /// <summary>A library's assembly beside the program it is drawn in (<see cref="Assembly"/>, the program's), where the
+    /// file's project is a library; null for an app's own.</summary>
+    public string? Library { get; init; }
+
     /// <summary>The build at an assembly as it stands; read off the window's thread.</summary>
     public static PreviewedBuild Of(string assembly, bool configured) => new(assembly, Newest(Path.GetDirectoryName(assembly)!), configured);
 
     /// <summary>Whether this is still the project's newest build, unwritten since; read off the window's thread.</summary>
     public bool Stands(ProjectInputs inputs) =>
-        Written != DateTime.MinValue && XamlPreview.Output(inputs, Configured) is { } newest && PathNames.Same(newest, Assembly)
-            && Newest(Path.GetDirectoryName(newest)!) == Written;
+        Written != DateTime.MinValue && (Library is not null ? File.Exists(Library) ? Assembly : null : XamlPreview.Output(inputs, Configured)) is { } newest
+            && PathNames.Same(newest, Assembly) && Newest(Path.GetDirectoryName(newest)!) == Written;
 
     /// <summary>The newest write among a folder's files; the least time where it cannot be read, which no build stands as.</summary>
     private static DateTime Newest(string folder)
