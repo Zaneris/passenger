@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Writes the generated themes, <Name>.json (theme format 1, docs/themes.md), from the palettes below, into the folder it
-is given: a checkout of Passenger's themes repository (Zaneris/passenger-themes), or the copy the tests carry
-(tests/Passenger.Tests/Themes).
+is given: a checkout of Zaneris/passenger-themes, or the copy the tests carry (tests/Passenger.Tests/Themes).
 
 Each theme is a few colours per variant (its grounds, words, accent and hues); every token Tokens.axaml gives is worked
 out from them here, then nudged in lightness until each pair UiRulesTests holds to WCAG AA passes, so a palette never

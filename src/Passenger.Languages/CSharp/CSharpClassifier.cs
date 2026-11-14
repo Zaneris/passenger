@@ -25,12 +25,11 @@ internal static class CSharpClassifier
 
     private static readonly TokenKind[] Braces = [TokenKind.Brace1, TokenKind.Brace2, TokenKind.Brace3, TokenKind.Brace4, TokenKind.Brace5, TokenKind.Brace6];
 
-    /// <summary>The spans of the tokens (and the trivia) that reach into <paramref name="range"/>, sorted; a comment or
-    /// an excluded block that starts before the range is included whole. It finds the first token by position and walks
-    /// token by token, never through a list of siblings, so a class with ten thousand members costs what the lines on
-    /// screen cost. A bracket's depth is counted on from the first token's (<see cref="DepthBefore"/>): an opener at
-    /// the depth it opens at, its closer at the same, a stray closer at none below the outermost; its colour is the
-    /// depth's among <paramref name="levels"/> (<see cref="BraceLevels"/>, those in force for none).</summary>
+    /// <summary>The spans of the tokens (and trivia) reaching into <paramref name="range"/>, sorted, a comment or excluded
+    /// block starting before it whole; walked token by token from the first, so ten thousand members cost what the lines
+    /// on screen cost. A bracket's depth counts on from the first token's (<see cref="DepthBefore"/>), a pair at the depth
+    /// it opens at, a stray closer at none below the outermost; its colour is the depth's among <paramref name="levels"/>
+    /// (<see cref="BraceLevels"/>, those in force for none).</summary>
     public static List<SyntaxSpan> Classify(SyntaxNode root, TextSpan range, int? levels = null)
     {
         int braces = levels ?? BraceLevels.InForce;
