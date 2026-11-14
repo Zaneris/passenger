@@ -54,7 +54,9 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
         {
             return null;
         }
-        preview.BuiltPlatform = PlatformOf(built);
+        // A build for no platform is drawn as the project's own first platform.
+        preview.BuiltPlatform = PlatformOf(Path.GetFileName(Path.GetDirectoryName(built)) ?? string.Empty)
+            ?? PlatformOf(inputs.ChosenFramework ?? inputs.TargetFramework ?? string.Empty) ?? MauiPreviewDevices.Android;
         MauiPreviewHost started = new(preview, builder, copied.Build with { Finder = Newest }, Path.Combine(copied.Shadow, Path.GetFileName(built)), copied.Shadow);
         try
         {
@@ -110,19 +112,16 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
             $"-p:{MSBuildNames.ArtifactsPath}={PlainFolder(project.Path)}"];
     }
 
-    /// <summary>The platform a build is for, by its target framework's folder (<c>net11.0-ios</c>): Android for a plain one,
-    /// the platform MAUI's template targets first.</summary>
-    internal static string PlatformOf(string built)
+    /// <summary>The platform a target framework is for, or a build's folder named for one (<c>net11.0-ios</c>,
+    /// <c>debug_net11.0-ios</c>); null for one of no platform.</summary>
+    internal static string? PlatformOf(string framework) => framework switch
     {
-        string framework = Path.GetFileName(Path.GetDirectoryName(built)) ?? string.Empty;
-        return framework switch
-        {
-            _ when framework.Contains("-ios", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.IOS,
-            _ when framework.Contains("-maccatalyst", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.MacCatalyst,
-            _ when framework.Contains("-windows", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.Windows,
-            _ => MauiPreviewDevices.Android,
-        };
-    }
+        _ when framework.Contains("-android", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.Android,
+        _ when framework.Contains("-ios", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.IOS,
+        _ when framework.Contains("-maccatalyst", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.MacCatalyst,
+        _ when framework.Contains("-windows", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.Windows,
+        _ => null,
+    };
 
     /// <summary>The previewer started on the copy, given where the project keeps its fonts and images and where its
     /// restore put its packages.</summary>

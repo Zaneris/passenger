@@ -37,6 +37,7 @@ public static class Program
             Console.Error.WriteLine("Usage: Passenger.MauiPreview --assembly PROJECT.dll [--fonts FOLDER]... [--images FOLDER]... [--packages FOLDER]...");
             return 2;
         }
+        OwnNatives.Use(typeof(SkiaSharp.SKImageInfo).Assembly, typeof(HarfBuzzSharp.Blob).Assembly);
         // Each element made from XAML keeps its line and column only with MAUI's diagnostics on: what its box is placed by.
         AppContext.SetSwitch("Microsoft.Maui.RuntimeFeature.EnableMauiDiagnostics", true);
         ProjectDependencies dependencies = ProjectDependencies.Of(options.Assembly, options.Packages);
