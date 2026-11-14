@@ -263,7 +263,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             {
                 DisplayName = node.DisplayName,
                 Message = node.Message,
-                StackTrace = node.StackTrace,
+                StackTrace = FailureStacks.Once(node.StackTrace, node.Message),
                 Output = node.Output,
                 Attachments = node.Attachments,
             }

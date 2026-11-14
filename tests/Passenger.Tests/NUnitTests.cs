@@ -253,6 +253,57 @@ public sealed class NUnitTests : NUnitFolders
         window.Close();
     }
 
+    /// <summary>A failure's stack shows once, though NUnit's adapter tells it again after its assertion's number, and of
+    /// several failures in one test each assertion's stack shows once, with its failure; whichever way NUnit is installed.</summary>
+    [AvaloniaTheory]
+    [InlineData(NUnitInstall.OnVSTest)]
+    [InlineData(NUnitInstall.OnItsRunner)]
+    [InlineData(NUnitInstall.FourOnVSTest)]
+    public void A_failures_stack_shows_once_however_nunit_is_installed(NUnitInstall install)
+    {
+        const string Failing = """
+            using NUnit.Framework;
+
+            namespace Sums.Tests;
+
+            public class Failing
+            {
+                [Test]
+                public void Once() => Assert.That(2 + 2, Is.EqualTo(5));
+
+                [Test]
+                public void Twice()
+                {
+                    Assert.Multiple(() =>
+                    {
+                        Assert.That(3 + 3, Is.EqualTo(7));
+                        Assert.That(4 + 4, Is.EqualTo(9));
+                    });
+                }
+            }
+
+            """;
+        int LineOf(string code) => Array.FindIndex(Failing.Split('\n'), l => l.Contains(code, StringComparison.Ordinal)) + 1;
+        int Times(string details, int line) => System.Text.RegularExpressions.Regex.Count(details, $@"Failing\.cs:line {line}\b");
+        MainWindow window = Ui.OpenFolder(Restored(install, "Failing.cs", Failing), languageServer: false);
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Once") is not null, "the tests read from their code");
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Once")?.State == TestState.Failed && Method(window, "Twice")?.State == TestState.Failed,
+            "the run of both tests", TimeSpan.FromSeconds(180));
+
+        string once = Method(window, "Once")!.Details;
+        Assert.True(Times(once, LineOf("2 + 2")) == 1 && once.Contains("Expected: 5", StringComparison.Ordinal),
+            $"A failing assertion's place shows {Times(once, LineOf("2 + 2"))} times in its details:\n{once}");
+        string twice = Method(window, "Twice")!.Details;
+        foreach ((string code, string expected) in new[] { ("3 + 3", "Expected: 7"), ("4 + 4", "Expected: 9") })
+        {
+            Assert.True(Times(twice, LineOf(code)) == 1 && twice.Contains(expected, StringComparison.Ordinal),
+                $"Of two failures in one test, the one at line {LineOf(code)} shows its place {Times(twice, LineOf(code))} times:\n{twice}");
+        }
+        window.Close();
+    }
+
     /// <summary>The tests' tally, less the time they took.</summary>
     private static string Tally(MainWindow window) =>
         System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty);

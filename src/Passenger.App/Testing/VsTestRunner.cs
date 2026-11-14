@@ -551,7 +551,7 @@ public sealed class VsTestRunner : ITestRunner
     {
         DisplayName = result.DisplayName ?? result.TestCase.DisplayName,
         Message = result.ErrorMessage,
-        StackTrace = result.ErrorStackTrace,
+        StackTrace = FailureStacks.Once(result.ErrorStackTrace, result.ErrorMessage),
         Output = string.Concat(result.Messages.Select(m => m.Text)) is { Length: > 0 } output ? output : null,
         // An adapter writes each attachment to a file and names it by a URI, the test's name for it as its description.
         Attachments = [.. result.Attachments.SelectMany(set => set.Attachments).Select(a =>
