@@ -40,6 +40,9 @@ internal sealed class ParameterInfo
     /// <summary>What the card says, while it shows.</summary>
     public string? Text => card.IsVisible ? card.Text : null;
 
+    /// <summary>The card while it shows.</summary>
+    public Avalonia.Controls.Border? Card => card.IsVisible ? card : null;
+
     /// <summary>The card shown after a call's bracket or comma just typed, and gone after its closing bracket or the
     /// statement's end.</summary>
     public void AfterTyped(char last)

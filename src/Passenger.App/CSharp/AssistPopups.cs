@@ -109,11 +109,12 @@ internal sealed class InfoCard : Border, IHoverCard
         {
             return base.MeasureOverride(availableSize);
         }
-        // The narrowest of the popups' widths that holds every row as it would lay out, else the widest a card takes.
+        // The narrowest of the popups' widths holding every row as laid out, else the widest; in a narrower room, the room.
         double natural = base.MeasureOverride(new Size(double.PositiveInfinity, availableSize.Height)).Width;
         double wanted = PopupFrame.Widths.Where(w => w <= PopupFrame.Wide).FirstOrDefault(w => w >= natural, PopupFrame.Wide);
-        fitted = Math.Max(fitted, wanted);
-        return new Size(fitted, base.MeasureOverride(new Size(fitted, availableSize.Height)).Height);
+        fitted = Math.Max(fitted, Math.Min(wanted, availableSize.Width));
+        double width = Math.Min(fitted, availableSize.Width);
+        return new Size(width, base.MeasureOverride(new Size(width, availableSize.Height)).Height);
     }
 
     public void AddCode(string code) => parts.Children.Add(new TextBlock

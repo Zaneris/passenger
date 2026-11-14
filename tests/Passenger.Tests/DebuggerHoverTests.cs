@@ -208,6 +208,81 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         }
     }
 
+    /// <summary>In a window at its smallest with the default layout, the Explorer and the Debug window open leaving the
+    /// editor narrower than a card of values' least width, an object's card shows whole in the editor, held to its width:
+    /// its rows open there by their chevrons, into the object's members and a member's own, each row's chevron and name
+    /// shown whole, its value giving way first; a member's value is typed over there in a field inside the card.</summary>
+    [AvaloniaFact]
+    public void A_values_card_in_an_editor_at_the_windows_smallest_width_shows_whole_its_rows_opening_and_taking_a_value_there()
+    {
+        MainWindow window = Stopped(MainWindow.SmallestWidth, MainWindow.SmallestHeight);
+        try
+        {
+            Rect layer = CodeAssistTests.Layer(window);
+            Assert.True(layer.Width < PopupFrame.Narrow,
+                $"The default layout at the window's smallest width was to leave the editor narrower than a card of values' least width, {PopupFrame.Narrow}; it is {layer.Width} wide");
+            VariablesList values = Hover(window, "person.Name");
+            VariableNode person = Assert.Single(values.Tree.Rows);
+            RowsWhole(window, values, "The card of person");
+
+            Toggle(window, values, person);
+            Ui.WaitFor(() => Member(values, person, "Home") is not null, $"person's members in the card, where it showed {Shown(values)}");
+            VariableNode home = Member(values, person, "Home")!;
+            Toggle(window, values, home);
+            Ui.WaitFor(() => Member(values, home, "City")?.Value == "\"London\"" && Member(values, home, "Number")?.Value == "12", $"Home's members in the card, where it showed {Shown(values)}");
+            RowsWhole(window, values, "The card of person, opened into Home's members");
+
+            VariableNode name = Member(values, person, "Name")!;
+            values.ScrollIntoView(name);
+            Ui.Settle();
+            Click(window, values.ContainerFromItem(name)!);
+            Ui.Press(window, "F2");
+            Assert.True(name.IsEditing, "F2 on Name's row in the narrowed card did not open its value to be typed over");
+            Control row = values.ContainerFromItem(name)!;
+            TextBox field = row.GetVisualDescendants().OfType<TextBox>().Single(t => t.IsEffectivelyVisible);
+            TextBlock named = row.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Name");
+            Rect card = new(window.Assist.HoverCard!.TranslatePoint(default, window) ?? default, window.Assist.HoverCard!.Bounds.Size);
+            Rect typed = new(field.TranslatePoint(default, window) ?? default, field.Bounds.Size);
+            Assert.True(typed.X >= card.X && typed.Right <= card.Right && named.IsEffectivelyVisible && named.TextLayout.TextLines.All(l => !l.HasCollapsed),
+                $"Name's value typed over in the card at {card} runs past it at {typed}, or its name gave way ({named.Bounds.Width:0.#} of {named.TextLayout.Width:0.#})");
+            window.KeyTextInput("\"Grace\"");
+            Ui.Press(window, "Enter");
+            // The rows are read again as a value is set: found by name, not as the ones opened.
+            Ui.WaitFor(() => values.Tree.Rows.Any(r => r.Name == "Name" && r.Parent?.Name == "person" && r.Value == "\"Grace\""), $"the name set in the narrowed card, where it showed {Shown(values)}");
+
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program to end");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The card of a value's rows whole in the editor, each row, scrolled to, with its name whole and, where it
+    /// opens, its chevron inside the card.</summary>
+    private static void RowsWhole(MainWindow window, VariablesList values, string what)
+    {
+        foreach (VariableNode row in values.Tree.Rows)
+        {
+            values.ScrollIntoView(row);
+            Ui.Settle();
+            Control card = window.Assist.HoverCard ?? throw new Xunit.Sdk.XunitException($"{what} is gone");
+            CodeAssistTests.WholeInEditor(window, card, what);
+            Rect at = new(card.TranslatePoint(default, window) ?? default, card.Bounds.Size);
+            Control shown = values.ContainerFromItem(row) ?? throw new Xunit.Sdk.XunitException($"{what} does not show {row.Name}'s row");
+            TextBlock name = shown.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == row.Name);
+            Assert.True(name.IsEffectivelyVisible && name.TextLayout.TextLines.All(l => !l.HasCollapsed) && name.Bounds.Width >= name.TextLayout.Width - 0.5,
+                $"{what} cuts {row.Name}'s name to {name.Bounds.Width:0.#} of its {name.TextLayout.Width:0.#}");
+            if (row.HasChildren)
+            {
+                RowIcon chevron = shown.GetVisualDescendants().OfType<RowIcon>().First(i => i.DataKey == IconKeys.ChevronRight);
+                Rect opens = new(chevron.TranslatePoint(default, window) ?? default, chevron.Bounds.Size);
+                Assert.True(chevron.IsEffectivelyVisible && at.Contains(opens), $"{what} shows {row.Name}'s chevron at {opens}, outside the card at {at}");
+            }
+        }
+    }
+
     /// <summary>The pointer rested on the start of some text of the editor's, a name the stopped frame has a local of, and the
     /// hover it started read: the card shows no value of it.</summary>
     private static void NotEvaluated(MainWindow window, string text, string where)
@@ -234,10 +309,10 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
     }
 
     /// <summary>A window on the program paused at its breakpoint, on the line that writes what it made, its locals shown; with
-    /// no C# language server, since a paused program's card is the debugger's values alone.</summary>
-    private MainWindow Stopped()
+    /// no C# language server, since a paused program's card is the debugger's values alone; of another size where given.</summary>
+    private MainWindow Stopped(double width = 1200, double height = 800)
     {
-        MainWindow window = people.Open(people.PathOf("Program.cs"), languageServer: false);
+        MainWindow window = people.Open(people.PathOf("Program.cs"), languageServer: false, width: width, height: height);
         window.EditorArea.CodeEditor.GoTo(new TextPosition(People.Stop, 0));
         Ui.Run(window, AppActions.ToggleBreakpoint);
         Ui.Run(window, AppActions.Debug);

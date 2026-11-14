@@ -1929,6 +1929,68 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.GetVisualDescendants().OfType<ListBoxItem>().FirstOrDefault(row => row.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == title))
         ?? throw new Xunit.Sdk.XunitException($"No row of the list of choices shows {title}");
 
+    /// <summary>In a window at its smallest with the default layout, the Explorer open leaving the editor narrower than a
+    /// card's words would be, the hover card and Parameter Info each show whole in the editor, held to its width: the
+    /// signature and its documentation wrap inside the card, none of their words cut at the editor's edge or trimmed.</summary>
+    [AvaloniaFact]
+    public void A_hover_card_and_parameter_info_in_an_editor_at_the_windows_smallest_width_show_whole_their_words_wrapping()
+    {
+        MainWindow window = project.Open("Joins.cs", width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Rect layer = Layer(window);
+        Assert.True(layer.Width < 300, $"The default layout at the window's smallest width was to leave the editor narrower than a card's signature; it is {layer.Width} wide");
+
+        Ui.PlaceAfter(editor, "=> Jo");
+        Ui.Run(window, AppActions.QuickDocumentation);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Joins the values", StringComparison.Ordinal) == true, "the card over Join with its documentation");
+        TextBlock signature = Untrimmed(WholeInEditor(window, window.Assist.HoverCard!, "The hover card"), "The hover card");
+        Assert.True(signature.TextLayout.TextLines.Count > 1, $"Join's signature, wider than the editor, was to wrap in the card; it is one line, '{signature.Text}'");
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "=> Join(");
+        Ui.Run(window, AppActions.ParameterInfo);
+        Ui.WaitFor(() => window.Assist.SignatureText?.Contains("is put between", StringComparison.Ordinal) == true, "Join's parameter info with its separator's documentation");
+        signature = Untrimmed(WholeInEditor(window, window.Assist.SignatureCard!, "Parameter Info"), "Parameter Info");
+        Assert.True(signature.TextLayout.TextLines.Count > 1, $"Join's signature, wider than the editor, was to wrap in Parameter Info; it is one line, '{signature.Text}'");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
+    /// <summary>A card's words, none trimmed to an ellipsis; its first block of them.</summary>
+    private static TextBlock Untrimmed(IReadOnlyList<TextBlock> words, string what)
+    {
+        Assert.True(words.Count > 0, $"{what} shows no words");
+        foreach (TextBlock said in words)
+        {
+            Assert.True(said.TextLayout.TextLines.All(l => !l.HasCollapsed), $"{what} trims '{said.Text}' where its words were to wrap whole");
+        }
+        return words[0];
+    }
+
+    /// <summary>Where the editor's layer of popups lies in its window.</summary>
+    internal static Rect Layer(MainWindow window)
+    {
+        Canvas assist = window.EditorArea.AssistLayer;
+        return new Rect(assist.TranslatePoint(default, window) ?? default, assist.Bounds.Size);
+    }
+
+    /// <summary>A card shown in the editor whole: inside its layer, every block of its words laid out across inside the card
+    /// (a list of rows in it scrolls up and down); its blocks of words, in order.</summary>
+    internal static IReadOnlyList<TextBlock> WholeInEditor(MainWindow window, Control card, string what)
+    {
+        Rect layer = Layer(window);
+        Rect at = new(card.TranslatePoint(default, window) ?? default, card.Bounds.Size);
+        Assert.True(layer.Inflate(0.5).Contains(at), $"{what} runs past the editor's edge, cut there: it lies at {at} in the editor at {layer}");
+        List<TextBlock> words = [.. card.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && !string.IsNullOrEmpty(t.Text))];
+        foreach (TextBlock said in words)
+        {
+            Rect lies = new(said.TranslatePoint(default, window) ?? default, said.Bounds.Size);
+            Assert.True(lies.X >= at.X - 0.5 && lies.Right <= at.Right + 0.5 && said.TextLayout.Width <= said.Bounds.Width + 0.5,
+                $"'{said.Text}' runs past {what} at {at}: it lies at {lies}, {said.TextLayout.Width:0.#} wide");
+        }
+        return words;
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Parameter_info_keeps_a_sentence_apart_from_a_parameter_its_documentation_names_straight_after_it()

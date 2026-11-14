@@ -83,10 +83,13 @@ internal sealed class PopupPlacement
     public void Place(Control popup, int offset, bool above) => Place(popup, Editor.PointOf(offset), above);
 
     /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked
-    /// or when there is no room below, kept inside the editor.</summary>
+    /// or when there is no room below, kept inside the editor. A card is held to the editor's width, its words wrapping
+    /// (<see cref="Widest"/>), and one that fits neither under nor over its line goes where there is more room, moved in
+    /// as far as it must to show whole, though it then hides some of the line.</summary>
     public void Place(Control popup, Point at, bool above)
     {
         at = InLayer(at);
+        (popup as InfoCard)?.Within(Widest);
         // A list shown again measures as its last rows did until a layout pass measures the rows it shows now.
         if (popup.IsAttachedToVisualTree())
         {
@@ -103,6 +106,10 @@ internal sealed class PopupPlacement
         double below = at.Y + lineHeight + 2;
         double over = at.Y - size.Height - 2;
         double y = above ? (over >= 0 ? over : below) : (below + size.Height <= room.Height || over < 0 ? below : over);
+        if (popup is InfoCard && over < 0 && below + size.Height > room.Height)
+        {
+            y = Math.Clamp(room.Height - below >= at.Y ? below : over, 0, Math.Max(0, room.Height - size.Height));
+        }
         Canvas.SetLeft(popup, x);
         Canvas.SetTop(popup, y);
         lines.AddOrUpdate(popup, new StrongBox<double>(at.Y));

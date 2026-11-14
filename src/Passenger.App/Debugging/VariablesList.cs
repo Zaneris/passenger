@@ -257,7 +257,7 @@ public sealed class VariablesList : ListBox
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         type.Classes.Add(StyleClasses.Muted);
         TextBlock value = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 };
-        TextBox editor = new() { Classes = { StyleClasses.Search }, MinHeight = 22, Height = 22, MinWidth = 240, Padding = new Thickness(6, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+        ValueField editor = new() { Classes = { StyleClasses.Search }, MinHeight = 22, Height = 22, Padding = new Thickness(6, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
         // Before the words saying why, which a narrow row cuts first.
         Button again = new() { Classes = { StyleClasses.Link }, Content = RunWithThreads, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
         ToolTip.SetTip(again, "Evaluates it again with every other thread of the program running meanwhile, which changes what they hold");
@@ -367,5 +367,24 @@ public sealed class VariablesList : ListBox
             value.IsVisible = type.IsVisible = true;
             again.IsVisible = node is { NeedsThreads: true, Expression: not null };
         }
+    }
+}
+
+/// <summary>The field a row's value is typed over in (Set Value): as wide as what it holds and at least
+/// <see cref="Wanted"/> where its row has the room; in a narrower row it gives way first, down to a few letters, before
+/// the row's name does, its text scrolling within it.</summary>
+internal sealed class ValueField : TextBox
+{
+    /// <summary>The least it is wide where its row has the room.</summary>
+    private const double Wanted = 240;
+
+    public ValueField() => SetValue(ShrinkingRow.LeastProperty, 80);
+
+    protected override Type StyleKeyOverride => typeof(TextBox);
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        Size size = base.MeasureOverride(availableSize);
+        return size.WithWidth(Math.Max(size.Width, Math.Min(Wanted, availableSize.Width)));
     }
 }

@@ -265,6 +265,9 @@ public sealed class CodeAssist
     /// <summary>What Parameter Info's card says, while it shows.</summary>
     public string? SignatureText => parameterInfo.Text;
 
+    /// <summary>Parameter Info's card while it shows, its frame the popups' (<c>Border.popup</c>).</summary>
+    public Border? SignatureCard => parameterInfo.Card;
+
     /// <summary>The name in the rename box while it is open, null otherwise.</summary>
     public string? Renaming => popups.Modal is RenameBox box ? box.Text : null;
 
