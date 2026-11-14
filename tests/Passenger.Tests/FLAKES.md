@@ -30,6 +30,31 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-13
 
+- `ComposeProjectEditingTests`' `A_Docker_Compose_project_at_the_solutions_root_shows_only_the_files_it_holds`, CI
+  43502088783, 43512738427 and 43523153568 (Linux shard 4 and Windows shard 2, each run): "Waited 180 s for README.md
+  in place of launchSettings.json once the .dcproj named it". **A bug in the IDE, which the Mac hid.** A .dcproj is
+  never evaluated and is no project file the solution is read again for, so nothing followed one written: its Solution
+  view rows and its run configuration kept what was first read. On the Mac FSEvents named the file the test wrote a
+  few seconds after making it as made as well as written, which read its folder's rows again; Linux's and Windows'
+  watchers hear that write as a change alone. The folder watcher's changes now read again the rows of each of the
+  solution's Docker Compose projects written and make the run configurations again; the test also writes its
+  DockerServiceName (before the fix it failed so on the Mac, the configuration launching no service) and saves an
+  item back from the editor (aea7f25f6, #1569).
+- `SmallestWindowTests`' `At_the_smallest_widths_the_toolbars_long_names_end_in_an_ellipsis_and_nothing_on_it_draws_over_anything`,
+  CI 43502088783, 43512738427 and 43523153568 (Windows, each run): "At 640 wide the toolbar's RunConfigName has 13
+  units". **A bug in the IDE**, from the build configuration's widget (4b7a21f9a, #1447): beside Windows' caption buttons (148
+  units) the toolbar's least came to 535 units of 484, so its right-hand group ran 51 units past its place, Settings
+  drawn over Minimize, and the run configuration's name was at its least (a probe on the Windows VM measured each
+  part). The run target's and build configuration's widgets now go whole where the row cannot hold every widget at
+  its least (`ShrinkingRow.GoesWhole`), their menus opening under the run configuration's widget and the Build
+  button; the test now also fails a part drawn over the window's own buttons, which it never looked at.
+- `ProblemsTests`' `The_status_bar_says_solution_wide_analysis_is_under_way_until_its_first_round_answers`, CI
+  43512738427 (Linux, shard 3): "Waited 180 s for the first pull of the solution's diagnostics to be answered, and
+  held". **The test's hold was taken by a request that never answered**: `LanguageServer.HoldNextAnswer` was taken by
+  the next request sent, and the server's word that its solution moved (its generators rerun a second after its
+  projects load) let go of the first pull before its answer came, the pull asked again taking no hold. With that word
+  given by hand as the pull is asked, it failed so on the Mac; the hold is now the next answer's that comes, so the
+  pull asked again takes it.
 - `ThemeSourcesTests`' `A_theme_chosen_in_0_3_is_the_same_from_the_themes_repository_said_while_it_is_fetched_and_one_out_of_reach_is_said_never_dropped`,
   CI 43489332630 (Windows, shard 4) and 43502088783 (Linux, shard 4): "Nightjar and the code colour scheme fetched are
   not kept, so the next start would fetch them again". **The test waited wrong** (it started from the wrong state): it

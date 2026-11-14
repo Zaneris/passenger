@@ -223,7 +223,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `IVimView` (`Vim.Commands`, `Vim.Operators`, `VimMotions`, `VimTextObjects`) and `CodeEditor.PressVim` takes it before
   any keymap; an insert session is one `EditKind.Joined` step, `.`'s edits one too (`FollowVim`); normal-mode carets
   settle in `SetSelections`; registers are each window's own (`CodeEditor.VimRegisters`), `+`/`*` the clipboard; visual mode's stretches are the editor's selections, a selection made
-  otherwise entering it (`Vim.FollowSelections`); macros are pressed again by `CodeEditor.ReplayVim`; search and the ex command line are Vim's own (`Vim.Search`, `Vim.Ex`,
+  otherwise entering it (`Vim.FollowSelections`); macros are pressed again by `CodeEditor.ReplayVim`; mappings come from the state folder's vimrc (`VimMappings`, read through `VimMappingsFile`), `gq` wraps through `VimWrapping`, `=` lays out through `CodeActions.ReformatLinesAsync`, and its Ctrl keys go to Vim or the keymap by `AppSettings.VimKeysToKeymap` (`Vim.CtrlKeys`); search and the ex command line are Vim's own (`Vim.Search`, `Vim.Ex`,
   `VimPatterns`) over `TextSearch`, and what only the window can do comes as a `VimRequest` (`MainWindow.Vim.cs`);
   `VimTests`' expected texts are the system Vim 9.1's. Wide characters are counted by `WideCharacters` (Passenger.Text).
 - **A key costs what it changed, not the file's size**: keep it so. Wraps, rows, folds, hints and built lines move only
@@ -281,7 +281,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   person's; a handler acts only while its session is bound (`ProjectSession.Bind`). A Passenger nobody sees
   (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`; what a start
   runs read by `DesktopPrograms`, never `Built` alone), and plays no sound; a Linux display is taken by `NoDisplay`,
-  never by unsetting `WAYLAND_DISPLAY`: a client named no socket connects to the session's `wayland-0`. Anything new on
+  never by unsetting `WAYLAND_DISPLAY`: a client named no socket connects to the session's `wayland-0`. A toolbar widget that may go at the narrowest takes `ShrinkingRow.GoesWhole`, its menu opening elsewhere once it has (`ShrinkingRow.HasGone`). Anything new on
   the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's. The display scale is
   one `InterfaceScale` transform per window, which its popups take from it.
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; every editor through `ForEachEditor`; the one
@@ -363,7 +363,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - **Runs of services.** `ServiceRun` is the one model: Debug, Attach, Restart and Profile written once; one start at a
   time; Stop ends every session and recording before the programs go.
 - **Containers.** A published port takes connections from the container's start, before its program listens, so a
-  container's page opens on an HTTP answer (`BrowserLaunch.AnsweringAsync`), never a connection. A .dcproj is MSBuild's
+  container's page opens on an HTTP answer (`BrowserLaunch.AnsweringAsync`), never a connection. A .dcproj written is followed by the watcher (`ComposeProjectsWritten`), never a re-read of the solution. A .dcproj is MSBuild's
   file in the editor but never evaluated (its SDK is Visual Studio's); its properties are read as text (`ComposeProjectFile`). Its Solution-view files come from that text
   (`ContainerConfigurations.ItemsOf`), never its folder. A compose service's project is the person's choice, else Visual
   Studio's project-name label, else what its Dockerfile builds with the build's arguments filled in
@@ -762,7 +762,7 @@ class taking far longer than its work needs is a bug, never held to a limit. A t
 **Helpers** (`Ui`, `Waiting`, `TestProjects`, `TestFolders`, `McpRig`, `Docker`): a click is `Ui.Click` (a real press on
 a control shown, enabled and hit); a chord one `Ui.Press(window, "control M , control S")` (its first key forgotten
 after 2 s); multi-line edits `Typing.Replace` (`KeyTextInput` drops `\n`); a server's request or answer held
-`LanguageServer.HoldNext`/`HoldNextAnswer`, a container run's `up` `BuildRunController.HoldNextUp`; a log the IDE may be
+`LanguageServer.HoldNext`/`HoldNextAnswer` (the next answer to come, whatever request it answers), a container run's `up` `BuildRunController.HoldNextUp`; a log the IDE may be
 writing `Ui.Shared`. A dialog is held to `DialogButtonsTests.Check`, the window to UiRulesTests. A helper that runs a
 program waits on the UI thread with its loop running; a fixture or windowless test awaits its `…Async` form. A stand-in
 leaves files a target writes as it found them (a new one makes MSBuild skip the target). A headless click runs queued
