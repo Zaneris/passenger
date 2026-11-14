@@ -7,8 +7,8 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>The build configuration through an agent's own Passenger (<c>--mcp</c>): workspace names the one every build
-/// takes and the others, ide_action app.chooseBuildConfiguration lists them with no input and switches by a name, and
-/// build then builds into that configuration's output.</summary>
+/// takes and the input that switches to each other, ide_action app.chooseBuildConfiguration lists them with no input,
+/// saying what input switches, and switches by a name, and build then builds into that configuration's output.</summary>
 [Collection(Beside.Name)]
 public sealed class McpBuildConfigurationTests : McpRig
 {
@@ -27,10 +27,9 @@ public sealed class McpBuildConfigurationTests : McpRig
         string said = string.Empty;
         await Waiting.UntilAsync(async () => (said = Configured(await Call(client, McpTools.Workspace))).StartsWith("Debug|AnyCPU (", StringComparison.Ordinal),
             TimeSpan.FromSeconds(60), Cancel, TimeSpan.FromMilliseconds(200));
-        Assert.True(said.Contains("Release|AnyCPU and Staging|AnyCPU", StringComparison.Ordinal),
-            $"workspace did not name Debug as the configuration every build takes, with Release and Staging to switch to: {said}");
+        Assert.Equal($"Debug|AnyCPU (ide_action {AppActions.ChooseBuildConfiguration} with input Release|AnyCPU or Staging|AnyCPU switches it)", said);
         string listed = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ChooseBuildConfiguration }));
-        Assert.Equal("The folder builds as Debug|AnyCPU; it can build as Debug|AnyCPU, Release|AnyCPU and Staging|AnyCPU", listed);
+        Assert.Equal("The folder builds as Debug|AnyCPU; it can build as Debug|AnyCPU, Release|AnyCPU and Staging|AnyCPU: input Release (or Release|AnyCPU) switches it", listed);
 
         string chose = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ChooseBuildConfiguration, ["input"] = "staging" }));
         Assert.StartsWith("Builds, runs and tests build as Staging (AnyCPU)", chose, StringComparison.Ordinal);

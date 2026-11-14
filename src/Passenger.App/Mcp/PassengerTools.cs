@@ -3385,7 +3385,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             UnreadSolution = session.Workspace?.Unread is { } unread ? UnreadSolutionSaid(unread) : null,
             BuildConfiguration = session.BuildChoices.Chosen is not { } built ? null
                 : session.BuildChoices.Offered.Where(o => !o.Is(built)).Select(o => o.Key).ToList() is { Count: > 0 } others
-                    ? $"{built.Key} (ide_action {AppActions.ChooseBuildConfiguration} switches it to {Plural.Listed(others)})"
+                    ? $"{built.Key} (ide_action {AppActions.ChooseBuildConfiguration} with input {Plural.Either(others)} switches it)"
                     : built.Key,
             MultiProject = session.Configurations.Profiles.Count > 0 || session.Configurations.ProfileProblems.Count > 0
                 ? [.. session.Configurations.Profiles.Select(p => $"{p.Name}: {string.Join(", ", p.Starts.Select(s => $"{Path.GetFileNameWithoutExtension(s.Project)} {s.Action?.ToString() ?? "(unknown action)"}"

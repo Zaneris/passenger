@@ -96,7 +96,7 @@ public partial class MainWindow
 
     /// <summary>Choose Build Configuration for an agent, which no menu reaches: <paramref name="input"/> names a configuration
     /// offered (Release, or Release|x64 where several platforms are), chosen as the widget chooses it; with none, what is
-    /// chosen and what there is to choose. Why not, thrown.</summary>
+    /// chosen, what there is to choose and the input that switches. Why not, thrown.</summary>
     internal async Task<string> ChooseBuildConfigurationForAgentAsync(string? input)
     {
         UiThread.Check();
@@ -109,7 +109,9 @@ public partial class MainWindow
         BuildConfiguration chosen = session.BuildChoices.Chosen!;
         if (input is not { Length: > 0 } named)
         {
-            return $"The folder builds as {chosen.Key}; it can build as {listed}";
+            return offered.FirstOrDefault(o => !o.Is(chosen)) is { } other
+                ? $"The folder builds as {chosen.Key}; it can build as {listed}: input {other.Configuration} (or {other.Key}) switches it"
+                : $"The folder builds as {chosen.Key}; it can build as {listed}";
         }
         BuildConfiguration? asked = BuildConfiguration.Of(named) is { } both ? offered.FirstOrDefault(o => o.Is(both))
             : offered.FirstOrDefault(o => o.Configuration.Equals(named.Trim(), StringComparison.OrdinalIgnoreCase) && o.Platform.Equals(chosen.Platform, StringComparison.OrdinalIgnoreCase))
