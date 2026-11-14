@@ -56,14 +56,36 @@ public sealed record AndroidApp(string Serial, string Adb, string Package, strin
     /// <summary>adb's arguments for one command on the app's device.</summary>
     public IReadOnlyList<string> On(params string[] command) => ["-s", Serial, .. command];
 
-    /// <summary>The device's shell starting the app afresh, writing its log from its start (<c>logcat</c> of its process
-    /// alone) until its process ends, when the shell ends too: what the Run window shows as the program. Its last process
-    /// is ended first, so the one found is the new one; the first of several is its main one.</summary>
+    /// <summary>The device's shell starting the app afresh, saying once it has started (<see cref="Started"/>), then writing
+    /// its log from its start (<c>logcat</c> of its process alone) until its process ends, when the shell ends too: what the
+    /// Run window shows as the program. Its last process is ended first, so the one found is the new one; the first of
+    /// several is its main one.</summary>
     public IReadOnlyList<string> Run() => On("shell",
         $"am force-stop {Package}; am start -n {Package}/{Activity} >/dev/null || exit 1; i=0; p=; "
         + $"while [ -z \"$p\" ] && [ $i -lt 300 ]; do p=$(pidof {Package}) || {{ sleep 0.1; i=$((i+1)); }}; done; "
-        + $"[ -n \"$p\" ] || {{ echo '{Package} did not start'; exit 1; }}; p=${{p%% *}}; "
+        + $"[ -n \"$p\" ] || {{ echo '{Package} did not start'; exit 1; }}; p=${{p%% *}}; echo \"{Started}$p\"; "
         + "logcat -v tag --pid=$p & l=$!; while [ -d /proc/$p ]; do sleep 1; done; kill $l");
+
+    /// <summary>What the app's shell says once it found the app's process, the process's number after it: the line a run
+    /// on the device has started at.</summary>
+    public string Started => $"{Package} started as process ";
+
+    /// <summary>The app's process as its shell said it started (<see cref="Started"/>), from what the Run window shows of the
+    /// shell's first lines; null until it has.</summary>
+    public string? StartedIn(Passenger.Text.TextSnapshot shown)
+    {
+        for (int line = 0; line < Math.Min(shown.LineCount, FirstLines); line++)
+        {
+            if (shown.GetLineText(line) is { } said && said.StartsWith(Started, StringComparison.Ordinal))
+            {
+                return said[Started.Length..].Trim();
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The lines of the Run window looked through for the start: the plan's notes, then the shell's first.</summary>
+    private const int FirstLines = 64;
 
     /// <summary>Ends the app however it runs.</summary>
     public IReadOnlyList<string> ForceStop() => On("shell", "am", "force-stop", Package);

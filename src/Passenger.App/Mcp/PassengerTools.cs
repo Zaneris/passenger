@@ -1293,7 +1293,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.Run, Title = "Run a configuration", Destructive = true), Description(
         "Runs a configuration as Run does, built first when it says so, and waits for it to end, an Avalonia or WPF app's " +
-        "UI or an AppHost's resources to be up, or its host's start (where it listens). Returns its output so far and its exit code once it has one; a run refused (one " +
+        "UI or an AppHost's resources to be up, its host's start (where it listens), or its app's start on a device. Returns its output so far and its exit code once it has one; a run refused (one " +
         "running, a failed build with its errors) is an error. A terminal configuration runs in a Terminal tab (terminal_run " +
         "types into it); a container configuration answers once its services are up, with each one's state. With resource, " +
         "that one alone, its configuration started if no run has it.")]
@@ -1364,6 +1364,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // A Godot game Run started, Passenger its remote debugger.
         Godot.GodotGame? game = Session.RunPlan is { Godot: not null, GodotEditor: false } ? Session.Game : null;
         HeardServing serving = HeardServing.Ran(Session);
+        // An app Run installed and started on a device or emulator, up once its shell there found its process.
+        Run.Devices.DeviceLaunch? device = Session.RunPlan?.Device is { App: not null } launched ? launched : null;
+        string? onDevice = null;
         if (Session.Configurations.Chosen is { } host && Session.Aspire.IsAspire(host) && Session.Aspire.FindApp(host.Project) is { } aspireApp)
         {
             AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for it to end or its resources to be up");
@@ -1371,10 +1374,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         else
         {
-            AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for it to end, its UI to be up or its host to start");
-            // A window, a serving host or a game's frames never end by themselves; looked at every 50 ms, its words reaching the console unannounced.
+            AgentCall.Say(device is not null ? $"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for it to end or start on {device.Target.Name}"
+                : $"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for it to end, its UI to be up or its host to start");
+            // A window, a serving host, a game's frames or an app on a device never end by themselves; looked at every 50 ms, its words reaching the console unannounced.
             await Until(() => ended.IsCompleted || app is { State: not LiveTree.LiveAppState.Waiting } || game is { Monitors: not null } or { State: LiveTree.LiveAppState.Ended }
-                || serving.Serves(), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
+                || serving.Serves() || (onDevice = device?.App!.StartedIn(Session.Runner.Shown())) is not null, TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
         }
         if (app is { State: LiveTree.LiveAppState.Refused })
         {
@@ -1393,6 +1397,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : app is { State: LiveTree.LiveAppState.Connected } ? $"Running {name}{reloads}, {UiUp(app)}"
             : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? $"Running {name}{reloads}, {GameUp}"
             : serving.Said is { } said ? $"Running {name}, {said}"
+            : device is not null && onDevice is not null ? $"Running {name}, {device.App!.Package} started on {device.Target.Name} as process {onDevice}"
             : $"Running {name}";
         // What an Aspire run said of itself as it started (its HTTPS over HTTP).
         if (Session.Configurations.Chosen is { } chosen && Session.Aspire.IsAspire(chosen) && Session.Aspire.FindApp(chosen.Project) is { } aspire)
