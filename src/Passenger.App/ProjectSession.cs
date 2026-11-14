@@ -106,6 +106,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Aspire = new AspireController(this, setup.StateFolder);
         Aspire.Inspected = app => Reloaded(app);
         AspireFiles = new AspireFiles(this);
+        NodeFiles = new Web.NodeFiles(this);
         Builder = new ProcessRunner(setup.Views.Build);
         Runner = new ProcessRunner(setup.Views.Run, takesInput: true);
         Tests = new TestController(setup.Views.TestTree, setup.BuildForTests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
@@ -250,6 +251,9 @@ public sealed class ProjectSession : IAsyncDisposable
         // The single-file AppHosts are found among the files the index's walk lists, never by a walk of their own.
         session.Index.Walked += (_, _) => session.AspireFiles.Walked(folder, session.Index.Files);
         session.Index.Changed += (_, change) => session.AspireFiles.CameAndWent(folder, change.Came, change.Gone);
+        // The Node packages too, their scripts run configurations.
+        session.Index.Walked += (_, _) => session.NodeFiles.Walked(folder, session.Index.Files);
+        session.Index.Changed += (_, change) => session.NodeFiles.CameAndWent(folder, change.Came, change.Gone);
         session.Index.Build(folder);
         session.Watcher = new FolderWatcher(folder, setup.Watching);
         session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine)
@@ -572,6 +576,12 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>Done once the folder's single-file AppHosts have been read from its first walk.</summary>
     public Task AspireFilesRead => Folder is null ? Task.CompletedTask : AspireFiles.Read;
+
+    /// <summary>The folder's Node packages, whose scripts are run configurations.</summary>
+    public Web.NodeFiles NodeFiles { get; }
+
+    /// <summary>Done once the folder's Node packages have been read from its first walk.</summary>
+    public Task NodeFilesRead => Folder is null ? Task.CompletedTask : NodeFiles.Read;
 
     /// <summary>The folder's builds, rebuilds and cleans, in the window's Build console.</summary>
     public ProcessRunner Builder { get; }

@@ -233,6 +233,10 @@ public static class Refusals
     /// words (MSB1003); short enough to read whole in the smallest window's status bar.</summary>
     public const string NothingToBuild = "The open folder has no solution or project to build";
 
+    /// <summary>Debug or Profile asked of a configuration running a Node package's script, which Run alone starts.</summary>
+    public static string ScriptOnlyRuns(string name) =>
+        $"{name} runs a package.json script with its package manager, which Run starts: Passenger debugs and profiles .NET programs";
+
     /// <summary>A build asked of a folder whose one kind of project is a Godot project of GDScript alone, which builds nothing.</summary>
     public const string NothingToBuildOfScripts = "The open folder's Godot project is GDScript alone, which Godot runs as it is: there is nothing to build (Run, Debug and Profile start its game)";
 

@@ -280,7 +280,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
                 [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (builtRows[1] = Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
             (launchRows[0] = Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
-            (launchRows[1] = Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project]),
+            (Row("Script", ScriptText, fields: ["script"]), [RunKind.Script]),
+            (launchRows[1] = Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project, RunKind.Script]),
             (launchRows[2] = Row("Working directory", WorkingDirectoryBox, fields: ["workingDirectory"]), [RunKind.Project]),
             (Row("Compose files", ComposeFilesBox, fields: ["composeFiles"]), [RunKind.Compose]),
             (Row("Env files", EnvFilesBox, fields: ["envFiles"]), [RunKind.Compose]),
@@ -294,8 +295,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (Row(string.Empty, KeepBackingBox, marked: keepWords, fields: ["keepBackingServices"]), [RunKind.Compose]),
             (telemetryRow = Row(string.Empty, TelemetryBox, marked: telemetryWords, fields: ["telemetry"]), [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (launchRows[3] = Row("Environment variables", new StackPanel { Spacing = 6, Children = { VariablesHeader(), variables, AddVariableButton } }, top: true, fields: ["environment"]),
-                [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (launchRows[4] = Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project]),
+                [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer, RunKind.Script]),
+            (launchRows[4] = Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project, RunKind.Script]),
             (browserRows[0], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (browserRows[1], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Launched service", LaunchServiceBox, fields: ["launchService"]), [RunKind.Compose]),
@@ -497,6 +498,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     /// <summary>What the program, arguments and working folder boxes say left empty, for a project and for a Godot project's.</summary>
     private const string OwnProgram = "The project's own program";
     private const string OwnArguments = "The project's RunArguments, if it has any";
+    private const string ScriptArguments = "Given to the script after its own command";
     private const string OwnWorkingDirectory = "The project's RunWorkingDirectory, else its output folder";
     private const string GodotArguments = "Godot's own after --path: a scene to start in (res://level.tscn), --debug-collisions";
     private const string GodotWorkingDirectory = "The Godot project's folder";
@@ -524,6 +526,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     /// <summary>The configuration's kind, which its page follows: a .NET project, Docker Compose, a Dockerfile, an SDK container.</summary>
     public TextBlock KindText { get; }
+
+    /// <summary>A package.json script configuration's script and its package's folder.</summary>
+    public TextBlock ScriptText { get; } = new() { VerticalAlignment = VerticalAlignment.Center };
 
     /// <summary>A Compose configuration's files, the base first, separated by ';' (relative to the open folder or full).</summary>
     public TextBox ComposeFilesBox { get; }
@@ -648,8 +653,19 @@ public sealed class RunConfigurationsDialog : IdeWindow
     /// <summary>Each kind's rows of the form, and the kinds that show each.</summary>
     private readonly (Control Row, RunKind[] Kinds)[] pages;
 
-    /// <summary>The open folder, against which the paths typed are read and shown.</summary>
-    public string? Folder { get; init; }
+    /// <summary>The open folder, against which the paths typed are read and shown: the configuration shown as the dialog was
+    /// made shows its paths from it once it is given.</summary>
+    public string? Folder
+    {
+        get => folder;
+        init
+        {
+            folder = value;
+            ShowChosen();
+        }
+    }
+
+    private readonly string? folder;
 
     private static string KindName(RunKind kind) => kind switch
     {
@@ -657,6 +673,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         RunKind.Compose => "Docker Compose",
         RunKind.Dockerfile => "Dockerfile",
         RunKind.SdkContainer => "SDK Container",
+        RunKind.Script => "package.json Script",
         _ => ".NET Project",
     };
 
@@ -1223,7 +1240,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             CopiesBox.Value = shown.GodotCopies;
             CopyArgumentsBox.Text = string.Join(Environment.NewLine, shown.CopyArguments);
             ProgramBox.PlaceholderText = godot ? GodotProgram(project?.IsScriptGame == true) : OwnProgram;
-            ArgumentsBox.PlaceholderText = godot ? GodotArguments : OwnArguments;
+            ArgumentsBox.PlaceholderText = godot ? GodotArguments : shown.IsScript ? ScriptArguments : OwnArguments;
+            ScriptText.Text = shown.IsScript ? $"{shown.Script}, in {Shown(Path.GetDirectoryName(shown.Project) ?? shown.Project)}" : string.Empty;
             WorkingDirectoryBox.PlaceholderText = godot ? GodotWorkingDirectory : OwnWorkingDirectory;
             ProgramBox.Text = shown.Program;
             ArgumentsBox.Text = shown.Arguments;
@@ -1335,6 +1353,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         { Kind: RunKind.Compose } when Containers.ContainerConfigurations.IsComposeProject(generated.Project) => "Docker Compose project",
         { Kind: RunKind.Compose } => "compose file",
         { Kind: RunKind.Dockerfile } => "Dockerfile",
+        { Kind: RunKind.Script } => "package.json",
         _ => "project",
     };
 

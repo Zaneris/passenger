@@ -84,6 +84,8 @@ public partial class MainWindow
         }
         // A C# file written may have gained or lost the AppHost SDK's line; one come or gone is the index's to find.
         session.AspireFiles.Changed(changes.Paths, every: changes.Lost);
+        // A package.json or lockfile written: the packages' scripts and managers are read again.
+        session.NodeFiles.FilesChanged(changes.Paths, every: changes.Lost);
         if (changes.Lost)
         {
             session.Index.Build(folder);

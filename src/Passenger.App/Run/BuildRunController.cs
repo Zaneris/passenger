@@ -1153,6 +1153,13 @@ public sealed partial class BuildRunController
         {
             return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
         }
+        if (chosen.IsScript)
+        {
+            using (work)
+            {
+                return await RunScriptAsync(chosen, arguments, work);
+            }
+        }
         if (chosen.IsContainer)
         {
             using (work)
@@ -2244,6 +2251,10 @@ public sealed partial class BuildRunController
 
     private async Task<string?> DebugAsync(RunConfiguration chosen, string? arguments, CancellationToken cancellation = default)
     {
+        if (chosen.IsScript)
+        {
+            return Said(Refusals.ScriptOnlyRuns(chosen.Name));
+        }
         if (chosen.IsMultiple)
         {
             return await StartProjectsAsync(chosen, debug: true, null, cancellation);

@@ -289,6 +289,9 @@ public partial class ExplorerView : UserControl
         Refresh();
     }
 
+    /// <summary>The folder's Node packages as last read, which their folders' rows name.</summary>
+    public void ShowPackages(IReadOnlyList<Passenger.Workspace.NodePackage> packages) => Tree.ShowPackages(packages);
+
     /// <summary>Projects MSBuild evaluated again, or Docker Compose projects whose text was written: their rows show them
     /// anew, every other row as it was (open, chosen, focused), and a file waiting to be chosen is chosen once it shows.</summary>
     public void UpdateProjects(WorkspaceModel workspace, IEnumerable<ProjectModel> updated)

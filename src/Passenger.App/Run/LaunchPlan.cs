@@ -268,6 +268,11 @@ public sealed partial record LaunchPlan
             // Run and Debug start each of its projects as its own configuration does (BuildRunController.Projects.cs).
             throw new LaunchException(SeveralProjects(configuration.Name));
         }
+        if (configuration.IsScript)
+        {
+            // Run starts it with its package manager (BuildRunController.Scripts.cs): no .NET program to plan.
+            throw new LaunchException(Refusals.ScriptOnlyRuns(configuration.Name));
+        }
         if (configuration.RunsScriptGame)
         {
             // Godot runs a game of GDScript alone as it is: no MSBuild to ask, nothing to build.

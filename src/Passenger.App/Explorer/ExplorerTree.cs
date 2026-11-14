@@ -154,6 +154,46 @@ public sealed class ExplorerTree
 
     private ProjectModel Current(ProjectModel project) => projects.GetValueOrDefault(project.Path, project);
 
+    /// <summary>The folder's Node packages by their folders, which a folder's row names with its package manager.</summary>
+    private Dictionary<string, NodePackage> packages = new(PathNames.Comparer);
+
+    private IReadOnlyList<NodePackage> packagesRead = [];
+
+    /// <summary>Takes the folder's Node packages as last read: each folder row shown now and made from now names its own.</summary>
+    public void ShowPackages(IReadOnlyList<NodePackage> read)
+    {
+        packagesRead = read;
+        packages = read.ToDictionary(p => p.Folder, PathNames.Comparer);
+        if (Root is not null)
+        {
+            foreach (ExplorerNode node in Loaded(Root, n => n.Kind == NodeKind.Folder))
+            {
+                Packaged(node);
+            }
+        }
+    }
+
+    /// <summary>A folder's row with its package's words, or none where it holds no package.</summary>
+    private ExplorerNode Packaged(ExplorerNode node)
+    {
+        NodePackage? package = node.Path is { } folder ? packages.GetValueOrDefault(folder) : null;
+        (node.Detail, node.Tip) = package is null ? (null, null) : PackageWords(package, node.Name, packagesRead);
+        return node;
+    }
+
+    /// <summary>What a package's folder row says beside its name (its package manager, its own name where the folder's
+    /// differs, a workspace's root as one) and on hover (what said its manager, and its scripts the run configurations).</summary>
+    internal static (string Detail, string Tip) PackageWords(NodePackage package, string folder, IReadOnlyList<NodePackage> all)
+    {
+        string manager = NodeProjects.ProgramOf(package.Manager);
+        int members = all.Count(p => p.Root is { } root && PathNames.Same(root, package.Manifest));
+        string kind = members > 0 ? $"{manager} workspace of {Plural.Of(members, "package")}" : manager;
+        string detail = package.Name == folder ? kind : $"{package.Name} · {kind}";
+        string[] scripts = [.. package.Runnable.Select(s => s.Name)];
+        string runs = scripts.Length == 0 ? "it has no scripts" : $"{(scripts.Length == 1 ? "its script" : "its scripts")} {Plural.Listed(scripts)} run from the run configurations";
+        return (detail, $"Node package {package.Name}, run with {manager} ({package.ManagerSource}): {runs}");
+    }
+
     private ProjectFiles? FilesOf(ProjectModel project)
     {
         if (Containers.ContainerConfigurations.IsComposeProject(project.Path))
@@ -697,9 +737,9 @@ public sealed class ExplorerTree
     private static ExplorerNode Leaf(NodeKind kind, string name, string? detail, int depth, ProjectModel owner, string? referenced = null) =>
         new(kind, name, null, depth, false, null, detail) { Owner = owner.Path, Referenced = referenced };
 
-    private ExplorerNode Folder(string path, int depth, bool dimmed, Nesting? nesting = null) =>
+    private ExplorerNode Folder(string path, int depth, bool dimmed, Nesting? nesting = null) => Packaged(
         new(NodeKind.Folder, Path.GetFileName(path) is { Length: > 0 } name ? name : path, path, depth, dimmed,
-            node => Contents(path, node.Depth + 1, node.IsDimmed, skip: null, nesting)) { SdkFolder = SdkFolderAt(path) };
+            node => Contents(path, node.Depth + 1, node.IsDimmed, skip: null, nesting)) { SdkFolder = SdkFolderAt(path) });
 
     /// <summary>What the SDK makes of a folder on disk, as the shown projects whose folder holds it read it; most folders'
     /// names alone say it is none.</summary>
@@ -761,11 +801,11 @@ public sealed class ExplorerTree
 
     /// <summary>A folder of an evaluated project: what the project holds in it, by where each file shows (a linked file at
     /// its Link), whether or not the folder is on disk; dimmed, with all it holds, where the folder's walks pass over it.</summary>
-    private ExplorerNode HeldFolder(ProjectModel given, string path, string relative, int depth, bool dimmed) =>
+    private ExplorerNode HeldFolder(ProjectModel given, string path, string relative, int depth, bool dimmed) => Packaged(
         new(NodeKind.Folder, Path.GetFileName(relative), path, depth, dimmed || IgnoredFolders.Is(path), node => HeldIn(given, relative, node.Depth + 1, node.IsDimmed))
         {
             SdkFolder = SdkFolderOf(Current(given), relative),
-        };
+        });
 
     /// <summary>What an evaluated project holds at one place in it: its folders (the SDK's first), then its files, each by
     /// name, a file's dependents nested under it; a folder on disk with nothing in it at all shows too, as one just made does.</summary>

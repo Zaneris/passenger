@@ -54,6 +54,17 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         Configure(projects, picked ? preferred : null);
     }
 
+    /// <summary>The folder's Node packages, whose scripts are configurations (<see cref="Web.NodeFiles"/>).</summary>
+    public IReadOnlyList<NodePackage> Packages { get; private set; } = [];
+
+    /// <summary>Takes the folder's Node packages as last read.</summary>
+    public void ConfigurePackages(IReadOnlyList<NodePackage> packages)
+    {
+        UiThread.Check();
+        Packages = packages;
+        Configure(projects, picked ? preferred : null);
+    }
+
     /// <summary>The list or the one chosen changed, for the toolbar's widget.</summary>
     public event EventHandler? Changed;
 
@@ -82,7 +93,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     private void Configure(IReadOnlyList<ProjectModel> projects, string? keep)
     {
         this.projects = projects;
-        IReadOnlyList<RunConfiguration> generated = [.. RunConfiguration.Generate(projects, workspace?.Invoke(), SingleFileAppHosts).Select(Edited)];
+        IReadOnlyList<RunConfiguration> generated = [.. RunConfiguration.Generate(projects, workspace?.Invoke(), SingleFileAppHosts, Packages).Select(Edited)];
         (Profiles, ProfileProblems) = Solution is { } solution ? Read(solution, [.. generated.Select(g => g.Name), .. own.Select(o => o.Name)]) : ([], []);
         All = [.. generated, .. Profiles, .. own];
         // With none picked, an AppHost's before its services', which it runs as the person means.

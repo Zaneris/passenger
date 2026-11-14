@@ -19,7 +19,8 @@ public partial class MainWindow
         void Here(string id, string verb, string launch) => actions!.Add(new IdeAction(id, $"{verb} This Program", "Run", c => LaunchHere(c, launch))
         {
             WhyNot = c => ConfigurationHere(c) is { } here
-                ? WhyNotHere(here) is { } why ? $"{here.Name} cannot {verb.ToLowerInvariant()} here: {why}" : null
+                ? here.IsScript && launch != A.RunProgram ? Refusals.ScriptOnlyRuns(here.Name)
+                : WhyNotHere(here) is { } why ? $"{here.Name} cannot {verb.ToLowerInvariant()} here: {why}" : null
                 : WhyNoProgram(c),
             TitleIn = c => ConfigurationHere(c) is { } here ? $"{verb} '{here.Name}'" : $"{verb} This Program",
             Works = launch,

@@ -106,7 +106,8 @@ public partial class MainWindow
 
     /// <summary>Whether a file is a compose file, a Dockerfile or a launch profiles' file, where a run icon may stand.</summary>
     private static bool IsRunFile(string path) =>
-        Containers.ComposeFiles.IsCompose(path) || Languages.Language.ForPath(path) == Languages.Language.Dockerfile || IsProfilesFile(path);
+        Containers.ComposeFiles.IsCompose(path) || Languages.Language.ForPath(path) == Languages.Language.Dockerfile || IsProfilesFile(path)
+        || Path.GetFileName(path) == NodeProjects.ManifestName;
 
     /// <summary>Whether a file may hold launch profiles: a project's launchSettings.json, a file-based program's .run.json.</summary>
     private static bool IsProfilesFile(string path) =>
@@ -304,6 +305,15 @@ public partial class MainWindow
         {
             targets.AddRange(ProfileTargets(path, text));
         }
+        if (Path.GetFileName(path) == NodeProjects.ManifestName && Configurations.Any(c => c.IsScript && Core.PathNames.Same(c.Project, path)))
+        {
+            // Each script a configuration runs, on its line of the package's scripts.
+            foreach ((int line, string script) in MemberLines(text, "scripts"))
+            {
+                targets.AddRange(Configurations.Where(c => c.IsScript && c.Script == script && Core.PathNames.Same(c.Project, path))
+                    .Select(c => new RunTarget(line, c, null, Whole: true)));
+            }
+        }
         foreach (RunConfiguration configuration in Configurations)
         {
             if (appHost is not null)
@@ -369,7 +379,7 @@ public partial class MainWindow
         {
             yield break;
         }
-        foreach ((int line, string name) in ProfileLines(text))
+        foreach ((int line, string name) in MemberLines(text, "profiles"))
         {
             foreach (ProjectModel owner in owners)
             {
@@ -382,14 +392,14 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Each profile's name and its line, as the <c>profiles</c> object of a launch profiles' file names them, up to
-    /// where its text stops being JSON.</summary>
-    private static List<(int Line, string Name)> ProfileLines(TextSnapshot text)
+    /// <summary>Each member's name and its line in an object at a JSON file's top (<paramref name="under"/>: a launch profiles'
+    /// file's <c>profiles</c>, a package.json's <c>scripts</c>), up to where its text stops being JSON.</summary>
+    private static List<(int Line, string Name)> MemberLines(TextSnapshot text, string under)
     {
         List<(int, string)> found = [];
         byte[] bytes = Encoding.UTF8.GetBytes(text.ToString());
         Utf8JsonReader reader = new(bytes, LenientJson.Reader);
-        bool inProfiles = false;
+        bool inside = false;
         int counted = 0;
         int characters = 0;
         try
@@ -402,9 +412,9 @@ public partial class MainWindow
                 }
                 if (reader.CurrentDepth == 1)
                 {
-                    inProfiles = reader.ValueTextEquals("profiles");
+                    inside = reader.ValueTextEquals(under);
                 }
-                else if (reader.CurrentDepth == 2 && inProfiles)
+                else if (reader.CurrentDepth == 2 && inside)
                 {
                     int at = (int)reader.TokenStartIndex;
                     characters += Encoding.UTF8.GetCharCount(bytes, counted, at - counted);
@@ -415,7 +425,7 @@ public partial class MainWindow
         }
         catch (JsonException)
         {
-            // Half typed: the profiles before where it stops being JSON stand.
+            // Half typed: the members before where it stops being JSON stand.
         }
         return found;
     }

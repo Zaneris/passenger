@@ -20,7 +20,7 @@ public enum ConsoleKind
 /// Dockerfile, or a project as the .NET SDK makes its container (<c>EnableSdkContainerSupport</c>), each container kind
 /// run by the person's engine from Passenger's own build of its .NET services (<see cref="Containers.ContainerRun"/>); or
 /// several of the solution's projects on this machine together, as a multi-project launch profile beside the solution
-/// says (<see cref="SolutionLaunch"/>).</summary>
+/// says (<see cref="SolutionLaunch"/>); or a Node package's script, run with its package manager (<see cref="NodeProjects"/>).</summary>
 public enum RunKind
 {
     Project,
@@ -28,6 +28,7 @@ public enum RunKind
     Dockerfile,
     SdkContainer,
     Projects,
+    Script,
 }
 
 /// <summary>One project a multi-project configuration starts: its file (canonical), what Run and Debug do with it (null for
@@ -69,8 +70,12 @@ public sealed record RunConfiguration
     /// <summary>What it launches: a project here, or containers.</summary>
     public RunKind Kind { get; init; }
 
-    /// <summary>The project's file: a canonical path in the window, relative to the open folder in the store.</summary>
+    /// <summary>The project's file: a canonical path in the window, relative to the open folder in the store. A script's
+    /// is its package's package.json.</summary>
     public string Project { get; init; } = string.Empty;
+
+    /// <summary>For a Node package's, the script of its package.json it runs.</summary>
+    public string Script { get; init; } = string.Empty;
 
     /// <summary>Whether Passenger coordinates this AppHost and its project resources.</summary>
     public bool Aspire { get; init; }
@@ -213,7 +218,11 @@ public sealed record RunConfiguration
 
     /// <summary>Whether it runs containers rather than programs on this machine.</summary>
     [JsonIgnore]
-    public bool IsContainer => Kind is not (RunKind.Project or RunKind.Projects);
+    public bool IsContainer => Kind is RunKind.Compose or RunKind.Dockerfile or RunKind.SdkContainer;
+
+    /// <summary>Whether it runs a Node package's script, which Run alone starts: nothing is built, debugged or profiled.</summary>
+    [JsonIgnore]
+    public bool IsScript => Kind == RunKind.Script;
 
     /// <summary>Whether it starts several of the solution's projects together, as a multi-project launch profile says.</summary>
     [JsonIgnore]
@@ -265,6 +274,7 @@ public sealed record RunConfiguration
     /// own program, a project that runs only on Windows (WPF, Windows Forms) elsewhere; null when it can.</summary>
     public string? WhyNotHere(IEnumerable<ProjectModel> projects) => Unsupported
         ?? (IsMultiple ? WhyNotStarted(projects) : null)
+        ?? (IsScript && Script.Length == 0 ? "it names no script of its package.json to run" : null)
         ?? (!IsContainer && Aspire && Path.GetExtension(Project).Equals(".cs", StringComparison.OrdinalIgnoreCase)
             ? AspireAppHosts.SingleFileWhyNot(Project, projects.Select(project => project.Path)) : null)
         ?? (!IsContainer && Program.Length == 0 && projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project)) is { } project ? project.RunsOnlyOnWindows(Framework) : null);
@@ -301,10 +311,10 @@ public sealed record RunConfiguration
     /// <summary>The configurations the folder's executable projects make: one per launch profile, named "Project: profile",
     /// and the project itself when none of its profiles runs it here (a Godot project's game), with a Godot project's editor
     /// beside it ("Project: Godot Editor"), the workspace's Godot projects of GDScript alone among them (<see cref="WorkspaceModel.ScriptGames"/>);
-    /// then single-file AppHosts and the container ones the workspace's compose files, Dockerfiles, SDK container projects
-    /// and Docker Compose projects (.dcproj) make (<see cref="Containers.ContainerConfigurations"/>).</summary>
+    /// then single-file AppHosts, the container ones (<see cref="Containers.ContainerConfigurations"/>), and each Node
+    /// package's scripts, "package: script" (<see cref="OfScript"/>).</summary>
     public static IReadOnlyList<RunConfiguration> Generate(IEnumerable<ProjectModel> projects, WorkspaceModel? workspace = null,
-        IEnumerable<string>? singleFileAppHosts = null)
+        IEnumerable<string>? singleFileAppHosts = null, IEnumerable<NodePackage>? packages = null)
     {
         List<RunConfiguration> generated = [];
         List<ProjectModel> all = [.. projects];
@@ -364,8 +374,29 @@ public sealed record RunConfiguration
                 }
             }
         }
+        HashSet<string> used = new(generated.Select(g => g.Name), StringComparer.OrdinalIgnoreCase);
+        foreach (NodePackage package in packages ?? [])
+        {
+            foreach (NodeScript script in package.Runnable)
+            {
+                string name = UniqueName(OfScript(package, script.Name).Name, used);
+                used.Add(name);
+                generated.Add(OfScript(package, script.Name) with { Name = name, Generated = true });
+            }
+        }
         return generated;
     }
+
+    /// <summary>The configuration running a Node package's script, named "package: script".</summary>
+    public static RunConfiguration OfScript(NodePackage package, string script) => new()
+    {
+        Name = $"{package.Name}: {script}",
+        Kind = RunKind.Script,
+        Project = package.Manifest,
+        Script = script,
+        BuildBeforeLaunch = false,
+        Origin = $"Generated from the script {script} in {package.Name}'s package.json, run with {NodeProjects.ProgramOf(package.Manager)}",
+    };
 
     /// <summary>It with a launch profile's values where it gives none of its own, as it runs on the platform the profile is
     /// tied to: the profile's arguments, working folder and browser where it names none, the profile's variables under its
@@ -449,6 +480,7 @@ public sealed record RunConfiguration
         Framework = Framework ?? string.Empty,
         LaunchProfile = LaunchProfile ?? string.Empty,
         Program = Program ?? string.Empty,
+        Script = Script ?? string.Empty,
         Arguments = Arguments ?? string.Empty,
         GodotCopies = Math.Clamp(GodotCopies, 1, GameCopies.Most),
         CopyArguments = [.. (CopyArguments ?? []).Select(a => a ?? string.Empty).Take(GameCopies.Most)],

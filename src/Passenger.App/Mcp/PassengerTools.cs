@@ -107,6 +107,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // Projects come once the walk for them lands, and what MSBuild evaluates once each evaluation does.
         await Session.WorkspaceRead.WaitAsync(cancel);
         await Session.AspireFilesRead.WaitAsync(cancel);
+        await Session.NodeFilesRead.WaitAsync(cancel);
         await Task.Yield();
         await Session.Models.Idle.WaitAsync(cancel);
         return await RunsWorkspace(Snapshot(), cancel);

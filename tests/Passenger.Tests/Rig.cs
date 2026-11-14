@@ -170,9 +170,12 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.App.Discord.DiscordIpc.Variable, DiscordNowhere);
         // Nor npm's registry: an npm install the IDE runs takes only what the run's own empty cache has.
         string npmConfig = Path.Combine(Root, "npmrc");
+        string npmGlobalConfig = Path.Combine(Root, "npmrc-global");
         File.WriteAllText(npmConfig, string.Empty);
+        // A file of its own, as npm 11 ends at once on one file read as both.
+        File.WriteAllText(npmGlobalConfig, string.Empty);
         Environment.SetEnvironmentVariable("npm_config_userconfig", npmConfig);
-        Environment.SetEnvironmentVariable("npm_config_globalconfig", npmConfig);
+        Environment.SetEnvironmentVariable("npm_config_globalconfig", npmGlobalConfig);
         Environment.SetEnvironmentVariable("npm_config_cache", Path.Combine(Root, "npm-cache"));
         Environment.SetEnvironmentVariable("npm_config_offline", "true");
         Environment.SetEnvironmentVariable("npm_config_update_notifier", "false");

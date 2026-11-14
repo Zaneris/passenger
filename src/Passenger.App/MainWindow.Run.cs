@@ -232,6 +232,10 @@ public partial class MainWindow
         {
             return $"{shared.Name} is a launch profile of the solution's already, kept beside it where Visual Studio reads it too";
         }
+        if (shared.IsScript)
+        {
+            return $"{shared.Name} runs a package.json script: a launch profile saved here runs a .NET project";
+        }
         if (Projects.FirstOrDefault(p => p.Exists && p.IsRunnable && PathNames.Same(p.Path, shared.Project)) is not { } project)
         {
             return shared.Project.Length == 0 ? $"{shared.Name} has no project to run" : $"{shared.Name}'s project, {Path.GetFileNameWithoutExtension(shared.Project)}, is not loaded";
@@ -414,9 +418,10 @@ public partial class MainWindow
             return start.NoFolder;
         }
         string shown = PathNames.Shown(folder, folder);
-        // As an agent's open waits: the walk for its projects, its single-file AppHosts, then the evaluations those started.
+        // As an agent's open waits: the walk for its projects, its single-file AppHosts and Node packages, then the evaluations those started.
         await reading.WorkspaceRead;
         await reading.AspireFilesRead;
+        await reading.NodeFilesRead;
         await Task.Yield();
         await reading.Models.Idle;
         if (reading.IsEnded)
@@ -548,16 +553,31 @@ public partial class MainWindow
     private void OnRunConfigClicked(object? sender, RoutedEventArgs e)
     {
         ContextMenu menu = new();
-        foreach (RunConfiguration each in Configurations)
+        foreach (RunConfiguration each in Configurations.Where(c => !c.IsScript || !c.Generated))
         {
-            string name = each.Name;
-            string? why = WhyNotHere(each);
-            MenuItem item = MenuChoice.Of(why is null ? Shown(each) : Greyed(name, why), session.Configurations.Chosen?.Name == name, () => SelectConfiguration(name));
-            if (why is not null)
+            menu.Items.Add(Choice(each));
+        }
+        // A package's scripts after the rest, each package's under its name where there are several.
+        List<IGrouping<string, RunConfiguration>> scripts = [.. Configurations.Where(c => c is { IsScript: true, Generated: true }).GroupBy(c => c.Project, PathNames.Comparer)];
+        if (scripts.Count > 0 && menu.Items.Count > 0)
+        {
+            menu.Items.Add(new Separator());
+        }
+        foreach (IGrouping<string, RunConfiguration> package in scripts)
+        {
+            if (scripts.Count == 1)
             {
-                ToolTip.SetTip(item, $"{name} cannot run here: {why}");
+                foreach (RunConfiguration each in package)
+                {
+                    menu.Items.Add(Choice(each));
+                }
+                continue;
             }
-            menu.Items.Add(item);
+            NodePackage? read = session.NodeFiles.Packages.FirstOrDefault(p => PathNames.Same(p.Manifest, package.Key));
+            string header = read is null ? PathNames.Shown(Path.GetDirectoryName(package.Key)!, session.Folder) : $"{read.Name} ({NodeProjects.ProgramOf(read.Manager)})";
+            MenuItem holding = new() { Header = header, ToggleType = MenuItemToggleType.Radio, IsChecked = package.Any(c => c.Name == session.Configurations.Chosen?.Name) };
+            holding.ItemsSource = (Control[])[.. package.Select(Choice)];
+            menu.Items.Add(holding);
         }
         if (menu.Items.Count == 0)
         {
@@ -568,6 +588,18 @@ public partial class MainWindow
         edit.Click += (_, _) => Request(AppActions.EditConfigurations);
         menu.Items.Add(edit);
         Open(menu, RunConfigButton);
+
+        MenuItem Choice(RunConfiguration each)
+        {
+            string name = each.Name;
+            string? why = WhyNotHere(each);
+            MenuItem item = MenuChoice.Of(why is null ? Shown(each) : Greyed(name, why), session.Configurations.Chosen?.Name == name, () => SelectConfiguration(name));
+            if (why is not null)
+            {
+                ToolTip.SetTip(item, $"{name} cannot run here: {why}");
+            }
+            return item;
+        }
 
         static StackPanel Greyed(string name, string why) => new()
         {

@@ -472,6 +472,14 @@ public partial class MainWindow
                 }
             }
         };
+        next.NodeFiles.Changed += (_, _) =>
+        {
+            if (session == next)
+            {
+                Explorer.ShowPackages(next.NodeFiles.Packages);
+            }
+        };
+        Explorer.ShowPackages(next.NodeFiles.Packages);
         next.Configurations.Changed += (_, _) =>
         {
             if (session == next)
