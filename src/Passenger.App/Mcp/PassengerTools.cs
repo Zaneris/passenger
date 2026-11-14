@@ -564,10 +564,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, () => Session.CSharp?.Session, async patience =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
+        using AgentsChange naming = window.NameAgentsChange($"Rename to {newName}");
         // A GDScript's member or local is renamed by Passenger's reading of the project's scripts, before Godot's server serves it.
         if (Godot.GodotScriptTypes.IsScript(at.Path))
         {
             OpenDocument script = await DocumentAsync(at.Path, cancel);
+            naming.Names(Renaming(script, Offset(script, at.Line, at.Column), newName));
             if (await window.Assist.GDScriptRenameAsync(script, Offset(script, at.Line, at.Column), newName, force, patience) is { } scriptRenamed)
             {
                 if (scriptRenamed.Problem is { } refused)
@@ -580,6 +582,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
+        naming.Names(Renaming(served.Document, offset, newName));
         if (served is ServerServed { Web.Kind: WebServerKind.Yaml } yaml && global::Passenger.App.Containers.ComposeFiles.IsCompose(yaml.Document.Path)
             && await ComposeAssist.ComposeRenamingAsync(yaml.Lsp, yaml.Document, offset) is { } composed)
         {
@@ -673,6 +676,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return await SymbolRenamed(renaming, cancel);
     }, AgentCall.Say, cancel));
 
+    /// <summary>What Local History names an agent's rename of the name at an offset of a file.</summary>
+    private string Renaming(OpenDocument document, int offset, string newName) =>
+        NameAt(document, offset) is { } old ? $"Rename {old} to {newName}" : $"Rename to {newName}";
+
     /// <summary>A symbol's rename's answer, its files saved: the files it changed and moved, those left as edited meanwhile,
     /// and a file that could not follow its type.</summary>
     private async Task<string> SymbolRenamed(RefactorOutcome renaming, CancellationToken cancel)
@@ -757,6 +764,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string? name = null,
         CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, () => Session.CSharp?.Session, async patience =>
     {
+        using AgentsChange naming = window.NameAgentsChange(choice is null ? title : $"{title} ({choice})");
         if (Godot.GodotScriptTypes.IsScript(Resolve(path)))
         {
             OpenDocument script = await DocumentAsync(path, cancel);

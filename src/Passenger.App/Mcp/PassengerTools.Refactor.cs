@@ -57,8 +57,14 @@ public sealed partial class PassengerTools
     {
         string named = kind.Trim().ToLowerInvariant().Replace(' ', '_').Replace('-', '_');
         JsonElement? given = Options(options);
+        using AgentsChange naming = window.NameAgentsChange(Refactoring(named, null));
         if (path is not null && Godot.GodotScriptTypes.IsScript(Resolve(path)))
         {
+            if (line is { } scriptLine && column is { } scriptColumn)
+            {
+                OpenDocument script = await DocumentAsync(path, cancel);
+                naming.Names(Refactoring(named, NameAt(script, Offset(script, scriptLine, scriptColumn))));
+            }
             RefactorAnswer scripted = await GDScriptRefactorAsync(named, path, line, column, endLine, endColumn, given, describe, cancel);
             if (scripted.Files.Count > 0)
             {
@@ -82,6 +88,7 @@ public sealed partial class PassengerTools
         }
         (OpenDocument document, LspDocument lsp) = await CSharpOnly(path, named, cancel);
         int offset = Offset(document, line.Value, column.Value);
+        naming.Names(Refactoring(named, NameAt(document, offset)));
         bool describing = describe || (given is null && named is "change_signature" or "move" or "extract_interface" or "pull_members_up" or "push_members_down");
         RefactorAnswer answer = named switch
         {
@@ -99,6 +106,39 @@ public sealed partial class PassengerTools
         }
         return answer;
     }, AgentCall.Say, cancel));
+
+    /// <summary>What Local History names an agent's refactoring of a kind, as the window names the refactoring, with the
+    /// name it works on where one is at its place.</summary>
+    private static string Refactoring(string kind, string? subject)
+    {
+        (string title, string? on) = kind switch
+        {
+            "change_signature" => ("Change Signature", " of "),
+            "safe_delete" => ("Safe Delete", " "),
+            "move" => ("Move", " "),
+            "extract_interface" => ("Extract Interface", " from "),
+            "pull_members_up" => ("Pull Members Up", " from "),
+            "push_members_down" => ("Push Members Down", " from "),
+            "encapsulate_field" => ("Encapsulate Field", " "),
+            "inline" or "inline_variable" or "inline_function" => ("Inline", " "),
+            "introduce_field" => ("Introduce Field", null),
+            "introduce_parameter" => ("Introduce Parameter", null),
+            "extract_variable" or "introduce_variable" => ("Extract Variable", null),
+            "extract_function" or "extract_method" => ("Extract Function", null),
+            "optimize_imports" => ("Optimize Imports", null),
+            "code_cleanup" => ("Code Cleanup", null),
+            _ => (kind, null),
+        };
+        return on is not null && subject is not null ? title + on + subject : title;
+    }
+
+    /// <summary>The name written at an offset of a file, as Rename takes it there, or null where none is.</summary>
+    private string? NameAt(OpenDocument document, int offset)
+    {
+        TextSnapshot text = document.Text.Snapshot;
+        string name = text.GetText(window.Assist.Actions.RenamedAt(document, text, offset));
+        return name.Any(char.IsLetterOrDigit) ? name : null;
+    }
 
     /// <summary>A GDScript refactoring for an agent, through the window's own (<see cref="CSharp.CodeActions.GDScriptRefactorAsync"/>):
     /// at path, line and column, over a selection to endLine and endColumn for those that take one, with the name or the
@@ -314,19 +354,34 @@ public sealed partial class PassengerTools
                 type.Namespace,
                 File = type.FileName,
                 type.TypesInFile,
-                ToFile = new { File = type.TargetFileName },
-                ToNamespace = new { type.Namespace },
+                Options = new { File = type.TargetFileName, type.Namespace },
             });
         }
         JsonElement given = options!.Value;
         (string? file, string? space) = (JsonMembers.Text(given, "file"), JsonMembers.Text(given, "namespace"));
-        return (file, space) switch
+        // Each as described is left as it is: the one changed is the move, and the described file's where neither is.
+        StringComparer names = PathNames.NamesIn(Path.GetDirectoryName(document.Path)!);
+        bool toFile = file is not null && !names.Equals(file, type.TargetFileName);
+        bool toSpace = space is not null && space != type.Namespace;
+        if (toFile && toSpace)
         {
-            (null, null) => throw new ArgumentException("move takes file (a new file beside the type's) or namespace, as the window's Move to Another File and Move to Namespace do"),
-            ({ }, { }) => throw new ArgumentException("move takes file or namespace, one at a time, as the window's Move does: move it to the namespace, then to the file, in two calls"),
-            ({ } toFile, null) => Applied("move", await window.Assist.Actions.MoveTypeToFileAsync(document, offset, type, toFile, patience)),
-            _ => Applied("move", await window.Assist.Actions.MoveTypeToNamespaceAsync(document, offset, type, space!, patience)),
-        };
+            throw new ArgumentException("move takes file or namespace, one at a time, as the window's Move does: move it to the namespace, then to the file, in two calls");
+        }
+        if (toSpace)
+        {
+            return Applied("move", await window.Assist.Actions.MoveTypeToNamespaceAsync(document, offset, type, space!, patience));
+        }
+        if (file is not null && names.Equals(file, type.FileName))
+        {
+            throw new ArgumentException($"'{type.Name}' is in {type.FileName} already: move takes the file it goes to, or namespace");
+        }
+        if (file is not null)
+        {
+            return Applied("move", await window.Assist.Actions.MoveTypeToFileAsync(document, offset, type, file, patience));
+        }
+        throw new ArgumentException(space is null
+            ? "move takes file (a new file beside the type's) or namespace, as the window's Move to Another File and Move to Namespace do"
+            : $"'{type.Name}' is in namespace '{space}' already: move takes the namespace it goes to, or file");
     }
 
     private async Task<RefactorAnswer> MembersAsync(OpenDocument document, LspDocument lsp, int offset, JsonElement? options, bool describing, bool up, Patience patience)

@@ -21,6 +21,9 @@ public partial class MainWindow
     /// <summary>The refactoring last asked for, which names what it writes in Local History.</summary>
     private string? refactoring;
 
+    /// <summary>The change an agent's call is making, which names what it writes in Local History before the person's.</summary>
+    private AgentsChange? agentsChange;
+
     /// <summary>How long and how much Local History keeps, and its clock: 5 days of activity unless given.</summary>
     public HistoryKeeping HistoryKeeping { get; init; } = new();
 
@@ -64,15 +67,30 @@ public partial class MainWindow
         // What an agent's Passenger on the same state kept while the person was away is listed as they come back.
         Activated += (_, _) => session.LocalHistory?.LookAgain();
         // A refactoring's activity; another action since (a quick fix) is not the refactoring.
-        actions.Running += (_, running) => refactoring = running.Action.Menus.Any(m => m.Path == "Refactor") ? running.Action.Title.TrimEnd('.') : null;
+        actions.Running += (_, running) => refactoring = running.Action.Menus.Any(m => m.Path == "Refactor") ? running.Action.Title.TrimEnd('…') : null;
         // What a refactoring writes to files not open is one change set under its name; a quick fix's is not named.
         Editors.Recording = () =>
         {
+            if (agentsChange is { } agents)
+            {
+                return agents.Recorded(session.LocalHistory);
+            }
             string? name = refactoring;
             refactoring = null;
             return name is null ? null : session.LocalHistory?.During(name);
         };
     }
+
+    /// <summary>Names the change an agent's call makes one change set in Local History, as a refactoring run from the window
+    /// is, until disposed: <paramref name="name"/> says the tool's change, said more closely once the call knows what it
+    /// changes (<see cref="AgentsChange.Names"/>). The set holds what the call saves until it ends, its open files too.</summary>
+    public AgentsChange NameAgentsChange(string name) => agentsChange = new AgentsChange(name, ended =>
+    {
+        if (agentsChange == ended)
+        {
+            agentsChange = null;
+        }
+    });
 
     /// <summary>A file the editor opened: its content is what the history knows of it from now.</summary>
     private void LookAt(OpenDocument document)
@@ -307,4 +325,38 @@ public partial class MainWindow
 
     /// <summary>A closed file a revert wrote: its texts before and after, whether it made it, or why it could not.</summary>
     private sealed record Restored(string Path, TextSnapshot? Before, TextSnapshot? After, bool Made, string? Refused);
+}
+
+/// <summary>The change set of an agent's call (<see cref="MainWindow.NameAgentsChange"/>): begun by the first change the call
+/// records, and under way from then until the call ends.</summary>
+public sealed class AgentsChange(string name, Action<AgentsChange> ended) : IDisposable
+{
+    private string said = name;
+    private LocalHistory.Activity? held;
+
+    /// <summary>The name said more closely, unless a change began the set already.</summary>
+    public void Names(string closer)
+    {
+        if (held is null)
+        {
+            said = closer;
+        }
+    }
+
+    /// <summary>A change the call records, named as the set: the first begins it.</summary>
+    internal LocalHistory.Activity? Recorded(LocalHistory? history)
+    {
+        if (history is null)
+        {
+            return null;
+        }
+        held ??= history.During(said);
+        return history.During(said);
+    }
+
+    public void Dispose()
+    {
+        held?.Dispose();
+        ended(this);
+    }
 }

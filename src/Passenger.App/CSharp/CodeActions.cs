@@ -496,7 +496,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 
     /// <summary>The name a rename at an offset of a file renames: a web language's through its own characters (CSS's
     /// --accent, JavaScript's $el).</summary>
-    private TextRange RenamedAt(OpenDocument document, TextSnapshot text, int offset) =>
+    internal TextRange RenamedAt(OpenDocument document, TextSnapshot text, int offset) =>
         context.WebOf(document) is { } web ? WebAssist.WebWordAt(web, text, offset) : TextNavigation.WordAt(text, offset);
 
     /// <summary>The character just before a renamed name that the server's edit of it in <paramref name="path"/> replaces

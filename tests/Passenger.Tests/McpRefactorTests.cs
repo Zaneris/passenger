@@ -108,7 +108,8 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Equal(Order.Replace("public class Order", "public class Order : IOrder", StringComparison.Ordinal), File.ReadAllText(PathOf("Order.cs")));
 
             JsonElement move = Refactor(client, Place("move", "Shapes.cs", Shapes, "class Circ")).GetProperty("dialog");
-            Assert.Equal(("Circle.cs", 2), (move.GetProperty("toFile").GetProperty("file").GetString(), move.GetProperty("typesInFile").GetInt32()));
+            Assert.Equal(("Circle.cs", "Shop", 2), (move.GetProperty("options").GetProperty("file").GetString(), move.GetProperty("options").GetProperty("namespace").GetString(),
+                move.GetProperty("typesInFile").GetInt32()));
             JsonElement spaced = Refactor(client, Place("move", "OrderBook.cs", OrderBook, "class OrderBo", new { @namespace = "Sales" }));
             Assert.StartsWith("Moved class OrderBook to namespace Sales", spaced.GetProperty("said").GetString(), StringComparison.Ordinal);
             Assert.Equal("using Shop;\n\n" + OrderBook.Replace("namespace Shop;", "namespace Sales;", StringComparison.Ordinal), File.ReadAllText(PathOf("OrderBook.cs")));
@@ -117,7 +118,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Equal("namespace Shop;\n\npublic class Circle\n{\n    public double Area(double radius) => Math.PI * radius * radius;\n}\n", File.ReadAllText(PathOf("Circle.cs")).ReplaceLineEndings("\n"));
             Assert.Equal("namespace Shop;\n\npublic class Square\n{\n    public int Side;\n}\n", File.ReadAllText(PathOf("Shapes.cs")));
 
-            CallToolResult both = Await(Waiting.Apart(() => Result(client, McpTools.Refactor, Place("move", "Shapes.cs", File.ReadAllText(PathOf("Shapes.cs")), "class Squ", new { file = "Square.cs", @namespace = "Shop.Shapes" }))), "a move to a file and a namespace at once");
+            CallToolResult both = Await(Waiting.Apart(() => Result(client, McpTools.Refactor, Place("move", "Shapes.cs", File.ReadAllText(PathOf("Shapes.cs")), "class Squ", new { file = "Squares.cs", @namespace = "Shop.Shapes" }))), "a move to a file and a namespace at once");
             Assert.True(both.IsError == true && Text(both).Contains("one at a time", StringComparison.Ordinal), $"A move to a file and a namespace at once answered: {Text(both)}");
 
             UndoInSolutionView(window, "Shapes.cs");
@@ -204,6 +205,44 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         {
             Leave(client, window);
         }
+    }
+
+    /// <summary>An agent's rename, refactorings and code action each land in Local History as one change set named for what
+    /// it did, holding every file it changed, moved, made or saved, as a refactoring run from the window does, where each
+    /// file's write and each move made a set of its own, unnamed; and Move's options, described in the shape it takes, move
+    /// the type where the one changed says, or as described into a file of its name.</summary>
+    [Fact]
+    public async Task An_agents_rename_refactorings_and_code_action_each_land_in_local_history_as_one_change_set_named_for_what_it_did()
+    {
+        await TakeFolderAsync();
+        Shop(("Calc.cs", Calc), ("Till.cs", Till), ("Report.cs", Report), ("Order.cs", Order), ("OrderBook.cs", OrderBook), ("Shapes.cs", Shapes),
+            ("shelf.cs", "namespace Shop;\n\npublic class shelf\n{\n}\n"), ("Stock.cs", "namespace Shop;\n\npublic static class Stock\n{\n    public static shelf Open() => new shelf();\n}\n"));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        await Call(client, McpTools.Rename, new() { ["symbol"] = "Shop.Calc", ["newName"] = "Calculator" });
+        await Call(client, McpTools.Refactor, Place("change_signature", "Calculator.cs", File.ReadAllText(PathOf("Calculator.cs")), "int Sca", new
+        {
+            parameters = new object[] { new { from = "factor" }, new { from = "value" }, new { from = "unused" } },
+        }));
+        JsonElement spaced = (await Call(client, McpTools.Refactor, Place("move", "OrderBook.cs", OrderBook, "class OrderBo"))).GetProperty("dialog").GetProperty("options");
+        Assert.Equal(("OrderBook.cs", "Shop"), (spaced.GetProperty("file").GetString(), spaced.GetProperty("namespace").GetString()));
+        await Call(client, McpTools.Refactor, Place("move", "OrderBook.cs", OrderBook, "class OrderBo", new { file = "OrderBook.cs", @namespace = "Sales" }));
+        Assert.Equal("using Shop;\n\n" + OrderBook.Replace("namespace Shop;", "namespace Sales;", StringComparison.Ordinal), File.ReadAllText(PathOf("OrderBook.cs")));
+        JsonElement filed = (await Call(client, McpTools.Refactor, Place("move", "Shapes.cs", Shapes, "class Circ"))).GetProperty("dialog").GetProperty("options");
+        await Call(client, McpTools.Refactor, Place("move", "Shapes.cs", Shapes, "class Circ", filed));
+        Assert.True(File.Exists(PathOf("Circle.cs")) && !File.ReadAllText(PathOf("Shapes.cs")).Contains("Circle", StringComparison.Ordinal),
+            $"Move's options sent back as described left Shapes.cs so:\n{File.ReadAllText(PathOf("Shapes.cs"))}");
+        await Call(client, McpTools.ApplyCodeAction, new() { ["path"] = "shelf.cs", ["line"] = 3, ["column"] = 14, ["title"] = "Fix name violation: Shelf" });
+
+        JsonElement[] sets = [.. (await Call(client, McpTools.LocalHistory)).GetProperty("rows").EnumerateArray().Take(5)];
+        string listed = string.Join("\n", sets.Select(s => s.GetRawText()));
+        Assert.True(sets.Select(s => s.GetProperty("title").GetString()).SequenceEqual(
+            ["Fix name violation: Shelf", "Move Circle", "Move OrderBook", "Change Signature of Scale", "Rename Calc to Calculator"]), $"Local History's newest sets:\n{listed}");
+        Assert.True(sets.Skip(1).Select(s => string.Join(", ", s.GetProperty("files").EnumerateArray().Select(f => f.GetString()).Order(StringComparer.Ordinal))).SequenceEqual(
+            ["Circle.cs, Shapes.cs", "OrderBook.cs", "Calculator.cs, Till.cs", "Calc.cs, Calculator.cs, Order.cs, Report.cs, Till.cs"]), $"Local History's newest sets:\n{listed}");
+        List<string> fixedFiles = [.. sets[0].GetProperty("files").EnumerateArray().Select(f => f.GetString()!)];
+        Assert.True(fixedFiles.Contains("Stock.cs") && fixedFiles.All(f => f is "Stock.cs" || f.Equals("Shelf.cs", StringComparison.OrdinalIgnoreCase)),
+            $"Local History's newest sets:\n{listed}");
     }
 
     /// <summary>An agent's rename of a symbol to the name it has says so and changes nothing, never "Renamed".</summary>
