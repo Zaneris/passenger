@@ -790,12 +790,12 @@ internal sealed partial class CodeCompletion
         Roslyn.Extension.CallFound call = Roslyn.Extension.CallFound.None;
         // Chosen by Enter, Tab or a click: a commit character typed is what follows the name.
         if (end is null && item.Kind == CompletionItemKind.Method && item.InsertTextFormat != InsertTextFormat.Snippet && lsp is { IsRazor: false }
-            && context.Current is CSharpDocument && ItemEdit(fitted, start, replaced) is int held)
+            && context.Current is CSharpDocument && ItemEdit(fitted, start, replaced, document.Snapshot) is ({ } asking, int held))
         {
             using ChangeTracker calling = new(document);
             try
             {
-                call = await lsp.CompletionCallAsync(fitted, held);
+                call = await lsp.CompletionCallAsync(asking, held);
             }
             catch (LanguageServerFailed)
             {
@@ -820,6 +820,7 @@ internal sealed partial class CodeCompletion
             }
             else if (call.Call)
             {
+                fitted = [.. asking];
                 fitted[held] = fitted[held] with { Text = fitted[held].Text + "()" };
             }
         }
@@ -840,18 +841,31 @@ internal sealed partial class CodeCompletion
         }
     }
 
-    /// <summary>Which of the fitted edits holds the item put in place of <paramref name="start"/> to <paramref name="end"/>
-    /// (<see cref="ItemEnd"/>), null where fitting left none holding it.</summary>
-    private static int? ItemEdit(IReadOnlyList<TextEdit> fitted, int start, int end)
+    /// <summary>The fitted edits with the one holding the item put in place of <paramref name="start"/> to
+    /// <paramref name="end"/> (<see cref="ItemEnd"/>), and its index; where fitting left it out, as a name typed whole
+    /// changes nothing, an edit writing the name as it stands, so its call still follows it. Null where another edit
+    /// meets the name.</summary>
+    private static (List<TextEdit> Edits, int Item)? ItemEdit(List<TextEdit> fitted, int start, int end, TextSnapshot text)
     {
-        for (int i = 0; i < fitted.Count; i++)
+        int at = 0;
+        for (; at < fitted.Count && fitted[at].Start <= end; at++)
         {
-            if (fitted[i].Start <= start && fitted[i].End >= end)
+            if (fitted[at].Start <= start && fitted[at].End >= end)
             {
-                return i;
+                return (fitted, at);
+            }
+            if (fitted[at].End > start)
+            {
+                return null;
             }
         }
-        return null;
+        if (end > text.Length)
+        {
+            return null;
+        }
+        List<TextEdit> edits = [.. fitted];
+        edits.Insert(at, new TextEdit(start, end - start, text.GetText(start, end - start)));
+        return (edits, at);
     }
 
     /// <summary>A keyword a word always follows: new is left out, as new() and new[] follow it with none.</summary>

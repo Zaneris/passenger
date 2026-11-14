@@ -578,8 +578,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>A method chosen by Enter is written with its call's brackets: the caret between them where an overload
-    /// takes arguments, its signature shown, and after them where none does; a method given where a delegate is asked for
-    /// stays a method group, without them.</summary>
+    /// takes arguments, its signature shown, and after them where none does, its name typed whole too; a method given where
+    /// a delegate is asked for (an Action, a System.Delegate) stays a method group, without them.</summary>
     [AvaloniaFact]
     public void A_method_chosen_from_the_list_is_written_called_the_caret_inside_its_brackets_when_it_takes_arguments()
     {
@@ -624,6 +624,29 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Assert.True(Line() == "        System.Action clear = System.Console.Clear" && editor.CaretPosition.Column == Line().Length,
             $"Clear given to an Action was written as a call rather than the method itself: '{Line()}'");
+        window.KeyTextInput(";");
+
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("System.Delegate any = System.Console.");
+        Ui.Settle();
+        window.KeyTextInput("Clea");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "Clear", "Console.Clear among the members");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.True(Line() == "        System.Delegate any = System.Console.Clear",
+            $"Clear given to a System.Delegate was written as a call rather than the method itself: '{Line()}'");
+        window.KeyTextInput(";");
+
+        // A name typed whole changes nothing as it goes in, and is called all the same.
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("System.Console.");
+        Ui.Settle();
+        window.KeyTextInput("Clear");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "Clear", "Console.Clear among the members");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.True(Line() == "        System.Console.Clear()" && editor.CaretPosition.Column == Line().Length,
+            $"Clear, typed whole and chosen, was not written called with the caret after its brackets: '{Line()}', the caret at {editor.CaretPosition.Column}");
         window.Close();
     }
 
