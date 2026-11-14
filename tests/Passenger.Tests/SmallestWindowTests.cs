@@ -19,8 +19,9 @@ namespace Passenger.Tests;
 /// and reached: the Welcome page scrolls to each of its tiles, Find in Files stands inside the window, the toolbar's long
 /// names give way with an ellipsis and never draw over each other or the window's buttons, what the status bar says
 /// stands whole in front of the file's path, the Commit window sharing its column draws nothing over its form, the empty
-/// editors' words stand inside them, editor tabs down a side leave the code its room, a tool window dropped on the editors
-/// is a tab there, and a stripe with no icon gives its room to the editors but while a window is dragged.</summary>
+/// editors' words stand inside them, editor tabs down a side leave the code its room, a Markdown file's preview stands
+/// under its file, a tool window dropped on the editors is a tab there, and a stripe with no icon gives its room to the
+/// editors but while a window is dragged.</summary>
 public sealed class SmallestWindowTests
 {
     [AvaloniaFact]
@@ -286,6 +287,47 @@ public sealed class SmallestWindowTests
         finally
         {
             window.ApplySettings(new AppSettings());
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>At the smallest width with the Explorer open, a Markdown file's preview stands under its file, each as wide
+    /// as the group and about half its height, where beside it each kept half of a narrow group and the file wrapped every
+    /// few letters; at a wide window the preview stands beside the file again, each half the group's width.</summary>
+    [AvaloniaFact]
+    public void At_the_smallest_width_a_Markdown_files_preview_stands_under_it_each_as_wide_as_the_group()
+    {
+        string folder = TestFolders.Create("smallest-markdown-");
+        File.WriteAllText(Path.Combine(folder, "README.md"),
+            "# People\n\nA small page listing **people**, with a [link](https://example.com).\n\n| Name | Age |\n|------|-----|\n| Ada  | 36  |\n\n- one\n- two\n");
+        MainWindow window = Ui.OpenFolder(folder, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "README.md"));
+            Ui.Settle();
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Explorer), "The Explorer is not open beside the editors: the test no longer reaches a narrow group");
+            EditorGroup group = window.EditorArea.ActiveGroup;
+            MarkdownPreview preview = group.Markdown ?? throw new Xunit.Sdk.XunitException("README.md shows no preview at the smallest width");
+            Rect editor = Placed(window, group.Editor);
+            Rect page = Placed(window, preview);
+            double across = group.Bounds.Width;
+            Assert.True(group.SideUnder && page.Top >= editor.Bottom - 0.5,
+                $"In a group {across:0.#} wide README.md's editor stands at {editor} and its preview at {page}, beside it: each keeps half the width");
+            Assert.True(editor.Width >= across - 1 && page.Width >= across - 1,
+                $"Under each other in a group {across:0.#} wide, the editor is {editor.Width:0.#} wide and the preview {page.Width:0.#}");
+            Assert.True(Math.Abs(editor.Height - page.Height) <= 2,
+                $"The editor is {editor.Height:0.#} tall and the preview under it {page.Height:0.#}: one starts with more than its half");
+
+            window.Width = 1400;
+            Ui.Settle();
+            editor = Placed(window, group.Editor);
+            page = Placed(window, preview);
+            Assert.True(!group.SideUnder && page.Left >= editor.Right - 0.5 && Math.Abs(editor.Width - page.Width) <= 2,
+                $"At a wide window README.md's editor stands at {editor} and its preview at {page}, not side by side in halves");
+        }
+        finally
+        {
             window.Close();
             TestFolders.Delete(folder);
         }

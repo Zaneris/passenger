@@ -61,12 +61,15 @@ public sealed class EditorGroup : DockPanel
 
     /// <summary>At the strip's end, shown while tabs are out of its sight: the list of them.</summary>
     private readonly Button hiddenTabs;
-    private readonly Grid body;
+
+    /// <summary>The editor's place and a pane of its file's own beside it, or under it in a narrow group.</summary>
+    private readonly ToolWindows.PaneSplit body;
+
+    /// <summary>The editor and what shows over it in its stead: a diff, an asset, a table, a Godot project's page.</summary>
+    private readonly Panel editorPlace;
 
     /// <summary>The body with the theme's picture over it: the group's own child, before which the bars over the body go.</summary>
     private readonly Panel bodyLayer;
-    private HairlineDivider? divider;
-    private Control? side;
     private readonly Banner banner = new();
     private readonly Button bannerLink;
     private EditorTab? active;
@@ -133,9 +136,8 @@ public sealed class EditorGroup : DockPanel
         Children.Add(tabBar);
         Children.Add(banner);
         Children.Add(Find);
-        // The editor beside a pane of its file's own (a XAML file's preview), divided by a hairline that resizes them.
-        body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,0,0") };
-        body.Children.Add(Editor);
+        editorPlace = new Panel { Children = { Editor } };
+        body = new ToolWindows.PaneSplit(editorPlace, null, "*,1,*");
         // The picture over the body, whatever it holds, in a panel of their own.
         bodyLayer = new Panel { Children = { body, new ThemeBackdrop(BackgroundPlaces.Editor) } };
         Children.Add(bodyLayer);
@@ -187,43 +189,19 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The columns of the editor's gutter, fed from the file it shows.</summary>
     public EditorGutter Gutter { get; }
 
-    /// <summary>A pane beside the editor for the file it shows (a XAML file's preview), half the group's width at first and
-    /// resized by the hairline between them; null for none.</summary>
+    /// <summary>A pane for the file the editor shows (a XAML file's preview, a Markdown file's), half the group at first
+    /// and resized by the hairline between them: beside the editor, or under it where the group is narrow and tall as
+    /// a tool window's two panes stand (<see cref="ToolWindows.PaneSplit"/>), so each keeps a width to read; null for none.
+    /// Another file's pane takes the place the last one was given.</summary>
     public Control? Side
     {
-        get => side;
-        set
-        {
-            if (value == side)
-            {
-                return;
-            }
-            if (side is not null)
-            {
-                body.Children.Remove(side);
-            }
-            if (value is null)
-            {
-                body.Children.Remove(divider!);
-                divider = null;
-                body.ColumnDefinitions = new ColumnDefinitions("*,0,0");
-            }
-            else if (divider is null)
-            {
-                // A divider only while there is a pane to divide from, so the splits' own are the only ones otherwise.
-                divider = new HairlineDivider(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
-                body.Children.Add(divider);
-                body.ColumnDefinitions = new ColumnDefinitions("*,1,*");
-            }
-            side = value;
-            if (value is not null)
-            {
-                // Another file's pane takes the place the last one was given.
-                Grid.SetColumn(value, 2);
-                body.Children.Add(value);
-            }
-        }
+        get => body.Second;
+        set => body.Second = value;
     }
+
+    /// <summary>Whether the pane of the file's own stands under the editor rather than beside it.</summary>
+    public bool SideUnder => body.IsStacked;
+
     public FindBar Find { get; }
 
     /// <summary>The tab strip's toggle of the preview beside the editor, shown while the group shows a Markdown file or a
@@ -473,7 +451,7 @@ public sealed class EditorGroup : DockPanel
         {
             ClearPreview();
             preview = PreviewOf(tab.Document);
-            body.Children.Add(preview);
+            editorPlace.Children.Add(preview);
         }
         else if (tab != active && views.TryGetValue(tab.Document, out (SelectionSet Selections, Vector Scroll) view))
         {
@@ -577,7 +555,7 @@ public sealed class EditorGroup : DockPanel
             tables?.Hide();
             godotPage?.Hide();
             preview = PreviewOf(document);
-            body.Children.Add(preview);
+            editorPlace.Children.Add(preview);
             ShowBanner(document);
             tabBar.IsVisible = true;
             FollowSidePreview();
@@ -628,8 +606,8 @@ public sealed class EditorGroup : DockPanel
         {
             tables = new TableViewer();
             Children.Insert(Children.IndexOf(bodyLayer), tables.Bar);
-            // Over the editor in its own column, so a XAML-like pane beside it is never covered.
-            body.Children.Add(tables.Body);
+            // Over the editor in its place, so a XAML-like pane beside it is never covered.
+            editorPlace.Children.Add(tables.Body);
             tables.Switched += (_, _) =>
             {
                 AttachFind();
@@ -660,7 +638,7 @@ public sealed class EditorGroup : DockPanel
         {
             godotPage = new Godot.GodotPageViewer();
             Children.Insert(Children.IndexOf(bodyLayer), godotPage.Bar);
-            body.Children.Add(godotPage.Body);
+            editorPlace.Children.Add(godotPage.Body);
             godotPage.Switched += (_, _) =>
             {
                 if (godotPage.ShowsPage)
@@ -824,7 +802,7 @@ public sealed class EditorGroup : DockPanel
                 if (document.Asset is { } asset)
                 {
                     preview = new AssetPreviewControl(asset);
-                    body.Children.Add(preview);
+                    editorPlace.Children.Add(preview);
                     if (focused)
                     {
                         preview.Focus();
@@ -835,7 +813,7 @@ public sealed class EditorGroup : DockPanel
                 bool keys = preview?.IsKeyboardFocusWithin == true;
                 ClearPreview();
                 preview = PreviewOf(document);
-                body.Children.Add(preview);
+                editorPlace.Children.Add(preview);
                 if (keys)
                 {
                     FocusShown();
@@ -884,7 +862,7 @@ public sealed class EditorGroup : DockPanel
     {
         if (preview is not null)
         {
-            body.Children.Remove(preview);
+            editorPlace.Children.Remove(preview);
             (preview as IDisposable)?.Dispose();
             preview = null;
         }
