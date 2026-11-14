@@ -458,7 +458,7 @@ public static class VimMotions
         int to = caret;
         for (int i = 0; i < n; i++)
         {
-            int next = forward ? NextSentenceStart(text, to) : PreviousSentenceStart(text, to);
+            int next = forward ? NextSentenceStart(text, to) : NearestEmptyLine(text, PreviousSentenceStart(text, AboveEmptyLines(text, to)), to);
             if (i < n - 1 && (next == to || next == (forward ? text.Length : 0)))
             {
                 // A count running into the text's edge with sentences still to go fails, as Vim's does.
@@ -471,6 +471,40 @@ public static class VimMotions
             return null;
         }
         return to == text.Length && Settled(text, to, breakEnds) < to ? new VimTarget(Settled(text, to, breakEnds), VimMotionKind.Inclusive) : new VimTarget(to, VimMotionKind.Exclusive);
+    }
+
+    /// <summary>( from an empty line goes back over the empty lines before it: the end of the line with text above them,
+    /// the text's start where none is; any other offset as it is.</summary>
+    private static int AboveEmptyLines(TextSnapshot text, int offset)
+    {
+        if (!EmptyLineAt(text, offset))
+        {
+            return offset;
+        }
+        int line = text.GetLineFromOffset(offset);
+        while (line > 0 && text.GetLine(line).Length == 0)
+        {
+            line--;
+        }
+        return text.GetLine(line).Length == 0 ? 0 : text.GetLine(line).End;
+    }
+
+    /// <summary>( from text landing on a run of empty lines that ends just above it: the last of them, the nearest.</summary>
+    private static int NearestEmptyLine(TextSnapshot text, int found, int from)
+    {
+        int line = text.GetLineFromOffset(from) - 1;
+        if (!EmptyLineAt(text, found) || EmptyLineAt(text, from) || line < 0 || text.GetLineStart(line) <= found)
+        {
+            return found;
+        }
+        for (int between = text.GetLineFromOffset(found); between <= line; between++)
+        {
+            if (text.GetLine(between).Length > 0)
+            {
+                return found;
+            }
+        }
+        return text.GetLineStart(line);
     }
 
     /// <summary>The start of the first sentence after the offset: past a sentence's end and the blanks after it, an empty

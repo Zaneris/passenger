@@ -354,6 +354,24 @@ public class VimTests
     public void A_sentence_ending_its_line_ends_there_as_vims_does(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>( from an empty line goes back over the empty lines before it to the sentence above them, and from text
+    /// just after empty lines to the last of them, as Vim's does.</summary>
+    [Theory]
+    [InlineData("a b\n\n|\nc d", "(", "|a b\n\n\nc d")]
+    [InlineData("a b. c d\n\n|\nx", "(", "a b. |c d\n\n\nx")]
+    [InlineData("a b. c d\n\n|\nx", "((", "|a b. c d\n\n\nx")]
+    [InlineData("a b\n\n\nc |d", "((", "a b\n\n|\nc d")]
+    [InlineData("a b\n\n\nc |d", "(((", "|a b\n\n\nc d")]
+    [InlineData("\n\n|\nc d", "(", "|\n\n\nc d")]
+    [InlineData("a b\n|\nc d", "d(", "|\nc d")]
+    [InlineData("foo_bar = baz(qux[0], {k: v})\n\n\n  // |comment here\nend", "(", "foo_bar = baz(qux[0], {k: v})\n\n\n  |// comment here\nend")]
+    [InlineData("foo_bar = baz(qux[0], {k: v})\n\n|\n  // comment here\nend", "(", "|foo_bar = baz(qux[0], {k: v})\n\n\n  // comment here\nend")]
+    [InlineData("a b\n\n\n|\nc d", "(", "|a b\n\n\n\nc d")]
+    [InlineData("a b\n\n\n|\nc d", "2(", "a b\n\n\n|\nc d")]
+    [InlineData("a b.\n\n\nc |d", "(", "a b.\n\n\n|c d")]
+    public void Back_a_sentence_over_empty_lines_goes_where_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     /// <summary>A text whose file keeps no final line break: where a change leaves its last line empty, that line is a
     /// line, as Vim's buffer holds it, which the caret stands on and j, G and dd reach.</summary>
     [Theory]
