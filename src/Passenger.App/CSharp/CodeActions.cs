@@ -499,6 +499,33 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     private TextRange RenamedAt(OpenDocument document, TextSnapshot text, int offset) =>
         context.WebOf(document) is { } web ? WebAssist.WebWordAt(web, text, offset) : TextNavigation.WordAt(text, offset);
 
+    /// <summary>The character just before a renamed name that the server's edit of it in <paramref name="path"/> replaces
+    /// too (a '.', '#', '$' or '@'), where <paramref name="name"/> does not begin with it; else null.</summary>
+    internal static char? SigilOf(System.Text.Json.JsonElement edit, string path, TextSnapshot text, TextRange word, string name)
+    {
+        if (word.Start == 0 || word.Length == 0)
+        {
+            return null;
+        }
+        char before = text[word.Start - 1];
+        if (AssistContext.IsIdentifierChar(before) || char.IsWhiteSpace(before) || name.StartsWith(before))
+        {
+            return null;
+        }
+        foreach (FileEdits file in Shapes.WorkspaceEdit(edit).Where(f => f.Operation is null && PathNames.Same(DocumentUris.ToPath(f.Uri), path)))
+        {
+            foreach (LspTextEdit change in file.Edits)
+            {
+                if (text.GetOffset(ServerPlaces.PositionOf(text, change.Range.Start)) == word.Start - 1
+                    && text.GetOffset(ServerPlaces.PositionOf(text, change.Range.End)) == word.End)
+                {
+                    return before;
+                }
+            }
+        }
+        return null;
+    }
+
     /// <summary>A name renamed through the language server at an offset of a file, a type's files named after it renamed
     /// with it when <paramref name="renameFiles"/> and the markup its class is made with following it
     /// (<see cref="TypeRename.MarkupAsync"/>), as one command of global undo: the window's Rename and an agent's alike. Why
@@ -598,6 +625,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             ? await godotServer.RenameAsync(new UriSpan(DocumentUris.FromPath(declaring), declared, declared), own)
             : component is null ? await context.Now(document).RenameAsync(at.Offset, name)
             : context.CSharp?.Session is { } session ? await session.RenameAsync(component.Name, name) : null;
+        // A server renaming the name with a sigil the name shown leaves out (.card, #main, $accent, @accent) is asked again with it.
+        if (renamed is { } bare && context.WebOf(document) is not null && SigilOf(bare, document.Path, text, RenamedAt(document, text, at.Offset), name) is char sigil)
+        {
+            renamed = await context.Now(document).RenameAsync(at.Offset, sigil + name);
+        }
         if (renamed is not { } edit)
         {
             // A server behind a file it reads from disk (the class's XAML making a field, however long ago written) may not know the name yet.

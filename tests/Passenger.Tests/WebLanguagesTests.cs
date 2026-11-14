@@ -425,6 +425,32 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>A stylesheet's class and an SCSS and a Less variable are renamed by the name the rename box shows, without
+    /// its '.', '$' or '@', and keep it where declared and used: the rule stays a class's, the variable a variable.</summary>
+    [AvaloniaFact]
+    public void A_stylesheets_class_and_variables_renamed_by_the_name_shown_keep_their_dot_and_sigil()
+    {
+        SkipWithoutNode();
+        MainWindow window = app.Open("wwwroot/css/site.css", languageServer: false);
+        foreach ((string file, string at, string shown, string name, string[] renamed) in (IEnumerable<(string, string, string, string, string[])>)[
+            ("wwwroot/css/site.css", ".btn-pri", "btn-primary", "btn-main", [".btn-main {"]),
+            ("wwwroot/css/theme.scss", "solid $acc", "accent", "brand", ["$brand: #1b6ec2;", "solid $brand;", "darken($brand, 10%)"]),
+            ("wwwroot/css/theme.less", "solid @acc", "accent", "brand", ["@brand: #1b6ec2;", "solid @brand;", "darken(@brand, 10%)"])])
+        {
+            window.OpenFile(app.PathOf(file));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, at);
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == shown, $"the rename box on {shown} in {file}");
+            window.KeyTextInput(name);
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => renamed.All(r => editor.Document.Snapshot.ToString().Contains(r, StringComparison.Ordinal)),
+                () => $"{shown} renamed to {name} keeping what goes before it in {file}; the status bar said: {window.Status}\n{editor.Document.Snapshot}");
+        }
+        window.Close();
+    }
+
     /// <summary>A web language server still being configured as its folder closes is never installed for it: the JSON
     /// server's configuring held while package.json opens, the window closed, then let go, its process ends.</summary>
     [AvaloniaFact]
