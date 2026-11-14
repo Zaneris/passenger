@@ -71,6 +71,10 @@ internal sealed class Connection : IDisposable
     /// without the inspector.</summary>
     public static Connection? Open(string path)
     {
+        if (path.StartsWith(Wire.Listens))
+        {
+            return Accept(path[1..]);
+        }
         if (!SocketFolders.Fits(path))
         {
             NotIn(SocketFolders.TooLong(path));
@@ -90,6 +94,75 @@ internal sealed class Connection : IDisposable
             NotIn($"it could not reach Passenger at {path}: {error.Message}");
             return null;
         }
+    }
+
+    /// <summary>How long an app on a device waits for Passenger to reach its socket before it runs on uninspected.</summary>
+    private static readonly TimeSpan AcceptLimit = TimeSpan.FromSeconds(60);
+
+    /// <summary>An app on a device listening on an abstract socket of this name, which Passenger reaches through adb's
+    /// forward, taking the first client whose first line is the launch's token (<see cref="Wire.TokenVariable"/>); null,
+    /// having said why, once none came in time. The app's start waits for it, so nothing it says before then is lost.</summary>
+    private static Connection? Accept(string name)
+    {
+        string? token = Environment.GetEnvironmentVariable(Wire.TokenVariable);
+        OwnEnvironment.Set(Wire.TokenVariable, null);
+        if (token is not { Length: > 0 })
+        {
+            NotIn($"it was given no token for its socket {name}");
+            return null;
+        }
+        using Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        try
+        {
+            listener.Bind(new UnixDomainSocketEndPoint("\0" + name));
+            listener.Listen(1);
+            long until = Environment.TickCount64 + (long)AcceptLimit.TotalMilliseconds;
+            while (Environment.TickCount64 < until)
+            {
+                if (!listener.Poll(TimeSpan.FromMilliseconds(250), SelectMode.SelectRead))
+                {
+                    continue;
+                }
+                Socket client = listener.Accept();
+                if (Said(client, token))
+                {
+                    return new Connection(client);
+                }
+                client.Dispose();
+            }
+            NotIn($"Passenger did not reach its socket {name} within {AcceptLimit.TotalSeconds:0} s");
+            return null;
+        }
+        catch (Exception error) when (error is SocketException or IOException or ArgumentException)
+        {
+            NotIn($"it could not listen on its socket {name}: {error.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Whether a client's first line, read within a few seconds, is the token.</summary>
+    private static bool Said(Socket client, string token)
+    {
+        client.ReceiveTimeout = 5000;
+        List<byte> line = [];
+        byte[] one = new byte[1];
+        try
+        {
+            while (line.Count <= token.Length && client.Receive(one) == 1)
+            {
+                if (one[0] == (byte)'\n')
+                {
+                    client.ReceiveTimeout = 0;
+                    return Encoding.UTF8.GetString([.. line]) == token;
+                }
+                line.Add(one[0]);
+            }
+        }
+        catch (SocketException)
+        {
+            // Silent past its time, or gone: not Passenger.
+        }
+        return false;
     }
 
     /// <summary>Why the inspector is not in the app, in the app's own error output (its run's console) and the trace.</summary>

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -59,14 +60,20 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     private NetworkStream? stream;
 
     private LiveApp(string name, string socket, Socket? listener, LaunchPlan? plan, IReadOnlyList<string> overlays, LiveAppKind kind = LiveAppKind.Avalonia,
-        string? uninspected = null)
+        string? uninspected = null, Run.Devices.DeviceInspector? device = null)
     {
         this.listener = listener;
         SocketPath = socket;
         Name = name;
         Overlays = overlays;
         Kind = kind;
-        if (plan is not null)
+        Device = device;
+        if (device is not null)
+        {
+            // The app's environment is its device's, which the start writes the inspector's variables into.
+            Plan = plan;
+        }
+        else if (plan is not null)
         {
             string inspector = kind == LiveAppKind.Wpf ? WpfInspectorPath : InspectorPath;
             // An Avalonia app nobody is to see may be started by its inspector, after every other hook, in place of its Main.
@@ -94,7 +101,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             }
             Plan = plan with { Environment = environment };
         }
-        if (listener is null)
+        if (listener is null && device is null)
         {
             // The app still carries the inspector, which finds no Passenger to serve and lets the app run on, saying why.
             State = LiveAppState.Refused;
@@ -108,6 +115,10 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>Where the inspectors' sockets are made: the state's socket folder (<see cref="SocketFolders.Own"/>) while null,
     /// else this folder, a test's own.</summary>
     public static string? SocketsIn { get; set; }
+
+    /// <summary>The inspector as a start puts it in an app on a device, which listens there for Passenger; null for an app of
+    /// this machine, which connects to Passenger's socket.</summary>
+    public Run.Devices.DeviceInspector? Device { get; }
 
     /// <summary>The inspector beside the app, as its build carries it.</summary>
     public static string InspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "Passenger.Inspector.dll");
@@ -240,6 +251,10 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// inspector, which lets the app run on without it.</summary>
     public static LiveApp? For(LaunchPlan plan, IReadOnlyList<string>? overlays = null, bool wpf = true)
     {
+        if (plan.Device is not null)
+        {
+            return OnDevice(plan, overlays ?? []);
+        }
         if ((UnseenApps.Inspected(plan) ?? plan.Built) is not { } built)
         {
             return null;
@@ -259,6 +274,29 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         }
         (string socket, Socket? listener, string? problem) = Listen(plan.Name);
         return new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind, problem);
+    }
+
+    /// <summary>The live app for a plan that runs an app on a device whose build deployed Avalonia (Avalonia.Base.dll among
+    /// the assemblies its Debug build deployed): its inspector, with the files it carries and its overlays, for the start to
+    /// put in (<see cref="Run.Devices.DeviceLaunches"/>), listening on an abstract socket of its own for the token only this
+    /// launch knows; null for any other app, one not installed yet, or a build of Passenger with no inspector.</summary>
+    private static LiveApp? OnDevice(LaunchPlan plan, IReadOnlyList<string> overlays)
+    {
+        if (plan.Device?.App is not { } app || !File.Exists(InspectorPath))
+        {
+            return null;
+        }
+        string assets = Path.Combine(app.Intermediate, "android", "assets");
+        if (!Directory.Exists(assets) || !Directory.EnumerateFiles(assets, "Avalonia.Base.dll", SearchOption.AllDirectories).Any())
+        {
+            return null;
+        }
+        string socket = $"passenger-inspector-{Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
+        string token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+        // The hook first: its folder's other assemblies are what it carries (XAML Hot Reload's compiler, the headless platform).
+        string[] files = [InspectorPath, .. Directory.EnumerateFiles(Path.GetDirectoryName(InspectorPath)!, "*.dll").Where(f => !PathNames.Same(f, InspectorPath)).Order(StringComparer.Ordinal)];
+        KeyValuePair<string, string>[] more = overlays.Count > 0 ? [new(Wire.OverlaysVariable, string.Join(',', overlays))] : [];
+        return new LiveApp(plan.Name, $"{Wire.Listens}{socket}", null, plan, overlays, device: new Run.Devices.DeviceInspector(socket, token, files, more));
     }
 
     /// <summary>The inspector a XAML file's Avalonia previewer loads to say where it draws each element, and what the
@@ -462,19 +500,30 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     private async Task ServeAsync()
     {
         Socket client;
-        try
+        if (Device is { } device)
         {
-            client = await listener!.AcceptAsync(closing.Token);
+            if (await ReachAsync(device, closing.Token) is not { } reached)
+            {
+                return;
+            }
+            client = reached;
         }
-        catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
+        else
         {
-            return;
-        }
-        finally
-        {
-            // The one app it was made for has come (or will not): nothing else may connect.
-            listener!.Dispose();
-            Forget(SocketPath);
+            try
+            {
+                client = await listener!.AcceptAsync(closing.Token);
+            }
+            catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
+            {
+                return;
+            }
+            finally
+            {
+                // The one app it was made for has come (or will not): nothing else may connect.
+                listener!.Dispose();
+                Forget(SocketPath);
+            }
         }
         NetworkStream network = new(client, ownsSocket: true);
         stream = network;
@@ -512,6 +561,69 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     }
 
     private void FailAll() => asked.End(_ => new LiveAppException($"{Name} has ended"));
+
+    /// <summary>How long a connection through adb's forward is watched for adb's end of it, which comes at once where the app's
+    /// socket is not listening yet.</summary>
+    private static readonly TimeSpan Unanswered = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>The inspector in an app on a device reached through adb's forward once the start has made one: connected and
+    /// given the token, again and again until the app's socket takes it, as adb takes each connection here and ends it at
+    /// once while the app's inspector is not listening yet. Null where the session ended first, or no port was forwarded,
+    /// which the app is refused for.</summary>
+    private async Task<Socket?> ReachAsync(Run.Devices.DeviceInspector device, CancellationToken stop)
+    {
+        int port;
+        try
+        {
+            port = await device.Reached.WaitAsync(stop);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (IOException unforwarded)
+        {
+            UiThread.Post(() =>
+            {
+                Problem = $"{Name} runs uninspected: {unforwarded.Message}";
+                Become(LiveAppState.Refused);
+            });
+            return null;
+        }
+        byte[] token = System.Text.Encoding.UTF8.GetBytes(device.Token + "\n");
+        while (!stop.IsCancellationRequested)
+        {
+            Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            try
+            {
+                await socket.ConnectAsync(IPAddress.Loopback, port, stop);
+                await socket.SendAsync(token, SocketFlags.None, stop);
+                if (!socket.Poll(Unanswered, SelectMode.SelectRead) || socket.Available > 0)
+                {
+                    return socket;
+                }
+            }
+            catch (SocketException)
+            {
+                // adb's end, or no adb: asked again in a moment.
+            }
+            catch (OperationCanceledException)
+            {
+                socket.Dispose();
+                return null;
+            }
+            socket.Dispose();
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), stop);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+        }
+        return null;
+    }
 
     /// <summary>Everything the app has told unasked since the UI thread last heard it, in the order told.</summary>
     private void Hear()
@@ -613,7 +725,10 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         closing.Cancel();
         listener?.Dispose();
         stream?.Dispose();
-        Forget(SocketPath);
+        if (Device is null)
+        {
+            Forget(SocketPath);
+        }
         FailAll();
         Become(LiveAppState.Ended);
     }

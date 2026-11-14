@@ -1230,6 +1230,7 @@ public sealed partial class BuildRunController
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
             LiveApp? inspected = session.RunApp;
+            Devices.DevicePut? put = plan.Device?.App is { } inspecting ? await InspectOnDeviceAsync(inspecting, inspected, work) : null;
             ShowBindings();
             // dotnet watch opens no browser of its own: the plan's opens through the window once the program listens.
             Dictionary<string, string> variables = watched
@@ -1311,10 +1312,10 @@ public sealed partial class BuildRunController
             {
                 Keep(Take(ref dashboard), session.Runner.Ended, () => session.Runner.WasStopped, said => parts.Views.Run.Append($"{said}\n"));
             }
-            if (notStarted is null && plan.Device?.App is { } onDevice)
+            if (plan.Device?.App is { } onDevice)
             {
                 // Its shell on the device ends with the app; Stop ends the shell here, so the app is ended there too.
-                IdeErrors.Observe(EndOnDeviceAsync(session.Runner.Ended, onDevice));
+                session.EndsOnDevices(EndOnDeviceAsync(notStarted is null ? session.Runner.Ended : Task.FromResult(0), onDevice, put), () => DeviceLaunches.EndAsync(onDevice, put));
             }
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {

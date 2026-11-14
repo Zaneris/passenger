@@ -1,6 +1,7 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.LiveTree;
 using Passenger.App.Mobile;
 using Passenger.App.Run.Devices;
 using Passenger.Core;
@@ -11,9 +12,11 @@ namespace Passenger.Tests;
 
 /// <summary>Avalonia's cross-platform solution (<c>dotnet new avalonia.xplat</c>) with its Android head taken to the first
 /// .NET whose Android apps run on CoreCLR, run and debugged on an emulator from the window: the head is chosen to run
-/// there, Run installs and starts it, and Debug stops at a breakpoint in the shared project's App, its locals shown, the
-/// shared library still built for its own framework. Skips, saying why, without the Android workload, its SDK and Java,
-/// Avalonia's Android packages in the package cache, an emulator, or the relays. Debugged through the window, so alone.</summary>
+/// there, Run installs and starts it with Passenger's inspector in it, whose tree shows the shared view and takes a XAML
+/// edit saved, and Debug stops at a breakpoint in the shared project's App, its locals shown, the shared library still
+/// built for its own framework; each end leaves nothing of Passenger's on the device. Skips, saying why, without the
+/// Android workload, its SDK and Java, Avalonia's Android packages in the package cache, an emulator, or the relays.
+/// Debugged through the window, so alone.</summary>
 [Collection(Alone.Name)]
 public sealed class AvaloniaAndroidTests
 {
@@ -72,9 +75,24 @@ public sealed class AvaloniaAndroidTests
             Ui.WaitFor(() => Output(window).Contains($"{Package} started as process ", StringComparison.Ordinal),
                 () => $"the app's start in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
             Ui.WaitFor(() => Pid(tools, window).Length > 0, "the app to run on the emulator", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, () => $"the inspector in the app on the emulator to say hello; it is "
+                + $"{window.Session.RunApp?.State.ToString() ?? "not made"} ({window.Session.RunApp?.Problem}): {Ui.Said(window)}\n{Output(window)}", Slow);
+            TreeAsked tree = new(window.Session.RunApp!);
+            // The app's Application says hello before its activity shows the shared view.
+            Ui.WaitFor(() => tree.Holds(e => e.Type == "MainView") && tree.Holds(e => e.Type == "TextBox"),
+                () => $"the shared view and its TextBox in the app's tree; it shows {tree.Shown}", Slow);
+
+            // The shared view's XAML edited and saved reaches the app on the emulator.
+            window.OpenFile(Path.Combine(folder, "XApp", "Views", "MainView.axaml"));
+            Ui.Settle();
+            Typing.Replace(window, "<TextBox Text=\"{Binding Greeting}\"", "<TextBlock Text=\"Edited on the emulator\"");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => tree.Holds(e => e.Type == "TextBlock") && !tree.Holds(e => e.Type == "TextBox"),
+                () => $"the saved XAML's TextBlock in the app's tree in place of its TextBox; it shows {tree.Shown}: {Ui.Said(window)}", Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
             Ui.WaitFor(() => Pid(tools, window).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, window)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Left(tools).Length == 0, () => $"the inspector's port and files to be let go on the emulator; it still has {Left(tools)}", TimeSpan.FromSeconds(30));
 
             string app = Path.Combine(folder, "XApp", "App.axaml.cs");
             window.OpenFile(app);
@@ -96,6 +114,7 @@ public sealed class AvaloniaAndroidTests
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
             Ui.WaitFor(() => Pid(tools, window).Length == 0, () => $"the debugged app to end on the emulator once stopped; it runs as {Pid(tools, window)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Left(tools).Length == 0, () => $"the debugging's ports and files to be let go on the emulator; it still has {Left(tools)}", TimeSpan.FromSeconds(30));
         }
         finally
         {
@@ -109,6 +128,47 @@ public sealed class AvaloniaAndroidTests
 
     /// <summary>A local's value as Variables shows it where the program stopped; null before it shows one.</summary>
     private static string? Shown(MainWindow window, string name) => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == name)?.Value;
+
+    /// <summary>The app's tree as its inspector last answered, asked again each time the last answer is read, so a wait
+    /// on what it shows never waits inside itself.</summary>
+    private sealed class TreeAsked(LiveApp app)
+    {
+        private Task<Passenger.Inspector.AppTree>? asking;
+        private List<Passenger.Inspector.Element> read = [];
+
+        /// <summary>The elements' types as last read.</summary>
+        public string Shown => string.Join(", ", read.Select(e => e.Type));
+
+        /// <summary>Whether the last answer holds an element so; the next answer is asked for once this one is read.</summary>
+        public bool Holds(Func<Passenger.Inspector.Element, bool> wanted)
+        {
+            asking ??= app.TreeAsync();
+            Task<Passenger.Inspector.AppTree> answered = asking;
+            if (answered.IsCompleted)
+            {
+                asking = null;
+                read = [];
+                if (answered.IsCompletedSuccessfully)
+                {
+                    read = [.. Passenger.Inspector.AppTree.Walk(answered.Result.Roots).Select(e => e.Element)];
+                }
+            }
+            return read.Any(wanted);
+        }
+    }
+
+    /// <summary>What a start left on the device: a port forwarded to a relay's or an inspector's socket, the inspector's
+    /// files in the app, the app marked as debugged; empty once its end took them away.</summary>
+    private static string Left(AndroidTools tools)
+    {
+        string forwards = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["forward", "--list"]))), "adb's forwards").Output;
+        string files = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["shell", $"run-as {Package} ls -a files"]))), "the app's files").Output;
+        string debugged = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["shell", "dumpsys activity processes | grep mDebugApp="]))),
+            "the device's debugged app").Output;
+        return string.Join("; ", [.. forwards.Split('\n').Where(l => l.Contains("localabstract:passenger-", StringComparison.Ordinal)).Select(l => l.Trim()),
+            .. files.Split('\n').Any(l => l.Trim() == ".passenger") ? ["the inspector's files"] : (string[])[],
+            .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [$"{Package} marked as debugged"] : (string[])[]]);
+    }
 
     /// <summary>The app's process on the device the window chose, as pidof says it: empty once it has ended.</summary>
     private static string Pid(AndroidTools tools, MainWindow window)

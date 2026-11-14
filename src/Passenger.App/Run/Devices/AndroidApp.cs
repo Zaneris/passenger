@@ -121,16 +121,33 @@ public sealed record AndroidApp(string Serial, string Adb, string Package, strin
         new(RelayWaitVariable, "60000"),
     ];
 
+    /// <summary>Where a start puts the inspector's files in the app, a folder of their own beside its fast-deployment
+    /// folder, so none takes the place of an assembly the app deployed.</summary>
+    public string Carried => $"/data/user/0/{Package}/files/.passenger";
+
     /// <summary>The app's own shell putting the staged relay and environment in its folder, saying first where its own
     /// environment file pointed (a link fast deployment made), which <see cref="TakeRelayOut"/> puts back.</summary>
-    public IReadOnlyList<string> PutRelayIn(string abi) => On("shell",
-        $"run-as {Package} sh -c 'cd {OverrideFolder(abi)} || exit 1; readlink environment; cp {Staged("relay")} {RelayFile} && rm -f environment && cp {Staged("environment")} environment'"
-        + $"; rm -f {Staged("relay")} {Staged("environment")}");
+    public IReadOnlyList<string> PutRelayIn(string abi) => PutIn(abi, relay: true, []);
+
+    /// <summary>The app's own shell putting in what a start staged: the relay beside its assemblies (Debug's), the files
+    /// named in <see cref="Carried"/> (the inspector's), and the environment over the build's own, saying first where that
+    /// pointed (a link fast deployment made), which <see cref="TakeOut"/> puts back.</summary>
+    public IReadOnlyList<string> PutIn(string abi, bool relay, IReadOnlyList<string> carried) => On("shell",
+        $"run-as {Package} sh -c 'cd {OverrideFolder(abi)} || exit 1; readlink environment; "
+        + (relay ? $"cp {Staged("relay")} {RelayFile} && " : string.Empty)
+        + (carried.Count > 0 ? $"mkdir -p {Carried} && {string.Concat(carried.Select(f => $"cp {Staged(f)} {Carried}/{f} && "))}" : string.Empty)
+        + $"rm -f environment && cp {Staged("environment")} environment'"
+        + $"; rm -f {string.Join(' ', (relay ? (string[])["relay"] : []).Concat(carried).Append("environment").Select(Staged))}");
 
     /// <summary>The app's own shell taking the relay and its environment out again, the build's link put back where there
     /// was one (<paramref name="linked"/>).</summary>
-    public IReadOnlyList<string> TakeRelayOut(string abi, string? linked) => On("shell",
-        $"run-as {Package} sh -c 'cd {OverrideFolder(abi)} || exit 1; rm -f {RelayFile} environment"
+    public IReadOnlyList<string> TakeRelayOut(string abi, string? linked) => TakeOut(abi, linked, relay: true, carried: false);
+
+    /// <summary>The app's own shell taking out what <see cref="PutIn"/> put in, the build's link put back where there was
+    /// one (<paramref name="linked"/>).</summary>
+    public IReadOnlyList<string> TakeOut(string abi, string? linked, bool relay, bool carried) => On("shell",
+        $"run-as {Package} sh -c 'cd {OverrideFolder(abi)} || exit 1; " + (carried ? $"rm -rf {Carried}; " : string.Empty)
+        + $"rm -f {(relay ? RelayFile + " " : string.Empty)}environment"
         + (linked is { Length: > 0 } ? $" && ln -s {linked} environment'" : "'"));
 
     /// <summary>The ABI's folder name for the relay's runtime identifier (<c>arm64-v8a</c>'s android-arm64); null for one no relay is built for.</summary>

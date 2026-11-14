@@ -61,12 +61,27 @@ internal sealed class AppAvaloniaContext(string what, string hook) : AssemblyLoa
     /// that only carries the platform, for its tests or through a package, leaves no reference in the program.</summary>
     public static bool ProgramUsesHeadless() => Assembly.GetEntryAssembly()?.GetReferencedAssemblies().Any(a => a.Name == "Avalonia.Headless") == true;
 
-    /// <summary>The Avalonia the program will load, from the assemblies the runtime was given for it (null when it has
-    /// none), and whether the hooks serve it: its major version theirs.</summary>
+    /// <summary>The Avalonia the program will load, from the assemblies the runtime was given for it, else (an app on a
+    /// device, whose host finds its assemblies itself) as the runtime finds it by name; null when it has none. And whether
+    /// the hooks serve it: its major version theirs.</summary>
     public static (Version? Version, bool Served) ProgramAvalonia()
     {
-        Version? version = StartupHooks.TrustedAssembly("Avalonia.Base.dll") is { } path ? AssemblyName.GetAssemblyName(path).Version : null;
+        Version? version = StartupHooks.TrustedAssembly("Avalonia.Base.dll") is { } path ? AssemblyName.GetAssemblyName(path).Version : Found("Avalonia.Base");
         return (version, version?.Major == StartupHooks.AvaloniaMajor);
+    }
+
+    /// <summary>An assembly's version as the default context finds it by name, loaded where the program loads it, none of
+    /// its code run; null where it finds none.</summary>
+    private static Version? Found(string name)
+    {
+        try
+        {
+            return Default.LoadFromAssemblyName(new AssemblyName(name)).GetName().Version;
+        }
+        catch (Exception error) when (error is FileNotFoundException or FileLoadException or BadImageFormatException)
+        {
+            return null;
+        }
     }
 
     protected override Assembly? Load(AssemblyName name) =>

@@ -22,6 +22,15 @@ public static class Wire
     [IdentifierHome]
     public const string SocketVariable = "PASSENGER_INSPECTOR";
 
+    /// <summary>What begins <see cref="SocketVariable"/>'s value where the app listens rather than connects: an app on a
+    /// device, whose abstract socket of this name Passenger reaches through adb's forward.</summary>
+    public const char Listens = '@';
+
+    /// <summary>The app's environment where it listens (<see cref="Listens"/>): the line Passenger first writes, which only the
+    /// launch that put it there knows.</summary>
+    [IdentifierHome]
+    public const string TokenVariable = "PASSENGER_INSPECTOR_TOKEN";
+
     /// <summary>The app's environment: Avalonia's renderer debug overlays its windows show from the launch on, as
     /// <see cref="Request.Overlays"/> names them, joined by commas.</summary>
     [IdentifierHome]
