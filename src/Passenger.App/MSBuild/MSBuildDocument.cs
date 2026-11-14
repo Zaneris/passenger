@@ -111,7 +111,8 @@ public sealed class MSBuildDocument : IDisposable
         return new MSBuildContext(Document.Path, tree, schema, Insight, sdks);
     }
 
-    /// <summary>What completion offers at a caret, for the text as it stands: package ids and versions asked of the feeds.</summary>
+    /// <summary>What completion offers at a caret, for the text as it stands: package ids and versions asked of the feeds, a
+    /// version marked where it is vulnerable or deprecated.</summary>
     public async Task<MSBuildCompletionList?> CompleteAsync(int caret, CancellationToken cancel)
     {
         MSBuildContext context = await ContextAsync();
@@ -137,12 +138,21 @@ public sealed class MSBuildDocument : IDisposable
                 };
             }
             IReadOnlyList<string> versions = await feed.VersionsAsync(ask.Id, true, cancel);
-            VulnerabilityData known = await service.KnownVulnerabilitiesAsync();
+            Task<VulnerabilityData> auditing = service.KnownVulnerabilitiesAsync();
+            Task deprecating = service.DeprecationsAsync([.. versions.Select(v => (ask.Id, v))]);
+            await Task.WhenAll(auditing, deprecating);
+            VulnerabilityData known = await auditing;
             return list with
             {
                 Items = [.. versions.OrderByDescending(v => v, VersionOrder.Instance).Select((v, i) => new MSBuildItem(v, MSBuildItemKind.Version, v,
-                    known.Of(ask.Id, v) is [{ } gravest, ..] ? $"{gravest.Severity} severity vulnerability"
-                        : VersionOrder.IsPrerelease(v) ? "prerelease" : null) { SortText = $"{i:D4}" })],
+                    // Both marks shortened to fit the width a list gives a detail.
+                    (known.Of(ask.Id, v), service.Deprecated?.Invoke(ask.Id, v)) switch
+                    {
+                        ([{ } gravest, ..], not null) => $"{gravest.Severity} vulnerability, deprecated",
+                        ([{ } gravest, ..], null) => $"{gravest.Severity} severity vulnerability",
+                        (_, not null) => "Deprecated",
+                        _ => VersionOrder.IsPrerelease(v) ? "prerelease" : null,
+                    }) { SortText = $"{i:D4}" })],
             };
         }
         catch (Exception failed) when (FeedSet.IsFeedFailure(failed) && !cancel.IsCancellationRequested)

@@ -184,6 +184,24 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
+    /// <summary>Completing a package reference's version marks each version its owner deprecated, as the folder's feed's
+    /// registration says, read as the list is asked for (the file's marks asked only of the reference's own 3.0.0), one
+    /// also vulnerable marked as both.</summary>
+    [AvaloniaFact]
+    public void Completing_a_package_version_marks_those_its_owner_deprecated()
+    {
+        Write("App/App.csproj", Project.Replace("<ProjectReference Include=\"../\" />",
+            "<PackageReference Include=\"Passenger.Other\" Version=\"3.0.0\" />\n    <ProjectReference Include=\"../\" />", StringComparison.Ordinal));
+        MainWindow window = Open("App/App.csproj");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Include=\"Passenger.Other\" Version=\"");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Count == 3, "Passenger.Other's three versions");
+        Assert.Equal([("3.0.0", ""), ("2.5.0", "Deprecated"), ("2.0.0", "High vulnerability, deprecated")], window.Assist.CompletionDetails);
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void The_card_over_a_name_says_its_evaluated_value_and_where_it_was_set_and_go_to_declaration_goes_there()
@@ -585,10 +603,13 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
             feed.Add("Passenger.Vulnerable", "1.0.1");
             feed.Add("Passenger.Vulnerable", "1.1.0");
             feed.Add("Passenger.Sample", "2.0.0");
+            feed.Add("Passenger.Other", "2.0.0");
             feed.Add("Passenger.Other", "2.5.0");
             feed.Add("Passenger.Other", "3.0.0");
             feed.Advise("Passenger.Vulnerable", 1, Advisory, "[1.0.0, 1.0.1)");
             feed.Deprecate("Passenger.Other", "2.5.0", ["Legacy"], Retired, "Passenger.Sample", "[2.0.0, )");
+            feed.Advise("Passenger.Other", 2, "https://github.com/advisories/GHSA-pass-0001-test", "[2.0.0, 2.5.0)");
+            feed.Deprecate("Passenger.Other", "2.0.0", ["CriticalBugs"], "Broken past repair.");
             // Only the stand-in, for packages and for the audit, and restores kept out of the person's package cache.
             Put("nuget.config", $"""
                 <?xml version="1.0" encoding="utf-8"?>
