@@ -98,6 +98,11 @@ public partial class MainWindow
             Words = ["Solution View", "Files View", "File System View", "Show Files on Disk"],
         });
         ActionButtons.Bind(Explorer.ViewSwitchButton, A.SwitchExplorerView, actions, id => Request(id));
+        Row(A.DotnetFormat, "dotnet format",
+            row => IdeErrors.Observe(DotnetFormatAsync(row)),
+            row => row.Kind is NodeKind.Solution or NodeKind.Project or NodeKind.Folder && row.Path is not null
+                ? WithoutSdk()
+                : $"{row.Name} is not a solution, project, or folder");
 
         static string? Holds(ExplorerNode row) => NewGoesIn(row) is null ? $"Nothing new goes in {row.Name}" : null;
         static string? Referencing(ExplorerNode row) => row.Kind == NodeKind.Project && !row.IsProgram ? row.Path
@@ -329,7 +334,16 @@ public partial class MainWindow
             {
                 entries.Add(Item(A.Publish));
             }
+            if (node.Kind is NodeKind.Solution or NodeKind.Project)
+            {
+                entries.Add(Item(A.DotnetFormat));
+            }
             entries.Add(separator);
+        }
+        // dotnet format on a folder (Solution and Project have it in the build group above).
+        if (node.Kind == NodeKind.Folder && node.Path is not null)
+        {
+            entries.AddRange([Item(A.DotnetFormat), separator]);
         }
         // A Godot project's page, from its project's row, its project.godot's or its folder's.
         if (GodotProjectOfRow(node) is not null)

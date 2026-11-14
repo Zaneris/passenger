@@ -264,6 +264,9 @@ public static class AppActions
     public const string RebuildSelected = "app.build.rebuildSelected";
     public const string CleanSelected = "app.build.cleanSelected";
 
+    // dotnet format on a solution, project or folder: no keymap key (not in Rider's keymaps).
+    public const string DotnetFormat = "app.build.dotnetFormat";
+
     // Publish of the chosen project to a folder through a profile, and again with the profile it last published with: no
     // keys of Rider's.
     public const string Publish = "app.build.publish";
