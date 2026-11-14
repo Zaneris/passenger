@@ -393,13 +393,13 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   its code (`ProjectSession.ConfiguredCodeOf`, `ProjectModel.ProgramsRunning`), never its own library's folder.
 - **Debugging.** `DebugController`, `DebugSession`; Variables and the hover card are one list, a hover evaluating only
   inside the stopped frame's method (`MethodBounds`). A row's expression is the debugger's `evaluateName`, never built
-  in the window. A library's types are shown as the App tells the debugger at launch (`DapTypePresentation`), never by
+  in the window. A frame is named only through `FrameNames` (a lambda or local function by the method it is written in, never the compiler's name); an exception's StackTrace as the runtime writes it. A library's types are shown as the App tells the debugger at launch (`DapTypePresentation`), never by
   engine code naming a library. An exception is read from what it stores, a getter or `ToString` only where that can't
   be. An HTTPS page's dev certificate is only read, never made or trusted. Every breakpoint through one pipeline
   (`IHitBreakpoint`). A program attached to in a container maps its paths by its Compose labels' Dockerfile
   (`ContainerReach.PathsAsync`), else back by the engine's own match (`SourcePaths.FileOf`).
 - **Tests window.** `TestFinder`; tests are keyed by themselves (`TestItem.ById`), never a key string per test;
-  `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
+  a runner's failure stack goes through `FailureStacks.Once` (NUnit's adapter repeats each stack after its number); `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
   asks to attach: `LaunchTestHost` is never called for one); the person's `GODOT_BIN` wins; GUT's tests are chosen by
   `GutRuns.Hook`, never `-gunit_test_name` or `-ginner_class`, which take substrings; what a read depends on is taken
   inside `TestFinder.ReadFile`'s parse, never captured by a listing. A case named in place of its method is a row from
