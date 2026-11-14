@@ -52,6 +52,8 @@ public sealed partial class Vim
             "c" => Change(command, text, selections, stretches),
             "y" => Yank(text, selections, stretches, view),
             ">" or "<" => Shift(text, selections, stretches, op == ">", view),
+            "=" => Reindent(text, selections, stretches),
+            "gq" or "gw" => Wrap(op == "gw", text, selections, stretches, view),
             _ => Case(command, op, text, selections, stretches, view),
         };
         bool empty = stretches.All(t => !t.Lines && t.End == t.Start);
@@ -239,6 +241,50 @@ public sealed partial class Vim
         {
             Stretch? mine = Mine(stretches, c.Caret);
             return mine is { } s ? Selection.At(VimMotions.FirstNonBlank(after, s.First)) : Selection.At(Settled(after, TextEditing.MapOffset(c.Caret, edits, false)));
+        });
+        return edits.Count == 0 ? new VimResult(true, carets) : new VimResult(true, Edits: [new EditPlan(edits, carets, EditKind.Other)]);
+    }
+
+    /// <summary>The lines the stretches span, those that meet or touch made one, in order.</summary>
+    private static List<(int First, int Last)> LinesOf(List<Stretch> sorted)
+    {
+        List<(int First, int Last)> lines = [];
+        foreach (Stretch s in sorted.OrderBy(s => s.First))
+        {
+            if (lines.Count > 0 && s.First <= lines[^1].Last + 1)
+            {
+                lines[^1] = (lines[^1].First, Math.Max(lines[^1].Last, s.Last));
+                continue;
+            }
+            lines.Add((s.First, s.Last));
+        }
+        return lines;
+    }
+
+    /// <summary>=: the lines the stretches span laid out by the host as its Reformat Code lays them out, each caret on its
+    /// stretch's first line's first non-blank.</summary>
+    private static VimResult Reindent(TextSnapshot text, SelectionSet selections, List<Stretch> stretches)
+    {
+        SelectionSet carets = selections.With(c => Mine(stretches, c.Caret) is { } s ? Selection.At(VimMotions.FirstNonBlank(text, s.First)) : c);
+        return new VimResult(true, carets) { Request = new VimRequest(VimRequestKind.Reformat) { Lines = LinesOf(stretches) } };
+    }
+
+    /// <summary>gq and gw: the lines the stretches span wrapped at textwidth (else the width the view gives, else Vim's
+    /// 79); gq leaves each caret on its last line's first non-blank, gw (<paramref name="stay"/>) where it was in the text.</summary>
+    private VimResult Wrap(bool stay, TextSnapshot text, SelectionSet selections, List<Stretch> stretches, IVimView view)
+    {
+        int width = Options.TextWidth > 0 ? Options.TextWidth : view.LineLength > 0 ? view.LineLength : VimWrapping.DefaultWidth;
+        VimWrapping.Wrapped wrapped = VimWrapping.Wrap(text, LinesOf(stretches), width, view.Indent.TabWidth, view.LineEnding, view.LineComment);
+        IReadOnlyList<TextEdit> edits = wrapped.Edits;
+        TextSnapshot after = text.Apply(edits);
+        SelectionSet carets = selections.With(c =>
+        {
+            if (stay || Mine(stretches, c.Caret) is not { } s)
+            {
+                return Selection.At(Settled(after, wrapped.Map(c.Caret)));
+            }
+            int end = TextEditing.MapOffset(text.GetLine(s.Last).End, edits, true);
+            return Selection.At(VimMotions.FirstNonBlank(after, after.GetLineFromOffset(Math.Min(end, after.Length))));
         });
         return edits.Count == 0 ? new VimResult(true, carets) : new VimResult(true, Edits: [new EditPlan(edits, carets, EditKind.Other)]);
     }

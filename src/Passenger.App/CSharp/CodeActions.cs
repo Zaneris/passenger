@@ -801,6 +801,46 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
+    /// <summary>Vim's =: each stretch of the file's lines laid out as Reformat Code lays out a selection, the last first so
+    /// the lines above stay where they were, then each caret on its line's first non-blank; what it came to said.</summary>
+    internal async Task ReformatLinesAsync(OpenDocument document, IReadOnlyList<(int First, int Last)> lines)
+    {
+        using (BackgroundWork.Scope())
+        {
+            try
+            {
+                Reformatted? done = null;
+                for (int i = lines.Count - 1; i >= 0; i--)
+                {
+                    TextSnapshot text = document.Text.Snapshot;
+                    if (lines[i].Last >= text.LineCount)
+                    {
+                        continue;
+                    }
+                    TextRange range = TextRange.FromBounds(text.GetLineStart(lines[i].First), text.GetLine(lines[i].Last).End);
+                    done = await ReformatAsync(document, range, () => context.Ask("Reformat Code"));
+                    if (done is not { Applied: true })
+                    {
+                        break;
+                    }
+                }
+                if (context.Editors.Active == document)
+                {
+                    TextSnapshot after = document.Text.Snapshot;
+                    Editor.Selections = Editor.Selections.With(s => Selection.At(Vim.Settled(after, TextNavigation.IndentEnd(after, after.GetLine(after.GetLineFromOffset(s.Caret))))));
+                }
+                if (done is not null)
+                {
+                    context.Say(done.Said);
+                }
+            }
+            catch (LanguageServerFailed failed)
+            {
+                context.Failed("Reformat Code", failed);
+            }
+        }
+    }
+
     /// <summary>What Reformat Code came to: whether it was applied, whether it changed the text (not when the file was
     /// formatted already), and what to say of it, or why it was not applied.</summary>
     internal sealed record Reformatted(bool Applied, bool Changed, string Said);

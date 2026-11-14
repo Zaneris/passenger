@@ -57,6 +57,11 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>Escape in Vim's notation.</summary>
     public const string Escape = "<Esc>";
 
+    /// <summary>The keys with Ctrl normal and visual mode take, and what each does there, which Settings may give to the
+    /// keymap instead.</summary>
+    public static readonly IReadOnlyList<(string Key, string Does)> CtrlKeys =
+        [("<C-r>", "Redo"), ("<C-v>", "Visual block mode"), ("<C-o>", "Back to the place before"), ("<C-i>", "On to the place after")];
+
     /// <summary>The most undos or redos a count asks for at once: the window queues each apart.</summary>
     private const int MostRepeated = 1000;
 
@@ -96,8 +101,8 @@ public sealed partial class Vim(VimRegisters registers)
 
     public VimMode Mode { get; private set; } = VimMode.Normal;
 
-    /// <summary>The count and keys typed toward a command not yet complete ("2d"), for the status bar.</summary>
-    public string Pending => string.Concat(pending);
+    /// <summary>The count and keys typed toward a command not yet complete ("2d"), and toward a mapping, for the status bar.</summary>
+    public string Pending => string.Concat(pending) + string.Concat(typedAhead);
 
     /// <summary>The registers yanks, deletes and puts use: the set the editor's host gives, shared by the editors it
     /// holds, and a set of the Vim's own where none is given.</summary>
@@ -112,6 +117,15 @@ public sealed partial class Vim(VimRegisters registers)
         if (!replaying && !Playing && Recorded(key))
         {
             return VimResult.Held;
+        }
+        bool unmapped = unmappedLeft > 0;
+        if (unmapped)
+        {
+            unmappedLeft--;
+        }
+        if (!replaying && !unmapped && !key.StartsWith(GoKey, StringComparison.Ordinal) && Mapped(key) is { } mapped)
+        {
+            return mapped;
         }
         if (commandLine is not null)
         {
@@ -376,6 +390,7 @@ public sealed partial class Vim(VimRegisters registers)
         int times = count > 0 ? count : change.Count;
         List<EditPlan> plans = [];
         SelectionSet carets = selections;
+        VimRequest? asked = null;
         replaying = true;
         try
         {
@@ -419,13 +434,14 @@ public sealed partial class Vim(VimRegisters registers)
         }
         if (plans.Count == 0)
         {
-            return new VimResult(true, carets);
+            return new VimResult(true, carets) { Request = asked };
         }
         plans[^1] = plans[^1] with { Selections = carets };
-        return new VimResult(true, Edits: [.. plans.Select(p => p with { Kind = EditKind.Joined })]);
+        return new VimResult(true, Edits: [.. plans.Select(p => p with { Kind = EditKind.Joined })]) { Request = asked };
 
         void Follow(VimResult result)
         {
+            asked ??= result.Request;
             foreach (EditPlan plan in result.Edits ?? [])
             {
                 plans.Add(plan);

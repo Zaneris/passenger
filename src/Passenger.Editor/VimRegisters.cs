@@ -30,6 +30,9 @@ public sealed class VimRegisters
     /// <summary>The options :set changes, shared as the registers are.</summary>
     public VimOptions Options { get; } = new();
 
+    /// <summary>The mappings in force, read from the mappings file.</summary>
+    public VimMappings Mappings { get; set; } = VimMappings.None;
+
     /// <summary>What p puts with no register named: the text of the last yank, delete or change.</summary>
     public VimRegister? Unnamed { get; private set; }
 
@@ -136,4 +139,7 @@ public sealed class VimOptions
 
     /// <summary>Whether :s replaces every match on a line without g (and g then only the first).</summary>
     public bool GlobalDefault { get; set; }
+
+    /// <summary>The width gq wraps at; 0 for the width the editor gives (a file's max_line_length), else 79.</summary>
+    public int TextWidth { get; set; }
 }

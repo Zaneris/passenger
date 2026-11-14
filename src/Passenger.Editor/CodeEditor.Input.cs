@@ -65,9 +65,10 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        if (vim is { Mode: not Editor.VimMode.Insert })
+        if (vim is { Mode: not Editor.VimMode.Insert } || vimTookText)
         {
-            // Keys outside insert mode are commands, taken at the key press; their text must not type.
+            // Keys outside insert mode are commands, taken at the key press; their text must not type, nor a key a mapping took.
+            vimTookText = false;
             e.Handled = true;
             return;
         }

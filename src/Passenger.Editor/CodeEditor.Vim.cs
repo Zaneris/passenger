@@ -18,6 +18,9 @@ public sealed partial class CodeEditor
     /// <summary>Set while the editor does what Vim asked, so the selections it sets are Vim's own.</summary>
     private bool followingVim;
 
+    /// <summary>Set once Vim took the key just pressed in insert mode (a mapping holding it), so its text does not type.</summary>
+    private bool vimTookText;
+
     private VimRegisters vimRegisters = new();
 
     private EditorVimView? vimView;
@@ -54,6 +57,12 @@ public sealed partial class CodeEditor
         }
     }
 
+    /// <summary>The keys of <see cref="Vim.CtrlKeys"/> left to the keymap rather than taken by Vim mode, by Vim's names.</summary>
+    public IReadOnlySet<string> VimLeavesKeys { get; set; } = new HashSet<string>();
+
+    /// <summary>The width Vim's gq wraps at where textwidth is not set (the file's max_line_length); 0 for none.</summary>
+    public int LineLength { get; set; }
+
     /// <summary>Vim's mode now, or null with Vim mode off: for the status bar.</summary>
     public VimMode? VimModeShown => vim?.Mode;
 
@@ -83,15 +92,22 @@ public sealed partial class CodeEditor
     {
         action = null;
         repeat = 0;
+        vimTookText = false;
         if (vim is null || KeymapDispatcher.IsModifierOnly(e.Key) || preedit.Length > 0)
         {
             // A modifier pressed on its own comes before the key it changes, so it must not end a count or operator.
             return false;
         }
+        string key = VimKey(e);
+        if (VimLeavesKeys.Contains(key))
+        {
+            return false;
+        }
         VimMode was = vim.Mode;
         string pendingWas = VimPending;
         string? lineWas = vim.CommandLine;
-        VimResult result = vim.Press(VimKey(e), document.Snapshot, selections, VimView);
+        VimResult result = vim.Press(key, document.Snapshot, selections, VimView);
+        vimTookText = result.Taken && was is VimMode.Insert or VimMode.Replace;
         FollowVim(result, was);
         action = result.Action;
         repeat = action is null ? 0 : result.Repeat;
@@ -301,6 +317,8 @@ public sealed partial class CodeEditor
             KeyModifiers.Control when e.Key == Key.I => "<C-i>",
             KeyModifiers.Control when e.Key == Key.U => "<C-u>",
             KeyModifiers.Control when e.Key == Key.W => "<C-w>",
+            // Any other Ctrl and a letter by its name, which a mapping may take and Vim mode otherwise leaves to the keymap.
+            KeyModifiers.Control when e.Key is >= Key.A and <= Key.Z => $"<C-{(char)('a' + (e.Key - Key.A))}>",
             KeyModifiers.None when e.Key == Key.Up => "<Up>",
             KeyModifiers.None when e.Key == Key.Down => "<Down>",
             KeyModifiers.None when e.KeySymbol is { Length: 1 } typed && !char.IsControl(typed[0]) => typed,
@@ -378,6 +396,10 @@ public sealed partial class CodeEditor
         public string LineEnding => editor.document.LineEnding;
 
         public MarkupKind Markup => editor.Markup;
+
+        public string? LineComment => editor.LineCommentPrefix;
+
+        public int LineLength => editor.LineLength;
 
         public int RowsAway(TextSnapshot text, int offset, int rows)
         {

@@ -717,6 +717,176 @@ public class VimTests
         Assert.Equal("ab", document.Snapshot.ToString());
     }
 
+    [Theory]
+    [InlineData("|one two three four five six seven\neight nine", "gqq", "one two three four\n|five six seven\neight nine")]
+    [InlineData("|one two three four five six seven\neight nine\n\nten eleven", "gqap", "one two three four\nfive six seven eight\nnine\n|\nten eleven")]
+    [InlineData("  |one two three four five six seven\neight nine\n\nten eleven", "gqip", "  one two three four\n  five six seven\n  |eight nine\n\nten eleven")]
+    [InlineData("one two three fo|ur five six seven\neight nine\n\nten eleven", "gwip", "one two three fo|ur\nfive six seven eight\nnine\n\nten eleven")]
+    [InlineData("    // |one two three four five six seven\n    // eight nine\nx", "gqip", "    // one two three\n    // four five six\n    // seven eight\n    // nine\n|x")]
+    [InlineData("# |one two three four five six seven\n# eight nine", "gqip", "# one two three four\n# five six seven\n|# eight nine")]
+    [InlineData("// |one two three\n# four five six seven", "gqip", "// one two three\n# four five six\n|# seven")]
+    [InlineData("|one two.  three four five six seven", "gqq", "one two.  three four\n|five six seven")]
+    [InlineData("|averyveryverylongwordthatgoeson two", "gqq", "averyveryverylongwordthatgoeson\n|two")]
+    [InlineData("|one\ntwo\nthree", "gqj", "|one two\nthree")]
+    [InlineData("|one\ntwo\nthree", "3gqq", "|one two three")]
+    [InlineData("|one two three four\n    five six seven eight", "gqip", "one two three four\n|five six seven eight")]
+    [InlineData("- |one two three four five six\n  seven", "gqip", "- one two three four\n  |five six seven")]
+    [InlineData("/*\n * |one two three four five six\n * seven\n */", "gqip", "/*\n * one two three\n * four five six\n * seven\n |*/")]
+    [InlineData("> |one two three four five six\n> seven", "gqip", "> one two three four\n|> five six seven")]
+    [InlineData("|one two three four five six    \nseven", "gqip", "one two three four\n|five six    seven")]
+    [InlineData("|one two three four five six\n\n\nseven", "gqG", "one two three four\nfive six\n\n\n|seven")]
+    [InlineData("// a\n//\n// |b c d e f g h i j k l m n o p q r s t", "gqip", "// a\n//\n// b c d e f g h i j\n// k l m n o p q r s\n|// t")]
+    [InlineData("|one two three four five six\nseven eight", "Vjgq", "one two three four\n|five six seven eight")]
+    [InlineData("|one two three four five six\nseven eight", "vgq", "one two three four\n|five six\nseven eight")]
+    [InlineData("|one two three four five six\nseven eight", "gqgq", "one two three four\n|five six\nseven eight")]
+    [InlineData("|one two three four five six\nseven eight", "gqq.", "one two three four\n|five six\nseven eight")]
+    [InlineData("|a\nb\n\nc d e f g h i j k l m n o p", "gqipj.", "a b\n|\nc d e f g h i j k l m n o p")]
+    [InlineData("#include |one two three four five six", "gqq", "#include one two\n|three four five six")]
+    public void Gq_wraps_each_paragraph_at_textwidth_keeping_its_comment_marks(string before, string keys, string after)
+    {
+        Vim vim = new();
+        vim.Registers.Options.TextWidth = 20;
+        Assert.Equal(after, Run(vim, before, keys));
+    }
+
+    [Fact]
+    public void Gq_wraps_at_the_width_the_editor_gives_where_textwidth_is_not_set_and_the_languages_own_comment_mark()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|-- one two three four five six seven");
+        VimTextView view = new(new IndentOptions()) { LineComment = "--", LineLength = 16 };
+        Vim vim = new();
+        foreach (string key in Keys("gqq"))
+        {
+            VimResult result = vim.Press(key, text, carets, view);
+            foreach (EditPlan edit in result.Edits ?? [])
+            {
+                (text, carets) = (text.Apply(edit.Edits), edit.Selections);
+            }
+        }
+        Assert.Equal("-- one two three\n-- four five six\n|-- seven", Marked.Show(text, carets));
+    }
+
+    [Theory]
+    [InlineData("a\n|b\nc\nd", "==", 1, 1, "a\n|b\nc\nd")]
+    [InlineData("a\n|b\nc\nd", "=j", 1, 2, "a\n|b\nc\nd")]
+    [InlineData("a\n  |b\nc\nd", "=k", 0, 1, "|a\n  b\nc\nd")]
+    [InlineData("a\n|b\nc\nd", "2==", 1, 2, "a\n|b\nc\nd")]
+    [InlineData("a\n|b\nc\nd", "=G", 1, 3, "a\n|b\nc\nd")]
+    [InlineData("a\n|b\nc\nd", "Vj=", 1, 2, "a\n|b\nc\nd")]
+    [InlineData("|a\nb\n\nc", "=ip", 0, 1, "|a\nb\n\nc")]
+    public void Equals_asks_the_host_to_lay_out_its_lines_and_lands_on_the_first_lines_first_non_blank(string before, string keys, int first, int last, string after)
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse(before);
+        Vim vim = new();
+        VimResult result = VimResult.Left;
+        foreach (string key in Keys(keys))
+        {
+            result = vim.Press(key, text, carets);
+            carets = result.Selections ?? carets;
+        }
+        Assert.Equal(VimRequestKind.Reformat, result.Request?.Kind);
+        Assert.Equal([(first, last)], result.Request!.Lines);
+        Assert.Equal(after, Marked.Show(text, carets));
+    }
+
+    [Fact]
+    public void Dot_after_equals_asks_again_for_as_many_lines_from_the_caret()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|a\nb\nc\nd\ne");
+        Vim vim = new();
+        Press(vim, "=j", text, carets);
+        Assert.Equal([(2, 3)], vim.Press(".", text, SelectionSet.Single(text.GetLineStart(2))).Request?.Lines);
+    }
+
+    [Fact]
+    public void Equals_at_every_caret_names_each_stretch_of_lines_once()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|a\n|b\nc\nd\n|e\nf");
+        VimResult result = Press(new Vim(), "=j", text, carets);
+        Assert.Equal([(0, 2), (4, 5)], result.Request!.Lines);
+    }
+
+    [Fact]
+    public void Action_asks_the_host_for_the_action_named_and_alone_says_how_it_is_used()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|a");
+        VimResult result = Press(new Vim(), ":action Reformat Code<CR>", text, carets);
+        Assert.Equal((VimRequestKind.Action, "Reformat Code"), (result.Request?.Kind, result.Request?.Path));
+        VimResult alone = Press(new Vim(), ":action<CR>", text, carets);
+        Assert.Null(alone.Request);
+        Assert.True(alone.MessageIsError);
+    }
+
+    [Fact]
+    public void Set_textwidth_is_said_back_and_refuses_a_value_that_is_no_number()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|a");
+        Vim vim = new();
+        Assert.Equal("textwidth=0", Press(vim, ":set tw?<CR>", text, carets).Message);
+        Press(vim, ":set textwidth=72<CR>", text, carets);
+        Assert.Equal("textwidth=72", Press(vim, ":set tw<CR>", text, carets).Message);
+        Assert.StartsWith("E521", Press(vim, ":set tw=wide<CR>", text, carets).Message);
+    }
+
+    [Theory]
+    [InlineData("nnoremap ,d dd", "|a\nb", ",d", "|b")]
+    [InlineData("let mapleader = \",\"\nnnoremap <leader>x x", "|ab", ",x", "|b")]
+    [InlineData("nnoremap <Leader>x x", "|ab", "\\x", "|b")]
+    [InlineData("let mapleader=\"\\<Space>\"\nnnoremap <leader>d dd", "|a\nb", " d", "|b")]
+    [InlineData("nmap Q dd\nnmap X Q", "|a\nb", "X", "|b")]
+    [InlineData("nnoremap Q dd\nnnoremap X Q", "|a\nb", "X", "|a\nb")]
+    [InlineData("nnoremap ,d dd", "|a\nb\nc", "2,d", "|c")]
+    [InlineData("nnoremap x dd", "|abxc", "fx", "ab|xc")]
+    [InlineData("nnoremap x <Nop>", "|ab", "x", "|ab")]
+    [InlineData("nnoremap ,a x\nnnoremap ,ab dd", "|abc\nd", ",al", "b|c\nd")]
+    [InlineData("nnoremap ,a x\nnnoremap ,ab dd", "|abc\nd", ",ab", "|d")]
+    [InlineData("nnoremap w b", "a |bc de", "dw", "a |de")]
+    [InlineData("onoremap w iw", "a b|cd e", "dw", "a | e")]
+    [InlineData("vnoremap ,y d", "|abc", "vl,y", "|c")]
+    [InlineData("inoremap jk <Esc>", "|ab", "ijkx", "|b")]
+    [InlineData("inoremap jk <Esc>", "|ab", "ijxy<Esc>", "jx|yab")]
+    [InlineData("nmap j j", "|a\nb", "j", "a\n|b")]
+    [InlineData("\" a comment\n\n:nnoremap <silent> ,d dd", "|a\nb", ",d", "|b")]
+    public void Mappings_press_what_they_map_to_in_their_modes(string file, string before, string keys, string after)
+    {
+        VimMappings mappings = VimMappings.Read(file);
+        Assert.Empty(mappings.Problems);
+        Vim vim = new();
+        vim.Registers.Mappings = mappings;
+        Assert.Equal(after, Run(vim, before, keys));
+    }
+
+    [Fact]
+    public void A_mappings_files_bad_lines_are_passed_over_with_why_and_its_set_lines_set_options()
+    {
+        VimMappings read = VimMappings.Read("nnoremap\nfoo bar\nlet x = 1\nnnoremap ,d dd\nset ignorecase tw=72\nset nosuch\nnmap <Plug>(x) y\nnunmap ,q");
+        Assert.Equal([1, 2, 3, 7, 8], read.Problems.Select(p => p.Line));
+        Assert.Single(read.All);
+        VimRegisters registers = new();
+        IReadOnlyList<string> refused = Vim.SetAll(registers, read.Settings);
+        Assert.True(registers.Options.IgnoreCase && registers.Options.TextWidth == 72, "set ignorecase tw=72 set neither");
+        Assert.Equal(["E518: Unknown option: nosuch"], refused);
+    }
+
+    [Fact]
+    public void Keys_held_toward_a_mapping_show_as_pending()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|ab");
+        Vim vim = new();
+        vim.Registers.Mappings = VimMappings.Read("nnoremap ,dd x");
+        Assert.True(Press(vim, ",d", text, carets).Taken);
+        Assert.Equal(",d", vim.Pending);
+    }
+
+    [Fact]
+    public void A_macro_keeps_a_ctrl_key_it_recorded_as_one_key()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|ab");
+        Vim vim = new();
+        Press(vim, "qa<C-o>q", text, carets);
+        Assert.Equal(["<C-o>"], Press(vim, "@a", text, carets).Replay);
+    }
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
@@ -734,10 +904,12 @@ public class VimTests
     }
 
     /// <summary>The keys pressed in turn on the marked text, insert mode's typing standing in for the editor's.</summary>
-    private static string Run(string before, string keys)
+    private static string Run(string before, string keys) => Run(new Vim(), before, keys);
+
+    private static string Run(Vim vim, string before, string keys)
     {
         (TextSnapshot text, SelectionSet carets) = Marked.Parse(before);
-        (text, carets) = Drive(new Vim(), text, carets, keys);
+        (text, carets) = Drive(vim, text, carets, keys);
         return Marked.Show(text, carets);
     }
 

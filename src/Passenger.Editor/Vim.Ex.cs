@@ -7,7 +7,8 @@ namespace Passenger.Editor;
 
 /// <summary>Ex commands, typed on the command line: a range of lines (%, ., $, a number, a mark, /pattern/, each with + and
 /// - after it, two joined by , or ;), then :{n}, :s, :g and :v, :d, :y, :j, :&gt; and :&lt;, :normal, :noh, :set, and
-/// :w, :q, :wq, :x and :e, which the host does as its Save, Close Tab and open; a command Vim mode doesn't do is said.</summary>
+/// :w, :q, :wq, :x, :e and :action, which the host does as its Save, Close Tab, open and the action named; a command Vim
+/// mode doesn't do is said.</summary>
 public sealed partial class Vim
 {
     private VimResult Ex(string line, TextSnapshot text, SelectionSet selections, IVimView view)
@@ -101,6 +102,8 @@ public sealed partial class Vim
                 return moved.Edit is { } shift ? new VimResult(true, Edits: [OnFirstNonBlank(text, shift, end)]) : moved;
             case "norm" or "norma" or "normal":
                 return Normally(range is null ? null : (first, end), args.TrimStart(), text, selections);
+            case "action":
+                return trimmed.Length > 0 ? Asked(VimRequestKind.Action, trimmed) : Said(":action runs one of the IDE's actions, named after it by its id or title");
         }
         return Said($"Vim mode does not do :{line[nameStart..].Trim()}");
     }
@@ -539,6 +542,10 @@ public sealed partial class Vim
                     differ.Add(get(Options) ? name : "no" + name);
                 }
             }
+            if (Options.TextWidth != defaults.TextWidth)
+            {
+                differ.Add($"textwidth={Options.TextWidth}");
+            }
             return Said(differ.Count == 0 ? "Vim mode's options are as they begin" : string.Join("  ", differ), error: false);
         }
         List<string> answers = [];
@@ -553,6 +560,21 @@ public sealed partial class Vim
             if (name.Contains('=', StringComparison.Ordinal) || name.Contains(':', StringComparison.Ordinal))
             {
                 name = name[..name.IndexOfAny(['=', ':'])];
+            }
+            if (name is "tw" or "textwidth")
+            {
+                int equals = item.IndexOfAny(['=', ':']);
+                if (equals < 0 || ask)
+                {
+                    answers.Add($"textwidth={Options.TextWidth}");
+                    continue;
+                }
+                if (!int.TryParse(item.AsSpan(equals + 1), NumberStyles.None, CultureInfo.InvariantCulture, out int width))
+                {
+                    return Said($"E521: Number required after =: {item}");
+                }
+                Options.TextWidth = width;
+                continue;
             }
             if (Option(name) is not { } option)
             {

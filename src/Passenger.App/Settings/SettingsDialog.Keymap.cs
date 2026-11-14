@@ -16,6 +16,43 @@ namespace Passenger.App.Settings;
 /// Shortcuts; Find Actions by Shortcut keeps only the actions a keystroke or chord pressed into it starts.</summary>
 public sealed partial class SettingsDialog
 {
+    /// <summary>Vim mode's Ctrl keys, each one Vim mode's or the keymap's: a drop-down per key naming what each side does
+    /// with it, the keymap's side as the keymap in force has it; greyed while Vim mode is off.</summary>
+    private void AddVimKeys()
+    {
+        StackPanel rows = new() { Spacing = 4 };
+        foreach ((string key, string does) in Vim.CtrlKeys)
+        {
+            Keystroke stroke = new(Key.A + (key[3] - 'a'), KeyModifiers.Control);
+            string keymaps = actions.Keymap.ActionFor(new Shortcut(stroke)) is { } id ? actions[id]?.Title ?? id
+                : actions.Keymap.StartsChord(stroke) ? "the chords it begins" : "nothing";
+            ComboBox choice = new()
+            {
+                ItemsSource = new[] { $"Vim mode: {does}", $"Keymap: {keymaps}" },
+                SelectedIndex = Working.VimKeymapKeys().Contains(key) ? 1 : 0,
+                Classes = { StyleClasses.Form },
+            };
+            choice.SelectionChanged += (_, _) => Change(s => s with { VimKeysToKeymap = Given(s.VimKeymapKeys(), key, choice.SelectedIndex == 1) });
+            Avalonia.Automation.AutomationProperties.SetName(choice, stroke.Display());
+            rows.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children = { new TextBlock { Text = stroke.Display(), MinWidth = 56, VerticalAlignment = VerticalAlignment.Center }, choice },
+            });
+        }
+        Add(EditorPage, "Vim mode's Ctrl keys", rows, "vim keys ctrl control conflict keymap redo visual block jump back forward older newer",
+            "Each key does what Vim mode does with it, or what the keymap does.");
+        SettingWhen when = new(s => s.VimMode, "Vim mode is off");
+        ToolTip.SetShowOnDisabled(rows, true);
+        dependents.Add(("Vim mode's Ctrl keys", rows, when));
+        Follow(rows, when);
+    }
+
+    /// <summary>The keys given to the keymap with <paramref name="key"/> given to it or taken back, as the setting keeps them.</summary>
+    private static string Given(IReadOnlySet<string> given, string key, bool toKeymap) =>
+        string.Join(' ', Vim.CtrlKeys.Select(c => c.Key).Where(k => k == key ? toKeymap : given.Contains(k)));
+
     private const string ConflictWarning = "This shortcut is already assigned to other actions. Do you want to remove the other assignments?";
 
     private readonly Dictionary<string, ActionRow> keymapRows = [];

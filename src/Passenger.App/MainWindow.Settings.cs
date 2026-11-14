@@ -185,6 +185,7 @@ public partial class MainWindow
             Explorer.Reveal(shown);
         }
         FollowXamlWorkspace(before);
+        FollowVimMappings(next.VimMode);
         assist.Templates = CSharp.TemplateSet.Of(next);
         assist.XamlFormat = next.XamlFormat;
         assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);
@@ -230,6 +231,7 @@ public partial class MainWindow
         editor.ShowTypeHints = with.TypeHints;
         editor.RainbowBraces = with.RainbowBraces;
         editor.UsesVim = with.VimMode;
+        editor.VimLeavesKeys = with.VimKeymapKeys();
         editor.ClosesTags = with.CloseTags;
         editor.WrapIndent = with.SoftWrapIndent;
         editor.ZoomsWithWheel = with.WheelZoom;

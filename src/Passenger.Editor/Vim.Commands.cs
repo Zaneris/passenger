@@ -67,7 +67,7 @@ public sealed partial class Vim
         // What . presses again: the register and the command, never a count, which it may replace.
         List<string> body = register is { } named ? ["\"", named.ToString()] : [];
         string first = keys[i];
-        string? op = first is "d" or "c" or "y" or ">" or "<" ? first : null;
+        string? op = first is "d" or "c" or "y" or ">" or "<" or "=" ? first : null;
         if (op is null && first == "g")
         {
             if (i + 1 >= keys.Count)
@@ -75,7 +75,7 @@ public sealed partial class Vim
                 incomplete = true;
                 return null;
             }
-            op = keys[i + 1] is "~" or "u" or "U" ? "g" + keys[i + 1] : null;
+            op = keys[i + 1] is "~" or "u" or "U" or "q" or "w" ? "g" + keys[i + 1] : null;
         }
         if (op is null)
         {

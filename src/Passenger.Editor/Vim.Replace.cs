@@ -237,8 +237,7 @@ public sealed partial class Vim
                 "<BS>" => "\b",
                 "<Tab>" => "\t",
                 "<Del>" => "\u007f",
-                "<C-r>" => "\u0012",
-                "<C-v>" => "\u0016",
+                ['<', 'C', '-', >= 'a' and <= 'z', '>'] => ((char)(key[3] - 'a' + 1)).ToString(),
                 _ => key,
             });
         }
@@ -259,8 +258,7 @@ public sealed partial class Vim
                 '\b' => "<BS>",
                 '\t' => "<Tab>",
                 '\u007f' => "<Del>",
-                '\u0012' => "<C-r>",
-                '\u0016' => "<C-v>",
+                >= '\u0001' and <= '\u001a' => $"<C-{(char)('a' + c - 1)}>",
                 _ when char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]) => text.Substring(i++, 2),
                 _ => c.ToString(),
             });

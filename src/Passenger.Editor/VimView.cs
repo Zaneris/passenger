@@ -19,6 +19,13 @@ public interface IVimView
 
     MarkupKind Markup { get; }
 
+    /// <summary>The line comment's mark of the language edited, which gq keeps at the start of every line it wraps a
+    /// comment to; null for Vim's own marks.</summary>
+    string? LineComment { get; }
+
+    /// <summary>The width gq wraps at where textwidth is not set (a file's max_line_length); 0 for Vim's 79.</summary>
+    int LineLength { get; }
+
     /// <summary>gj and gk: the offset <paramref name="rows"/> rows of the screen below (above when negative), wrapped
     /// lines' rows counted, at the x the offset is drawn at; the offset itself where there is no such row.</summary>
     int RowsAway(TextSnapshot text, int offset, int rows);
@@ -40,6 +47,10 @@ public interface IVimView
 public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", MarkupKind markup = MarkupKind.None) : IVimView
 {
     private readonly Dictionary<char, int> marks = [];
+
+    public string? LineComment { get; init; }
+
+    public int LineLength { get; init; }
 
     public IndentOptions Indent { get; } = indent;
 

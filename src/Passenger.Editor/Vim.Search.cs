@@ -14,10 +14,20 @@ public enum VimRequestKind
     Open,
     Older,
     Newer,
+
+    /// <summary>= : the lines named laid out as the language's Reformat Code lays them out.</summary>
+    Reformat,
+
+    /// <summary>:action: one of the IDE's actions run, by its id or title (<see cref="VimRequest.Path"/>).</summary>
+    Action,
 }
 
-/// <summary>A request of the host: what to do, the file to open, and how many steps.</summary>
-public sealed record VimRequest(VimRequestKind Kind, string? Path = null, int Count = 1);
+/// <summary>A request of the host: what to do, the file to open (or the action to run), and how many steps.</summary>
+public sealed record VimRequest(VimRequestKind Kind, string? Path = null, int Count = 1)
+{
+    /// <summary>The lines = names, first and last (from zero), each stretch apart, in order.</summary>
+    public IReadOnlyList<(int First, int Last)> Lines { get; init; } = [];
+}
 
 /// <summary>The command line (: / ?) typed in the status bar's place, searching with / ? n N * #, marks set by m and gone
 /// to by ' and `, and the jumps that leave a place for '' and the IDE's Back.</summary>
@@ -63,11 +73,11 @@ public sealed partial class Vim
         {
             i++;
         }
-        if (i < keys.Count && keys[i] is "d" or "c" or "y" or "<" or ">")
+        if (i < keys.Count && keys[i] is "d" or "c" or "y" or "<" or ">" or "=")
         {
             i++;
         }
-        else if (i + 1 < keys.Count && keys[i] == "g" && keys[i + 1] is "~" or "u" or "U")
+        else if (i + 1 < keys.Count && keys[i] == "g" && keys[i + 1] is "~" or "u" or "U" or "q" or "w")
         {
             i += 2;
         }

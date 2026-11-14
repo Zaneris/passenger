@@ -23,7 +23,7 @@ public sealed partial class Vim
     /// made in visual mode how much it took.</summary>
     private sealed record ChangeMade(IReadOnlyList<string> Keys, int Count, string Inserted, VisualExtent? Visual = null);
 
-    private static readonly HashSet<string> VisualOperators = ["d", "x", "<Del>", "X", "D", "c", "s", "C", "S", "R", "y", "Y", ">", "<", "~", "u", "U", "J", "p", "P", "I", "A"];
+    private static readonly HashSet<string> VisualOperators = ["d", "x", "<Del>", "X", "D", "c", "s", "C", "S", "R", "y", "Y", ">", "<", "=", "~", "u", "U", "J", "p", "P", "I", "A"];
 
     /// <summary>The stretches of visual mode, one per caret; a block's only one, its corners.</summary>
     private List<Region> regions = [];
@@ -319,7 +319,7 @@ public sealed partial class Vim
                 return VisualChange(command with { Argument = with }, "r", text, view);
             case "g" when second == "v":
                 return SwapLastVisual(text, view);
-            case "g" when second is "J" or "~" or "u" or "U":
+            case "g" when second is "J" or "~" or "u" or "U" or "q" or "w":
                 return VisualChange(command with { Name = "g" + second }, "g" + second, text, view);
             case var op when VisualOperators.Contains(op):
                 return VisualChange(command, op, text, view);

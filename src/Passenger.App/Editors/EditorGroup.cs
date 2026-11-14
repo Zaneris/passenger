@@ -484,6 +484,9 @@ public sealed class EditorGroup : DockPanel
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
+    /// <summary>The width Vim's gq wraps a file at where textwidth is not set: its .editorconfig's max_line_length, 0 for none.</summary>
+    private static int LineLengthOf(OpenDocument document) => EditorConfig.Number(document.Conventions["max_line_length"]) ?? 0;
+
     private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null && document.Tool is null;
 
     /// <summary>Gives the keys to what shows the file: a diff's file's side, its preview or rendered notes, which its keys
@@ -564,6 +567,7 @@ public sealed class EditorGroup : DockPanel
         Editor.BlockComment = document.Language.BlockComment;
         Editor.Markup = document.Language.Markup;
         Editor.Indent = document.Indentation.Options;
+        Editor.LineLength = LineLengthOf(document);
         Editor.ReindentsPaste = document.Language.ReindentsPaste;
         Editor.ShowWhitespaces = document.ShowWhitespaces;
         // Its decorations are the file's, which every editor showing it reads.
@@ -842,6 +846,7 @@ public sealed class EditorGroup : DockPanel
                 break;
             case nameof(OpenDocument.Indentation):
                 Editor.Indent = document.Indentation.Options;
+                Editor.LineLength = LineLengthOf(document);
                 break;
             case nameof(OpenDocument.SoftWrap):
                 Editor.SoftWrap = document.SoftWrap;

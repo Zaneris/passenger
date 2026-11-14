@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Passenger.App;
+using Passenger.App.Settings;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -473,6 +474,132 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>= lays out the lines it moves over as Reformat Code lays out a selection (XAML by Passenger's own layout),
+    /// one step of undo, the caret on the first line's first non-blank, and . does it again.</summary>
+    [AvaloniaFact]
+    public void Equals_lays_out_its_lines_as_reformat_code_one_step_of_undo()
+    {
+        const string Before = "<UserControl xmlns=\"https://github.com/avaloniaui\">\n<StackPanel>\n<Button/>\n</StackPanel>\n</UserControl>\n";
+        (MainWindow window, CodeEditor editor) = Open(Before, name: "View.axaml");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "jj==");
+            Ui.WaitFor(() => Indent(Lines(editor)[2]) > 0, () => $"== left line 3 as \"{Lines(editor)[2]}\", not laid out inside its panel");
+            Assert.Equal("<StackPanel>", Lines(editor)[1]);
+            Assert.Equal(("NORMAL", $"3:{Indent(Lines(editor)[2]) + 1}"), Status(window));
+            Keys(window, "u");
+            Ui.WaitFor(() => Text(editor) == Before, () => $"u took back part of ==, leaving \"{Text(editor)}\"");
+            Keys(window, "k=j");
+            Ui.WaitFor(() => Indent(Lines(editor)[1]) > 0 && Indent(Lines(editor)[2]) > Indent(Lines(editor)[1]),
+                () => $"=j left \"{Text(editor)}\", its two lines not laid out");
+            Assert.Equal(("NORMAL", $"2:{Indent(Lines(editor)[1]) + 1}"), Status(window));
+            Keys(window, "j.");
+            Ui.WaitFor(() => Indent(Lines(editor)[3]) > 0, () => $". after =j left \"{Text(editor)}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>:action runs any of the IDE's actions by its id or title as its keys would, one that cannot run here saying
+    /// why in the status bar as its keys would; = says Reformat Code's own words where it cannot lay out the file; gq wraps
+    /// at :set textwidth as one step of undo.</summary>
+    [AvaloniaFact]
+    public void Action_runs_the_ides_actions_equals_says_why_where_reformat_code_cannot_and_gq_wraps()
+    {
+        (MainWindow window, CodeEditor editor) = Open("one\ntwo\nthree\nalpha beta gamma delta epsilon\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, ":action Join Lines<CR>");
+            Ui.WaitFor(() => Lines(editor)[0] == "one two", () => $":action Join Lines left \"{Text(editor)}\"");
+            Keys(window, ":action " + EditorActions.JoinLines + "<CR>");
+            Ui.WaitFor(() => Lines(editor)[0] == "one two three", () => $":action by Join Lines' id left \"{Text(editor)}\"");
+            Keys(window, ":action Nothing Of The Sort<CR>");
+            Assert.Equal(window.Actions.WhyNot("Nothing Of The Sort", window.Actions.Context()), StatusWords(window));
+            Keys(window, "==");
+            Assert.Equal(window.Actions.WhyNot(AppActions.Reformat, window.Actions.Context()), StatusWords(window));
+            Assert.Equal("one two three\nalpha beta gamma delta epsilon\n", Text(editor));
+            Keys(window, ":set tw=20<CR>jgqq");
+            Assert.Equal("one two three\nalpha beta gamma\ndelta epsilon\n", Text(editor));
+            Assert.Equal(("NORMAL", "3:1"), Status(window));
+            Keys(window, "u");
+            Ui.WaitFor(() => Text(editor) == "one two three\nalpha beta gamma delta epsilon\n", () => $"u took back part of gq, leaving \"{Text(editor)}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The mappings file in the state folder is read as Vim mode comes on and again as it changes: its mappings
+    /// take keys in their modes, the leader it sets among them, a line it cannot read said in the status bar and passed over.</summary>
+    [AvaloniaFact]
+    public void The_mappings_file_maps_keys_and_is_read_again_as_it_changes()
+    {
+        string state = Path.Combine(folder, "state");
+        Directory.CreateDirectory(state);
+        string vimrc = Path.Combine(state, "vimrc");
+        File.WriteAllText(vimrc, "let mapleader = \",\"\nnnoremap <leader>d dd\ninoremap jk <Esc>\n");
+        (MainWindow window, CodeEditor editor) = Open("one\ntwo\nthree\n", state: state);
+        try
+        {
+            Assert.Equal(PathNames.Canonical(vimrc), PathNames.Canonical(window.VimMappingsPath));
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.WaitFor(() => window.VimMappings.All.Count == 2, "the mappings file read as Vim mode came on");
+            Keys(window, ",d");
+            Assert.Equal("two\nthree\n", Text(editor));
+            Keys(window, "ix");
+            Keys(window, "jk");
+            Assert.Equal(("NORMAL", "1:1"), Status(window));
+            Assert.Equal("xtwo\nthree\n", Text(editor));
+
+            File.WriteAllText(vimrc, "nnoremap Q dd\nnmap\n");
+            Ui.WaitFor(() => window.VimMappings.All.Count == 1, "the mappings file read again as it changed");
+            Assert.Equal("Vim mode passed over 1 line of vimrc, line 2: a mapping names the keys it takes", StatusWords(window));
+            Keys(window, "Q");
+            Assert.Equal("three\n", Text(editor));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A Ctrl key Settings gives the keymap is the keymap's, Vim mode taking it no more (Ctrl+V entered visual
+    /// block mode until then), and Settings' row of Vim mode's Ctrl keys greys while Vim mode is off.</summary>
+    [AvaloniaFact]
+    public void A_ctrl_key_given_to_the_keymap_in_settings_is_the_keymaps()
+    {
+        (MainWindow window, CodeEditor editor) = Open("ab\ncd\n");
+        try
+        {
+            SettingsDialog dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.EditorPage;
+            Ui.Settle();
+            Assert.Equal("Vim mode is off", dialog.WhyGreyed("Vim mode's Ctrl keys"));
+            dialog.Close();
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Ui.Press(window, "control V");
+            Assert.Equal("VISUAL BLOCK", Status(window).Mode);
+            Ui.Press(window, "ESCAPE");
+            window.ApplySettings(window.Settings with { VimKeysToKeymap = "<C-v>" });
+            Ui.Settle();
+            Ui.Press(window, "control V");
+            Assert.Equal("NORMAL", Status(window).Mode);
+            Assert.Equal("ab\ncd\n", Text(editor));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A mark stays on its text as lines come above it, '' goes back to where a jump left, and Ctrl+O and Ctrl+I
     /// step through the IDE's places, a jump leaving one.</summary>
     [AvaloniaFact]
@@ -567,6 +694,8 @@ public sealed class VimModeTests : IDisposable
                 '<' => "shift COMMA",
                 '~' => "shift BACK_QUOTE",
                 '_' => "shift MINUS",
+                '-' => "MINUS",
+                '=' => "EQUALS",
                 '+' => "shift EQUALS",
                 '!' => "shift 1",
                 '/' => "SLASH",
@@ -582,11 +711,11 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
-    private (MainWindow Window, CodeEditor Editor) Open(string text, string? into = null)
+    private (MainWindow Window, CodeEditor Editor) Open(string text, string? into = null, string name = "One.txt", string? state = null)
     {
-        string path = Path.Combine(into ?? folder, "One.txt");
+        string path = Path.Combine(into ?? folder, name);
         File.WriteAllText(path, text);
-        MainWindow window = new() { Width = 1200, Height = 800 };
+        MainWindow window = state is null ? new() { Width = 1200, Height = 800 } : new() { Width = 1200, Height = 800, StateFolder = state };
         window.Show();
         window.OpenFolder(into ?? folder);
         window.OpenFile(path);
@@ -606,6 +735,10 @@ public sealed class VimModeTests : IDisposable
     }
 
     private static string Text(CodeEditor editor) => editor.Document.Snapshot.ToString();
+
+    private static string[] Lines(CodeEditor editor) => Text(editor).Split('\n');
+
+    private static int Indent(string line) => line.Length - line.TrimStart().Length;
 
     /// <summary>What the status bar says on its left, where Vim mode's command line stands.</summary>
     private static string? StatusWords(MainWindow window) => window.FindControl<TextBlock>("StatusText")!.Text;
