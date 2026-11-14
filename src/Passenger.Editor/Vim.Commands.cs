@@ -283,20 +283,24 @@ public sealed partial class Vim
         return MoveTo(command, text, selections, view);
     }
 
-    /// <summary>J or gJ done: with a count past two on the last line, where there is nothing to join, each caret there
-    /// goes to its line's start, as Vim's does, and . does so again.</summary>
+    /// <summary>J or gJ done. Lines joined are kept for . as a count of that many, fewer than asked where the text ended
+    /// first; on the last line, with nothing below to join, a count past two takes each caret to its line's start and is
+    /// kept for . as asked, and any smaller count fails.</summary>
     private VimResult Joined(Command command, EditPlan? plan, TextSnapshot text, SelectionSet selections)
     {
-        int last = VimMotions.LastLine(text, breakEnds);
-        // . joins as many lines as there were: a count past the last line counts the lines to it.
-        int reach = Math.Max(1, last - text.GetLineFromOffset(selections.Primary.Caret) + 1);
-        Command kept = command.Count > reach ? command with { Count = reach } : command;
-        if (plan is not null || command.Count <= 2 || !selections.Items.Any(s => text.GetLineFromOffset(s.Caret) >= last))
+        int asked = Math.Max(command.Count, 2);
+        if (plan is not null)
         {
-            return Changed(kept, plan);
+            int first = text.GetLineFromOffset(selections.Primary.Caret);
+            int joined = Math.Max(2, Math.Min(asked, VimMotions.LastLine(text, breakEnds) - first + 1));
+            return Changed(joined < asked ? command with { Count = joined } : command, plan);
         }
-        Remember(kept);
-        return new VimResult(true, selections.With(s => text.GetLineFromOffset(s.Caret) >= last ? Selection.At(VimMotions.LineOf(text, s.Caret).Start) : s));
+        if (asked <= 2)
+        {
+            return VimResult.Held;
+        }
+        Remember(command);
+        return new VimResult(true, selections.With(s => Selection.At(VimMotions.LineOf(text, s.Caret).Start)));
     }
 
     /// <summary>A change made, kept for . to make again; nothing changed where there is no plan.</summary>

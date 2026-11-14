@@ -260,6 +260,10 @@ public class VimTests
     [InlineData("a b\nc |d", "2J", "a b\nc |d")]
     [InlineData("a |b\nc d", "3J.", "a b| c d")]
     [InlineData("a |b\nc d\ne\nf", "5Jk.", "|a b c d e f")]
+    [InlineData("a b\nc |d", "3Jk.", "a b| c d")]
+    [InlineData("a b\nc |d", "2Jk.", "a |b\nc d")]
+    [InlineData("a |b\nc d\ne\nf\ng\nh", "5Jj.", "a b c d e f g\n|h")]
+    [InlineData("a |b\nc d\ne f\ng\nh", "4Jk.", "a b c d e f g| h")]
     public void Less_common_corners_do_what_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
