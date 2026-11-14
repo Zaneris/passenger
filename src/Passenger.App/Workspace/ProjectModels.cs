@@ -215,6 +215,33 @@ public sealed class ProjectModels
         }
     }
 
+    /// <summary>Whether a file under the folder that an evaluation known read was written since, <paramref name="within"/>
+    /// ago at most (by an agent's own file tool, or saved, before the folder's watcher may have heard): its project is to be
+    /// evaluated again. Looked at off the window's thread.</summary>
+    public Task<bool> ReadWrittenNowAsync(TimeSpan within)
+    {
+        UiThread.Check();
+        if (folder is not { } under)
+        {
+            return Task.FromResult(false);
+        }
+        List<Stamp> read = [.. known.Values.SelectMany(e => e.Inputs).Where(i => !i.Folder && !i.Presence && PathNames.IsUnder(i.Path, under)).Distinct()];
+        DateTime since = DateTime.UtcNow - within;
+        return read.Count == 0 ? Task.FromResult(false) : BackgroundWork.Run(() => read.Any(i => !Stamps.Holds(i) && WrittenSince(i.Path, since)));
+    }
+
+    private static bool WrittenSince(string path, DateTime since)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(path) >= since;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Whether an evaluation known read one of these files: a project's own, or one it imports.</summary>
     public bool Read(IReadOnlyCollection<string> paths)
     {

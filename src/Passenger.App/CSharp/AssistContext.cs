@@ -152,7 +152,9 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
         return itself.Count > 0 ? itself : await csharp.UntakenAsync(document, offset(), CancellationToken.None);
     }
 
-    private void SayWaiting(string? waiting) => Say(waiting is null ? string.Empty : $"Waiting for the C# language server to load {Path.GetFileName(waiting)} into its project…");
+    private void SayWaiting(string? waiting) => Say(waiting is null ? string.Empty
+        : global::Passenger.Workspace.WorkspaceModel.IsProjectFile(waiting) ? $"Waiting for the C# language server to load {Path.GetFileName(waiting)} again…"
+        : $"Waiting for the C# language server to load {Path.GetFileName(waiting)} into its project…");
 
     /// <summary>The window's actions' work, which a change says its waits through.</summary>
     public ActionWork? Work { get; set; }
@@ -178,7 +180,9 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     }
 
     private static string? NotTakenIn(IReadOnlyList<(string Path, string Project)> left) =>
-        left.Count == 0 ? null : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
+        left.Count == 0 ? null
+        : CSharpService.IsReload(left[0]) ? Refusals.NotLoadedAgain(Path.GetFileNameWithoutExtension(left[0].Project))
+        : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
 
     /// <summary>The folder the open file's places are named from: the C# server's, else the web servers'.</summary>
     public string? Root => service()?.Session?.Folder ?? Web?.Invoke()?.Folder;

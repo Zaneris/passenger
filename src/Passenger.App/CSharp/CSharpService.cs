@@ -118,11 +118,13 @@ public sealed partial class CSharpService : IAsyncDisposable
     private readonly List<string> found = [];
 
     /// <summary>Has the server load projects again whose files or imports changed (a Directory.Build.props edited), which
-    /// it registers to hear of only in part; one that builds its own projects reloads those it hears of.</summary>
+    /// it registers to hear of only in part, each waited for until it has (<see cref="Reloading"/>); one that builds its own
+    /// projects reloads those it hears of.</summary>
     public void Reload(IReadOnlyList<string> projects)
     {
         UiThread.Check();
         session?.Reload(projects);
+        Reloading(projects);
     }
 
     /// <summary>Has the server let go of projects the window no longer loads, so nothing it says comes from the text it read
@@ -135,6 +137,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return;
         }
+        LetGoOfReloads(projects);
         bool held;
         try
         {
@@ -246,7 +249,8 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     private bool reloadingRestored;
 
-    /// <summary>When the projects a restore brought loaded again, until the server says its solution moved.</summary>
+    /// <summary>When the projects a restore brought, or a project asked to load again, loaded again, until the server says its
+    /// solution moved.</summary>
     private long? restoredLoaded;
 
     /// <summary>Whether a restore failed since the last batch's end, after which nothing loads again.</summary>

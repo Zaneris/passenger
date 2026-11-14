@@ -12,7 +12,8 @@ namespace Passenger.App.CSharp;
 /// the solution leaves them out. Each is heard by the folder's watcher or found written a moment ago (<see
 /// cref="WrittenNow"/>), and let go of once the server holds it, or once a load of its project that read the disk after it
 /// came has ended without it (a file the project leaves out). An open one is opened in the server only then. What waits
-/// for them waits only for those that can change its answer (<see cref="ReachOfAsync"/>, <see cref="SeenFrom"/>).</summary>
+/// for them waits only for those that can change its answer (<see cref="ReachOfAsync"/>, <see cref="SeenFrom"/>). A project
+/// the server is asked to load again is waited for so too, by its own file (<see cref="Reloading"/>).</summary>
 public sealed partial class CSharpService
 {
     /// <summary>How long after a write a file may be on disk unheard by the folder's watcher.</summary>
@@ -187,7 +188,10 @@ public sealed partial class CSharpService
     /// (<see cref="ReachOfAsync"/>) that the server has not taken into them yet, looked at once: an answer given now says
     /// it went without them.</summary>
     public async Task<IReadOnlyList<(string Path, string Project)>> UntakenAsync(OpenDocument document, int offset, CancellationToken cancel) =>
-        Arriving ? await UnplacedAsync(TimeSpan.Zero, looking: false, await ReachOfAsync(document, offset, cancel), null, cancel) : [];
+        Arriving ? [.. (await UnplacedAsync(TimeSpan.Zero, looking: false, await ReachOfAsync(document, offset, cancel), null, cancel)).Where(u => !IsReload(u))] : [];
+
+    /// <summary>Whether what is waited for is a project to load again (<see cref="Reloading"/>), not a file come under it.</summary>
+    public static bool IsReload((string Path, string Project) waited) => PathNames.Same(waited.Path, waited.Project);
 
     /// <summary>Which C# files come under the folder's projects can change what the server says of the symbol at an offset
     /// of an open file, by their paths and projects: those of the project that declares it (the file's own where the
@@ -370,6 +374,37 @@ public sealed partial class CSharpService
     /// none of the files come under it, and none until a load of it succeeds.</summary>
     private bool LoadFailed(string project) => loadProblems.TryGetValue(project, out List<ProjectLoadProblem>? met) && met.Any(p => p.FailedLoad);
 
+    /// <summary>Projects a loaded server fed by the window is asked to load again: what it says of them is of their load before
+    /// until it has, so each is waited for by its own file as a file come under it is, since now, until a load of it asked
+    /// for after has ended; but one MSBuild does not evaluate, whose load fails taking nothing in. A server building its
+    /// own, or still loading, is waited for otherwise.</summary>
+    private void Reloading(IReadOnlyList<string> projects)
+    {
+        if (session is not { IsLoaded: true, Fed: true } || workspace is not { } opened)
+        {
+            return;
+        }
+        IReadOnlyList<ProjectModel> evaluated = ProjectsNow?.Invoke() ?? opened.Projects;
+        DateTime now = DateTime.UtcNow;
+        foreach (string project in projects)
+        {
+            string path = PathNames.Canonical(project);
+            if (evaluated.FirstOrDefault(p => PathNames.Same(p.Path, path))?.Evaluated is not { Problem: not null })
+            {
+                arriving[path] = new Arrival(path, now);
+            }
+        }
+    }
+
+    /// <summary>Projects the server lets go of, whose load again nothing waits for any more.</summary>
+    private void LetGoOfReloads(IReadOnlyList<string> projects)
+    {
+        foreach (string project in projects)
+        {
+            arriving.Remove(PathNames.Canonical(project));
+        }
+    }
+
     /// <summary>A server asked for a project's design-time builds, from its thread.</summary>
     private void OnProjectGiven(LanguageServer from, ProjectGiven built)
     {
@@ -395,11 +430,16 @@ public sealed partial class CSharpService
         {
             failedAsked[project] = asked;
         }
-        foreach (Arrival arrival in arriving.Values)
+        foreach ((string path, Arrival arrival) in arriving)
         {
             if (!arrival.Decided && PathNames.Same(arrival.Project, project) && (failed || !fed || asked > arrival.Heard))
             {
                 arrival.Decided = true;
+                if (!failed && IsReload((path, arrival.Project)))
+                {
+                    // Its generators run again a second after, as after a restore's load: their code is waited for too.
+                    restoredLoaded = Stopwatch.GetTimestamp();
+                }
             }
         }
         TaskCompletionSource heard = reportHeard;

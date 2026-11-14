@@ -3022,6 +3022,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException(unloadable);
         }
+        if (Session.CSharp is not { IsReady: true })
+        {
+            return false;
+        }
+        // A project's file written a moment ago is evaluated now, before the watcher may hear it, so its load again is waited for.
+        if (await Session.Models.ReadWrittenNowAsync(WorkspaceEdits.Catching))
+        {
+            AgentCall.Say($"Waiting for {Session.Folder ?? "the folder"}'s projects to be read");
+            Session.Evaluate();
+            await Session.Models.Idle.WaitAsync(cancel);
+            AgentCall.Say(null);
+        }
         if (Session.CSharp is not { IsReady: true } csharp)
         {
             return false;
@@ -3032,10 +3044,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     /// <summary>The agent's progress while a C# file is waited for (null once it is not).</summary>
-    private void SayTakingIn(string? file) => AgentCall.Say(file is null ? null : $"Waiting for the C# language server to load {Relative(file)} into its project");
+    private void SayTakingIn(string? file) => AgentCall.Say(file is null ? null
+        : global::Passenger.Workspace.WorkspaceModel.IsProjectFile(file) ? $"Waiting for the C# language server to load {Relative(file)} again"
+        : $"Waiting for the C# language server to load {Relative(file)} into its project");
 
-    private string NotTakenIn(IReadOnlyList<(string Path, string Project)> left) =>
-        Refusals.NotTakenIn(Relative(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
+    private string NotTakenIn(IReadOnlyList<(string Path, string Project)> left) => CSharpService.IsReload(left[0])
+        ? Refusals.NotLoadedAgain(Path.GetFileNameWithoutExtension(left[0].Project))
+        : Refusals.NotTakenIn(Relative(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
 
     /// <summary>A file opened as the editor would, with the language server's document for it once the server has loaded
     /// the workspace and holds the file in its project (<see cref="TakenInAsync"/>, waited for before the file is opened,

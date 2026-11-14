@@ -125,6 +125,12 @@ public static class Refusals
         $"{file} is not loaded into {project} yet: the C# language server has not taken it in after {CSharp.Patience.Limit.TotalSeconds:0} s, "
         + "and would answer without it; try again once it has";
 
+    /// <summary>A project the C# language server was asked to load again (its file or an import changed) that it has not
+    /// loaded since (<see cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers would be of the project as it was.</summary>
+    public static string NotLoadedAgain(string project) =>
+        $"{project} is not loaded again yet: the C# language server has not loaded it as changed after {CSharp.Patience.Limit.TotalSeconds:0} s, "
+        + "and would answer from it as it was; try again once it has";
+
     /// <summary>What an answer given before the C# language server took C# files come under its projects into them went
     /// without (<see cref="CSharp.CSharpService.UntakenAsync"/>), the files named as shown.</summary>
     public static string Untaken(IReadOnlyList<string> files) =>

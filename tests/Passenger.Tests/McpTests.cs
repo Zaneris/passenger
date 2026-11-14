@@ -190,6 +190,30 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's change of a project file, through edit or written by its own file tool, then at once a question
+    /// whose answer is what the project compiles now (a folder it removed no longer removed, a symbol it defines): the
+    /// project is evaluated anew and the language server's load of it again waited for, so find_symbol finds what the change
+    /// brought in.</summary>
+    [Fact]
+    public async Task An_agents_question_after_its_change_of_a_project_file_waits_for_the_project_to_load_again()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-reloaded-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library().With("  <ItemGroup>\n    <Compile Remove=\"Extra/**\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "Lib/Fine.cs", "namespace Lib;\n\npublic class Fine\n{\n}\n\n#if PASSENGER_GATED\npublic class Gated\n{\n}\n#endif\n");
+        TestFolders.Write(folder, "Lib/Extra/Helper.cs", "namespace Lib;\n\npublic static class Helper\n{\n    public static string Help() => \"help\";\n}\n");
+        await using McpClient client = await Start(["--mcp", folder]);
+        Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Fine", ["exact"] = true })).EnumerateArray());
+
+        await Call(client, McpTools.Edit, new() { ["path"] = "Lib/Lib.csproj", ["oldText"] = "    <Compile Remove=\"Extra/**\" />\n", ["newText"] = string.Empty });
+        JsonElement helper = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Helper", ["exact"] = true })).EnumerateArray());
+        Assert.Equal(Path.Combine("Lib", "Extra", "Helper.cs"), helper.GetProperty("path").GetString());
+
+        TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library("<DefineConstants>$(DefineConstants);PASSENGER_GATED</DefineConstants>"));
+        JsonElement gated = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Gated", ["exact"] = true })).EnumerateArray());
+        Assert.Equal(Path.Combine("Lib", "Fine.cs"), gated.GetProperty("path").GetString());
+    }
+
     private const string Greeter = "namespace Lib;\n\npublic class Greeter\n{\n    public string Greet(string name) => \"Hello, \" + name;\n}\n";
 
     private const string Caller = "namespace Lib;\n\npublic static class Caller\n{\n    public static string Call() => new Greeter().Greet(\"you\");\n}\n";
