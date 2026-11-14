@@ -282,7 +282,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`; what a start
   runs read by `DesktopPrograms`, never `Built` alone), and plays no sound; a start where fontconfig lists no font takes the carried Inter as Avalonia's default (`NoSystemFont.Checked`, on every AppBuilder); a Linux display is taken by `NoDisplay`,
   never by unsetting `WAYLAND_DISPLAY`: a client named no socket connects to the session's `wayland-0`. A toolbar widget that may go at the narrowest takes `ShrinkingRow.GoesWhole`, its menu opening elsewhere once it has (`ShrinkingRow.HasGone`). Anything new on
-  the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's. The display scale is
+  the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's. Windows' jump list and macOS's Dock menu follow the recent list only through `RecentShortcuts`, and the installer's `--aumid` (package-win.sh) stays the AppUserModelID Velopack gives the process. The display scale is
   one `InterfaceScale` transform per window, which its popups take from it.
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; every editor through `ForEachEditor`; the one
   close `CloseTab`). A diff is an `OpenDocument.OfDiff` of no file, never in `Documents`, every one through
@@ -346,7 +346,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   only for `=`: its `>` is Razor's own answer, its `</` closed over its HTML.
 - **Build and run.** The build configuration and platform are one choice (`BuildConfigurationChoices`, `WorkspaceModel.Build`):
   command lines take it through `WorkspaceModel.BuildArgumentsFor` (a publish building as the folder builds through `PublishArgumentsFor`), evaluations through `ProjectModels.Properties`/`Each`;
-  never a `-c` written anywhere else; a kept choice is dropped only once the workspace read has projects each evaluated (`BuildConfigurationChoices.ReadAsync`); a run configuration's own is read only through `ProjectSession.WorkspaceOfAsync`, the plan's `LaunchPlan.Workspace` carrying it to its build, dotnet watch and device install, never `session.Workspace` in a start's path. Godot runs only a game's Debug build (`GodotLaunch.RunsConfiguration`).
+  never a `-c` written anywhere else; a kept choice is dropped only once the workspace read has projects each evaluated (`BuildConfigurationChoices.ReadAsync`); a run configuration's own is read only through `ProjectSession.WorkspaceOfAsync`, the plan's `LaunchPlan.Workspace` carrying it to its build, dotnet watch and device install, never `session.Workspace` in a start's path. A Node package's script runs by its own package manager through `ScriptRuns` (never npm for a pnpm, Yarn or Bun package), packages read by `NodeProjects` from the files the index lists (`NodeFiles`), never a walk of their own. Godot runs only a game's Debug build (`GodotLaunch.RunsConfiguration`).
   `BuildRunController`, every console through `ConsoleSink.PumpAsync`, `LaunchPlan` (one resolution
   for Run, Debug, Profile, Hot Reload and a debugged test host), `UpToDate`; a Passenger it launches keeps its state in
   `sandbox/`; `PASSENGER_DOTNET_RELEASES` is dead in tests. Godot: `GodotLaunch`, `GodotGame`; the Game window is an
@@ -806,10 +806,10 @@ to the window's tests.
   Passenger's own consistency settles a design question. The shared pieces: `DialogFooter` (`Of`, `Listed`, `Answers`,
   `Bar`, `Page`, `Default`, `Cancel`, `OkCancel`, `Headed`, `Popup`) in a `Border.footerBar`; `Border.framed`;
   `Passenger.Separator`, `Passenger.Divider`; `MenuChoice` (`Holding`); `ListMenus.PlaceForKeys`; `ToolTabs.Tab`;
-  `PopupFrame` (`Framed`), `popupTitle`; `ListRow.Height` (24); `TextBlock.emptyText`, `EmptyState`;
+  `PopupFrame` (`Framed`), `popupTitle`; a popup placed through `PopupPlacement.Place` (laid out first), a card beside a list narrowed by `InfoCard.Within`; `ListRow.Height` (24); `TextBlock.emptyText`, `EmptyState`;
   `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name), `Grey` (greyed, its tip saying why); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
   `MutedText`; `ListKeys.Move`; `Plural.Of`/`Listed`; `Border.kindBadge`/`tag`/`box` (never a literal radius);
-  `RunRows`; `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
+  `RunRows`; `ChangedFileRow` (`Show` of a `FileChange`, every list of changed files); `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
   `ToolWindows.FilterBox`; `FilterMenu` (a list's Sort and Filter, placed in its search); `DropDownSearch` (every ComboBox's search, never per control); `ToolFlow`; `PaneSplit`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
   `ReusedRows` (`Use`, `Showing`); `RowIcon` and `RowGlyphs`, drawn as `PathIcon` draws for a fraction of its cost,
   never `PathIcon` (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).

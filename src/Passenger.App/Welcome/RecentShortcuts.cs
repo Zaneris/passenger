@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Passenger.Editor;
+using static Passenger.App.MainWindow;
 
 namespace Passenger.App.Welcome;
 
@@ -62,7 +63,7 @@ public static class RecentShortcuts
         NativeMenu menu = new();
         foreach ((string path, RecentShortcut shortcut) in recent)
         {
-            NativeMenuItem item = new(shortcut.Title) { ToolTip = shortcut.Tip };
+            NativeMenuItem item = new(NativeWords(shortcut.Title)) { ToolTip = shortcut.Tip };
             item.Click += (_, _) => PassengerApp.Front?.OpenRecent(path);
             menu.Add(item);
         }
@@ -70,7 +71,7 @@ public static class RecentShortcuts
         {
             menu.Add(new NativeMenuItemSeparator());
         }
-        NativeMenuItem newWindow = new(NewWindow.Title);
+        NativeMenuItem newWindow = new(NativeWords(NewWindow.Title));
         newWindow.Click += (_, _) =>
         {
             if (PassengerApp.Front is { } front)
