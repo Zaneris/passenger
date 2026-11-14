@@ -106,6 +106,14 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         }
     }
 
+    /// <summary>The value the file keeps as read and clamped now, on any thread, as <see cref="Value"/> reads it: null where
+    /// none is kept (no file, or one that did not read). The document takes none of it in.</summary>
+    public T? KeptNow()
+    {
+        (T found, bool isKept, _) = ReadNow();
+        return isKept ? found : null;
+    }
+
     /// <summary>Keeps a value, written a moment later unless it is the one kept already and written, or being tried
     /// again.</summary>
     public void Set(T next)

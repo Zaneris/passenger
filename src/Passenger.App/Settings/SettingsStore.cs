@@ -76,13 +76,15 @@ public sealed class SettingsStore : IDisposable
     /// <summary>A window's own settings, kept nowhere: the defaults, or those it opens on, changed only by that window.</summary>
     public static SettingsStore Unkept(AppSettings? opening = null) => new(null, opening);
 
-    /// <summary>The settings a state folder's settings.json keeps, read as a window keeping them reads them; null where it
-    /// keeps none (no file, or one that did not read). UI thread.</summary>
-    internal static AppSettings? KeptIn(string folder)
-    {
-        StateDocument<AppSettings> kept = new(Path.Combine(folder, StateStore.SettingsFile));
-        return kept.IsKept ? kept.Value : null;
-    }
+    /// <summary>The settings kept where PASSENGER_SETTINGS names (<see cref="StateStore.Named"/>), which a process nobody
+    /// sees opens on, read as a window keeping them reads them, on any thread: null with no folder named, or none kept there
+    /// (no file, or one that did not read).</summary>
+    internal static AppSettings? KeptWhereNamed() =>
+        StateStore.Named is { } folder ? new StateDocument<AppSettings>(Path.Combine(folder, StateStore.SettingsFile)).KeptNow() : null;
+
+    /// <summary>The logs' switches of the settings a process opens on, put in force before any window takes them, so what
+    /// it begins ahead of its window (a language server, an agent's first calls) is traced from its start.</summary>
+    internal static void LogsInForce(AppSettings opening) => LogsInForce(null, opening);
 
     /// <summary>The settings in force.</summary>
     public AppSettings Value => value;
@@ -302,6 +304,11 @@ public sealed class SettingsStore : IDisposable
         {
             AppActions.Choose(after.Keymap, after.OwnShortcuts());
         }
+        LogsInForce(before, after);
+    }
+
+    private static void LogsInForce(AppSettings? before, AppSettings after)
+    {
         if (before is null || before.TraceProtocols != after.TraceProtocols)
         {
             IdeLog.Traces = after.TraceProtocols;

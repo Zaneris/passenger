@@ -69,13 +69,14 @@ public partial class MainWindow
     }
 
     /// <summary>The window of a process nobody sees (an agent's <c>--mcp</c>, a screenshot) opens on the settings kept where
-    /// PASSENGER_SETTINGS names, as a person's window opens on theirs, keeping nothing; with no folder named, or no settings
-    /// kept there, on the defaults, so the person's own reach no Passenger they don't see. The command line's theme stands.</summary>
-    public void OpenOnNamedSettings(LaunchOptions launch)
+    /// PASSENGER_SETTINGS names, as the process read them (<see cref="SettingsStore.KeptWhereNamed"/>), as a person's window
+    /// opens on theirs, keeping nothing; with none (no folder named, or no settings kept there) on the defaults, so the
+    /// person's own reach no Passenger they don't see. The command line's theme stands.</summary>
+    public void OpenOnNamedSettings(LaunchOptions launch, AppSettings? named)
     {
-        if (State.StateStore.Named is { } folder && SettingsStore.KeptIn(folder) is { } kept)
+        if (named is not null)
         {
-            OpenOnSettings(kept);
+            OpenOnSettings(named);
             Program.ApplyTheme(Avalonia.Application.Current!, launch);
         }
     }

@@ -732,7 +732,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>Passenger started as the agent's server over the Sum project, tracing what it says to its language servers
-    /// (lsp.log) from the moment its window takes its settings.</summary>
+    /// (lsp.log) from its start, as the settings it starts on ask.</summary>
     private async Task<McpClient> StartTracedAsync()
     {
         File.WriteAllText(Path.Combine(OwnState, StateStore.SettingsFile), new System.Text.Json.Nodes.JsonObject

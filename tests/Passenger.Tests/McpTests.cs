@@ -488,6 +488,42 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.False(log.Contains("at design time in", StringComparison.Ordinal), $"The window built the folder's project at design time again once built:\n{log}");
     }
 
+    /// <summary>An agent's own Passenger whose settings trace the protocols writes the language server it started ahead of
+    /// its window to lsp.log from that server's start: the initialize it was sent, the project it was given to load, and its
+    /// word that the project loaded.</summary>
+    [Fact]
+    public async Task An_agents_own_passenger_tracing_by_its_settings_traces_the_server_started_ahead_of_its_window_from_its_start()
+    {
+        string folder = PathNames.Canonical(await TakeFolderAsync());
+        File.WriteAllText(Path.Combine(OwnState, Passenger.App.State.StateStore.SettingsFile), new System.Text.Json.Nodes.JsonObject
+        {
+            ["version"] = AppSettings.Upgrades.Count,
+            ["traceProtocols"] = true,
+        }.ToJsonString());
+        await using McpClient client = await Start(["--mcp", folder]);
+        string answered = (await Call(client, McpTools.SymbolInfo, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23 })).GetString()!;
+        Assert.StartsWith("int Helper.Twice(int value)", answered, StringComparison.Ordinal);
+
+        string logged = Path.Combine(OwnState, "logs", "passenger.log");
+        string log = string.Empty;
+        await Until(() => (log = Ui.Shared(logged)).Contains($"started ahead taken up for {folder}", StringComparison.Ordinal),
+            "the log to say the window took up the language server started ahead");
+        string server = Regex.Match(log, $@"C# language server \(process (\d+)\) started ahead for {Regex.Escape(folder)} ").Groups[1].Value;
+        string trace = Path.Combine(OwnState, "logs", "lsp.log");
+        // lsp.log is written a moment after its lines come.
+        Assert.True(await Waiting.UntilAsync(() => Traced("<--", Passenger.Lsp.LspMethods.ProjectInitializationComplete), TimeSpan.FromSeconds(10).Scaled(), Cancel),
+            $"lsp.log lacks the word of the language server started ahead (process {server}) that its project loaded:\n{Head()}");
+        Assert.True(Traced("-->", Passenger.Lsp.LspMethods.Initialize),
+            $"lsp.log lacks the initialize sent to the language server started ahead (process {server}), so whoever reads it misses how that server started:\n{Head()}");
+        Assert.True(Traced("-->", Passenger.Roslyn.Extension.ProjectMethods.Load),
+            $"lsp.log lacks the project the language server started ahead (process {server}) was given to load:\n{Head()}");
+
+        string[] Lines() => File.Exists(trace) ? Ui.Shared(trace).Split('\n') : [];
+        bool Traced(string direction, string method) => server.Length > 0 && Lines().Any(l =>
+            l.Contains($"[server {server}] {direction} ", StringComparison.Ordinal) && l.Contains($"\"method\":\"{method}\"", StringComparison.Ordinal));
+        string Head() => string.Join('\n', Lines().Take(20).Select(l => l.Length > 300 ? l[..300] + "…" : l));
+    }
+
     /// <summary>An agent's own Passenger, its window built over the folder's head start as <c>--mcp</c> builds it, whose
     /// settings as its C# starts are not the defaults the server started ahead has (solution-wide analysis turned on before
     /// its projects were found) takes that server up, telling it the settings, and starts no second one: Problems' Solution

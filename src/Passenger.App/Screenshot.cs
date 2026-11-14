@@ -41,7 +41,7 @@ public static class Screenshot
         FileText.Writing += written.Add;
         MainWindow window = new() { Width = options.Size.Width, Height = options.Size.Height, Autosaves = false, AgentsAllowed = options.Steps.OfType<ScriptStep.Agent>().Any(), TakesLaunches = false,
             SaysLastCrash = true };
-        window.OpenOnNamedSettings(launch);
+        window.OpenOnNamedSettings(launch, Settings.SettingsStore.KeptWhereNamed());
         window.SetRenderScaling(options.Scale);
         bool settled;
         try

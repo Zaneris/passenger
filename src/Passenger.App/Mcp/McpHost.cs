@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Passenger.App.Settings;
 using Passenger.App.State;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -234,6 +235,12 @@ public static partial class McpHost
         Stream output = Console.OpenStandardOutput();
         // Standard output is the protocol's alone, and standard error the agent may never read: the console goes to the log.
         IdeLog.TakeConsole();
+        // The settings read first, so a trace they ask for has the language server begun ahead and the agent's first calls.
+        AppSettings? named = SettingsStore.KeptWhereNamed();
+        if (named is not null)
+        {
+            SettingsStore.LogsInForce(named);
+        }
         // The folder's opening begun now, on workers, while the window that takes it up is built.
         HeadStart? ahead = HeadStart.Begin(launch, StartsLanguageServer);
 
@@ -269,7 +276,7 @@ public static partial class McpHost
         MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, TakesLaunches = false, StartsLanguageServer = StartsLanguageServer, HeadStart = ahead };
         IdeErrors.Write($"Passenger {Product.Version} ({Product.Commit ?? "no commit"}) for an agent, with no window shown: its window built "
             + $"{System.Diagnostics.Stopwatch.GetElapsedTime(Program.StartedAt).TotalSeconds:0.00} s after launch");
-        window.OpenOnNamedSettings(launch);
+        window.OpenOnNamedSettings(launch, named);
         window.SetRenderScaling(2);
         window.Show();
         window.Start(launch);
