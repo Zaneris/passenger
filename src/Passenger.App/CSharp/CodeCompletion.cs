@@ -540,8 +540,9 @@ internal sealed partial class CodeCompletion
     /// <summary>The most rows the list shows.</summary>
     private const int MostShown = 200;
 
-    /// <summary>A list's ranking (<see cref="CompletionRanking"/>), made from its items the first time it is narrowed, off the
-    /// UI thread since a statement's list is every type in reach; and the row each item makes, made once it is first shown.
+    /// <summary>A list's ranking (<see cref="CompletionRanking"/>) and a place for the row each item makes, both made from its
+    /// items the first time it is narrowed, off the UI thread since a statement's list is every type in reach (made as a
+    /// list's later part joins it too); each row made once it is first shown.
     /// Its items that match what was typed are the best first, the higher score over the list's
     /// <see cref="Completion.Alike"/>, then the one the server preselects, then by its sort text; where the server says
     /// how well its items fit the place (C#'s), the one that fits better first among those matched the same way. Only the
@@ -549,16 +550,16 @@ internal sealed partial class CodeCompletion
     /// server's lead.</summary>
     private sealed class RankedList(Completion list)
     {
-        private readonly Lazy<CompletionRanking> ranking = new(() => new CompletionRanking([.. list.Items.Select(item =>
-            new CompletionRanking.Entry(item.FilterText ?? item.Label, item.FilterText is not null, item.Preselect == true, item.SortText ?? item.Label, item.MatchPriority))]));
-
-        private readonly CompletionRow?[] rows = new CompletionRow?[list.Items.Count];
+        private readonly Lazy<(CompletionRanking Ranking, CompletionRow?[] Rows)> ranked = new(() => (new CompletionRanking([.. list.Items.Select(item =>
+            new CompletionRanking.Entry(item.FilterText ?? item.Label, item.FilterText is not null, item.Preselect == true, item.SortText ?? item.Label, item.MatchPriority))]),
+            new CompletionRow?[list.Items.Count]));
 
         public Completion List => list;
 
         public CompletionRow[] Rows(string typed, string bare, int alike)
         {
-            int[] shown = ranking.Value.Shown(typed, bare, alike, MostShown);
+            (CompletionRanking ranking, CompletionRow?[] rows) = ranked.Value;
+            int[] shown = ranking.Shown(typed, bare, alike, MostShown);
             CompletionRow[] made = new CompletionRow[shown.Length];
             for (int i = 0; i < shown.Length; i++)
             {

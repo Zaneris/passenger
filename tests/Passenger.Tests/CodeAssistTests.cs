@@ -2683,8 +2683,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>A statement's completion in a file: how many items it lists, what reading its answer allocates (the
-    /// same list asked for from the thread pool, the window's thread waiting), and what the UI thread allocates from
-    /// the key until the list is open, whichever of its frames the answer lands in; the least of three.</summary>
+    /// same list asked for from the thread pool, the window's thread waiting), and what the UI thread allocates from the
+    /// key until the list is open, whichever of its frames the answer lands in; the least of three. Its later part is
+    /// held in each round until Escape: one joined before it leaves the popup, for the next round, rows to lay out again
+    /// (200 for 54), which the UI thread pays as though it read the items.</summary>
     private static (int Items, long Read, long Frame) StatementCompletion(MainWindow window, string path)
     {
         window.OpenFile(path);
@@ -2703,17 +2705,33 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             Passenger.Lsp.CompletionList? list = Ui.Idle(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "the statement's completion asked from the thread pool").List;
             read = Math.Min(read, GC.GetTotalAllocatedBytes(precise: true) - before);
             items = list?.Items.Count ?? 0;
+            if (list?.Later is { } later)
+            {
+                // Asked for as the list came: landed, it is no answer a round below would hold in place of its own.
+                Ui.Await(later, "the later part of the statement's completion asked from the thread pool");
+            }
         }
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
         long frame = long.MaxValue;
         for (int round = 0; round < 3; round++)
         {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            window.KeyTextInput("S");
-            Ui.Pumped(() => window.Assist.IsCompletionOpen, TimeSpan.FromSeconds(60));
-            frame = Math.Min(frame, GC.GetAllocatedBytesForCurrentThread() - before);
-            Assert.True(window.Assist.IsCompletionOpen, $"Completion never opened for a statement in {Path.GetFileName(path)}");
-            Ui.Press(window, "ESCAPE");
-            Ui.Press(window, "BACK_SPACE");
+            TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task held = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.LaterCompletion, _ => true, released.Task);
+            try
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.KeyTextInput("S");
+                Ui.Pumped(() => window.Assist.IsCompletionOpen, TimeSpan.FromSeconds(60));
+                frame = Math.Min(frame, GC.GetAllocatedBytesForCurrentThread() - before);
+                Assert.True(window.Assist.IsCompletionOpen, $"Completion never opened for a statement in {Path.GetFileName(path)}");
+                Ui.AwaitPumped(held, $"the later part of a statement's completion in {Path.GetFileName(path)}, come and held unanswered");
+                Ui.Press(window, "ESCAPE");
+                Ui.Press(window, "BACK_SPACE");
+            }
+            finally
+            {
+                released.TrySetResult();
+            }
         }
         return (items, read, frame);
     }
