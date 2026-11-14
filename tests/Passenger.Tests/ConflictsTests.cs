@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Passenger.App;
+using Passenger.App.Editors;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
 using Passenger.Core;
@@ -16,7 +17,7 @@ namespace Passenger.Tests;
 /// merged in the three-way window (its non-conflicting changes in one go, the conflict by its arrow, a simple one by
 /// the magic wand, all undoable) and written, git marking each resolved and the commit finishing the merge; a rebase's
 /// sides named by their branches as Update Project stops on them, and the rebase going on once they are resolved; an
-/// unstash's conflict.</summary>
+/// unstash's conflict; a file in conflict saying so over its text, its Merge… opening the merge window.</summary>
 public sealed class ConflictsTests : IDisposable
 {
     private const string Shop = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";
@@ -576,6 +577,62 @@ public sealed class ConflictsTests : IDisposable
         window.OpenFile(Path.Combine(folder, "Shop.cs"));
         Ui.Settle();
         return window;
+    }
+
+    /// <summary>A file Git has in conflict, opened in the editor, says so over its text with Merge…, which opens the merge
+    /// window on it and writes nothing there until the merge is applied; a file in no conflict says nothing, and once the
+    /// merge resolves the file its banner goes.</summary>
+    [AvaloniaFact]
+    public void A_file_in_conflict_says_so_over_its_text_and_its_Merge_opens_the_merge_window_writing_nothing_until_applied()
+    {
+        ConflictingPrices();
+        string prices = Path.Combine(folder, "Prices.cs");
+        byte[] conflicted = File.ReadAllBytes(prices);
+
+        MainWindow window = Open();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Assert.True(group.BannerText is null && !group.MergeLink.IsEffectivelyVisible, $"Shop.cs, in no conflict, has a banner saying \"{group.BannerText}\"");
+        window.OpenFile(prices);
+        Ui.WaitFor(() => group.BannerText == EditorGroup.Conflicted && group.MergeLink.IsEffectivelyVisible,
+            () => $"Prices.cs's banner saying it has conflicts, with Merge… (it says \"{group.BannerText}\")");
+
+        Ui.Click(group.MergeLink);
+        MergeWindow merge = Merging(window);
+        Assert.Equal(conflicted, File.ReadAllBytes(prices));
+        Press(merge, "Cancel");
+        Ui.Landed(() => !merge.IsVisible, "the merge window closed by Cancel");
+        Assert.Equal(conflicted, File.ReadAllBytes(prices));
+        Assert.Equal(["Prices.cs"], Unmerged());
+        Assert.Equal(EditorGroup.Conflicted, group.BannerText);
+
+        Ui.Click(group.MergeLink);
+        merge = Merging(window);
+        Press(merge, "Accept Left");
+        Ui.WaitFor(() => !merge.IsVisible && group.BannerText is null && !group.MergeLink.IsEffectivelyVisible,
+            () => $"Prices.cs's banner gone once Accept Left resolved it (it says \"{group.BannerText}\")");
+        Assert.Empty(Unmerged());
+        Assert.Equal(Prices.Replace("Base() => 10", "Base() => 11", StringComparison.Ordinal), Read("Prices.cs"));
+        window.Close();
+
+        static MergeWindow Merging(MainWindow window)
+        {
+            Ui.Landed(() => window.Frontmost is MergeWindow, "the merge window over Prices.cs");
+            MergeWindow merge = (MergeWindow)window.Frontmost!;
+            Assert.Equal("Merge Revisions for Prices.cs", merge.Title);
+            return merge;
+        }
+    }
+
+    /// <summary>A merge of the feature stopped on Prices.cs, which both branches changed on one line.</summary>
+    private void ConflictingPrices()
+    {
+        Git("switch", "-q", "-c", "feature");
+        Write("Prices.cs", Prices.Replace("Base() => 10", "Base() => 12", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Feature prices");
+        Git("switch", "-q", "main");
+        Write("Prices.cs", Prices.Replace("Base() => 10", "Base() => 11", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Main prices");
+        Conflicting("merge", "feature");
     }
 
     /// <summary>What the Commit window's Commit answered when pressed: why it would not commit.</summary>

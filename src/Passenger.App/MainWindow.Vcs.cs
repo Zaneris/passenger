@@ -203,6 +203,7 @@ public partial class MainWindow
         ToolTip.SetTip(BranchButton, vcs.Repository is null ? vcs.Refused ?? "Version control" : $"Git branch: {BranchName.Text}");
         Explorer.Tree.SetChanges(vcs.Changes.Where(c => c.Kind is not ChangeKind.Deleted).ToDictionary(c => c.Path, c => c.Kind));
         ShowGitStatus();
+        FollowConflicts();
     }
 
     /// <summary>The branch popup: new branch, commit, push, then the local branches (the current, favourites and last

@@ -509,6 +509,15 @@ public sealed class OpenDocument : Observable
         set => Set(ref noticeAction, value);
     }
 
+    private bool inConflict;
+
+    /// <summary>Whether Git has the file in conflict, as its last status read it: the banner says so, offering its merge.</summary>
+    public bool InConflict
+    {
+        get => inConflict;
+        set => Set(ref inConflict, value);
+    }
+
     /// <summary>The projects the language server compiles the file in (a target framework of a multi-targeted project
     /// each), by the server's names for them; none while it has not said, or for a file it does not know.</summary>
     public IReadOnlyList<string> ProjectContexts

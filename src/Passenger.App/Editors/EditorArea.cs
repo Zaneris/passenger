@@ -114,6 +114,11 @@ public sealed partial class EditorArea : UserControl
 
     internal void OpenLinked(string path) => FileLinkClicked?.Invoke(this, path);
 
+    /// <summary>The merge of a file in conflict asked for by the banner over it, for the window to open its merge window.</summary>
+    public event EventHandler<OpenDocument>? MergeRequested;
+
+    internal void MergeAsked(OpenDocument document) => MergeRequested?.Invoke(this, document);
+
     /// <summary>The open folder, whose files alone a Markdown preview draws the images of; null for none.</summary>
     public Func<string?> Root { get; set; } = () => null;
 

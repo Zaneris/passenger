@@ -72,6 +72,9 @@ public sealed class EditorGroup : DockPanel
     private readonly Panel bodyLayer;
     private readonly Banner banner = new();
     private readonly Button bannerLink;
+
+    /// <summary>The banner's way to the merge window, while the file shown is in conflict.</summary>
+    private readonly Button mergeLink;
     private EditorTab? active;
     private EditorTabsPlace tabsPlace;
 
@@ -133,6 +136,15 @@ public sealed class EditorGroup : DockPanel
         bannerLink = banner.Link(null, () => active?.Document.NoticeAction?.Run());
         bannerLink.Name = "BannerLink";
         bannerLink.IsVisible = false;
+        mergeLink = banner.Link(Merge, () =>
+        {
+            if (active?.Document is { InConflict: true } conflicted)
+            {
+                area.MergeAsked(conflicted);
+            }
+        });
+        mergeLink.Name = "MergeLink";
+        mergeLink.IsVisible = false;
         Children.Add(tabBar);
         Children.Add(banner);
         Children.Add(Find);
@@ -658,15 +670,23 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The Godot project page this group shows, null while it shows a project.godot's text or another file.</summary>
     public Godot.GodotPageViewer? GodotPage => godotPage is { ShowsPage: true } ? godotPage : null;
 
-    /// <summary>The banner over the file: where a read-only file comes from, what its notice says, and what its next save
-    /// does to how it is stored.</summary>
+    /// <summary>What the banner over a file Git has in conflict says, before its way to the merge window.</summary>
+    public const string Conflicted = "This file has merge conflicts";
+
+    private const string Merge = "Merge…";
+
+    /// <summary>The banner over the file: where a read-only file comes from, that Git has it in conflict, what its notice
+    /// says, and what its next save does to how it is stored.</summary>
     private void ShowBanner(OpenDocument document)
     {
         // A diff's own bar says what it is, and a tool window is no file.
-        string[] said = [.. new[] { document.IsReadOnly && document is { Diff: null, Tool: null } ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
+        bool file = document is { Diff: null, Tool: null };
+        bool conflicted = file && document.InConflict;
+        string[] said = [.. new[] { document.IsReadOnly && file ? document.Origin : null, conflicted ? Conflicted : null, document.Notice, document.EncodingWarning }.OfType<string>()];
         banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
         bannerLink.IsVisible = document.Notice is not null && document.NoticeAction is not null;
         bannerLink.Content = document.NoticeAction?.Text;
+        mergeLink.IsVisible = conflicted;
     }
 
     /// <summary>What the banner over the file shown says, null while it shows none.</summary>
@@ -677,6 +697,9 @@ public sealed class EditorGroup : DockPanel
 
     /// <summary>The banner's link, for a click on it.</summary>
     public Control BannerLinkControl => bannerLink;
+
+    /// <summary>The banner's Merge… over a file in conflict, shown while it is.</summary>
+    public Button MergeLink => mergeLink;
 
     /// <summary>Takes a file's tab away. Where it was the tab shown, the group shows the one it showed before (the latest
     /// first), its neighbour where it showed no other, or nothing when it was the last.</summary>
@@ -822,7 +845,7 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.Highlighter):
                 Editor.Highlighter = document.Highlighter;
                 break;
-            case nameof(OpenDocument.Notice) or nameof(OpenDocument.NoticeAction) or nameof(OpenDocument.EncodingWarning):
+            case nameof(OpenDocument.Notice) or nameof(OpenDocument.NoticeAction) or nameof(OpenDocument.EncodingWarning) or nameof(OpenDocument.InConflict):
                 ShowBanner(document);
                 break;
             case nameof(OpenDocument.ProjectContexts):

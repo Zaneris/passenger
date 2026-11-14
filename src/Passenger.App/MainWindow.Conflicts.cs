@@ -1,12 +1,15 @@
 using Avalonia.Controls;
 using Passenger.App.Vcs;
+using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Vcs;
 
 namespace Passenger.App;
 
 /// <summary>The window's merge conflicts: the Conflicts dialog (from Git | Resolve Conflicts..., the Commit window's
 /// Merge Conflicts, and by itself when an update, an unstash or a cherry-pick stops for them), the three-way merge
-/// window over it, and Continue Rebase and the Abort of what is under way (a rebase, a merge, a cherry-pick, a revert).</summary>
+/// window over it (from the dialog, the Commit window, and the banner over a file in conflict), and Continue Rebase and
+/// the Abort of what is under way (a rebase, a merge, a cherry-pick, a revert).</summary>
 public partial class MainWindow
 {
     private ConflictsDialog? conflictsDialog;
@@ -30,6 +33,9 @@ public partial class MainWindow
 
         string? NoRebase() => session.Vcs.Merge.Operation is MergeOperation.Rebase ? null : "No rebase in progress";
 
+        Editors.Opened += (_, document) => FollowConflict(document, Conflicted());
+        Editors.MergeRequested += (_, document) => IdeErrors.Observe(MergeAsync(document.Path));
+
         void Add(string id, string title, Action<ActionContext> run, int order, Func<string?> whyNot) =>
             actions!.Add(new IdeAction(id, title, "Git", run)
             {
@@ -37,6 +43,22 @@ public partial class MainWindow
                 Menus = [new MenuPlace("Git", 0, order)],
             });
     }
+
+    /// <summary>Each open file says over its text whether Git has it in conflict, as the last status read it.</summary>
+    private void FollowConflicts()
+    {
+        HashSet<string> conflicted = Conflicted();
+        foreach (OpenDocument document in Editors.Documents)
+        {
+            FollowConflict(document, conflicted);
+        }
+    }
+
+    private HashSet<string> Conflicted() => new(session.Vcs.Conflicts.Select(c => c.Path), PathNames.Comparer);
+
+    /// <summary>A file's banner says it is in conflict, with its Merge…; a diff's tab and a tool window's are no file.</summary>
+    private static void FollowConflict(OpenDocument document, HashSet<string> conflicted) =>
+        document.InConflict = document is { Diff: null, Tool: null } && conflicted.Contains(document.Path);
 
     /// <summary>The Conflicts dialog over the window, or the one open already; null when nothing is in conflict. Once
     /// it closes with every conflict of a rebase resolved, the rebase is offered to go on.</summary>
