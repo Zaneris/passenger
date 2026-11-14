@@ -1,6 +1,7 @@
 using Avalonia;
-using Avalonia.Collections;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -228,15 +229,15 @@ internal sealed record CompletionRow(Lsp.CompletionItem Item, string Letter, str
     public string Label => Item.Label + (Item.LabelDetails?.Detail ?? string.Empty);
 }
 
-/// <summary>A place in the completion list, kept from one filter to the next: the row it shows now, which its control
-/// follows while shown (<see cref="CompletionRowView"/>).</summary>
-internal sealed class CompletionSlot(CompletionRow row) : System.ComponentModel.INotifyPropertyChanged
+/// <summary>A place in the completion list, kept for good: the row it shows now, which its control follows while shown
+/// (<see cref="CompletionRowView"/>); none where the list has fewer rows than places, the place then hidden.</summary>
+internal sealed class CompletionSlot : System.ComponentModel.INotifyPropertyChanged
 {
     private static readonly System.ComponentModel.PropertyChangedEventArgs RowChanged = new(nameof(Row));
 
-    private CompletionRow row = row;
+    private CompletionRow? row;
 
-    public CompletionRow Row
+    public CompletionRow? Row
     {
         get => row;
         set
@@ -253,12 +254,35 @@ internal sealed class CompletionSlot(CompletionRow row) : System.ComponentModel.
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }
 
-/// <summary>The completion list: rows under the caret, the selected one highlighted, ten at a time. Its places are kept as
-/// the list is filtered (<see cref="CompletionSlot"/>), each given the row it shows now, so a key that narrows the list
-/// changes the words in the rows' controls rather than making them anew: the list's containers and their controls stay.</summary>
+/// <summary>The completion list: rows under the caret, the selected one highlighted, ten at a time, scrolled by its own
+/// bar and the wheel. Its ten places (<see cref="CompletionSlot"/>) are made once, each with its container and controls,
+/// and handed the rows they show now: a key that narrows the list, a move past its edge and a scroll change the words in
+/// the places' controls, and a list of fewer rows hides the places it leaves, so a key lays out only the rows it changed,
+/// and no container is ever let go of, to be attached and styled again.</summary>
 internal sealed class CompletionPopup : Border
 {
-    private readonly AvaloniaList<CompletionSlot> slots = [];
+    /// <summary>How many rows the list shows at once.</summary>
+    public const int Shown = 10;
+
+    /// <summary>How far a turn of the wheel by one notch scrolls, as a scroll viewer scrolls.</summary>
+    private const double WheelStep = 50;
+
+    private readonly CompletionSlot[] slots = [.. Enumerable.Range(0, Shown).Select(_ => new CompletionSlot())];
+    private readonly ScrollBar bar;
+
+    private IReadOnlyList<CompletionRow> rows = [];
+
+    /// <summary>The row shown in the first place.</summary>
+    private int top;
+
+    /// <summary>The row chosen, shown or scrolled away; -1 with none.</summary>
+    private int chosen = -1;
+
+    /// <summary>Whether the list is handing its places their rows, its selection then its own rather than the person's.</summary>
+    private bool placing;
+
+    /// <summary>What the wheel has turned short of a whole row.</summary>
+    private double turned;
 
     /// <summary>The item the selection was last said to be on, so a filter that leaves it there says nothing.</summary>
     private Lsp.CompletionItem? told;
@@ -276,15 +300,45 @@ internal sealed class CompletionPopup : Border
         MinWidth = LeastWidth;
         MaxWidth = MostWidth;
         Padding = new Thickness(0, 4);
+        // Its places stand in a plain panel, which lets go of none it hides; its own scrolling never moves them.
         List = new ListBox
         {
             Classes = { StyleClasses.Tree },
-            MaxHeight = 26 * 10,
             ItemsSource = slots,
+            ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel()),
+            AutoScrollToSelectedItem = false,
+            [ScrollViewer.VerticalScrollBarVisibilityProperty] = ScrollBarVisibility.Disabled,
         };
         ReusedRows.Use(List, () => new CompletionRowView(this));
-        List.SelectionChanged += (_, _) => FollowSelected();
-        Child = List;
+        List.ContainerPrepared += (_, e) => e.Container.IsVisible = slots[e.Index].Row is not null;
+        List.SelectionChanged += (_, _) =>
+        {
+            if (!placing && List.SelectedIndex >= 0)
+            {
+                // The person's click on a row.
+                chosen = top + List.SelectedIndex;
+                FollowSelected();
+            }
+        };
+        bar = new ScrollBar
+        {
+            Orientation = Orientation.Vertical,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Minimum = 0,
+            SmallChange = 1,
+            LargeChange = Shown,
+            ViewportSize = Shown,
+            IsVisible = false,
+        };
+        bar.ValueChanged += (_, e) =>
+        {
+            if (!placing)
+            {
+                ScrollTo((int)Math.Round(e.NewValue), fromBar: true);
+            }
+        };
+        AddHandler(PointerWheelChangedEvent, OnWheel);
+        Child = new Panel { Children = { List, bar } };
     }
 
     public ListBox List { get; }
@@ -303,28 +357,16 @@ internal sealed class CompletionPopup : Border
     /// <summary>A XAML colour's own swatch for its badge, null for an item badged by its kind.</summary>
     public Func<Lsp.CompletionItem, IBrush?>? Swatch { get; set; }
 
-    public CompletionRow? Selected => (List.SelectedItem as CompletionSlot)?.Row;
+    public CompletionRow? Selected => chosen >= 0 && chosen < rows.Count ? rows[chosen] : null;
 
-    public IReadOnlyList<CompletionRow> Rows => [.. slots.Select(s => s.Row)];
+    public IReadOnlyList<CompletionRow> Rows => rows;
 
-    /// <summary>Rows in the list's places, the first chosen, or the row of <paramref name="stays"/> where it is among them:
-    /// the places there already show their new rows, the rest are added or taken away at the end.</summary>
+    /// <summary>The list's rows, the first chosen, or the row of <paramref name="stays"/> where it is among them, scrolled
+    /// only as far as shows the one chosen.</summary>
     public void Show(IReadOnlyList<CompletionRow> rows, Lsp.CompletionItem? stays = null)
     {
-        int kept = Math.Min(rows.Count, slots.Count);
-        for (int i = 0; i < kept; i++)
-        {
-            slots[i].Row = rows[i];
-        }
-        if (slots.Count > rows.Count)
-        {
-            slots.RemoveRange(rows.Count, slots.Count - rows.Count);
-        }
-        else if (rows.Count > kept)
-        {
-            slots.AddRange(rows.Skip(kept).Select(row => new CompletionSlot(row)));
-        }
-        int chosen = rows.Count > 0 ? 0 : -1;
+        this.rows = rows;
+        chosen = rows.Count > 0 ? 0 : -1;
         for (int i = 0; stays is not null && i < rows.Count; i++)
         {
             if (ReferenceEquals(rows[i].Item, stays))
@@ -333,15 +375,7 @@ internal sealed class CompletionPopup : Border
                 break;
             }
         }
-        if (List.SelectedIndex != chosen)
-        {
-            List.SelectedIndex = chosen;
-        }
-        FollowSelected();
-        if (chosen >= 0)
-        {
-            List.ScrollIntoView(chosen);
-        }
+        Place();
     }
 
     /// <summary>The list laid out once before it is first shown, so its first list costs what any other does: the rows'
@@ -369,13 +403,78 @@ internal sealed class CompletionPopup : Border
 
     public void Move(int step)
     {
-        int count = List.ItemCount;
-        if (count == 0)
+        if (rows.Count == 0)
         {
             return;
         }
-        List.SelectedIndex = Math.Clamp(List.SelectedIndex + step, 0, count - 1);
-        List.ScrollIntoView(List.SelectedIndex);
+        chosen = Math.Clamp(chosen + step, 0, rows.Count - 1);
+        Place();
+    }
+
+    /// <summary>The rows from the one chosen scrolled into view, by as few as show it, and handed to the places.</summary>
+    private void Place()
+    {
+        if (chosen >= 0 && chosen < top)
+        {
+            top = chosen;
+        }
+        else if (chosen >= top + Shown)
+        {
+            top = chosen - Shown + 1;
+        }
+        ScrollTo(top, fromBar: false);
+    }
+
+    /// <summary>The places handed the rows from <paramref name="first"/> on, as far as the rows go, the rest hidden; the
+    /// chosen row selected where it shows. The bar is moved to match unless it moved them (<paramref name="fromBar"/>),
+    /// its thumb then where the pointer holds it.</summary>
+    private void ScrollTo(int first, bool fromBar)
+    {
+        top = Math.Clamp(first, 0, Math.Max(0, rows.Count - Shown));
+        placing = true;
+        try
+        {
+            for (int i = 0; i < Shown; i++)
+            {
+                CompletionRow? row = top + i < rows.Count ? rows[top + i] : null;
+                slots[i].Row = row;
+                List.ContainerFromIndex(i)?.IsVisible = row is not null;
+            }
+            int selected = chosen >= top && chosen < top + Shown ? chosen - top : -1;
+            if (List.SelectedIndex != selected)
+            {
+                List.SelectedIndex = selected;
+            }
+            bar.IsVisible = rows.Count > Shown;
+            bar.Maximum = Math.Max(0, rows.Count - Shown);
+            if (!fromBar)
+            {
+                bar.Value = top;
+            }
+        }
+        finally
+        {
+            placing = false;
+        }
+        FollowSelected();
+    }
+
+    /// <summary>A turn of the wheel over the list scrolls it a row for each part of a notch that makes one, the choice
+    /// staying where it is.</summary>
+    private void OnWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (rows.Count <= Shown)
+        {
+            return;
+        }
+        turned -= e.Delta.Y * WheelStep / ListRow.Height;
+        int step = (int)turned;
+        turned -= step;
+        if (step != 0)
+        {
+            ScrollTo(top + step, fromBar: false);
+        }
+        e.Handled = true;
     }
 
     private void FollowSelected()
@@ -446,7 +545,13 @@ internal sealed class CompletionRowView : DockPanel
         Children.Add(badge);
         Children.Add(label);
         Children.Add(detail);
-        this.Showing<CompletionSlot>(slot => Show(slot.Row));
+        this.Showing<CompletionSlot>(slot =>
+        {
+            if (slot.Row is { } row)
+            {
+                Show(row);
+            }
+        });
     }
 
     private void Show(CompletionRow row)

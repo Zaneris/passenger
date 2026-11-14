@@ -2803,6 +2803,139 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return (items, key);
     }
 
+    /// <summary>The completion list shows its rows in ten places kept for good, so a key that changes how many rows it
+    /// shows lays out only those that came onto the screen or left it: narrowing a class's members from 200 rows to 100, 10
+    /// and 1 and widening them back costs the UI thread, key for key, less than a key that hands every row on screen another
+    /// member does, counted rather than timed; so does each Down once the list scrolls, which hands each row the next member.</summary>
+    [AvaloniaFact]
+    public void A_key_that_changes_how_many_rows_the_completion_list_shows_lays_out_only_the_rows_that_came_or_went()
+    {
+        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
+        window.OpenFile(project.PathOf("Pantry.cs"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.Settle();
+        Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
+        Ui.PlaceAfter(editor, "        int total = 0;");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("total += Pantry");
+        Ui.Settle();
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen, "Pantry's members after its dot");
+        window.KeyTextInput("Ration");
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "Ration" && window.Assist.CompletionLabels.Count == 200,
+            () => $"Pantry's members narrowed by Ration to the 200 shown, where the list shows {window.Assist.CompletionLabels.Count}");
+        string typed = "Ration";
+        long reworded = long.MaxValue;
+        Dictionary<string, long> changed = [];
+        for (int round = 0; round < 3; round++)
+        {
+            // Ration100 to Ration109 in place of Ration000 to Ration009: every row on screen another member.
+            reworded = Math.Min(reworded, Key("1", 100));
+            Key("BACK_SPACE", 200);
+            foreach ((string key, int rows, string what) in new[]
+            {
+                ("0", 100, "200 rows to 100, the same on screen"), ("0", 10, "100 rows to 10, the same on screen"), ("0", 1, "10 rows to 1, 9 leaving the screen"),
+                ("BACK_SPACE", 10, "1 row to 10, 9 coming back"), ("BACK_SPACE", 100, "10 rows to 100, the same on screen"), ("BACK_SPACE", 200, "100 rows to 200, the same on screen"),
+            })
+            {
+                long cost = Key(key, rows);
+                changed[what] = Math.Min(changed.GetValueOrDefault(what, long.MaxValue), cost);
+            }
+        }
+        // Past the rows first on screen, the list scrolled.
+        for (int i = 0; i < 12; i++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Assert.Equal("Ration012", window.Assist.CompletionChosen);
+        long scrolled = long.MaxValue;
+        for (int i = 0; i < 3; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Ui.Press(window, "DOWN", settle: false);
+            Ui.Draw();
+            scrolled = Math.Min(scrolled, GC.GetAllocatedBytesForCurrentThread() - before);
+            Ui.Settle();
+        }
+        Assert.Equal("Ration015", window.Assist.CompletionChosen);
+        TestContext.Current.TestOutputHelper?.WriteLine($"A key handing every row on screen another member: {reworded / 1024} KB on the UI thread; "
+            + string.Join("; ", changed.Select(c => $"{c.Key}: {c.Value / 1024} KB")) + $"; a Down scrolling the list: {scrolled / 1024} KB");
+        foreach ((string what, long cost) in changed)
+        {
+            Assert.True(cost < reworded,
+                $"A key taking Pantry's members from {what} allocated {cost / 1024} KB on the UI thread, against {reworded / 1024} KB for a key handing every row on screen another member: "
+                + "it laid out rows that neither came nor went, or made their places anew");
+        }
+        Assert.True(scrolled < reworded,
+            $"A Down scrolling the completion list a row allocated {scrolled / 1024} KB on the UI thread, against {reworded / 1024} KB for a key handing every row on screen another member: "
+            + "the scroll laid its rows out anew");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+
+        // The least the UI thread allocates from a key to the list it leaves drawn, the list then showing as many rows.
+        long Key(string key, int rows)
+        {
+            typed = key == "BACK_SPACE" ? typed[..^1] : typed + key;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            if (key == "BACK_SPACE")
+            {
+                Ui.Press(window, key, settle: false);
+            }
+            else
+            {
+                window.KeyTextInput(key);
+            }
+            Ui.Pumped(() => window.Assist.CompletionNarrowedBy == typed, TimeSpan.FromSeconds(30));
+            Ui.Draw();
+            long cost = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.True(window.Assist.CompletionNarrowedBy == typed && window.Assist.CompletionLabels.Count == rows,
+                $"Narrowed by '{typed}' the list shows {window.Assist.CompletionLabels.Count} rows, not {rows}");
+            Ui.Settle();
+            return cost;
+        }
+    }
+
+    /// <summary>A completion list of more rows than it shows scrolls by the wheel turned over it, two rows a notch as a
+    /// scrolled view goes, and by a click on its bar's track, a screen at a time, the row chosen staying chosen; a Down
+    /// from the row chosen, scrolled away, brings the list back to the row after it.</summary>
+    [AvaloniaFact]
+    public void A_completion_list_scrolls_by_the_wheel_and_its_bar_its_choice_staying()
+    {
+        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
+        window.OpenFile(project.PathOf("Pantry.cs"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.Settle();
+        Ui.PlaceAfter(editor, "        int total = 0;");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("total += Pantry");
+        Ui.Settle();
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen, "Pantry's members after its dot");
+        window.KeyTextInput("Ration");
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "Ration" && window.Assist.CompletionLabels.Count == 200,
+            () => $"Pantry's members narrowed by Ration to the 200 shown, where the list shows {window.Assist.CompletionLabels.Count}");
+        Assert.Equal(("Ration000", "Ration000"), (window.Assist.CompletionChosen, FirstShown()));
+        Rect list = window.Assist.CompletionPlace ?? throw new InvalidOperationException("The completion list shows, yet has no place");
+        window.MouseMove(list.Center);
+        window.MouseWheel(list.Center, new Vector(0, -1));
+        Ui.Settle();
+        Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration000", "Ration002"),
+            $"A notch of the wheel down over the list shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen, not Ration002 with Ration000 still chosen");
+        Avalonia.Controls.Primitives.ScrollBar bar = window.EditorArea.AssistLayer.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ScrollBar>().Single(b => b.IsEffectivelyVisible);
+        Ui.Click(bar.GetVisualDescendants().OfType<RepeatButton>().Single(b => b.Name == "PART_PageDownButton"));
+        Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration000", "Ration012"),
+            $"A click on the list's bar below its thumb shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen, not Ration012 with Ration000 still chosen");
+        Ui.Press(window, "DOWN");
+        Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration001", "Ration001"),
+            $"Down from Ration000 scrolled away shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen, not the list back at Ration001, chosen");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+
+        string? FirstShown() => window.Assist.CompletionRowControls.OfType<Avalonia.Controls.Panel>().FirstOrDefault()?.Children.OfType<TextBlock>().FirstOrDefault()?.Text;
+    }
+
     /// <summary>A window's completion list is laid out once as the window opens, off screen: its first list shows in row
     /// controls made then, so the first list a person asks for waits for no control to be made, styled or shaped.</summary>
     [AvaloniaFact]

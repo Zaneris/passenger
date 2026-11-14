@@ -76,10 +76,13 @@ internal sealed partial class CodeCompletion
     public string? Chosen => completion.IsVisible ? completion.Selected?.Item.Label : null;
 
     /// <summary>The controls showing the completion list's rows on screen, while it shows.</summary>
-    public IReadOnlyList<Control> RowControls => completion.IsVisible ? RowsLaidOut : [];
+    public IReadOnlyList<Control> RowControls => completion.IsVisible ? RowViews(shownOnly: true) : [];
 
     /// <summary>The controls the completion list has made for its rows, shown or not.</summary>
-    public IReadOnlyList<Control> RowsLaidOut => [.. completion.List.GetRealizedContainers().OfType<ListBoxItem>().Select(row => row.Presenter?.Child).OfType<Control>()];
+    public IReadOnlyList<Control> RowsLaidOut => RowViews(shownOnly: false);
+
+    private Control[] RowViews(bool shownOnly) =>
+        [.. completion.List.GetRealizedContainers().OfType<ListBoxItem>().Where(row => !shownOnly || row.IsVisible).Select(row => row.Presenter?.Child).OfType<Control>()];
 
     /// <summary>The keys the open list takes before the editor does (Up, Down, Enter, Tab, Escape), and Tab's template
     /// after its abbreviation.</summary>
