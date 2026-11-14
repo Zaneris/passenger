@@ -314,6 +314,25 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A side button pressed as the branches are listed again (the log reading its history afresh, its filter's
+    /// branch with it) acts on its release: the panel keeps its choice through the listing, so its buttons never grey for
+    /// that moment, which let go of the press and lost the click.</summary>
+    [AvaloniaFact]
+    public void Navigate_pressed_as_the_branches_are_listed_again_chooses_the_head_on_its_release()
+    {
+        MainWindow window = Open();
+        BranchesPanel panel = window.GitBranches;
+        GitLogView log = window.GitLog;
+        Assert.True(panel.Select("feature"));
+        panel.Activate(panel.Selected!);
+        Ui.Settle();
+        Assert.True(panel.Select("main"));
+        Ui.ClickAcross(SideButton(panel, "Navigate Log to Selected Branch Head"), () => Ui.Await(log.LoadAsync(), "the log and its branches read again"));
+        Ui.Landed(() => log.Selected?.Hash == Git("rev-parse", "main").Trim(), "main's head chosen in the log filtered to feature, Navigate pressed as the branches were listed again");
+        Assert.Equal("refs/heads/feature", log.BranchFilter);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Merge_into_rebase_onto_and_checkout_and_rebase_onto_current_move_the_branches_as_git_would()

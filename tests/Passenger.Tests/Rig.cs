@@ -1356,6 +1356,19 @@ public static class Ui
     public static void Click(Control control, Point? at = null, RawInputModifiers modifiers = RawInputModifiers.None, bool settle = true) =>
         Click(control, at, MouseButton.Left, modifiers, settle);
 
+    /// <summary>A click as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/> makes one, its button held down while
+    /// <paramref name="meanwhile"/> runs (work landing between a person's press and release), then let go where it went down.</summary>
+    public static void ClickAcross(Control control, Action meanwhile)
+    {
+        (TopLevel top, Point point) = Aim(control, null);
+        Apart(top, point);
+        top.MouseDown(point, MouseButton.Left);
+        meanwhile();
+        top.MouseUp(point, MouseButton.Left);
+        Clicked(top, point);
+        Settle();
+    }
+
     /// <summary>A right click as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/> makes a click, which opens
     /// the menu of what is there.</summary>
     public static void RightClick(Control control, Point? at = null) => Click(control, at, MouseButton.Right, RawInputModifiers.None, settle: true);

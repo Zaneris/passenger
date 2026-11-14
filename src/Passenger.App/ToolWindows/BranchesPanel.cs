@@ -101,6 +101,9 @@ public sealed class BranchesPanel : DockPanel
     private readonly TreeRows<BranchNode> rows = [];
     private int loads;
 
+    /// <summary>Whether the rows are being listed again, the choice let go and taken again in the same moment.</summary>
+    private bool listing;
+
     public BranchesPanel(VcsController git)
     {
         vcs = git;
@@ -128,7 +131,14 @@ public sealed class BranchesPanel : DockPanel
             return true;
         });
         list.AddHandler(KeyDownEvent, OnKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
-        list.SelectionChanged += (_, _) => UpdateTools();
+        // A listing again passes through no choice, which would grey every button for that moment and let go of one pressed.
+        list.SelectionChanged += (_, _) =>
+        {
+            if (!listing)
+            {
+                UpdateTools();
+            }
+        };
         ListMenus.Attach(list, () => Selected is { Branch: { } branch } ? Menu(branch) : []);
         search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Branch or tag", Margin = new Thickness(6, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
         search.TextChanged += (_, _) => Show();
@@ -413,8 +423,16 @@ public sealed class BranchesPanel : DockPanel
         {
             Flatten(root, shown, text.Length > 0);
         }
-        rows.Show(shown);
-        list.SelectedItem = rows.FirstOrDefault(r => r.Key == chosen);
+        listing = true;
+        try
+        {
+            rows.Show(shown);
+            list.SelectedItem = rows.FirstOrDefault(r => r.Key == chosen);
+        }
+        finally
+        {
+            listing = false;
+        }
         UpdateTools();
     }
 
