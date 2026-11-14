@@ -43,6 +43,53 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
 
     private string GreeterPath => Path.Combine(PathNames.Canonical(project.Folder), "Greeter.cs");
 
+    [AvaloniaFact]
+    public void Commenting_out_a_statement_passes_Program_to_both_update_handlers()
+    {
+        File.WriteAllText(ProgramPath, """
+            [assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(Program))]
+            public static class Program
+            {
+                public static void Main()
+                {
+                    Console.WriteLine("started");
+                    while (true)
+                    {
+                        Greeter.Greet(1);
+                        Thread.Sleep(100);
+                    }
+                }
+                internal static void ClearCache(Type[]? types) => Report("clear", types);
+                internal static void UpdateApplication(Type[]? types) => Report("update", types);
+                private static void Report(string phase, Type[]? types) =>
+                    Console.WriteLine(phase + ":" + (types is null ? "null" : string.Join(",", types.Select(t => t.Name))));
+            }
+            """);
+        MainWindow window = Open();
+        try
+        {
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => Output(window).Contains("Hello 1", StringComparison.Ordinal), "the program to start");
+            window.OpenFile(ProgramPath);
+            Replace(window, "Console.WriteLine(\"started\");", "// Console.WriteLine(\"started\");");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Assert.Equal(HotReloadResult.Applied, Applied(window).Result);
+            Ui.WaitFor(() => Output(window).Split('\n').Any(line => line.Trim() == "update:Program"), "UpdateApplication to receive Program");
+            Assert.Contains("clear:Program", Output(window), StringComparison.Ordinal);
+
+            window.OpenFile(GreeterPath);
+            Replace(window, "Hello", "Howdy");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => Output(window).Split('\n').Any(line => line.Trim() == "update:Greeter"), "the next batch to contain only Greeter");
+            Assert.Contains("clear:Greeter", Output(window), StringComparison.Ordinal);
+            Assert.DoesNotContain("update:null", Output(window), StringComparison.Ordinal);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>An edit applied while paused before a call is what that call runs; then, paused in the edited method, a step
     /// after another edit to it applies that one with no Apply, runs the paused statement in the new code and stops at the
     /// statement the edit added.</summary>

@@ -16,9 +16,21 @@ internal static class UpdateHandlerProbe
 
     public static int Updated { get; private set; }
 
-    internal static void ClearCache(Type[]? _) => Cleared++;
+    public static Type[]? ClearedTypes { get; private set; }
 
-    internal static void UpdateApplication(Type[]? _) => Updated++;
+    public static Type[]? UpdatedTypes { get; private set; }
+
+    internal static void ClearCache(Type[]? types)
+    {
+        Cleared++;
+        ClearedTypes = types;
+    }
+
+    internal static void UpdateApplication(Type[]? types)
+    {
+        Updated++;
+        UpdatedTypes = types;
+    }
 }
 
 /// <summary>A program's update handlers across its load contexts: a plugin's assembly loaded twice holds two sets of statics,
@@ -56,6 +68,47 @@ public sealed class UpdateHandlersTests
         {
             unload();
         }
+    }
+
+    [Fact]
+    public void Changed_types_reach_both_callbacks_in_every_load_context()
+    {
+        Type probe = typeof(UpdateHandlerProbe);
+        (Assembly first, Assembly second, Action unload) = LoadedTwice(probe.Assembly);
+        try
+        {
+            ChangedTypes changes = new();
+            string line = Wire.TypeLine(probe.Module.ModuleVersionId, probe.MetadataToken);
+            changes.Add(line);
+            changes.Add(line);
+            Type[] expected = [first.GetType(probe.FullName!)!, second.GetType(probe.FullName!)!];
+            Type[]? resolved = changes.Take([first, second]);
+            Assert.Equal(expected, resolved);
+            Assert.Empty(Handlers.Run([first, second], resolved));
+            foreach (Type loaded in expected)
+            {
+                Assert.Equal(expected, (Type[]?)loaded.GetProperty(nameof(UpdateHandlerProbe.ClearedTypes))!.GetValue(null));
+                Assert.Equal(expected, (Type[]?)loaded.GetProperty(nameof(UpdateHandlerProbe.UpdatedTypes))!.GetValue(null));
+            }
+            Assert.Empty(changes.Take([first, second])!);
+        }
+        finally
+        {
+            unload();
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Unresolved_types_invalidate_all_caches_and_do_not_leak_into_the_next_batch(bool missingModule)
+    {
+        Type probe = typeof(UpdateHandlerProbe);
+        ChangedTypes changes = new();
+        changes.Add(Wire.TypeLine(missingModule ? Guid.Empty : probe.Module.ModuleVersionId, missingModule ? probe.MetadataToken : 0x020FFFFF));
+        Assert.Null(changes.Take([probe.Assembly]));
+        changes.Add(Wire.TypeLine(probe.Module.ModuleVersionId, probe.MetadataToken));
+        Assert.Equal([probe], changes.Take([probe.Assembly]));
     }
 
     [Fact]

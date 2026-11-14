@@ -34,6 +34,9 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
     /// <summary>The modules updated, by name.</summary>
     public IReadOnlyList<string> Modules { get; init; } = [];
 
+    /// <summary>The changed type tokens, keyed by module identity, for the program's update handlers.</summary>
+    public IReadOnlyDictionary<Guid, IReadOnlyList<int>> UpdatedTypes { get; init; } = new Dictionary<Guid, IReadOnlyList<int>>();
+
     /// <summary>How many methods the update replaced or added.</summary>
     public int Methods { get; init; }
 
@@ -65,6 +68,7 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
             Problems = [.. code.Problems, .. xaml.Problems],
             Files = [.. code.Files, .. xaml.Files],
             Modules = code.Modules,
+            UpdatedTypes = code.UpdatedTypes,
             Methods = code.Methods,
             Took = code.Took + xaml.Took,
             Code = code,

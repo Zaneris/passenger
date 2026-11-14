@@ -102,21 +102,30 @@ public sealed class UpdateHandlerHook : IDisposable
 
     /// <summary>Tells the hook the debugger applied an update, so the program runs its handlers as it next runs; nothing when
     /// the hook never connected (the program is on an older .NET than it said, or started without it).</summary>
-    public void Updated()
+    public void Updated(IReadOnlyDictionary<Guid, IReadOnlyList<int>> types)
     {
         UiThread.Check();
         if (stream is { } open)
         {
-            IdeErrors.Observe(WriteAsync(open));
+            IdeErrors.Observe(WriteAsync(open, types));
         }
     }
 
-    private async Task WriteAsync(NetworkStream open)
+    private async Task WriteAsync(NetworkStream open, IReadOnlyDictionary<Guid, IReadOnlyList<int>> types)
     {
         await writing.WaitAsync(closing.Token);
         try
         {
-            await open.WriteAsync(Encoding.UTF8.GetBytes(Wire.Updated + "\n"), closing.Token);
+            StringBuilder message = new();
+            foreach ((Guid module, IReadOnlyList<int> tokens) in types)
+            {
+                foreach (int token in tokens)
+                {
+                    message.Append(Wire.TypeLine(module, token)).Append('\n');
+                }
+            }
+            message.Append(Wire.Updated).Append('\n');
+            await open.WriteAsync(Encoding.UTF8.GetBytes(message.ToString()), closing.Token);
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or SocketException)
         {
