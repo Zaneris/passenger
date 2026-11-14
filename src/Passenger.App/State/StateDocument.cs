@@ -37,7 +37,8 @@ public interface IStateDocument<TSelf> where TSelf : class, IStateDocument<TSelf
 
 /// <summary>One file of the store, read the first time it is wanted and clamped. A change is written a moment later,
 /// off the UI thread, through a temporary file flushed to disk and moved over the old one; it is merged over what the
-/// file holds then, so a value this build does not know, or one another Passenger changed, stays. A write that fails
+/// file holds then, so a value this build does not know, or one another Passenger changed, stays. The file is read and
+/// written under the lock every Passenger on the same state honours (<see cref="StateFile.Hold"/>). A write that fails
 /// keeps its change waiting and is tried again. A value of a kind its property cannot take is passed over alone; a file
 /// that does not read is set aside as <c>.bad</c>, never written over; each logged and said in a window keeping its state
 /// there.</summary>
@@ -48,8 +49,8 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
     private static readonly TimeSpan Delay = TimeSpan.FromMilliseconds(500);
 
     /// <summary>The waits before a write that failed is tried again, each longer, as Windows refuses a move over a file
-    /// another program holds a moment without sharing its deletion; past the last, the change waits for the next one or
-    /// <see cref="Flush"/>.</summary>
+    /// another program has open a moment (a scanner), however it shares it; past the last, the change waits for the next
+    /// one or <see cref="Flush"/>.</summary>
     private static readonly TimeSpan[] Again = [.. new[] { 250, 500, 1000, 2000, 4000, 8000 }.Select(ms => TimeSpan.FromMilliseconds(ms))];
 
     private readonly string? formerly;
@@ -161,7 +162,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
             T read;
             try
             {
-                read = StateFile.Read<T>(Path, Upgraded(File.ReadAllText(Path)).Document).Clamped();
+                read = StateFile.Read<T>(Path, Upgraded(StateFile.ReadHeld(Path)).Document).Clamped();
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
@@ -189,26 +190,32 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
     /// <summary>The file's value as read and clamped now, on any thread, without taking it in.</summary>
     public T Peek() => ReadNow().Value;
 
-    /// <summary>Changes the value as the file holds it now and writes the change at once, merged over the file as a
-    /// <see cref="Set"/>'s is, on any thread: for a document no window keeps. A document a window keeps is changed through
-    /// <see cref="Set"/>.</summary>
+    /// <summary>Changes the value as the file holds it now, with this side's change still waiting (one whose write was
+    /// refused) over it, and writes the change at once, merged over the file as a <see cref="Set"/>'s is, on any thread:
+    /// for a document no window keeps. A document a window keeps is changed through <see cref="Set"/>.</summary>
     public void ChangeNow(Func<T, T> change)
     {
         lock (writing)
         {
             (T read, _, string text) = ReadNow();
-            known = text;
-            string mine = JsonSerializer.Serialize(change(read).Clamped(), StateFile.Options);
-            if (mine == text)
-            {
-                return;
-            }
+            string? waiting;
             lock (gate)
             {
-                pending = mine;
+                waiting = pending;
+            }
+            // The change waiting is in no file yet, so this one, which takes its place, is made over it.
+            T from = waiting is null ? read : StateFile.Read<T>(path: null, StateFile.Merged((JsonObject)JsonNode.Parse(text)!, T.Upgrades.Count, known, waiting, T.Sets)).Clamped();
+            known = text;
+            string mine = JsonSerializer.Serialize(change(from).Clamped(), StateFile.Options);
+            lock (gate)
+            {
+                pending = mine == text ? null : mine;
                 failed = 0;
             }
-            Write();
+            if (mine != text)
+            {
+                Write();
+            }
         }
     }
 
@@ -267,7 +274,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
     {
         try
         {
-            return StateFile.Read<T>(file, Upgraded(File.ReadAllText(file)).Document);
+            return StateFile.Read<T>(file, Upgraded(file == Path ? StateFile.ReadHeld(file) : File.ReadAllText(file)).Document);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -466,6 +473,30 @@ internal static class StateFile
             {
                 Thread.Sleep(5);
             }
+        }
+    }
+
+    /// <summary>A document's file read whole under its <see cref="Hold"/>, so the read is never in the way of another
+    /// Passenger's write (Windows refuses a move over a file any program has open, however it shares it); read without it
+    /// where it is not had in time, or where its lock file cannot be made (a folder closed to writes, which no Passenger
+    /// writes).</summary>
+    public static string ReadHeld(string path)
+    {
+        FileStream? held = null;
+        try
+        {
+            held = Hold(path, HeldFor);
+        }
+        catch (IOException refused)
+        {
+            Log($"{path} is read without its lock, which another Passenger held past {HeldFor.TotalSeconds:0} s ({refused.Message})");
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+        using (held)
+        {
+            return File.ReadAllText(path);
         }
     }
 

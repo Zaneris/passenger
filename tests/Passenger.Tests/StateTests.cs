@@ -218,6 +218,34 @@ public sealed class StateTests : IDisposable
         Assert.Equal(16, FontKept(file));
     }
 
+    /// <summary>Changes written at once (as an update's word kept as the process ends, or Aspire's record of its
+    /// containers) made one after another while another program holds the file: each write is refused, and the change after
+    /// it keeps it, so every change reaches the file once let go.</summary>
+    [AvaloniaFact]
+    public void Changes_written_at_once_while_the_file_is_held_each_reach_it_once_let_go()
+    {
+        StateStore store = StateStore.Open(settings);
+        try
+        {
+            StateDocument<DockLayout> layout = store.Layout;
+            layout.ChangeNow(Docking("first"));
+            using (IDisposable held = Held(layout.Path))
+            {
+                layout.ChangeNow(Docking("refused"));
+                layout.ChangeNow(Docking("next"));
+                Assert.True(Ui.IdeLog().Contains($"{layout.Path} could not be written", StringComparison.Ordinal),
+                    "The changes' writes went ahead while layout.json was held, so nothing here was refused");
+            }
+            Ui.WaitFor(() => Docked(layout.Path).Contains("next"), () => $"the change made after the one refused to reach layout.json once let go: it holds {string.Join(", ", Docked(layout.Path))}");
+            Assert.True(Docked(layout.Path).Contains("refused"),
+                $"The change whose write was refused was dropped by the change made after it, so it never reaches layout.json: it holds {string.Join(", ", Docked(layout.Path))}");
+        }
+        finally
+        {
+            store.Release();
+        }
+    }
+
     [AvaloniaFact]
     public void What_a_person_kept_before_the_store_is_there_on_the_first_run()
     {
@@ -546,12 +574,20 @@ public sealed class StateTests : IDisposable
 
     private static JsonObject Read(string file) => (JsonObject)JsonNode.Parse(File.ReadAllText(file))!;
 
+    /// <summary>A layout with a window of a name docked beside the windows it has.</summary>
+    private static Func<DockLayout, DockLayout> Docking(string name) =>
+        layout => layout with { Windows = new(layout.Windows) { [name] = new DockedWindow(ToolAnchor.LeftTop, 0, Shown: true) } };
+
+    /// <summary>The windows a layout file holds, read beside a program holding it; none while it holds none.</summary>
+    private static IReadOnlyCollection<string> Docked(string file) =>
+        Ui.Shared(file) is { Length: > 0 } text && JsonNode.Parse(text)?["windows"] is JsonObject windows ? [.. windows.Select(w => w.Key)] : [];
+
     /// <summary>The editor's font settings.json holds, read beside a program holding it; none while it holds none.</summary>
     private static double? FontKept(string file) =>
         Ui.Shared(file) is { Length: > 0 } text ? (double?)JsonNode.Parse(text)?["editorFontSize"] : null;
 
-    /// <summary>settings.json held as another program holds it: on Windows open without its deletion shared, so a move over
-    /// it is refused; elsewhere, where a move over an open file goes ahead, its folder closed to writes.</summary>
+    /// <summary>A file of the settings folder held as another program holds it: on Windows open, so a move over it is
+    /// refused; elsewhere, where a move over an open file goes ahead, its folder closed to writes.</summary>
     private IDisposable Held(string file)
     {
         return OperatingSystem.IsWindows() ? new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite) : ClosedToWrites(settings);

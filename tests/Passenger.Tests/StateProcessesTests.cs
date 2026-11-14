@@ -7,8 +7,9 @@ using Passenger.Core;
 
 namespace Passenger.Tests;
 
-/// <summary>Two Passengers on one state (an agent's --mcp beside the person's) changing one document at once: each change
-/// is merged over the other's write, so neither is lost. The test's other processes are this test run again as writers.</summary>
+/// <summary>Two Passengers on one state (an agent's --mcp beside the person's) changing one document at once while a third
+/// reads it: each change is merged over the other's write, and no read is in the way of a write, so none is lost. The
+/// writers are this test run again; the test's own process reads.</summary>
 public sealed class StateProcessesTests : IDisposable
 {
     /// <summary>Names a writer process's state folder and the names it adds, in the test that starts it.</summary>
@@ -22,7 +23,7 @@ public sealed class StateProcessesTests : IDisposable
     public void Dispose() => TestFolders.Delete(folder);
 
     [AvaloniaFact]
-    public void Two_processes_changing_one_state_document_at_once_each_keep_every_change_of_theirs()
+    public void Two_processes_changing_one_state_document_at_once_while_a_third_reads_it_each_keep_every_change_of_theirs()
     {
         if (Environment.GetEnvironmentVariable(WriterVariable) is { Length: > 0 } writer)
         {
@@ -35,17 +36,35 @@ public sealed class StateProcessesTests : IDisposable
         Task<ChildResult>[] writers = [.. new[] { "a", "b" }.Select(name => Waiting.Apart(() =>
         {
             System.Diagnostics.ProcessStartInfo start = ChildProcesses.DotnetCommand(["exec", typeof(StateProcessesTests).Assembly.Location,
-                "-method", $"{typeof(StateProcessesTests).FullName}.{nameof(Two_processes_changing_one_state_document_at_once_each_keep_every_change_of_theirs)}",
+                "-method", $"{typeof(StateProcessesTests).FullName}.{nameof(Two_processes_changing_one_state_document_at_once_while_a_third_reads_it_each_keep_every_change_of_theirs)}",
                 "-noLogo", "-noColor"], folder);
             start.Environment[WriterVariable] = $"{name}{Path.PathSeparator}{state}";
             return ChildProcesses.RunAsync(start, limit: limit.Scaled());
         }))];
         Ui.PumpUntil(() => File.Exists(Ready(state, "a")) && File.Exists(Ready(state, "b")) || writers.Any(w => w.IsCompleted), "both writers to be ready", limit);
-        File.WriteAllText(Path.Combine(state, "go"), string.Empty);
-        foreach (Task<ChildResult> writing in writers)
+        StateStore store = StateStore.Open(state);
+        try
         {
-            ChildResult ended = Ui.AwaitPumped(writing, "a writer to end", limit + TimeSpan.FromSeconds(10));
-            Assert.True(ended.Succeeded, $"A writer failed:\n{ended.Output}{ended.Error}");
+            File.WriteAllText(Path.Combine(state, "go"), string.Empty);
+            Task<int> reading = Waiting.Apart(() =>
+            {
+                int reads = 0;
+                for (; !writers.All(w => w.IsCompleted); reads++)
+                {
+                    store.Layout.Peek();
+                }
+                return reads;
+            });
+            foreach (Task<ChildResult> writing in writers)
+            {
+                ChildResult ended = Ui.AwaitPumped(writing, "a writer to end", limit + TimeSpan.FromSeconds(10));
+                Assert.True(ended.Succeeded, $"A writer failed:\n{ended.Output}{ended.Error}");
+            }
+            Assert.True(Ui.AwaitPumped(reading, "the reads to end") > 0, "The test's process never read the document while the writers changed it");
+        }
+        finally
+        {
+            store.Release();
         }
         JsonObject windows = JsonNode.Parse(File.ReadAllText(Path.Combine(state, "layout.json")))!["windows"]!.AsObject();
         foreach (string name in new[] { "a", "b" })
