@@ -46,6 +46,15 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     private bool stale = true;
     private int loads;
 
+    /// <summary>The newest read of the history (<see cref="LoadAsync"/>): done once it has landed, or a newer one overtook it.</summary>
+    private Task reading = Task.CompletedTask;
+
+    /// <summary>The branch filter the rows listed were read for.</summary>
+    private string? readFor;
+
+    /// <summary>What the next read of the history waits for once git has answered it (<see cref="HoldNextRead"/>).</summary>
+    private (Task Until, TaskCompletionSource Answered)? readHeld;
+
     /// <summary>How many commits the Log reads: the newest <see cref="Git.LogLength"/>, more once a commit further down is
     /// asked for (a blame's), kept until another folder's working tree is followed.</summary>
     private int most = Git.LogLength;
@@ -315,9 +324,14 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     /// <summary>Reads the log if it has not been, and down to the commit when it is older than those read.</summary>
     private async Task ReachAsync(string hash)
     {
-        if (!all.Any(r => r.Commit.Hash == hash))
+        // Decided on the rows as the filter in force reads them: rows read for another filter, or before a read under way, are read again.
+        if (!all.Any(r => r.Commit.Hash == hash) || readFor != BranchFilter || !reading.IsCompleted)
         {
             await LoadAsync();
+        }
+        while (!reading.IsCompleted)
+        {
+            await reading;
         }
         if (!all.Any(r => r.Commit.Hash == hash) && Scope is null && Range is null && vcs.Repository is { } repository
             && await repository.LogDepthAsync(hash, BranchFilter is { } branch ? [branch] : null) is int depth && depth > most)
@@ -331,7 +345,18 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     public void Select(CommitInfo commit) => list.SelectedItem = rows.FirstOrDefault(r => r.Commit.Hash == commit.Hash);
 
     /// <summary>Reads the history again.</summary>
-    public async Task LoadAsync()
+    public Task LoadAsync() => reading = ReadAsync();
+
+    /// <summary>Holds the next read of the history, once git has answered it, from landing until <paramref name="until"/>
+    /// ends, for a test of what the log does meanwhile: done once git has answered.</summary>
+    public Task HoldNextRead(Task until)
+    {
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        readHeld = (until, answered);
+        return answered.Task;
+    }
+
+    private async Task ReadAsync()
     {
         int load = ++loads;
         stale = false;
@@ -347,11 +372,18 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             }
         }
         IReadOnlyList<HistoryCommit> history = repository is null || Scope is null ? [] : await repository.HistoryAsync(Scope);
+        string? filterRead = BranchFilter;
         IReadOnlyList<CommitInfo> commits = repository is null ? []
             : Scope is not null ? [.. history.Select(h => h.Commit)]
             : Range is { } range ? await repository.LogAsync(revisions: [$"{range.FromRef}..{range.ToRef}"])
             : BranchFilter is { } branch ? await repository.LogAsync(most, [branch])
             : await repository.LogAsync(most);
+        if (readHeld is { } held)
+        {
+            readHeld = null;
+            held.Answered.SetResult();
+            await held.Until;
+        }
         IReadOnlyList<GraphRow> laid = await BackgroundWork.Run(() => Scope is null ? CommitGraph.Layout(commits) : CommitGraph.Line(commits));
         if (load != loads)
         {
@@ -359,6 +391,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         }
         changes = history.ToDictionary(h => h.Commit.Hash, h => h.Changes);
         all = laid;
+        readFor = filterRead;
         Filter();
         string name = Scope is null ? string.Empty : Path.GetFileName(Path.TrimEndingDirectorySeparator(Scope.Path));
         placeholder.Text = repository is null ? vcs.NoRepository

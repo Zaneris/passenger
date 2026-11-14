@@ -333,6 +333,29 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Navigate asked while the log still reads the history of the branch it was just filtered to decides on that
+    /// history, not the rows listed before it: feature's head, which main's history lacks, is chosen with every branch shown
+    /// again, where it was chosen among the rows of every branch and then lost as main's landed.</summary>
+    [AvaloniaFact]
+    public void Navigate_asked_as_the_log_reads_a_filter_lacking_the_head_shows_every_branch_and_chooses_it()
+    {
+        MainWindow window = Open();
+        BranchesPanel panel = window.GitBranches;
+        GitLogView log = window.GitLog;
+        Ui.Landed(() => log.Rows.Count == 3, "every branch's three commits");
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = log.HoldNextRead(release.Task);
+        Assert.True(panel.Select("main"));
+        panel.Activate(panel.Selected!);
+        Ui.AwaitPumped(held, "the log's read of main's history, held once git answered");
+        Assert.True(panel.Select("feature"));
+        Ui.Click(SideButton(panel, "Navigate Log to Selected Branch Head"));
+        release.SetResult();
+        Ui.Landed(() => log.Selected?.Hash == Git("rev-parse", "feature").Trim(), "feature's head chosen in the log asked while main's history was read");
+        Assert.Null(log.BranchFilter);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Merge_into_rebase_onto_and_checkout_and_rebase_onto_current_move_the_branches_as_git_would()
