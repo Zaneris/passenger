@@ -685,7 +685,7 @@ a new name, and `just site-shots` retakes its images.
   both and the Linux natives; the tests' Avalonia apps keep Avalonia's, `tests/AvaloniaGraphs/Avalonia12`): a move checks
   that every member Avalonia.Skia, Avalonia.HarfBuzz and Avalonia.Controls.Maui call still resolves. Svg.Skia's `SKSvg`
   disposes its picture, so a picture is never let go while a frame may still draw it.
-- **HarfBuzz applies a font's 'trak' itself** (at 12 pt when told no size, a lone track too), where Core Text takes the
+- **HarfBuzz applies a font's 'trak' itself** (at 12 pt when told no size, a lone track too: PingFang's CJK 2% wider than Core Text sets it, accepted, harfbuzz/harfbuzz#6671), where Core Text takes the
   normal track alone: the window's letter spacing makes up only the difference (`FontTracking.Shaped`).
 - **Avalonia renders a visual again when its Bounds, ZIndex or RenderTransform change**, and on `InvalidateArrange`:
   retained content moves through its parent layer. Two visuals invalidated in one frame draw again all that lies between
