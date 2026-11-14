@@ -15,6 +15,9 @@ public sealed class Sparkline(int kept, bool fromZero, bool fromRight, params st
     /// <summary>The least its scale reaches up to where it counts from zero: 1 for a percentage, nothing for a value of any size.</summary>
     public double Least { get; init; } = 1;
 
+    /// <summary>How wide it is where it has the room, in less as wide as the room; 0 for the width its place gives it.</summary>
+    public double Wanted { get; init; }
+
     /// <summary>How many readings it keeps, and so how many places it has across.</summary>
     public int Kept => kept;
 
@@ -43,6 +46,8 @@ public sealed class Sparkline(int kept, bool fromZero, bool fromRight, params st
         readings.Clear();
         InvalidateVisual();
     }
+
+    protected override Size MeasureOverride(Size availableSize) => new(Math.Min(Wanted, availableSize.Width), 0);
 
     public override void Render(DrawingContext context)
     {
