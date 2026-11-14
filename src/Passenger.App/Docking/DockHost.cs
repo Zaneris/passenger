@@ -63,6 +63,9 @@ public sealed class DockHost : Grid
     private bool closesOffStripe;
     private bool iconsBesideTabs = true;
 
+    /// <summary>Whether a tool window is being dragged (<see cref="Dragging"/>).</summary>
+    private bool dragged;
+
     public DockHost()
     {
         ColumnDefinitions = new ColumnDefinitions($"{StripeWidth},0,0,*,0,0,{StripeWidth}");
@@ -108,6 +111,7 @@ public sealed class DockHost : Grid
         bottomArea.Children.Add(new HairlineDivider(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 });
         drag = new(this, leftStripe, rightStripe);
         Drag = drag.Gesture;
+        Drag.DraggingChanged += (_, e) => Dragging(e.Dragging);
         Place(drag.Overlay, 0, 0, rowSpan: 3, columnSpan: 7);
         Layout();
         AttachedToVisualTree += (_, _) => FollowHost();
@@ -137,11 +141,23 @@ public sealed class DockHost : Grid
     /// <summary>The bottom area's height as kept, open or not.</summary>
     internal double BottomAreaHeight => bottomHeight;
 
-    /// <summary>The left stripe's width as laid out.</summary>
+    /// <summary>The left stripe's width as laid out: none while it is folded away.</summary>
     internal double LeftStripeWidth => ColumnDefinitions[0].ActualWidth;
 
-    /// <summary>The right stripe's width as laid out.</summary>
+    /// <summary>The right stripe's width as laid out: none while it is folded away.</summary>
     internal double RightStripeWidth => ColumnDefinitions[6].ActualWidth;
+
+    /// <summary>A tool window dragged (by its stripe icon, its header, its titled tab or its editor tab), or let go: while
+    /// it is, every stripe shows, as each is a place to drop it.</summary>
+    internal void Dragging(bool dragging)
+    {
+        if (dragging != dragged)
+        {
+            dragged = dragging;
+            FoldStripes();
+            Fit();
+        }
+    }
 
     /// <summary>The editor area, between the side areas and above the bottom one.</summary>
     public Control? Center
@@ -527,7 +543,7 @@ public sealed class DockHost : Grid
         }
         Remember();
         maximized = (target, leftWidth, rightWidth, bottomHeight);
-        double width = Bounds.Width - (2 * StripeWidth) - 80;
+        double width = Bounds.Width - Stripes - 80;
         switch (target.Anchor)
         {
             case ToolAnchor.BottomLeft or ToolAnchor.BottomRight:
@@ -798,8 +814,24 @@ public sealed class DockHost : Grid
         Split(bottomArea, panes[ToolAnchor.BottomLeft], panes[ToolAnchor.BottomRight], rows: false);
         leftStripe.Fill(Iconed);
         rightStripe.Fill(Iconed);
+        FoldStripes();
         Fit();
     }
+
+    /// <summary>A stripe with no icon (each of its windows named by a titled tab, or none docked at its places) folds away,
+    /// leaving its width to the areas and the editors, and shows again while a window is dragged, as a place to drop it.</summary>
+    private void FoldStripes()
+    {
+        foreach ((Stripe stripe, int column) in ((Stripe, int)[])[(leftStripe, 0), (rightStripe, 6)])
+        {
+            bool shown = dragged || stripe.HasIcons;
+            stripe.IsVisible = shown;
+            ColumnDefinitions[column].Width = new GridLength(shown ? StripeWidth : 0);
+        }
+    }
+
+    /// <summary>The stripes' widths, as they are to be laid out.</summary>
+    private double Stripes => ColumnDefinitions[0].Width.Value + ColumnDefinitions[6].Width.Value;
 
     protected override void OnSizeChanged(SizeChangedEventArgs e)
     {
@@ -819,7 +851,7 @@ public sealed class DockHost : Grid
         bool bottomOpen = panes[ToolAnchor.BottomLeft].Window is not null || panes[ToolAnchor.BottomRight].Window is not null;
         double share = maximized is null ? EditorShare : 0;
         // Before the first layout there is no frame: the sizes are fitted once there is.
-        double across = Math.Max(0, Bounds.Width - (2 * StripeWidth) - 2);
+        double across = Math.Max(0, Bounds.Width - Stripes - 2);
         double down = Math.Max(0, Bounds.Height - 1);
         double left = leftOpen ? leftWidth : 0;
         double right = rightOpen ? rightWidth : 0;

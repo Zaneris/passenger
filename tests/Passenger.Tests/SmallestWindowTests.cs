@@ -1,8 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
@@ -18,7 +18,9 @@ namespace Passenger.Tests;
 /// <summary>At the smallest window (MainWindow.SmallestWidth wide and SmallestHeight tall) everything shown can be read
 /// and reached: the Welcome page scrolls to each of its tiles, Find in Files stands inside the window, the toolbar's long
 /// names give way with an ellipsis and never draw over each other or the window's buttons, what the status bar says
-/// stands whole in front of the file's path, and the Commit window sharing its column draws nothing over its form.</summary>
+/// stands whole in front of the file's path, the Commit window sharing its column draws nothing over its form, the empty
+/// editors' words stand inside them, editor tabs down a side leave the code its room, a tool window dropped on the editors
+/// is a tab there, and a stripe with no icon gives its room to the editors but while a window is dragged.</summary>
 public sealed class SmallestWindowTests
 {
     [AvaloniaFact]
@@ -323,9 +325,59 @@ public sealed class SmallestWindowTests
         }
     }
 
+    /// <summary>Under Cubicle at the smallest width, the left stripe, each window of its places named by a titled tab, folds
+    /// away and gives its room to the editors, where it kept 40 units holding nothing; a window dragged by its titled tab
+    /// shows it again as a place to drop on, and dropped there its icon keeps it shown.</summary>
+    [AvaloniaFact]
+    public void Under_Cubicle_at_the_smallest_width_the_empty_left_stripe_folds_away_and_shows_while_a_window_is_dragged()
+    {
+        string folder = TestFolders.Create("smallest-stripe-");
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+        MainWindow window = Ui.OpenFolder(folder, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
+            window.OpenFile(Path.Combine(folder, "One.cs"));
+            Ui.Settle();
+            DockHost dock = window.DockHost;
+            Border left = StripeBars(window)[0];
+            Assert.True(dock.ColumnDefinitions[0].ActualWidth == 0 && !left.IsEffectivelyVisible && Placed(window, window.EditorArea).Left < 1,
+                $"Cubicle's left stripe, holding no icon, takes {dock.ColumnDefinitions[0].ActualWidth:0.#} units, the editors starting at {Placed(window, window.EditorArea).Left:0.#}");
+
+            ToolWindow build = dock[ToolWindowIds.Build];
+            Border tab = dock.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.Classes.Contains(StyleClasses.Tab) && Equals(b.Tag, build.Id) && b.IsEffectivelyVisible)
+                ?? throw new Xunit.Sdk.XunitException("Cubicle shows no titled tab for Build");
+            Point from = Ui.Centre(tab, window);
+            window.MouseDown(from, MouseButton.Left);
+            for (int step = 1; step <= 4; step++)
+            {
+                window.MouseMove(from + new Point(0, -20 * step), RawInputModifiers.LeftMouseButton);
+            }
+            Ui.Settle();
+            Assert.True(dock.ColumnDefinitions[0].ActualWidth == 40 && left.IsEffectivelyVisible,
+                $"With Build dragged, the left stripe takes {dock.ColumnDefinitions[0].ActualWidth:0.#} units: it is no place to drop it");
+            Point onStripe = new(Ui.Centre(left, window).X, Placed(window, left).Top + 60);
+            window.MouseMove(onStripe, RawInputModifiers.LeftMouseButton);
+            window.MouseUp(onStripe, MouseButton.Left);
+            Ui.Settle();
+            Assert.True(build.Anchor == ToolAnchor.LeftTop && StripeIcon(window, ToolWindowIds.Build).IsEffectivelyVisible && dock.ColumnDefinitions[0].ActualWidth == 40,
+                $"Build dropped on the left stripe stands at {build.Anchor}, the stripe {dock.ColumnDefinitions[0].ActualWidth:0.#} wide");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
     private static ToggleButton StripeIcon(MainWindow window, string id) =>
         window.DockHost.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(b => Equals(b.Tag, id))
             ?? throw new Xunit.Sdk.XunitException($"No stripe shows {id}'s icon");
+
+    /// <summary>The stripes, the left one first.</summary>
+    private static Border[] StripeBars(MainWindow window) =>
+        [.. window.DockHost.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.StripeBar)).OrderBy(b => Grid.GetColumn(b))];
 
     private static Control Named(MainWindow window, string name) =>
         window.GetVisualDescendants().OfType<Control>().FirstOrDefault(c => c.Name == name) ?? throw new Xunit.Sdk.XunitException($"The window has no {name}");

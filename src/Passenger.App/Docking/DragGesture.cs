@@ -47,7 +47,11 @@ public sealed class DragGesture<T>(Visual surface, DropOverlay overlay, Func<T, 
         {
             return false;
         }
-        pressed = current with { Dragging = true };
+        if (!current.Dragging)
+        {
+            pressed = current with { Dragging = true };
+            DraggingChanged?.Invoke(this, (current.Item, true));
+        }
         if (placeAt(current.Item, at) is { } place)
         {
             DropOverlay on = place.Overlay ?? overlay;
@@ -78,6 +82,7 @@ public sealed class DragGesture<T>(Visual surface, DropOverlay overlay, Func<T, 
         if (current.Dragging)
         {
             drop(current.Item, e.GetPosition(surface));
+            DraggingChanged?.Invoke(this, (current.Item, false));
         }
         if (current.Handle is not null)
         {
@@ -89,9 +94,18 @@ public sealed class DragGesture<T>(Visual surface, DropOverlay overlay, Func<T, 
     /// <summary>Forgets a press whose release was never seen (it went outside what takes the gesture's events), dropping nothing.</summary>
     public void Cancel()
     {
+        (T Item, Point Start, IInputElement? Handle, bool Dragging)? was = pressed;
         pressed = null;
         Unlight();
+        if (was is { Dragging: true } dragged)
+        {
+            DraggingChanged?.Invoke(this, (dragged.Item, false));
+        }
     }
+
+    /// <summary>A press became a drag (true), or a drag ended, dropped where it was let go or forgotten (false), with
+    /// what it carries.</summary>
+    public event EventHandler<(T Item, bool Dragging)>? DraggingChanged;
 
     private void Unlight()
     {

@@ -1339,6 +1339,9 @@ public sealed partial class EditorArea : UserControl
     /// <summary>A tool window's tab let go out of the editors, at a point on the screen.</summary>
     public event EventHandler<(ToolTab Tool, PixelPoint At)>? ToolTabDropped;
 
+    /// <summary>A tool window's tab dragged (true), or let go wherever it went (false).</summary>
+    public event EventHandler<bool>? ToolTabDragging;
+
     /// <summary>Where a tab dragged from a frame and let go at a point (in its surface's coordinates) goes: into the
     /// editors under the point, the window it came from first, then the editor windows, then the main window, which the
     /// others may stand over; null over none of them.</summary>
@@ -1423,6 +1426,13 @@ public sealed partial class EditorArea : UserControl
     private EditorFrame NewFrame(EditorFrame.Node root, EditorGroup current, Control? empty = null)
     {
         EditorFrame frame = new(root, current, ZoneAt, Drop, empty);
+        frame.TabDrag.DraggingChanged += (_, e) =>
+        {
+            if (e.Item.Document.Tool is not null)
+            {
+                ToolTabDragging?.Invoke(this, e.Dragging);
+            }
+        };
         frames.Add(frame);
         return frame;
     }
