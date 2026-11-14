@@ -201,6 +201,8 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             Feed = () => Packages.FeedAsync(null),
             Vulnerabilities = () => Packages.VulnerabilitiesAsync(),
+            ReadDeprecations = Packages.DeprecationsReadAsync,
+            Deprecated = Packages.DeprecationOf,
         };
         DesignTimeBuilds = new ProjectBuilds(LoadOrderAsync, () => Workspace);
     }

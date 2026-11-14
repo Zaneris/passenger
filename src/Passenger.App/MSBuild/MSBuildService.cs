@@ -29,6 +29,13 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
     /// <summary>What the folder's audit feeds know of vulnerable packages, its session's packages'.</summary>
     public Func<Task<VulnerabilityData>>? Vulnerabilities { get; set; }
 
+    /// <summary>Reads whether package versions are deprecated, its session's packages': ended once each is known, or its
+    /// feeds did not answer.</summary>
+    public Func<IReadOnlyCollection<(string Id, string Version)>, Task>? ReadDeprecations { get; set; }
+
+    /// <summary>A package version's deprecation as read, its session's packages'; null where none is known.</summary>
+    public Func<string, string, Deprecation?>? Deprecated { get; set; }
+
     /// <summary>Something to say in the status bar: why a project could not be evaluated, or a feed did not answer.</summary>
     public event EventHandler<string>? Message;
 
@@ -207,6 +214,24 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
         catch (Exception failed) when (FeedSet.IsFeedFailure(failed))
         {
             return VulnerabilityData.None;
+        }
+    }
+
+    /// <summary>Reads whether the package versions are deprecated, those not read yet: done at once when all are, and
+    /// without a word when nothing can say.</summary>
+    internal async Task DeprecationsAsync(IReadOnlyCollection<(string Id, string Version)> wanted)
+    {
+        if (ReadDeprecations is not { } read || wanted.Count == 0)
+        {
+            return;
+        }
+        try
+        {
+            await read(wanted);
+        }
+        catch (Exception failed) when (FeedSet.IsFeedFailure(failed))
+        {
+            // The sources did not read: no version is marked deprecated until they do.
         }
     }
 

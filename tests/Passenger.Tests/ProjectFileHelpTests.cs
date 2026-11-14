@@ -16,12 +16,15 @@ namespace Passenger.Tests;
 /// their elements, properties and values, package ids and versions from the folder's feed (a stand-in on loopback, never
 /// nuget.org), paths and the names MSBuild's evaluation knows; the card over a name says its evaluated value and where it
 /// was set; Go to Declaration goes where a property, target or import is defined, the SDK's own targets read-only, and an
-/// item's card counts the files its wildcards take in as they come and go on disk; the evaluation's errors and a
-/// vulnerable package are marked on their lines and listed in Problems; and a project file saved has the Solution view
+/// item's card counts the files its wildcards take in as they come and go on disk; the evaluation's errors, a
+/// vulnerable package and a deprecated one are marked on their lines and listed in Problems; and a project file saved has the Solution view
 /// show what it says now.</summary>
 public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Shop>
 {
     private const string Advisory = "https://github.com/advisories/GHSA-pass-0000-test";
+
+    /// <summary>What the owner of Passenger.Other 2.5.0, which they deprecated, says of it.</summary>
+    private const string Retired = "Kept no more: Passenger.Sample does all it did.";
 
     /// <summary>A project with a property of its own over the SDK's, a condition on a property Directory.Build.props sets,
     /// a package at a vulnerable version, an import of its own and one of a file not there, and a target after Build.</summary>
@@ -153,6 +156,31 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         Ui.Press(window, "ENTER");
         Assert.EndsWith("<PackageReference Include=\"Passenger.Sample|\" Version=\"2.0.0\" />", CaretLine(editor), StringComparison.Ordinal);
         Assert.False(window.DockHost[ToolWindowIds.NuGet].IsBuilt, "The project file's package completion built the hidden NuGet window's view");
+        window.Close();
+    }
+
+    /// <summary>A reference to a version its owner deprecated, as the folder's feed's registration says, is marked as a
+    /// vulnerable one is, saying why and the package to use instead, and listed in Problems; the card over it says so with
+    /// the owner's own words. A version not deprecated is not marked so.</summary>
+    [AvaloniaFact]
+    public void A_package_reference_to_a_deprecated_version_is_marked_with_why_and_what_to_use_instead()
+    {
+        Write("App/App.csproj", Project.Replace("<ProjectReference Include=\"../\" />",
+            "<PackageReference Include=\"Passenger.Other\" Version=\"2.5.0\" />\n    <ProjectReference Include=\"../\" />", StringComparison.Ordinal));
+        MainWindow window = Open("App/App.csproj");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        const string Said = "Package 'Passenger.Other' 2.5.0 is deprecated: legacy, no longer maintained; use Passenger.Sample 2.0.0 or later instead";
+        Ui.WaitFor(() => document.Markers.Any(m => m.Message == Said), () => $"the deprecated version's warning among [{string.Join(" | ", document.Markers.Select(m => m.Message))}]");
+        Assert.Equal(MarkerKind.Warning, MarkerOn(editor, document, "2.5.0").Kind);
+        Assert.DoesNotContain(document.Markers, m => m.Message.Contains("is deprecated", StringComparison.Ordinal) && m.Message != Said);
+        Ui.WaitFor(() => window.BottomPanel.Problems.FileProblems.Any(p => p.Severity == ProblemSeverity.Warning && p.Message.Contains(Said, StringComparison.Ordinal)),
+            "Problems listing the deprecated version");
+
+        Ui.PlaceAfter(editor, "<PackageReference Include=\"Passenger.Oth");
+        Ui.Run(window, AppActions.QuickDocumentation);
+        Ui.WaitFor(() => window.Assist.HoverText is not null, "the card over the deprecated reference");
+        Assert.Contains($"\n{Said}\n{Retired}\n", window.Assist.HoverText, StringComparison.Ordinal);
         window.Close();
     }
 
@@ -557,8 +585,10 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
             feed.Add("Passenger.Vulnerable", "1.0.1");
             feed.Add("Passenger.Vulnerable", "1.1.0");
             feed.Add("Passenger.Sample", "2.0.0");
+            feed.Add("Passenger.Other", "2.5.0");
             feed.Add("Passenger.Other", "3.0.0");
             feed.Advise("Passenger.Vulnerable", 1, Advisory, "[1.0.0, 1.0.1)");
+            feed.Deprecate("Passenger.Other", "2.5.0", ["Legacy"], Retired, "Passenger.Sample", "[2.0.0, )");
             // Only the stand-in, for packages and for the audit, and restores kept out of the person's package cache.
             Put("nuget.config", $"""
                 <?xml version="1.0" encoding="utf-8"?>

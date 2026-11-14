@@ -35,6 +35,17 @@ public sealed partial class FolderPackages
         return Task.WhenAll(wanted.Select(w => deprecations[Key(w.Id, w.Version)]).Distinct());
     }
 
+    /// <summary><see cref="DeprecationsAsync"/> for one who may ask before anything listed the packages (a project file's
+    /// marks, an agent's search): the folder's sources read first when they are not.</summary>
+    public async Task DeprecationsReadAsync(IReadOnlyCollection<(string Id, string Version)> wanted)
+    {
+        if (Given is null && !IsCurrent)
+        {
+            await ReloadSourcesAsync();
+        }
+        await DeprecationsAsync(wanted);
+    }
+
     /// <summary>A package version's deprecation as read; null where it is not deprecated, or not read yet.</summary>
     public Deprecation? DeprecationOf(string id, string version) =>
         deprecations.TryGetValue(Key(id, version), out Task<FeedDeprecations>? read) && read.IsCompletedSuccessfully

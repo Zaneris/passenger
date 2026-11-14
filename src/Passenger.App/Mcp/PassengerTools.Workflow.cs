@@ -340,12 +340,81 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.NugetSearch, Title = "Search NuGet", ReadOnly = true), Description(
         "Packages a query finds on the feeds of the folder's nuget.config files (every enabled one, or feed), each with its " +
-        "newest version, downloads and the feeds that have it. A feed that does not answer fails the search only when none " +
-        "does.")]
-    public Task<IReadOnlyList<PackageSummary>> NuGetSearch(string query, bool prerelease = false,
+        "newest version, downloads, the feeds that have it, and of that version and those the projects have, each vulnerable " +
+        "or deprecated one with why. A feed that does not answer fails the search only when none does.")]
+    public Task<IReadOnlyList<PackageFound>> NuGetSearch(string query, bool prerelease = false,
         [Description("A feed's name, as the NuGet window lists it")] string? feed = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
-        await (await Session.Packages.FeedAsync(feed)).SearchAsync(query, prerelease, cancel));
+        CancellationToken cancel = default) => OnUi<IReadOnlyList<PackageFound>>(cancel, async () =>
+    {
+        FolderPackages packages = Session.Packages;
+        IReadOnlyList<PackageSummary> found = await (await packages.FeedAsync(feed)).SearchAsync(query, prerelease, cancel);
+        Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> installed = await packages.InstalledAsync();
+        Dictionary<string, string> names = packages.Projects.ToDictionary(p => p.Path, p => p.Name, PathNames.Comparer);
+        // Each version asked of a package, with the projects that have it: the newest found, and the projects' own.
+        Dictionary<string, List<(string Version, List<string> Projects)>> asked = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PackageSummary package in found)
+        {
+            List<(string Version, List<string> Projects)> versions = asked[package.Id] = [(package.Version, [])];
+            foreach ((string path, IReadOnlyList<InstalledVersion> at) in installed.GetValueOrDefault(package.Id) ?? [])
+            {
+                foreach (string version in at.Select(v => v.Version).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    int i = versions.FindIndex(v => v.Version.Equals(version, StringComparison.OrdinalIgnoreCase));
+                    if (i < 0)
+                    {
+                        versions.Add((version, []));
+                        i = versions.Count - 1;
+                    }
+                    versions[i].Projects.Add(names.GetValueOrDefault(path) ?? Path.GetFileNameWithoutExtension(path));
+                }
+            }
+        }
+        AgentCall.Say("Reading which of the versions found are vulnerable or deprecated");
+        VulnerabilityData known = await packages.VulnerabilitiesAsync();
+        (string Id, string Version)[] each = [.. asked.SelectMany(a => a.Value.Select(v => (a.Key, v.Version)))];
+        await packages.DeprecationsReadAsync(each);
+        AgentCall.Say(null);
+        IReadOnlyList<string> unread = packages.DeprecationsUnknown(each);
+        return [.. found.Select(p => Found(p, asked[p.Id], known, unread, packages))];
+    });
+
+    /// <summary>A package found as nuget_search answers it: each version asked with a known vulnerability, or its owner
+    /// deprecated, said with the projects that have it, and the feeds that could not say.</summary>
+    private static PackageFound Found(PackageSummary package, List<(string Version, List<string> Projects)> versions, VulnerabilityData known,
+        IReadOnlyList<string> unread, FolderPackages packages)
+    {
+        static string Of((string Version, List<string> Projects) at) => at.Projects.Count == 0 ? at.Version : $"{at.Version} ({string.Join(", ", at.Projects)})";
+        List<string> vulnerable = [];
+        List<string> deprecated = [];
+        foreach ((string Version, List<string> Projects) at in versions)
+        {
+            if (known.Of(package.Id, at.Version) is [{ } gravest, ..] advisories)
+            {
+                vulnerable.Add($"{Of(at)}: {gravest.Severity.ToString().ToLowerInvariant()} severity, {gravest.Address}"
+                    + (advisories.Count > 1 ? $" (and {Plural.Of(advisories.Count - 1, "more advisory", "more advisories")})" : string.Empty));
+            }
+            if (packages.DeprecationOf(package.Id, at.Version) is { } deprecation)
+            {
+                deprecated.Add($"{Of(at)}: {deprecation.Why}" + (deprecation.Instead is { } instead ? $"; use {instead} instead" : string.Empty)
+                    + (deprecation.Message.Length > 0 ? $"; {deprecation.Message}" : string.Empty));
+            }
+        }
+        List<string> unknown = [];
+        if (known.Failed.Count > 0)
+        {
+            unknown.Add($"vulnerabilities: {string.Join(", ", known.Failed.Select(f => f.Feed))} did not answer");
+        }
+        if (unread.Count > 0)
+        {
+            unknown.Add($"deprecations: {string.Join(", ", unread)} did not answer");
+        }
+        return new PackageFound(package.Id, package.Version, package.Description, package.Authors, package.Downloads, package.Feeds)
+        {
+            Vulnerable = vulnerable.Count > 0 ? vulnerable : null,
+            Deprecated = deprecated.Count > 0 ? deprecated : null,
+            Unknown = unknown.Count > 0 ? string.Join("; ", unknown) : null,
+        };
+    }
 
     [McpServerTool(Name = McpTools.NugetInstall, Title = "Install or remove a package", Destructive = true), Description(
         "Adds a package to a project (its name or .csproj) at a version (else the newest on the folder's enabled feeds), or " +
@@ -890,6 +959,21 @@ public sealed record ControlLayoutInfo(string Control, int Measures, double Meas
 
 /// <summary>A type on the heap of a memory snapshot: its live objects and their bytes.</summary>
 public sealed record HeapTypeInfo(string Type, int Count, long Bytes);
+
+/// <summary>A package nuget_search found: what the feeds say of it, and of its newest version and those the projects have,
+/// each with a known vulnerability (its gravest advisory) or that its owner deprecated (why, what to use instead and their
+/// words), with the projects that have it.</summary>
+public sealed record PackageFound(string Id, string Version, string Description, string Authors, long Downloads, IReadOnlyList<string> Feeds)
+{
+    /// <summary>Null for none.</summary>
+    public IReadOnlyList<string>? Vulnerable { get; init; }
+
+    /// <summary>Null for none.</summary>
+    public IReadOnlyList<string>? Deprecated { get; init; }
+
+    /// <summary>The feeds that could not say whether a version is vulnerable or deprecated; null where all said.</summary>
+    public string? Unknown { get; init; }
+}
 
 /// <summary>What nuget_install did: the package, the version installed (none for a removal), the project, and
 /// the files it changed.</summary>

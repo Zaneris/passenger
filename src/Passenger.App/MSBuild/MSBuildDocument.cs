@@ -11,9 +11,9 @@ namespace Passenger.App.MSBuild;
 
 /// <summary>One open MSBuild file's code help. Completion reads its text as typed with the project's last evaluation;
 /// the project is evaluated again with the open files' unsaved text once typing pauses, so its errors and values are
-/// the screen's, and its errors and warnings in this file, with the advisories of the packages it references, are the
-/// file's markers. An evaluation that fails (XML that does not read, an unknown SDK) keeps the last one that did for
-/// names and values, and says why on its line.</summary>
+/// the screen's, and its errors and warnings in this file, with the advisories of the packages it references and the
+/// versions of them their owners deprecated, are the file's markers. An evaluation that fails (XML that does not read,
+/// an unknown SDK) keeps the last one that did for names and values, and says why on its line.</summary>
 public sealed class MSBuildDocument : IDisposable
 {
     /// <summary>How long typing pauses before the project is evaluated again with the text as typed.</summary>
@@ -26,6 +26,11 @@ public sealed class MSBuildDocument : IDisposable
     private readonly Debounce inspecting;
     private (int Version, XmlTree Tree)? parsed;
     private IReadOnlyList<InsightDiagnostic> diagnostics = [];
+
+    /// <summary>The deprecated versions of the packages the file references, by id and version as its marks read them,
+    /// for the card over one.</summary>
+    private IReadOnlyDictionary<(string Id, string Version), Deprecation> deprecated = new Dictionary<(string, string), Deprecation>();
+
     private bool disposed;
 
     internal MSBuildDocument(MSBuildService service, OpenDocument document)
@@ -165,8 +170,20 @@ public sealed class MSBuildDocument : IDisposable
         VulnerabilityData known = found.Symbol.Kind == MSBuildSymbolKind.Item && MSBuildSyntax.PackageItems.Contains(found.Symbol.Name)
             ? await service.KnownVulnerabilitiesAsync()
             : VulnerabilityData.None;
-        return await BackgroundWork.Run(() => MSBuildNavigation.Describe(found.Symbol, found.Context, (id, version) => Advise(known, id, version)?.Message));
+        IReadOnlyDictionary<(string Id, string Version), Deprecation> told = deprecated;
+        return await BackgroundWork.Run(() => MSBuildNavigation.Describe(found.Symbol, found.Context, (id, version) =>
+            string.Join("\n", new[] { Advise(known, id, version)?.Message, Told(told, id, version) }.OfType<string>()) is { Length: > 0 } said ? said : null));
     }
+
+    /// <summary>The card's words on a deprecated version: why and what to use instead, then its owner's own; null where
+    /// it is not deprecated.</summary>
+    private static string? Told(IReadOnlyDictionary<(string Id, string Version), Deprecation> told, string id, string version) =>
+        told.FirstOrDefault(t => t.Key.Id.Equals(id, StringComparison.OrdinalIgnoreCase) && t.Key.Version.Equals(version, StringComparison.OrdinalIgnoreCase)).Value
+            is { } deprecation ? Deprecated(id, version, deprecation) + (deprecation.Message.Length > 0 ? $"\n{deprecation.Message}" : string.Empty) : null;
+
+    /// <summary>The words on a deprecated package version: why, and the package its owner names to use instead.</summary>
+    private static string Deprecated(string id, string version, Deprecation deprecation) =>
+        $"Package '{id}' {version} is deprecated: {deprecation.Why}" + (deprecation.Instead is { } instead ? $"; use {instead} instead" : string.Empty);
 
     /// <summary>Where Go to Declaration may go from the name at an offset; each file gone into is evaluated through this
     /// file's project.</summary>
@@ -265,17 +282,32 @@ public sealed class MSBuildDocument : IDisposable
         diagnostics = [.. insight.Raw.Diagnostics.Where(d => d.File.Length > 0 && PathNames.Same(PathNames.Canonical(d.File), Document.Path)
             || (d.File.Length == 0 && PathNames.Same(insight.Project, Document.Path)))];
         (TextSnapshot text, XmlTree tree) = await ParsedAsync();
-        IReadOnlyList<Marker> advisories = await AdvisoriesAsync(tree, version);
+        (IReadOnlyList<Marker> advisories, Task deprecating) = await AdvisoriesAsync(tree, version);
         // Typed on meanwhile, the next pause evaluates the text as it stands and shows what that finds.
         if (Document.Text.Version == version)
         {
             Show(text, tree, advisories);
         }
+        if (deprecating.IsCompleted)
+        {
+            return;
+        }
+        // The file's own problems are shown before the feeds say which versions are deprecated.
+        await deprecating;
+        if (!disposed && Document.Text.Version == version)
+        {
+            (advisories, _) = await AdvisoriesAsync(tree, version);
+            if (Document.Text.Version == version)
+            {
+                Show(text, tree, advisories);
+            }
+        }
     }
 
-    /// <summary>The packages this file references or pins whose version a known advisory affects: NuGet's audit warning on
-    /// the version (or the id, when the version is the central one).</summary>
-    private async Task<IReadOnlyList<Marker>> AdvisoriesAsync(XmlTree tree, int version)
+    /// <summary>The packages this file references or pins whose version a known advisory affects, NuGet's audit warning on
+    /// the version (or the id, when the version is the central one), and whose version its owner deprecated, as far as
+    /// known; with the read of those not known yet.</summary>
+    private async Task<(IReadOnlyList<Marker> Marked, Task Deprecating)> AdvisoriesAsync(XmlTree tree, int version)
     {
         List<(XmlElement Element, string Id, string Version, TextRange Range)> packages = [];
         IReadOnlyDictionary<string, (string Version, MSBuildPlace Place)> central = Insight?.CentralVersions() ?? new Dictionary<string, (string, MSBuildPlace)>();
@@ -298,15 +330,29 @@ public sealed class MSBuildDocument : IDisposable
         }
         if (packages.Count == 0)
         {
-            return [];
+            deprecated = new Dictionary<(string, string), Deprecation>();
+            return ([], Task.CompletedTask);
         }
         VulnerabilityData known = await service.KnownVulnerabilitiesAsync();
         if (disposed || Document.Text.Version != version)
         {
-            return [];
+            return ([], Task.CompletedTask);
         }
-        return [.. packages.Select(p => (p.Range, Advice: Advise(known, p.Id, p.Version))).Where(p => p.Advice is not null)
-            .Select(p => Marker.Coded(p.Range, MarkerKind.Warning, p.Advice!.Value.Code, p.Advice.Value.Message))];
+        Task deprecating = service.DeprecationsAsync([.. packages.Select(p => (p.Id, p.Version)).Distinct()]);
+        Dictionary<(string Id, string Version), Deprecation> told = [];
+        foreach ((_, string id, string at, _) in packages)
+        {
+            if (service.Deprecated?.Invoke(id, at) is { } deprecation)
+            {
+                told.TryAdd((id, at), deprecation);
+            }
+        }
+        deprecated = told;
+        IEnumerable<Marker> vulnerable = packages.Select(p => (p.Range, Advice: Advise(known, p.Id, p.Version))).Where(p => p.Advice is not null)
+            .Select(p => Marker.Coded(p.Range, MarkerKind.Warning, p.Advice!.Value.Code, p.Advice.Value.Message));
+        IEnumerable<Marker> outdated = packages.Where(p => told.ContainsKey((p.Id, p.Version)))
+            .Select(p => new Marker(p.Range, MarkerKind.Warning, Deprecated(p.Id, p.Version, told[(p.Id, p.Version)])));
+        return ([.. vulnerable, .. outdated], deprecating);
     }
 
     /// <summary>NuGet's audit words for a package version's gravest known advisory (NU1901 low to NU1904 critical).</summary>

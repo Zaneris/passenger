@@ -56,7 +56,7 @@ public sealed record PackageRow(string Id, string Version, string Description, s
 /// Update or Remove it through the .NET command line, whose restore uses those feeds and their credentials. A version with
 /// a known vulnerability (the audit's VulnerabilityInfo, as restore reads it) is marked with its advisories, and Update
 /// offers the least version that fixes it; one its owner deprecated (the feed's registration, read while the window is
-/// shown) with why and what to use instead. Sources: the files and their feeds (<see cref="NuGetSourcesView"/>). A view over
+/// shown), a project's or the one chosen to put in, with why and what to use instead. Sources: the files and their feeds (<see cref="NuGetSourcesView"/>). A view over
 /// the folder's <see cref="FolderPackages"/>, its session's.</summary>
 public sealed partial class NuGetView : DockPanel
 {
@@ -755,10 +755,13 @@ public sealed partial class NuGetView : DockPanel
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
         ChosenVersion = row.UpdateVersion ?? fix ?? versions.FirstOrDefault() ?? row.Version;
         ComboBox picker = new() { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140 };
+        StackPanel deprecated = new() { Spacing = 8 };
         picker.SelectionChanged += (_, _) =>
         {
             ChosenVersion = picker.SelectedItem as string;
+            ShowDeprecated(row, deprecated);
             ShowProjects(row);
+            IdeErrors.Observe(ChosenDeprecationAsync(row, deprecated, cancel));
         };
         details.Children.Add(new StackPanel
         {
@@ -786,12 +789,57 @@ public sealed partial class NuGetView : DockPanel
         {
             details.Children.Add(Vulnerability(known.Of(row.Id, vulnerable), vulnerable, fix));
         }
-        if (row.Deprecated is { } deprecated)
-        {
-            details.Children.Add(Deprecated(deprecated.Version, deprecated.Said));
-        }
+        details.Children.Add(deprecated);
+        ShowDeprecated(row, deprecated);
         details.Children.Add(new StackPanel { Name = "projects", Spacing = 4, Margin = new Thickness(0, 8, 0, 0) });
         ShowProjects(row);
+        await ChosenDeprecationAsync(row, deprecated, cancel);
+    }
+
+    /// <summary>Reads, while the window is shown, whether the version chosen in the details is deprecated, and says it once
+    /// known, unless another package or version was chosen meanwhile.</summary>
+    private async Task ChosenDeprecationAsync(PackageRow row, Panel said, CancellationTokenSource cancel)
+    {
+        if (!IsShown || ChosenVersion is not { Length: > 0 } chosen || model.DeprecationsAsync([(row.Id, chosen)]) is not { IsCompleted: false } reading)
+        {
+            return;
+        }
+        await reading;
+        if (!cancel.IsCancellationRequested && Selected == row && ChosenVersion == chosen)
+        {
+            ShowDeprecated(row, said);
+        }
+    }
+
+    /// <summary>The details' word on deprecated versions: the newest a project has, and the version chosen to install or
+    /// move to, one word for both where their owner says the same of each.</summary>
+    private void ShowDeprecated(PackageRow row, Panel said)
+    {
+        List<(List<string> Versions, Deprecation Said)> told = [];
+        if (row.Deprecated is { } held)
+        {
+            told.Add(([held.Version], held.Said));
+        }
+        if (ChosenVersion is { } chosen && model.DeprecationOf(row.Id, chosen) is { } deprecation
+            && !told.Any(t => t.Versions.Contains(chosen, StringComparer.OrdinalIgnoreCase)))
+        {
+            if (told.FirstOrDefault(t => Alike(t.Said, deprecation)).Versions is { } same)
+            {
+                same.Add(chosen);
+            }
+            else
+            {
+                told.Add(([chosen], deprecation));
+            }
+        }
+        said.Children.Clear();
+        for (int i = 0; i < told.Count; i++)
+        {
+            said.Children.Add(Deprecated(told[i].Versions, told[i].Said, first: i == 0));
+        }
+        said.IsVisible = told.Count > 0;
+
+        static bool Alike(Deprecation one, Deprecation other) => one.Why == other.Why && one.Message == other.Message && one.Instead == other.Instead;
     }
 
     /// <summary>The word on a vulnerable version, its advisories each with its severity, and the version that fixes
@@ -840,22 +888,22 @@ public sealed partial class NuGetView : DockPanel
         return block;
     }
 
-    /// <summary>The word on a deprecated version: why, its owner's own words, and the package they name to use instead,
-    /// which a click searches the feeds for.</summary>
-    private Border Deprecated(string version, Deprecation deprecation)
+    /// <summary>The word on deprecated versions: why, their owner's own words, and the package they name to use instead,
+    /// which a click searches the feeds for; the first of the details' named for a test to find.</summary>
+    private Border Deprecated(IReadOnlyList<string> versions, Deprecation deprecation, bool first)
     {
         PathIcon warning = new() { Width = 14, Height = 14, Margin = new Thickness(0, 1, 8, 0), VerticalAlignment = VerticalAlignment.Top, [DockProperty] = Dock.Left };
         warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
         warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable(TokenKeys.Warning));
         StackPanel said = new() { Spacing = 4 };
-        said.Children.Add(new TextBlock { Text = $"{version} is deprecated: {deprecation.Why}.", TextWrapping = TextWrapping.Wrap });
+        said.Children.Add(new TextBlock { Text = $"{Plural.Listed(versions)} {Plural.Agreeing(versions.Count, "is", "are")} deprecated: {deprecation.Why}.", TextWrapping = TextWrapping.Wrap });
         if (deprecation.Message.Length > 0)
         {
             said.Children.Add(new TextBlock { Text = deprecation.Message, TextWrapping = TextWrapping.Wrap });
         }
         if (deprecation.Alternative is { } alternative)
         {
-            Button search = new() { Name = "Alternative", Classes = { StyleClasses.Link }, Content = alternative, VerticalAlignment = VerticalAlignment.Center };
+            Button search = new() { Name = first ? "Alternative" : "ChosenAlternative", Classes = { StyleClasses.Link }, Content = alternative, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(search, $"Search for {alternative}");
             search.Click += (_, _) => SearchFor(alternative);
             StackPanel instead = new()
@@ -864,15 +912,15 @@ public sealed partial class NuGetView : DockPanel
                 Spacing = 4,
                 Children = { new TextBlock { Text = "Use instead:", FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, search },
             };
-            if (deprecation.AlternativeVersions is { } versions)
+            if (deprecation.AlternativeVersions is { } range)
             {
-                instead.Children.Add(new TextBlock { Text = versions, VerticalAlignment = VerticalAlignment.Center });
+                instead.Children.Add(new TextBlock { Text = range, VerticalAlignment = VerticalAlignment.Center });
             }
             said.Children.Add(instead);
         }
         Border block = new()
         {
-            Name = "Deprecation",
+            Name = first ? "Deprecation" : "ChosenDeprecation",
             Classes = { StyleClasses.Box },
             Padding = new Thickness(10, 8),
             Child = new DockPanel { Children = { warning, said } },

@@ -739,6 +739,56 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.False(removed.Contains("Passenger.Sample", StringComparison.Ordinal), $"nuget_install with remove answered with the open project file still holding the package:\n{removed}");
     }
 
+    /// <summary>nuget_search names, of each package found, its newest version and those the projects have that the stand-in
+    /// feed's VulnerabilityInfo says are vulnerable or its registration says their owner deprecated, with why, what to use
+    /// instead and the projects that have them, so an agent knows before it installs; a package with neither says none.</summary>
+    [Fact]
+    public async Task An_agents_package_search_names_the_vulnerable_and_deprecated_versions_with_why()
+    {
+        const string Advisory = "https://github.com/advisories/GHSA-pass-mcp0-test";
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-nuget-deprecated-"));
+        DeleteAtEnd(folder);
+        await using StandInFeed feed = new();
+        feed.Add("Passenger.Legacy", "1.0.0");
+        feed.Add("Passenger.Legacy", "2.0.0");
+        feed.Add("Passenger.Modern", "2.0.0");
+        feed.Advise("Passenger.Legacy", 2, Advisory, "[1.0.0, 1.0.1)");
+        feed.Deprecate("Passenger.Legacy", "1.0.0", ["Legacy"], "Kept no more.", "Passenger.Modern", "[2.0.0, )");
+        feed.Deprecate("Passenger.Legacy", "2.0.0", ["CriticalBugs"], "Broken past repair.");
+        File.WriteAllText(Path.Combine(folder, "nuget.config"), $"""
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="stand-in" value="{feed.Index}" protocolVersion="3" allowInsecureConnections="true" />
+              </packageSources>
+              <auditSources>
+                <clear />
+                <add key="stand-in" value="{feed.Index}" allowInsecureConnections="true" />
+              </auditSources>
+              <config>
+                <add key="globalPackagesFolder" value="packages" />
+              </config>
+            </configuration>
+            """);
+        File.WriteAllText(Path.Combine(folder, "Lib.csproj"),
+            TestProjects.Library().With("  <ItemGroup>\n    <PackageReference Include=\"Passenger.Legacy\" Version=\"1.0.0\" />\n  </ItemGroup>\n"));
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        JsonElement[] found = [.. (await Call(client, McpTools.NugetSearch, new() { ["query"] = "Passenger" })).EnumerateArray()];
+        JsonElement legacy = Assert.Single(found, p => p.GetProperty("id").GetString() == "Passenger.Legacy");
+        Assert.Equal([$"1.0.0 (Lib): high severity, {Advisory}"], Texts(legacy, "vulnerable"));
+        Assert.Equal(["2.0.0: critical bugs; Broken past repair.", "1.0.0 (Lib): legacy, no longer maintained; use Passenger.Modern 2.0.0 or later instead; Kept no more."],
+            Texts(legacy, "deprecated"));
+        JsonElement modern = Assert.Single(found, p => p.GetProperty("id").GetString() == "Passenger.Modern");
+        Assert.True(Texts(modern, "vulnerable").Length == 0 && Texts(modern, "deprecated").Length == 0 && Texts(modern, "unknown").Length == 0,
+            $"nuget_search said Passenger.Modern, which nothing advises against or deprecates, was: {modern.GetRawText()}");
+
+        static string[] Texts(JsonElement package, string member) =>
+            !package.TryGetProperty(member, out JsonElement said) || said.ValueKind == JsonValueKind.Null ? []
+            : said.ValueKind == JsonValueKind.Array ? [.. said.EnumerateArray().Select(t => t.GetString()!)]
+            : [said.GetString()!];
+    }
+
     /// <summary>In a project that restores with a lock file, the files nuget_install names are all it changed: the lock file
     /// its restore made, then rewrote for the next version, so an agent committing them leaves a locked restore whole.</summary>
     [Fact]

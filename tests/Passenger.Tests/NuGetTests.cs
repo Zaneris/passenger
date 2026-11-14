@@ -922,6 +922,47 @@ public sealed class NuGetTests : IDisposable
             ?? throw new Xunit.Sdk.XunitException($"{nuget.Selected?.Id}'s details say nothing of a deprecated version");
     }
 
+    /// <summary>The version chosen in a package's details is said deprecated there before it is put in, as the stand-in's
+    /// registration says: in the word on the version a project has where their owner says the same of both, in a word of
+    /// its own where they say otherwise, and not at all where it is not deprecated.</summary>
+    [AvaloniaFact]
+    public void A_deprecated_version_chosen_before_install_is_said_in_the_details()
+    {
+        const string Legacy = "Passenger.Legacy";
+        const string Modern = "Passenger.Modern";
+        const string Words = "Broken past repair.";
+        foreach (string version in new[] { "1.0.0", "1.2.0", "1.5.0", "2.0.0" })
+        {
+            feed.Add(Legacy, version);
+        }
+        feed.Add(Modern, "2.0.0");
+        feed.Deprecate(Legacy, "1.0.0", ["CriticalBugs"], Words, Modern);
+        feed.Deprecate(Legacy, "1.5.0", ["CriticalBugs"], Words, Modern);
+        feed.Deprecate(Legacy, "2.0.0", ["Legacy"], "Kept no more.", Modern, "[2.0.0, )");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Legacy}\" Version=\"1.0.0\" /></ItemGroup>");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        ChoosePackage(nuget, Legacy);
+        Ui.WaitFor(() => nuget.Versions.Count == 4 && Said(nuget).Count == 2, () => $"{Legacy}'s details to say its two deprecations: [{string.Join(" | ", Said(nuget))}]");
+        Assert.Equal("2.0.0", nuget.ChosenVersion);
+        Assert.Equal(["1.0.0 is deprecated: critical bugs.", "2.0.0 is deprecated: legacy, no longer maintained."], Said(nuget));
+        Assert.Contains(Line(nuget, "App")!.Children.OfType<Button>(), b => b.Content as string == "Install");
+
+        Choose(nuget, "1.5.0");
+        Ui.WaitFor(() => Said(nuget).Count == 1 && Said(nuget)[0].Contains("1.5.0", StringComparison.Ordinal),
+            () => $"1.5.0, deprecated as Lib's 1.0.0 is, to be said with it: [{string.Join(" | ", Said(nuget))}]");
+        Assert.Equal(["1.0.0 and 1.5.0 are deprecated: critical bugs."], Said(nuget));
+
+        Choose(nuget, "1.2.0");
+        Ui.WaitFor(() => Said(nuget) is ["1.0.0 is deprecated: critical bugs."], () => $"1.2.0, not deprecated, said as [{string.Join(" | ", Said(nuget))}]");
+        window.Close();
+
+        // The first line of each word the details say on deprecated versions.
+        static List<string> Said(NuGetView nuget) =>
+            [.. nuget.GetLogicalDescendants().OfType<Border>().Where(b => b.Name is "Deprecation" or "ChosenDeprecation")
+                .Select(b => b.GetLogicalDescendants().OfType<TextBlock>().First().Text ?? string.Empty)];
+    }
+
     /// <summary>A tag of a package's row shown in the list, by its words.</summary>
     private static Border? Tag(Control row, string words) =>
         row.GetLogicalDescendants().OfType<Border>().FirstOrDefault(b => b.Child is TextBlock { Text: { } text } && text == words);

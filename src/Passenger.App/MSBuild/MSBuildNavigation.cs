@@ -189,7 +189,7 @@ public static class MSBuildNavigation
     }
 
     /// <summary>An item element's or item type's card: its items as evaluated, the first's metadata, a package's version
-    /// (its central one under central package management) and a known vulnerability of it.</summary>
+    /// (its central one under central package management) and a known vulnerability or deprecation of it.</summary>
     private static void DescribeItem(StringBuilder card, MSBuildSymbol symbol, MSBuildContext context, VulnerabilityLookup? vulnerabilities)
     {
         MSBuildInsight? insight = context.Insight;
@@ -344,5 +344,6 @@ public static class MSBuildNavigation
     }
 }
 
-/// <summary>The words of a package version's known vulnerability, as NuGet's audit says them; null for none.</summary>
+/// <summary>The words on a package version: its known vulnerability, as NuGet's audit says it, and its owner's deprecation
+/// of it; null for neither.</summary>
 public delegate string? VulnerabilityLookup(string id, string version);
