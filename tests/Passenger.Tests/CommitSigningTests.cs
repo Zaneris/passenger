@@ -179,6 +179,88 @@ public sealed class CommitSigningTests : IDisposable
         }
     }
 
+    /// <summary>The data Passenger's gpg has gpg sign, which another program opens as gpg reads it (a scanner, an indexer;
+    /// here a handle sharing neither writes nor its deletion, which Windows then refuses), fails nothing: the commit is
+    /// signed and made, and the file goes once the program lets go of it.</summary>
+    [AvaloniaFact]
+    public void A_signed_commit_whose_data_to_sign_another_program_holds_is_made_and_the_file_goes_once_let_go()
+    {
+        string? gpg = TestGpgKeys.Gpg ?? TestGpgKeys.Bundled;
+        Assert.SkipWhen(gpg is null, TestGpgKeys.WhyNot ?? string.Empty);
+        const string Passphrase = "ferry-slip-3";
+        string root = PathNames.Canonical(TestFolders.Create("signing-held-"));
+        folders.Add(root);
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
+        TestGit.Init(root);
+        // A user of its own: the run's keyring may hold the other tests' key, which gpg makes once for a user.
+        string id = Ui.AwaitPumped(Waiting.Apart(() => TestGpgKeys.MakeAsync(Passphrase, gpg, "Passenger Held <held@passenger.invalid>")), "the test's GPG key",
+            TimeSpan.FromMinutes(2));
+        TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, id);
+        TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.CommitGpgSign, "true");
+        Lock gate = new();
+        string? socket = null;
+        void Heard(object? sender, ChildStart start)
+        {
+            if (start.Start is { } given && start.Folder.Length > 0 && PathNames.Canonical(start.Folder) == root && given.ArgumentList.Contains("commit")
+                && given.Environment.TryGetValue(Passenger.Vcs.GitAskPass.Variable, out string? asking) && asking is not null)
+            {
+                lock (gate)
+                {
+                    socket = asking;
+                }
+            }
+        }
+        FileStream? holding = null;
+        try
+        {
+            MainWindow window = Open(root);
+            CommitView commit = window.CommitView;
+            Ui.Landed(() => commit.SignWith == $"Sign with GPG key {id}" && commit.Sign, $"the Commit window's Sign with GPG key {id}, where it says \"{commit.SignWith}\"");
+            File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    int count;\n}\n");
+            window.Perform(AppActions.CommitRefresh);
+            Ui.Landed(() => commit.Chosen.Count == 1, "Shop.cs's change listed");
+            commit.Message = "Signed while held";
+            string data;
+            ChildProcesses.Started += Heard;
+            try
+            {
+                Task<bool> committing = commit.CommitAsync(push: false);
+                Ui.PumpUntil(() => window.GitQuestion is { IsVisible: true }, $"the window to ask for GPG key {id}'s passphrase, where the status bar says \"{window.Status}\"");
+                string[] signed;
+                lock (gate)
+                {
+                    Assert.True(socket is not null, "The commit's git was given no socket to ask through");
+                    signed = Directory.GetFiles(Path.GetDirectoryName(socket)!, Path.GetFileName(socket) + "-*");
+                }
+                Assert.True(signed.Length == 1, $"Passenger's gpg is to have one file of data to sign while its passphrase is asked, where there are {signed.Length}");
+                data = signed[0];
+                holding = new FileStream(data, FileMode.Open, FileAccess.Read, FileShare.Read);
+                GitQuestionDialog asked = DialogButtonsTests.Check(window.GitQuestion!);
+                asked.KeyTextInput(Passphrase);
+                Ui.Press(asked, "ENTER");
+                Ui.Landed(() => committing.IsCompleted, "the commit given the GPG key's passphrase");
+            }
+            finally
+            {
+                ChildProcesses.Started -= Heard;
+            }
+            Assert.True(Show(root, "%s %G?") == "Signed while held G", $"The commit whose data to sign was held is \"{Show(root, "%s %G?")}\", where the status bar says \"{window.Status}\"");
+            Assert.Equal("1 file committed: Signed while held", window.Status);
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.True(File.Exists(data), "The data to sign a program held was deleted under it, where Windows refuses that");
+            }
+            holding.Dispose();
+            Ui.WaitFor(() => !File.Exists(data), () => $"the data to sign, {data}, to be deleted once let go");
+            window.Close();
+        }
+        finally
+        {
+            holding?.Dispose();
+            Ui.AwaitPumped(Waiting.Apart(() => TestGpgKeys.EndAgentAsync(gpg)), "the run's gpg-agent ended", TimeSpan.FromMinutes(1));
+        }
+    }
+
     /// <summary>With no gpg on the PATH but Git for Windows' own, Passenger's gpg wraps that one: the key's passphrase is asked
     /// in Passenger's dialog, never git's pinentry, and the commit is signed.</summary>
     [AvaloniaFact]

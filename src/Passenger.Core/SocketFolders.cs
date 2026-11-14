@@ -7,9 +7,9 @@ namespace Passenger.Core;
 /// <summary>The one folder Passenger makes its Unix sockets in, a state folder's. It is in the user's own temporary
 /// folder (macOS's as the system names it, whatever TMPDIR is; Linux's XDG_RUNTIME_DIR, else /tmp; Windows' temporary
 /// folder), named by a short hash of the user and the state folder, so a socket's path stays within the 104 bytes macOS
-/// allows (108 elsewhere) whatever TMPDIR or PASSENGER_SETTINGS is, and each state has its own. Each socket in it is
-/// named for its process first (<c>PID-…</c>), so one a process that died left can be taken away; only a window's ends
-/// in .sock.</summary>
+/// allows (108 elsewhere) whatever TMPDIR or PASSENGER_SETTINGS is, and each state has its own. Each socket in it, and
+/// each file kept beside one, is named for its process first (<c>PID-…</c>), so one a process that died left can be
+/// taken away; only a window's ends in .sock.</summary>
 public static partial class SocketFolders
 {
     /// <summary>The variable naming the user's folder of this login's sockets and other run-time files on Linux.</summary>

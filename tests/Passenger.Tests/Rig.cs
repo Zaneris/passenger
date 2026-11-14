@@ -2518,16 +2518,17 @@ public static class TestGpgKeys
     /// <summary>Why a test that signs with GPG cannot run here, or null.</summary>
     public static string? WhyNot => Gpg is null ? "gpg is not on the PATH, so no commit can be signed with a GPG key here" : null;
 
-    /// <summary>A new key for tests@passenger.invalid guarded by <paramref name="passphrase"/>, given gpg on its input,
-    /// never its command line; its id, the agent ended after so the passphrase is asked for again.</summary>
-    public static async Task<string> MakeAsync(string passphrase, string? gpg = null)
+    /// <summary>A new key for <paramref name="user"/> (tests@passenger.invalid's where none is given) guarded by
+    /// <paramref name="passphrase"/>, given gpg on its input, never its command line; its id, the agent ended after so the
+    /// passphrase is asked for again.</summary>
+    public static async Task<string> MakeAsync(string passphrase, string? gpg = null, string user = "Passenger Tests <tests@passenger.invalid>")
     {
         gpg ??= Gpg!;
         Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg,
-            ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--quick-gen-key", "Passenger Tests <tests@passenger.invalid>", "ed25519", "sign", "never"]),
+            ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--quick-gen-key", user, "ed25519", "sign", "never"]),
             passphrase + "\n", Limit.Scaled());
         Assert.True(made.Succeeded, $"gpg made no key to sign with, exiting {made.ExitCode}: {made.Error}");
-        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg, ["--list-secret-keys", "--with-colons", "tests@passenger.invalid"]),
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg, ["--list-secret-keys", "--with-colons", $"={user}"]),
             limit: Limit.Scaled());
         string id = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "sec")[4];
         await EndAgentAsync(gpg);

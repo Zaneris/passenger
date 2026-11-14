@@ -6,11 +6,12 @@ namespace Passenger.Vcs;
 
 /// <summary>Passenger's gpg, which git runs in place of gpg to sign a commit Passenger makes (gpg.program, given for that
 /// commit alone with -c): the person's gpg (<see cref="Variable"/> names it) run with loopback pinentry, the data to sign
-/// in a file of its own so gpg's input is free for its commands, and the passphrase it asks for (GET_HIDDEN on its status)
-/// asked of the person through the operation's askpass socket (<see cref="GitAskPass"/>) and written to it. In place of
-/// gpgsm (gpg.x509.program; <see cref="X509Variable"/> names the person's), which takes a passphrase only as it starts: run
-/// first with no pinentry, which an agent holding the passphrase answers, then where it wants one, given the one asked. What
-/// gpg writes and says goes to git as its own would; a call that signs nothing passes through untouched.</summary>
+/// in a file of its own beside the operation's askpass socket (<see cref="CommitFile.Signed"/>) so gpg's input is free for
+/// its commands, and the passphrase it asks for (GET_HIDDEN on its status) asked of the person through that socket
+/// (<see cref="GitAskPass"/>) and written to it. In place of gpgsm (gpg.x509.program; <see cref="X509Variable"/> names the
+/// person's), which takes a passphrase only as it starts: run first with no pinentry, which an agent holding the
+/// passphrase answers, then where it wants one, given the one asked. What gpg writes and says goes to git as its own
+/// would; a call that signs nothing passes through untouched.</summary>
 public static class GpgLoopback
 {
     /// <summary>The variable naming the person's gpg, which makes Passenger's executable this program.</summary>
@@ -43,16 +44,8 @@ public static class GpgLoopback
         {
             await input.CopyToAsync(data);
         }
-        string file = Path.Combine(Path.GetTempPath(), $"passenger-gpg-{Environment.ProcessId}-{Guid.NewGuid():N}");
-        AtomicFile.Write(file, data.ToArray(), UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        try
-        {
-            return gpgsm is null ? await SignAsync(gpg, args, file, socket) : await SignX509Async(gpgsm, args, file, socket);
-        }
-        finally
-        {
-            File.Delete(file);
-        }
+        using CommitFile file = CommitFile.Signed(socket, data.GetBuffer().AsSpan(0, (int)data.Length));
+        return gpgsm is null ? await SignAsync(gpg, args, file.Path, socket) : await SignX509Async(gpgsm, args, file.Path, socket);
     }
 
     private static async Task<int> SignAsync(string gpg, string[] args, string file, string socket)

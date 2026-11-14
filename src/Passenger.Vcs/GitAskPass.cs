@@ -360,7 +360,8 @@ public static class GitAskPass
 /// served apart (<see cref="Accepting"/>), each question put to <see cref="GitAsker.Ask"/> in turn, a login's password kept
 /// for git's next question for the same place and then forgotten, the operation's background work let go while the person
 /// answers, and every question answered as refused once its <see cref="GitAsker.Questions"/> end. The first question left
-/// unanswered is <see cref="Refused"/>. Disposed as git ends: a question still asked is taken away, and the socket goes.</summary>
+/// unanswered is <see cref="Refused"/>. Disposed as git ends: a question still asked is taken away, and the socket goes,
+/// with what Passenger's gpg could not delete beside it (<see cref="CommitFile.DeleteSigned"/>).</summary>
 internal sealed class Prompting : IAsyncDisposable
 {
     private static int opened;
@@ -460,6 +461,7 @@ internal sealed class Prompting : IAsyncDisposable
         {
             // Left for the next start to take away, as a dead process's socket is.
         }
+        CommitFile.DeleteSigned(path);
         await accepting;
         Task[] served;
         lock (serving)
