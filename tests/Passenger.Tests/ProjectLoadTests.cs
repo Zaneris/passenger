@@ -320,6 +320,24 @@ public sealed class ProjectLoadTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A project MSBuild evaluates whose load fails as it is built at design time is listed under it in Problems
+    /// with its build's error, and no question of its code waits for a restore of it, which the language server runs only
+    /// for a project it took in.</summary>
+    [AvaloniaFact]
+    public void A_project_whose_load_fails_as_it_builds_says_why_and_no_question_of_its_code_waits_for_its_restore()
+    {
+        TestFolders.Write(folder, "Bad/Bad.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n"
+            + "  <Target Name=\"Refuse\" BeforeTargets=\"CoreCompile\">\n    <Error Text=\"Bad refuses to compile\" />\n  </Target>\n</Project>\n");
+        string greeter = PathNames.Canonical(TestFolders.Write(folder, "Bad/Greeter.cs", "namespace Bad;\n\npublic class Greeter\n{\n}\n"));
+        MainWindow window = Open();
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Ui.WaitFor(() => problems.ToolsetProblems.Any(p => p is { Severity: ProblemSeverity.Error, Project: "Bad" } && p.Message.Contains("Bad refuses to compile", StringComparison.Ordinal))
+            && window.Session.Projects.Any(p => p.Name == "Bad" && p.Evaluated is not null),
+            () => $"Problems to list Bad's load failing as it builds, and Bad evaluated (Problems lists [{string.Join(" | ", problems.ToolsetProblems.Select(p => $"{p.Project}: {p.Message}"))}])");
+        Assert.False(window.CSharpService!.AwaitsRestore(greeter), "A question of the code of Bad, which did not load, waits for its restore, which never comes");
+        window.Close();
+    }
+
     /// <summary>A project in a folder its user cannot write loads with an error saying the folder is read-only, so MSBuild
     /// cannot write what the project loads with, and the way on, in the status bar and under the project in Problems.</summary>
     [AvaloniaFact]

@@ -248,7 +248,8 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     /// <summary>Whether the server is still to restore the project holding a file, which it does once the batch loading it
     /// ends: a restore of the person's projects under way, or the project's assets file, as its evaluation names it, not
-    /// yet written while no restore has failed since the last batch's end.</summary>
+    /// yet written while no restore has failed since the last batch's end and the project's last load or restore has not
+    /// left it to a load to come (<see cref="RestoresNone"/>).</summary>
     public bool AwaitsRestore(string path)
     {
         UiThread.Check();
@@ -256,13 +257,19 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return true;
         }
-        if (restoreFailed || workspace is not { } opened)
+        if (restoreFailed || workspace is not { } opened || ProjectModel.Owning(ProjectsNow?.Invoke() ?? opened.Projects, path) is not { } project || RestoresNone(project.Path))
         {
             return false;
         }
-        return ProjectModel.Owning(ProjectsNow?.Invoke() ?? opened.Projects, path)?.Evaluated?.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.ProjectAssetsFile)?.Value
-            is { Length: > 0 } assets && !File.Exists(assets);
+        return project.Evaluated?.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.ProjectAssetsFile)?.Value is { Length: > 0 } assets && !File.Exists(assets);
     }
+
+    /// <summary>Whether the server is to restore a project only once it loads it again: its last load failed, taking in
+    /// nothing to restore, or its last restore failed, by itself or with the solution's.</summary>
+    private bool RestoresNone(string project) =>
+        loadProblems.TryGetValue(project, out List<ProjectLoadProblem>? met) && met.Any(p => p.FailedLoad || p.Restoring)
+        || session?.Solution is { } solution && loadProblems.TryGetValue(solution, out List<ProjectLoadProblem>? ofSolution) && ofSolution.Any(p => p.Restoring);
+
     public RoslynSession? Session => session;
 
     /// <summary>What the server registered to hear of as files change on disk, watched for it; null with no server.</summary>
