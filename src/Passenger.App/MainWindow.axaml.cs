@@ -349,7 +349,7 @@ public partial class MainWindow : IdeWindow
     /// <summary>Opens what the command line named: a folder, solution or project, files in it, a caret position, and the
     /// run configuration it starts there (<see cref="StartedRun"/>). Named nothing, what the system handed Passenger as it
     /// started (a solution double-clicked in the Finder), else the window that keeps state reopens what was open as
-    /// Passenger last quit, or shows the Welcome screen.</summary>
+    /// Passenger last quit, or shows the Welcome screen, as it does alone for <c>--new-window</c>.</summary>
     public void Start(LaunchOptions options)
     {
         started = true;
@@ -367,7 +367,7 @@ public partial class MainWindow : IdeWindow
                 Open(named);
             }
         }
-        else if (options.Files.Count == 0)
+        else if (options.Files.Count == 0 && !options.NewWindow)
         {
             ReopenLast();
         }

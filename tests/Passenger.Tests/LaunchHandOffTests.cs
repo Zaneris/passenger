@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.State;
+using Passenger.App.Welcome;
 using Passenger.Core;
 using Passenger.Text;
 
@@ -91,6 +92,38 @@ public sealed class LaunchHandOffTests
         Assert.True(Caret(opened) == (script, new TextPosition(2, 1)), $"The launch asked for 3:2 in {script}; the folder's kept tabs left {opened.EditorArea.Active?.Path ?? "nothing"} at {Caret(opened).At}");
         opened.Close();
         window.Close();
+    }
+
+    /// <summary>The taskbar's jump list and the Dock's menu list the window's recent ones as starts of Passenger naming each,
+    /// which the running Passenger takes as it takes any second start; its New Window task makes a window with nothing open.</summary>
+    [AvaloniaFact]
+    public void A_recent_solution_s_shortcut_opens_it_in_the_running_Passenger_and_New_Window_makes_a_window_with_nothing_open()
+    {
+        string state = TestFolders.Create("launch-state-");
+        string gone = TestFolders.Create("launch-gone-");
+        string game = PathNames.Canonical(TestFolders.Create("launch-game-"));
+        string solution = TestFolders.Write(game, "Game.slnx", "<Solution />\n");
+        string notes = PathNames.Canonical(TestFolders.Create("launch-notes-"));
+        TestFolders.Write(notes, "notes.txt", "notes\n");
+        MainWindow window = Keeping(state, gone);
+        window.OpenFolder(solution);
+        Ui.Settle();
+        window.OpenFolder(notes);
+        Ui.Settle();
+        TestFolders.Delete(gone);
+
+        (string Path, RecentShortcut Shortcut)[] listed = [.. window.Shortcuts];
+
+        Assert.True(listed.Select(l => (l.Path, l.Shortcut.Title)).SequenceEqual([(notes, Path.GetFileName(notes)), (solution, "Game")]),
+            $"The jump list was to list the folder and the solution opened, newest first, and not the folder gone from disk; it lists {string.Join(", ", listed.Select(l => $"{l.Shortcut.Title} ({l.Path})"))}");
+        Launched(listed[1].Shortcut.Arguments, StateStore.DefaultRoot);
+        Ui.WaitFor(() => PassengerApp.Windows.Any(w => w != window && w.WorkspaceModel?.OpenedAs == solution),
+            () => $"a window of the running Passenger's on {solution}; its windows are on {string.Join(", ", PassengerApp.Windows.Select(w => w.WorkspaceModel?.OpenedAs ?? w.Folder ?? "nothing"))}");
+
+        int windows = PassengerApp.Windows.Count;
+        Launched(RecentShortcuts.NewWindow.Arguments, StateStore.DefaultRoot);
+        Ui.WaitFor(() => PassengerApp.Windows.Count == windows + 1 && PassengerApp.Front is { Folder: null } made && made != window,
+            () => $"a new window with nothing open in front; {PassengerApp.Windows.Count} windows are open where {windows} were, the front one on {PassengerApp.Front?.Folder ?? "nothing"}");
     }
 
     /// <summary>A window keeping its folder's tabs in the state given.</summary>

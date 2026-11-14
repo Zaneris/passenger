@@ -121,6 +121,11 @@
     <Compile Include="../../src/Passenger.App/HandedLaunch.cs" Link="App/HandedLaunch.cs" />
   </ItemGroup>
 
+  <!-- The recent ones as the taskbar's jump list and the Dock's menu list them, a mapping alone. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Welcome/RecentShortcut.cs" Link="App/RecentShortcut.cs" />
+  </ItemGroup>
+
   <!-- Which run configuration a launch's run or debug starts, and why it would refuse, from the words and names alone,
        compiled in since its project is the app's. -->
   <ItemGroup>

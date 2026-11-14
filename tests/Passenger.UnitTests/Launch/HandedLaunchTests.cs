@@ -46,6 +46,16 @@ public class HandedLaunchTests
             $"A launch naming nothing, or a solution, would open something else: {readBare}, {readSolution}");
     }
 
+    [Fact]
+    public void A_launch_asking_for_a_new_window_reads_back_as_one_and_a_plain_launch_never_does()
+    {
+        HandedLaunch? asked = Read(new HandedLaunch(null, null, [], null) { NewWindow = true }.Message());
+        HandedLaunch? plain = Read(new HandedLaunch(Root + "Space", null, [], null).Message());
+
+        Assert.True(asked is { NewWindow: true, Folder: null, Files.Count: 0 } && plain is { NewWindow: false },
+            $"The taskbar's New Window would bring a window forward rather than make one, or a folder's launch would make an empty window: {asked}, {plain}");
+    }
+
     [Theory]
     [InlineData("""{"open": "/games/Space"}""")]
     [InlineData("""[1, 2]""")]
@@ -62,6 +72,8 @@ public class HandedLaunchTests
     [InlineData("""{"launch": {"files": ["/games/a.cs"], "caret": {"line": 0, "column": 1}}}""", "a launch's caret is its line and column, each counted from 1")]
     [InlineData("""{"launch": {"files": ["/games/a.cs"], "caret": {"line": "3"}}}""", "a launch's caret is its line and column, each counted from 1")]
     [InlineData("""{"launch": {"caret": {"line": 3, "column": 1}}}""", "a launch's caret needs a file to go in")]
+    [InlineData("""{"launch": {"folder": "/games/Space", "newWindow": true}}""", "a launch asking for a new window names nothing to open in it")]
+    [InlineData("""{"launch": {"files": ["/games/a.cs"], "newWindow": true}}""", "a launch asking for a new window names nothing to open in it")]
     public void A_malformed_launch_is_refused_saying_why(string line, string why)
     {
         if (OperatingSystem.IsWindows())

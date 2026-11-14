@@ -210,7 +210,35 @@ public partial class MainWindow
         ShowRecent();
     }
 
-    private void ShowRecent() => welcome?.Show(RecentSolutions);
+    /// <summary>The recent ones on the Welcome screen, and in the system's lists outside the window
+    /// (<see cref="RecentShortcuts"/>) where a person sees this Passenger.</summary>
+    private void ShowRecent()
+    {
+        welcome?.Show(RecentSolutions);
+        if (keepsWorkspace && !PassengerApp.ShowsNoWindow)
+        {
+            RecentShortcuts.Follow(this);
+        }
+    }
+
+    /// <summary>The recent folders, solutions and projects as the system's lists outside the window give them, the newest
+    /// first, those gone from disk left out, each with its path; none in a window that keeps no state.</summary>
+    public IEnumerable<(string Path, RecentShortcut Shortcut)> Shortcuts =>
+        keepsWorkspace
+            ? RecentShortcut.Recent(state!.Recent.Value.Newest().Select(r => (r.Path, r.Entry.Name)), path => Directory.Exists(path) || File.Exists(path))
+            : [];
+
+    /// <summary>Forgets the recent ones the person took off the taskbar's jump list, as Forget on the Welcome screen does,
+    /// leaving that list to the change under way.</summary>
+    internal void ForgetRemoved(IReadOnlyList<string> paths)
+    {
+        if (!keepsWorkspace)
+        {
+            return;
+        }
+        state!.Recent.Set(paths.Aggregate(state.Recent.Value, (kept, path) => kept.Without(path)));
+        welcome?.Show(RecentSolutions);
+    }
 
     /// <summary>Started with nothing named, the window that keeps state reopens what was open as Passenger last quit,
     /// unless Reopen projects on startup is off: the oldest here and each other in a window of its own, the newest last

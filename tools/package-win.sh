@@ -50,9 +50,12 @@ rm -rf "$work" "$installer"
 publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
 
 # The pack id is not Passenger: the uninstaller empties its folder, and %LocalAppData%\Passenger is the person's state.
+# The shortcut's AppUserModelID is the one Velopack gives Passenger's process (velopack.<packId>), so a button pinned
+# from the Start menu is the running window's and shows its jump list (Welcome/WindowsJumpList.cs); left out, the
+# shortcut carries none.
 set -- --packId PassengerIDE --packVersion "$version" --packTitle Passenger --packAuthors Passenger \
     --packDir "$publish" --mainExe Passenger.exe --icon "$root/src/Passenger.App/Assets/Passenger.ico" \
-    --runtime "$rid" --channel "$rid" --shortcuts StartMenuRoot --noPortable \
+    --runtime "$rid" --channel "$rid" --shortcuts StartMenuRoot --aumid velopack.PassengerIDE --noPortable \
     --exclude 'lib(SkiaSharp|HarfBuzzSharp)\.pdb$' --outputDir "$release"
 if [ -n "$signtool_params" ]; then
     set -- "$@" --signParams "$signtool_params"

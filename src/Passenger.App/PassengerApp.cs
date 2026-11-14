@@ -272,7 +272,8 @@ public static class PassengerApp
     /// <summary>A person's launch another Passenger process handed over (<see cref="LaunchHandOff"/>): its files and caret
     /// go, once its folder is open, to the innermost window whose folder holds what it names, else its folder or workspace
     /// opens as File, Open opens one in a window of its own (the one in front when that has nothing open), a launch naming
-    /// nothing going to the window in front; that window comes forward, the person's own act. The answer the launch is told.</summary>
+    /// nothing going to the window in front, one asking for a new window making one with nothing open; that window comes
+    /// forward, the person's own act. The answer the launch is told.</summary>
     internal static string TakeLaunch(HandedLaunch launch)
     {
         UiThread.Check();
@@ -285,7 +286,11 @@ public static class PassengerApp
             .Where(w => w.TakesLaunches && w.FolderHeld is { } held && PathNames.Within(place, held))
             .MaxBy(w => w.FolderHeld!.Length);
         MainWindow into;
-        if (holding is not null && (launch.Workspace is null || holding.WorkspaceModel?.OpenedAs is { } opened && PathNames.Same(opened, launch.Workspace)))
+        if (launch.NewWindow)
+        {
+            into = NewWindow(from);
+        }
+        else if (holding is not null && (launch.Workspace is null || holding.WorkspaceModel?.OpenedAs is { } opened && PathNames.Same(opened, launch.Workspace)))
         {
             into = holding;
         }
@@ -297,7 +302,7 @@ public static class PassengerApp
         {
             into = from;
         }
-        IdeErrors.Write($"Launch: handed over for {launch.Workspace ?? launch.Folder ?? "no folder"}"
+        IdeErrors.Write($"Launch: handed over for {launch.Workspace ?? launch.Folder ?? (launch.NewWindow ? "a new window" : "no folder")}"
             + $"{(launch.Files.Count > 0 ? $", {Plural.Listed(launch.Files)}" : string.Empty)}, taken by the window on {into.FolderHeld ?? "no folder"}");
         into.OnceOpen(() => into.TakeLaunch(launch.Files, launch.Caret));
         BringForward(into);

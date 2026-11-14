@@ -66,6 +66,8 @@ public sealed class CommandLineTests : IDisposable
     [InlineData("--mcp-attach --theme light", "--mcp-attach joins a running Passenger's window and takes only its process id and a folder, not --theme")]
     [InlineData("--mcp-attach 99999999999 .", "--mcp-attach takes the process id of a running Passenger, not '99999999999'")]
     [InlineData("--headless --mcp", "--headless is a person's window with nobody at it, a test run's")]
+    [InlineData(". --new-window", "--new-window opens a window with nothing open, and takes nothing else, not .")]
+    [InlineData("--new-window --theme dark", "--new-window opens a window with nothing open, and takes nothing else, not --theme")]
     [InlineData("--screenshot out.png --look sakura", "--look takes passenger, cubicle, harbour")]
     [InlineData("--screenshot out.png --look ::Sakura", "--look takes SOURCE::NAME, a source and a theme's name, not '::Sakura'")]
     [InlineData("--screenshot out.png --look Zaneris/passenger-themes::", "--look takes SOURCE::NAME, a source and a theme's name, not 'Zaneris/passenger-themes::'")]

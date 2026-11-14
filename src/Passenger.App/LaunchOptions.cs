@@ -15,7 +15,7 @@ namespace Passenger.App;
 /// Model Context Protocol server: <c>--mcp [PATH]</c> (an IDE with no window, on standard input and output),
 /// <c>--mcp-attach [PID] [FOLDER]</c> (the agent's server, joining the window over the folder at its first call), and
 /// <c>--no-mcp</c> (a window that never lets agents in; a screenshot's lets in only its own <c>--agent</c>);
-/// <c>--headless</c> is a person's window with nobody at it. A flag it does not know, a value it cannot read or out of
+/// <c>--headless</c> is a person's window with nobody at it; <c>--new-window</c> a window with nothing open. A flag it does not know, a value it cannot read or out of
 /// range, or one the mode does not take is fatal, never ignored.</summary>
 public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, TextPosition? Caret, ThemeChoice? Theme, ScreenshotOptions? Screenshot)
 {
@@ -76,6 +76,13 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     /// its projects (<see cref="MainWindow.StartedRun"/>), or null; a screenshot's is one of its steps.</summary>
     public ConfigurationStart? Starts { get; init; }
 
+    /// <summary><c>--new-window</c>: a window with nothing open, the running Passenger's when one takes the launch, else the
+    /// first window, which then reopens nothing.</summary>
+    public bool NewWindow { get; init; }
+
+    /// <summary>The flag asking for <see cref="NewWindow"/>, which the taskbar's New Window task starts Passenger with.</summary>
+    public const string NewWindowFlag = "--new-window";
+
     public static LaunchOptions Empty { get; } = new(null, [], null, null, null);
 
     /// <summary>The options the arguments ask for, the folder and files among them paths that exist, as the disk names
@@ -105,6 +112,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         int? attachTo = null;
         bool listen = true;
         bool headless = false;
+        bool newWindow = false;
         ConfigurationStart? start = null;
         // Whether a screenshot's step opened a folder before its start's step, for a start given no PATH.
         bool openedFirst = false;
@@ -147,6 +155,9 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     break;
                 case "--headless":
                     headless = true;
+                    break;
+                case NewWindowFlag:
+                    newWindow = true;
                     break;
                 case "--no-mcp":
                     listen = false;
@@ -279,6 +290,10 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         {
             throw new FormatException("--headless is a person's window with nobody at it, a test run's: it takes a path, files and a caret, not --mcp, --mcp-attach, --screenshot or --no-mcp");
         }
+        if (newWindow && given.FirstOrDefault(g => g != NewWindowFlag) is { } more)
+        {
+            throw new FormatException($"{NewWindowFlag} opens a window with nothing open, and takes nothing else, not {more}");
+        }
         (string? folder, string? workspace, List<string> files) = Opened(path, named);
         if (mcp == McpMode.Attach && files.Count > 0)
         {
@@ -295,7 +310,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         ScreenshotOptions? screenshot = shot is null ? null : Checked(new ScreenshotOptions(shot, size, scale, steps, crop) { WindowButtons = windowButtons }, cropText, points);
         return new LaunchOptions(folder, files, caret, theme, screenshot)
         {
-            Workspace = workspace, Mcp = mcp, AttachTo = attachTo, ListenForAgents = listen, Headless = headless, Look = look, Scheme = scheme,
+            Workspace = workspace, Mcp = mcp, AttachTo = attachTo, ListenForAgents = listen, Headless = headless, Look = look, Scheme = scheme, NewWindow = newWindow,
             Starts = shot is null ? start : null,
         };
     }

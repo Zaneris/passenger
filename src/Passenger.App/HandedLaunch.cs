@@ -6,10 +6,14 @@ using Passenger.Text;
 namespace Passenger.App;
 
 /// <summary>What a person's launch names to open, handed to a running Passenger (<see cref="LaunchHandOff"/>): a folder,
-/// the workspace over it, files in it and the caret in the last, every path whole and as the disk spells it. One line of
+/// the workspace over it, files in it and the caret in the last, every path whole and as the disk spells it, or a new
+/// window with nothing open (<see cref="NewWindow"/>). One line of
 /// JSON each way, <c>{"launch": {...}}</c> and <c>{"taken": FOLDER}</c> or <c>{"refused": WHY}</c>, written and read here.</summary>
 public sealed record HandedLaunch(string? Folder, string? Workspace, IReadOnlyList<string> Files, TextPosition? Caret)
 {
+    /// <summary>Whether the launch asks for a window with nothing open (<c>--new-window</c>), naming nothing else.</summary>
+    public bool NewWindow { get; init; }
+
     /// <summary>The line asking a running Passenger to take a launch, its newline left to the writer; a caret counted from 1.</summary>
     public string Message()
     {
@@ -19,6 +23,10 @@ public sealed record HandedLaunch(string? Folder, string? Workspace, IReadOnlyLi
             ["workspace"] = Workspace,
             ["files"] = new JsonArray([.. Files.Select(f => (JsonNode?)JsonValue.Create(f))]),
         };
+        if (NewWindow)
+        {
+            asked["newWindow"] = true;
+        }
         if (Caret is { } caret)
         {
             asked["caret"] = new JsonObject { ["line"] = caret.Line + 1, ["column"] = caret.Column + 1 };
@@ -55,7 +63,12 @@ public sealed record HandedLaunch(string? Folder, string? Workspace, IReadOnlyLi
             }
             caret = new TextPosition(line - 1, column - 1);
         }
-        return new HandedLaunch(folder, workspace, files, caret);
+        bool newWindow = JsonMembers.Bool(asked, "newWindow") ?? false;
+        if (newWindow && ((folder ?? workspace) is not null || files.Count > 0))
+        {
+            throw new FormatException("a launch asking for a new window names nothing to open in it");
+        }
+        return new HandedLaunch(folder, workspace, files, caret) { NewWindow = newWindow };
 
         static string? Whole(string? path, string what) => path is null || Path.IsPathFullyQualified(path) ? path
             : throw new FormatException($"a launch's {what} is a whole path, not '{path}'");

@@ -69,6 +69,23 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
     }
 
     [AvaloniaFact]
+    public void A_start_asking_for_a_new_window_reopens_nothing_and_shows_the_Welcome_screen()
+    {
+        using IDisposable theme = TestsTheme();
+        MainWindow first = Started(LaunchOptions.Empty);
+        first.OpenFolder(alpha);
+        Ui.Settle();
+        first.Close();
+
+        MainWindow window = Started(LaunchOptions.Parse([LaunchOptions.NewWindowFlag]));
+
+        Assert.True(window.Folder is null && Shown(window),
+            $"The taskbar's New Window, starting Passenger, was to show a window with nothing open; it opened {window.Folder ?? "nothing"}, the Welcome screen {(Shown(window) ? "shown" : "not shown")}");
+        Assert.Equal([Name(alpha)], window.Welcome.Rows.Select(r => r.Name));
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void With_reopening_off_the_Welcome_screen_lists_the_recent_ones_newest_first_narrowed_by_a_search_and_opens_one_by_its_keys()
     {
         using IDisposable theme = TestsTheme();

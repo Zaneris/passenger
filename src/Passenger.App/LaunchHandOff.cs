@@ -24,7 +24,7 @@ public static partial class LaunchHandOff
         && !Mcp.McpProxy.StartedForAgent;
 
     /// <summary>The launch the options name.</summary>
-    public static HandedLaunch Of(LaunchOptions options) => new(options.Folder, options.Workspace, options.Files, options.Caret);
+    public static HandedLaunch Of(LaunchOptions options) => new(options.Folder, options.Workspace, options.Files, options.Caret) { NewWindow = options.NewWindow };
 
     /// <summary>Hands a launch to the Passengers running in this state, the newest first: true once one took it, false
     /// when none runs or none would, so the launch starts a Passenger of its own.</summary>
