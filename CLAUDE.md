@@ -346,7 +346,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   only for `=`: its `>` is Razor's own answer, its `</` closed over its HTML.
 - **Build and run.** The build configuration and platform are one choice (`BuildConfigurationChoices`, `WorkspaceModel.Build`):
   command lines take it through `WorkspaceModel.BuildArgumentsFor` (a publish building as the folder builds through `PublishArgumentsFor`), evaluations through `ProjectModels.Properties`/`Each`;
-  never a `-c` written anywhere else. Godot runs only a game's Debug build (`GodotLaunch.RunsConfiguration`).
+  never a `-c` written anywhere else; a run configuration's own is read only through `ProjectSession.WorkspaceOfAsync`, the plan's `LaunchPlan.Workspace` carrying it to its build, dotnet watch and device install, never `session.Workspace` in a start's path. Godot runs only a game's Debug build (`GodotLaunch.RunsConfiguration`).
   `BuildRunController`, every console through `ConsoleSink.PumpAsync`, `LaunchPlan` (one resolution
   for Run, Debug, Profile, Hot Reload and a debugged test host), `UpToDate`; a Passenger it launches keeps its state in
   `sandbox/`; `PASSENGER_DOTNET_RELEASES` is dead in tests. Godot: `GodotLaunch`, `GodotGame`; the Game window is an
@@ -503,7 +503,7 @@ a new name, and `just site-shots` retakes its images.
   `XamlPlaces.FileOf`, never by name; WPF's `x:Name` fields are found through `IComponentConnector` (its
   `SuppressMessage` is compiled out); an app keeps its build's XAML, so a closed file written on disk reaches it. dotnet
   watch replaces its app's `DOTNET_STARTUP_HOOKS`, so an Avalonia or WPF app's Run with Hot Reload is attached quietly.
-- **dotnet watch takes Ctrl+R only from a console's keys**, never redirected input: the Run window's restart under it is
+- **dotnet watch takes `-p` as its `--project`**, so a property goes as `--property:` (`BuildChoice.ArgumentsFor(watched)`). It **takes Ctrl+R only from a console's keys**, never redirected input: the Run window's restart under it is
   Rerun, and a wait after the program ends is said (`BuildRunController.WatchedEnd`). A save's temporary file ends in
   `.user` (`FileText.SaveSuffix`), which `DefaultItemExcludes` leaves out, or dotnet watch hears it as added, reloads
   and loses the next edit.
