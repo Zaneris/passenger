@@ -172,6 +172,26 @@ public sealed class GitFileFormsTests : IDisposable
         window.Close();
     }
 
+    private static string Changed(MainWindow window, string name) => window.Vcs.Changes.Single(c => c.Name == name).Path;
+
+    private string Git(params string[] arguments) => TestGit.Run(folder, arguments);
+}
+
+/// <summary>What reading Git's state of a large binary file allocates, counted on every thread: the class runs alone, as
+/// whatever a class beside the window tests allocates meanwhile would count as the IDE's.</summary>
+[Collection(Alone.Name)]
+public sealed class GitFileFormsBytesTests : IDisposable
+{
+    private readonly string folder = TestFolders.Create("git-forms-");
+
+    public GitFileFormsBytesTests() => TestFolders.Prepare(() =>
+    {
+        File.WriteAllText(Path.Combine(folder, "README.md"), "Forms\n");
+        TestGit.Init(folder);
+    }, folder);
+
+    public void Dispose() => TestFolders.Delete(folder);
+
     /// <summary>A changed 100 MB binary file costs what its probe and its listing do where Git's state is read: an agent's
     /// vcs_status, its diff of the file, the Commit window and its Show Diff (saying the binary files differ by their
     /// sizes) together allocate a small part of the file's size, where each read the file whole, several times over.</summary>
@@ -224,8 +244,6 @@ public sealed class GitFileFormsTests : IDisposable
             file.Write(chunk, 0, Math.Min(chunk.Length, size - written));
         }
     }
-
-    private static string Changed(MainWindow window, string name) => window.Vcs.Changes.Single(c => c.Name == name).Path;
 
     private string Git(params string[] arguments) => TestGit.Run(folder, arguments);
 }
