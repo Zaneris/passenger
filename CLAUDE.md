@@ -606,7 +606,7 @@ a new name, and `just site-shots` retakes its images.
   counts as held; reload only a scene Godot has open and saved. A static function named after an Object virtual (`_set`)
   fails the whole script; `remove_child` clears owners outside the branch, so a move or undone remove sets them again.
   `PASSENGER_ADDON_TRACE` prints each scene act.
-- **Android**: .NET for Android turns an app's OutputType Exe into Library (`AndroidApplication` true, which runnability
+- **Android**: a framework given to `msbuild -restore` reaches the projects referenced, restoring a shared library for the app's platform alone (its desktop build then fails): `AndroidDevices.ListAsync` restores with none, then lists with it. .NET for Android turns an app's OutputType Exe into Library (`AndroidApplication` true, which runnability
   reads); its Debug host reads `files/.__override__/<abi>/environment`, where a Debug start puts the relay's variables
   through run-as and puts the build's link back after; `am set-debug-app` (kept only in the activity manager: clear only
   your own) keeps a long stop of the main thread from ending the app; the relay calls the DBI's `DllMain` itself, or
