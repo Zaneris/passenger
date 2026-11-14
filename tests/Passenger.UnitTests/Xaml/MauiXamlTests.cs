@@ -168,6 +168,20 @@ public sealed class MauiXamlTests
     }
 
     [Fact]
+    public void A_namespaces_target_platform_is_read_and_a_project_builds_for_it_only_where_its_framework_names_that_platform()
+    {
+        Assert.Equal("Android", MauiDialect.Instance.TargetPlatformOf("clr-namespace:Android.Widget;assembly=Mono.Android;targetPlatform=Android"));
+        Assert.Null(MauiDialect.Instance.TargetPlatformOf("clr-namespace:App.Views"));
+        Assert.Null(WpfDialect.Instance.TargetPlatformOf("clr-namespace:Android.Widget;targetPlatform=Android"));
+        Assert.True(MauiDialect.Instance.BuildsFor("net11.0-android", "Android"));
+        Assert.True(MauiDialect.Instance.BuildsFor("net11.0-ios27.0", "iOS"));
+        Assert.True(MauiDialect.Instance.BuildsFor("net11.0-windows10.0.19041.0", "WinUI"));
+        Assert.False(MauiDialect.Instance.BuildsFor("net11.0-android", "iOS"));
+        Assert.False(MauiDialect.Instance.BuildsFor("net11.0", "Android"));
+        Assert.False(MauiDialect.Instance.BuildsFor(null, "Android"));
+    }
+
+    [Fact]
     public void The_windows_heads_winui_xaml_is_left_out_of_mauis()
     {
         Assert.True(MauiDialect.Instance.LeavesOut("Platforms/Windows/App.xaml"));

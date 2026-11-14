@@ -105,6 +105,37 @@ public sealed class MauiDialect : XamlDialect
     /// or an operator's operands. The generator judges it; the live check leaves it be.</summary>
     public override bool ReadsExpressions => true;
 
+    /// <summary>A <c>clr-namespace</c>'s <c>targetPlatform=</c>, as MAUI's XAML reads it: one of its parts, split at ';'.</summary>
+    public override string? TargetPlatformOf(string uri) =>
+        uri.StartsWith("clr-namespace:", StringComparison.Ordinal) || uri.StartsWith("using:", StringComparison.Ordinal)
+            ? uri.Split(';').Select(p => p.Trim()).FirstOrDefault(p => p.StartsWith("targetPlatform=", StringComparison.Ordinal))?["targetPlatform=".Length..]
+            : null;
+
+    /// <summary>The platforms MAUI names (its <c>DevicePlatform</c>'s) by the platform part of a target framework.</summary>
+    private static readonly Dictionary<string, string[]> Platforms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["android"] = ["Android"],
+        ["ios"] = ["iOS"],
+        ["maccatalyst"] = ["MacCatalyst"],
+        ["windows"] = ["WinUI", "Windows"],
+        ["tizen"] = ["Tizen"],
+        ["macos"] = ["macOS"],
+        ["tvos"] = ["tvOS"],
+    };
+
+    /// <summary>Whether a target framework's platform is the one named; a framework of no platform (<c>net11.0</c>) builds
+    /// for none of them.</summary>
+    public override bool BuildsFor(string? targetFramework, string platform)
+    {
+        int dash = targetFramework?.IndexOf('-') ?? -1;
+        if (targetFramework is null || dash < 0)
+        {
+            return false;
+        }
+        string part = new([.. targetFramework[(dash + 1)..].TakeWhile(char.IsLetter)]);
+        return Platforms.TryGetValue(part, out string[]? names) && names.Contains(platform, StringComparer.Ordinal);
+    }
+
     public override bool IsExpression(string value, Func<string, bool> extension)
     {
         string trimmed = value.Trim();
@@ -153,10 +184,18 @@ public sealed class MauiDialect : XamlDialect
     public override bool IsMarkupExtension(TypeSystem types, ClrType type) =>
         type.Kind == ClrTypeKind.Class && !type.IsAbstract && !type.IsStatic && types.IsA(type, "Microsoft.Maui.Controls.Xaml.IMarkupExtension");
 
-    /// <summary>As the base says, but no attribute, exception, event's arguments or type converter, which no XAML makes.</summary>
+    /// <summary>As the base says, but no attribute, exception, event's arguments or type converter, which no XAML makes;
+    /// and a platform's own view (<see cref="IsPlatformView"/>).</summary>
     public override bool CanCreate(TypeSystem types, ClrType type) =>
-        base.CanCreate(types, type) && !type.Name.EndsWith("Attribute", StringComparison.Ordinal) && !type.Name.EndsWith("Exception", StringComparison.Ordinal)
-            && !type.Name.EndsWith("EventArgs", StringComparison.Ordinal) && !types.IsA(type, "System.ComponentModel.TypeConverter");
+        (base.CanCreate(types, type) && !type.Name.EndsWith("Attribute", StringComparison.Ordinal) && !type.Name.EndsWith("Exception", StringComparison.Ordinal)
+            && !type.Name.EndsWith("EventArgs", StringComparison.Ordinal) && !types.IsA(type, "System.ComponentModel.TypeConverter")) || IsPlatformView(types, type);
+
+    /// <summary>A platform's view XAML can make: an Android view with a constructor taking only its context, or a UIKit view
+    /// with one taking nothing.</summary>
+    private static bool IsPlatformView(TypeSystem types, ClrType type) =>
+        type is { Kind: ClrTypeKind.Class, IsAbstract: false, Arity: 0, IsNested: false }
+        && ((types.IsA(type, "Android.Views.View") && type.Members.Any(m => m.Kind == MemberKind.Constructor && m.IsPublic && m.Parameters is [{ Name: "Android.Content.Context" }]))
+            || (types.IsA(type, "UIKit.UIView") && type.HasDefaultConstructor));
 
     protected override IReadOnlyList<XamlProperty> ReadProperties(TypeSystem types, ClrType type)
     {

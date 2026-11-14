@@ -237,12 +237,38 @@ internal static class Evaluation
             .DistinctBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
         List<string> projects = [.. project.GetItems("ProjectReference")
             .Select(r => NonEmpty(r.GetMetadataValue(ProgramFiles.RefMetadata)) ?? r.GetMetadataValue("FullPath")).Distinct(PathNames.Comparer)];
+        List<string> shared = [.. project.GetItems("FrameworkReference").Select(r => r.EvaluatedInclude).Distinct(StringComparer.OrdinalIgnoreCase)];
         return new FrameworkDependencies(framework, packages, projects)
         {
-            FrameworkReferences = [.. project.GetItems("FrameworkReference").Select(r => r.EvaluatedInclude).Distinct(StringComparer.OrdinalIgnoreCase)],
+            FrameworkReferences = shared,
+            TargetingPacks = TargetingPacks(project, shared),
             WindowsTargeting = WindowsTargeting.Given(project),
             TargetPath = NonEmpty(project.GetPropertyValue(CarriedProperties.TargetPath)),
         };
+    }
+
+    /// <summary>The reference pack of each shared framework a project references, as the SDK picks it: the
+    /// KnownFrameworkReference of that framework for the project's .NET version, its TargetingPackName and version.</summary>
+    private static List<TargetingPack> TargetingPacks(Project project, IReadOnlyList<string> shared)
+    {
+        string version = project.GetPropertyValue("TargetFrameworkVersion");
+        if (!project.GetPropertyValue("TargetFrameworkIdentifier").Equals(".NETCoreApp", StringComparison.OrdinalIgnoreCase) || version.Length < 2)
+        {
+            return [];
+        }
+        string target = "net" + version.TrimStart('v', 'V');
+        List<TargetingPack> packs = [];
+        foreach (ProjectItem known in project.GetItems("KnownFrameworkReference"))
+        {
+            if (shared.Contains(known.EvaluatedInclude, StringComparer.OrdinalIgnoreCase)
+                && known.GetMetadataValue("TargetFramework").Equals(target, StringComparison.OrdinalIgnoreCase)
+                && NonEmpty(known.GetMetadataValue("TargetingPackName")) is { } name && !packs.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                string pinned = known.GetMetadataValue("TargetingPackVersion");
+                packs.Add(new TargetingPack(known.EvaluatedInclude, name, pinned.Length == 0 || pinned.StartsWith("**", StringComparison.Ordinal) ? null : pinned));
+            }
+        }
+        return packs;
     }
 
     /// <summary>The project's files, every evaluation's, each once: of the file item types and those the project names as

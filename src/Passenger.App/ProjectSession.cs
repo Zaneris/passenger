@@ -305,6 +305,8 @@ public sealed class ProjectSession : IAsyncDisposable
                 string? built = framework is null
                     ? evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value
                     : evaluated.Dependencies.FirstOrDefault(d => string.Equals(d.Framework, framework, StringComparison.OrdinalIgnoreCase))?.TargetPath;
+                Passenger.Host.FrameworkDependencies? chosen = framework is null ? evaluated.Dependencies.FirstOrDefault()
+                    : evaluated.Dependencies.FirstOrDefault(d => string.Equals(d.Framework, framework, StringComparison.OrdinalIgnoreCase));
                 now[project.Path] = new ProjectEvaluation(
                     evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.ProjectAssetsFile)?.Value,
                     evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.NuGetPackageRoot)?.Value,
@@ -314,6 +316,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 {
                     Parsing = CompilationSymbols.Of(project, framework),
                     TargetFramework = framework,
+                    Packs = [.. chosen?.TargetingPacks.Select(p => new ReferencePack(p.Framework, p.Name, p.Version)) ?? []],
                 };
             }
         }
@@ -338,7 +341,7 @@ public sealed class ProjectSession : IAsyncDisposable
 
         static bool Same(ProjectEvaluation a, ProjectEvaluation b) =>
             a.AssetsFile == b.AssetsFile && a.PackageRoot == b.PackageRoot && a.TargetPath == b.TargetPath && ReferenceEquals(a.Parsing, b.Parsing)
-            && a.TargetFramework == b.TargetFramework && a.Versions.Count == b.Versions.Count
+            && a.TargetFramework == b.TargetFramework && a.Packs.SequenceEqual(b.Packs) && a.Versions.Count == b.Versions.Count
             && a.Versions.All(v => b.Versions.TryGetValue(v.Key, out string? version) && version == v.Value);
     }
 

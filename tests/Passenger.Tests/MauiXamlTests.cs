@@ -1,6 +1,7 @@
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Mobile;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -332,6 +333,98 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         Ui.WaitFor(() => page.Markers.Count == 0, () => $"the fixed expressions' marks gone: {string.Join("; ", page.Markers.Select(m => m.Message))}");
         window.Close();
     }
+
+    /// <summary>In a page of a project built for a platform, the platform's views are XAML's to write: offered after the
+    /// prefix of a namespace for that platform, read as MAUI's own types are (a misspelt view or property marked), from the
+    /// reference pack the SDK names for the workload's framework (Android's Microsoft.Android.Ref.37); a namespace for the
+    /// other platform is passed over, as MAUI passes it over there. Skips, saying why, where the project does not restore
+    /// from the package cache alone (no workload, or MAUI's packages for it never restored here: tests/MauiGraphs).</summary>
+    [AvaloniaTheory]
+    [InlineData("android", "TextView", "EditText", "ios", "UILabel")]
+    [InlineData("ios", "UILabel", "UIButton", "android", "TextView")]
+    public void In_a_project_built_for_a_platform_its_views_complete_and_check_and_a_namespace_for_another_is_passed_over(string platform, string view,
+        string offered, string other, string otherView)
+    {
+        string folder = PathNames.Canonical(TestFolders.Create($"maui-{platform}"));
+        string version = AvaloniaApp.Metadata("MauiVersion");
+        File.WriteAllText(Path.Combine(folder, "MauiPlatform.csproj"), $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net{MobilePlatforms.FirstOnCoreClr}.0-{platform}</TargetFramework>
+                {(platform == "android" ? "<SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>" : string.Empty)}
+                <OutputType>Library</OutputType>
+                <RootNamespace>MauiPlatform</RootNamespace>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="Microsoft.Maui.Controls" Version="{version}" />
+              </ItemGroup>
+            </Project>
+
+            """);
+        File.WriteAllText(Path.Combine(folder, "PlatformPage.xaml"), """
+            <ContentPage x:Class="MauiPlatform.PlatformPage"
+                         xmlns:android="clr-namespace:Android.Widget;assembly=Mono.Android;targetPlatform=Android"
+                         xmlns:ios="clr-namespace:UIKit;assembly=Microsoft.iOS;targetPlatform=iOS">
+                <VerticalStackLayout>
+                    <Label Text="Shared" />
+                    <android:TextView Text="Hello from Android" />
+                    <ios:UILabel Text="Hello from iOS" />
+                </VerticalStackLayout>
+            </ContentPage>
+
+            """);
+        File.WriteAllText(Path.Combine(folder, "PlatformPage.xaml.cs"), """
+            namespace MauiPlatform;
+
+            public partial class PlatformPage : ContentPage
+            {
+                public PlatformPage()
+                {
+                    InitializeComponent();
+                }
+            }
+
+            """);
+        ChildResult restored = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", "MauiPlatform.csproj"], folder), limit: Restoring)),
+            $"the {platform} project's restore", Restoring);
+        if (!restored.Succeeded)
+        {
+            Assert.Skip($"A MAUI project built for {platform} does not restore here from the package cache alone (its workload, and MAUI's packages for it "
+                + $"restored by tests/MauiGraphs): {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile(Path.Combine(folder, "PlatformPage.xaml"));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument page = window.EditorArea.Active!;
+        Ui.WaitFor(() => window.XamlService.For(page)?.IsLoaded == true, "the page read as MAUI's XAML");
+        Ui.WaitFor(() => window.XamlService.For(page)?.DiagnosedVersion == page.Text.Version, "the page checked");
+        Assert.True(page.Markers.Count == 0, $"The page, whose {view} is {platform}'s and whose {otherView} its build passes over, is marked: {string.Join("; ", page.Markers.Select(m => m.Message))}");
+
+        Replace(editor, "<Label Text=\"Shared\" />", $"<Label Text=\"Shared\" />\n<{platform}:");
+        Ui.PlaceAfter(editor, $"\n<{platform}:");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains(view), () => $"{platform}'s views after its prefix: {string.Join(", ", window.Assist.CompletionLabels.Take(20))}");
+        Assert.Contains(offered, window.Assist.CompletionLabels);
+        Ui.Press(window, "ESCAPE");
+        Replace(editor, $"\n<{platform}:", string.Empty);
+
+        string misspelt = view[..^1];
+        Replace(editor, $"<{platform}:{view} Text=", $"<{platform}:{misspelt} Txt=");
+        Replace(editor, $"<{other}:{otherView} Text=", $"<{other}:{otherView[..^1]} Txt=");
+        Ui.WaitFor(() => page.Markers.Count == 1, () => $"the misspelt view marked once typing paused, the other platform's passed over: {string.Join("; ", page.Markers.Select(m => m.Message))}");
+        Assert.Equal($"Cannot resolve symbol '{platform}:{misspelt}'", MarkerOn(editor, page, $"{platform}:{misspelt}").Message);
+        Replace(editor, $"<{platform}:{misspelt}", $"<{platform}:{view}");
+        Ui.WaitFor(() => page.Markers.Count == 1 && page.Markers[0].Message.Contains("Txt", StringComparison.Ordinal),
+            () => $"the misspelt property of {platform}'s view marked: {string.Join("; ", page.Markers.Select(m => m.Message))}");
+        Assert.Equal($"Cannot resolve property 'Txt' on {view}", MarkerOn(editor, page, "Txt").Message);
+        window.Close();
+    }
+
+    /// <summary>How long a project's restore from the package cache may take.</summary>
+    private static readonly TimeSpan Restoring = TimeSpan.FromMinutes(4);
 
     private static IReadOnlyList<string> FoundUsages(MainWindow window)
     {

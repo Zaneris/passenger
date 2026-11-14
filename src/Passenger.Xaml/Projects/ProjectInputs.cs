@@ -20,7 +20,14 @@ public sealed record ProjectEvaluation(string? AssetsFile, string? PackageRoot, 
     /// against and previewed from (<see cref="TargetPath"/> and <see cref="Parsing"/> are that framework's); null for a
     /// project of one.</summary>
     public string? TargetFramework { get; init; }
+
+    /// <summary>The reference pack of each shared framework that framework references, as the SDK names it.</summary>
+    public IReadOnlyList<ReferencePack> Packs { get; init; } = [];
 }
+
+/// <summary>A shared framework's reference pack as the SDK names it (<c>Microsoft.Android.Ref.37</c> for
+/// <c>Microsoft.Android</c>), and its version, null for one a workload installs.</summary>
+public sealed record ReferencePack(string Framework, string Name, string? Version);
 
 /// <summary>What a project's XAML is compiled against, read without MSBuild: the assemblies its restore resolved
 /// (<c>project.assets.json</c>: each package's compile assets, the framework's reference pack), its project references,
@@ -105,7 +112,9 @@ public sealed record ProjectInputs(
             packages.AddRange(read.Packages);
             foreach (string shared in read.FrameworkReferences)
             {
-                references.AddRange(FrameworkAssemblies(dotnetRoot, read, shared));
+                // The SDK's own name for the framework's pack where the evaluation gives it, a workload's (Microsoft.Android.Ref.37) included.
+                ReferencePack? named = evaluation?.Packs.FirstOrDefault(p => string.Equals(p.Framework, shared, StringComparison.OrdinalIgnoreCase));
+                references.AddRange(FrameworkAssemblies(dotnetRoot, read, named?.Name ?? PackOf(shared), named?.Version));
             }
         }
         // The project file's own references, should the project not be restored yet.
@@ -413,19 +422,21 @@ public sealed record ProjectInputs(
         return -1;
     }
 
-    /// <summary>A framework's reference assemblies: the pack the restore downloaded into a package folder, else the SDK's
-    /// own (<c>packs/Microsoft.NETCore.App.Ref/10.0.x/ref/net10.0/</c>), the newest of the target's major version, else the
-    /// newest of any. A profile shares its framework's pack (<c>Microsoft.WindowsDesktop.App.WPF</c>'s is
-    /// <c>Microsoft.WindowsDesktop.App.Ref</c>), and a target's platform is not part of the pack's folder.</summary>
-    private static IEnumerable<string> FrameworkAssemblies(string? dotnetRoot, Assets read, string framework)
+    /// <summary>The reference pack of a shared framework by its name, where no evaluation names it: a profile shares its
+    /// framework's (<c>Microsoft.WindowsDesktop.App.WPF</c>'s is <c>Microsoft.WindowsDesktop.App.Ref</c>).</summary>
+    private static string PackOf(string framework) => (FrameworkNames.IsWindowsDesktop(framework) ? FrameworkNames.WindowsDesktop : framework) + ".Ref";
+
+    /// <summary>A reference pack's assemblies: the pack the restore downloaded into a package folder, else the SDK's own
+    /// (<c>packs/Microsoft.NETCore.App.Ref/10.0.x/ref/net10.0/</c>), at the version the SDK names, else the newest of the
+    /// target's major version, else the newest of any. A target's platform is not part of the pack's folder.</summary>
+    private static IEnumerable<string> FrameworkAssemblies(string? dotnetRoot, Assets read, string pack, string? version)
     {
-        string pack = (FrameworkNames.IsWindowsDesktop(framework) ? FrameworkNames.WindowsDesktop : framework) + ".Ref";
         string target = FrameworkNames.VersionOf(read.Framework) is { Major: >= 5 } net ? $"net{net.Major}.{net.Minor}" : read.Framework;
-        foreach ((string id, string version) in read.Downloads.Where(d => string.Equals(d.Id, pack, StringComparison.OrdinalIgnoreCase)))
+        foreach ((string id, string downloaded) in read.Downloads.Where(d => string.Equals(d.Id, pack, StringComparison.OrdinalIgnoreCase)))
         {
             foreach (string folder in read.PackageFolders)
             {
-                string reference = Path.Combine(folder, id.ToLowerInvariant(), version.ToLowerInvariant(), "ref", target);
+                string reference = Path.Combine(folder, id.ToLowerInvariant(), downloaded.ToLowerInvariant(), "ref", target);
                 if (Directory.Exists(reference))
                 {
                     return Directory.EnumerateFiles(reference, "*.dll");
@@ -443,7 +454,9 @@ public sealed record ProjectInputs(
             .Select(d => (Version: Path.GetFileName(d), Folder: d))
             .Where(v => v.Version.Length > 0 && char.IsAsciiDigit(v.Version[0]))
             .OrderByDescending(v => v.Version, VersionOrder.Instance)];
-        foreach ((_, string folder) in versions.Where(v => major is not null && VersionOrder.Major(v.Version) == major).Concat(versions))
+        // The version the SDK names first; a workload's pack, versioned by the platform's own numbers, at its newest.
+        IEnumerable<(string Version, string Folder)> named = version is null ? [] : versions.Where(v => string.Equals(v.Version, version, StringComparison.OrdinalIgnoreCase));
+        foreach ((_, string folder) in named.Concat(versions.Where(v => major is not null && VersionOrder.Major(v.Version) == major)).Concat(versions))
         {
             string reference = Path.Combine(folder, "ref", target);
             if (Directory.Exists(reference))

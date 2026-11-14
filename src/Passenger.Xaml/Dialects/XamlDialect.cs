@@ -113,6 +113,14 @@ public abstract class XamlDialect
     /// says whether a name is one of the file's markup extensions.</summary>
     public virtual bool IsExpression(string value, Func<string, bool> extension) => false;
 
+    /// <summary>The platform a namespace is for, as a <c>clr-namespace</c> names it (<c>targetPlatform=Android</c>); null for
+    /// one of every platform, or in a dialect that has none.</summary>
+    public virtual string? TargetPlatformOf(string uri) => null;
+
+    /// <summary>Whether a project built for a target framework (<c>net11.0-android</c>, null for none known) builds for a
+    /// platform its namespaces name.</summary>
+    public virtual bool BuildsFor(string? targetFramework, string platform) => true;
+
     /// <summary>Whether its compiler reads C# expressions in braces at all (<see cref="IsExpression"/>).</summary>
     public virtual bool ReadsExpressions => false;
 

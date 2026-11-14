@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The package graph of the MAUI XAML tests' project built for iOS, kept out of the solution: CI has no mobile
+       workloads. Restored by hand (dotnet restore tests/MauiGraphs/iOS) where the iOS workload is installed, so the
+       package cache holds MAUI's iOS packages for the test, which skips, saying why, without them. Its lock file is
+       left off: nothing restores it locked, and its runtime identifiers are iOS's. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0-ios</TargetFramework>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" />
+  </ItemGroup>
+</Project>

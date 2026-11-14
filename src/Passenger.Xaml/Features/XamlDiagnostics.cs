@@ -273,7 +273,9 @@ public static class XamlDiagnostics
     private static void Namespace(XamlFile file, XmlAttribute attribute, List<XamlDiagnostic> found)
     {
         string uri = attribute.Value;
-        if (file.KindOf(uri) != XamlNamespaceKind.Clr)
+        // A namespace for another platform than the project builds for is passed over, its types not referenced.
+        if (file.KindOf(uri) != XamlNamespaceKind.Clr
+            || (file.Dialect.TargetPlatformOf(uri) is { } platform && !file.Dialect.BuildsFor(file.Project.Inputs.TargetFramework, platform)))
         {
             return;
         }

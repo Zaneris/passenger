@@ -357,9 +357,14 @@ public sealed class XamlFile
         return new XamlAttributeMeaning(XamlAttributeKind.Unknown);
     }
 
-    /// <summary>Whether a prefix is one <c>mc:Ignorable</c> names where the element is.</summary>
+    /// <summary>Whether a prefix is one <c>mc:Ignorable</c> names where the element is, or one whose namespace is for
+    /// another platform than the project's (<c>targetPlatform=iOS</c> in a project built for Android).</summary>
     public bool IsIgnored(XmlElement element, string prefix)
     {
+        if (DeclaredUri(element, prefix) is { } uri && Dialect.TargetPlatformOf(uri) is { } platform && !Dialect.BuildsFor(Project.Inputs.TargetFramework, platform))
+        {
+            return true;
+        }
         for (XmlElement? at = element; at is not null; at = at.Parent)
         {
             foreach (XmlAttribute attribute in at.Attributes)

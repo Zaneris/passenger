@@ -318,7 +318,15 @@ public sealed record FrameworkDependencies(string? Framework, IReadOnlyList<Pack
 
     /// <summary>The assembly the framework's build makes, wherever its output folder was moved; null without one.</summary>
     public string? TargetPath { get; init; }
+
+    /// <summary>The reference pack of each shared framework it references, as the SDK names it for this framework.</summary>
+    public IReadOnlyList<TargetingPack> TargetingPacks { get; init; } = [];
 }
+
+/// <summary>A shared framework's reference pack as the SDK's KnownFrameworkReference names it for a target framework: its
+/// name (<c>Microsoft.NETCore.App.Ref</c>, a workload's <c>Microsoft.Android.Ref.37</c>), and its version, null where a
+/// workload installs it (the SDK's <c>**FromWorkload**</c>).</summary>
+public sealed record TargetingPack(string Framework, string Name, string? Version);
 
 /// <summary>What a target framework of a project compiles its C# with: its DefineConstants, with the symbols the .NET SDK
 /// adds for the framework and its platform (NET11_0, NET8_0_OR_GREATER, WINDOWS), and its LangVersion ("12", "preview"),

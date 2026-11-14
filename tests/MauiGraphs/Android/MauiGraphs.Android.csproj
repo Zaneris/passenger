@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The package graph of the MAUI XAML tests' project built for Android, kept out of the solution: CI has no mobile
+       workloads. Restored by hand (dotnet restore tests/MauiGraphs/Android) where the Android workload is installed, so the
+       package cache holds MAUI's Android packages for the test, which skips, saying why, without them. Its lock file is
+       left off: nothing restores it locked, and its runtime identifiers are Android's. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" />
+  </ItemGroup>
+</Project>
