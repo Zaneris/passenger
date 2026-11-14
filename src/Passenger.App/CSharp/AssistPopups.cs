@@ -262,7 +262,7 @@ internal sealed class CompletionSlot : System.ComponentModel.INotifyPropertyChan
 internal sealed class CompletionPopup : Border
 {
     /// <summary>How many rows the list shows at once.</summary>
-    public const int Shown = 10;
+    private const int Shown = 10;
 
     /// <summary>How far a turn of the wheel by one notch scrolls, as a scroll viewer scrolls.</summary>
     private const double WheelStep = 50;
@@ -337,7 +337,8 @@ internal sealed class CompletionPopup : Border
                 ScrollTo((int)Math.Round(e.NewValue), fromBar: true);
             }
         };
-        AddHandler(PointerWheelChangedEvent, OnWheel);
+        // Heard on its way in, before the list's own view, which a fraction of a pixel's rounding lets take it.
+        AddHandler(PointerWheelChangedEvent, OnWheel, RoutingStrategies.Tunnel);
         Child = new Panel { Children = { List, bar } };
     }
 
@@ -460,9 +461,10 @@ internal sealed class CompletionPopup : Border
     }
 
     /// <summary>A turn of the wheel over the list scrolls it a row for each part of a notch that makes one, the choice
-    /// staying where it is.</summary>
+    /// staying where it is; the list's own view, which never scrolls, is not given it.</summary>
     private void OnWheel(object? sender, PointerWheelEventArgs e)
     {
+        e.Handled = true;
         if (rows.Count <= Shown)
         {
             return;
@@ -474,7 +476,6 @@ internal sealed class CompletionPopup : Border
         {
             ScrollTo(top + step, fromBar: false);
         }
-        e.Handled = true;
     }
 
     private void FollowSelected()
