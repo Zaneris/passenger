@@ -74,6 +74,9 @@ public static class MSBuildNames
     // Where a project is and what its build makes.
     public const string ProjectDir = "ProjectDir";
     public const string AssemblyName = "AssemblyName";
+    public const string OutputType = "OutputType";
+    public const string UseArtifactsOutput = "UseArtifactsOutput";
+    public const string ArtifactsPath = "ArtifactsPath";
     public const string OutputPath = "OutputPath";
     public const string TargetDir = "TargetDir";
     public const string TargetFileName = "TargetFileName";

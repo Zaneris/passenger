@@ -672,9 +672,14 @@ internal sealed record PreviewedBuild(string Assembly, DateTime Written, bool Co
     /// <summary>The build at an assembly as it stands; read off the window's thread.</summary>
     public static PreviewedBuild Of(string assembly, bool configured) => new(assembly, Newest(Path.GetDirectoryName(assembly)!), configured);
 
+    /// <summary>How the project's newest build is found, where it is not as <see cref="XamlPreview.Output"/> finds it (a MAUI
+    /// project's of any target); null for that.</summary>
+    public Func<ProjectInputs, string?>? Finder { get; init; }
+
     /// <summary>Whether this is still the project's newest build, unwritten since; read off the window's thread.</summary>
     public bool Stands(ProjectInputs inputs) =>
-        Written != DateTime.MinValue && (Library is not null ? File.Exists(Library) ? Assembly : null : XamlPreview.Output(inputs, Configured)) is { } newest
+        Written != DateTime.MinValue
+            && (Library is not null ? File.Exists(Library) ? Assembly : null : Finder is { } finder ? finder(inputs) : XamlPreview.Output(inputs, Configured)) is { } newest
             && PathNames.Same(newest, Assembly) && Newest(Path.GetDirectoryName(newest)!) == Written;
 
     /// <summary>The newest write among a folder's files; the least time where it cannot be read, which no build stands as.</summary>

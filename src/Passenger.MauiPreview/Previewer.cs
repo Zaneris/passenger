@@ -280,9 +280,13 @@ internal sealed partial class Previewer(Assembly project, Type? appType, IMauiCo
         };
     }
 
-    /// <summary>An error's message without the place MAUI's loader writes before it, which the answer gives apart.</summary>
-    private static string Message(Exception error) => PlacePrefix().Replace(error.Message, string.Empty);
+    /// <summary>An error's message without the place MAUI's loader writes before it, or an XML reader after it, which the
+    /// answer gives apart.</summary>
+    private static string Message(Exception error) => PlaceSuffix().Replace(PlacePrefix().Replace(error.Message, string.Empty), string.Empty);
 
     [GeneratedRegex(@"^Position \d+:\d+\. ")]
     private static partial Regex PlacePrefix();
+
+    [GeneratedRegex(@"\s*Line \d+, position \d+\.$")]
+    private static partial Regex PlaceSuffix();
 }

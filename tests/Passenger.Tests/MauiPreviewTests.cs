@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.App.Xaml;
 using Passenger.Editor;
 using Passenger.Text;
@@ -130,6 +131,71 @@ public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
         Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(main) is null, "XAML Preview stayed on");
         window.Close();
     }
+
+    /// <summary>A MAUI project of a platform alone, which this machine may lack the SDK to build for (Android's JDK), is built
+    /// by Build for XAML Preview for no platform into a folder of Passenger's own, its own bin left as it was, and its page
+    /// previews from that build. Skips, saying why, where the project does not restore from the package cache alone (no
+    /// Android workload, or MAUI's packages for it never restored here: tests/MauiGraphs).</summary>
+    [AvaloniaFact]
+    public void Build_for_xaml_preview_builds_a_maui_project_of_a_platform_alone_for_none_and_its_page_previews_from_that()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("maui-plain"));
+        string version = AvaloniaApp.Metadata("MauiVersion");
+        File.WriteAllText(Path.Combine(folder, "Phone.csproj"), $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFrameworks>net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-android</TargetFrameworks>
+                <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+                <OutputType>Library</OutputType>
+                <RootNamespace>Phone</RootNamespace>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="Microsoft.Maui.Controls" Version="{version}" />
+              </ItemGroup>
+            </Project>
+
+            """);
+        File.WriteAllText(Path.Combine(folder, "App.xaml"), "<Application x:Class=\"Phone.App\" />\n");
+        File.WriteAllText(Path.Combine(folder, "App.xaml.cs"), "namespace Phone;\n\npublic partial class App : Application\n{\n    public App()\n    {\n        InitializeComponent();\n    }\n}\n");
+        File.WriteAllText(Path.Combine(folder, "MainPage.xaml"), """
+            <ContentPage x:Class="Phone.MainPage">
+                <VerticalStackLayout Padding="30" Spacing="20">
+                    <Label Text="Built for no platform" FontSize="24" />
+                    <Button Text="Go" />
+                </VerticalStackLayout>
+            </ContentPage>
+
+            """);
+        File.WriteAllText(Path.Combine(folder, "MainPage.xaml.cs"), "namespace Phone;\n\npublic partial class MainPage : ContentPage\n{\n    public MainPage()\n    {\n        InitializeComponent();\n    }\n}\n");
+        ChildResult restored = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", "Phone.csproj"], folder), limit: Restoring)),
+            "the Android project's restore", Restoring);
+        if (!restored.Succeeded)
+        {
+            Assert.Skip("A MAUI project built for Android does not restore here from the package cache alone (its workload, and MAUI's packages for it "
+                + $"restored by tests/MauiGraphs): {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile(Path.Combine(folder, "MainPage.xaml"));
+        Ui.Settle();
+        OpenDocument document = window.EditorArea.Active!;
+        Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+        Ui.Settle();
+        XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+        Ui.WaitFor(() => preview.WantsBuild, () => $"the preview asking for a build of the project that has none ({preview.Status})", FirstFrame);
+        Assert.True(window.Perform(AppActions.BuildForPreview), $"Build for XAML Preview could not run: {window.Status}");
+        Ui.WaitFor(() => preview.Frame is not null, () => $"the page drawn from the build for no platform ({preview.Status} {preview.Error}; the Build window: {window.BottomPanel.Build.Document.Snapshot})",
+            Restoring);
+        Assert.Null(preview.Error);
+        Assert.False(Directory.Exists(Path.Combine(folder, "bin")), "Build for XAML Preview built into the project's own bin, which its own builds keep");
+        Assert.Contains(preview.Elements, e => document.Text.Snapshot.ToString()[e.Tag.Start..].StartsWith("<Button", StringComparison.Ordinal));
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
+    /// <summary>How long a project's restore or its build for the preview may take.</summary>
+    private static readonly TimeSpan Restoring = TimeSpan.FromMinutes(4);
 
     /// <summary>Whether a preview's frame is a screen of this size in its units: drawn smaller for the pane, it is whole
     /// pixels, so its size stands up to two of its pixels off.</summary>

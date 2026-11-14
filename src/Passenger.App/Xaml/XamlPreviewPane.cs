@@ -142,6 +142,15 @@ public sealed class XamlPreviewPane : DockPanel
         Children.Add(view);
         this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         preview.Changed += (_, _) => Show();
+        // A MAUI page drawn in the IDE's theme follows it.
+        ActualThemeVariantChanged += (_, _) =>
+        {
+            if (preview.TakesLooks && preview.Look.Theme is null)
+            {
+                preview.Update();
+                ShowLook();
+            }
+        };
         AttachedToVisualTree += (_, _) =>
         {
             shownOn = TopLevel.GetTopLevel(this);

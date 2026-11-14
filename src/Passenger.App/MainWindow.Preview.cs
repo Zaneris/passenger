@@ -227,11 +227,28 @@ public partial class MainWindow
     }
 
     /// <summary>Build for XAML Preview: a XAML file's project built for what its preview draws alone, a multi-targeted one's
-    /// framework chosen, so no other framework's build holds the preview up; each preview then draws the build it made.</summary>
+    /// framework chosen, so no other framework's build holds the preview up, a MAUI project of platforms alone for none
+    /// (<see cref="MauiPreviewHost.PlainBuild"/>); each preview then draws the build it made.</summary>
     private async Task BuildForPreviewAsync(OpenDocument document)
     {
         if (ProjectModel.Owning(session.Projects, document.Path) is not { } owning)
         {
+            return;
+        }
+        // A MAUI project of platforms alone is built for none, which its preview draws and no platform's SDK is needed for.
+        if (session.Xaml.For(document)?.Loading.Builder is { IsCompletedSuccessfully: true } loaded && loaded.Result?.Dialect is Passenger.Xaml.Dialects.MauiDialect
+            && MauiPreviewHost.PlainBuild(owning) is { } plain)
+        {
+            if (work.Begin(A.BuildForPreview, $"Building {owning.Name} for no platform, which its preview draws…") is not { } plainWork)
+            {
+                Say(ActionWork.Busy(work.Of(A.BuildForPreview)!));
+                return;
+            }
+            using (plainWork)
+            {
+                BuildOutcome built = await buildRun.BuildForAsync(new BuildStep(owning.Path, null) { Properties = plain }, plainWork);
+                plainWork.Tell(built.Succeeded, built.Message);
+            }
             return;
         }
         // A library's views are drawn in a program that runs them, whose build builds the library too.

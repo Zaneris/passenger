@@ -132,6 +132,9 @@ public sealed partial class BuildRunController
     private string? buildFramework;
     private string? buildOutput;
 
+    /// <summary>The global properties the build under way is given beyond its configuration's (<see cref="BuildStep.Properties"/>).</summary>
+    private IReadOnlyList<string>? buildProperties;
+
     /// <summary>The workspace whose build configuration the build under way is given, a run's own (<see cref="ProjectSession.WorkspaceOfAsync"/>);
     /// null for the folder's, which a build of its own is given.</summary>
     private WorkspaceModel? buildConfigured;
@@ -332,7 +335,7 @@ public sealed partial class BuildRunController
             IdeErrors.Observe(PublishAsync(again with { Folder = null }));
             return;
         }
-        Start(buildKind, lastProjects, null, buildFramework, BuildCause.Explicit, null, null, buildOutput, lastTogether, buildConfigured);
+        Start(buildKind, lastProjects, null, buildFramework, BuildCause.Explicit, null, null, buildOutput, lastTogether, buildConfigured, buildProperties);
     }
 
     /// <summary>Builds, rebuilds or cleans the solution, or the projects given one after another (stopping at the first
@@ -351,7 +354,7 @@ public sealed partial class BuildRunController
     /// build of projects side by side given (its project the one in <paramref name="projects"/>), under a run's own build
     /// configuration where <paramref name="configured"/> is given.</summary>
     private void Start(BuildKind kind, IReadOnlyList<string>? projects, Action<BuildOutcome>? then, string? framework, BuildCause cause, PublishRequest? publish,
-        Working? work, string? output = null, TogetherBuild? side = null, WorkspaceModel? configured = null)
+        Working? work, string? output = null, TogetherBuild? side = null, WorkspaceModel? configured = null, IReadOnlyList<string>? properties = null)
     {
         UiThread.Check();
         if (session.Folder is null || IsBuilding || session.IsEnded)
@@ -374,6 +377,7 @@ public sealed partial class BuildRunController
         buildFramework = projects is { Count: > 0 } ? framework : null;
         buildOutput = projects is { Count: > 0 } ? output : null;
         buildConfigured = projects is { Count: > 0 } ? configured : null;
+        buildProperties = projects is { Count: > 0 } ? properties : null;
         IReadOnlyList<string> whole = session.Workspace!.BuildTargets(session.Projects);
         buildQueue.Clear();
         // A folder with no solution or project of its own is built only where MSBuild would find one there.
@@ -481,7 +485,7 @@ public sealed partial class BuildRunController
         buildWork?.Say($"{verb} {what}…");
         bool windows = WindowsTargeting(together?.Projects ?? [target]);
         IReadOnlyList<string> arguments = publishing is { } publish ? publish.Arguments(windows)
-            : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput, Configured(target));
+            : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput, [.. Configured(target), .. buildProperties ?? []]);
         Func<CancellationToken, Task>? after = first ? BeforeFirstStepAsync : null;
         if (checking is { } checks)
         {
@@ -513,7 +517,8 @@ public sealed partial class BuildRunController
     private async Task CheckBeforeAsync(string target, bool windows, List<Checked> checks, CancellationToken stop)
     {
         List<(BuildStep Step, bool MustShow)> steps = session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, target)) is { } project
-            ? buildFramework is null && buildOutput is null && Launched(project) is { } frameworks
+            ? buildProperties is not null ? []
+            : buildFramework is null && buildOutput is null && Launched(project) is { } frameworks
                 ? [.. frameworks.Select(framework => (new BuildStep(target, framework), true))]
                 : [(new BuildStep(target, buildFramework, buildOutput), false)]
             : session.Workspace?.Solution is { } solution && PathNames.Same(solution.Path, target)
@@ -996,12 +1001,12 @@ public sealed partial class BuildRunController
     /// (<see cref="UpToDate"/>) is not built again, the Build window and the status bar saying so. Built as
     /// <paramref name="configured"/>'s build configuration where given (a run's own), else as the folder's.</summary>
     public Task<BuildOutcome> BuildForAsync(BuildStep step, CancellationToken stopping, Action? reading = null, WorkspaceModel? configured = null) =>
-        BuildForAsync([step.Project], stopping, null, step.Framework, step.Output, reading, configured);
+        BuildForAsync([step.Project], stopping, null, step.Framework, step.Output, reading, configured, step.Properties);
 
     /// <summary>A start's build of what it starts, as <see cref="BuildForAsync(BuildStep, CancellationToken)"/>, saying in its
     /// work when it waits for a build under way; <paramref name="reading"/> is told as it saves the files its build reads.</summary>
     public Task<BuildOutcome> BuildForAsync(BuildStep step, Working work, Action? reading = null, WorkspaceModel? configured = null) =>
-        BuildForAsync([step.Project], work.Stopping, work, step.Framework, step.Output, reading, configured);
+        BuildForAsync([step.Project], work.Stopping, work, step.Framework, step.Output, reading, configured, step.Properties);
 
     /// <summary>What a start says of a project it did not build: nothing its build reads changed since its last.</summary>
     public static string UpToDateSaid(string project) => $"{project} is up to date: nothing its build reads has changed since it was built, so it was not built again";
@@ -1012,10 +1017,11 @@ public sealed partial class BuildRunController
 
     /// <summary>A start's build of its projects (<see cref="BuildForAsync(BuildStep, CancellationToken)"/>), several side by
     /// side in one dotnet build (<see cref="TogetherBuild"/>), after any build under way: none is built when the last build
-    /// here of each stands, and all are when one does not, what each build left then kept for its next start's check.
-    /// <paramref name="reading"/> is told just before each save of the files, which the build then reads as saved.</summary>
+    /// here of each stands, and all are when one does not, what each build left then kept for its next start's check; one
+    /// given <paramref name="properties"/> of its own is always built. <paramref name="reading"/> is told just before each
+    /// save of the files, which the build then reads as saved.</summary>
     private async Task<BuildOutcome> BuildForAsync(IReadOnlyList<string> projects, CancellationToken stopping, Working? work, string? framework = null, string? output = null,
-        Action? reading = null, WorkspaceModel? configured = null)
+        Action? reading = null, WorkspaceModel? configured = null, IReadOnlyList<string>? properties = null)
     {
         UiThread.Check();
         List<UpToDate.Check> checks = [];
@@ -1050,6 +1056,14 @@ public sealed partial class BuildRunController
             bool windows = WindowsTargeting(projects);
             string state = parts.StateFolder();
             WorkspaceModel within = configured ?? session.Workspace ?? new WorkspaceModel(folder, null, []);
+            if (properties is not null)
+            {
+                if (IsBuilding)
+                {
+                    continue;
+                }
+                break;
+            }
             (IReadOnlyList<UpToDate.Check?> found, side) = await BackgroundWork.Run(async () => (
                 await UpToDate.CheckAsync([.. projects.Select(project => new BuildStep(project, framework, output))],
                     [.. projects.Select(project => BuildOutput.Arguments(project, BuildKind.Build, framework, windows, output, within.BuildArgumentsFor(project)))], windows, folder,
@@ -1078,7 +1092,7 @@ public sealed partial class BuildRunController
         TaskCompletionSource<BuildOutcome> ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
         // Where they cannot be built together (TogetherBuild.Write's null), they are built one after another.
         Start(BuildKind.Build, side is null ? projects : [side.Project], outcome => ended.TrySetResult(outcome), framework, BuildCause.BeforeLaunch, null, null, output, side,
-            configured);
+            configured, properties);
         BuildOutcome built;
         // On the window's thread, and only while the build under way is this one; the folder's end stops it itself.
         using (stopping.Register(() => UiThread.Post(() =>

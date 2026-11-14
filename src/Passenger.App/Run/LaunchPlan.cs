@@ -10,7 +10,12 @@ namespace Passenger.App.Run;
 
 /// <summary>The project a launch builds first, for one framework when it has several, into the folder given where its own
 /// would not do (a single-file AppHost's, kept in the state).</summary>
-public sealed record BuildStep(string Project, string? Framework, string? Output = null);
+public sealed record BuildStep(string Project, string? Framework, string? Output = null)
+{
+    /// <summary>Global properties the build is given beyond the build configuration's, which make it a build of its own
+    /// (a MAUI project's plain one for its preview), never checked as up to date; null for none.</summary>
+    public IReadOnlyList<string>? Properties { get; init; }
+}
 
 /// <summary>A web app's build as its browser refresh needs it (<see cref="Debugging.BrowserRefresh"/>): the folder of the SDK
 /// it builds with, its intermediate output folder, the global properties its build is given, and the projects it references

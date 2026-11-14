@@ -1,9 +1,11 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Styling;
+using Passenger.App.State;
 using Passenger.Core;
 using Passenger.MauiPreview;
 using Passenger.Text;
+using Passenger.Workspace;
 using Passenger.Xaml.Features;
 using Passenger.Xaml.Projects;
 
@@ -53,7 +55,7 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
             return null;
         }
         preview.BuiltPlatform = PlatformOf(built);
-        MauiPreviewHost started = new(preview, builder, copied.Build, Path.Combine(copied.Shadow, Path.GetFileName(built)), copied.Shadow);
+        MauiPreviewHost started = new(preview, builder, copied.Build with { Finder = Newest }, Path.Combine(copied.Shadow, Path.GetFileName(built)), copied.Shadow);
         try
         {
             await started.RunAsync(inputs);
@@ -72,24 +74,40 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
         (inputs.PackageVersions.GetValueOrDefault("Microsoft.Maui.Controls") ?? inputs.PackageVersions.GetValueOrDefault("Microsoft.Maui.Controls.Core")) is { } named
             && Version.TryParse(named.Split('-', '+')[0], out Version? version) ? version : null;
 
-    /// <summary>The project's newest build: the one an app's or a library's preview draws (<see cref="XamlPreview.Output"/>),
-    /// else the newest build of its assembly for any target under its bin/ (a platform's has no .deps.json). Read off the
-    /// window's thread.</summary>
+    /// <summary>The project's newest build: of the one an app's or a library's preview draws (<see cref="XamlPreview.Output"/>),
+    /// its assembly for any target under its bin/ (a platform's has no .deps.json) and the build for no platform Build for
+    /// XAML Preview makes (<see cref="PlainBuild"/>), the newest written. Read off the window's thread.</summary>
     internal static string? Newest(ProjectInputs inputs)
     {
-        if (XamlPreview.Output(inputs, configured: false) is { } found)
+        string reference = $"{Path.DirectorySeparatorChar}ref{Path.DirectorySeparatorChar}";
+        IEnumerable<string> Under(string folder) => Directory.Exists(folder)
+            ? Directory.EnumerateFiles(folder, inputs.AssemblyName + ".dll", SearchOption.AllDirectories).Where(f => !f.Contains(reference, StringComparison.Ordinal))
+            : Enumerable.Empty<string>();
+        string[] found = [.. Under(Path.Combine(inputs.Folder, "bin")), .. Under(Path.Combine(PlainFolder(inputs.ProjectPath), "bin"))];
+        if (XamlPreview.Output(inputs, configured: false) is { } output)
         {
-            return found;
+            found = [output, .. found];
         }
-        string bin = Path.Combine(inputs.Folder, "bin");
-        if (!Directory.Exists(bin))
+        return found.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+    }
+
+    /// <summary>Where Build for XAML Preview builds a MAUI project for no platform (<see cref="PlainBuild"/>): a folder of
+    /// the state's for the project's folder, so the project's own obj and bin stay as its own builds left them.</summary>
+    public static string PlainFolder(string project) => Path.Combine(ProjectState.FolderOf(StateStore.DefaultRoot, Path.GetDirectoryName(project)!), "maui-preview");
+
+    /// <summary>What Build for XAML Preview gives the build of a MAUI project that targets platforms alone, which a machine
+    /// may lack the SDKs of (Android's, Xcode): its .NET for no platform (net11.0 of net11.0-android) as a library, into
+    /// <see cref="PlainFolder"/>, which the previewer draws as any build; null for a project with a target of no platform,
+    /// whose own build draws.</summary>
+    public static IReadOnlyList<string>? PlainBuild(ProjectModel project)
+    {
+        if (project.TargetFrameworks.Count == 0 || project.TargetFrameworks.Any(f => !f.Contains('-', StringComparison.Ordinal)))
         {
             return null;
         }
-        string reference = $"{Path.DirectorySeparatorChar}ref{Path.DirectorySeparatorChar}";
-        return Directory.EnumerateFiles(bin, inputs.AssemblyName + ".dll", SearchOption.AllDirectories)
-            .Where(f => !f.Contains(reference, StringComparison.Ordinal))
-            .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+        string plain = project.TargetFrameworks[0].Split('-')[0];
+        return [$"-p:{MSBuildNames.TargetFrameworks}={plain}", $"-p:{MSBuildNames.OutputType}=Library", $"-p:{MSBuildNames.UseArtifactsOutput}=true",
+            $"-p:{MSBuildNames.ArtifactsPath}={PlainFolder(project.Path)}"];
     }
 
     /// <summary>The platform a build is for, by its target framework's folder (<c>net11.0-ios</c>): Android for a plain one,
