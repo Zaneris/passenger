@@ -48,6 +48,31 @@ public sealed partial class Vim
         return new VimResult(true) { Replay = held };
     }
 
+    /// <summary>Whether keys are held toward a mapping, waiting for more that may make one (for timeoutlen to end).</summary>
+    public bool AwaitsMapping => typedAhead.Count > 0;
+
+    /// <summary>The wait for more keys toward a mapping ended (timeoutlen passed): the longest mapping the keys held begin
+    /// with, then the rest; else the first key as it is, then the rest, as they were typed. For the editor to press in turn.</summary>
+    public VimResult TimedOut()
+    {
+        if (typedAhead.Count == 0)
+        {
+            return VimResult.Left;
+        }
+        VimMapModes mode = MapMode();
+        List<string> held = [.. typedAhead];
+        typedAhead.Clear();
+        for (int n = held.Count; n >= 1; n--)
+        {
+            if (Registers.Mappings.Find(mode, held[..n]).Exact is { } exact)
+            {
+                return Expanded(exact, held[n..]);
+            }
+        }
+        unmappedLeft = 1;
+        return new VimResult(true) { Replay = held };
+    }
+
     /// <summary>A mapping's keys to press, then <paramref name="after"/>: those it maps to taken as they are for a noremap,
     /// and its own keys where what it maps to begins with them, so it never maps itself without end.</summary>
     private VimResult Expanded(VimMapping mapping, List<string> after)

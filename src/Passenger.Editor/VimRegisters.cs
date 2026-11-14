@@ -142,4 +142,15 @@ public sealed class VimOptions
 
     /// <summary>The width gq wraps at; 0 for the width the editor gives (a file's max_line_length), else 79.</summary>
     public int TextWidth { get; set; }
+
+    /// <summary>Whether keys held toward a mapping mean themselves once <see cref="TimeoutLength"/> passes with no more.</summary>
+    public bool Timeout { get; set; } = true;
+
+    /// <summary>How long keys held toward a mapping wait for more, in milliseconds.</summary>
+    public int TimeoutLength { get; set; } = 1000;
+
+    /// <summary>ttimeout and ttimeoutlen, which a terminal's key codes wait by: kept as set, keys reaching Vim mode whole.</summary>
+    public bool KeyCodeTimeout { get; set; }
+
+    public int KeyCodeTimeoutLength { get; set; } = -1;
 }

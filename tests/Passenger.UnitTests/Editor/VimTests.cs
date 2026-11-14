@@ -868,6 +868,33 @@ public class VimTests
         Assert.Equal(["E518: Unknown option: nosuch"], refused);
     }
 
+    [Theory]
+    [InlineData("inoremap jk <Esc>", "|ab", "ij<Wait>k<Esc>", "j|kab")]
+    [InlineData("inoremap jk <Esc>", "|ab", "ijk<Wait>x", "|b")]
+    [InlineData("nnoremap ,a x\nnnoremap ,ab dd", "|abc\nd", ",a<Wait>", "|bc\nd")]
+    [InlineData("nnoremap ,dd x", "|ab cd", ",d<Wait>w", "|cd")]
+    [InlineData("inoremap jj X\ninoremap jjk Y", "|ab", "ijj<Wait><Esc>", "|Xab")]
+    [InlineData("inoremap jj X\ninoremap jjk Y", "|ab", "ijj<Wait>k<Esc>", "X|kab")]
+    public void Keys_held_toward_a_mapping_mean_themselves_once_timeoutlen_passes(string file, string before, string keys, string after)
+    {
+        Vim vim = new();
+        vim.Registers.Mappings = VimMappings.Read(file);
+        Assert.Equal(after, Run(vim, before, keys));
+        Assert.False(vim.AwaitsMapping, "Keys were still held toward a mapping once the wait had passed");
+    }
+
+    [Fact]
+    public void Timeout_and_timeoutlen_are_set_and_said_and_ttimeoutlen_is_taken()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|a");
+        Vim vim = new();
+        Assert.Equal("timeout  timeoutlen=1000", Press(vim, ":set to? tm?<CR>", text, carets).Message);
+        Assert.Empty(Vim.SetAll(vim.Registers, ["notimeout timeoutlen=200", "ttimeout ttimeoutlen=50"]));
+        Assert.True(vim.Registers.Options is { Timeout: false, TimeoutLength: 200 }, "set notimeout timeoutlen=200 set neither");
+        Assert.Equal("ttimeout  ttimeoutlen=50", Press(vim, ":set ttimeout? ttm?<CR>", text, carets).Message);
+        Assert.StartsWith("E487", Press(vim, ":set tm=-1<CR>", text, carets).Message);
+    }
+
     [Fact]
     public void Keys_held_toward_a_mapping_show_as_pending()
     {
@@ -976,7 +1003,7 @@ public class VimTests
     {
         foreach (string key in keys)
         {
-            VimResult result = vim.Press(key, text, carets, view);
+            VimResult result = key == Waited ? vim.TimedOut() : vim.Press(key, text, carets, view);
             if (result.Replay is { } replay)
             {
                 (text, carets) = Drive(vim, text, carets, replay, stopAtFailure, view);
@@ -1018,10 +1045,13 @@ public class VimTests
         return (text, carets);
     }
 
+    /// <summary>Not a key: timeoutlen passing with no key pressed, as the editor tells Vim mode.</summary>
+    private const string Waited = "<Wait>";
+
     /// <summary>The keys of Vim's notation one by one: a named key ("&lt;Esc&gt;") whole, any other character alone.</summary>
     public static IEnumerable<string> Keys(string keys)
     {
-        string[] named = ["<Esc>", "<CR>", "<BS>", "<Tab>", "<Del>", "<C-r>", "<C-v>", "<C-o>", "<C-i>", "<C-u>", "<C-w>", "<Up>", "<Down>", "<D-s>"];
+        string[] named = ["<Esc>", "<CR>", "<BS>", "<Tab>", "<Del>", "<C-r>", "<C-v>", "<C-o>", "<C-i>", "<C-u>", "<C-w>", "<Up>", "<Down>", "<D-s>", Waited];
         for (int i = 0; i < keys.Length; i++)
         {
             string? name = keys[i] == '<' ? Array.Find(named, n => string.CompareOrdinal(keys, i, n, 0, n.Length) == 0) : null;

@@ -919,8 +919,9 @@ public static class Ui
 
     /// <summary>A key that types, pressed as a keyboard presses it: the key, carrying the character the layout gives it
     /// ("ł" for a Polish AltGr+L, which Windows sends as Ctrl+Alt+L), then that character as text unless the key was taken
-    /// as a shortcut, which keeps the platform from typing it.</summary>
-    public static void Type(TopLevel window, string keys, string text)
+    /// as a shortcut, which keeps the platform from typing it; what it ran let land unless <paramref name="settle"/> is
+    /// false, as for a key typed right after it.</summary>
+    public static void Type(TopLevel window, string keys, string text, bool settle = true)
     {
         Keystroke stroke = Keystroke.Parse(keys.Replace('+', ' '));
         RawInputModifiers modifiers = Raw(stroke.Modifiers);
@@ -934,7 +935,10 @@ public static class Ui
             window.KeyTextInput(text);
         }
         window.KeyRelease(stroke.Key, modifiers, PhysicalKey.None, text);
-        Settle();
+        if (settle)
+        {
+            Settle();
+        }
     }
 
     /// <summary>Long enough for the language server to start and load a small project, on a developer's machine.</summary>

@@ -23,6 +23,9 @@ public sealed partial class CodeEditor
 
     private VimRegisters vimRegisters = new();
 
+    /// <summary>The wait for more keys toward a mapping (timeoutlen), and the length it waits.</summary>
+    private (Debounce Wait, int Length)? vimTimeout;
+
     private EditorVimView? vimView;
 
     private IVimView VimView => vimView ??= new EditorVimView(this);
@@ -36,6 +39,7 @@ public sealed partial class CodeEditor
             if (UsesVim != value)
             {
                 vim = value ? new Vim(vimRegisters) : null;
+                FollowVimTimeout();
                 FollowVimMode();
                 SetSelections(selections, reveal: false);
             }
@@ -115,7 +119,39 @@ public sealed partial class CodeEditor
         {
             VimModeChanged?.Invoke(this, EventArgs.Empty);
         }
+        FollowVimTimeout();
         return result.Taken;
+    }
+
+    /// <summary>Keys held toward a mapping wait timeoutlen for more, begun again at each key, then mean themselves; with
+    /// timeout off, or none held, nothing waits.</summary>
+    private void FollowVimTimeout()
+    {
+        VimOptions options = vimRegisters.Options;
+        if (vim is not { AwaitsMapping: true } || !options.Timeout)
+        {
+            vimTimeout?.Wait.Stop();
+            return;
+        }
+        if (vimTimeout is not { } timeout || timeout.Length != options.TimeoutLength)
+        {
+            vimTimeout?.Wait.Stop();
+            timeout = (new Debounce(TimeSpan.FromMilliseconds(options.TimeoutLength), VimTimedOutAsync), options.TimeoutLength);
+            vimTimeout = timeout;
+        }
+        timeout.Wait.Restart();
+    }
+
+    /// <summary>timeoutlen passed with keys held toward a mapping: they are pressed as what they come to.</summary>
+    private Task VimTimedOutAsync()
+    {
+        if (vim is { AwaitsMapping: true } held)
+        {
+            FollowVim(held.TimedOut(), held.Mode);
+            VimModeChanged?.Invoke(this, EventArgs.Empty);
+            FollowVimTimeout();
+        }
+        return Task.CompletedTask;
     }
 
     /// <summary>Leaves insert mode as Escape does, where something else heard the Escape first (the code's choices it

@@ -552,9 +552,12 @@ public sealed partial class Vim
                     differ.Add(get(Options) ? name : "no" + name);
                 }
             }
-            if (Options.TextWidth != defaults.TextWidth)
+            foreach ((string name, string _, int _, Func<VimOptions, int> get, Action<VimOptions, int> _) in NumberTable)
             {
-                differ.Add($"textwidth={Options.TextWidth}");
+                if (get(Options) != get(defaults))
+                {
+                    differ.Add($"{name}={get(Options)}");
+                }
             }
             return Said(differ.Count == 0 ? "Vim mode's options are as they begin" : string.Join("  ", differ), error: false);
         }
@@ -571,19 +574,23 @@ public sealed partial class Vim
             {
                 name = name[..name.IndexOfAny(['=', ':'])];
             }
-            if (name is "tw" or "textwidth")
+            if (Array.Find(NumberTable, o => o.Name == name || o.Short == name) is { Name: not null } number)
             {
                 int equals = item.IndexOfAny(['=', ':']);
                 if (equals < 0 || ask)
                 {
-                    answers.Add($"textwidth={Options.TextWidth}");
+                    answers.Add($"{number.Name}={number.Get(Options)}");
                     continue;
                 }
-                if (!int.TryParse(item.AsSpan(equals + 1), NumberStyles.None, CultureInfo.InvariantCulture, out int width))
+                if (!int.TryParse(item.AsSpan(equals + 1), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int given))
                 {
                     return Said($"E521: Number required after =: {item}");
                 }
-                Options.TextWidth = width;
+                if (given < number.Least)
+                {
+                    return Said($"E487: Argument must be positive: {item}");
+                }
+                number.Set(Options, given);
                 continue;
             }
             if (Option(name) is not { } option)
@@ -618,11 +625,24 @@ public sealed partial class Vim
         ("wrapscan", o => o.WrapScan, (o, v) => o.WrapScan = v),
         ("joinspaces", o => o.JoinSpaces, (o, v) => o.JoinSpaces = v),
         ("gdefault", o => o.GlobalDefault, (o, v) => o.GlobalDefault = v),
+        ("timeout", o => o.Timeout, (o, v) => o.Timeout = v),
+        ("ttimeout", o => o.KeyCodeTimeout, (o, v) => o.KeyCodeTimeout = v),
+    ];
+
+    /// <summary>The options of a number, by name and short name, with the least each takes.</summary>
+    private static readonly (string Name, string Short, int Least, Func<VimOptions, int> Get, Action<VimOptions, int> Set)[] NumberTable =
+    [
+        ("textwidth", "tw", 0, o => o.TextWidth, (o, v) => o.TextWidth = v),
+        ("timeoutlen", "tm", 0, o => o.TimeoutLength, (o, v) => o.TimeoutLength = v),
+        ("ttimeoutlen", "ttm", -1, o => o.KeyCodeTimeoutLength, (o, v) => o.KeyCodeTimeoutLength = v),
     ];
 
     private static (string Name, Func<VimOptions, bool> Get, Action<VimOptions, bool> Set)? Option(string name)
     {
-        string full = name switch { "ic" => "ignorecase", "scs" => "smartcase", "hls" => "hlsearch", "ws" => "wrapscan", "js" => "joinspaces", "gd" => "gdefault", _ => name };
+        string full = name switch
+        {
+            "ic" => "ignorecase", "scs" => "smartcase", "hls" => "hlsearch", "ws" => "wrapscan", "js" => "joinspaces", "gd" => "gdefault", "to" => "timeout", _ => name,
+        };
         foreach ((string Name, Func<VimOptions, bool> Get, Action<VimOptions, bool> Set) option in OptionTable)
         {
             if (option.Name == full)

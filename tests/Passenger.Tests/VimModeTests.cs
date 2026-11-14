@@ -551,10 +551,10 @@ public sealed class VimModeTests : IDisposable
             Assert.Equal(PathNames.Canonical(vimrc), PathNames.Canonical(window.VimMappingsPath));
             window.ApplySettings(window.Settings with { VimMode = true });
             Ui.WaitFor(() => window.VimMappings.All.Count == 2, "the mappings file read as Vim mode came on");
-            Keys(window, ",d");
+            Keys(window, ",d", together: true);
             Assert.Equal("two\nthree\n", Text(editor));
             Keys(window, "ix");
-            Keys(window, "jk");
+            Keys(window, "jk", together: true);
             Assert.Equal(("NORMAL", "1:1"), Status(window));
             Assert.Equal("xtwo\nthree\n", Text(editor));
 
@@ -563,6 +563,41 @@ public sealed class VimModeTests : IDisposable
             Assert.Equal("Vim mode passed over 1 line of vimrc, line 2: a mapping names the keys it takes", StatusWords(window));
             Keys(window, "Q");
             Assert.Equal("three\n", Text(editor));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A key that may begin a mapping waits timeoutlen (the mappings file's set line) for the rest, then means
+    /// itself: with jk mapped in insert mode, j typed alone types j once the wait passes, and jk typed together leaves insert
+    /// mode; with notimeout set, j waits for the next key however long that takes.</summary>
+    [AvaloniaFact]
+    public void A_key_that_may_begin_a_mapping_means_itself_once_timeoutlen_passes()
+    {
+        string state = Path.Combine(folder, "state");
+        Directory.CreateDirectory(state);
+        string vimrc = Path.Combine(state, "vimrc");
+        File.WriteAllText(vimrc, "set timeoutlen=300\ninoremap jk <Esc>\n");
+        (MainWindow window, CodeEditor editor) = Open("ab\n", state: state);
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.WaitFor(() => window.VimMappings.All.Count == 1, "the mappings file read as Vim mode came on");
+            Keys(window, "ij");
+            Assert.Equal(("jab\n", "INSERT"), (Text(editor), Status(window).Mode));
+            Keys(window, "k");
+            Keys(window, "jk", together: true);
+            Assert.Equal(("jkab\n", "NORMAL"), (Text(editor), Status(window).Mode));
+
+            File.WriteAllText(vimrc, "set notimeout\ninoremap jk <Esc>\n");
+            Ui.WaitFor(() => window.VimMappings.Settings.Contains("notimeout"), "the mappings file read again as it changed");
+            Keys(window, "ij");
+            Ui.Hold(TimeSpan.FromSeconds(1.5), "longer than any timeoutlen the j could wait");
+            Assert.Equal(("jkab\n", "INSERT j"), (Text(editor), Status(window).Mode));
+            Keys(window, "k");
+            Assert.Equal(("jkab\n", "NORMAL"), (Text(editor), Status(window).Mode));
         }
         finally
         {
@@ -698,14 +733,17 @@ public sealed class VimModeTests : IDisposable
 
     /// <summary>Keys in Vim's notation typed one by one as a keyboard types them: a character with the key that types it,
     /// Escape, Enter and Backspace by name.</summary>
-    private static void Keys(TopLevel window, string keys)
+    /// <summary>Keys pressed in turn, each let land unless <paramref name="together"/>, where they come as fast as a person
+    /// types a mapping's keys, the last alone let land.</summary>
+    private static void Keys(TopLevel window, string keys, bool together = false)
     {
         for (int i = 0; i < keys.Length; i++)
         {
             string? named = keys[i] == '<' ? Array.Find(["<Esc>", "<CR>", "<BS>"], n => string.CompareOrdinal(keys, i, n, 0, n.Length) == 0) : null;
+            bool settle = !together || i + (named?.Length ?? 1) >= keys.Length;
             if (named is not null)
             {
-                Ui.Press(window, named switch { "<Esc>" => "ESCAPE", "<CR>" => "ENTER", _ => "BACK_SPACE" });
+                Ui.Press(window, named switch { "<Esc>" => "ESCAPE", "<CR>" => "ENTER", _ => "BACK_SPACE" }, settle);
                 i += named.Length - 1;
                 continue;
             }
@@ -745,7 +783,7 @@ public sealed class VimModeTests : IDisposable
                 '@' => "shift 2",
                 _ => throw new ArgumentException($"No key types '{c}' here", nameof(keys)),
             };
-            Key(window, key, c.ToString());
+            Ui.Type(window, key, c.ToString(), settle);
         }
     }
 
