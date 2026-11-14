@@ -414,7 +414,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
   templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); updates are checked and downloaded once, by the watching window, and said in every window (`MainWindow.UpdatesOwner`); only an installed copy
   updates itself, a package manager's left to it; What's New from `docs/release-notes/X.Y.Z.md`.
-- **MCP.** `PassengerTools` (every tool on the UI thread), `McpHost`, `McpProxy`, `AgentConnection`. A relay follows an
+- **MCP.** `PassengerTools` (every tool on the UI thread), `McpHost`, `McpProxy`, `AgentConnection`. A tool that changes files answers once its saves landed and its moves are in Git's index (`SaveLandedAsync`, `VcsController.MovesIndexed`); a theme an agent names is taken as the picker takes one (`ThemeListing.TakeAsync`). A relay follows an
   update or, on Windows, ends, signalling the relay alone, never its agent's process group; `godot_editor` makes each
   change one `EditorUndoRedoManager` action.
 
@@ -513,7 +513,7 @@ a new name, and `just site-shots` retakes its images.
 - **The inspector** never touches `Dispatcher.UIThread` before the app makes it, never waits on Passenger, and readies
   its wire's types before the app's Main (System.Text.Json's lock against a thread the debugger stopped). A library's view previews in a program that runs it (`XamlPreview.ProgramsRunning`). An app the
   previewer loads needs `BuildAvaloniaApp()`, or HostApp aborts.
-- **MCP's tool list** is paid for by every agent session (45.6 KB, held under 62 KB by McpDebuggingTests): say each
+- **MCP's tool list** is paid for by every agent session (53.8 KB, held under 62 KB by McpDebuggingTests): say each
   thing once (shared parameters in `McpHost.Instructions`), add no tool another covers; an answer that can run long goes
   through `AgentAnswers` and says what it left out. `save_all` stays a tool of its own, never asked about on a person's
   window (#278). `debug_evaluate`, `debug_input` and `breakpoint_set` are `Destructive` and ask the person the first
