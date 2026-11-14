@@ -191,6 +191,14 @@ public sealed class FindView : DockPanel
     /// <summary>The search shown, by its title.</summary>
     public string? Shown => current?.Title;
 
+    /// <summary>The usages or matches of the search shown, the side shown alone where one is, in the order its rows list
+    /// them: Vim mode's quickfix list.</summary>
+    public IReadOnlyList<Usage> Places => current is not { } search ? []
+        : [.. (alone switch { UsageSide.Yours => search.Yours, UsageSide.Generated => search.Generated is { } made ? [made] : [], _ => search.Roots })
+            .SelectMany(Leaves)];
+
+    private static IEnumerable<Usage> Leaves(FindRow row) => row.Usage is { } usage ? [usage] : row.Children.SelectMany(Leaves);
+
     /// <summary>What the search shown went without, as it says above its usages; null when it went without nothing.</summary>
     public string? Without => current?.Without;
 

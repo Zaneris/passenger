@@ -26,6 +26,18 @@ public enum VimRequestKind
 
     /// <summary>:windo: the command line run in each editor shown, split by split.</summary>
     EachEditor,
+
+    /// <summary>:argdo: the command line run in each file open, in the order their tabs stand.</summary>
+    EachTab,
+
+    /// <summary>:cdo: the command line run at each place the IDE's list of places holds (Vim's quickfix list).</summary>
+    EachPlace,
+
+    /// <summary>:cfdo: the command line run in each file of the IDE's list of places, at its first place there.</summary>
+    EachPlaceFile,
+
+    /// <summary>A command line of several commands joined by '|', run in turn in the file shown as one change.</summary>
+    Commands,
 }
 
 /// <summary>A request of the host: what to do, the file to open (or the action to run), and how many steps.</summary>

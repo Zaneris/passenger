@@ -7,12 +7,25 @@ namespace Passenger.Editor;
 
 /// <summary>Ex commands, typed on the command line: a range of lines (%, ., $, a number, a mark, /pattern/, each with + and
 /// - after it, two joined by , or ;), then :{n}, :s, :g and :v, :d, :y, :j, :&gt; and :&lt;, :normal, :noh, :set, and
-/// :w (:update), :q, :wq, :x, :e, :action, :bufdo and :windo, which the host does as its Save, Close Tab, open, the action
-/// named and the commands run in each file; a command Vim mode doesn't do is said.</summary>
+/// :w (:update), :q, :wq, :x, :e, :action, :bufdo, :windo, :argdo, :cdo and :cfdo, which the host does as its Save, Close
+/// Tab, open, the action named and the commands run in each file or place; several joined by '|' the host runs in turn as
+/// one change; a command Vim mode doesn't do is said.</summary>
 public sealed partial class Vim
 {
-    /// <summary>An ex command run; a change it makes refused where the text refuses changes.</summary>
+    /// <summary>A command line typed: one command run, or several joined by '|' asked of the host, which runs each in turn.</summary>
     private VimResult Ex(string line, TextSnapshot text, SelectionSet selections, IVimView view)
+    {
+        IReadOnlyList<string> commands = Bars(line);
+        if (commands.Count > 1)
+        {
+            Registers.LastCommand = line;
+            return Asked(VimRequestKind.Commands, line);
+        }
+        return OneEx(commands.Count == 1 ? commands[0] : line, text, selections, view);
+    }
+
+    /// <summary>One ex command run; a change it makes refused where the text refuses changes.</summary>
+    private VimResult OneEx(string line, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         VimResult result = ExCommand(line, text, selections, view);
         return view.Refuses is { } why && result.Edits is { Count: > 0 } ? Refused(why) : result;
@@ -81,8 +94,16 @@ public sealed partial class Vim
                 return Jumped(text, selections, view, VimMotions.FirstNonBlank(text, range.Value.Last < 0 ? 0 : Math.Min(range.Value.Last, last)));
             case "w" or "write" or "up" or "upd" or "upda" or "updat" or "update":
                 return trimmed.Length > 0 ? Said($"Vim mode saves the file shown: :{name} {trimmed} is not done") : Asked(VimRequestKind.Save);
-            case "bufd" or "bufdo" or "wind" or "windo":
-                return trimmed.Length > 0 ? Asked(name[0] == 'b' ? VimRequestKind.EachFile : VimRequestKind.EachEditor, trimmed) : Said("E471: Argument required");
+            case "bufd" or "bufdo" or "wind" or "windo" or "argdo" or "cdo" or "cfd" or "cfdo":
+                VimRequestKind each = name switch
+                {
+                    "bufd" or "bufdo" => VimRequestKind.EachFile,
+                    "wind" or "windo" => VimRequestKind.EachEditor,
+                    "argdo" => VimRequestKind.EachTab,
+                    "cdo" => VimRequestKind.EachPlace,
+                    _ => VimRequestKind.EachPlaceFile,
+                };
+                return trimmed.Length > 0 ? Asked(each, trimmed) : Said("E471: Argument required");
             case "wa" or "wall":
                 return Asked(VimRequestKind.SaveAll);
             case "q" or "quit" or "clo" or "close":
@@ -119,17 +140,19 @@ public sealed partial class Vim
 
     private static VimResult Asked(VimRequestKind kind, string? path = null) => new(true) { Request = new VimRequest(kind, path) };
 
-    /// <summary>A command line the host runs as if typed after ':' (:bufdo's, in each file), the line typed last kept for @:.</summary>
+    /// <summary>One command the host runs as if typed after ':' (one of a line's parted at '|', in each file), the line
+    /// typed last kept for @:.</summary>
     public VimResult RunCommand(string line, TextSnapshot text, SelectionSet selections, IVimView? view = null)
     {
         string? typed = Registers.LastCommand;
-        VimResult result = Ex(line, text, selections, view ?? PlainView);
+        VimResult result = OneEx(line, text, selections, view ?? PlainView);
         Registers.LastCommand = typed;
         return result;
     }
 
-    /// <summary>A command line's commands, parted at each '|' not escaped (\\|) after their ranges, as :bufdo runs them in
-    /// turn; one that takes '|' as part of its own (:normal, :g, :v, :bufdo, :windo) takes the rest of the line.</summary>
+    /// <summary>A command line's commands, parted at each '|' after their ranges as Vim parts them: one that takes '|' as
+    /// part of its own (:normal, :g, :v and the commands run in each file or place) takes the rest of the line, :s its
+    /// pattern and replacement whole; elsewhere a '|' escaped (\\|) is a '|' of the command's own.</summary>
     public static IReadOnlyList<string> Bars(string line)
     {
         List<string> commands = [];
@@ -142,20 +165,57 @@ public sealed partial class Vim
             {
                 letters++;
             }
-            int end = line.AsSpan(named, letters - named) is "norm" or "norma" or "normal" or "g" or "global" or "v" or "vglobal" or "bufd" or "bufdo" or "wind" or "windo"
-                ? line.Length
-                : named;
-            while (end < line.Length && (line[end] != '|' || end > 0 && line[end - 1] == '\\'))
+            ReadOnlySpan<char> name = line.AsSpan(named, letters - named);
+            bool rest = name is "norm" or "norma" or "normal" or "g" or "global" or "v" or "vglobal" or "bufd" or "bufdo" or "wind" or "windo"
+                or "argdo" or "cdo" or "cfd" or "cfdo";
+            int end = rest ? line.Length : name is "s" or "substitute" ? PatternEnd(line, letters) : named;
+            StringBuilder command = new(line[start..end]);
+            while (end < line.Length && line[end] != '|')
             {
+                if (line[end] == '\\' && end + 1 < line.Length && line[end + 1] == '|')
+                {
+                    end++;
+                }
+                command.Append(line[end]);
                 end++;
             }
-            if (line[start..end].Trim() is { Length: > 0 } command)
+            if (command.ToString().Trim() is { Length: > 0 } one)
             {
-                commands.Add(command);
+                commands.Add(one);
             }
             start = end + 1;
         }
         return commands;
+    }
+
+    /// <summary>Where :s's pattern and replacement end, from just after its name: each taken to its delimiter not
+    /// escaped, a '|' inside either its own; where no delimiter follows, the name's end.</summary>
+    private static int PatternEnd(string line, int at)
+    {
+        while (at < line.Length && line[at] is ' ' or '\t')
+        {
+            at++;
+        }
+        if (at >= line.Length || char.IsAsciiLetterOrDigit(line[at]) || line[at] is '\\' or '"' or '|')
+        {
+            return at;
+        }
+        char delimiter = line[at];
+        at++;
+        while (at < line.Length && line[at] != delimiter)
+        {
+            at += line[at] == '\\' ? 2 : 1;
+        }
+        if (at >= line.Length)
+        {
+            return line.Length;
+        }
+        at++;
+        while (at < line.Length && line[at] != delimiter)
+        {
+            at += line[at] == '\\' ? 2 : 1;
+        }
+        return Math.Min(at + 1, line.Length);
     }
 
     /// <summary>Where a command's name begins after the ':', blanks and range from <paramref name="start"/>: a pattern

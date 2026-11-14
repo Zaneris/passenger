@@ -974,9 +974,42 @@ public class VimTests
     [InlineData("g/x|y/s/a/b/ | w", new[] { "g/x|y/s/a/b/ | w" })]
     [InlineData("/a|b/,$d|w", new[] { "/a|b/,$d", "w" })]
     [InlineData("w||", new[] { "w" })]
+    [InlineData("s/a|b/X/ | s/c/d/", new[] { "s/a|b/X/", "s/c/d/" })]
+    [InlineData("%s/a/x|y/g|$d", new[] { "%s/a/x|y/g", "$d" })]
+    [InlineData("s#a|b#c|d#|w", new[] { "s#a|b#c|d#", "w" })]
+    [InlineData("e One\\|Two.cs | w", new[] { "e One|Two.cs", "w" })]
+    [InlineData("cdo s/a/b/ | update", new[] { "cdo s/a/b/ | update" })]
+    [InlineData("cfdo normal x | update", new[] { "cfdo normal x | update" })]
+    [InlineData("argdo %s/a/b/ge | update", new[] { "argdo %s/a/b/ge | update" })]
     public void A_command_line_parts_at_each_bar_but_where_its_command_takes_the_rest(string line, string[] commands)
     {
         Assert.Equal(commands, Vim.Bars(line));
+    }
+
+    /// <summary>A line of several commands asks the host to run them in turn (the harness runs each as the window does),
+    /// and comes to what Vim 9.1 comes to: :s takes its pattern and replacement whole, a command that fails ends the line,
+    /// :normal takes the rest as its keys.</summary>
+    [Theory]
+    [InlineData("|ab c\nc a", ":s/a|b/X/ | s/c/d/<CR>", "|ab c\nc a")]
+    [InlineData("|a b c", ":s/\\va|b/X/g | s/c/d/<CR>", "|X X d")]
+    [InlineData("|ab c\nc a", ":s/zzz/y/ | s/c/d/<CR>", "|ab c\nc a")]
+    [InlineData("|ab c\nc a", ":%s/a/b/g|$d<CR>", "|bb c")]
+    [InlineData("|one\ntwo\nthree", ":2d | 1s/o/0/<CR>", "|0ne\nthree")]
+    [InlineData("|one\ntwo\nthree", ":s/o/0/|2|s/w/W/<CR>", "0ne\n|tWo\nthree")]
+    [InlineData("|one two\nthree", ":normal x | x<CR>", "n| two\nthree")]
+    public void Commands_joined_by_a_bar_on_any_command_line_come_to_what_vims_do(string before, string keys, string after)
+    {
+        Assert.Equal(after, Run(before, keys));
+    }
+
+    [Fact]
+    public void A_bar_in_a_substitutions_replacement_is_its_own_and_one_after_it_runs_the_next_command()
+    {
+        Vim vim = new();
+        (TextSnapshot text, SelectionSet carets) = Drive(vim, TextSnapshot.From("a b"), SelectionSet.Single(0), ":s/a/x|y/ | s/b/z/<CR>");
+        Assert.Equal(("x|y z", 0), (text.ToString(), carets.Primary.Caret));
+        Assert.Equal((VimRequestKind.Commands, ":s/a/x|y/ | s/b/z/"), Press(vim, ":s/a/x|y/ | s/b/z/<CR>", text, carets).Request is { } asked ? (asked.Kind, ":" + asked.Path) : default);
+        Assert.Equal("s/a/x|y/ | s/b/z/", vim.Registers.LastCommand);
     }
 
     [Fact]
@@ -987,6 +1020,12 @@ public class VimTests
         Assert.Equal((VimRequestKind.EachFile, "%s/a/b/ge | update"), Press(vim, ":bufdo %s/a/b/ge | update<CR>", text, carets).Request is { } each ? (each.Kind, each.Path) : default);
         Assert.Equal((VimRequestKind.EachEditor, "normal x"), Press(vim, ":windo normal x<CR>", text, carets).Request is { } split ? (split.Kind, split.Path) : default);
         Assert.Equal("E471: Argument required", Press(vim, ":bufdo<CR>", text, carets).Message);
+        foreach ((string typed, VimRequestKind kind) in new[] { ("argdo", VimRequestKind.EachTab), ("cdo", VimRequestKind.EachPlace), ("cfd", VimRequestKind.EachPlaceFile),
+            ("cfdo", VimRequestKind.EachPlaceFile) })
+        {
+            Assert.Equal((kind, "s/a/b/ | update"), Press(vim, $":{typed} s/a/b/ | update<CR>", text, carets).Request is { } place ? (place.Kind, place.Path) : default);
+            Assert.Equal("E471: Argument required", Press(vim, $":{typed}<CR>", text, carets).Message);
+        }
         Assert.Equal(VimRequestKind.Save, Press(vim, ":up<CR>", text, carets).Request?.Kind);
         Assert.Equal(("|b", "up"), (Marked.Show(text.Apply(vim.RunCommand("s/a/b/", text, carets).Edit!.Edits), carets), vim.Registers.LastCommand));
     }
@@ -1031,6 +1070,32 @@ public class VimTests
             if (result.Replay is { } replay)
             {
                 (text, carets) = Drive(vim, text, carets, replay, stopAtFailure, view);
+                continue;
+            }
+            if (result.Request is { Kind: VimRequestKind.Commands, Path: { } line })
+            {
+                // As the window runs them: each in turn on what the one before left, the first that fails ending the line.
+                foreach (string command in Vim.Bars(line))
+                {
+                    VimResult ran = vim.RunCommand(command, text, carets, view);
+                    if (ran.Replay is { } keysOf)
+                    {
+                        (text, carets) = Drive(vim, text, carets, keysOf, stopAtFailure, view);
+                    }
+                    foreach (EditPlan edit in ran.Edits ?? [])
+                    {
+                        (text, carets) = (text.Apply(edit.Edits), edit.Selections);
+                    }
+                    if (ran.Edits is not { Count: > 0 } && ran.Selections is { } at)
+                    {
+                        carets = at;
+                    }
+                    carets = Vim.Settled(text, carets);
+                    if (ran.MessageIsError)
+                    {
+                        break;
+                    }
+                }
                 continue;
             }
             if (stopAtFailure && ReferenceEquals(result, VimResult.Held) && vim.Pending.Length == 0 && vim.Mode == VimMode.Normal && key != Vim.Escape)

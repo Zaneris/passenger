@@ -660,6 +660,97 @@ public sealed class VimModeTests : IDisposable
         static string Shown(MainWindow window, string path) => window.EditorArea.Find(PathNames.Canonical(path))!.Text.Snapshot.ToString();
     }
 
+    /// <summary>:cdo runs its commands at each match Find in Files lists in the Find window, as Vim runs them at each entry
+    /// of its quickfix list, as one command of the IDE's undo: :s and :update at each match in each file, u taking back
+    /// both files; :cfdo runs its command once in each file at its first match and :cdo at every match, :normal x taking
+    /// the character there, the matches after one in a file moving with its edits (Vim 9.1's results, with 'hidden').</summary>
+    [AvaloniaFact]
+    public void Cdo_and_cfdo_run_at_the_matches_find_in_files_lists_as_one_command_of_undo()
+    {
+        string one = Path.Combine(folder, "One.txt");
+        string two = Path.Combine(folder, "Two.txt");
+        File.WriteAllText(two, "one more\n");
+        (MainWindow window, CodeEditor editor) = Open("one two\nthree one\n");
+        try
+        {
+            List<string> asked = [];
+            window.Confirm = (_, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Passenger.App.Navigation.FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
+            Ui.Search(popup, "one");
+            Ui.Click(popup.FindWindow);
+            Assert.Equal([("One.txt", 0, 0), ("One.txt", 1, 6), ("Two.txt", 0, 0)], window.Find.Places.Select(p => (Path.GetFileName(p.Path), p.Line, p.Column)));
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Settle();
+            Keys(window, ":cdo s/one/1/ | update<CR>");
+            Assert.Equal(("1 two\nthree 1\n", "1 more\n", "Two.txt"), (Shown(window, one), Shown(window, two), window.EditorArea.Active!.Name));
+            Ui.WaitFor(() => File.ReadAllText(one) == "1 two\nthree 1\n" && File.ReadAllText(two) == "1 more\n", "each file :update saved");
+            Keys(window, "u");
+            Ui.WaitFor(() => Shown(window, one) == "one two\nthree one\n" && Shown(window, two) == "one more\n",
+                () => $"u after :cdo left \"{Shown(window, one)}\" and \"{Shown(window, two)}\", not both files as they were");
+            Assert.Equal(["Undo :cdo s/one/1/ | update? It changes One.txt and Two.txt."], asked);
+
+            Keys(window, ":cfdo normal x<CR>");
+            Assert.Equal(("ne two\nthree one\n", "ne more\n"), (Shown(window, one), Shown(window, two)));
+            Keys(window, "u");
+            Ui.WaitFor(() => Shown(window, one) == "one two\nthree one\n" && Shown(window, two) == "one more\n", "u to take back :cfdo in both files");
+            Keys(window, ":cdo normal x<CR>");
+            Assert.Equal(("ne two\nthree ne\n", "ne more\n"), (Shown(window, one), Shown(window, two)));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Shown(MainWindow window, string path) => window.EditorArea.Find(PathNames.Canonical(path))!.Text.Snapshot.ToString();
+    }
+
+    /// <summary>Commands joined by '|' on a plain command line run in turn, as Vim's do, and u takes back all they changed
+    /// at once; = inside :bufdo lays out each file before the next command runs, so its layout is part of the one command
+    /// u takes back in both files.</summary>
+    [AvaloniaFact]
+    public void Commands_joined_by_a_bar_are_one_change_and_equals_inside_bufdo_is_part_of_its_one_command()
+    {
+        const string Loose = "<UserControl xmlns=\"https://github.com/avaloniaui\">\n<StackPanel>\n<Button/>\n</StackPanel>\n</UserControl>\n";
+        string second = Path.Combine(folder, "Second.axaml");
+        File.WriteAllText(second, Loose);
+        (MainWindow window, CodeEditor editor) = Open(Loose, name: "First.axaml");
+        try
+        {
+            List<string> asked = [];
+            window.Confirm = (_, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, ":2s/Stack/Wrap/ | 4s/Stack/Wrap/<CR>");
+            Assert.Equal(Loose.Replace("StackPanel", "WrapPanel", StringComparison.Ordinal), Text(editor));
+            Keys(window, "u");
+            Assert.Equal(Loose, Text(editor));
+            Assert.Empty(asked);
+
+            window.OpenFile(second);
+            Ui.Settle();
+            Keys(window, ":bufdo normal gg=G<CR>");
+            Ui.WaitFor(() => window.EditorArea.Documents.All(d => Indent(d.Text.Snapshot.ToString().Split('\n')[2]) > 0),
+                () => $"=G inside :bufdo left [{string.Join(" | ", window.EditorArea.Documents.Select(d => d.Text.Snapshot.ToString().Split('\n')[2]))}], not each file laid out");
+            Keys(window, "u");
+            Ui.WaitFor(() => window.EditorArea.Documents.All(d => d.Text.Snapshot.ToString() == Loose),
+                () => $"u after :bufdo normal gg=G left [{string.Join(" | ", window.EditorArea.Documents.Select(d => d.Text.Snapshot.ToString().Split('\n')[2]))}]");
+            Assert.Equal(["Undo :bufdo normal gg=G? It changes First.axaml and Second.axaml."], asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A file shown read-only refuses Vim mode's every change as it refuses every other, the status bar saying
     /// so in Refusals' words: x, dd, an insert, u and :s leave its text as it was and normal mode as it was, while a motion
     /// and a yank work, the yank put in a file that takes changes.</summary>
