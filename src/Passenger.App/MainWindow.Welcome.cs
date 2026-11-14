@@ -192,6 +192,7 @@ public partial class MainWindow
         if (keepsWorkspace)
         {
             state!.Recent.Set(state.Recent.Value.Without(path));
+            SystemRecents.Forgot(path);
             SayOnWelcome(null);
             ShowRecent();
         }
@@ -207,10 +208,22 @@ public partial class MainWindow
         }
         RememberOpen(workspace.OpenedAs);
         state!.Recent.Set(state.Recent.Value.Opened(workspace.OpenedAs, workspace.Name, DateTimeOffset.UtcNow));
+        SystemRecents.Opened(workspace.OpenedAs);
         ShowRecent();
     }
 
-    private void ShowRecent() => welcome?.Show(RecentSolutions);
+    /// <summary>The person's window shows the recent ones beside Passenger's icon too, the system's way
+    /// (<see cref="SystemRecents"/>), from now on.</summary>
+    public void ListRecentInSystem()
+    {
+        if (keepsWorkspace)
+        {
+            SystemRecents.Start(state!.Recent);
+        }
+    }
+
+    /// <summary>The Welcome screen's recent ones shown again, as the list stands.</summary>
+    internal void ShowRecent() => welcome?.Show(RecentSolutions);
 
     /// <summary>Started with nothing named, the window that keeps state reopens what was open as Passenger last quit,
     /// unless Reopen projects on startup is off: the oldest here and each other in a window of its own, the newest last

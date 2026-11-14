@@ -22,6 +22,9 @@ public sealed partial class LinuxUpdater : Updater
     /// <summary>Where install.sh installs for everyone, with <c>--system</c>.</summary>
     public const string SystemFolder = "/opt/passenger";
 
+    /// <summary>The id of the desktop entry install.sh puts in the applications menu, by which desktops know Passenger's icon.</summary>
+    public const string DesktopEntry = "io.github.zaneris.passenger";
+
     /// <summary>The file a package puts in the app's folder to say a package manager installed it, naming that manager.</summary>
     public const string PackageMarker = "package-manager";
 
@@ -263,7 +266,7 @@ public sealed partial class LinuxUpdater : Updater
                 throw new UpdateRefusedException($"the archive's passenger folder has no executable {part}");
             }
         }
-        if (!File.Exists(Path.Combine(passenger, "io.github.zaneris.passenger.desktop")))
+        if (!File.Exists(Path.Combine(passenger, DesktopEntry + ".desktop")))
         {
             throw new UpdateRefusedException("the archive's passenger folder has no desktop entry");
         }

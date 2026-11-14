@@ -51,6 +51,13 @@
     <Compile Include="../../src/Passenger.App/Containers/ImageReference.cs" Link="App/ImageReference.cs" />
   </ItemGroup>
 
+  <!-- What the system's lists beside Passenger's icon show of the recent ones, and freedesktop's recently used list as
+       Passenger changes it, compiled in since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Welcome/RecentLists.cs" Link="App/RecentLists.cs" />
+    <Compile Include="../../src/Passenger.App/Welcome/RecentlyUsed.cs" Link="App/RecentlyUsed.cs" />
+  </ItemGroup>
+
   <!-- The order a program's update handlers run in, compiled in since its project is a hook carried beside the app. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.UpdateHandlers/ChangedTypes.cs" Link="App/ChangedTypes.cs" />
