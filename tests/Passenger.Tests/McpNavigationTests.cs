@@ -58,6 +58,41 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         return folder;
     }
 
+    /// <summary>A MAUI page's code-behind calls the InitializeComponent MAUI's source generator declares of its XAML: definition
+    /// goes to that declaration in a copy of the generator's code the agent can read (the read-only copy Go to Declaration
+    /// opens), at its line with that line's code, asked first thing of a folder never restored: the server's restore as it
+    /// loads brings MAUI's build files and generator, so the answer waits for the projects' load after it.</summary>
+    [Fact]
+    public async Task Definition_of_a_maui_pages_initialize_component_answers_the_generators_declaration_in_a_copy_of_its_code()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-maui-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "MauiApp1.csproj", $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net11.0</TargetFramework>
+                <RootNamespace>MauiApp1</RootNamespace>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="Microsoft.Maui.Controls" Version="{AvaloniaApp.Metadata("MauiVersion")}" />
+              </ItemGroup>
+            </Project>
+
+            """);
+        TestFolders.Write(folder, "MainPage.xaml", MauiXamlTests.Gallery.MainPage);
+        TestFolders.Write(folder, "MainPage.xaml.cs", MauiXamlTests.Gallery.MainPageCode);
+        await using McpClient client = await Start(["--mcp", folder]);
+
+        JsonElement made = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 })).EnumerateArray());
+        string copy = made.GetProperty("path").GetString()!;
+        Assert.True(copy.EndsWith($"{Path.DirectorySeparatorChar}MainPage.xaml.sg.cs", StringComparison.Ordinal)
+            && made.GetProperty("text").GetString() == "private partial void InitializeComponent();"
+            && File.ReadAllLines(copy)[made.GetProperty("line").GetInt32() - 1].Contains("InitializeComponent()", StringComparison.Ordinal),
+            $"definition of a MAUI page's InitializeComponent answered no place in the generator's code with its text: {made.GetRawText()}");
+    }
+
     /// <summary>The solution a filter leaves a library out of, as a fresh clone opens it: the assembly of the library is
     /// not there as C# loads the app, so nothing of it is known, and the first build, however quick, takes it in with no
     /// restart, what the agent asks next finding the library's types; each build after that brings what it added.</summary>

@@ -49,6 +49,13 @@ internal enum LoadReportKind
     /// <summary>A restore's failure (<see cref="RestoreReports"/>), its project's errors: the server restores once the batch
     /// that loaded the project has ended, so no batch's end follows to say it.</summary>
     RestoreFailed,
+
+    /// <summary>A restore of the person's projects the server runs once a batch ended began (not of its own project).</summary>
+    Restoring,
+
+    /// <summary>A restore the server ran once a batch ended finished: the projects it restored load again once the files it
+    /// wrote are heard, a batch whose end follows.</summary>
+    Restored,
 }
 
 /// <summary>A line Roslyn's project system logs as it loads projects: "Warning while loading P: message" and "Error while
@@ -82,6 +89,14 @@ internal sealed partial record LoadReport(LoadReportKind Kind, ProjectLoadProble
         {
             return new LoadReport(LoadReportKind.Loaded, null, PathNames.Canonical(loaded.Groups["path"].Value.Trim()));
         }
+        if (RestoringLine().IsMatch(logged))
+        {
+            return new LoadReport(LoadReportKind.Restoring, null, null);
+        }
+        if (RestoredLine().IsMatch(logged))
+        {
+            return new LoadReport(LoadReportKind.Restored, null, null);
+        }
         return BatchLine().IsMatch(logged) ? new LoadReport(LoadReportKind.BatchEnded, null, null) : null;
     }
 
@@ -93,6 +108,12 @@ internal sealed partial record LoadReport(LoadReportKind Kind, ProjectLoadProble
 
     [GeneratedRegex(@"^\s*(?:\[[^\]]*\]\s*)*Completed \(re\)load of \d+ project\(s\)")]
     private static partial Regex BatchLine();
+
+    [GeneratedRegex(@"^\s*(?:\[[^\]]*\]\s*)*Restoring .+?: Running dotnet restore on ")]
+    private static partial Regex RestoringLine();
+
+    [GeneratedRegex(@"^\s*(?:\[[^\]]*\]\s*)*Restore complete\s*$")]
+    private static partial Regex RestoredLine();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex Spaces();

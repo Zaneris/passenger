@@ -225,6 +225,44 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     public string State { get; private set; } = string.Empty;
     public bool IsReady => session is { IsLoaded: true };
+
+    /// <summary>Whether a restore the server ran as it loaded has ended and the projects it restored are still to load again,
+    /// which until then the server answers for as loaded before their restore (with no package's build files, its
+    /// generators among them); or have loaded again, and the server, whose generators run again a second after a load,
+    /// has not yet said its solution moved, for <see cref="GeneratorsRerun"/> at most.</summary>
+    public bool ReloadingRestored => reloadingRestored || (restoredLoaded is { } at && Stopwatch.GetElapsedTime(at) < Waits.Of(GeneratorsRerun));
+
+    /// <summary>How long after a load the server's generators are waited for to run again.</summary>
+    private static readonly TimeSpan GeneratorsRerun = TimeSpan.FromSeconds(5);
+
+    private bool reloadingRestored;
+
+    /// <summary>When the projects a restore brought loaded again, until the server says its solution moved.</summary>
+    private long? restoredLoaded;
+
+    /// <summary>Whether a restore failed since the last batch's end, after which nothing loads again.</summary>
+    private bool restoreFailed;
+
+    /// <summary>Whether the restore under way is of the person's projects, whose end starts their load again.</summary>
+    private bool restoringTheirs;
+
+    /// <summary>Whether the server is still to restore the project holding a file, which it does once the batch loading it
+    /// ends: a restore of the person's projects under way, or the project's assets file, as its evaluation names it, not
+    /// yet written while no restore has failed since the last batch's end.</summary>
+    public bool AwaitsRestore(string path)
+    {
+        UiThread.Check();
+        if (restoringTheirs)
+        {
+            return true;
+        }
+        if (restoreFailed || workspace is not { } opened)
+        {
+            return false;
+        }
+        return ProjectModel.Owning(ProjectsNow?.Invoke() ?? opened.Projects, path)?.Evaluated?.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.ProjectAssetsFile)?.Value
+            is { Length: > 0 } assets && !File.Exists(assets);
+    }
     public RoslynSession? Session => session;
 
     /// <summary>What the server registered to hear of as files change on disk, watched for it; null with no server.</summary>
@@ -935,6 +973,8 @@ public sealed partial class CSharpService : IAsyncDisposable
         CancellationTokenSource cancel = new();
         starting = cancel;
         IsStopped = false;
+        reloadingRestored = restoreFailed = restoringTheirs = false;
+        restoredLoaded = null;
         SetState("Starting C#…");
         BackgroundWork.Begin();
         IdeErrors.Observe(Run(workspace, cancel.Token));
@@ -1220,6 +1260,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 if (session == started)
                 {
                     SolutionMoved();
+                    restoredLoaded = null;
                 }
                 foreach ((OpenDocument open, CSharpDocument features) in documents)
                 {
@@ -1508,8 +1549,17 @@ public sealed partial class CSharpService : IAsyncDisposable
                 Reported(from, problem.Project);
                 if (report.Kind == LoadReportKind.RestoreFailed)
                 {
+                    restoreFailed = true;
+                    reloadingRestored = false;
                     SayLoadProblems();
                 }
+                break;
+            case { Kind: LoadReportKind.Restoring }:
+                restoringTheirs = true;
+                break;
+            case { Kind: LoadReportKind.Restored }:
+                reloadingRestored = restoringTheirs && !restoreFailed;
+                restoringTheirs = false;
                 break;
             case { Kind: LoadReportKind.Loaded, Project: { } project }:
                 Reported(from, project);
@@ -1525,6 +1575,9 @@ public sealed partial class CSharpService : IAsyncDisposable
                 }
                 break;
             case { Kind: LoadReportKind.BatchEnded }:
+                restoredLoaded = reloadingRestored ? Stopwatch.GetTimestamp() : restoredLoaded;
+                reloadingRestored = false;
+                restoreFailed = false;
                 if (batch.Count > batchSaid)
                 {
                     SayLoadProblems();

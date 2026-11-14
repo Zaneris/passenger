@@ -3048,12 +3048,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException($"This is the C# language server's, which answers for C# and Razor files, not {LanguageOf(document)} ones such as {Path.GetFileName(document.Path)}");
         }
-        // Answers before the solution has loaded are wrong; looked at every 50 ms: a server document raises nothing.
+        // Answers before the solution has loaded, or before what a restore as it loaded brought, are wrong; looked at every 50 ms.
         if (document.Syntax is { } syntax && (await syntax.CurrentAsync()).DeepAt is not null)
         {
             throw new InvalidOperationException(Refusals.TooDeep(Path.GetFileName(document.Path)));
         }
-        await Until(() => Session.CSharp is not { } csharp || csharp.IsStopped || csharp.IsReady && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
+        await Until(() => Session.CSharp is not { } csharp || csharp.IsStopped
+            || csharp.IsReady && !csharp.ReloadingRestored && !csharp.AwaitsRestore(document.Path) && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
         if (Session.CSharp is { IsStopped: true })
         {
             throw new InvalidOperationException(Refusals.CSharpStopped);
