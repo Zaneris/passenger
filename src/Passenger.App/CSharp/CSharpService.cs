@@ -227,7 +227,11 @@ public sealed partial class CSharpService : IAsyncDisposable
     public static string ServerCache => Path.Combine(Passenger.App.State.StateStore.DefaultRoot, "cache");
 
     public string State { get; private set; } = string.Empty;
-    public bool IsReady => session is { IsLoaded: true };
+    public bool IsReady => session is { IsLoaded: true } && !hearingSaid;
+
+    /// <summary>Whether what a server started ahead said before this window took it up, its projects' load and restore among
+    /// it, is still to be heard: until then the window knows nothing of that load but that it ended.</summary>
+    private bool hearingSaid;
 
     /// <summary>Whether a restore the server ran as it loaded has ended and the projects it restored are still to load again,
     /// which until then the server answers for as loaded before their restore (with no package's build files, its
@@ -253,6 +257,17 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// once the source generators' runs queued by then have run; with no extension to ask, none, the server's next word
     /// that its solution moved ending the wait.</summary>
     private (long At, Task? Run)? generatorsRun;
+
+    /// <summary>What a server taken up said before then has been heard (posted in order before this): the window is ready
+    /// once it has loaded.</summary>
+    private void Heard(RoslynSession taken)
+    {
+        if (session == taken && hearingSaid)
+        {
+            hearingSaid = false;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     /// <summary>A load that may have changed projects' generators ended: the server, which runs them again only a moment
     /// later, answers for their code as made before until then, so its extension is asked when they have run.</summary>
@@ -1023,6 +1038,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         restoredNone.Clear();
         restoreFailedFor.Clear();
         generatorsRun = null;
+        hearingSaid = false;
         SetState("Starting C#…");
         BackgroundWork.Begin();
         IdeErrors.Observe(Run(workspace, cancel.Token));
@@ -1241,8 +1257,10 @@ public sealed partial class CSharpService : IAsyncDisposable
                 Hear(started.Server, opening.Folder);
                 // Started with the default settings: this window's from now on.
                 started.Server.ReplaceOptions(options);
-                // What it said while no window listened, its projects' load among it, heard now in order.
+                // What it said while no window listened, its projects' load among it, heard now in order, and only then ready.
+                hearingSaid = true;
                 started.Server.ReleaseSaid();
+                UiThread.Post(() => Heard(takenAhead));
                 // What it asks for from now on is this window's to answer.
                 if (started.Fed)
                 {

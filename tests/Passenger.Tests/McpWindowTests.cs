@@ -410,24 +410,9 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     [AvaloniaFact]
     public void An_agents_definition_of_what_a_restored_generator_declares_waits_for_its_run_though_the_server_says_its_diagnostics_moved_first()
     {
-        string folder = PathNames.Canonical(TestFolders.Create("mcp-maui-refreshed-"));
+        string folder = McpNavigationTests.MauiPage("mcp-maui-refreshed-");
         DeleteAtEnd(folder);
-        string project = TestFolders.Write(folder, "MauiApp1.csproj", $"""
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>net11.0</TargetFramework>
-                <RootNamespace>MauiApp1</RootNamespace>
-                <ImplicitUsings>enable</ImplicitUsings>
-                <Nullable>enable</Nullable>
-              </PropertyGroup>
-              <ItemGroup>
-                <PackageReference Include="Microsoft.Maui.Controls" Version="{AvaloniaApp.Metadata("MauiVersion")}" />
-              </ItemGroup>
-            </Project>
-
-            """);
-        TestFolders.Write(folder, "MainPage.xaml", MauiXamlTests.Gallery.MainPage);
-        TestFolders.Write(folder, "MainPage.xaml.cs", MauiXamlTests.Gallery.MainPageCode);
+        string project = Path.Combine(folder, "MauiApp1.csproj");
         MainWindow window = new() { Width = 1200, Height = 800 };
         window.Show();
         TaskCompletionSource loading = new(TaskCreationOptions.RunContinuationsAsynchronously);

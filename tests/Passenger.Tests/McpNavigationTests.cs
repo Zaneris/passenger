@@ -65,8 +65,70 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task Definition_of_a_maui_pages_initialize_component_answers_the_generators_declaration_in_a_copy_of_its_code()
     {
-        string folder = PathNames.Canonical(TestFolders.Create("mcp-maui-"));
+        string folder = MauiPage("mcp-maui-");
         DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder]);
+
+        JsonElement made = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 })).EnumerateArray());
+        string copy = made.GetProperty("path").GetString()!;
+        Assert.True(copy.EndsWith($"{Path.DirectorySeparatorChar}MainPage.xaml.sg.cs", StringComparison.Ordinal)
+            && made.GetProperty("text").GetString() == "private partial void InitializeComponent();"
+            && File.ReadAllLines(copy)[made.GetProperty("line").GetInt32() - 1].Contains("InitializeComponent()", StringComparison.Ordinal),
+            $"definition of a MAUI page's InitializeComponent answered no place in the generator's code with its text: {made.GetRawText()}");
+    }
+
+    /// <summary>A MAUI page's folder whose language server, started ahead of the agent's window, loaded, restored and began
+    /// loading again with MAUI's generator before the window took it up: the window's C# is ready only once it has heard
+    /// what the server said meanwhile, its restore among it, so an agent's question asked as the window opens waits for the
+    /// load after the restore and its generator's run, and definition of the page's InitializeComponent goes to the
+    /// generator's declaration, never to nothing as of the load before the restore.</summary>
+    [AvaloniaFact]
+    public void Definition_asked_as_the_window_takes_up_a_server_that_restored_ahead_waits_for_what_the_restore_brought()
+    {
+        string folder = MauiPage("mcp-maui-ahead-");
+        DeleteAtEnd(folder);
+        string page = Path.Combine(folder, "MainPage.xaml.cs");
+        LaunchOptions launch = LaunchOptions.Parse([folder]);
+        HeadStart ahead = HeadStart.Begin(launch, languageServer: true)!;
+        MainWindow window = new() { Width = 1200, Height = 800, AgentsAllowed = false, AgentsOwn = true, HeadStart = ahead };
+        bool started = false;
+        try
+        {
+            Ui.PumpUntil(() => RestoredAhead(Path.Combine(folder, "MauiApp1.csproj")), "the language server started ahead to restore MauiApp1", TimeSpan.FromMinutes(3));
+            window.Show();
+            PassengerTools tools = new(window);
+            window.Start(launch);
+            started = true;
+            // Taken up as the window starts, with what it said still to be heard: an agent's wait reads this as it looks.
+            global::Passenger.App.CSharp.CSharpService csharp = window.CSharpService is { Session: not null } taken ? taken
+                : throw new Xunit.Sdk.XunitException($"The window did not take up the language server started ahead as it started: {window.CSharpService?.State}");
+            Assert.False(csharp.IsReady && !csharp.ReloadingRestored(page) && !csharp.AwaitsRestore(page),
+                "As the window took up a server that restored before then, C# was ready with no restore known, so an agent's question would be answered as of the load before it");
+            IReadOnlyList<Place> places = Ui.Await(tools.Definition(page, 9, 9), "the agent's definition of InitializeComponent", AgentLimit);
+            Place made = Assert.Single(places);
+            Assert.True(made.Path.EndsWith($"{Path.DirectorySeparatorChar}MainPage.xaml.sg.cs", StringComparison.Ordinal) && made.Text == "private partial void InitializeComponent();",
+                $"definition of a MAUI page's InitializeComponent, asked as the window took up a server that restored ahead, answered: {made}");
+        }
+        finally
+        {
+            if (!started)
+            {
+                Ui.AwaitPumped(ahead.EndAsync(), "the language server started ahead to end");
+            }
+            window.Close();
+        }
+
+        // The server's own log says its restore ended, written as it says so though no window hears it yet.
+        static bool RestoredAhead(string project) => Directory.Exists(global::Passenger.App.CSharp.CSharpService.LogFolder)
+            && Directory.EnumerateFiles(global::Passenger.App.CSharp.CSharpService.LogFolder, "server-*.log").Select(Ui.Shared)
+                .Any(log => log.IndexOf($"dotnet restore on {project}", StringComparison.Ordinal) is >= 0 and int begun
+                    && log.IndexOf("Restore complete", begun, StringComparison.Ordinal) >= 0);
+    }
+
+    /// <summary>A folder of a MAUI app's page and its code-behind, never restored.</summary>
+    internal static string MauiPage(string prefix)
+    {
+        string folder = PathNames.Canonical(TestFolders.Create(prefix));
         TestFolders.Write(folder, "MauiApp1.csproj", $"""
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup>
@@ -83,14 +145,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             """);
         TestFolders.Write(folder, "MainPage.xaml", MauiXamlTests.Gallery.MainPage);
         TestFolders.Write(folder, "MainPage.xaml.cs", MauiXamlTests.Gallery.MainPageCode);
-        await using McpClient client = await Start(["--mcp", folder]);
-
-        JsonElement made = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 })).EnumerateArray());
-        string copy = made.GetProperty("path").GetString()!;
-        Assert.True(copy.EndsWith($"{Path.DirectorySeparatorChar}MainPage.xaml.sg.cs", StringComparison.Ordinal)
-            && made.GetProperty("text").GetString() == "private partial void InitializeComponent();"
-            && File.ReadAllLines(copy)[made.GetProperty("line").GetInt32() - 1].Contains("InitializeComponent()", StringComparison.Ordinal),
-            $"definition of a MAUI page's InitializeComponent answered no place in the generator's code with its text: {made.GetRawText()}");
+        return folder;
     }
 
     /// <summary>Two projects each given a package once loaded: the server loads both again and restores both, one restore
