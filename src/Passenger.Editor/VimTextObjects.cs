@@ -12,12 +12,12 @@ public static class VimTextObjects
 {
     /// <summary>The object a key after i or a names (w W s p, a bracket or b B, a quote, t) around the caret, the
     /// <paramref name="n"/>th one out for blocks and tags.</summary>
-    public static VimSpan? Of(TextSnapshot text, int caret, string key, bool inner, int n) => key switch
+    public static VimSpan? Of(TextSnapshot text, int caret, string key, bool inner, int n, bool breakEnds) => key switch
     {
-        "w" => Word(text, caret, n, inner, bigWord: false),
-        "W" => Word(text, caret, n, inner, bigWord: true),
+        "w" => Word(text, caret, n, inner, bigWord: false, breakEnds),
+        "W" => Word(text, caret, n, inner, bigWord: true, breakEnds),
         "s" => Sentence(text, caret, n, inner),
-        "p" => Paragraph(text, caret, n, inner),
+        "p" => Paragraph(text, caret, n, inner, breakEnds),
         "(" or ")" or "b" => Block(text, caret, n, inner, '(', ')'),
         "{" or "}" or "B" => Block(text, caret, n, inner, '{', '}'),
         "[" or "]" => Block(text, caret, n, inner, '[', ']'),
@@ -51,11 +51,14 @@ public static class VimTextObjects
         return (start, end);
     }
 
+    /// <summary>Where the run of one kind (word, punctuation, white) the offset is in begins on its line.</summary>
+    public static int RunStart(TextSnapshot text, int offset, bool bigWord) => Run(text, offset, bigWord).Start;
+
     private static int KindIn(TextSnapshot text, int offset, bool bigWord) => White(text[offset]) ? 0 : VimMotions.Kind(text[offset], bigWord);
 
     /// <summary>iw, aw, iW and aW: <paramref name="n"/> words, white between them counted too for the inner object; the
     /// outer one takes the white after, or before where none is after or the caret was in white.</summary>
-    private static VimSpan? Word(TextSnapshot text, int caret, int n, bool inner, bool bigWord)
+    private static VimSpan? Word(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds)
     {
         LineSpan line = VimMotions.LineOf(text, caret);
         if (line.Length == 0)
@@ -68,7 +71,7 @@ public static class VimTextObjects
         {
             for (int i = 1; i < n; i++)
             {
-                int next = NextRunEnd(text, end, bigWord);
+                int next = NextRunEnd(text, end, bigWord, breakEnds);
                 if (next == end)
                 {
                     return null;
@@ -86,7 +89,7 @@ public static class VimTextObjects
                 {
                     end = WhiteEnd(text, end);
                 }
-                int next = NextRunEnd(text, end, bigWord);
+                int next = NextRunEnd(text, end, bigWord, breakEnds);
                 if (next == end)
                 {
                     return null;
@@ -100,7 +103,7 @@ public static class VimTextObjects
         {
             if (i > 0)
             {
-                wordEnd = NextRunEnd(text, WhiteEnd(text, wordEnd), bigWord);
+                wordEnd = NextRunEnd(text, WhiteEnd(text, wordEnd), bigWord, breakEnds);
             }
             end = WhiteEnd(text, wordEnd);
             if (i + 1 < n && end == wordEnd)
@@ -134,12 +137,12 @@ public static class VimTextObjects
     }
 
     /// <summary>The end of the run after the one ending at the offset, the next line's first where the line ends there.</summary>
-    private static int NextRunEnd(TextSnapshot text, int offset, bool bigWord)
+    private static int NextRunEnd(TextSnapshot text, int offset, bool bigWord, bool breakEnds)
     {
         LineSpan line = VimMotions.LineOf(text, offset);
         if (offset >= line.End)
         {
-            if (line.Line >= VimMotions.LastLine(text))
+            if (line.Line >= VimMotions.LastLine(text, breakEnds))
             {
                 return offset;
             }
@@ -217,9 +220,9 @@ public static class VimTextObjects
     /// <summary>ip and ap, linewise: <paramref name="n"/> runs of lines with text or of blank ones (white alone counts as
     /// blank here); the outer one takes the blank lines after each paragraph, or before the first where none come after.
     /// A count running past the text fails.</summary>
-    private static VimSpan? Paragraph(TextSnapshot text, int caret, int n, bool inner)
+    private static VimSpan? Paragraph(TextSnapshot text, int caret, int n, bool inner, bool breakEnds)
     {
-        int last = VimMotions.LastLine(text);
+        int last = VimMotions.LastLine(text, breakEnds);
         int first = text.GetLineFromOffset(caret);
         bool blank = BlankLine(text, first);
         while (first > 0 && BlankLine(text, first - 1) == blank)
@@ -255,6 +258,42 @@ public static class VimTextObjects
         while (line < last && BlankLine(text, line + 1) == blank)
         {
             line++;
+        }
+        return line;
+    }
+
+    /// <summary>ip and ap carrying a visual stretch over several lines on: from its cursor's line <paramref name="n"/>
+    /// runs of lines with text or of blank ones further (ap a run of each), up or down, as far as the text's edge.</summary>
+    public static int ParagraphsOn(TextSnapshot text, int line, bool up, int n, bool inner, bool breakEnds)
+    {
+        int edge = up ? 0 : VimMotions.LastLine(text, breakEnds);
+        int step = up ? -1 : 1;
+        for (int i = 0; i < n; i++)
+        {
+            if (line == edge)
+            {
+                break;
+            }
+            bool? before = null;
+            for (int t = 0; t < 2; t++)
+            {
+                line += step;
+                bool blank = BlankLine(text, line);
+                if (before == blank)
+                {
+                    line -= step;
+                    break;
+                }
+                while (line != edge && BlankLine(text, line + step) == blank)
+                {
+                    line += step;
+                }
+                if (inner || line == edge)
+                {
+                    break;
+                }
+                before = blank;
+            }
         }
         return line;
     }

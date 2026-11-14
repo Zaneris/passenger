@@ -884,6 +884,32 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>A file that keeps no final line break keeps the last line S empties as a line, the caret standing on it
+    /// and j reaching it again, as Vim's 'eol' has it; once saved with the line break, the break ends the file.</summary>
+    [AvaloniaFact]
+    public void An_emptied_last_line_of_a_file_without_a_final_line_break_is_a_line_to_stand_on()
+    {
+        (MainWindow window, CodeEditor editor) = Open("one\ntwo");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "jS<Esc>");
+            Assert.Equal("one\n", Text(editor));
+            Assert.Equal(("NORMAL", "2:1"), Status(window));
+            Keys(window, "kj");
+            Assert.Equal(("NORMAL", "2:1"), Status(window));
+            Keys(window, "ix<Esc>");
+            Assert.Equal("one\nx", Text(editor));
+            Keys(window, "ddp");
+            Assert.True(Text(editor) == "one\nx" && Status(window).Caret == "2:1", $"dd and p of the last line left \"{Text(editor)}\" at {Status(window).Caret}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A Ctrl key Settings gives the keymap is the keymap's, Vim mode taking it no more (Ctrl+V entered visual
     /// block mode until then), and Settings' row of Vim mode's Ctrl keys greys while Vim mode is off.</summary>
     [AvaloniaFact]

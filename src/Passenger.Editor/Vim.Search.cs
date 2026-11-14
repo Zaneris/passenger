@@ -292,7 +292,7 @@ public sealed partial class Vim
         {
             'e' => new VimTarget(Math.Clamp(Math.Max(match.Start, match.End - 1) + by, 0, text.Length), VimMotionKind.Inclusive),
             's' => new VimTarget(Math.Clamp(match.Start + by, 0, text.Length), VimMotionKind.Exclusive),
-            'l' => VimMotions.LinesAway(text, match.Start, by) is { } line ? new VimTarget(text.GetLineStart(line), VimMotionKind.Linewise) : new VimTarget(match.Start, VimMotionKind.Linewise),
+            'l' => VimMotions.LinesAway(text, match.Start, by, breakEnds) is { } line ? new VimTarget(text.GetLineStart(line), VimMotionKind.Linewise) : new VimTarget(match.Start, VimMotionKind.Linewise),
             _ => new VimTarget(match.Start, VimMotionKind.Exclusive),
         };
     }
@@ -383,7 +383,7 @@ public sealed partial class Vim
             searchSaid = ("E20: Mark not set", true);
             return mark == '\'' ? new VimTarget(0, exact ? VimMotionKind.Exclusive : VimMotionKind.Linewise) : null;
         }
-        return exact ? new VimTarget(Settled(text, at), VimMotionKind.Exclusive) : new VimTarget(VimMotions.FirstNonBlank(text, text.GetLineFromOffset(at)), VimMotionKind.Linewise);
+        return exact ? new VimTarget(Settled(text, at, breakEnds), VimMotionKind.Exclusive) : new VimTarget(VimMotions.FirstNonBlank(text, text.GetLineFromOffset(at), breakEnds), VimMotionKind.Linewise);
     }
 
     /// <summary>m: the mark named set at the caret; ' and ` set the place '' goes back to.</summary>

@@ -94,6 +94,10 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>Set while . makes the last change again, which records nothing.</summary>
     private bool replaying;
 
+    /// <summary>Whether the file keeps a final line break (<see cref="IVimView.KeepsFinalLineBreak"/>), as the view said
+    /// for what is being done: where it keeps none, a final line break begins an empty last line.</summary>
+    private bool breakEnds = true;
+
     public Vim()
         : this(new VimRegisters())
     {
@@ -114,6 +118,7 @@ public sealed partial class Vim(VimRegisters registers)
     public VimResult Press(string key, TextSnapshot text, SelectionSet selections, IVimView? view = null)
     {
         view ??= PlainView;
+        breakEnds = view.KeepsFinalLineBreak;
         if (!replaying && !Playing && Recorded(key))
         {
             return VimResult.Held;
@@ -135,7 +140,7 @@ public sealed partial class Vim(VimRegisters registers)
         {
             Mode = VimMode.Normal;
             pending.Clear();
-            return new VimResult(true, SelectionSet.Single(text.GetLineStart(Math.Clamp(VimMotions.LastLine(text) - goLine, 0, VimMotions.LastLine(text)))));
+            return new VimResult(true, SelectionSet.Single(text.GetLineStart(Math.Clamp(VimMotions.LastLine(text, breakEnds) - goLine, 0, VimMotions.LastLine(text, breakEnds)))));
         }
         return Take(key, text, selections, view);
     }
@@ -227,23 +232,30 @@ public sealed partial class Vim(VimRegisters registers)
             return VimResult.Held;
         }
         clipboardPut = null;
-        return Put(VimRegisters.FromClipboard(clipboard), put.Before, put.Count, text, selections, view ?? PlainView, put.CursorAfter);
+        view ??= PlainView;
+        breakEnds = view.KeepsFinalLineBreak;
+        return Put(VimRegisters.FromClipboard(clipboard), put.Before, put.Count, text, selections, view, put.CursorAfter);
     }
 
     /// <summary>Where a normal-mode caret may stand nearest the offset: on a character of its line, never past its last
-    /// one, but at the start of an empty line.</summary>
-    public static int Settled(TextSnapshot text, int offset) => VimMotions.Settled(text, offset);
+    /// one, but at the start of an empty line, never on the empty line after a final line break that ends the text
+    /// (<paramref name="breakEnds"/>, the file keeping one).</summary>
+    public static int Settled(TextSnapshot text, int offset, bool breakEnds) => VimMotions.Settled(text, offset, breakEnds);
 
-    /// <summary>The carets as normal mode lets them stand, each on a character (<see cref="Settled(TextSnapshot, int)"/>)
+    /// <summary>Whether a file read or saved as this text keeps a final line break, as Vim sets 'eol' reading it: an
+    /// empty file keeps one.</summary>
+    public static bool KeepsFinalLineBreak(TextSnapshot saved) => saved.Length == 0 || saved[saved.Length - 1] == '\n';
+
+    /// <summary>The carets as normal mode lets them stand, each on a character (<see cref="Settled(TextSnapshot, int, bool)"/>)
     /// with the column it aims for kept; a selection stays as it is, and the set itself where every caret already stands.</summary>
-    public static SelectionSet Settled(TextSnapshot text, SelectionSet carets)
+    public static SelectionSet Settled(TextSnapshot text, SelectionSet carets, bool breakEnds)
     {
         IReadOnlyList<Selection> items = carets.Items;
         for (int i = 0; i < items.Count; i++)
         {
-            if (items[i].IsEmpty && Settled(text, items[i].Caret) != items[i].Caret)
+            if (items[i].IsEmpty && Settled(text, items[i].Caret, breakEnds) != items[i].Caret)
             {
-                return carets.With(s => s.IsEmpty ? s with { Anchor = Settled(text, s.Caret), Caret = Settled(text, s.Caret) } : s);
+                return carets.With(s => s.IsEmpty ? s with { Anchor = Settled(text, s.Caret, breakEnds), Caret = Settled(text, s.Caret, breakEnds) } : s);
             }
         }
         return carets;
@@ -335,8 +347,8 @@ public sealed partial class Vim(VimRegisters registers)
         }
         changeExtent = null;
         SelectionSet back = blockCorner is { } corner && corner <= text.Length
-            ? SelectionSet.Single(Settled(text, corner))
-            : selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start))));
+            ? SelectionSet.Single(Settled(text, corner, breakEnds))
+            : selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start), breakEnds)));
         blockCorner = null;
         if (plans.Count == 0)
         {

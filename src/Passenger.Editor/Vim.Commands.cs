@@ -287,7 +287,7 @@ public sealed partial class Vim
     /// goes to its line's start, as Vim's does, and . does so again.</summary>
     private VimResult Joined(Command command, EditPlan? plan, TextSnapshot text, SelectionSet selections)
     {
-        int last = VimMotions.LastLine(text);
+        int last = VimMotions.LastLine(text, breakEnds);
         // . joins as many lines as there were: a count past the last line counts the lines to it.
         int reach = Math.Max(1, last - text.GetLineFromOffset(selections.Primary.Caret) + 1);
         Command kept = command.Count > reach ? command with { Count = reach } : command;
@@ -320,7 +320,7 @@ public sealed partial class Vim
                 return s;
             }
             any = true;
-            return Selection.At(Settled(text, target.Offset));
+            return Selection.At(Settled(text, target.Offset, breakEnds));
         });
         if (!any)
         {
@@ -350,15 +350,15 @@ public sealed partial class Vim
             case "<BS>":
                 return VimMotions.Left(text, caret, n, crossing: true);
             case "l":
-                return VimMotions.Right(text, caret, n, crossing: false, operating) ?? (operating ? new VimTarget(caret, VimMotionKind.Exclusive) : null);
+                return VimMotions.Right(text, caret, n, crossing: false, operating, breakEnds) ?? (operating ? new VimTarget(caret, VimMotionKind.Exclusive) : null);
             case " ":
-                return VimMotions.Right(text, caret, n, crossing: true, operating);
+                return VimMotions.Right(text, caret, n, crossing: true, operating, breakEnds);
             case "0":
                 return new VimTarget(VimMotions.LineOf(text, caret).Start, VimMotionKind.Exclusive);
             case "^":
-                return new VimTarget(Settled(text, TextNavigation.IndentEnd(text, VimMotions.LineOf(text, caret))), VimMotionKind.Exclusive);
+                return new VimTarget(Settled(text, TextNavigation.IndentEnd(text, VimMotions.LineOf(text, caret)), breakEnds), VimMotionKind.Exclusive);
             case "$":
-                return VimMotions.LineEnd(text, caret, n);
+                return VimMotions.LineEnd(text, caret, n, breakEnds);
             case "|":
                 return new VimTarget(VimMotions.OffsetAtColumn(text, text.GetLineFromOffset(caret), n - 1, view.Indent.TabWidth), VimMotionKind.Exclusive);
             case "w" or "W":
@@ -366,16 +366,16 @@ public sealed partial class Vim
             case "b" or "B":
                 return VimMotions.WordBack(text, caret, n, command.Name == "B");
             case "e" or "E":
-                return VimMotions.WordEnd(text, caret, n, command.Name == "E");
+                return VimMotions.WordEnd(text, caret, n, command.Name == "E", breakEnds);
             case "ge" or "gE":
                 return VimMotions.WordEndBack(text, caret, n, command.Name == "gE");
             case "gg":
-                return Line(text, count == 0 ? 0 : Math.Min(count - 1, VimMotions.LastLine(text)));
+                return Line(text, count == 0 ? 0 : Math.Min(count - 1, VimMotions.LastLine(text, breakEnds)));
             case "G":
-                return Line(text, count == 0 ? VimMotions.LastLine(text) : Math.Min(count - 1, VimMotions.LastLine(text)));
+                return Line(text, count == 0 ? VimMotions.LastLine(text, breakEnds) : Math.Min(count - 1, VimMotions.LastLine(text, breakEnds)));
             case "j" or "k" or "+" or "-" or "<CR>" or "_":
                 long lines = command.Name switch { "j" or "+" or "<CR>" => n, "_" => n - 1, _ => -n };
-                if (VimMotions.LinesAway(text, caret, lines) is not { } line)
+                if (VimMotions.LinesAway(text, caret, lines, breakEnds) is not { } line)
                 {
                     return null;
                 }
@@ -387,29 +387,29 @@ public sealed partial class Vim
                 int row = view.RowsAway(text, caret, command.Name == "gj" ? n : -n);
                 return row == caret ? null : new VimTarget(row, VimMotionKind.Exclusive);
             case "g_":
-                if (n > 1 && text.GetLineFromOffset(caret) >= VimMotions.LastLine(text))
+                if (n > 1 && text.GetLineFromOffset(caret) >= VimMotions.LastLine(text, breakEnds))
                 {
                     return null;
                 }
-                int last = (int)Math.Min(text.GetLineFromOffset(caret) + (long)n - 1, VimMotions.LastLine(text));
+                int last = (int)Math.Min(text.GetLineFromOffset(caret) + (long)n - 1, VimMotions.LastLine(text, breakEnds));
                 LineSpan span = text.GetLine(last);
                 int end = span.End;
                 while (end > span.Start && text[end - 1] is ' ' or '\t')
                 {
                     end--;
                 }
-                return new VimTarget(Settled(text, Math.Max(span.Start, VimMotions.StepBack(text, end))), VimMotionKind.Inclusive);
+                return new VimTarget(Settled(text, Math.Max(span.Start, VimMotions.StepBack(text, end)), breakEnds), VimMotionKind.Inclusive);
             case "f" or "F" or "t" or "T":
                 lastFind = (argument!, command.Name is "F" or "T", command.Name is "t" or "T");
                 return VimMotions.Find(text, caret, n, argument!, command.Name is "F" or "T", command.Name is "t" or "T", again: false);
             case ";" or ",":
                 return lastFind is { } find ? VimMotions.Find(text, caret, n, find.Target, find.Back != (command.Name == ","), find.Till, again: true) : null;
             case "%":
-                return VimMotions.MatchPair(text, caret, count);
+                return VimMotions.MatchPair(text, caret, count, breakEnds);
             case "{" or "}":
-                return VimMotions.Paragraph(text, caret, n, command.Name == "}");
+                return VimMotions.Paragraph(text, caret, n, command.Name == "}", breakEnds);
             case "(" or ")":
-                return VimMotions.Sentence(text, caret, n, command.Name == ")");
+                return VimMotions.Sentence(text, caret, n, command.Name == ")", breakEnds);
             case "n" or "N":
                 return SearchTarget(text, caret, n, reverse: command.Name == "N");
             case "*" or "#" or "g*" or "g#":
@@ -418,19 +418,19 @@ public sealed partial class Vim
                 return MarkTarget(text, argument!, exact: command.Name == "`", view);
             case "H" or "M" or "L":
                 VimScreenLine at = command.Name switch { "H" => VimScreenLine.Top, "L" => VimScreenLine.Bottom, _ => VimScreenLine.Middle };
-                return Line(text, Math.Clamp(view.LineShown(text, at, n), 0, VimMotions.LastLine(text)));
+                return Line(text, Math.Clamp(view.LineShown(text, at, n), 0, VimMotions.LastLine(text, breakEnds)));
         }
         return null;
     }
 
-    private static VimTarget Line(TextSnapshot text, int line) => new(VimMotions.FirstNonBlank(text, line), VimMotionKind.Linewise);
+    private VimTarget Line(TextSnapshot text, int line) => new(VimMotions.FirstNonBlank(text, line, breakEnds), VimMotionKind.Linewise);
 
     private VimResult Vertically(TextSnapshot text, SelectionSet selections, int lines, bool rows, IVimView view)
     {
         int tab = view.Indent.TabWidth;
         if (rows)
         {
-            SelectionSet stepped = selections.With(s => Selection.At(Settled(text, view.RowsAway(text, s.Caret, lines))));
+            SelectionSet stepped = selections.With(s => Selection.At(Settled(text, view.RowsAway(text, s.Caret, lines), breakEnds)));
             return stepped.SameAs(selections) ? VimResult.Held : new VimResult(true, stepped);
         }
         int[] columns = wantedFor is { } known && known.SameAs(selections) ? wanted : [.. selections.Items.Select(s => CaretColumn(text, s.Caret, tab))];
@@ -438,8 +438,8 @@ public sealed partial class Vim
         for (int i = 0; i < selections.Count; i++)
         {
             int caret = selections.Items[i].Caret;
-            moved.Add(VimMotions.LinesAway(text, caret, lines) is { } line
-                ? Selection.At(columns[i] == int.MaxValue ? Settled(text, text.GetLine(line).End) : VimMotions.OffsetAtColumn(text, line, columns[i], tab))
+            moved.Add(VimMotions.LinesAway(text, caret, lines, breakEnds) is { } line
+                ? Selection.At(columns[i] == int.MaxValue ? Settled(text, text.GetLine(line).End, breakEnds) : VimMotions.OffsetAtColumn(text, line, columns[i], tab))
                 : selections.Items[i]);
         }
         SelectionSet result = SelectionSet.Create(moved, selections.PrimaryIndex);
@@ -469,19 +469,19 @@ public sealed partial class Vim
         if (command.Name == "line")
         {
             int first = text.GetLineFromOffset(caret);
-            if (n > 1 && first >= VimMotions.LastLine(text))
+            if (n > 1 && first >= VimMotions.LastLine(text, breakEnds))
             {
                 // Lines asked for below the last fail, as j would there.
                 return null;
             }
-            int last = (int)Math.Min(first + (long)n - 1, VimMotions.LastLine(text));
+            int last = (int)Math.Min(first + (long)n - 1, VimMotions.LastLine(text, breakEnds));
             // A yank leaves the caret; a change of case over one line goes to its first non-blank, as Vim's do.
-            int landing = n == 1 && op != "y" ? Math.Min(caret, VimMotions.FirstNonBlank(text, first)) : caret;
+            int landing = n == 1 && op != "y" ? Math.Min(caret, VimMotions.FirstNonBlank(text, first, breakEnds)) : caret;
             return (new VimSpan(text.GetLineStart(first), text.GetLineStart(last), true), landing);
         }
         if (command.Name is "i" or "a")
         {
-            return VimTextObjects.Of(text, caret, command.Argument!, command.Name == "i", n) is { } found ? (found, found.Start) : null;
+            return VimTextObjects.Of(text, caret, command.Argument!, command.Name == "i", n, breakEnds) is { } found ? (found, found.Start) : null;
         }
         if (op == "c" && command.Name is "w" or "W" && caret < text.Length && !char.IsWhiteSpace(text[caret]))
         {
@@ -493,7 +493,7 @@ public sealed partial class Vim
                 bool atEnd = end + 1 >= text.Length || VimMotions.Kind(text[end + 1], big) != VimMotions.Kind(text[end], big);
                 if (i > 0 || !atEnd)
                 {
-                    end = VimMotions.WordEnd(text, end, 1, big)?.Offset ?? end;
+                    end = VimMotions.WordEnd(text, end, 1, big, breakEnds)?.Offset ?? end;
                 }
             }
             return (new VimSpan(caret, TextNavigation.NextGrapheme(text, end), false), caret);

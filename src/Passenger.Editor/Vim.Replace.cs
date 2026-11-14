@@ -173,7 +173,7 @@ public sealed partial class Vim
         {
             lastChange = new ChangeMade(begun.Command.Keys, begun.Command.Count, typed);
         }
-        SelectionSet back = selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start))));
+        SelectionSet back = selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start), breakEnds)));
         if (plans.Count == 0)
         {
             return new VimResult(true, back);

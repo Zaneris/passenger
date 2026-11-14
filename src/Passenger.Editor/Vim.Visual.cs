@@ -64,6 +64,7 @@ public sealed partial class Vim
     /// the mode changed.</summary>
     public bool FollowSelections(TextSnapshot text, SelectionSet selections, IVimView? view = null)
     {
+        breakEnds = (view ?? PlainView).KeepsFinalLineBreak;
         if (Mode == VimMode.Normal && selections.Items.Any(s => !s.IsEmpty))
         {
             pending.Clear();
@@ -128,8 +129,8 @@ public sealed partial class Vim
                 regions[i] = regions[i] with
                 {
                     Cursor = mode == VimMode.Visual
-                        ? VimMotions.Right(text, cursor, count - 1, crossing: false, operating: true)?.Offset ?? cursor
-                        : VimMotions.LinesAway(text, cursor, count - 1) is { } line ? VimMotions.OffsetAtColumn(text, line, VimMotions.ColumnOf(text, cursor, tab), tab) : cursor,
+                        ? VimMotions.Right(text, cursor, count - 1, crossing: false, operating: true, breakEnds)?.Offset ?? cursor
+                        : VimMotions.LinesAway(text, cursor, count - 1, breakEnds) is { } line ? VimMotions.OffsetAtColumn(text, line, VimMotions.ColumnOf(text, cursor, tab), tab) : cursor,
                 };
             }
             if (mode == VimMode.VisualBlock)
@@ -406,8 +407,8 @@ public sealed partial class Vim
         RememberVisual(text, view);
         int tab = view.Indent.TabWidth;
         List<Selection> carets = Mode == VimMode.VisualBlock
-            ? [Selection.At(Settled(text, VimMotions.OffsetAtColumn(text, text.GetLineFromOffset(regions[0].Cursor), blockColumns.Cursor, tab)))]
-            : [.. regions.Select(r => Selection.At(Settled(text, r.Cursor)))];
+            ? [Selection.At(Settled(text, VimMotions.OffsetAtColumn(text, text.GetLineFromOffset(regions[0].Cursor), blockColumns.Cursor, tab), breakEnds))]
+            : [.. regions.Select(r => Selection.At(Settled(text, r.Cursor, breakEnds)))];
         Mode = VimMode.Normal;
         shownVisual = null;
         return new VimResult(true, SelectionSet.Create(carets, Math.Clamp(visualPrimary, 0, carets.Count - 1)));
@@ -480,7 +481,7 @@ public sealed partial class Vim
             {
                 case "j" or "k":
                     aim = block ? (blockColumns.ToEnd ? int.MaxValue : blockColumns.Cursor) : visualAims[i] >= 0 ? visualAims[i] : CaretColumn(text, cursor, tab);
-                    moved = VimMotions.LinesAway(text, cursor, command.Name == "j" ? n : -n) is { } line
+                    moved = VimMotions.LinesAway(text, cursor, command.Name == "j" ? n : -n, breakEnds) is { } line
                         ? aim == int.MaxValue ? LineEndOf(text, line) : VimMotions.OffsetAtColumn(text, line, aim, tab)
                         : null;
                     break;
@@ -489,11 +490,11 @@ public sealed partial class Vim
                     moved = row == cursor ? null : row;
                     break;
                 case "$":
-                    moved = VimMotions.LineEnd(text, cursor, n) is { } end ? LineEndOf(text, text.GetLineFromOffset(end.Offset)) : null;
+                    moved = VimMotions.LineEnd(text, cursor, n, breakEnds) is { } end ? LineEndOf(text, text.GetLineFromOffset(end.Offset)) : null;
                     aim = int.MaxValue;
                     break;
                 case "l" or " ":
-                    moved = VimMotions.Right(text, cursor, n, crossing: command.Name == " ", operating: true)?.Offset;
+                    moved = VimMotions.Right(text, cursor, n, crossing: command.Name == " ", operating: true, breakEnds)?.Offset;
                     break;
                 default:
                     moved = Target(command, text, cursor, operating: false, view)?.Offset;
@@ -516,12 +517,13 @@ public sealed partial class Vim
     }
 
     /// <summary>Where a visual cursor stands at a line's end: on its line break, at the start of an empty line.</summary>
-    private static int LineEndOf(TextSnapshot text, int line) => text.GetLine(Math.Min(line, VimMotions.LastLine(text))).End;
+    private int LineEndOf(TextSnapshot text, int line) => text.GetLine(Math.Min(line, VimMotions.LastLine(text, breakEnds))).End;
 
     /// <summary>A text object in visual mode: the object at a single-character stretch, else the stretch carried on to
     /// the end of the next one; a block or a tag in place of a longer stretch is the one around its start (or the first
     /// after it), the one around that where the stretch already holds more than a character of it. An object of lines
-    /// turns the mode linewise; a block or a tag, or any object at a single place in linewise mode, turns it charwise.</summary>
+    /// turns the mode linewise; a block or a tag, any object at a single place in linewise mode, and words carrying a
+    /// stretch on forward there, turn it charwise.</summary>
     private VimResult VisualObject(TextSnapshot text, string key, bool inner, int n, IVimView view)
     {
         bool enclosing = key is "(" or ")" or "b" or "{" or "}" or "B" or "[" or "]" or "<" or ">" or "t";
@@ -530,9 +532,26 @@ public sealed partial class Vim
         {
             Region r = regions[i];
             bool single = r.Anchor == r.Cursor;
+            if (key == "p" && (!single || Mode == VimMode.VisualLine))
+            {
+                if (ParagraphOver(text, r, inner, n) is { } over)
+                {
+                    regions[i] = over;
+                }
+                continue;
+            }
+            if (!single && r.Cursor < r.Anchor && inner && key is "w" or "W")
+            {
+                if (WordsBack(text, r.Cursor, n, key == "W") is { } back)
+                {
+                    regions[i] = r with { Cursor = back };
+                    Mode = Mode == VimMode.VisualLine ? VimMode.Visual : Mode;
+                }
+                continue;
+            }
             int at = single ? r.Cursor : Math.Min(CharEnd(text, r.Cursor), text.Length);
             // A stretch reaching the text's last character has nothing after it to carry on to, and keeps as it is.
-            VimSpan? found = !single && enclosing ? Around(text, r, key, inner, n) : at >= text.Length ? null : VimTextObjects.Of(text, at, key, inner, n);
+            VimSpan? found = !single && enclosing ? Around(text, r, key, inner, n) : at >= text.Length ? null : VimTextObjects.Of(text, at, key, inner, n, breakEnds);
             if (found is not { } span)
             {
                 continue;
@@ -545,7 +564,7 @@ public sealed partial class Vim
             }
             int last = Math.Max(span.Start, VimMotions.StepBack(text, span.End));
             regions[i] = single || enclosing ? new Region(span.Start, last) : r with { Cursor = last };
-            if (enclosing ? was != VimMode.Visual : was == VimMode.VisualLine && single)
+            if (enclosing ? was != VimMode.Visual : was == VimMode.VisualLine && (single || (key is "w" or "W" && r.Cursor >= r.Anchor)))
             {
                 Mode = VimMode.Visual;
             }
@@ -558,12 +577,58 @@ public sealed partial class Vim
         return ShowVisual(text, view);
     }
 
+    /// <summary>ip and ap over a stretch on one line: the paragraph around its cursor taken whole, linewise, one of a
+    /// single line in linewise mode carried on as a longer stretch is; over several lines, its cursor carried on by
+    /// paragraphs to a line's start, up where it stands above where it began, as far as the text's edge, the mode kept;
+    /// null where there is no paragraph to take.</summary>
+    private Region? ParagraphOver(TextSnapshot text, Region r, bool inner, int n)
+    {
+        int cursorLine = text.GetLineFromOffset(r.Cursor);
+        if (cursorLine == text.GetLineFromOffset(r.Anchor))
+        {
+            if (VimTextObjects.Of(text, r.Cursor, "p", inner, n, breakEnds) is not { } around)
+            {
+                return null;
+            }
+            bool oneLine = text.GetLineFromOffset(around.Start) == text.GetLineFromOffset(around.End);
+            if (!(Mode == VimMode.VisualLine && oneLine && text.GetLineFromOffset(around.Start) == cursorLine))
+            {
+                Mode = VimMode.VisualLine;
+                return new Region(around.Start, around.End);
+            }
+        }
+        return r with { Cursor = text.GetLineStart(VimTextObjects.ParagraphsOn(text, cursorLine, r.Cursor < r.Anchor, n, inner, breakEnds)) };
+    }
+
+    /// <summary>iw and iW over a stretch whose cursor stands before where it began: the cursor carried back over
+    /// <paramref name="n"/> runs (words, or the white between), each from the character before it, a line's start going
+    /// on from the line before; null at the text's start.</summary>
+    private static int? WordsBack(TextSnapshot text, int cursor, int n, bool bigWord)
+    {
+        int at = cursor;
+        for (int i = 0; i < n; i++)
+        {
+            if (at <= 0)
+            {
+                return null;
+            }
+            int before = VimMotions.StepBack(text, at);
+            LineSpan line = VimMotions.LineOf(text, before);
+            if (line.Length > 0 && before >= line.End)
+            {
+                before = VimMotions.StepBack(text, line.End);
+            }
+            at = VimTextObjects.RunStart(text, before, bigWord);
+        }
+        return at;
+    }
+
     /// <summary>The block or tag a stretch of several characters is taken to: the one around its start or the first
     /// after, or the one around that where the stretch already holds all of it, and more than a character.</summary>
-    private static VimSpan? Around(TextSnapshot text, Region r, string key, bool inner, int n)
+    private VimSpan? Around(TextSnapshot text, Region r, string key, bool inner, int n)
     {
-        VimSpan? found = r.Low >= text.Length ? null : VimTextObjects.Of(text, r.Low, key, inner, n);
+        VimSpan? found = r.Low >= text.Length ? null : VimTextObjects.Of(text, r.Low, key, inner, n, breakEnds);
         bool held = found is { } span && span.Start >= r.Low && span.End <= CharEnd(text, r.High) && CharEnd(text, span.Start) < span.End;
-        return held ? VimTextObjects.Of(text, r.Low, key, inner, n + 1) : found;
+        return held ? VimTextObjects.Of(text, r.Low, key, inner, n + 1, breakEnds) : found;
     }
 }

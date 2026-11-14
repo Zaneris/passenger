@@ -47,7 +47,7 @@ public sealed partial class Vim
         stretches.Sort((a, b) => a.Start.CompareTo(b.Start));
         if (op != "y" && view.Refuses is { } why)
         {
-            return Refused(why, SelectionSet.Create([.. stretches.Select(t => Selection.At(Settled(text, t.Landing)))], Math.Min(selections.PrimaryIndex, stretches.Count - 1)));
+            return Refused(why, SelectionSet.Create([.. stretches.Select(t => Selection.At(Settled(text, t.Landing, breakEnds)))], Math.Min(selections.PrimaryIndex, stretches.Count - 1)));
         }
         VimRegister taken = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
         VimResult result = op switch
@@ -132,7 +132,7 @@ public sealed partial class Vim
         return LineEndings.In(text.GetText(s.Start, s.End - s.Start), "\n");
     }
 
-    private static VimResult Delete(TextSnapshot text, SelectionSet selections, List<Stretch> stretches)
+    private VimResult Delete(TextSnapshot text, SelectionSet selections, List<Stretch> stretches)
     {
         List<Stretch> merged = Merged(stretches);
         List<TextEdit> edits = [.. merged.Where(s => s.End > s.Start).Select(s => new TextEdit(s.Start, s.End - s.Start, string.Empty))];
@@ -146,15 +146,15 @@ public sealed partial class Vim
             Stretch? mine = Mine(stretches, c.Caret);
             if (mine is not { } s)
             {
-                return Selection.At(Settled(after, TextEditing.MapOffset(c.Caret, edits, false)));
+                return Selection.At(Settled(after, TextEditing.MapOffset(c.Caret, edits, false), breakEnds));
             }
             int start = TextEditing.MapOffset(s.Start, edits, false);
             if (!s.Lines)
             {
-                return Selection.At(Settled(after, start));
+                return Selection.At(Settled(after, start, breakEnds));
             }
-            int line = Math.Min(after.GetLineFromOffset(Math.Min(start, after.Length)), VimMotions.LastLine(after));
-            return Selection.At(VimMotions.FirstNonBlank(after, line));
+            int line = Math.Min(after.GetLineFromOffset(Math.Min(start, after.Length)), VimMotions.LastLine(after, breakEnds));
+            return Selection.At(VimMotions.FirstNonBlank(after, line, breakEnds));
         });
         return new VimResult(true, Edits: [new EditPlan(edits, carets, EditKind.Other)]);
     }
@@ -197,7 +197,7 @@ public sealed partial class Vim
         return InsertAfter(text, plan, command, lines ? "cc" : "c");
     }
 
-    private static VimResult Yank(TextSnapshot text, SelectionSet selections, List<Stretch> stretches, IVimView view)
+    private VimResult Yank(TextSnapshot text, SelectionSet selections, List<Stretch> stretches, IVimView view)
     {
         SelectionSet carets = selections.With(c =>
         {
@@ -206,12 +206,12 @@ public sealed partial class Vim
             {
                 return c;
             }
-            return Selection.At(Settled(text, s.Lines ? s.Landing : s.Start));
+            return Selection.At(Settled(text, s.Lines ? s.Landing : s.Start, breakEnds));
         });
         return new VimResult(true, carets);
     }
 
-    private static VimResult Shift(TextSnapshot text, SelectionSet selections, List<Stretch> stretches, bool right, IVimView view, int times = 1)
+    private VimResult Shift(TextSnapshot text, SelectionSet selections, List<Stretch> stretches, bool right, IVimView view, int times = 1)
     {
         IndentOptions indent = view.Indent;
         SortedSet<int> lines = [];
@@ -244,7 +244,7 @@ public sealed partial class Vim
         SelectionSet carets = selections.With(c =>
         {
             Stretch? mine = Mine(stretches, c.Caret);
-            return mine is { } s ? Selection.At(VimMotions.FirstNonBlank(after, s.First)) : Selection.At(Settled(after, TextEditing.MapOffset(c.Caret, edits, false)));
+            return mine is { } s ? Selection.At(VimMotions.FirstNonBlank(after, s.First, breakEnds)) : Selection.At(Settled(after, TextEditing.MapOffset(c.Caret, edits, false), breakEnds));
         });
         return edits.Count == 0 ? new VimResult(true, carets) : new VimResult(true, Edits: [new EditPlan(edits, carets, EditKind.Other)]);
     }
@@ -267,9 +267,9 @@ public sealed partial class Vim
 
     /// <summary>=: the lines the stretches span laid out by the host as its Reformat Code lays them out, each caret on its
     /// stretch's first line's first non-blank.</summary>
-    private static VimResult Reindent(TextSnapshot text, SelectionSet selections, List<Stretch> stretches)
+    private VimResult Reindent(TextSnapshot text, SelectionSet selections, List<Stretch> stretches)
     {
-        SelectionSet carets = selections.With(c => Mine(stretches, c.Caret) is { } s ? Selection.At(VimMotions.FirstNonBlank(text, s.First)) : c);
+        SelectionSet carets = selections.With(c => Mine(stretches, c.Caret) is { } s ? Selection.At(VimMotions.FirstNonBlank(text, s.First, breakEnds)) : c);
         return new VimResult(true, carets) { Request = new VimRequest(VimRequestKind.Reformat) { Lines = LinesOf(stretches) } };
     }
 
@@ -285,10 +285,10 @@ public sealed partial class Vim
         {
             if (stay || Mine(stretches, c.Caret) is not { } s)
             {
-                return Selection.At(Settled(after, wrapped.Map(c.Caret)));
+                return Selection.At(Settled(after, wrapped.Map(c.Caret), breakEnds));
             }
             int end = TextEditing.MapOffset(text.GetLine(s.Last).End, edits, true);
-            return Selection.At(VimMotions.FirstNonBlank(after, after.GetLineFromOffset(Math.Min(end, after.Length))));
+            return Selection.At(VimMotions.FirstNonBlank(after, after.GetLineFromOffset(Math.Min(end, after.Length)), breakEnds));
         });
         return edits.Count == 0 ? new VimResult(true, carets) : new VimResult(true, Edits: [new EditPlan(edits, carets, EditKind.Other)]);
     }
@@ -296,7 +296,7 @@ public sealed partial class Vim
     private static string IndentOf(int width, IndentOptions indent) =>
         indent.UseTabs && indent.TabWidth > 0 ? new string('\t', width / indent.TabWidth) + new string(' ', width % indent.TabWidth) : new string(' ', width);
 
-    private static VimResult Case(Command command, string op, TextSnapshot text, SelectionSet selections, List<Stretch> stretches, IVimView view)
+    private VimResult Case(Command command, string op, TextSnapshot text, SelectionSet selections, List<Stretch> stretches, IVimView view)
     {
         List<TextEdit> edits = [];
         foreach (Stretch s in Merged(stretches))
@@ -319,9 +319,9 @@ public sealed partial class Vim
             }
             if (!s.Lines)
             {
-                return Selection.At(Settled(text, s.Start));
+                return Selection.At(Settled(text, s.Start, breakEnds));
             }
-            return Selection.At(Settled(text, s.Landing));
+            return Selection.At(Settled(text, s.Landing, breakEnds));
         });
         return edits.Count == 0 ? new VimResult(true, carets) : new VimResult(true, Edits: [new EditPlan(edits, carets, EditKind.Other)]);
     }
@@ -363,7 +363,7 @@ public sealed partial class Vim
     /// <summary>p and P: the register's text after (or before) each caret, or its lines below (or above) the caret's line,
     /// <paramref name="count"/> times; each caret its own piece where the register holds one for each. gp and gP
     /// (<paramref name="cursorAfter"/>) leave the caret just after what they put.</summary>
-    private static VimResult Put(VimRegister value, bool before, int count, TextSnapshot text, SelectionSet selections, IVimView view, bool cursorAfter = false)
+    private VimResult Put(VimRegister value, bool before, int count, TextSnapshot text, SelectionSet selections, IVimView view, bool cursorAfter = false)
     {
         if (value.Blockwise)
         {
@@ -430,9 +430,9 @@ public sealed partial class Vim
             shift += put.Length;
         }
         TextSnapshot after = text.Apply(edits);
-        List<Selection> carets = [.. landed.Select(p => Selection.At(!value.Linewise ? Settled(after, p)
-            : cursorAfter ? after.GetLineStart(Math.Min(after.GetLineFromOffset(p), VimMotions.LastLine(after)))
-            : VimMotions.FirstNonBlank(after, after.GetLineFromOffset(p))))];
+        List<Selection> carets = [.. landed.Select(p => Selection.At(!value.Linewise ? Settled(after, p, breakEnds)
+            : cursorAfter ? after.GetLineStart(Math.Min(after.GetLineFromOffset(p), VimMotions.LastLine(after, breakEnds)))
+            : VimMotions.FirstNonBlank(after, after.GetLineFromOffset(p), breakEnds)))];
         return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Create(carets, Math.Min(selections.PrimaryIndex, carets.Count - 1)), EditKind.Other)]);
     }
 
@@ -490,9 +490,9 @@ public sealed partial class Vim
     /// indent goes and one space comes between (two after a sentence's end with joinspaces), none after white, before a
     /// ')' or with an empty side; gJ
     /// (<paramref name="spaced"/> false) joins them as they are. The caret stands where the last join met.</summary>
-    private static EditPlan? Join(TextSnapshot text, SelectionSet selections, int n, bool spaced = true, bool sentenceSpaces = false)
+    private EditPlan? Join(TextSnapshot text, SelectionSet selections, int n, bool spaced = true, bool sentenceSpaces = false)
     {
-        int lastLine = VimMotions.LastLine(text);
+        int lastLine = VimMotions.LastLine(text, breakEnds);
         List<TextEdit> edits = [];
         List<(int LineStart, int Landing)> landings = [];
         int reached = -1;
@@ -528,12 +528,12 @@ public sealed partial class Vim
             return null;
         }
         TextSnapshot after = text.Apply(edits);
-        List<Selection> carets = [.. landings.Select(at => Selection.At(Settled(after, Math.Min(TextEditing.MapOffset(at.LineStart, edits, false) + at.Landing, after.Length))))];
+        List<Selection> carets = [.. landings.Select(at => Selection.At(Settled(after, Math.Min(TextEditing.MapOffset(at.LineStart, edits, false) + at.Landing, after.Length), breakEnds)))];
         return new EditPlan(edits, SelectionSet.Create(carets, Math.Min(selections.PrimaryIndex, carets.Count - 1)), EditKind.Other);
     }
 
     /// <summary>~: the case of the <paramref name="n"/> characters from each caret on its line toggled, the caret going past them.</summary>
-    private static EditPlan? Toggle(TextSnapshot text, SelectionSet selections, int n)
+    private EditPlan? Toggle(TextSnapshot text, SelectionSet selections, int n)
     {
         List<TextEdit> edits = [];
         List<int> ends = [];
@@ -554,7 +554,7 @@ public sealed partial class Vim
             return null;
         }
         TextSnapshot after = text.Apply(edits);
-        List<Selection> carets = [.. ends.Select(e => Selection.At(Settled(after, e)))];
+        List<Selection> carets = [.. ends.Select(e => Selection.At(Settled(after, e, breakEnds)))];
         return new EditPlan(edits, SelectionSet.Create(carets, Math.Min(selections.PrimaryIndex, carets.Count - 1)), EditKind.Other);
     }
 }

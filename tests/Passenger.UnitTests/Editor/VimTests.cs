@@ -263,6 +263,83 @@ public class VimTests
     public void Less_common_corners_do_what_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A text whose file keeps no final line break: where a change leaves its last line empty, that line is a
+    /// line, as Vim's buffer holds it, which the caret stands on and j, G and dd reach.</summary>
+    [Theory]
+    [InlineData("a\n|b", "S<Esc>", "a\n|")]
+    [InlineData("a\n|b", "cc<Esc>", "a\n|")]
+    [InlineData("a\n|b", "o<Esc>", "a\nb\n|")]
+    [InlineData("a\n|b", "o<Esc>ix<Esc>", "a\nb\n|x")]
+    [InlineData("a\n|b", "S<Esc>kj", "a\n|")]
+    [InlineData("a\n|b", "S<Esc>gg G", "a\n|")]
+    [InlineData("a\nb\n\nse|ven eight", "ddp", "a\nb\n\n|seven eight")]
+    [InlineData("a\n|b", "d)", "a\n|")]
+    [InlineData("a\n|b", "S<Esc>ix<Esc>", "a\n|x")]
+    [InlineData("a\n|b", "S<Esc>dd", "|a")]
+    [InlineData("a\n|b", "o<Esc>k$j", "a\nb\n|")]
+    public void A_file_without_a_final_line_break_keeps_an_emptied_last_line_as_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A visual J with nothing below to join ends visual mode all the same, the caret at the stretch's start.</summary>
+    [Theory]
+    [InlineData("|a b", "vlJ", "|a b")]
+    [InlineData("a\n|b c", "vlJ", "a\n|b c")]
+    [InlineData("a\n|b c", "VJ", "a\n|b c")]
+    [InlineData("a\n|b c", "<C-v>lJ", "a\n|b c")]
+    [InlineData("a\n|b c", "vlJx", "a\n| c")]
+    [InlineData("x\na b| c", "vhJ", "x\na |b c")]
+    public void A_visual_join_on_the_last_line_ends_visual_mode_at_the_stretchs_start(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A count of sentences running into the text's edge with sentences still to go fails, as Vim's does, and (
+    /// reaching the text's first sentence goes to the text's very start, its leading blanks too.</summary>
+    [Theory]
+    [InlineData("o|ne two", "2(", "o|ne two")]
+    [InlineData("one. two |three", "2(", "|one. two three")]
+    [InlineData("one. tw|o three", "2)", "one. tw|o three")]
+    [InlineData("one. tw|o three", "2d)", "one. tw|o three")]
+    [InlineData("one. two. th|ree", "2(", "one. |two. three")]
+    [InlineData("one. two. th|ree", "d2(", "one. |ree")]
+    [InlineData("  al|pha beta", "d(", "|pha beta")]
+    [InlineData("  al|pha beta", "(", "|  alpha beta")]
+    [InlineData("x\n  al|pha beta", "d(", "|pha beta")]
+    public void Sentence_counts_fail_at_the_texts_edge_and_the_first_sentence_starts_at_the_text(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>Words and paragraphs over a longer visual stretch: iw in linewise mode carried forward turns it charwise,
+    /// back carries the cursor back word by word; ip on one line takes the paragraph whole, linewise, and over several
+    /// lines carries the cursor on by paragraphs, up or down, as far as the text's edge.</summary>
+    [Theory]
+    [InlineData("f|oo(a) bar\nnext\nx", "Vjiwd", "|f\nx")]
+    [InlineData("one t|wo three\nfour", "Vjiwd", "|")]
+    [InlineData("one t|wo three\nfour five", "Vjawd", "one |t")]
+    [InlineData("a b c d e f\ng h |i j k l\nm n o p q r", "Vliw~", "a b c d e f\ng h |I J k l\nm n o p q r")]
+    [InlineData("a b c d e f\ng h |i j k l\nm n o p q r", "Vl2iwd", "a b c d e f\ng h |k l\nm n o p q r")]
+    [InlineData("a b c d e f\ng h |i j k l\nm n o p q r", "VhiwP", "a b c d e f\ng | j k l\nm n o p q r")]
+    [InlineData("a b c d e f\ng h |i j k l\nm n o p q r", "Vhiwd", "a b c d e f\ng | j k l\nm n o p q r")]
+    [InlineData("one t|wo three\nfour", "ViWd", "one | three\nfour")]
+    [InlineData("a b c d e f\ng h |i j k l\nm n o p q r", "Vk2iwd", "a | j k l\nm n o p q r")]
+    [InlineData("a b c d e f\n|g h i j k l\nm n o p q r", "Vkiwd", "|m n o p q r")]
+    [InlineData("a b c d e f\ng h |i j k l\nm n o p q r", "vhiwd", "a b c d e f\ng | j k l\nm n o p q r")]
+    [InlineData("a b c d e f\ng h |i j k l\nm n o p q r", "vh3iwd", "a b c d e f\n| j k l\nm n o p q r")]
+    [InlineData("a b\n\n|c d", "Vkiwd", "a | d")]
+    [InlineData("a b\n\n|c d", "Vk2iwd", "a| d")]
+    [InlineData("a b\nc |d\n\ne f\ng h\n\ni j", "vlipd", "|\ne f\ng h\n\ni j")]
+    [InlineData("a b\nc |d\n\ne f\ng h\n\ni j", "vjipd", "a b\nc | h\n\ni j")]
+    [InlineData("a b\nc |d\n\ne f\ng h\n\ni j", "vjapd", "a b\nc |i j")]
+    [InlineData("a b\nc d\n\ne |f\ng h\n\ni j", "vkipd", "|\ng h\n\ni j")]
+    [InlineData("a b\nc d\n\ne |f\ng h\n\ni j", "Vkipd", "|g h\n\ni j")]
+    [InlineData("a b\nc d\n\ne |f\ng h\n\ni j", "Vk2ipd", "|g h\n\ni j")]
+    [InlineData("a b\n\n|c d\n\ne f", "Vipd", "a b\n\n|e f")]
+    [InlineData("a b\n\n|c d\n\ne f", "Vipipd", "a b\n|")]
+    [InlineData("a b\n|c d\n\ne f", "veipY", "|a b\nc d\n\ne f")]
+    [InlineData("a b\n|c d\n\ne f", "vlipy", "|a b\nc d\n\ne f")]
+    [InlineData("a b\nc d\n\ne |f\ng h\n\ni j", "Vjjjipd", "a b\nc d\n|")]
+    [InlineData("|a b\nc d", "Vjipd", "|")]
+    [InlineData("|a b\nc d", "vjipd", "| d")]
+    public void Words_and_paragraphs_over_a_longer_visual_stretch_go_where_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Theory]
     [InlineData("a|bc\ndef", "\"ayy\"ap", "abc\n|abc\ndef")]
     [InlineData("a|bc\ndef", "\"ayy\"Ayy\"ap", "abc\n|abc\nabc\ndef")]
@@ -743,9 +820,9 @@ public class VimTests
     {
         (TextSnapshot text, _) = Marked.Parse("a|b\n\ncd");
         SelectionSet put = SelectionSet.Create([new Selection(2, 2, 40), new Selection(3, 3), new Selection(4, 6)], 0);
-        SelectionSet settled = Vim.Settled(text, put);
+        SelectionSet settled = Vim.Settled(text, put, breakEnds: true);
         Assert.Equal([new Selection(1, 1, 40), new Selection(3, 3), new Selection(4, 6)], settled.Items);
-        Assert.Same(settled, Vim.Settled(text, settled));
+        Assert.Same(settled, Vim.Settled(text, settled, breakEnds: true));
     }
 
     [Fact]
@@ -1097,20 +1174,30 @@ public class VimTests
         return result;
     }
 
-    /// <summary>The keys pressed in turn on the marked text, insert mode's typing standing in for the editor's.</summary>
+    /// <summary>The keys pressed in turn on the marked text, insert mode's typing standing in for the editor's, the
+    /// text keeping a final line break as the file it stands for would (<see cref="FileOf"/>).</summary>
     private static string Run(string before, string keys) => Run(new Vim(), before, keys);
+
+    /// <summary>A view of a text as a file read with it: one ending in a line break keeps a final line break, as Vim's
+    /// 'eol' is set reading it, one ending without keeps none.</summary>
+    public static VimTextView FileOf(string marked)
+    {
+        string text = Marked.Parse(marked).Text.ToString();
+        return new VimTextView(new IndentOptions()) { KeepsFinalLineBreak = text.Length == 0 || text.EndsWith('\n') };
+    }
 
     private static string Run(Vim vim, string before, string keys, IVimView? view = null)
     {
         (TextSnapshot text, SelectionSet carets) = Marked.Parse(before);
-        (text, carets) = Drive(vim, text, carets, Keys(keys), stopAtFailure: false, view);
+        (text, carets) = Drive(vim, text, carets, Keys(keys), stopAtFailure: false, view ?? FileOf(before));
         return Marked.Show(text, carets);
     }
 
     /// <summary>The keys through Vim as an editor takes them: what Vim does done, and in insert mode each key typed as
     /// the editor types it, Enter carrying its line's indent and Backspace taking a character back.</summary>
-    public static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, string keys, bool stopAtFailure = false) =>
-        Drive(vim, text, carets, Keys(keys), stopAtFailure);
+    public static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, string keys, bool stopAtFailure = false,
+        IVimView? view = null) =>
+        Drive(vim, text, carets, Keys(keys), stopAtFailure, view);
 
     private static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, IEnumerable<string> keys, bool stopAtFailure,
         IVimView? view = null)
@@ -1141,7 +1228,7 @@ public class VimTests
                     {
                         carets = at;
                     }
-                    carets = Vim.Settled(text, carets);
+                    carets = Vim.Settled(text, carets, view?.KeepsFinalLineBreak ?? true);
                     if (ran.MessageIsError)
                     {
                         break;
@@ -1179,7 +1266,7 @@ public class VimTests
             }
             if (vim.Mode == VimMode.Normal)
             {
-                carets = Vim.Settled(text, carets);
+                carets = Vim.Settled(text, carets, view?.KeepsFinalLineBreak ?? true);
             }
         }
         return (text, carets);

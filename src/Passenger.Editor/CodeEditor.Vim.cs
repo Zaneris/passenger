@@ -464,7 +464,7 @@ public sealed partial class CodeEditor
             VimModeChanged?.Invoke(this, EventArgs.Empty);
             FollowVimComposing();
         }
-        return vim.Mode == VimMode.Normal ? Vim.Settled(document.Snapshot, carets) : carets;
+        return vim.Mode == VimMode.Normal ? Vim.Settled(document.Snapshot, carets, VimView.KeepsFinalLineBreak) : carets;
     }
 
     /// <summary>Where visual mode's block carets stand: its cursors, while the selections shown are its own.</summary>
@@ -507,6 +507,9 @@ public sealed partial class CodeEditor
         public int LineLength => editor.LineLength;
 
         public string? Refuses => editor.IsReadOnly ? editor.ReadOnlyWhy ?? string.Empty : null;
+
+        /// <summary>As the file was last read or saved.</summary>
+        public bool KeepsFinalLineBreak => Vim.KeepsFinalLineBreak(editor.document.Saved);
 
         public int RowsAway(TextSnapshot text, int offset, int rows)
         {

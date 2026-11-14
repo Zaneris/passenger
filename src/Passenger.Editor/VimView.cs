@@ -30,6 +30,10 @@ public interface IVimView
     /// null where the text takes changes.</summary>
     string? Refuses { get; }
 
+    /// <summary>Whether the file keeps a final line break, as Vim's 'eol' says: then the text's final line break ends it,
+    /// the empty line after it no line; else a final line break begins an empty last line, which a caret stands on.</summary>
+    bool KeepsFinalLineBreak { get; }
+
     /// <summary>gj and gk: the offset <paramref name="rows"/> rows of the screen below (above when negative), wrapped
     /// lines' rows counted, at the x the offset is drawn at; the offset itself where there is no such row.</summary>
     int RowsAway(TextSnapshot text, int offset, int rows);
@@ -58,6 +62,8 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
 
     public string? Refuses { get; init; }
 
+    public bool KeepsFinalLineBreak { get; init; } = true;
+
     public IndentOptions Indent { get; } = indent;
 
     public string LineEnding { get; } = lineEnding;
@@ -66,7 +72,7 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
 
     public int RowsAway(TextSnapshot text, int offset, int rows)
     {
-        if (VimMotions.LinesAway(text, offset, rows) is not { } line)
+        if (VimMotions.LinesAway(text, offset, rows, KeepsFinalLineBreak) is not { } line)
         {
             return offset;
         }
@@ -75,7 +81,7 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
 
     public int LineShown(TextSnapshot text, VimScreenLine at, int count)
     {
-        int last = VimMotions.LastLine(text);
+        int last = VimMotions.LastLine(text, KeepsFinalLineBreak);
         return at switch
         {
             VimScreenLine.Top => Math.Min(count - 1, last),

@@ -24,30 +24,35 @@ public static class VimMotions
 
     public static LineSpan LineOf(TextSnapshot text, int offset) => text.GetLine(text.GetLineFromOffset(offset));
 
-    /// <summary>The last line Vim would count: the empty one after a final line break is the file's end, not a line.</summary>
-    public static int LastLine(TextSnapshot text)
+    /// <summary>The last line Vim would count: where a final line break ends the text (<paramref name="breakEnds"/>, the
+    /// file keeping one, as Vim's 'eol'), the empty line after it is the file's end, not a line; where the file keeps
+    /// none, a final line break begins an empty last line.</summary>
+    public static int LastLine(TextSnapshot text, bool breakEnds)
     {
         int last = text.LineCount - 1;
-        return last > 0 && text.GetLine(last).Length == 0 ? last - 1 : last;
+        return breakEnds && last > 0 && text.GetLine(last).Length == 0 ? last - 1 : last;
     }
 
     /// <summary>Where a normal-mode caret may stand nearest the offset: on a character of its line, never past its last
-    /// one, but at the start of an empty line.</summary>
-    public static int Settled(TextSnapshot text, int offset)
+    /// one, but at the start of an empty line; never on the empty line after a final line break that ends the text.</summary>
+    public static int Settled(TextSnapshot text, int offset, bool breakEnds)
     {
         LineSpan line = LineOf(text, offset);
-        if (line.Line > LastLine(text))
+        if (line.Line > LastLine(text, breakEnds))
         {
-            // The empty line after a final line break is no line to stand on.
-            line = text.GetLine(LastLine(text));
+            line = text.GetLine(LastLine(text, breakEnds));
             offset = line.End;
         }
-        return line.Length == 0 || offset < line.End ? Math.Max(offset, line.Start) : Math.Max(StepBack(text, line.End), line.Start);
+        return SettledOn(text, line, offset);
     }
+
+    /// <summary>Where a normal-mode caret may stand on the line given nearest the offset.</summary>
+    private static int SettledOn(TextSnapshot text, LineSpan line, int offset) =>
+        line.Length == 0 || offset < line.End ? Math.Max(offset, line.Start) : Math.Max(StepBack(text, line.End), line.Start);
 
     public static int StepBack(TextSnapshot text, int offset) => offset <= 0 ? 0 : TextNavigation.PreviousGrapheme(text, offset);
 
-    public static int FirstNonBlank(TextSnapshot text, int line) => Settled(text, TextNavigation.IndentEnd(text, text.GetLine(line)));
+    public static int FirstNonBlank(TextSnapshot text, int line, bool breakEnds) => Settled(text, TextNavigation.IndentEnd(text, text.GetLine(line)), breakEnds);
 
     /// <summary>Whether only blanks stand before the offset on its line.</summary>
     public static bool InIndent(TextSnapshot text, int offset) => offset <= TextNavigation.IndentEnd(text, LineOf(text, offset));
@@ -94,7 +99,7 @@ public static class VimMotions
                 return p;
             }
         }
-        return Settled(text, line.End);
+        return SettledOn(text, line, line.End);
     }
 
     private static int CellsAt(TextSnapshot text, int offset, int column, int tabWidth)
@@ -127,7 +132,7 @@ public static class VimMotions
 
     /// <summary>l, or Space crossing into the next line (<paramref name="crossing"/>); an operator's l reaches past the
     /// line's last character.</summary>
-    public static VimTarget? Right(TextSnapshot text, int caret, int n, bool crossing, bool operating)
+    public static VimTarget? Right(TextSnapshot text, int caret, int n, bool crossing, bool operating, bool breakEnds)
     {
         int to = Repeated(n, caret, p =>
         {
@@ -135,32 +140,32 @@ public static class VimMotions
             int next = TextNavigation.NextGrapheme(text, p);
             if (crossing && (next >= line.End || p >= line.End))
             {
-                return line.Line < LastLine(text) ? (operating && p < line.End ? line.End : line.EndIncludingBreak) : Math.Min(next, operating ? line.End : p);
+                return line.Line < LastLine(text, breakEnds) ? (operating && p < line.End ? line.End : line.EndIncludingBreak) : Math.Min(next, operating ? line.End : p);
             }
-            return Math.Min(next, operating ? line.End : Settled(text, line.End));
+            return Math.Min(next, operating ? line.End : SettledOn(text, line, line.End));
         });
         return to == caret ? null : new VimTarget(to, VimMotionKind.Exclusive);
     }
 
     /// <summary>j and k, + and -, Enter, _: <paramref name="lines"/> lines down (up when negative), failing on the line
     /// it cannot leave; the column is the caller's.</summary>
-    public static int? LinesAway(TextSnapshot text, int caret, long lines)
+    public static int? LinesAway(TextSnapshot text, int caret, long lines, bool breakEnds)
     {
         int from = text.GetLineFromOffset(caret);
-        int to = (int)Math.Clamp(from + lines, 0, LastLine(text));
+        int to = (int)Math.Clamp(from + lines, 0, LastLine(text, breakEnds));
         return to == from && lines != 0 ? null : to;
     }
 
     /// <summary>$: the last character of the line <paramref name="n"/> - 1 lines down, inclusive.</summary>
-    public static VimTarget? LineEnd(TextSnapshot text, int caret, int n)
+    public static VimTarget? LineEnd(TextSnapshot text, int caret, int n, bool breakEnds)
     {
         int from = text.GetLineFromOffset(caret);
-        if (n > 1 && from >= LastLine(text))
+        if (n > 1 && from >= LastLine(text, breakEnds))
         {
             return null;
         }
-        LineSpan line = text.GetLine((int)Math.Min(from + (long)n - 1, LastLine(text)));
-        return new VimTarget(Settled(text, line.End), VimMotionKind.Inclusive);
+        LineSpan line = text.GetLine((int)Math.Min(from + (long)n - 1, LastLine(text, breakEnds)));
+        return new VimTarget(SettledOn(text, line, line.End), VimMotionKind.Inclusive);
     }
 
     /// <summary>w and W: the start of the next word, an empty line counting as one. Under an operator its last step stops
@@ -212,13 +217,13 @@ public static class VimMotions
     }
 
     /// <summary>e and E: the last character of this word if the caret is before it, else of the next; inclusive.</summary>
-    public static VimTarget? WordEnd(TextSnapshot text, int caret, int n, bool bigWord)
+    public static VimTarget? WordEnd(TextSnapshot text, int caret, int n, bool bigWord, bool breakEnds)
     {
-        int to = Repeated(n, caret, p => NextWordEnd(text, p, bigWord));
+        int to = Repeated(n, caret, p => NextWordEnd(text, p, bigWord, breakEnds));
         return to == caret ? null : new VimTarget(to, VimMotionKind.Inclusive);
     }
 
-    private static int NextWordEnd(TextSnapshot text, int offset, bool bigWord)
+    private static int NextWordEnd(TextSnapshot text, int offset, bool bigWord, bool breakEnds)
     {
         int n = text.Length;
         int p = offset + 1;
@@ -229,7 +234,7 @@ public static class VimMotions
         if (p >= n)
         {
             // No word after: the text's last place, where that is further on.
-            return Math.Max(offset, Settled(text, n));
+            return Math.Max(offset, Settled(text, n, breakEnds));
         }
         int kind = Kind(text[p], bigWord);
         while (p + 1 < n && Kind(text[p + 1], bigWord) == kind)
@@ -360,7 +365,7 @@ public static class VimMotions
 
     /// <summary>%: the bracket matching the first one at or after the caret on its line, inclusive; with a count, that
     /// percentage of the way through the file, linewise.</summary>
-    public static VimTarget? MatchPair(TextSnapshot text, int caret, int count)
+    public static VimTarget? MatchPair(TextSnapshot text, int caret, int count, bool breakEnds)
     {
         if (count > 0)
         {
@@ -368,9 +373,9 @@ public static class VimMotions
             {
                 return null;
             }
-            int lines = LastLine(text) + 1;
-            int line = (int)Math.Clamp(((long)count * lines + 99) / 100 - 1, 0, LastLine(text));
-            return new VimTarget(FirstNonBlank(text, line), VimMotionKind.Linewise);
+            int lines = LastLine(text, breakEnds) + 1;
+            int line = (int)Math.Clamp(((long)count * lines + 99) / 100 - 1, 0, LastLine(text, breakEnds));
+            return new VimTarget(FirstNonBlank(text, line, breakEnds), VimMotionKind.Linewise);
         }
         LineSpan span = LineOf(text, caret);
         int at = caret;
@@ -409,10 +414,10 @@ public static class VimMotions
     /// <summary>} and {: past the next (or last) run of lines with text to the empty line after (before) it, or the text's
     /// end (start), where a } stands on the last character, which an operator takes too; a count with paragraphs left over
     /// at the text's edge fails.</summary>
-    public static VimTarget? Paragraph(TextSnapshot text, int caret, int n, bool forward)
+    public static VimTarget? Paragraph(TextSnapshot text, int caret, int n, bool forward, bool breakEnds)
     {
         int line = text.GetLineFromOffset(caret);
-        int last = LastLine(text);
+        int last = LastLine(text, breakEnds);
         int step = forward ? 1 : -1;
         for (int i = 0; i < n; i++)
         {
@@ -438,7 +443,7 @@ public static class VimMotions
         if (forward && line == last)
         {
             LineSpan end = text.GetLine(line);
-            return new VimTarget(Settled(text, end.End), end.Length > 0 ? VimMotionKind.Inclusive : VimMotionKind.Exclusive);
+            return new VimTarget(SettledOn(text, end, end.End), end.Length > 0 ? VimMotionKind.Inclusive : VimMotionKind.Exclusive);
         }
         return new VimTarget(text.GetLineStart(line), VimMotionKind.Exclusive);
     }
@@ -447,15 +452,25 @@ public static class VimMotions
     public static bool Blank(TextSnapshot text, int line) => text.GetLine(line).Length == 0;
 
     /// <summary>) and (: the start of the next sentence, or of this one or the one before; exclusive. Run past the last
-    /// sentence, ) stands on the text's last character and takes it.</summary>
-    public static VimTarget? Sentence(TextSnapshot text, int caret, int n, bool forward)
+    /// sentence, ) stands on the text's last character and takes it; a count reaching the text's edge early fails.</summary>
+    public static VimTarget? Sentence(TextSnapshot text, int caret, int n, bool forward, bool breakEnds)
     {
-        int to = Repeated(n, caret, p => forward ? NextSentenceStart(text, p) : PreviousSentenceStart(text, p));
+        int to = caret;
+        for (int i = 0; i < n; i++)
+        {
+            int next = forward ? NextSentenceStart(text, to) : PreviousSentenceStart(text, to);
+            if (i < n - 1 && (next == to || next == (forward ? text.Length : 0)))
+            {
+                // A count running into the text's edge with sentences still to go fails, as Vim's does.
+                return null;
+            }
+            to = next;
+        }
         if (to == caret)
         {
             return null;
         }
-        return to == text.Length && Settled(text, to) < to ? new VimTarget(Settled(text, to), VimMotionKind.Inclusive) : new VimTarget(to, VimMotionKind.Exclusive);
+        return to == text.Length && Settled(text, to, breakEnds) < to ? new VimTarget(Settled(text, to, breakEnds), VimMotionKind.Inclusive) : new VimTarget(to, VimMotionKind.Exclusive);
     }
 
     /// <summary>The start of the first sentence after the offset: past a sentence's end and the blanks after it, an empty
@@ -510,7 +525,8 @@ public static class VimMotions
             }
         }
         int start = text.GetLineStart(line);
-        int best = Blank(text, line) ? start : SkipBlanks(text, start);
+        // The text's first sentence begins at its very start, blanks before it and all.
+        int best = Blank(text, line) || line == 0 ? start : SkipBlanks(text, start);
         if (best >= offset)
         {
             return 0;

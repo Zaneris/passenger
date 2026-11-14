@@ -80,7 +80,7 @@ public sealed partial class Vim
             i++;
         }
         string args = line[i..];
-        int last = VimMotions.LastLine(text);
+        int last = VimMotions.LastLine(text, breakEnds);
         (int first, int end) = range ?? (caretLine, caretLine);
         (first, end) = (Math.Clamp(Math.Min(first, end), 0, last), Math.Clamp(Math.Max(first, end), 0, last));
         string trimmed = args.Trim();
@@ -91,7 +91,7 @@ public sealed partial class Vim
                 {
                     return VimResult.Held;
                 }
-                return Jumped(text, selections, view, VimMotions.FirstNonBlank(text, range.Value.Last < 0 ? 0 : Math.Min(range.Value.Last, last)));
+                return Jumped(text, selections, view, VimMotions.FirstNonBlank(text, range.Value.Last < 0 ? 0 : Math.Min(range.Value.Last, last), breakEnds));
             case "w" or "write" or "up" or "upd" or "upda" or "updat" or "update":
                 return trimmed.Length > 0 ? Said($"Vim mode saves the file shown: :{name} {trimmed} is not done") : Asked(VimRequestKind.Save);
             case "bufd" or "bufdo" or "wind" or "windo" or "argdo" or "cdo" or "cfd" or "cfdo":
@@ -145,7 +145,9 @@ public sealed partial class Vim
     public VimResult RunCommand(string line, TextSnapshot text, SelectionSet selections, IVimView? view = null)
     {
         string? typed = Registers.LastCommand;
-        VimResult result = OneEx(line, text, selections, view ?? PlainView);
+        view ??= PlainView;
+        breakEnds = view.KeepsFinalLineBreak;
+        VimResult result = OneEx(line, text, selections, view);
         Registers.LastCommand = typed;
         return result;
     }
@@ -252,18 +254,18 @@ public sealed partial class Vim
     }
 
     /// <summary>A plan whose caret lands on the first non-blank of a line it leaves where it was, as a line command's does.</summary>
-    private static EditPlan OnFirstNonBlank(TextSnapshot text, EditPlan plan, int line)
+    private EditPlan OnFirstNonBlank(TextSnapshot text, EditPlan plan, int line)
     {
         TextSnapshot after = text.Apply(plan.Edits);
-        return plan with { Selections = SelectionSet.Single(VimMotions.FirstNonBlank(after, Math.Min(line, VimMotions.LastLine(after)))) };
+        return plan with { Selections = SelectionSet.Single(VimMotions.FirstNonBlank(after, Math.Min(line, VimMotions.LastLine(after, breakEnds)), breakEnds)) };
     }
 
     /// <summary>A jump to an offset: the place left kept as the mark ' and told to the host for its places.</summary>
-    private static VimResult Jumped(TextSnapshot text, SelectionSet selections, IVimView view, int to)
+    private VimResult Jumped(TextSnapshot text, SelectionSet selections, IVimView view, int to)
     {
         int from = selections.Primary.Caret;
         view.SetMark('\'', from);
-        return new VimResult(true, SelectionSet.Single(Settled(text, to))) { JumpedFrom = from };
+        return new VimResult(true, SelectionSet.Single(Settled(text, to, breakEnds))) { JumpedFrom = from };
     }
 
     /// <summary>The lines a command names, from zero; none where it names none; false with why where an address fails.</summary>
@@ -274,7 +276,7 @@ public sealed partial class Vim
         if (i < line.Length && line[i] == '%')
         {
             i++;
-            range = (0, VimMotions.LastLine(text));
+            range = (0, VimMotions.LastLine(text, breakEnds));
             return true;
         }
         int current = caretLine;
@@ -318,7 +320,7 @@ public sealed partial class Vim
         }
         else if (c == '$')
         {
-            address = VimMotions.LastLine(text);
+            address = VimMotions.LastLine(text, breakEnds);
             i++;
         }
         else if (char.IsAsciiDigit(c))
@@ -454,7 +456,7 @@ public sealed partial class Vim
                 return Said($"E488: Trailing characters: {countText}");
             }
             first = noRange ? first : end;
-            end = Math.Min(first + count - 1, VimMotions.LastLine(text));
+            end = Math.Min(first + count - 1, VimMotions.LastLine(text, breakEnds));
         }
         if (flags.Contains('c', StringComparison.Ordinal))
         {
@@ -521,14 +523,14 @@ public sealed partial class Vim
         }
         if (flags.Contains('n', StringComparison.Ordinal))
         {
-            return new VimResult(true, SelectionSet.Single(VimMotions.FirstNonBlank(text, caretLine))) { Message = $"{Plural(matched, "match", "matches")} on {Plural(changedLines.Count, "line", "lines")}", Highlight = SearchShown() };
+            return new VimResult(true, SelectionSet.Single(VimMotions.FirstNonBlank(text, caretLine, breakEnds))) { Message = $"{Plural(matched, "match", "matches")} on {Plural(changedLines.Count, "line", "lines")}", Highlight = SearchShown() };
         }
         TextSnapshot after = text.Apply(edits);
         int landing = TextEditing.MapOffset(text.GetLineStart(lastLine), edits, false);
         int landedLine = after.GetLineFromOffset(Math.Min(landing, after.Length));
         // Lines a replacement split put the caret on the last of them, as Vim's does.
-        landedLine = Math.Min(landedLine + edits.Where(e => text.GetLineFromOffset(e.Start) == lastLine).Sum(e => e.Text.Count(c => c == '\n')), VimMotions.LastLine(after));
-        EditPlan plan = new(edits, SelectionSet.Single(VimMotions.FirstNonBlank(after, landedLine)), EditKind.Other);
+        landedLine = Math.Min(landedLine + edits.Where(e => text.GetLineFromOffset(e.Start) == lastLine).Sum(e => e.Text.Count(c => c == '\n')), VimMotions.LastLine(after, breakEnds));
+        EditPlan plan = new(edits, SelectionSet.Single(VimMotions.FirstNonBlank(after, landedLine, breakEnds)), EditKind.Other);
         string? said = changedLines.Count > 2 ? $"{Plural(matched, "substitution", "substitutions")} on {Plural(changedLines.Count, "line", "lines")}" : null;
         return new VimResult(true, Edits: [plan]) { Message = said, Highlight = SearchShown() };
     }
@@ -657,7 +659,7 @@ public sealed partial class Vim
             return new VimResult(true) { Replay = [.. pressed, Escape] };
         }
         List<string> replay = [];
-        int last = VimMotions.LastLine(text);
+        int last = VimMotions.LastLine(text, breakEnds);
         foreach (int line in each)
         {
             replay.Add(GoKey + (last - line).ToString(CultureInfo.InvariantCulture));

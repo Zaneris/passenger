@@ -827,7 +827,8 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 if (context.Editors.Active == document)
                 {
                     TextSnapshot after = document.Text.Snapshot;
-                    Editor.Selections = Editor.Selections.With(s => Selection.At(Vim.Settled(after, TextNavigation.IndentEnd(after, after.GetLine(after.GetLineFromOffset(s.Caret))))));
+                    bool breakEnds = Vim.KeepsFinalLineBreak(document.Text.Saved);
+                    Editor.Selections = Editor.Selections.With(s => Selection.At(Vim.Settled(after, TextNavigation.IndentEnd(after, after.GetLine(after.GetLineFromOffset(s.Caret))), breakEnds)));
                 }
                 if (done is not null)
                 {
