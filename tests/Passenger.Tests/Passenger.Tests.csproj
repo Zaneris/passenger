@@ -74,12 +74,17 @@
     <AssemblyMetadata Include="AspireRuntime" Value="$(PassengerAspireRuntime)" />
   </ItemGroup>
 
-  <!-- The package graphs of the AppHosts, ServiceDefaults and services the Aspire tests write, in the package cache before
-       they run (tests/AspireGraphs): restored and built first, never linked. -->
+  <!-- The package graphs of the AppHosts, ServiceDefaults, services and Azure Functions app the Aspire tests write, in the
+       package cache before they run (tests/AspireGraphs): restored and built first, never linked. -->
   <ItemGroup>
     <ProjectReference Include="../AspireGraphs/AppHost/AspireGraphs.AppHost.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/ServiceDefaults/AspireGraphs.ServiceDefaults.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/ApiService/AspireGraphs.ApiService.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../AspireGraphs/FunctionsHost/AspireGraphs.FunctionsHost.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../AspireGraphs/Functions/AspireGraphs.Functions.csproj" ReferenceOutputAssembly="false" />
+    <AssemblyMetadata Include="AzureFunctionsSdkVersion" Value="$(AzureFunctionsSdkVersion)" />
+    <AssemblyMetadata Include="AzureFunctionsWorkerVersion" Value="$(AzureFunctionsWorkerVersion)" />
+    <AssemblyMetadata Include="AzureFunctionsHttpVersion" Value="$(AzureFunctionsHttpVersion)" />
   </ItemGroup>
 
   <!-- The package graph of the EF Core projects the Migrations window's tests write (tests/EfGraphs), and the dotnet-ef

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The graph of an AppHost that adds an Azure Functions app (AddAzureFunctionsProject): its own, apart from the
+       AppHost's alone, which the Functions hosting package would otherwise lift. -->
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" ExcludeAssets="all" />
+    <PackageReference Include="Aspire.Hosting.Azure.Functions" ExcludeAssets="all" />
+  </ItemGroup>
+</Project>

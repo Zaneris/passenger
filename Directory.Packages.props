@@ -18,6 +18,11 @@
     <!-- Aspire's templates, AppHost SDK and package, dashboard, orchestrator and CLI at one version, downloaded for the
          tests' local feed. -->
     <AspireTemplatesVersion>13.6.5</AspireTemplatesVersion>
+    <!-- The Azure Functions app (.NET isolated worker) the Aspire tests write: its MSBuild SDK, downloaded for the tests'
+         local feed, and its worker and HTTP triggers, whose graph tests/AspireGraphs restores. -->
+    <AzureFunctionsSdkVersion>1.0.2</AzureFunctionsSdkVersion>
+    <AzureFunctionsWorkerVersion>2.52.0</AzureFunctionsWorkerVersion>
+    <AzureFunctionsHttpVersion>3.3.0</AzureFunctionsHttpVersion>
     <!-- WPF's reference pack at the version global.json's SDK gives its own WPF (its TargetingPackVersion), downloaded
          for the tests' local feed so the WPF app they make restores off Windows; another SDK's fails WpfXamlTests naming
          the version to pin. -->
@@ -156,6 +161,12 @@
   <!-- Tests. xunit v3 stays on 3.2, the line Avalonia.Headless.XUnit is built against. -->
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="$(AspireTemplatesVersion)" />
+    <PackageVersion Include="Aspire.Hosting.Azure.Functions" Version="$(AspireTemplatesVersion)" />
+    <!-- The analyzers and generators at the versions Azure.Functions.Sdk (AzureFunctionsSdkVersion) adds them. -->
+    <PackageVersion Include="Microsoft.Azure.Functions.Worker" Version="$(AzureFunctionsWorkerVersion)" />
+    <PackageVersion Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="$(AzureFunctionsHttpVersion)" />
+    <PackageVersion Include="Microsoft.Azure.Functions.Worker.Sdk.Analyzers" Version="1.2.2" />
+    <PackageVersion Include="Microsoft.Azure.Functions.Worker.Sdk.Generators" Version="1.4.0" />
     <!-- At the versions Aspire's templates at AspireTemplatesVersion write, not their newest, so the test folders made
          from those templates restore from the package cache tests/AspireGraphs fills. -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />

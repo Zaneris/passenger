@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- An Azure Functions app's graph (the .NET isolated worker with HTTP triggers) as a project of Azure.Functions.Sdk
+       restores it, the analyzers and generators that SDK adds among it; the SDK itself downloaded alone, which the tests
+       copy into the run's local feed (AspireFunctionsApp). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk.Analyzers" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk.Generators" ExcludeAssets="all" />
+    <PackageDownload Include="Azure.Functions.Sdk" Version="[$(AzureFunctionsSdkVersion)]" />
+  </ItemGroup>
+</Project>

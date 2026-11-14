@@ -1818,7 +1818,8 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>The service's start the session attached to keeps its tab (which the Aspire window chooses) and session.</summary>
     public override void Attached(IRunService service, ServiceProgram program, DebugTab? tab, DebugSession? debugged)
     {
-        if (Resources.Values.FirstOrDefault(resource => resource.ProcessId == program.Id) is not { } run)
+        // A Functions app's program is its worker, which func (the resource's process) started.
+        if (Resources.Values.FirstOrDefault(resource => (resource.Worker ?? resource.ProcessId) == program.Id) is not { } run)
         {
             return;
         }
