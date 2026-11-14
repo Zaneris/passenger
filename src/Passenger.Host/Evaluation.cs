@@ -251,7 +251,7 @@ internal static class Evaluation
     /// KnownFrameworkReference of that framework for the project's .NET version, its TargetingPackName and version.</summary>
     private static List<TargetingPack> TargetingPacks(Project project, IReadOnlyList<string> shared)
     {
-        string version = project.GetPropertyValue("TargetFrameworkVersion");
+        string version = project.GetPropertyValue(MSBuildNames.TargetFrameworkVersion);
         if (!project.GetPropertyValue("TargetFrameworkIdentifier").Equals(".NETCoreApp", StringComparison.OrdinalIgnoreCase) || version.Length < 2)
         {
             return [];
@@ -261,7 +261,7 @@ internal static class Evaluation
         foreach (ProjectItem known in project.GetItems("KnownFrameworkReference"))
         {
             if (shared.Contains(known.EvaluatedInclude, StringComparer.OrdinalIgnoreCase)
-                && known.GetMetadataValue("TargetFramework").Equals(target, StringComparison.OrdinalIgnoreCase)
+                && known.GetMetadataValue(MSBuildNames.TargetFramework).Equals(target, StringComparison.OrdinalIgnoreCase)
                 && NonEmpty(known.GetMetadataValue("TargetingPackName")) is { } name && !packs.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
             {
                 string pinned = known.GetMetadataValue("TargetingPackVersion");
