@@ -1646,3 +1646,11 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   again, and brings no pull of a file no tab shows, so the test's wait for the pull count to hold still could not see it.
   The server's log now notes the server's word (`LanguageServer.RefreshedNote`), and both diagnostics tests take their
   baseline after it (#1642).
+- `VimModeTests`' `A_key_that_may_begin_a_mapping_means_itself_once_timeoutlen_passes`, CI 43607499212 (macOS, 1 min 24 s
+  where Linux and Windows took 2.5 s), the Mac (2 min 51 s, or not quiet within 90 s, busy at `WatchedTree.cs:926`).
+  **A loop in the IDE**: the test's state folder lies in the folder it opens, under macOS's temporary folder named through
+  its /var link. Local History passed over its state folder as named (/var/…) while the watcher hands over paths as the
+  system names them (/private/var/…), so each write to the history's own store was heard, kept as a change made
+  elsewhere and written again, a batch every 160 ms while the window stayed open; the test went on only where a settle
+  caught a gap. The stripe fold played no part. Local History now takes its state folder canonical (`LocalHistory.Open`);
+  the test takes 2.7 s, and LocalHistoryTests holds a state folder inside the open folder named through a link (#1644).

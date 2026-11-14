@@ -650,6 +650,9 @@ a new name, and `just site-shots` retakes its images.
   spelling of a project's path deletes what the first wrote (IncrementalClean; a shell or MSBuild takes an inherited PWD
   for its folder, #413, #537), and a reused node carries a project's earlier spelling and NuGet home into the next
   build. It keeps no idle node unless the process's nice value is 0.
+- **A state folder inside the open folder** is heard by its watcher, which names paths canonically: whatever writes state on
+  hearing a change passes over the state folder by its canonical path (`LocalHistory.Open`), or each write is heard and
+  written again.
 - **Local History's `changes.log` is shared by every Passenger on the same state**: a store takes in the others' lines
   under `Hold` before it keeps anything, and a change logged twice lists once.
 - **A variable taken out of a process's own environment goes through `OwnEnvironment.Set`**: on macOS and Linux
