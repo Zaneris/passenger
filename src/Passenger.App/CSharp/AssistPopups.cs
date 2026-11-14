@@ -27,6 +27,9 @@ internal sealed class InfoCard : Border, IHoverCard
     /// under the pointer.</summary>
     private double fitted;
 
+    /// <summary>The most it is wide of itself, a card of words' or of a value's rows', before any narrower room holds it.</summary>
+    private double widest = WordsWidth;
+
     public InfoCard()
     {
         Classes.Add(StyleClasses.Popup);
@@ -74,8 +77,12 @@ internal sealed class InfoCard : Border, IHoverCard
         Usable = false;
         fitted = 0;
         IsHitTestVisible = false;
+        widest = WordsWidth;
         MaxWidth = WordsWidth;
     }
+
+    /// <summary>Held to a room narrower than it would be, its words wrapping to it; as wide as it takes of itself in a wider one.</summary>
+    public void Within(double room) => MaxWidth = Math.Min(widest, Math.Max(0, room));
 
     /// <summary>A value's rows, which open in the card: it takes the pointer and the keys, a width of the popups', growing as
     /// rows open, and scrolls past <see cref="MostRows"/> rows or the room it is given.</summary>
@@ -85,6 +92,7 @@ internal sealed class InfoCard : Border, IHoverCard
         values.MaxHeight = Math.Max(ListRow.Height * 4, Math.Min(ListRow.Height * MostRows, room - Padding.Top - Padding.Bottom)) + values.Padding.Top + values.Padding.Bottom;
         parts.Children.Add(values);
         IsHitTestVisible = true;
+        widest = PopupFrame.Wide;
         MaxWidth = PopupFrame.Wide;
         values.Tree.Rows.CollectionChanged += (_, _) =>
         {

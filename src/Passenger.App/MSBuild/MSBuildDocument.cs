@@ -112,7 +112,7 @@ public sealed class MSBuildDocument : IDisposable
     }
 
     /// <summary>What completion offers at a caret, for the text as it stands: package ids and versions asked of the feeds, a
-    /// version marked where it is vulnerable or deprecated.</summary>
+    /// version marked where it is vulnerable or deprecated, its card saying the advisory and the deprecation in full.</summary>
     public async Task<MSBuildCompletionList?> CompleteAsync(int caret, CancellationToken cancel)
     {
         MSBuildContext context = await ContextAsync();
@@ -144,15 +144,20 @@ public sealed class MSBuildDocument : IDisposable
             VulnerabilityData known = await auditing;
             return list with
             {
-                Items = [.. versions.OrderByDescending(v => v, VersionOrder.Instance).Select((v, i) => new MSBuildItem(v, MSBuildItemKind.Version, v,
-                    // Both marks shortened to fit the width a list gives a detail.
-                    (known.Of(ask.Id, v), service.Deprecated?.Invoke(ask.Id, v)) switch
+                Items = [.. versions.OrderByDescending(v => v, VersionOrder.Instance).Select((v, i) =>
+                {
+                    Deprecation? deprecation = service.Deprecated?.Invoke(ask.Id, v);
+                    // Both marks shortened to fit the width a list gives a detail; the card says them whole.
+                    string? detail = (known.Of(ask.Id, v), deprecation) switch
                     {
                         ([{ } gravest, ..], not null) => $"{gravest.Severity} vulnerability, deprecated",
                         ([{ } gravest, ..], null) => $"{gravest.Severity} severity vulnerability",
                         (_, not null) => "Deprecated",
                         _ => VersionOrder.IsPrerelease(v) ? "prerelease" : null,
-                    }) { SortText = $"{i:D4}" })],
+                    };
+                    string said = string.Join("\n", new[] { Advise(known, ask.Id, v)?.Message, deprecation is null ? null : Told(ask.Id, v, deprecation) }.OfType<string>());
+                    return new MSBuildItem(v, MSBuildItemKind.Version, v, detail, said.Length > 0 ? said : null) { SortText = $"{i:D4}" };
+                })],
             };
         }
         catch (Exception failed) when (FeedSet.IsFeedFailure(failed) && !cancel.IsCancellationRequested)
@@ -189,7 +194,11 @@ public sealed class MSBuildDocument : IDisposable
     /// it is not deprecated.</summary>
     private static string? Told(IReadOnlyDictionary<(string Id, string Version), Deprecation> told, string id, string version) =>
         told.FirstOrDefault(t => t.Key.Id.Equals(id, StringComparison.OrdinalIgnoreCase) && t.Key.Version.Equals(version, StringComparison.OrdinalIgnoreCase)).Value
-            is { } deprecation ? Deprecated(id, version, deprecation) + (deprecation.Message.Length > 0 ? $"\n{deprecation.Message}" : string.Empty) : null;
+            is { } deprecation ? Told(id, version, deprecation) : null;
+
+    /// <summary>The card's words on a version deprecated as given: why and what to use instead, then its owner's own.</summary>
+    private static string Told(string id, string version, Deprecation deprecation) =>
+        Deprecated(id, version, deprecation) + (deprecation.Message.Length > 0 ? $"\n{deprecation.Message}" : string.Empty);
 
     /// <summary>The words on a deprecated package version: why, and the package its owner names to use instead.</summary>
     private static string Deprecated(string id, string version, Deprecation deprecation) =>

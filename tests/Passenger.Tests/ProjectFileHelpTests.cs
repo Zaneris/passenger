@@ -1,4 +1,5 @@
 using System.Text;
+using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
@@ -200,6 +201,60 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         Assert.Equal([("3.0.0", ""), ("2.5.0", "Deprecated"), ("2.0.0", "High vulnerability, deprecated")], window.Assist.CompletionDetails);
         Ui.Press(window, "ESCAPE");
         window.Close();
+    }
+
+    /// <summary>In a window at its smallest, completing a version on a reference's line reaching the editor's right edge
+    /// shows a vulnerable and deprecated version's card whole on the list's side with more room, narrowed to it, saying the
+    /// advisory, why it was deprecated and its owner's words in full; with the Explorer open beside it, the editor too
+    /// narrow for a card beside the list, the card goes over the list and its line, whole, hiding neither.</summary>
+    [AvaloniaFact]
+    public void A_version_s_card_near_the_editor_s_edge_shows_whole_on_the_wider_side_saying_its_advisory_and_deprecation_in_full()
+    {
+        Write("App/App.csproj", Project.Replace("<ProjectReference Include=\"../\" />",
+            "<PackageReference Include=\"Passenger.Other\" Version=\"3.0.0\" />\n    <ProjectReference Include=\"../\" />", StringComparison.Ordinal));
+        MainWindow window = Open("App/App.csproj", width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.Run(window, AppActions.HideAllToolWindows);
+
+        (Rect list, Rect card, Rect layer) = VersionCard(window, editor);
+
+        Assert.True(card.X >= layer.X && card.Y >= layer.Y && card.Right <= layer.Right && card.Bottom <= layer.Bottom,
+            $"The card runs past the editor's edge, its words cut: it lies at {card} beside the list at {list} in the editor at {layer}");
+        bool rightWider = layer.Right - list.Right >= list.X - layer.X;
+        Assert.True(rightWider ? card.X >= list.Right : card.Right <= list.X,
+            $"The card was to go to the list's {(rightWider ? "right" : "left")}, the side with more room in the editor at {layer}; it lies at {card} beside the list at {list}");
+        Ui.Press(window, "ESCAPE");
+
+        Ui.Run(window, AppActions.HideAllToolWindows);
+        Ui.Settle();
+        (list, card, layer) = VersionCard(window, editor);
+
+        // The list opens under the version's line, which it was placed at.
+        Rect line = new(layer.X, list.Y - editor.LineHeight - 2, layer.Width, editor.LineHeight);
+        Assert.True(card.X >= layer.X && card.Y >= layer.Y && card.Right <= layer.Right && card.Bottom <= layer.Bottom && !card.Intersects(list) && !card.Intersects(line),
+            $"With the Explorer open the card was to lie whole in the editor at {layer}, over or under the list at {list} and its line, hiding neither; it lies at {card}");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
+    /// <summary>Completes Passenger.Other's version, chooses 2.0.0 and waits for its card, checking it says the advisory and
+    /// the deprecation in full: where the list, the card and the editor's layer lie in the window.</summary>
+    private static (Rect List, Rect Card, Rect Layer) VersionCard(MainWindow window, CodeEditor editor)
+    {
+        Ui.PlaceAfter(editor, "Include=\"Passenger.Other\" Version=\"");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Count == 3, "Passenger.Other's three versions");
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "DOWN");
+        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("2.0.0", StringComparison.Ordinal) == true, () => $"2.0.0's card; it says {window.Assist.ItemDocumentation ?? "nothing"}");
+        string said = window.Assist.ItemDocumentation!;
+        Assert.True(said.StartsWith("Package 'Passenger.Other' 2.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-pass-0001-test\n", StringComparison.Ordinal)
+            && said.Contains("\nPackage 'Passenger.Other' 2.0.0 is deprecated: ", StringComparison.Ordinal) && said.EndsWith("\nBroken past repair.", StringComparison.Ordinal),
+            $"The card was to say the advisory, the deprecation and its owner's words in full; it says:\n{said}");
+        (Rect list, Rect card) = window.Assist.ItemCardPlace ?? throw new InvalidOperationException("The card shows, yet has no place beside the list");
+        Avalonia.Controls.Canvas assist = window.EditorArea.AssistLayer;
+        Rect layer = new(assist.TranslatePoint(default, window) ?? default, assist.Bounds.Size);
+        return (list, card, layer);
     }
 
     [Gate]
@@ -543,9 +598,9 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         return least;
     }
 
-    private MainWindow Open(string file, bool autosaves = false, bool languageServer = false)
+    private MainWindow Open(string file, bool autosaves = false, bool languageServer = false, double width = 1200, double height = 800)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = autosaves, WarmServer = shop.Server, StartsLanguageServer = languageServer };
+        MainWindow window = new() { Width = width, Height = height, Autosaves = autosaves, WarmServer = shop.Server, StartsLanguageServer = languageServer };
         window.Show();
         window.OpenFolder(Path.Combine(folder, "Shop.slnx"));
         window.OpenFile(Path.Combine(folder, file));

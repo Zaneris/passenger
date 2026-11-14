@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -93,27 +94,67 @@ internal sealed class PopupPlacement
         double y = above ? (over >= 0 ? over : below) : (below + size.Height <= room.Height || over < 0 ? below : over);
         Canvas.SetLeft(popup, x);
         Canvas.SetTop(popup, y);
+        lines.AddOrUpdate(popup, new StrongBox<double>(at.Y));
     }
 
-    /// <summary>A card to the right of a popup, at its top; to its left when the right has no room.</summary>
-    public void PlaceBeside(Control card, Control beside)
+    /// <summary>A card beside a popup, at its top: to its right where it fits there whole, else to the side with more room,
+    /// narrowed to that room so its words wrap rather than run past the editor's edge, which cuts what the layer shows.
+    /// Where neither side has room enough for words to read, above or below the popup and the line it was placed at,
+    /// where there is more room, as wide as the editor allows; raised where it would end past the editor's foot.</summary>
+    public void PlaceBeside(InfoCard card, Control beside)
     {
+        card.Within(double.PositiveInfinity);
         card.Measure(Size.Infinity);
-        double left = Canvas.GetLeft(beside);
         double width = card.DesiredSize.Width;
-        // A popup just shown has no bounds until the next layout: its measure says how wide it will be.
+        // A popup just shown has no bounds until the next layout: its measure says how big it will be.
         if (beside.Bounds.Width == 0)
         {
             beside.Measure(Size.Infinity);
         }
-        double x = left + (beside.Bounds.Width > 0 ? beside.Bounds.Width : beside.DesiredSize.Width) + 4;
-        if (x + width > layer.Bounds.Width && left - width - 4 >= 0)
+        Size popup = beside.Bounds.Width > 0 ? beside.Bounds.Size : beside.DesiredSize;
+        Rect room = new Rect(layer.Bounds.Size).Deflate(Edge);
+        double left = Canvas.GetLeft(beside);
+        double top = Canvas.GetTop(beside);
+        double toRight = room.Right - (left + popup.Width + Gap);
+        double toLeft = left - Gap - room.X;
+        bool right = width <= toRight || (width > toLeft && toRight >= toLeft);
+        double side = right ? toRight : toLeft;
+        double x;
+        double y;
+        if (width <= side || side >= LeastBeside)
         {
-            x = left - width - 4;
+            card.Within(side);
+            card.Measure(Size.Infinity);
+            x = right ? left + popup.Width + Gap : left - Gap - card.DesiredSize.Width;
+            y = top;
+        }
+        else
+        {
+            card.Within(room.Width);
+            card.Measure(Size.Infinity);
+            // Over or under the popup and its line together, so the card hides neither the choices nor what is typed.
+            (double lineTop, double lineBottom) = lines.TryGetValue(beside, out StrongBox<double>? line) ? (line.Value, line.Value + Editor.LineHeight) : (top, top);
+            double bandTop = Math.Min(top, lineTop);
+            double bandBottom = Math.Max(top + popup.Height, lineBottom);
+            double under = room.Bottom - (bandBottom + Gap);
+            double over = bandTop - Gap - room.Y;
+            x = Math.Clamp(left, room.X, Math.Max(room.X, room.Right - card.DesiredSize.Width));
+            y = card.DesiredSize.Height <= under || under >= over ? bandBottom + Gap : bandTop - Gap - card.DesiredSize.Height;
         }
         Canvas.SetLeft(card, x);
-        Canvas.SetTop(card, Canvas.GetTop(beside));
+        Canvas.SetTop(card, Math.Max(room.Y, Math.Min(y, room.Bottom - card.DesiredSize.Height)));
     }
+
+    /// <summary>How far a card sits from the popup it describes, and from the editor's edge.</summary>
+    private const double Gap = 4;
+    private const double Edge = 4;
+
+    /// <summary>The narrowest a card beside a popup is made, its words a few to a line; narrower, it goes over or under it.</summary>
+    private const double LeastBeside = 200;
+
+    /// <summary>The top of the line each popup placed at a line was placed at, in the layer's coordinates, kept no longer
+    /// than the popup.</summary>
+    private readonly ConditionalWeakTable<Control, StrongBox<double>> lines = [];
 
     /// <summary>The popups go to the layer over the active editor's window, an editor window's when it has the active
     /// group, since a popup is placed in its layer's coordinates and one window's cannot reach another's.</summary>

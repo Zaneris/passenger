@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Passenger.App.Navigation;
 using Passenger.App.Web;
@@ -48,6 +49,13 @@ internal sealed partial class CodeCompletion
 
     /// <summary>What the card beside the completion list says about the chosen item while it shows, null otherwise.</summary>
     public string? ItemDocumentation => itemCard.IsVisible ? itemCard.Text : null;
+
+    /// <summary>Where the completion list and the card beside it lie in their window, as last laid out, while the card shows.</summary>
+    public (Rect List, Rect Card)? ItemCardPlace =>
+        itemCard.IsVisible && completion.IsVisible && TopLevel.GetTopLevel(itemCard) is { } window
+        && completion.TranslatePoint(default, window) is { } list && itemCard.TranslatePoint(default, window) is { } card
+            ? (new Rect(list, completion.Bounds.Size), new Rect(card, itemCard.Bounds.Size))
+            : null;
 
     /// <summary>The completion list's labels, in order, while it shows.</summary>
     public IReadOnlyList<string> Labels => completion.IsVisible ? [.. completion.Rows.Select(r => r.Item.Label)] : [];

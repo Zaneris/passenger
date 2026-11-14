@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Passenger.App.Editors;
@@ -227,6 +228,9 @@ public sealed class CodeAssist
 
     /// <summary>What the card beside the completion list says about the chosen item while it shows, null otherwise.</summary>
     public string? ItemDocumentation => completion.ItemDocumentation;
+
+    /// <summary>Where the completion list and the card beside it lie in their window, as last laid out, while the card shows.</summary>
+    public (Rect List, Rect Card)? ItemCardPlace => completion.ItemCardPlace;
 
     /// <summary>The completion list's labels, in order, while it shows.</summary>
     public IReadOnlyList<string> CompletionLabels => completion.Labels;
