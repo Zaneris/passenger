@@ -30,6 +30,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
     /// <summary>The solution the launch profiles are kept beside, or null with none open, when none can be made.</summary>
     private readonly string? solution;
     private readonly IReadOnlyList<ProjectModel> projects;
+
+    /// <summary>The build configurations the folder offers, and the one it builds as, which a configuration naming none takes.</summary>
+    private readonly IReadOnlyList<BuildConfiguration> buildConfigurations;
+    private readonly BuildConfiguration? folderBuild;
     private readonly Action<IReadOnlyList<RunConfiguration>, IReadOnlyList<RunConfiguration>, string?> apply;
     private readonly IReadOnlyList<string> singleFileAppHosts;
     private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
@@ -39,6 +43,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly Control aspireRow;
     private readonly Control godotRow;
     private readonly Control telemetryRow;
+    private readonly Control buildConfigurationRow;
     private readonly Control sceneRow;
 
     /// <summary>The rows of a Godot game's copies: how many, and each one's own arguments.</summary>
@@ -78,9 +83,12 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     public RunConfigurationsDialog(IReadOnlyList<RunConfiguration> generated, IReadOnlyList<RunConfiguration> own,
         IReadOnlyList<ProjectModel> projects, string? chosen, Action<IReadOnlyList<RunConfiguration>, IReadOnlyList<RunConfiguration>, string?> apply,
-        Func<string, bool>? isRunning = null, IReadOnlyList<RunConfiguration>? profiles = null, string? solution = null, IReadOnlyList<string>? unread = null)
+        Func<string, bool>? isRunning = null, IReadOnlyList<RunConfiguration>? profiles = null, string? solution = null, IReadOnlyList<string>? unread = null,
+        IReadOnlyList<BuildConfiguration>? buildConfigurations = null, BuildConfiguration? folderBuild = null)
     {
         FormRows.Scope(this);
+        this.buildConfigurations = buildConfigurations ?? [];
+        this.folderBuild = folderBuild;
         IsRunning = isRunning ?? (_ => false);
         this.generated = [.. generated.Select(Made)];
         mine = [.. own.Select(c => new Entry(c))];
@@ -117,6 +125,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
         NameBox = Field();
         ProjectBox = new ComboBox { Classes = { StyleClasses.Form } };
         FrameworkBox = new ComboBox { Classes = { StyleClasses.Form } };
+        BuildConfigurationBox = new ComboBox { Classes = { StyleClasses.Form }, Name = "BuildConfigurationBox" };
+        ToolTip.SetTip(BuildConfigurationBox, "What its run builds, evaluates and starts as, in place of the build configuration the folder builds as");
         ProfileBox = new ComboBox { Classes = { StyleClasses.Form } };
         SaveAsProfileButton = new Button { Name = "SaveAsProfileButton", IsVisible = false };
         SaveAsProfileButton.Click += (_, _) => SaveAsLaunchProfile();
@@ -160,6 +170,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
             _ => c,
         }, reshow: true);
         FrameworkBox.SelectionChanged += (_, _) => Edit(c => c with { Framework = FrameworkBox.SelectedIndex <= 0 ? string.Empty : FrameworkBox.SelectedItem as string ?? string.Empty });
+        BuildConfigurationBox.SelectionChanged += (_, _) => Edit(c => c with
+        {
+            BuildConfiguration = BuildConfigurationBox.SelectedIndex <= 0 ? string.Empty : (BuildConfigurationBox.SelectedItem as ComboBoxItem)?.Tag as string ?? c.BuildConfiguration,
+        });
         ProfileBox.SelectionChanged += (_, _) => Edit(FromProfile, reshow: true);
         GodotBox.SelectionChanged += (_, _) => Edit(c => c with { GodotEditor = GodotBox.SelectedIndex == 1, GodotInEditor = GodotBox.SelectedIndex == 2, GodotInPane = GodotBox.SelectedIndex == 3 },
             reshow: true);
@@ -262,6 +276,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (copyRows[0], [RunKind.Project]),
             (copyRows[1], [RunKind.Project]),
             (builtRows[0] = Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
+            (buildConfigurationRow = Row("Build configuration", BuildConfigurationBox, fields: ["buildConfiguration"]),
+                [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (builtRows[1] = Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
             (launchRows[0] = Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
             (launchRows[1] = Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project]),
@@ -374,6 +390,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
     public TextBox NameBox { get; }
 
     public ComboBox ProjectBox { get; }
+
+    /// <summary>The build configuration its run builds as: the folder's first, then each the folder offers.</summary>
+    public ComboBox BuildConfigurationBox { get; }
 
     /// <summary>Other AppHosts that start and stop with the chosen configuration.</summary>
     public IReadOnlyList<CheckBox> LinkedAppHostBoxes => [.. linkedAppHosts.Children.OfType<CheckBox>()];
@@ -1130,6 +1149,23 @@ public sealed class RunConfigurationsDialog : IdeWindow
     }
 
     /// <summary>Shows the chosen configuration in the fields, a generated one's name, project and launch profile read-only.</summary>
+    /// <summary>The build configurations a configuration may name, the folder's choice first; one it names that the folder
+    /// no longer offers is listed after them, so the dialog shows what it builds as.</summary>
+    private void ShowBuildConfigurations(RunConfiguration shown)
+    {
+        List<ComboBoxItem> items = [new() { Content = folderBuild is { } folder ? $"The folder's ({folder.Shown(buildConfigurations)})" : "The folder's" }];
+        items.AddRange(buildConfigurations.Select(offered => new ComboBoxItem { Content = offered.Shown(buildConfigurations), Tag = offered.Key }));
+        int chosen = shown.BuildConfiguration.Length == 0 ? 0
+            : buildConfigurations.ToList().FindIndex(offered => BuildConfiguration.Of(shown.BuildConfiguration) is { } named && offered.Is(named)) + 1;
+        if (chosen == 0 && shown.BuildConfiguration.Length > 0)
+        {
+            items.Add(new ComboBoxItem { Content = $"{shown.BuildConfiguration} (not offered)", Tag = shown.BuildConfiguration });
+            chosen = items.Count - 1;
+        }
+        BuildConfigurationBox.ItemsSource = items;
+        BuildConfigurationBox.SelectedIndex = chosen;
+    }
+
     private void ShowChosen()
     {
         RunConfiguration? shown = Chosen;
@@ -1177,6 +1213,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             IReadOnlyList<string> frameworks = project?.TargetFrameworks ?? [];
             FrameworkBox.ItemsSource = (string[])[frameworks.Count > 0 ? $"Default ({frameworks[0]})" : "Default", .. frameworks];
             FrameworkBox.SelectedIndex = shown.Framework.Length == 0 ? 0 : Math.Max(0, frameworks.ToList().IndexOf(shown.Framework) + 1);
+            ShowBuildConfigurations(shown);
             IReadOnlyList<LaunchProfile> profiles = project is null ? [] : LaunchProfile.Read(project);
             ProfileBox.ItemsSource = (string[])["None", .. profiles.Select(p => p.Name)];
             ProfileBox.SelectedIndex = Math.Max(0, profiles.ToList().FindIndex(p => p.Name == shown.LaunchProfile) + 1);
@@ -1235,7 +1272,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             {
                 browser.IsVisible = false;
             }
-            foreach (Control built in project?.IsScriptGame == true ? builtRows : [])
+            foreach (Control built in project?.IsScriptGame == true ? [.. builtRows, buildConfigurationRow] : (Control[])[])
             {
                 built.IsVisible = false;
             }

@@ -190,7 +190,11 @@ public sealed partial class BuildRunController
             work.Dispose();
             return Said(new BuildOutcome(BuildStatus.NotStarted, $"{request.Name} cannot be published: {error.Message}"));
         }
-        return await StartPublishAsync(request with { Kind = PublishKind.AppHost, Folder = PathNames.Canonical(output), Staging = PathNames.Canonical(staging) }, work, cancel);
+        return await StartPublishAsync(request with
+        {
+            Kind = PublishKind.AppHost, Folder = PathNames.Canonical(output), Staging = PathNames.Canonical(staging),
+            Configured = session.Workspace?.BuildArgumentsFor(request.Project) ?? [],
+        }, work, cancel);
     }
 
     /// <summary>Starts a publish worked out, as a build of the Build window's, and says how it ended once it has.</summary>

@@ -50,7 +50,7 @@ public partial class MainWindow
         RunConfigurations configurations = session.Configurations;
         RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], configurations.Own, [.. session.RunProjects.Where(p => p.Exists && (p.IsRunnable || p.GodotFolder is not null))],
             configurations.Chosen?.Name, (mine, generated, chosen) => configurations.Set(mine, generated, chosen, Projects), buildRun.IsRunningConfiguration,
-            configurations.Profiles, configurations.Solution, configurations.ProfileProblems)
+            configurations.Profiles, configurations.Solution, configurations.ProfileProblems, session.BuildChoices.Offered, session.BuildChoices.Chosen)
         {
             Folder = Folder,
             WriteProfiles = WriteLaunchProfilesAsync,

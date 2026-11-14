@@ -43,11 +43,12 @@ public static class AppHostSteps
 
     private static int made;
 
-    /// <summary>The deploy steps an AppHost declares, each with why it cannot run here where a login it needs is missing
-    /// (the engine asked once, where a step needs it); none, saying why, for one that cannot be asked or deploys nothing.</summary>
-    public static async Task<DeployOffer> OfferAsync(ProjectModel host, Containers.ContainerEngine engine, CancellationToken cancel)
+    /// <summary>The deploy steps an AppHost declares, run as the build configuration chosen gives it (<paramref name="configured"/>),
+    /// each with why it cannot run here where a login it needs is missing (the engine asked once, where a step needs it);
+    /// none, saying why, for one that cannot be asked or deploys nothing.</summary>
+    public static async Task<DeployOffer> OfferAsync(ProjectModel host, IReadOnlyList<string> configured, Containers.ContainerEngine engine, CancellationToken cancel)
     {
-        AppHostStepsRead read = await ReadAsync(host.Path, HostingVersionOf(host), host.WindowsTargeting, cancel);
+        AppHostStepsRead read = await ReadAsync(host.Path, HostingVersionOf(host), host.WindowsTargeting, configured, cancel);
         if (read.Problem is { } problem)
         {
             return new DeployOffer([], problem);
@@ -74,9 +75,11 @@ public static class AppHostSteps
 
     private const string AppHostPackage = "Aspire.Hosting.AppHost";
 
-    /// <summary>The steps of an AppHost of a hosting version, or why none: its version, a build that failed (its last words
-    /// said), an AppHost that ended or answered nothing within the limit.</summary>
-    public static async Task<AppHostStepsRead> ReadAsync(string project, string? hostingVersion, bool windowsTargeting, CancellationToken cancel)
+    /// <summary>The steps of an AppHost of a hosting version, run as <paramref name="configured"/> gives it (the build
+    /// configuration chosen), or why none: its version, a build that failed (its last words said), an AppHost that ended or
+    /// answered nothing within the limit.</summary>
+    public static async Task<AppHostStepsRead> ReadAsync(string project, string? hostingVersion, bool windowsTargeting, IReadOnlyList<string> configured,
+        CancellationToken cancel)
     {
         if (AppHostPipeline.WhyNotListed(hostingVersion) is { } why)
         {
@@ -120,7 +123,7 @@ public static class AppHostSteps
         Process host;
         try
         {
-            ProcessStartInfo start = ChildProcesses.DotnetCommand(["run", "--project", project, "--no-launch-profile",
+            ProcessStartInfo start = ChildProcesses.DotnetCommand(["run", "--project", project, "--no-launch-profile", .. configured,
                 .. windowsTargeting ? (string[])[$"-p:{MSBuildNames.EnableWindowsTargeting}=true"] : [], "--", .. AppHostPipeline.ListArguments],
                 Path.GetDirectoryName(project));
             start.Environment[AspireVariables.BackchannelPath] = socket;

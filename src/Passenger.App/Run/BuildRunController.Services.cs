@@ -340,7 +340,7 @@ public sealed partial class BuildRunController
             {
                 work.Say($"Building {Path.GetFileNameWithoutExtension(service.Project)}…");
                 BuildOutcome built = await BuildForAsync([service.Project], work.Stopping, work,
-                    reading: () => FollowBuilt(Reattached(run, [service]).Select(a => (a.Service.Name, a.HotReload))));
+                    reading: () => FollowBuilt(Reattached(run, [service]).Select(a => (a.Service.Name, a.HotReload))), configured: run.Workspace);
                 work.Stopping.ThrowIfCancellationRequested();
                 if (!built.Succeeded)
                 {
@@ -636,7 +636,7 @@ public sealed partial class BuildRunController
                     return false;
                 }
                 List<string> projects = [.. services.Select(s => s.Project).Distinct(StringComparer.Ordinal)];
-                if (run.BuildsBeforeRestart && !(await BuildForAsync(projects, work.Stopping, work, reading: () => FollowBuilt(again))).Succeeded)
+                if (run.BuildsBeforeRestart && !(await BuildForAsync(projects, work.Stopping, work, reading: () => FollowBuilt(again), configured: run.Workspace)).Succeeded)
                 {
                     return false;
                 }

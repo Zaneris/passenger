@@ -18,6 +18,7 @@ public sealed class AppHostPublishDialog : IdeWindow
 
     private readonly string project;
     private readonly string open;
+    private readonly IReadOnlyList<string> configured;
     private readonly TextBox folderBox = new() { Classes = { StyleClasses.Search } };
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
     private readonly ComboBox stepBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -31,11 +32,14 @@ public sealed class AppHostPublishDialog : IdeWindow
 
     /// <param name="output">The folder it published to last, or null.</param>
     /// <param name="readSteps">Reads the deploy steps it offers; null offers none.</param>
-    public AppHostPublishDialog(string project, string open, string? output, Func<CancellationToken, Task<DeployOffer>>? readSteps = null)
+    /// <param name="configured">What its dotnet run is given for the build configuration chosen.</param>
+    public AppHostPublishDialog(string project, string open, string? output, Func<CancellationToken, Task<DeployOffer>>? readSteps = null,
+        IReadOnlyList<string>? configured = null)
     {
         FormRows.Scope(this);
         this.project = project;
         this.open = open;
+        this.configured = configured ?? [];
         string name = Path.GetFileNameWithoutExtension(project);
         Title = $"Publish {name}";
         Width = 600;
@@ -175,7 +179,8 @@ public sealed class AppHostPublishDialog : IdeWindow
         string at = Destination ?? "…";
         DeployStep? step = (stepBox.SelectedItem as ComboBoxItem)?.Tag as DeployStep;
         destination.Text = Destination is null ? string.Empty : $"Writes its files to {at}";
-        command.Text = $"dotnet run --project {ChildProcesses.Quote(Path.GetRelativePath(open, project))} --no-launch-profile -- "
+        command.Text = $"dotnet run --project {ChildProcesses.Quote(Path.GetRelativePath(open, project))} --no-launch-profile "
+            + string.Concat(configured.Select(word => $"{ChildProcesses.Quote(word)} ")) + "-- "
             + string.Join(' ', AppHostPipeline.RunArguments(step?.Name ?? AppHostPipeline.Publish, Destination is null ? at : Path.GetRelativePath(open, Destination))
                 .Select(ChildProcesses.Quote));
         IEnumerable<string> refused = (offer?.Steps ?? []).Where(s => s.Missing is not null).GroupBy(s => s.Missing!)

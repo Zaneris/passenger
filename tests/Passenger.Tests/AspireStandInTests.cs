@@ -3479,6 +3479,7 @@ public sealed class StandInAppHost : SharedProject
                         File.Copy(file, Path.Combine(output, Path.GetFileName(file)));
                     }
                 }
+                Console.WriteLine($"Built into {AppContext.BaseDirectory}");
                 Console.WriteLine("Generating Compose output");
                 return;
             }

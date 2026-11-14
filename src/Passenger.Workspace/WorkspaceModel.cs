@@ -39,11 +39,11 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             : new Dictionary<string, string>();
 
     /// <summary>What a dotnet build of a target (the solution, a project, a program) is given for <see cref="Build"/>; none
-    /// for the configuration MSBuild takes, or the folder itself.</summary>
-    public IReadOnlyList<string> BuildArgumentsFor(string target) =>
+    /// for the configuration MSBuild takes, or the folder itself. dotnet watch's (<paramref name="watched"/>) in its own words.</summary>
+    public IReadOnlyList<string> BuildArgumentsFor(string target, bool watched = false) =>
         Build is not { } chosen || PathNames.Same(target, Folder) ? []
         : chosen.ArgumentsFor(target, Solution is { } solution && PathNames.Same(solution.Path, target),
-            Projects.FirstOrDefault(p => PathNames.Same(p.Path, target))?.Property(CarriedProperties.Platforms));
+            Projects.FirstOrDefault(p => PathNames.Same(p.Path, target))?.Property(CarriedProperties.Platforms), watched);
 
     /// <summary>What a dotnet publish of a project is given to build it as its build does: <see cref="BuildArgumentsFor"/>'s,
     /// else the configuration its build takes given none (<paramref name="builtAs"/>, as its evaluation says), which a

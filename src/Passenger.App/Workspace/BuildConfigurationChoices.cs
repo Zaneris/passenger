@@ -140,6 +140,35 @@ public sealed class BuildConfigurationChoices
         return null;
     }
 
+    /// <summary>What a run naming a build configuration of its own by its key builds as, in place of the folder's choice: the
+    /// folder's choice where it names the one chosen, nothing for the one MSBuild takes given none, else the one named with
+    /// what the solution maps each project to under it, asked of the solution; why not where it is not offered, or the
+    /// solution could not say.</summary>
+    public async Task<(BuildChoice? Choice, string? Problem)> ForRunAsync(string folder, WorkspaceModel workspace, string named)
+    {
+        UiThread.Check();
+        if (BuildConfiguration.Of(named) is not { } wanted || (Chosen is { } now && now.Is(wanted)))
+        {
+            return (choice, null);
+        }
+        // Before what is offered is read, the one named is given as named.
+        BuildConfiguration? offered = Offered.Count == 0 ? wanted : Offered.FirstOrDefault(o => o.Is(wanted));
+        if (offered is null)
+        {
+            return (null, $"{wanted.Key} is not one of the build configurations {(OfSolution ? "the solution declares" : "the projects declare")}");
+        }
+        if (Default is { } fallback && offered.Is(fallback))
+        {
+            return (null, null);
+        }
+        if (workspace.Solution is not { } solution)
+        {
+            return (new BuildChoice(offered, OfSolution: false), null);
+        }
+        (SolutionBuild? read, string? problem) = await AskAsync(folder, solution.Path, offered);
+        return read is null ? (null, problem) : (new BuildChoice(offered, OfSolution: true) { Mapped = read.Mapped }, null);
+    }
+
     private static async Task<(SolutionBuild? Read, string? Problem)> AskAsync(string folder, string solution, BuildConfiguration? chosen)
     {
         try

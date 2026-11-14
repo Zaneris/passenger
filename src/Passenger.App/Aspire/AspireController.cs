@@ -264,11 +264,12 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     }
 
     /// <summary>Starts an Aspire configuration's AppHosts, each built first as it says (<paramref name="build"/> told what to do
-    /// as the build saves the files), and once each is connected to answers null, else why not. <paramref name="https"/> is
+    /// as the build saves the files, and the workspace whose build configuration it builds as: each AppHost's configuration's
+    /// own, <see cref="ProjectSession.WorkspaceOfAsync"/>), and once each is connected to answers null, else why not. <paramref name="https"/> is
     /// how its HTTPS is served, as the start worked out before: over HTTP, the AppHosts' own addresses and the services they
     /// start serve HTTP for this run.</summary>
     public async Task<string?> StartAsync(RunConfiguration configuration, RunStart mode,
-        Func<BuildStep, Action?, Task<BuildOutcome>> build, CancellationToken cancellation = default, HttpsChoice? https = null)
+        Func<BuildStep, Action?, WorkspaceModel?, Task<BuildOutcome>> build, CancellationToken cancellation = default, HttpsChoice? https = null)
     {
         UiThread.Check();
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -376,18 +377,24 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     }
 
     private async Task<AspireAppRun> StartAppAsync(RunConfiguration configuration, RunStart mode, string group,
-        Func<BuildStep, Action?, Task<BuildOutcome>> build, CancellationToken cancellation, (string AppHost, string Name)? profileTarget, HttpsChoice https,
+        Func<BuildStep, Action?, WorkspaceModel?, Task<BuildOutcome>> build, CancellationToken cancellation, (string AppHost, string Name)? profileTarget, HttpsChoice https,
         IReadOnlyList<string> said)
     {
         // Followed from the save of the AppHost's build, which builds the services it starts: each start's session copies them.
         BuiltEdits? followed = null;
         AspireAppRun app;
         LaunchPlan plan;
+        // What the AppHost and the services it starts build and run as, its configuration's own build configuration where it names one.
+        (WorkspaceModel? configured, string? unconfigured) = await workspace.WorkspaceOfAsync(configuration);
+        if (unconfigured is not null)
+        {
+            throw new LaunchException(unconfigured);
+        }
         try
         {
             IReadOnlyList<ProjectModel> projects = workspace.Projects;
             BuiltInputs.Listing began = await BackgroundWork.Run(() => BuiltInputs.Listed(configuration.Project, projects));
-            plan = await ResolveAppHostAsync(configuration, BuildAsync, cancellation);
+            plan = await ResolveAppHostAsync(configuration, configured, BuildAsync, cancellation);
             if (plan.Build is { } step && await BuildAsync(step) is { Succeeded: false } failed)
             {
                 throw new LaunchException(failed.Message);
@@ -403,6 +410,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             }
             app = new(configuration, mode, group)
             {
+                Configured = configured,
                 ProfileTarget = profileTarget,
                 BuildBegan = began,
                 OverHttp = https.OverHttp is not null,
@@ -530,7 +538,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         {
             followed?.Dispose();
             followed = workspace.Debug.Kept();
-        });
+        }, configured);
     }
 
     /// <summary>The run's resources followed from its connection until it stops, whatever the window shows: each container
@@ -763,7 +771,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
     }
 
-    private async Task<LaunchPlan> ResolveAppHostAsync(RunConfiguration configuration, Func<BuildStep, Task<BuildOutcome>> build, CancellationToken cancellation)
+    private async Task<LaunchPlan> ResolveAppHostAsync(RunConfiguration configuration, WorkspaceModel? configured, Func<BuildStep, Task<BuildOutcome>> build,
+        CancellationToken cancellation)
     {
         if (!Path.GetExtension(configuration.Project).Equals(".cs", StringComparison.OrdinalIgnoreCase))
         {
@@ -771,7 +780,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             {
                 throw new LaunchException("Owned Aspire AppHosts must launch the project's built target; clear Exe path");
             }
-            return await LaunchPlan.ResolveAsync(configuration, workspace.Projects, workspace.Workspace, stateFolder, cancellation);
+            return await LaunchPlan.ResolveAsync(configuration, workspace.Projects, configured, stateFolder, cancellation);
         }
         if (configuration.Program.Length > 0 || configuration.Framework.Length > 0)
         {
@@ -800,7 +809,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         cancellation.ThrowIfCancellationRequested();
         ChildResult evaluated = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(
-            ["build", configuration.Project, "--output", output, "--no-restore", "--nologo", .. workspace.Workspace?.BuildArgumentsFor(configuration.Project) ?? [],
+            ["build", configuration.Project, "--output", output, "--no-restore", "--nologo", .. configured?.BuildArgumentsFor(configuration.Project) ?? [],
                 $"-getProperty:{Passenger.Host.CarriedProperties.TargetPath}"], folder), cancel: cancellation);
         string target = evaluated.Output.Trim();
         if (!evaluated.Succeeded || !Path.IsPathFullyQualified(target) || !await BackgroundWork.Run(() => File.Exists(target), cancellation))
@@ -950,7 +959,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             : RunConfiguration.From(project, profile) with { Name = project.Name };
         configuration = configuration with { BuildBeforeLaunch = false, LaunchBrowser = false, Console = ConsoleKind.Internal };
         LaunchPlan plan = await LaunchPlan.ResolveAsync(configuration,
-            known is null ? [.. workspace.Projects, project] : workspace.Projects, workspace.Workspace, stateFolder, cancellation);
+            known is null ? [.. workspace.Projects, project] : workspace.Projects, app.Workspace ?? workspace.Workspace, stateFolder, cancellation);
         Dictionary<string, string> environment = new(plan.Environment, StringComparer.Ordinal);
         foreach (AspireEnvironmentVariable variable in request.Environment)
         {
@@ -1432,6 +1441,11 @@ public sealed class AspireAppRun : ServiceRun
     private readonly Dictionary<string, TaskCompletionSource<string?>> nextStarts = new(StringComparer.Ordinal);
 
     private long started;
+
+    /// <summary>The workspace it was started in, whose build configuration it and the services it starts build and run as.</summary>
+    public WorkspaceModel? Configured { get; init; }
+
+    public override WorkspaceModel? Workspace => Configured;
 
     internal AspireAppRun(RunConfiguration configuration, RunStart mode, string group)
     {

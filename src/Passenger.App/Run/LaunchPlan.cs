@@ -78,6 +78,10 @@ public sealed partial record LaunchPlan
     /// <summary>The build before launch, or null when the configuration launches what was built last.</summary>
     public BuildStep? Build { get; init; }
 
+    /// <summary>The workspace it was worked out in, whose build configuration its build, dotnet watch and its install on a
+    /// device are given (<see cref="ProjectSession.WorkspaceOfAsync"/>); null for none.</summary>
+    public WorkspaceModel? Workspace { get; init; }
+
     /// <summary>The file the build makes and the launch needs (the project's assembly), checked once the build is done.</summary>
     public string? Built { get; init; }
 
@@ -242,7 +246,12 @@ public sealed partial record LaunchPlan
     /// <paramref name="godotFolders"/> gives, headless where <paramref name="unseen"/> (the process's by default). Throws a <see cref="LaunchException"/> saying why not.</summary>
     public static async Task<LaunchPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
         CancellationToken cancel = default, string? godot = null, string? atHand = null, IReadOnlyDictionary<string, string>? godotFolders = null, bool? unseen = null,
-        Func<ProjectModel, Devices.KeptTarget?>? targets = null)
+        Func<ProjectModel, Devices.KeptTarget?>? targets = null) =>
+        await ResolveWithinAsync(configuration, projects, workspace, stateFolder, cancel, godot, atHand, godotFolders, unseen, targets) with { Workspace = workspace };
+
+    private static async Task<LaunchPlan> ResolveWithinAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
+        CancellationToken cancel, string? godot, string? atHand, IReadOnlyDictionary<string, string>? godotFolders, bool? unseen,
+        Func<ProjectModel, Devices.KeptTarget?>? targets)
     {
         bool headless = unseen ?? PassengerApp.ShowsNoWindow;
         if (configuration.Unsupported is { } why)

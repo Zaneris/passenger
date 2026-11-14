@@ -12,8 +12,8 @@ namespace Passenger.Tests;
 /// registry that asks for a login docker doesn't hold refused, saying how to log in, and one to a registry that asks for none
 /// taken with no engine at all; an AppHost's Docker Compose files, written by its
 /// publishers, landed in the folder chosen as one step of Undo, which <c>docker compose config</c> reads, its binary output
-/// byte for byte; and an AppHost's deploy steps offered as it declares them, one whose Azure login is missing refused naming
-/// it. Alone: the refusals point the process's DOCKER_CONFIG and AZURE_CONFIG_DIR at folders of the test's while they ask.</summary>
+/// byte for byte; an AppHost's deploy steps offered as it declares them, one whose Azure login is missing refused naming
+/// it; and its steps and their listing run under the build configuration chosen. Alone: the refusals point the process's DOCKER_CONFIG and AZURE_CONFIG_DIR at folders of the test's while they ask.</summary>
 [Collection(Alone.Name)]
 public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisposable
 {
@@ -320,6 +320,47 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
         {
             OwnEnvironment.Set(Passenger.App.Aspire.DeployLogins.AzureConfigFolder, had);
             window.Close();
+        }
+    }
+
+    /// <summary>An AppHost's publish, deploy steps and their listing run it as the folder's builds run it, under the build
+    /// configuration chosen, as its solution maps it: the dialog's command says so, its steps are listed from its Release
+    /// build, and its publish runs that build.</summary>
+    [AvaloniaFact]
+    public void An_AppHosts_steps_and_their_listing_run_under_the_build_configuration_chosen()
+    {
+        appHost.Reset();
+        string host = PathNames.Canonical(appHost.ProjectFile);
+        string release = Path.Combine(Path.GetDirectoryName(host)!, "bin", "Release", TestProjects.Framework) + Path.DirectorySeparatorChar;
+        string deploy = Path.Combine(Path.GetDirectoryName(host)!, "deploy-release");
+        // A state of its own, so the configuration chosen is not the next test's.
+        MainWindow window = appHost.Open(appHost.Program, state: TestFolders.Create("apphost-release-state-"), languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => BuildConfigurationTests.Offered(window).Split(", ").Contains("Release"),
+                () => $"Release offered, where the widget offers {BuildConfigurationTests.Offered(window)}");
+            BuildConfigurationTests.Choose(window, "Release");
+            AppHostPublishDialog dialog = window.ShowAppHostPublish(host) ?? throw new InvalidOperationException($"Publish did not open: {window.Status}");
+            Ui.WaitFor(() => !dialog.IsReadingSteps, () => $"the AppHost's deploy steps to be read, where the dialog says: {dialog.StepsSaid}", TimeSpan.FromMinutes(2));
+            Assert.True(dialog.Steps.Count > 1, $"No deploy steps were read from the AppHost under Release: {dialog.StepsSaid}");
+            Assert.True(Directory.Exists(release), $"The AppHost's steps were not listed from its Release build, in {release}");
+            dialog.OutputFolder = "deploy-release";
+            Ui.Settle();
+            Assert.Equal($"dotnet run --project {Path.Combine(StandInAppHost.Name, $"{StandInAppHost.Name}.csproj")} --no-launch-profile -c Release -p:Platform=AnyCPU -- --operation publish "
+                + $"--step publish --output-path {Path.Combine(StandInAppHost.Name, "deploy-release")}", dialog.Command);
+
+            BuildOutcome ended = Publish(window, () => Task.FromResult(dialog.Publish()));
+            Assert.True(ended.Succeeded, $"The AppHost was not published: {ended.Message}\n{string.Join('\n', ended.Output)}");
+            Assert.True(ended.Output.Any(line => line.Contains($"Built into {release}", StringComparison.Ordinal)),
+                $"The AppHost's publish did not run its Release build, in {release}:\n{string.Join('\n', ended.Output)}");
+        }
+        finally
+        {
+            window.Close();
+            if (Directory.Exists(deploy))
+            {
+                Directory.Delete(deploy, recursive: true);
+            }
         }
     }
 

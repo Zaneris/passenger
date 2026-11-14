@@ -43,6 +43,10 @@ public sealed record ContainerPlan(string Name, string Folder, string ProjectNam
     IReadOnlyList<DotnetService> Dotnet, IReadOnlyList<string> Backing, IReadOnlyList<string> Watched, ContainerMode Mode, bool KeepBacking,
     string? BrowserUrl, string? LaunchService, int? LaunchPort, ContainerPaths Paths)
 {
+    /// <summary>The workspace it was worked out in, whose build configuration its builds are given, its configuration's own
+    /// where it names one (<see cref="ProjectSession.WorkspaceOfAsync"/>); null for the folder's.</summary>
+    public WorkspaceModel? Workspace { get; init; }
+
     /// <summary>The projects Run builds first: each .NET service's that starts, once, in fast mode (images mode builds its
     /// images as Compose says, from their Dockerfiles).</summary>
     public IReadOnlyList<string> Builds => Mode == ContainerMode.Fast
@@ -1086,6 +1090,8 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     /// <summary>In fast mode a service's container runs the build here, which an edit's restart builds first; as deployed,
     /// its restart builds its image.</summary>
     public override bool BuildsBeforeRestart => Plan.Mode == ContainerMode.Fast;
+
+    public override WorkspaceModel? Workspace => Plan.Workspace;
 
     /// <summary>In fast mode, while its build here is the one it started on; as deployed, a restart builds its image again.</summary>
     public override bool RestartsOnItsBuild(IRunService service) => Plan.Mode == ContainerMode.Fast && Changed().All(d => d.Service != service.Name);

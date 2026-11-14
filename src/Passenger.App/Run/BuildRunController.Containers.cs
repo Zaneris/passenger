@@ -2,6 +2,7 @@ using Passenger.App.Containers;
 using Passenger.App.Debugging;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Run;
 
@@ -170,10 +171,16 @@ public sealed partial class BuildRunController
             }
         }
         work.Say($"Reading {chosen.Name}'s compose files…");
+        (WorkspaceModel? configured, string? unconfigured) = await session.WorkspaceOfAsync(chosen);
+        if (unconfigured is not null)
+        {
+            return Said(unconfigured);
+        }
         ContainerPlan plan;
         try
         {
-            plan = await ContainerPlans.ResolveAsync(chosen, session.Projects, session.Workspace, parts.StateFolder(), engine, session.Containers.Labels, work.Stopping);
+            plan = await ContainerPlans.ResolveAsync(chosen, session.Projects, configured, parts.StateFolder(), engine, session.Containers.Labels, work.Stopping)
+                with { Workspace = configured };
             later = [.. later.Where(s => plan.Dotnet.Any(d => d.Service == s && d.Action == ServiceStart.DontStart && d.Unfit is null))];
             // A run let go of whose Compose project this one brings up again is this one's now.
             session.RunsLetGo.RemoveAll(r => r.Plan.ProjectName == plan.ProjectName);
@@ -229,7 +236,7 @@ public sealed partial class BuildRunController
         if (plan.Builds.Count > 0)
         {
             work.Say($"Building {string.Join(", ", plan.Builds.Select(Path.GetFileNameWithoutExtension))}…");
-            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work, reading: () => FollowBuilt(sessions));
+            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work, reading: () => FollowBuilt(sessions), configured: plan.Workspace);
             if (!built.Succeeded)
             {
                 return Checkpoint(work, chosen.Name) is { } stopped ? Said(stopped) : built.Message;
@@ -584,7 +591,8 @@ public sealed partial class BuildRunController
                 {
                     return Said(unsaved);
                 }
-                BuildOutcome built = await BuildForAsync(run.Plan.Builds, work.Stopping, work, reading: () => FollowBuilt(again.Select(a => (a.Service.Name, a.HotReload))));
+                BuildOutcome built = await BuildForAsync(run.Plan.Builds, work.Stopping, work, reading: () => FollowBuilt(again.Select(a => (a.Service.Name, a.HotReload))),
+                    configured: run.Plan.Workspace);
                 if (!built.Succeeded)
                 {
                     return Said(built.Message);

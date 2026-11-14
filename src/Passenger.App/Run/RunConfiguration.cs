@@ -132,6 +132,11 @@ public sealed record RunConfiguration
 
     public bool BuildBeforeLaunch { get; init; } = true;
 
+    /// <summary>The build configuration and platform its run builds, evaluates and starts as, by its key (Release|Any CPU,
+    /// <see cref="Passenger.Workspace.BuildConfiguration.Key"/>), in place of the folder's choice; empty for the folder's
+    /// (<see cref="ProjectSession.WorkspaceOfAsync"/>).</summary>
+    public string BuildConfiguration { get; init; } = string.Empty;
+
     public ConsoleKind Console { get; init; }
 
     /// <summary>Whether the browser opens at <see cref="BrowserUrl"/> once the program listens there, as a launch profile's
@@ -449,6 +454,7 @@ public sealed record RunConfiguration
         CopyArguments = [.. (CopyArguments ?? []).Select(a => a ?? string.Empty).Take(GameCopies.Most)],
         Environment = (Environment ?? []).Where(v => !string.IsNullOrEmpty(v.Key)).ToDictionary(v => v.Key, v => v.Value ?? string.Empty),
         WorkingDirectory = WorkingDirectory ?? string.Empty,
+        BuildConfiguration = BuildConfiguration ?? string.Empty,
         BrowserUrl = BrowserUrl ?? string.Empty,
         Console = Enum.IsDefined(Console) ? Console : ConsoleKind.Internal,
         ComposeFiles = [.. (ComposeFiles ?? []).Where(f => !string.IsNullOrWhiteSpace(f))],

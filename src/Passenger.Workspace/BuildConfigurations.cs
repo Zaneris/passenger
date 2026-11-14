@@ -112,16 +112,18 @@ public sealed record BuildChoice(BuildConfiguration Chosen, bool OfSolution)
     }
 
     /// <summary>What a dotnet build, run or publish of a target is given for it: the solution's own configuration and
-    /// platform for the solution, a project's properties (<see cref="PropertiesOf"/>) for a project or a program.</summary>
-    public IReadOnlyList<string> ArgumentsFor(string target, bool solution, string? platforms)
+    /// platform for the solution, a project's properties (<see cref="PropertiesOf"/>) for a project or a program. dotnet
+    /// watch's (<paramref name="watched"/>) gives the platform as <c>--property</c>, its <c>-p</c> being its project's.</summary>
+    public IReadOnlyList<string> ArgumentsFor(string target, bool solution, string? platforms, bool watched = false)
     {
+        string property = watched ? "--property" : "-p";
         if (solution)
         {
-            return ["-c", Chosen.Configuration, $"-p:{MSBuildNames.Platform}={Chosen.Platform}"];
+            return ["-c", Chosen.Configuration, $"{property}:{MSBuildNames.Platform}={Chosen.Platform}"];
         }
         IReadOnlyDictionary<string, string> properties = PropertiesOf(target, platforms);
         return properties.TryGetValue(MSBuildNames.Platform, out string? platform)
-            ? ["-c", properties[MSBuildNames.Configuration], $"-p:{MSBuildNames.Platform}={platform}"]
+            ? ["-c", properties[MSBuildNames.Configuration], $"{property}:{MSBuildNames.Platform}={platform}"]
             : ["-c", properties[MSBuildNames.Configuration]];
     }
 }

@@ -172,10 +172,12 @@ public partial class MainWindow
             return null;
         }
         Containers.ContainerEngine engine = session.Containers.Engine;
+        // Its steps run as the build configuration chosen gives it, its listing too.
+        IReadOnlyList<string> configured = session.Workspace?.BuildArgumentsFor(project) ?? [];
         Func<CancellationToken, Task<Passenger.App.Aspire.DeployOffer>>? readSteps = Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is { IsAspireHost: true } host
-            ? cancel => ReadDeployStepsAsync(host, engine, cancel)
+            ? cancel => ReadDeployStepsAsync(host, configured, engine, cancel)
             : null;
-        AppHostPublishDialog dialog = new(project, open, session.Publishing.OutputOf(project), readSteps)
+        AppHostPublishDialog dialog = new(project, open, session.Publishing.OutputOf(project), readSteps, configured)
         {
             Busy = () => IsBuilding ? $"{Refusals.Building}: publish once it has ended" : null,
         };
@@ -203,7 +205,8 @@ public partial class MainWindow
 
     /// <summary>An AppHost's deploy steps read from it, as its build reads the files once their saves have landed; none
     /// while another build runs, whose files the AppHost's own build would take from under it.</summary>
-    private async Task<Passenger.App.Aspire.DeployOffer> ReadDeployStepsAsync(ProjectModel host, Containers.ContainerEngine engine, CancellationToken cancel)
+    private async Task<Passenger.App.Aspire.DeployOffer> ReadDeployStepsAsync(ProjectModel host, IReadOnlyList<string> configured, Containers.ContainerEngine engine,
+        CancellationToken cancel)
     {
         if (IsBuilding)
         {
@@ -213,7 +216,7 @@ public partial class MainWindow
         {
             return new Passenger.App.Aspire.DeployOffer([], unlanded);
         }
-        return await Passenger.App.Aspire.AppHostSteps.OfferAsync(host, engine, cancel);
+        return await Passenger.App.Aspire.AppHostSteps.OfferAsync(host, configured, engine, cancel);
     }
 
     /// <summary>Lands the files a folder holds in another (an AppHost's publishers' output, in the order of their paths), each

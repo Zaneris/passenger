@@ -88,6 +88,21 @@ public class BuildConfigurationsTests
         Assert.Equal("Release", chosen.BuildPropertiesOf(Game)["Configuration"]);
     }
 
+    /// <summary>dotnet watch runs a project as its build does, its configuration and platform given in its own words: it takes
+    /// <c>-p</c> for its project, so the platform goes as <c>--property</c>; none for the default.</summary>
+    [Fact]
+    public void Dotnet_watch_is_given_the_configuration_and_platform_with_the_platform_as_a_property_its_p_being_its_project()
+    {
+        WorkspaceModel plain = new("/work", null, [Project(Game, "AnyCPU;x64")]);
+        Assert.Empty(plain.BuildArgumentsFor(Game, watched: true));
+        WorkspaceModel chosen = plain with { Build = new BuildChoice(new BuildConfiguration("Debug", "x64"), OfSolution: false) };
+        Assert.Equal(["-c", "Debug", "--property:Platform=x64"], chosen.BuildArgumentsFor(Game, watched: true));
+        Assert.Equal(["-c", "Debug", "-p:Platform=x64"], chosen.BuildArgumentsFor(Game));
+        BuildChoice solution = new(new BuildConfiguration("Staging", "Any CPU"), OfSolution: true) { Mapped = [new SolutionBuilt(Game, "Release", "x64")] };
+        Assert.Equal(["-c", "Release", "--property:Platform=x64"], solution.ArgumentsFor(Game, solution: false, null, watched: true));
+        Assert.Equal(["-c", "Staging", "--property:Platform=Any CPU"], solution.ArgumentsFor(Solution, solution: true, null, watched: true));
+    }
+
     /// <summary>A publish that builds as the folder builds (a container run's image) takes the choice's arguments, else the
     /// configuration the project's build takes given none, which a publish given none would leave for Release.</summary>
     [Fact]

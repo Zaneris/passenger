@@ -322,6 +322,10 @@ public abstract class ServiceRun : Telemetry.ITelemetryRun
     /// program reads the build here), rather than by their restart.</summary>
     public abstract bool BuildsBeforeRestart { get; }
 
+    /// <summary>The workspace whose build configuration those builds are given, its configuration's own where it names one
+    /// (<see cref="ProjectSession.WorkspaceOfAsync"/>); null for the folder's.</summary>
+    public virtual Passenger.Workspace.WorkspaceModel? Workspace => null;
+
     /// <summary>Whether a restart with no build of its own runs a service on the build its program runs now, none made
     /// since, so its next session takes the ended one's edits as still to apply.</summary>
     public virtual bool RestartsOnItsBuild(IRunService service) => false;

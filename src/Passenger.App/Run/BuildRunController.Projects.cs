@@ -100,15 +100,18 @@ public sealed partial class BuildRunController
         RunDashboard?[] dashboards = new RunDashboard?[starts.Count];
         try
         {
-            foreach (IGrouping<(string? Framework, string? Output), BuildStep> together in starts.Select(s => s.Plan.Build).OfType<BuildStep>()
-                .DistinctBy(step => (step.Project, step.Framework, step.Output)).GroupBy(step => (step.Framework, step.Output)))
+            // Those built as one build configuration are built together, each as its own configuration names.
+            foreach (IGrouping<(string? Framework, string? Output, string? As), (BuildStep Step, WorkspaceModel? Workspace)> together in starts
+                .Where(s => s.Plan.Build is not null).Select(s => (Step: s.Plan.Build!, s.Plan.Workspace))
+                .DistinctBy(each => (each.Step.Project, each.Step.Framework, each.Step.Output, each.Workspace?.Build?.Chosen.Key))
+                .GroupBy(each => (each.Step.Framework, each.Step.Output, each.Workspace?.Build?.Chosen.Key)))
             {
-                BuildOutcome built = await BuildForAsync([.. together.Select(step => step.Project)], work.Stopping, work, together.Key.Framework, together.Key.Output,
+                BuildOutcome built = await BuildForAsync([.. together.Select(each => each.Step.Project)], work.Stopping, work, together.Key.Framework, together.Key.Output,
                     followsEdits ? () =>
                     {
                         edits?.Dispose();
                         edits = session.Debug.Building(debug ? session.Debug.HotReloadOn() : true);
-                    } : null);
+                    } : null, together.First().Workspace);
                 if (!built.Succeeded)
                 {
                     return Checkpoint(work, chosen.Name) ?? built.Message;

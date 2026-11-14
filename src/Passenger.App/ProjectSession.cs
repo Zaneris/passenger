@@ -518,6 +518,22 @@ public sealed class ProjectSession : IAsyncDisposable
         }
     }
 
+    /// <summary>The workspace a run of a configuration reads, the one answer for what every path of its run builds, evaluates
+    /// and starts as: the folder's, with the build configuration the configuration names (<see cref="RunConfiguration.BuildConfiguration"/>)
+    /// in place of the folder's choice; why not where the one it names cannot be given.</summary>
+    public async Task<(WorkspaceModel? Workspace, string? Problem)> WorkspaceOfAsync(RunConfiguration configuration)
+    {
+        UiThread.Check();
+        if (Workspace is not { } now || Folder is not { } folder || configuration.BuildConfiguration.Length == 0)
+        {
+            return (Workspace, null);
+        }
+        (BuildChoice? choice, string? problem) = await BuildChoices.ForRunAsync(folder, now, configuration.BuildConfiguration);
+        // Read again after the solution was asked: a reload meanwhile is what the run reads.
+        return problem is null ? ((Workspace ?? now) with { Build = choice }, null)
+            : (null, $"{configuration.Name} cannot build as {configuration.BuildConfiguration}: {problem}");
+    }
+
     /// <summary>A project's framework was chosen (by its path; null for every project's, as the folder's kept choices are
     /// taken), and its XAML and C# followed: what shows the choice, and the previews of its XAML, follow it.</summary>
     public event EventHandler<string?>? FrameworkChosen;
