@@ -492,7 +492,7 @@ a new name, and `just site-shots` retakes its images.
   socket calls, never .NET's Socket (whose first use starts a thread of .NET's on macOS and Linux), and makes its own
   calls of reading and answering before Main (the program's handlers are first found and called at the first update),
   so a stop between updates finds its thread blocked in recv: a thread caught partway through a first use may hold a
-  stop's evaluations (#1495). CoreCLR lets no debugger go once
+  stop's evaluations (#1495). Hot Reload applies only to a program built as the language server reads the code, the folder's configuration (`HotReload.Builds`, `WorkspaceModel.BuiltUnlike`); a run built as another is refused, saying why. CoreCLR lets no debugger go once
   Edit and Continue changed a program, so neither does Passenger (`DebugController.LetsNoDebuggerGo`: Detach refused, a
   service restarted, leaving the folder asks). A build's edits are kept for each program it starts later; a session
   takes edits only for its loaded modules' projects; `StaleCallers` blocks an update leaving loaded code calling a
