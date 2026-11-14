@@ -439,6 +439,17 @@ public static class SolutionEdits
             {
                 return $"{NameOf(project)} is already in the solution";
             }
+            // A shared project keeps the id its items file shares, and builds in the projects importing it, never on its own.
+            if (SharedProjects.Is(project))
+            {
+                string shared = SharedProjects.GuidOf(project) ?? NewId();
+                InsertEntry(TypeOf(project), NameOf(project), Relative(project).Replace('/', '\\'), shared);
+                if (into is not null)
+                {
+                    Nest(shared, into.Id);
+                }
+                return null;
+            }
             string id = NewId();
             InsertEntry(TypeOf(project), NameOf(project), Relative(project).Replace('/', '\\'), id);
             // A project the configurations do not name is never built with the solution: each builds it as Any CPU.
@@ -618,6 +629,7 @@ public static class SolutionEdits
         {
             ".fsproj" => "{F2A71F9B-5D33-465A-A702-920D77279786}",
             ".vbproj" => "{F184B08F-C81C-45F6-A57F-5ABD9991F28F}",
+            SharedProjects.Extension => "{D954291E-2A0B-460D-934E-DC6B0785DB48}",
             _ => "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}",
         };
     }

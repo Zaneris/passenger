@@ -111,7 +111,7 @@ public partial class MainWindow
     {
         string where = into is null ? "the Solution" : $"Solution Folder '{FolderName(into)}'";
         IReadOnlyList<string> picked = await PickFiles($"Add Existing Project to {where}",
-            [new FilePickerFileType("Projects") { Patterns = ["*.csproj", "*.fsproj", "*.vbproj"] }], true);
+            [new FilePickerFileType("Projects") { Patterns = ["*.csproj", "*.fsproj", "*.vbproj", "*" + SharedProjects.Extension] }], true);
         if (picked.Count == 0)
         {
             return;

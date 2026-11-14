@@ -253,6 +253,8 @@ public static class AppActions
     public const string EditProjectFile = "app.explorer.editProjectFile";
     public const string UnloadProject = "app.explorer.unloadProject";
     public const string ReloadProject = "app.explorer.reloadProject";
+    public const string IncludeInProject = "app.explorer.includeInProject";
+    public const string ExcludeFromProject = "app.explorer.excludeFromProject";
     public const string CompareFiles = "app.explorer.compareFiles";
     public const string CopyPath = "app.explorer.copyPath";
     public const string RevealInFileManager = "app.explorer.reveal";

@@ -215,8 +215,14 @@ public sealed class TestFinder
         {
             return;
         }
-        if (Owner(path) is not { } project)
+        IReadOnlyList<ProjectModel> holders = Holders(path);
+        if (holders is not [{ } project])
         {
+            // A file several test projects compile (a shared project's) is told again in each.
+            if (holders.Count > 0)
+            {
+                Tell(holders);
+            }
             return;
         }
         // Lines put in or taken out above or among its tests: they move where they are told, the project told again nowhere.
@@ -252,9 +258,9 @@ public sealed class TestFinder
     public void Closed(string path)
     {
         UiThread.Check();
-        if (open.Remove(path) && Owner(path) is { } project)
+        if (open.Remove(path) && Holders(path) is { Count: > 0 } holders)
         {
-            Read([project], timed: false);
+            Read(holders, timed: false);
         }
     }
 
@@ -283,7 +289,8 @@ public sealed class TestFinder
             AttributesChanged?.Invoke(this, EventArgs.Empty);
         }
         List<string> paths = [.. changes.Paths.Where(p => !open.ContainsKey(p))];
-        List<ProjectModel> touched = [.. Projects.Where(project => paths.Any(path => PathNames.Within(path, project.Folder) || PathNames.Within(project.Folder, path)))];
+        List<ProjectModel> touched = [.. Projects.Where(project => paths.Any(path => PathNames.Within(path, project.Folder) || PathNames.Within(project.Folder, path)
+            || listed.GetValueOrDefault(project.Path)?.Contains(path, PathNames.Comparer) == true))];
         if (touched.Count == 0)
         {
             return;
@@ -337,6 +344,21 @@ public sealed class TestFinder
         }
         return holding;
     }
+
+    /// <summary>The test projects that read a file: the one it belongs to, else those that listed it (a shared project's file,
+    /// which each project importing it compiles).</summary>
+    private IReadOnlyList<ProjectModel> Holders(string path) => Owner(path) is { } owner ? [owner]
+        : [.. Projects.Where(p => listed.GetValueOrDefault(p.Path)?.Contains(path, PathNames.Comparer) == true)];
+
+    /// <summary>The C# files a test project compiles: those of its folder, then those it takes from elsewhere
+    /// (<see cref="Elsewhere"/>) that are there.</summary>
+    private static IEnumerable<string> CompiledFiles(ProjectModel project) =>
+        FolderWalk.ProjectFiles(project, ".cs").Concat(Elsewhere(project).Where(File.Exists).Select(PathNames.Canonical)).Distinct(PathNames.Comparer);
+
+    /// <summary>The C# files a project compiles from outside its folder (a shared project's, a linked file), as evaluated.</summary>
+    public static IEnumerable<string> Elsewhere(ProjectModel project) => (project.Evaluated?.Items ?? [])
+        .Where(i => i.Type == "Compile" && i.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && !PathNames.Within(i.Path, project.Folder))
+        .Select(i => i.Path);
 
     /// <summary>Whether a method the tree shows is one of these projects' (<see cref="ProjectsOf"/> a file), or they are
     /// none: a test of the same name in another project is not the file's.</summary>
@@ -430,7 +452,7 @@ public sealed class TestFinder
         foreach (ProjectModel project in projects)
         {
             bool gut = project.IsScriptGame;
-            List<string> files = [.. gut ? GutScripts.Files(project.Folder) : FolderWalk.ProjectFiles(project, ".cs")];
+            List<string> files = [.. gut ? GutScripts.Files(project.Folder) : CompiledFiles(project)];
             found[project.Path] = files;
             IReadOnlySet<string> attributes = ReferenceEquals(owns[project.Path], NoAttributes) && !gut ? kept?.AttributesOf(project.Path) ?? NoAttributes : owns[project.Path];
             readWith[project.Path] = attributes;

@@ -48,6 +48,12 @@ public static class SharedProjects
         return PathNames.Canonical(Path.ChangeExtension(shproj, EvaluatedItem.SharedItemsExtension));
     }
 
+    /// <summary>The id a shared project gives itself (its ProjectGuid, braced, in capitals), which a solution lists it by
+    /// and its items file shares; null where it gives none.</summary>
+    public static string? GuidOf(string shproj) => Text(shproj) is { } text && Parsed(text) is { Root: { } root }
+        && root.Descendants().FirstOrDefault(e => e.Name.LocalName == "ProjectGuid" && !e.HasElements)?.Value.Trim() is { } written
+        && Guid.TryParse(written, out Guid id) ? id.ToString("B").ToUpperInvariant() : null;
+
     /// <summary>The files an items file names as they are on disk now, a wildcard's found under its folder; none for one
     /// that is not there or does not read.</summary>
     public static IReadOnlyList<EvaluatedItem> ItemsOf(string projitems) => Text(projitems) is { } text

@@ -209,7 +209,7 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.FindInFiles, Title = "Find in Files", ReadOnly = true), Description(
         "Every match of text in the folder's files, as Find in Files finds them: an open file as the editor has it, every " +
         "other text file on disk (binary and very large files left out, and build output, dependencies and version control " +
-        "unless the directory scope is inside one), each with its line's text, at most limit (1000; capped says so); stopped names the files a regex ran too long in. scope: solution (the default), project (project's name or .csproj), " +
+        "unless the directory scope is inside one), each with its line's text, at most limit (1000; capped says so); stopped names the files a regex ran too long in. scope: solution (the default), project (project's name, .csproj or .shproj), " +
         "directory (directory, its subdirectories unless recursive is false), openFiles, currentFile or recentlyViewed. mask: " +
         "names by * and ?, comma-separated, ! leaving one out (\"*.cs, !*.g.cs\").")]
     public Task<FindInFilesResult> FindInFiles(string text, bool matchCase = false, bool wholeWords = false, bool regex = false,
@@ -410,7 +410,7 @@ public sealed partial class PassengerTools
         SearchScope chosen = scope switch
         {
             "solution" => new SearchScope(SearchScopeKind.Solution, null, null, recursive, null, mask),
-            "project" => new SearchScope(SearchScopeKind.Project, Project(project ?? throw new ArgumentException("The project scope names its project")).Path, null, recursive, null, mask),
+            "project" => new SearchScope(SearchScopeKind.Project, SearchedProject(project ?? throw new ArgumentException("The project scope names its project")), null, recursive, null, mask),
             "directory" => new SearchScope(SearchScopeKind.Directory, null, Resolve(directory ?? throw new ArgumentException("The directory scope names its directory")), recursive, null, mask),
             "openFiles" => new SearchScope(SearchScopeKind.Scope, null, null, recursive, MainWindow.OpenFilesScope, mask),
             "currentFile" => new SearchScope(SearchScopeKind.Scope, null, null, recursive, MainWindow.CurrentFileScope, mask),

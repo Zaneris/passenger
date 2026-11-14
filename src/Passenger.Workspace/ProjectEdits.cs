@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using Passenger.Core;
+using Passenger.Host;
 using Passenger.Text;
 
 namespace Passenger.Workspace;
@@ -249,6 +250,64 @@ public static class ProjectEdits
         }
         return null;
     });
+
+    /// <summary>A shared project's items imported into a project as Visual Studio imports them (<c>&lt;Import Project="…"
+    /// Label="Shared" /&gt;</c>, relative with backslashes): after its last import of shared items, else on a line of its own
+    /// before &lt;/Project&gt;. Null once done, else why not.</summary>
+    public static string? AddSharedImport(string project, string items) => Change(project, xml =>
+    {
+        List<(XElement Element, string Path)> imported = SharedImports(xml, project);
+        if (imported.Any(i => PathNames.Same(i.Path, items)))
+        {
+            return $"{Path.GetFileNameWithoutExtension(project)} imports {Path.GetFileName(items)} already";
+        }
+        string written = ItemPaths.Named(Path.GetRelativePath(Path.GetDirectoryName(project)!, items).Replace('/', '\\'));
+        string element = $"<Import Project=\"{XmlEntities.Encode(written, '"')}\" Label=\"Shared\" />";
+        if (imported.LastOrDefault().Element is { } last)
+        {
+            xml.After(last, element);
+        }
+        else
+        {
+            xml.Append(xml.Root, element, ownLine: true);
+        }
+        return null;
+    });
+
+    /// <summary>A shared project's items no longer imported into a project: its Import taken out, an ImportGroup it leaves
+    /// empty with it. Null once done, else why not.</summary>
+    public static string? RemoveSharedImport(string project, string items) => Change(project, xml =>
+    {
+        if (SharedImports(xml, project).FirstOrDefault(i => PathNames.Same(i.Path, items)).Element is not { } import)
+        {
+            return $"{Path.GetFileNameWithoutExtension(project)} does not import {Path.GetFileName(items)}";
+        }
+        if (import.Parent is { Name.LocalName: "ImportGroup" } group && group.Elements().All(e => e == import))
+        {
+            xml.Remove(group, spaced: true);
+        }
+        else
+        {
+            xml.Remove(import);
+        }
+        return null;
+    });
+
+    /// <summary>The project's imports of shared projects' items files, in the file's order, each with the file it names.</summary>
+    private static List<(XElement Element, string Path)> SharedImports(XmlText xml, string project)
+    {
+        string folder = Path.GetDirectoryName(project)!;
+        List<(XElement, string)> found = [];
+        foreach (XElement import in xml.Root.Descendants().Where(e => e.Name.LocalName == "Import" && e.Attribute("Sdk") is null))
+        {
+            if (ItemPaths.Read(FromThisFolder(((string?)import.Attribute("Project") ?? string.Empty).Trim()).Replace('\\', '/'), once: true) is { Glob: false } named
+                && named.Path.EndsWith(EvaluatedItem.SharedItemsExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                found.Add((import, PathNames.Canonical(Path.GetFullPath(Path.Combine(folder, named.Path)))));
+            }
+        }
+        return found;
+    }
 
     /// <summary>Sets a property in the project file, as Add > Docker Support sets the SDK's container properties and Manage User
     /// Secrets a UserSecretsId (<see cref="WithProperty"/>). Null once done, else why not.</summary>

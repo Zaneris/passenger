@@ -70,6 +70,11 @@ public partial class MainWindow
         Row(A.ReloadProject, "Reload Project", row => SetUnloaded(row.Path!, false),
             row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : row.IsShared ? Refusals.SharedProject(row.Name)
                 : Explorer.Tree.Unloaded.Contains(project) ? null : $"{row.Name} is loaded");
+        // A shared project's file its items file leaves out, or names: the chosen ones taken in, or left out on disk.
+        Row(A.IncludeInProject, "Include in Project", row => SetShared(SharedRows(row, unlisted: true), include: true),
+            row => SharedRows(row, unlisted: true).Count > 0 ? null : Refusals.NotLeftOut(row.Name));
+        Row(A.ExcludeFromProject, "Exclude from Project", row => SetShared(SharedRows(row, unlisted: false), include: false),
+            row => SharedRows(row, unlisted: false).Count > 0 ? null : Refusals.NotSharedFile(row.Name));
         // Compare With... for one file, Compare Files for two chosen together.
         actions!.Add(new IdeAction(A.CompareFiles, "Compare Files", ExplorerGroup, c => IdeErrors.Observe(CompareAsync(RowOf(c)!)))
         {
@@ -264,6 +269,9 @@ public partial class MainWindow
             case { Kind: NodeKind.ProjectReference, Owner: { } owner, Referenced: { } referenced }:
                 await RemoveReferenceAsync(owner, referenced);
                 break;
+            case { Kind: NodeKind.SharedProject, Owner: { } owner, Referenced: { } shared }:
+                await RemoveSharedImportAsync(owner, shared);
+                break;
             case { Kind: NodeKind.Project, Path: { } project }:
                 await RemoveProjectAsync(project);
                 break;
@@ -295,7 +303,7 @@ public partial class MainWindow
             }
         }
         return rows.Count > 1 && rows.FirstOrDefault(n => n.LeavesFilesBehind) is { } leaving
-            ? Refusals.RemovedAlone(leaving.Name, leaving is { Kind: NodeKind.ProjectReference, Owner: { } owner } ? Path.GetFileNameWithoutExtension(owner) : "the solution")
+            ? Refusals.RemovedAlone(leaving.Name, leaving is { Kind: NodeKind.ProjectReference or NodeKind.SharedProject, Owner: { } owner } ? Path.GetFileNameWithoutExtension(owner) : "the solution")
             : null;
     }
 
@@ -318,7 +326,7 @@ public partial class MainWindow
         bool onDisk = node.Kind is NodeKind.File or NodeKind.Folder or NodeKind.Project;
         bool holds = node.Kind is NodeKind.Folder or NodeKind.Project or NodeKind.Solution or NodeKind.File && !node.IsSolutionItem;
         bool solutionFolder = node.Kind == NodeKind.SolutionFolder;
-        bool dependency = node is { Kind: NodeKind.Dependencies or NodeKind.ProjectReference, Owner: not null };
+        bool dependency = node is { Kind: NodeKind.Dependencies or NodeKind.ProjectReference or NodeKind.SharedProject, Owner: not null };
         if (!onDisk && !holds && !solutionFolder && !dependency)
         {
             return null;
@@ -328,7 +336,7 @@ public partial class MainWindow
         {
             return Made([Item(A.AddReference), Item(A.ManageNuGet)]);
         }
-        if (node.Kind == NodeKind.ProjectReference && node.Referenced is not null)
+        if (node.Kind is NodeKind.ProjectReference or NodeKind.SharedProject && node.Referenced is not null)
         {
             return Made([Item(E.Delete)]);
         }
@@ -370,6 +378,10 @@ public partial class MainWindow
         {
             bool unloaded = node.Path is { } project && Explorer.Tree.Unloaded.Contains(project);
             entries.AddRange([Item(A.ManageNuGet), Item(A.ManageUserSecrets), Item(A.EditProjectFile), Item(unloaded ? A.ReloadProject : A.UnloadProject), separator]);
+        }
+        if (node is { Kind: NodeKind.File, Shared: not null })
+        {
+            entries.AddRange([Item(node.Unlisted ? A.IncludeInProject : A.ExcludeFromProject), separator]);
         }
         if (holds || solutionFolder)
         {

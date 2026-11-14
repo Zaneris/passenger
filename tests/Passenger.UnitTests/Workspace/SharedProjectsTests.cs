@@ -115,6 +115,54 @@ public sealed class SharedProjectsTests : IDisposable
     }
 
     [Fact]
+    public void A_projects_import_of_shared_items_is_written_as_visual_studio_writes_it_after_any_other_and_taken_out_with_a_group_it_empties()
+    {
+        const string Project = "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n  </PropertyGroup>\n</Project>\n";
+        string api = Path.Combine(root, "Shop.Api", "Shop.Api.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(api)!);
+        File.WriteAllText(api, Project);
+        string other = Path.Combine(root, "Other", "Other.projitems");
+
+        Assert.Null(ProjectEdits.AddSharedImport(api, ItemsFile));
+        string imported = Project.Replace("</Project>", "  <Import Project=\"..\\Shop.Shared\\Shop.Shared.projitems\" Label=\"Shared\" />\n</Project>", StringComparison.Ordinal);
+        Assert.Equal(imported, File.ReadAllText(api));
+        Assert.Equal("Shop.Api imports Shop.Shared.projitems already", ProjectEdits.AddSharedImport(api, ItemsFile));
+        Assert.Null(ProjectEdits.AddSharedImport(api, other));
+        Assert.Equal(imported.Replace("Label=\"Shared\" />\n", "Label=\"Shared\" />\n  <Import Project=\"..\\Other\\Other.projitems\" Label=\"Shared\" />\n", StringComparison.Ordinal),
+            File.ReadAllText(api));
+
+        Assert.Null(ProjectEdits.RemoveSharedImport(api, other));
+        Assert.Equal(imported, File.ReadAllText(api));
+        Assert.Null(ProjectEdits.RemoveSharedImport(api, ItemsFile));
+        Assert.Equal(Project, File.ReadAllText(api));
+        Assert.Equal("Shop.Api does not import Shop.Shared.projitems", ProjectEdits.RemoveSharedImport(api, ItemsFile));
+
+        const string Grouped = "<Project>\n  <ImportGroup Label=\"Shared\">\n    <Import Project=\"$(MSBuildThisFileDirectory)..\\Shop.Shared\\Shop.Shared.projitems\" Label=\"Shared\" />\n  </ImportGroup>\n</Project>\n";
+        File.WriteAllText(api, Grouped);
+        Assert.Null(ProjectEdits.RemoveSharedImport(api, ItemsFile));
+        Assert.Equal("<Project>\n</Project>\n", File.ReadAllText(api));
+    }
+
+    [Fact]
+    public void A_shared_project_added_to_a_classic_solution_takes_its_own_id_and_type_and_no_configuration()
+    {
+        Directory.CreateDirectory(Shared);
+        string shproj = Path.Combine(Shared, "Shop.Shared.shproj");
+        File.WriteAllText(shproj, "<Project>\n  <PropertyGroup Label=\"Globals\">\n    <ProjectGuid>{6a8c1f2e-3b4d-4e5f-8a9b-0c1d2e3f4a5b}</ProjectGuid>\n  </PropertyGroup>\n</Project>\n");
+        string solution = Path.Combine(root, "Shop.sln");
+        File.WriteAllText(solution, "\r\nMicrosoft Visual Studio Solution File, Format Version 12.00\r\nGlobal\r\n\tGlobalSection(SolutionConfigurationPlatforms) = preSolution\r\n"
+            + "\t\tDebug|Any CPU = Debug|Any CPU\r\n\tEndGlobalSection\r\nEndGlobal\r\n");
+
+        Assert.Null(SolutionEdits.AddProject(solution, null, shproj));
+
+        string written = File.ReadAllText(solution);
+        Assert.Contains("Project(\"{D954291E-2A0B-460D-934E-DC6B0785DB48}\") = \"Shop.Shared\", \"Shop.Shared\\Shop.Shared.shproj\", \"{6A8C1F2E-3B4D-4E5F-8A9B-0C1D2E3F4A5B}\"",
+            written, StringComparison.Ordinal);
+        Assert.DoesNotContain("ActiveCfg", written, StringComparison.Ordinal);
+        Assert.Equal([shproj], SolutionModel.Load(solution, out _)!.Projects.Select(p => p.Path));
+    }
+
+    [Fact]
     public void A_shared_project_names_its_items_file_by_its_shared_import_else_by_its_own_name()
     {
         Directory.CreateDirectory(Shared);

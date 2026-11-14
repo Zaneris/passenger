@@ -4,29 +4,32 @@ using Passenger.Workspace;
 
 namespace Passenger.App;
 
-/// <summary>A project's references to the solution's other projects: Add, Reference... (and Add Reference... on its
-/// Dependencies) checks and unchecks them in <see cref="AddReferenceDialog"/>, and Remove on one under Dependencies
-/// takes it out. Each changes the project file's text through <see cref="ProjectEdits"/>, and the solution is read
+/// <summary>A project's references to the solution's other projects, and its imports of the solution's shared projects:
+/// Add, Reference... (and Add Reference... on its Dependencies) checks and unchecks them in <see cref="AddReferenceDialog"/>,
+/// and Remove on one under Dependencies takes it out. Each changes the project file's text through <see cref="ProjectEdits"/>, and the solution is read
 /// again, so the Explorer's Dependencies, Build and the language server (which reloads a project file that changes)
 /// follow.</summary>
 public partial class MainWindow
 {
-    /// <summary>The dialog over the solution's other projects, those the project references checked; OK makes the project
-    /// reference just those. A file-based program is no project file a reference can name, so it is never offered. Null,
-    /// saying why, when there is no other project.</summary>
+    /// <summary>The dialog over the solution's other projects, then its shared projects, those the project references or
+    /// imports checked; OK makes the project reference and import just those. A file-based program is no project file a
+    /// reference can name, so it is never offered. Null, saying why, when there is no other project.</summary>
     public AddReferenceDialog? ShowAddReference(string project)
     {
         string name = Path.GetFileNameWithoutExtension(project);
         IReadOnlyList<ProjectModel> all = session.Workspace?.Projects ?? [];
         List<ProjectModel> others = [.. all.Where(p => !p.IsProgram && !PathNames.Same(p.Path, project)).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
-        if (others.Count == 0)
+        List<string> shared = [.. (session.Workspace?.SharedProjects ?? []).OrderBy(Path.GetFileNameWithoutExtension, StringComparer.OrdinalIgnoreCase)];
+        if (others.Count + shared.Count == 0)
         {
             status.Text = $"The solution has no other project for {name} to reference";
             return null;
         }
         HashSet<string> referenced = new(all.FirstOrDefault(p => PathNames.Same(p.Path, project))?.ProjectReferences ?? [], StringComparer.Ordinal);
+        HashSet<string> imported = new(ImportedShared(project), StringComparer.Ordinal);
         HashSet<string> dependents = ProjectModel.Dependents(all, project);
-        AddReferenceDialog dialog = new(name, [.. others.Select(p => new ReferenceChoice(p.Path, p.Name, InFolder(p.Path), referenced.Contains(p.Path), dependents.Contains(p.Path)))]);
+        AddReferenceDialog dialog = new(name, [.. others.Select(p => new ReferenceChoice(p.Path, p.Name, InFolder(p.Path), referenced.Contains(p.Path), dependents.Contains(p.Path))),
+            .. shared.Select(p => new ReferenceChoice(p, Path.GetFileNameWithoutExtension(p), $"shared · {InFolder(p)}", imported.Contains(p), circular: false))]);
         IdeErrors.Observe(ApplyAsync());
         return dialog;
 
@@ -46,10 +49,13 @@ public partial class MainWindow
     {
         string name = Path.GetFileNameWithoutExtension(project);
         IReadOnlyList<string> had = session.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.ProjectReferences ?? [];
-        List<string> adding = [.. wanted.Where(w => !had.Any(h => PathNames.Same(h, w)))];
+        List<string> adding = [.. wanted.Where(w => !SharedProjects.Is(w) && !had.Any(h => PathNames.Same(h, w)))];
         // Only the solution's own projects are the dialog's to take out; a reference to one outside it stays.
         List<string> removing = [.. had.Where(h => !wanted.Any(w => PathNames.Same(h, w)) && (session.Workspace?.Projects.Any(p => PathNames.Same(p.Path, h)) ?? false))];
-        if (adding.Count == 0 && removing.Count == 0)
+        IReadOnlyList<string> imported = ImportedShared(project);
+        List<string> importing = [.. wanted.Where(w => SharedProjects.Is(w) && !imported.Any(i => PathNames.Same(i, w)))];
+        List<string> dropping = [.. imported.Where(i => !wanted.Any(w => PathNames.Same(i, w)))];
+        if (adding.Count + removing.Count + importing.Count + dropping.Count == 0)
         {
             return null;
         }
@@ -65,6 +71,14 @@ public partial class MainWindow
             {
                 said.Add(ProjectEdits.RemoveReference(project, removed) ?? $"Removed the reference to {Path.GetFileNameWithoutExtension(removed)} from {name}");
             }
+            foreach (string shared in importing)
+            {
+                said.Add(ProjectEdits.AddSharedImport(project, SharedProjects.ItemsFileOf(shared)) ?? $"{name} imports {Path.GetFileNameWithoutExtension(shared)}");
+            }
+            foreach (string shared in dropping)
+            {
+                said.Add(ProjectEdits.RemoveSharedImport(project, SharedProjects.ItemsFileOf(shared)) ?? $"{name} no longer imports {Path.GetFileNameWithoutExtension(shared)}");
+            }
             return null;
         });
         if (refused is not null)
@@ -74,6 +88,14 @@ public partial class MainWindow
         ReloadSolution();
         status.Text = string.Join("; ", said);
         return refused;
+    }
+
+    /// <summary>The solution's shared projects whose items file a project imports, as last evaluated.</summary>
+    private IReadOnlyList<string> ImportedShared(string project)
+    {
+        HashSet<string> items = new((session.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.Evaluated?.Inputs ?? [])
+            .Select(i => i.Path).Where(SharedProjects.IsItemsFile), PathNames.Comparer);
+        return [.. (session.Workspace?.SharedProjects ?? []).Where(s => items.Contains(SharedProjects.ItemsFileOf(s)))];
     }
 
     /// <summary>Remove on a project reference under Dependencies, once asked: the project file loses it, as one command Undo

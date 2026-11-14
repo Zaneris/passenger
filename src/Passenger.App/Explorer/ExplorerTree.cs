@@ -217,7 +217,7 @@ public sealed class ExplorerTree
         {
             // Never evaluated either: its items file's, read again each time; a folder made in its own shows as one empty.
             string items = SharedProjects.Is(project.Path) ? SharedProjects.ItemsFileOf(project.Path) : project.Path;
-            return new ProjectFiles(project.Folder, SharedProjects.ItemsOf(items), onlyItems: false);
+            return new ProjectFiles(project.Folder, SharedProjects.ItemsOf(items), onlyItems: false, shared: items);
         }
         if (!project.IsEvaluated)
         {
@@ -896,17 +896,27 @@ public sealed class ExplorerTree
             .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)];
         IReadOnlyDictionary<string, string> parents = FileNesting.Parents([.. held.Select(f => f.Path)], files.DependentUpon, nesting.ByName);
         ILookup<string, string> nestedUnder = NestedUnder(held.Select(f => f.Path), parents);
+        List<ExplorerNode> shown = [];
         foreach ((string name, string path) in held.Where(f => !parents.ContainsKey(f.Path)))
         {
             List<string> nested = [.. nestedUnder[path]];
-            nodes.Add(nested.Count == 0
-                ? new ExplorerNode(NodeKind.File, name, path, depth, dimmed, null)
+            shown.Add(nested.Count == 0
+                ? new ExplorerNode(NodeKind.File, name, path, depth, dimmed, null) { Shared = files.Items }
                 : new ExplorerNode(NodeKind.File, name, path, depth, dimmed, node =>
-                    [.. nested.Select(n => new ExplorerNode(NodeKind.File, Path.GetFileName(n), n, node.Depth + 1, dimmed, null))])
+                    [.. nested.Select(n => new ExplorerNode(NodeKind.File, Path.GetFileName(n), n, node.Depth + 1, dimmed, null) { Shared = files.Items })])
                 {
                     Nested = string.Join('/', nested.Select(Path.GetFileName)),
+                    Shared = files.Items,
                 });
         }
+        // A shared project's folder shows what its items file leaves out too, dimmed, for Include in Project to take in.
+        shown.AddRange(files.UnlistedIn(relative).Select(f => new ExplorerNode(NodeKind.File, f.Name, f.Path, depth, dimmed: true, null)
+        {
+            Shared = files.Items,
+            Unlisted = true,
+            Tip = $"{Path.GetFileName(files.Items)} leaves it out of the shared project: Include in Project takes it in",
+        }));
+        nodes.AddRange(files.Items is null ? shown : shown.OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase));
         return nodes;
     }
 
@@ -1036,8 +1046,14 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>The project a dependency (the Dependencies row and each one under it) belongs to.</summary>
     public string? Owner { get; init; }
 
-    /// <summary>The project a project reference names.</summary>
+    /// <summary>The project a project reference names, or the shared project (else its items file) a shared import names.</summary>
     public string? Referenced { get; init; }
+
+    /// <summary>For a file in a shared project's folder, its items file; null for every other row.</summary>
+    public string? Shared { get; init; }
+
+    /// <summary>A file in a shared project's folder that its items file leaves out, shown dimmed for Include in Project.</summary>
+    public bool Unlisted { get; init; }
 
     /// <summary>The names of the files nested under a file, which make it another row when they change.</summary>
     internal string? Nested { get; init; }
@@ -1091,13 +1107,13 @@ public sealed class ExplorerNode : Observable, ITreeRow
         && (Kind is NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram || Kind == NodeKind.File && !IsSolutionItem);
 
     /// <summary>What Delete takes away: a file or folder to the Trash (but a folder the SDK reads), or what is the solution's
-    /// own out of it.</summary>
+    /// own out of it, or a project's reference or import out of the project.</summary>
     public bool CanRemove => Kept is null && (Kind is NodeKind.File or NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram
-        || Kind == NodeKind.ProjectReference && Referenced is not null);
+        || Kind is NodeKind.ProjectReference or NodeKind.SharedProject && Referenced is not null);
 
     /// <summary>What Delete only takes out of the solution or its project, its files staying on disk: a project, a
-    /// solution folder, a file it lists, a project reference.</summary>
-    public bool LeavesFilesBehind => Kind is NodeKind.Project or NodeKind.SolutionFolder or NodeKind.ProjectReference || IsSolutionItem;
+    /// solution folder, a file it lists, a project reference, a shared project's import.</summary>
+    public bool LeavesFilesBehind => Kind is NodeKind.Project or NodeKind.SolutionFolder or NodeKind.ProjectReference or NodeKind.SharedProject || IsSolutionItem;
 
     public bool HasChildren => load is not null;
 
@@ -1125,9 +1141,9 @@ public sealed class ExplorerNode : Observable, ITreeRow
     }
 
     /// <summary>What makes a row the same row when its parent is read again: its name is part of it, so a linked file
-    /// whose Link changes shows its new name, a package's version, so one updated shows its new version, and what the
-    /// SDK reads a folder as, so a web root found shows as one.</summary>
-    private static string Identity(ExplorerNode node) => $"{node.Kind}/{node.Name}/{node.Path}/{node.Nested}/{(node.Path is null ? node.Detail : null)}/{node.SdkFolder}";
+    /// whose Link changes shows its new name, a package's version, so one updated shows its new version, what the SDK
+    /// reads a folder as, so a web root found shows as one, and whether a shared project leaves a file out.</summary>
+    private static string Identity(ExplorerNode node) => $"{node.Kind}/{node.Name}/{node.Path}/{node.Nested}/{(node.Path is null ? node.Detail : null)}/{node.SdkFolder}/{node.Unlisted}";
 
     public bool IsExpanded
     {

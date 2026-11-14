@@ -114,7 +114,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
-        "The open folder and solution (or solution filter), its projects (output type, frameworks and the one chosen, unloaded marked), run " +
+        "The open folder and solution (or solution filter), its projects (output type, frameworks and the one chosen, unloaded marked; a shared one with sharedBy), run " +
         "configurations (the chosen one marked), the build configuration every build takes and the others, the language server's state, the open files (unsaved marked) and the active " +
         "one with its caret, and the Aspire AppHosts and container run under way, each resource with its state, hold, debug " +
         "session and target. routes adds the web projects' routes, read from their code.")]
@@ -3366,6 +3366,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 Unloaded = session.Unloaded.Contains(p.Path) ? true : null,
                 ChosenFramework = session.Frameworks.Of(p),
+            }), .. (session.Workspace?.SharedProjects ?? []).Select(p => new ProjectInfo(Path.GetFileNameWithoutExtension(p), Relative(p), null, [])
+            {
+                SharedBy = [.. ImportersOf(session, p)],
             })],
             [.. session.Configurations.All.Select(c => c.Name)],
             session.Configurations.Chosen?.Name,
@@ -3388,6 +3391,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                     .. session.Configurations.ProfileProblems]
                 : null,
         };
+    }
+
+    /// <summary>The projects importing a shared project's items, by name, as last evaluated.</summary>
+    private static IEnumerable<string> ImportersOf(ProjectSession session, string shared)
+    {
+        string items = SharedProjects.ItemsFileOf(shared);
+        return session.Projects.Where(p => p.Evaluated?.Inputs.Any(i => PathNames.Same(i.Path, items)) == true).Select(p => p.Name);
     }
 
     /// <summary>What .NET the machine or the folder lacks and how it is mended, as workspace says it; null lacking nothing.</summary>
@@ -3573,6 +3583,10 @@ public sealed record ProjectInfo(string Name, string Path, string? OutputType, I
     /// <summary>A multi-targeted project's framework chosen, which its XAML preview, its XAML and the language server's
     /// answers for its C# follow; null for a project of one.</summary>
     public string? ChosenFramework { get; init; }
+
+    /// <summary>For a shared project (.shproj), which builds nothing of its own, the projects importing its items and so
+    /// compiling its files; null for every other project.</summary>
+    public IReadOnlyList<string>? SharedBy { get; init; }
 }
 
 public sealed record Finding(string Severity, string? Code, string Message, string? Path, int Line, int Column);

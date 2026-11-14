@@ -898,6 +898,17 @@ public sealed partial class PassengerTools
         return projects.FirstOrDefault(p => p.Path == full || p.Name.Equals(project, StringComparison.OrdinalIgnoreCase))
             ?? throw new ArgumentException($"No project {project}; the folder has {string.Join(", ", projects.Select(p => p.Name))}");
     }
+
+    /// <summary>The project file find_in_files' project scope names: one of the folder's projects, else one of the solution's
+    /// shared projects, by its path or name.</summary>
+    private string SearchedProject(string project)
+    {
+        string full = Resolve(project);
+        IReadOnlyList<string> shared = Session.Workspace?.SharedProjects ?? [];
+        return Session.Projects.FirstOrDefault(p => p.Path == full || p.Name.Equals(project, StringComparison.OrdinalIgnoreCase))?.Path
+            ?? shared.FirstOrDefault(p => p == full || Path.GetFileNameWithoutExtension(p).Equals(project, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException($"No project {project}; the folder has {string.Join(", ", [.. Session.Projects.Select(p => p.Name), .. shared.Select(Path.GetFileNameWithoutExtension)])}");
+    }
 }
 
 /// <summary>The branch, the changed files, what stopped for conflicts and what is under way, conflicts or none.</summary>

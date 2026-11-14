@@ -1,5 +1,6 @@
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
@@ -11,7 +12,8 @@ namespace Passenger.App.Explorer;
 /// MSBuild has nothing to say of it and one just made would otherwise vanish; once shown, it shows until the project is
 /// evaluated again, a file come into it since being that evaluation's to judge, so its row stays the row it was. A
 /// Docker Compose project's are the items its text names (<see cref="Containers.ContainerConfigurations.ItemsOf"/>), a
-/// shared project's its items file's, and the files a shared project brings into a project are that shared project's.</summary>
+/// shared project's its items file's, with what its folders hold that the file leaves out (<see cref="UnlistedIn"/>), and the
+/// files a shared project brings into a project are that shared project's.</summary>
 internal sealed class ProjectFiles
 {
     private readonly string root;
@@ -32,6 +34,10 @@ internal sealed class ProjectFiles
     /// <summary>Where each file the project holds shows, by its path: the place's folders and its name there.</summary>
     private readonly Dictionary<string, (string Folder, string Name)> places = new(PathNames.Comparer);
 
+    /// <summary>A shared project's items file, whose folders show every folder and file on disk, those it leaves out
+    /// apart (<see cref="UnlistedIn"/>); null for any other project.</summary>
+    public string? Items { get; }
+
     /// <summary>The files it holds that say they depend on another (DependentUpon, relative to the file's own folder), each
     /// with that file's path.</summary>
     public Dictionary<string, string> DependentUpon { get; } = new(PathNames.Comparer);
@@ -43,9 +49,10 @@ internal sealed class ProjectFiles
 
     /// <summary>The files of the items a project in a folder holds; <paramref name="onlyItems"/> where its folder on disk is
     /// not its own.</summary>
-    public ProjectFiles(string projectFolder, IEnumerable<EvaluatedItem> items, bool onlyItems)
+    public ProjectFiles(string projectFolder, IEnumerable<EvaluatedItem> items, bool onlyItems, string? shared = null)
     {
         root = projectFolder;
+        Items = shared;
         program = onlyItems;
         names = PathNames.NamesIn(root);
         files = new(names);
@@ -123,7 +130,7 @@ internal sealed class ProjectFiles
     public string PathOf(string relative) => relative.Length == 0 ? root : Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
 
     /// <summary>The folders at a place: those the project holds something in, and but for a program's, those on disk with
-    /// nothing in them, or that had nothing in them when shown before.</summary>
+    /// nothing in them, or that had nothing in them when shown before; a shared project's, every one on disk.</summary>
     public IEnumerable<string> FoldersIn(string relative)
     {
         HashSet<string> shown = folders.TryGetValue(relative, out HashSet<string>? held) ? new(held, names) : new(names);
@@ -140,7 +147,7 @@ internal sealed class ProjectFiles
                     continue;
                 }
                 string place = relative.Length == 0 ? folder.Name : $"{relative}/{folder.Name}";
-                if (shownEmpty.Contains(place) || Empty(folder))
+                if (Items is not null || shownEmpty.Contains(place) || Empty(folder))
                 {
                     shown.Add(folder.Name);
                     shownEmpty.Add(place);
@@ -152,6 +159,27 @@ internal sealed class ProjectFiles
             // Not on disk (a linked file's place), or gone: only what the project holds is there.
         }
         return shown;
+    }
+
+    /// <summary>For a shared project, the files on disk at a place that its items file leaves out, each by its name and path,
+    /// its items file and .shproj aside; none for any other project.</summary>
+    public IEnumerable<(string Name, string Path)> UnlistedIn(string relative)
+    {
+        if (Items is null)
+        {
+            return [];
+        }
+        try
+        {
+            return [.. new DirectoryInfo(PathOf(relative)).EnumerateFiles()
+                .Where(f => !PathNames.IsSystemFile(f.Name) && !FileText.IsSaving(f.Name) && !SharedProjects.Is(f.FullName) && !SharedProjects.IsItemsFile(f.FullName))
+                .Select(f => (f.Name, PathNames.Canonical(f.FullName)))
+                .Where(f => !places.ContainsKey(f.Item2))];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
     }
 
     /// <summary>The files at a place, each with the name it shows by and its path.</summary>

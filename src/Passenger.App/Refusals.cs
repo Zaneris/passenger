@@ -332,6 +332,14 @@ public static class Refusals
     /// <summary>A row of the Explorer (named as it is shown) that is no project, which an action on a project was asked of.</summary>
     public static string NotAProject(string name) => $"{name} is not a project";
 
+    /// <summary>A row of the Explorer (named as it is shown) that Include in Project was asked of, which is no file a shared
+    /// project's items file leaves out.</summary>
+    public static string NotLeftOut(string name) => $"{name} is no file a shared project leaves out";
+
+    /// <summary>A row of the Explorer (named as it is shown) that Exclude from Project was asked of, which is no file a
+    /// shared project's items file names.</summary>
+    public static string NotSharedFile(string name) => $"{name} is no file of a shared project";
+
     /// <summary>A shared project (named as it is shown), which an action on a project that builds was asked of.</summary>
     public static string SharedProject(string name) => $"{name} is a shared project: its files build in the projects importing it";
 

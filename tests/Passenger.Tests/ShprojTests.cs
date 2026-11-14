@@ -12,8 +12,9 @@ namespace Passenger.Tests;
 
 /// <summary>A solution of a shared project (.shproj) and two projects importing its items: the Solution view shows the
 /// shared project with its files in their folders and each importer naming it under its Dependencies, none of its files
-/// among the importer's own; a file made, renamed and deleted in its folder writes its items file, each undone in one
-/// step; and a shared file opens with the C# of a project importing it.</summary>
+/// among the importer's own; a file made, renamed, deleted, included or excluded in its folder writes its items file, each
+/// undone in one step; an import is taken and dropped through Add Reference and the Dependencies; Add Existing Project adds
+/// a .shproj; a test in a shared file is found from code; and a shared file opens with the C# of a project importing it.</summary>
 public sealed class ShprojTests : IDisposable
 {
     private const string Items = """
@@ -40,6 +41,13 @@ public sealed class ShprojTests : IDisposable
     private readonly string trash = TestFolders.Create("trash-");
 
     public ShprojTests()
+    {
+        Write(folder);
+        Trash.Folder = trash;
+    }
+
+    /// <summary>The solution of a shared project and the two projects importing it, in a folder.</summary>
+    public static void Write(string folder)
     {
         TestFolders.Write(folder, "Shop.slnx", """
             <Solution>
@@ -69,7 +77,6 @@ public sealed class ShprojTests : IDisposable
                 TestProjects.Console().With("  <Import Project=\"..\\Shop.Shared\\Shop.Shared.projitems\" Label=\"Shared\" />\n"));
             TestFolders.Write(folder, $"Shop.{name}/Program.cs", $"System.Console.WriteLine(Shop.Shared.Greeting.Of(\"{name}\"));\n");
         }
-        Trash.Folder = trash;
     }
 
     public void Dispose()
@@ -200,6 +207,170 @@ public sealed class ShprojTests : IDisposable
 
         static string Errors(MainWindow window, OpenDocument document) =>
             string.Join("; ", window.CSharpService?.For(document)?.Diagnostics.Where(d => d.Severity == Passenger.Lsp.DiagnosticSeverity.Error).Select(d => d.Code) ?? ["nothing"]);
+    }
+
+    [AvaloniaFact]
+    public void A_file_its_items_file_leaves_out_shows_dimmed_and_include_and_exclude_write_the_items_file_each_undone_in_one_step()
+    {
+        string notes = TestFolders.Write(folder, "Shop.Shared/Notes.md", "# Notes\n");
+        string helper = TestFolders.Write(folder, "Shop.Shared/Extra/Helper.cs", "namespace Shop.Shared.Extra;\n\npublic static class Helper\n{\n}\n");
+        MainWindow window = Open();
+        List<string> asked = Answered(window);
+        try
+        {
+            ExplorerNode shared = Row(window, "Shop.Shared");
+            Assert.Equal([("Extra", false), ("Models", false), ("Greeting.cs", false), ("Notes.md", true)], shared.Children!.Select(r => (r.Name, r.Unlisted)));
+            Assert.True(shared.Children![3].IsDimmed, "A file the items file leaves out shows as one it names does");
+            ExplorerNode left = Assert.Single(shared.Children![0].Children!);
+            Assert.True(left is { Name: "Helper.cs", Unlisted: true }, $"Extra holds {left.Name}, unlisted {left.Unlisted}");
+
+            Choose(window, helper);
+            Ui.ChooseFromRowMenu(window, window.ExplorerView.Selected!, "Include in Project");
+            string included = Items.Replace("Models\\Order.cs\" />", "Models\\Order.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Extra\\Helper.cs\" />", StringComparison.Ordinal);
+            Ui.WaitFor(() => File.ReadAllText(ItemsFile) == included, () => $"Helper.cs written into the items file: {window.Status}\n{File.ReadAllText(ItemsFile)}");
+            Ui.WaitFor(() => Row(window, "Shop.Shared").Children![0].Children!.Single() is { Unlisted: false, IsDimmed: false }, "Helper.cs shown as the shared project's own");
+            Undo(window, Path.Combine(Shared, "Models"));
+            Assert.Equal(Items, File.ReadAllText(ItemsFile));
+
+            string greeting = Path.Combine(Shared, "Greeting.cs");
+            Choose(window, greeting);
+            Ui.ChooseFromRowMenu(window, window.ExplorerView.Selected!, "Exclude from Project");
+            Ui.WaitFor(() => File.ReadAllText(ItemsFile) == Items.Replace("    <Compile Include=\"$(MSBuildThisFileDirectory)Greeting.cs\" />\n", string.Empty, StringComparison.Ordinal),
+                () => $"Greeting.cs taken out of the items file: {window.Status}\n{File.ReadAllText(ItemsFile)}");
+            Assert.True(File.Exists(greeting), "Exclude from Project deleted the file");
+            Ui.WaitFor(() => Row(window, "Shop.Shared").Children!.Single(r => r.Name == "Greeting.cs").Unlisted, "Greeting.cs shown as left out");
+            Undo(window, Path.Combine(Shared, "Models"));
+            Assert.Equal(Items, File.ReadAllText(ItemsFile));
+            Assert.Equal(["Undo", "Undo"], asked);
+            Assert.True(File.Exists(notes));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_project_takes_and_drops_a_shared_projects_import_through_add_reference_and_its_dependencies_each_undone_in_one_step()
+    {
+        string api = Path.Combine(folder, "Shop.Api", "Shop.Api.csproj");
+        string web = Path.Combine(folder, "Shop.Web", "Shop.Web.csproj");
+        string imports = File.ReadAllText(api);
+        string alone = imports.Replace("  <Import Project=\"..\\Shop.Shared\\Shop.Shared.projitems\" Label=\"Shared\" />\n", string.Empty, StringComparison.Ordinal);
+        MainWindow window = Open();
+        List<string> asked = Answered(window);
+        try
+        {
+            Ui.ChooseFromRowMenu(window, Row(window, "Shop.Api"), "Add", "Reference…");
+            AddReferenceDialog dialog = Assert.Single(window.OwnedWindows.OfType<AddReferenceDialog>());
+            ReferenceChoice offered = Assert.Single(dialog.Choices, c => c.Name == "Shop.Shared");
+            Assert.True(offered is { IsChosen: true, CanChoose: true } && offered.Detail.StartsWith("shared", StringComparison.Ordinal),
+                $"Shop.Shared was offered chosen {offered.IsChosen}, saying {offered.Detail}, where Shop.Api imports it");
+            offered.IsChosen = false;
+            dialog.Accept();
+            Ui.WaitFor(() => File.ReadAllText(api) == alone, () => $"Shop.Api's import taken out: {window.Status}\n{File.ReadAllText(api)}");
+            Ui.WaitFor(() => window.Projects.Single(p => p.Path == api).Evaluated?.Inputs.Any(i => i.Path.EndsWith(".projitems", StringComparison.Ordinal)) == false,
+                "Shop.Api evaluated without the import");
+            Ui.WaitFor(() => Names(Row(window, "Shop.Api")).Contains("Program.cs") && !Dependencies(window, "Shop.Api").Any(r => r.Kind == NodeKind.SharedProject),
+                () => $"Shop.Api's Dependencies without Shop.Shared: {string.Join(", ", Dependencies(window, "Shop.Api").Select(r => r.Name))}");
+            Undo(window, Path.Combine(folder, "Shop.Api", "Program.cs"));
+            Assert.Equal(imports, File.ReadAllText(api));
+
+            Ui.WaitFor(() => Dependencies(window, "Shop.Web").Any(r => r.Kind == NodeKind.SharedProject), "Shop.Web's Dependencies naming Shop.Shared");
+            foreach (ExplorerNode opened in (ExplorerNode[])[Row(window, "Shop.Web"), Row(window, "Shop.Web").Children![0]])
+            {
+                Ui.ClickRow(window, opened);
+                Ui.Press(window, "RIGHT");
+            }
+            Ui.ClickRow(window, Dependencies(window, "Shop.Web").Single(r => r.Kind == NodeKind.SharedProject));
+            Ui.Press(window, OperatingSystem.IsMacOS() ? "BACK_SPACE" : "DELETE");
+            Ui.WaitFor(() => File.ReadAllText(web) == alone, () => $"Shop.Web's import taken out: {window.Status}\n{File.ReadAllText(web)}");
+            Ui.WaitFor(() => window.Projects.Single(p => p.Path == web).Evaluated?.Inputs.Any(i => i.Path.EndsWith(".projitems", StringComparison.Ordinal)) == false,
+                "Shop.Web evaluated without the import");
+            Assert.Null(Ui.Await(window.SetReferencesAsync(web, [Path.Combine(Shared, "Shop.Shared.shproj")]), "the import added"));
+            Assert.Equal(imports, File.ReadAllText(web));
+            Assert.Equal(["Undo", "Remove Shared Project"], asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Add_existing_project_adds_a_shared_project_to_the_solution_shown_as_one()
+    {
+        string solution = Path.Combine(folder, "Shop.slnx");
+        string listed = File.ReadAllText(solution);
+        File.WriteAllText(solution, listed.Replace("  <Project Path=\"Shop.Shared/Shop.Shared.shproj\" Id=\"6a8c1f2e-3b4d-4e5f-8a9b-0c1d2e3f4a5b\" />\n", string.Empty, StringComparison.Ordinal));
+        MainWindow window = Open();
+        try
+        {
+            Assert.DoesNotContain(window.ExplorerView.Tree.Root!.Children!, r => r.Name == "Shop.Shared");
+            window.PickFiles = (_, kinds, _) =>
+            {
+                Assert.Contains("*.shproj", kinds!.SelectMany(k => k.Patterns ?? []));
+                return Task.FromResult<IReadOnlyList<string>>([Path.Combine(Shared, "Shop.Shared.shproj")]);
+            };
+            Ui.ChooseFromRowMenu(window, window.ExplorerView.Tree.Root!, "Add", "Existing Project…");
+            Ui.WaitFor(() => window.ExplorerView.Tree.Root!.Children!.Any(r => r is { Name: "Shop.Shared", Detail: "shared" }), () => $"Shop.Shared added as a shared project: {window.Status}");
+            Assert.Contains("<Project Path=\"Shop.Shared/Shop.Shared.shproj\" />", File.ReadAllText(solution), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_test_in_a_shared_file_is_found_from_code_in_the_test_project_importing_it_and_one_written_there_comes_too()
+    {
+        TestFolders.Write(folder, "Shop.Tests/Shop.Tests.csproj", TestProjects.Library().With(
+            $"  <ItemGroup>\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n  </ItemGroup>\n"
+            + "  <Import Project=\"..\\Shop.Shared\\Shop.Shared.projitems\" Label=\"Shared\" />\n"));
+        TestFolders.Write(folder, "Shop.slnx", File.ReadAllText(Path.Combine(folder, "Shop.slnx")).Replace("</Solution>", "  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n</Solution>", StringComparison.Ordinal));
+        TestFolders.Write(folder, "Shop.Tests/OwnTests.cs", "using Xunit;\n\nnamespace Shop.Tests;\n\npublic class OwnTests\n{\n    [Fact]\n    public void Own() { }\n}\n");
+        string checks = TestFolders.Write(folder, "Shop.Shared/Checks.cs", "using Xunit;\n\nnamespace Shop.Shared;\n\npublic class Checks\n{\n    [Fact]\n    public void Greets() { }\n}\n");
+        File.WriteAllText(ItemsFile, Items.Replace("Models\\Order.cs\" />", "Models\\Order.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Checks.cs\" />", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.Perform(AppActions.ShowTests);
+            Ui.WaitFor(() => Found(window) == "Shop.Shared.Checks.Greets, Shop.Tests.OwnTests.Own",
+                () => $"the shared file's test beside the project's own, from code; the tree has [{Found(window)}]", TimeSpan.FromMinutes(1));
+            File.WriteAllText(checks, File.ReadAllText(checks).Replace("public void Greets() { }", "public void Greets() { }\n\n    [Fact]\n    public void Waves() { }", StringComparison.Ordinal));
+            Ui.WaitFor(() => Found(window) == "Shop.Shared.Checks.Greets, Shop.Shared.Checks.Waves, Shop.Tests.OwnTests.Own",
+                () => $"the test written into the shared file; the tree has [{Found(window)}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Found(MainWindow window) => string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName ?? string.Empty).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>Agrees to every question the window asks, keeping their titles in order.</summary>
+    private static List<string> Answered(MainWindow window)
+    {
+        List<string> asked = [];
+        window.Confirm = (title, _, _) =>
+        {
+            asked.Add(title);
+            return Task.FromResult(true);
+        };
+        return asked;
+    }
+
+    /// <summary>A project's Dependencies' rows, as they show now.</summary>
+    private static List<ExplorerNode> Dependencies(MainWindow window, string project) => Row(window, project).Children![0].Children!;
+
+    /// <summary>A row revealed and chosen in the Explorer.</summary>
+    private static void Choose(MainWindow window, string path)
+    {
+        window.ExplorerView.Reveal(path);
+        Ui.Settle();
+        Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == path));
     }
 
     /// <summary>The folder open, its projects evaluated.</summary>
