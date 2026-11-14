@@ -1670,3 +1670,8 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   loop). The extension now answers once the generators' queued runs have run (`GeneratorsRun`). And a window taking up a
   server started ahead that had already restored was ready before it heard what the server said meanwhile; C# is now
   ready only once those words have landed (`CSharpService.Heard`). Each has a test that failed before its fix (#1640).
+- `FirstStartTests`' three question tests, CI 43636884338 (macOS shard 1): "A new state's first start asked nothing".
+  **A test left the process changed**: `TerminalTests`' environment test set `PASSENGER_STARTED_FOR=agent` and called
+  `McpProxy.CheckVariable()`, which left `McpProxy.StartedForAgent` true for the rest of the process, and a first start
+  is never asked of a Passenger started for an agent; the shard first dealt FirstStartTests after it. `CheckVariable` now
+  sets both from what the environment gives each time, and the test calls it again as it ends (#1543).
