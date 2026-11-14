@@ -280,7 +280,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `PassengerApp.OpenProject`; a `.slnf`'s left-out projects are never saved as the
   person's; a handler acts only while its session is bound (`ProjectSession.Bind`). A Passenger nobody sees
   (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`; what a start
-  runs read by `DesktopPrograms`, never `Built` alone), and plays no sound; a Linux display is taken by `NoDisplay`,
+  runs read by `DesktopPrograms`, never `Built` alone), and plays no sound; a start where fontconfig lists no font takes the carried Inter as Avalonia's default (`NoSystemFont.Checked`, on every AppBuilder); a Linux display is taken by `NoDisplay`,
   never by unsetting `WAYLAND_DISPLAY`: a client named no socket connects to the session's `wayland-0`. A toolbar widget that may go at the narrowest takes `ShrinkingRow.GoesWhole`, its menu opening elsewhere once it has (`ShrinkingRow.HasGone`). Anything new on
   the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's. The display scale is
   one `InterfaceScale` transform per window, which its popups take from it.
