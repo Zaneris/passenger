@@ -789,6 +789,52 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             : [said.GetString()!];
     }
 
+    /// <summary>nuget_install of a version the stand-in feed's VulnerabilityInfo says is vulnerable and its registration says
+    /// its owner deprecated puts it in and says both as nuget_search does, the gravest advisory with the least version above
+    /// it that none affects, and why, what to use instead and the owner's words; moved to a version with neither, it says none.</summary>
+    [Fact]
+    public async Task An_agents_package_install_of_a_vulnerable_and_deprecated_version_says_both_and_the_version_that_fixes_it()
+    {
+        const string Advisory = "https://github.com/advisories/GHSA-pass-mcp1-test";
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-nuget-install-warned-"));
+        DeleteAtEnd(folder);
+        await using StandInFeed feed = new();
+        feed.Add("Passenger.Legacy", "1.0.0");
+        feed.Add("Passenger.Legacy", "1.0.1");
+        feed.Add("Passenger.Legacy", "2.0.0");
+        feed.Advise("Passenger.Legacy", 2, Advisory, "[1.0.0, 1.0.1)");
+        feed.Deprecate("Passenger.Legacy", "1.0.0", ["Legacy"], "Kept no more.", "Passenger.Modern", "[2.0.0, )");
+        File.WriteAllText(Path.Combine(folder, "nuget.config"), $"""
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="stand-in" value="{feed.Index}" protocolVersion="3" allowInsecureConnections="true" />
+              </packageSources>
+              <auditSources>
+                <clear />
+                <add key="stand-in" value="{feed.Index}" allowInsecureConnections="true" />
+              </auditSources>
+              <config>
+                <add key="globalPackagesFolder" value="packages" />
+              </config>
+            </configuration>
+            """);
+        File.WriteAllText(Path.Combine(folder, "Lib.csproj"), TestProjects.Library());
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        JsonElement installed = await Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Legacy", ["version"] = "1.0.0" });
+        Assert.Equal("1.0.0", installed.GetProperty("version").GetString());
+        Assert.Equal([$"high severity, {Advisory}; fixed in 1.0.1"], Said(installed, "vulnerable"));
+        Assert.Equal(["legacy, no longer maintained; use Passenger.Modern 2.0.0 or later instead; Kept no more."], Said(installed, "deprecated"));
+
+        JsonElement moved = await Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Legacy", ["version"] = "2.0.0" });
+        Assert.True(moved.GetProperty("version").GetString() == "2.0.0" && Said(moved, "vulnerable").Length == 0 && Said(moved, "deprecated").Length == 0
+            && Said(moved, "unknown").Length == 0, $"nuget_install of Passenger.Legacy 2.0.0, which nothing advises against or deprecates, answered: {moved.GetRawText()}");
+
+        static string[] Said(JsonElement change, string member) =>
+            !change.TryGetProperty(member, out JsonElement said) || said.ValueKind == JsonValueKind.Null ? [] : [said.GetString()!];
+    }
+
     /// <summary>In a project that restores with a lock file, the files nuget_install names are all it changed: the lock file
     /// its restore made, then rewrote for the next version, so an agent committing them leaves a locked restore whole.</summary>
     [Fact]

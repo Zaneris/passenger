@@ -399,17 +399,37 @@ public sealed partial class PassengerTools
         List<string> deprecated = [];
         foreach ((string Version, List<string> Projects) at in versions)
         {
-            if (known.Of(package.Id, at.Version) is [{ } gravest, ..] advisories)
+            if (known.Of(package.Id, at.Version) is { Count: > 0 } advisories)
             {
-                vulnerable.Add($"{Of(at)}: {gravest.Severity.ToString().ToLowerInvariant()} severity, {gravest.Address}"
-                    + (advisories.Count > 1 ? $" (and {Plural.Of(advisories.Count - 1, "more advisory", "more advisories")})" : string.Empty));
+                vulnerable.Add($"{Of(at)}: {Vulnerability(advisories)}");
             }
             if (packages.DeprecationOf(package.Id, at.Version) is { } deprecation)
             {
-                deprecated.Add($"{Of(at)}: {deprecation.Why}" + (deprecation.Instead is { } instead ? $"; use {instead} instead" : string.Empty)
-                    + (deprecation.Message.Length > 0 ? $"; {deprecation.Message}" : string.Empty));
+                deprecated.Add($"{Of(at)}: {Deprecated(deprecation)}");
             }
         }
+        return new PackageFound(package.Id, package.Version, package.Description, package.Authors, package.Downloads, package.Feeds)
+        {
+            Vulnerable = vulnerable.Count > 0 ? vulnerable : null,
+            Deprecated = deprecated.Count > 0 ? deprecated : null,
+            Unknown = Unknown(known, unread),
+        };
+    }
+
+    /// <summary>A vulnerable version's word, as the package tools say it: its gravest advisory's severity and page, and how
+    /// many more advisories there are.</summary>
+    private static string Vulnerability(IReadOnlyList<Advisory> advisories) =>
+        $"{advisories[0].Severity.ToString().ToLowerInvariant()} severity, {advisories[0].Address}"
+            + (advisories.Count > 1 ? $" (and {Plural.Of(advisories.Count - 1, "more advisory", "more advisories")})" : string.Empty);
+
+    /// <summary>A deprecated version's word, as the package tools say it: why, what to use instead and its owner's words.</summary>
+    private static string Deprecated(Deprecation deprecation) => deprecation.Why
+        + (deprecation.Instead is { } instead ? $"; use {instead} instead" : string.Empty)
+        + (deprecation.Message.Length > 0 ? $"; {deprecation.Message}" : string.Empty);
+
+    /// <summary>The feeds that could not say whether a version is vulnerable or deprecated; null where all said.</summary>
+    private static string? Unknown(VulnerabilityData known, IReadOnlyList<string> unread)
+    {
         List<string> unknown = [];
         if (known.Failed.Count > 0)
         {
@@ -419,19 +439,15 @@ public sealed partial class PassengerTools
         {
             unknown.Add($"deprecations: {string.Join(", ", unread)} did not answer");
         }
-        return new PackageFound(package.Id, package.Version, package.Description, package.Authors, package.Downloads, package.Feeds)
-        {
-            Vulnerable = vulnerable.Count > 0 ? vulnerable : null,
-            Deprecated = deprecated.Count > 0 ? deprecated : null,
-            Unknown = unknown.Count > 0 ? string.Join("; ", unknown) : null,
-        };
+        return unknown.Count > 0 ? string.Join("; ", unknown) : null;
     }
 
     [McpServerTool(Name = McpTools.NugetInstall, Title = "Install or remove a package", Destructive = true), Description(
         "Adds a package to a project (its name or .csproj) at a version (else the newest on the folder's enabled feeds), or " +
         "moves it to that version, through dotnet add package as the NuGet window does, restoring from the folder's " +
-        "nuget.config feeds; with remove, takes it out through dotnet remove package. Answers the version installed and the " +
-        "files it changed (the project, its packages.lock.json, and Directory.Packages.props under central package management). " +
+        "nuget.config feeds; with remove, takes it out through dotnet remove package. Answers the version installed, the " +
+        "files it changed (the project, its packages.lock.json, and Directory.Packages.props under central package management), " +
+        "and as nuget_search says them whether that version is vulnerable, with the version that fixes it, or deprecated. " +
         "Moving one of EF Core's packages moves the project's others with it (with); another maker's provider it leaves behind " +
         "stays as it is, said with the version that fits.")]
     public Task<PackageChange> NuGetInstall(string project, string id, string? version = null, bool remove = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -444,18 +460,51 @@ public sealed partial class PassengerTools
         }
         AgentCall.Say($"Finding {id} on the folder's feeds");
         IPackageFeed feeds = await Session.Packages.FeedAsync(null);
-        string at = version ?? (await feeds.VersionsAsync(id, prerelease: false, cancel)).FirstOrDefault()
-            ?? throw new ArgumentException($"{feeds.Name} has no package {id}");
+        IReadOnlyList<string>? offered = version is null ? await feeds.VersionsAsync(id, prerelease: false, cancel) : null;
+        string at = version ?? offered?.FirstOrDefault() ?? throw new ArgumentException($"{feeds.Name} has no package {id}");
         AgentCall.Say(null);
         AgentCall.Follow(window.Actions.Work, FolderPackages.Changing);
         EfUpdate weighed = await window.Migrations.UpdateAsync(chosen, id, at, null, cancel);
-        if (!weighed.AsAsked)
-        {
-            return weighed.Outcome is { } made ? new PackageChange(id, at, chosen.Name, Changed(made)) { With = weighed.With.Count > 0 ? weighed.With : null, Said = weighed.Said }
-                : throw new InvalidOperationException(weighed.Said ?? Refusals.SolutionClosed);
-        }
-        return new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at))) { Said = weighed.Said };
+        PackageChange done = weighed.AsAsked
+            ? new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at))) { Said = weighed.Said }
+            : weighed.Outcome is { } made ? new PackageChange(id, at, chosen.Name, Changed(made)) { With = weighed.With.Count > 0 ? weighed.With : null, Said = weighed.Said }
+            : throw new InvalidOperationException(weighed.Said ?? Refusals.SolutionClosed);
+        return await WarnedAsync(done, feeds, offered, cancel);
     });
+
+    /// <summary>A package put in, with what nuget_search says of its version: its gravest known advisory and the least
+    /// version above it that none affects, why its owner deprecated it, and the feeds that could not say.</summary>
+    private async Task<PackageChange> WarnedAsync(PackageChange done, IPackageFeed feeds, IReadOnlyList<string>? offered, CancellationToken cancel)
+    {
+        FolderPackages packages = Session.Packages;
+        (string Id, string Version)[] put = [(done.Package, done.Version!)];
+        AgentCall.Say($"Reading whether {done.Package} {done.Version} is vulnerable or deprecated");
+        VulnerabilityData known = await packages.VulnerabilitiesAsync();
+        await packages.DeprecationsReadAsync(put);
+        string? vulnerable = null;
+        if (known.Of(done.Package, done.Version!) is { Count: > 0 } advisories)
+        {
+            string fixedIn;
+            try
+            {
+                fixedIn = known.FixedVersion(done.Package, done.Version!, offered ?? await feeds.VersionsAsync(done.Package, prerelease: false, cancel)) is { } fix
+                    ? $"fixed in {fix}" : "no version without a known vulnerability is offered";
+            }
+            catch (Exception failed) when (FeedSet.IsFeedFailure(failed))
+            {
+                // The package is in: a feed failing now leaves the fix unsaid, never the change unanswered.
+                fixedIn = $"the versions that may fix it could not be read: {failed.Message}";
+            }
+            vulnerable = $"{Vulnerability(advisories)}; {fixedIn}";
+        }
+        AgentCall.Say(null);
+        return done with
+        {
+            Vulnerable = vulnerable,
+            Deprecated = packages.DeprecationOf(done.Package, done.Version!) is { } deprecation ? Deprecated(deprecation) : null,
+            Unknown = Unknown(known, packages.DeprecationsUnknown(put)),
+        };
+    }
 
     /// <summary>The files a package change wrote, named as the answer names them (the window's change took them into the
     /// editors and read the projects again); one refused, or that dotnet failed, is an error saying why and what became of
@@ -995,6 +1044,15 @@ public sealed record PackageChange(string Package, string? Version, string Proje
 
     /// <summary>What the change says beyond its files: what moved with it, and a provider of EF Core it left behind.</summary>
     public string? Said { get; init; }
+
+    /// <summary>The version's gravest known advisory and the version that fixes it; null for none.</summary>
+    public string? Vulnerable { get; init; }
+
+    /// <summary>Why its owner deprecated the version, what to use instead and their words; null where they did not.</summary>
+    public string? Deprecated { get; init; }
+
+    /// <summary>The feeds that could not say whether the version is vulnerable or deprecated; null where all said.</summary>
+    public string? Unknown { get; init; }
 }
 
 /// <summary>A stash as the vcs_stash tool lists it: its place, its commit (short), what it says and when it was made.</summary>
