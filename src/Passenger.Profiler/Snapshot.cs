@@ -731,10 +731,12 @@ public sealed class Snapshot
     }
 
     /// <summary>The frames a run's stacks are numbered into, each method once by what it is, its full name (its parameters'
-    /// types in full) in its module, and shown by its short name (<see cref="Pretty"/>): overloads that read alike stay two.</summary>
+    /// types in full) in its module, and shown by its short name (<see cref="Pretty"/>): overloads that read alike stay two.
+    /// A trace can name one module in lower case for some of its code and as written for the rest, so a module is told
+    /// apart ignoring case, and named as written where the trace ever does.</summary>
     internal sealed class FrameTable
     {
-        private readonly Dictionary<(string Method, string Module), int> numbers = [];
+        private readonly Dictionary<(string Method, string Module), int> numbers = new(FrameKeys.Instance);
 
         public List<(string Method, string Module)> Named { get; } = [];
 
@@ -750,7 +752,24 @@ public sealed class Snapshot
                 Named.Add((shown, module));
                 Codes.Add(code);
             }
+            else if (Named[number].Module != module && Named[number].Module == Named[number].Module.ToLowerInvariant())
+            {
+                Named[number] = (shown, module);
+                Codes[number] = code ?? Codes[number];
+            }
             return number;
+        }
+
+        /// <summary>A frame's key: its method's full name exactly, its module's name ignoring case.</summary>
+        private sealed class FrameKeys : IEqualityComparer<(string Method, string Module)>
+        {
+            public static readonly FrameKeys Instance = new();
+
+            public bool Equals((string Method, string Module) x, (string Method, string Module) y) =>
+                string.Equals(x.Method, y.Method, StringComparison.Ordinal) && string.Equals(x.Module, y.Module, StringComparison.OrdinalIgnoreCase);
+
+            public int GetHashCode((string Method, string Module) key) =>
+                HashCode.Combine(StringComparer.Ordinal.GetHashCode(key.Method), StringComparer.OrdinalIgnoreCase.GetHashCode(key.Module));
         }
     }
 

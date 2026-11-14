@@ -5,7 +5,7 @@ namespace Passenger.UnitTests.Profiler;
 
 /// <summary>The call tree and hot spots tell methods apart by what they are, not by how they are shown: overloads whose
 /// parameters' types differ only in their namespaces, and one name in two modules, are rows of their own, each opening
-/// its own code; one method caught again and again is one row.</summary>
+/// its own code; one method caught again and again is one row, as is one whose module a trace names in two cases.</summary>
 public sealed class CallTreeTests
 {
     private static readonly MethodCode TextA = new("/app/App.dll", 0x06000002);
@@ -42,6 +42,25 @@ public sealed class CallTreeTests
 
         CallNode caller = Assert.Single(Assert.Single(snapshot.Threads).Ordered);
         Assert.Equal([("Shared.Parse(String)", "Library", 6), ("Shared.Parse(String)", "App", 4)], caller.Ordered.Select(c => (c.Name, c.Module, c.Total)));
+    }
+
+    /// <summary>A trace names a module in lower case for the code compiled as the program ran and as written for the code
+    /// compiled ahead (System.Private.CoreLib's DateTime.UtcNow, caught in both): one method, one row, named as written.</summary>
+    [Fact]
+    public void One_method_whose_module_a_trace_names_in_two_cases_is_one_row_named_as_written()
+    {
+        MethodCode jitted = new("/users/me/.dotnet/shared/microsoft.netcore.app/11.0.0/system.private.corelib.dll", 0x06000010);
+        MethodCode ahead = new("/Users/me/.dotnet/shared/Microsoft.NETCore.App/11.0.0/System.Private.CoreLib.dll", 0x06000010);
+        Snapshot snapshot = Snapshot.Of(
+        [
+            ([("System.DateTime.get_UtcNow()", "system.private.corelib", jitted), ("Program.Caller()", "App", Caller)], 9),
+            ([("System.DateTime.get_UtcNow()", "System.Private.CoreLib", ahead), ("Program.Caller()", "App", Caller)], 1),
+        ]);
+
+        CallNode caller = Assert.Single(Assert.Single(snapshot.Threads).Ordered);
+        Assert.Equal([("System.DateTime.get_UtcNow()", "System.Private.CoreLib", 10)], caller.Ordered.Select(c => (c.Name, c.Module, c.Total)));
+        HotSpot now = Assert.Single(snapshot.HotSpots, h => h.Name == "System.DateTime.get_UtcNow()");
+        Assert.Equal(("System.Private.CoreLib", 10, ahead), (now.Module, now.Self, now.Code!.Value));
     }
 
     /// <summary>A trace file's stacks may be any depth: a flame graph of one 100,000 frames deep counts its rows and lays its
