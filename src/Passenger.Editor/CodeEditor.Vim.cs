@@ -97,7 +97,7 @@ public sealed partial class CodeEditor
         action = null;
         repeat = 0;
         vimTookText = false;
-        if (vim is null || KeymapDispatcher.IsModifierOnly(e.Key) || preedit.Length > 0)
+        if (vim is null || KeymapDispatcher.IsModifierOnly(e.Key) || Preedit.Length > 0)
         {
             // A modifier pressed on its own comes before the key it changes, so it must not end a count or operator.
             return false;
@@ -171,7 +171,7 @@ public sealed partial class CodeEditor
     /// closed); false with Vim mode off or already in normal mode.</summary>
     public bool EndVimInsert()
     {
-        if (vim is not { Mode: VimMode.Insert } || preedit.Length > 0)
+        if (vim is not { Mode: VimMode.Insert } || Preedit.Length > 0)
         {
             return false;
         }

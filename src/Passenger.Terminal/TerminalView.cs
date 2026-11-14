@@ -12,12 +12,12 @@ namespace Passenger.Terminal;
 
 /// <summary>Draws a <see cref="TerminalSession"/>'s screen in the editor's font and sends it the keys: xterm's
 /// encodings for every key (the arrows' application forms when a program asks), or the kitty keyboard protocol's once a
-/// program asks for it (<see cref="TerminalKeys"/>), the clipboard on Cmd+C and Cmd+V (Ctrl+Shift+C and V, or Ctrl+C
-/// with a selection, elsewhere), a drag to select and a double-click for a word, the wheel through the scrollback (or to
-/// the program, when it asked for the mouse). The size follows the control's, in whole cells. Web addresses and stack
-/// frames are drawn as links, opened by a click (one that drags selects instead); file paths are drawn as text,
-/// underlined faintly under the pointer and as links while Cmd (Ctrl elsewhere) is held. Cmd+click (Ctrl+click) opens
-/// either.</summary>
+/// program asks for it (<see cref="TerminalKeys"/>), what an input method composes once it commits it (drawn at the
+/// cursor until then), the clipboard on Cmd+C and Cmd+V (Ctrl+Shift+C and V, or Ctrl+C with a selection, elsewhere), a
+/// drag to select and a double-click for a word, the wheel through the scrollback (or to the program, when it asked for
+/// the mouse). The size follows the control's, in whole cells. Web addresses and stack frames are drawn as links, opened
+/// by a click (one that drags selects instead); file paths are drawn as text, underlined faintly under the pointer and as
+/// links while Cmd (Ctrl elsewhere) is held. Cmd+click (Ctrl+click) opens either.</summary>
 public sealed partial class TerminalView : Control
 {
     public static readonly StyledProperty<double> FontSizeProperty =
@@ -106,6 +106,7 @@ public sealed partial class TerminalView : Control
         };
         ContextMenu = Menu();
         CodeFonts.Follow(this, FontFamilyProperty);
+        AddHandler(TextInputMethodClientRequestedEvent, (_, e) => e.Client = InputMethod);
     }
 
     /// <summary>The terminal's menu: Copy, Paste and Clear Buffer, with their keys.</summary>
@@ -149,6 +150,7 @@ public sealed partial class TerminalView : Control
         ClearSelection();
         heldTop = null;
         RestartBlink();
+        FollowInputMethod();
     }
 
     public double FontSize
@@ -187,6 +189,9 @@ public sealed partial class TerminalView : Control
             {
                 session.Output -= OnOutput;
             }
+            // A composition begun for one program is never finished into another's.
+            inputMethod?.Discard();
+            ForgetComposed();
             session = value;
             reportedPress = false;
             if (session is not null)
@@ -196,6 +201,7 @@ public sealed partial class TerminalView : Control
             }
             heldTop = null;
             RestartBlink();
+            FollowInputMethod();
         }
     }
 
@@ -273,6 +279,7 @@ public sealed partial class TerminalView : Control
         long to = Math.Clamp(TopLine - lines, screen.FirstLine, screen.ScreenTop);
         heldTop = to < screen.ScreenTop ? to : null;
         RestartBlink();
+        FollowInputMethod();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -305,6 +312,8 @@ public sealed partial class TerminalView : Control
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
         base.OnLostFocus(e);
+        inputMethod?.Discard();
+        ForgetComposed();
         RestartBlink();
     }
 
@@ -367,6 +376,7 @@ public sealed partial class TerminalView : Control
         }
         session.Resize(columns, rows);
         InvalidateVisual();
+        FollowInputMethod();
     }
 
     /// <summary>New output shows at the bottom, but for a person reading back through the scrollback, whose top line
@@ -383,6 +393,7 @@ public sealed partial class TerminalView : Control
             HoverLink(held);
         }
         RestartBlink();
+        FollowInputMethod();
     }
 
     /// <summary>Whether a cell is drawn in a run with its neighbours: one code point a column wide that the terminal's
@@ -693,16 +704,20 @@ public sealed partial class TerminalView : Control
         {
             return;
         }
+        inputMethod?.Committed();
+        ForgetComposed();
         Typed();
         session.Write(e.Text);
         e.Handled = true;
+        FollowInputMethod();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (session is null)
+        if (session is null || e.Key == Key.ImeProcessed)
         {
+            // A key the input method takes is its own: a composition's letter, a candidate's number, the Enter committing it.
             return;
         }
         if (e.Key is Key.LWin or Key.RWin or Key.LeftCtrl or Key.RightCtrl)

@@ -89,7 +89,7 @@ public sealed partial class CodeEditor
     {
         Gap[] hints = HintsOn(span);
         int caret = selections.Primary.Caret;
-        if (preedit.Length == 0 || !IsOn(span, caret, LeansBack(caret)))
+        if (Preedit.Length == 0 || !IsOn(span, caret, LeansBack(caret)))
         {
             return hints;
         }
@@ -110,7 +110,7 @@ public sealed partial class CodeEditor
         && (offset < span.End || (offset == span.End && (span.IsLast || beforeWrap)));
 
     /// <summary>The composition as it is drawn.</summary>
-    private TextLine PreeditLabel() => labels.Get((preedit, -9), () => Format(preedit, [], RunWith(palette.Preedit)));
+    private TextLine PreeditLabel() => labels.Get((Preedit, -9), () => Format(Preedit, [], RunWith(palette.Preedit)));
 
     /// <summary>The first hint at or after an offset, shown or not.</summary>
     private int FirstHintFrom(int offset) => Sorted.FirstAtOrAfter(decorations.InlayHints, static h => h.Offset, offset);

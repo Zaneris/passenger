@@ -6,6 +6,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Input.TextInput;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -783,6 +784,85 @@ public sealed class TerminalTests
             TerminalLine marks = shell.Screen.LineAt(rocket + 1);
             Assert.True(marks.Text() == "\u2705\u26A1y" && marks.Cells[4].Rune == 'y',
                 $"y printed after a check mark and a lightning bolt stands in column {Array.FindIndex(marks.Cells, c => c.Rune == 'y')}, not 4");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Text an input method composes (kana here, as Chinese comes by Pinyin) is drawn at the cursor, underlined, two
+    /// columns a character, the input method's window opening at its cursor in it; none of it reaches the program, nor a
+    /// key the input method takes (Enter, a candidate's number on the keypad), until it is committed, and the program then
+    /// reads the committed text alone, under the kitty keyboard protocol as an agent's prompt asks, in the columns the
+    /// composition took; a composition left as the keys go elsewhere is dropped.</summary>
+    [AvaloniaFact]
+    public void Text_an_input_method_composes_shows_at_the_cursor_and_reaches_the_program_only_as_it_is_committed()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder);
+            TerminalView view = window.TerminalPanel.View;
+            TextInputMethodClientRequestedEventArgs asked = new() { RoutedEvent = InputElement.TextInputMethodClientRequestedEvent };
+            view.RaiseEvent(asked);
+            TextInputMethodClient client = asked.Client ?? throw new InvalidOperationException("The terminal gave the input method no client, so it composes nothing there");
+            Assert.True(client.SupportsPreedit && client.TextViewVisual == view, "The terminal does not draw what the input method composes");
+
+            RunCase(window, "typed", "1");
+            WaitForScreen(window, shell, s => s.KeyboardFlags == TerminalKeys.Disambiguate && Lines(s).Contains("typed?"),
+                "the program to wait for what is typed under the kitty keyboard protocol");
+            TerminalScreen screen = shell.Screen;
+            long line = screen.ScreenTop + screen.CursorRow;
+            int column = screen.CursorColumn;
+            Point CellAt(int at)
+            {
+                Point centre = view.PointOf(line, at);
+                return new Point(centre.X - ((view.PointOf(line, at + 1).X - centre.X) / 2), centre.Y - ((view.PointOf(line + 1, at).Y - centre.Y) / 2));
+            }
+            void InputMethodAt(int at, string when)
+            {
+                Point expected = CellAt(at);
+                Point told = client.CursorRectangle.TopLeft;
+                Assert.True(Math.Abs(told.X - expected.X) < 0.01 && Math.Abs(told.Y - expected.Y) < 0.01,
+                    $"{when}, the input method's window would open at {told}, not at column {at} of the cursor's row, {expected}");
+            }
+            InputMethodAt(column, "Before a composition");
+
+            client.SetPreeditText("にほん");
+            Ui.Settle();
+            Color foreground = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Foreground)!).Color;
+            double underline = view.PointOf(line + 1, 0).Y - view.PointOf(line, 0).Y;
+            Color[] under = Ui.Pixels(window, [.. Enumerable.Range(column, 7).Select(at => view.TranslatePoint(view.PointOf(line, at) + new Point(0, (underline / 2) - 1.5), window)!.Value)]);
+            Assert.True(under[..6].All(c => c == foreground) && under[6] != foreground,
+                $"The composition is not drawn underlined over the six columns its three kana take from the cursor: [{string.Join(", ", under)}], the text {foreground}");
+            InputMethodAt(column + 6, "Past three kana");
+
+            foreach (PhysicalKey key in (PhysicalKey[])[PhysicalKey.Enter, PhysicalKey.NumPad1])
+            {
+                window.KeyPress(Key.ImeProcessed, RawInputModifiers.None, key, null);
+                window.KeyRelease(Key.ImeProcessed, RawInputModifiers.None, key, null);
+            }
+            client.SetPreeditText("日本", 1);
+            Ui.Settle();
+            InputMethodAt(column + 2, "At the second of two Han characters");
+            client.SetPreeditText(null);
+            window.KeyTextInput("日本");
+            Ui.Settle();
+            InputMethodAt(column, "Once the composition was committed, before the program moved the cursor");
+            client.SetPreeditText("ご");
+            Ui.Settle();
+            Ui.Click(window.GetVisualDescendants().OfType<TextBox>().First(t => t.IsEffectivelyVisible));
+            Ui.Click(view, view.PointOf(line, column + 10));
+            Assert.True(view.IsFocused && Ui.Pixel(window, view.TranslatePoint(view.PointOf(line, column) + new Point(0, (underline / 2) - 1.5), window)!.Value) != foreground,
+                "A composition left as the keys went elsewhere is still drawn once they came back");
+            window.KeyTextInput("q");
+            WaitForLine(shell, "U+65E5 U+672C", "the committed text alone as the program read it");
+            TerminalLine read = screen.LineAt(WaitForLine(shell, "日本|", "the committed text as the program wrote it back"));
+            Assert.True(read.Cells[0].Width == 2 && read.Cells[2].Rune == '本' && read.Cells[4].Rune == '|',
+                $"日本| took other columns than the composition did: [{string.Join("|", Enumerable.Range(0, 6).Select(read.TextOf))}]");
+            WaitForScreen(window, shell, s => s.KeyboardFlags == 0, "the program's flags to go as it pops them");
             window.Close();
         }
         finally

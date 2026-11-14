@@ -87,6 +87,29 @@ switch (args)
             }
         }
         break;
+    case ["typed", .. string[] asked]:
+        // What is typed until q, as its bytes were read: the text decoded from UTF-8 and ended by a bar, then each of its
+        // code points; with flags, first pushed as the kitty keyboard protocol asks, then popped at the end.
+        using (Terminal.Raw())
+        {
+            if (asked is [string flags])
+            {
+                Write($"\e[>{flags}u");
+            }
+            Write("typed?\r\n");
+            List<byte> bytes = [];
+            for (int b = input.ReadByte(); b is >= 0 and not 'q'; b = input.ReadByte())
+            {
+                bytes.Add((byte)b);
+            }
+            string typed = Encoding.UTF8.GetString([.. bytes]);
+            Write($"{typed}|\r\n{string.Join(' ', typed.EnumerateRunes().Select(r => $"U+{r.Value:X4}"))}\r\n");
+            if (asked.Length > 0)
+            {
+                Write("\e[<u");
+            }
+        }
+        break;
     case ["mouse", .. string[] modes]:
         // The mouse reports as read, in SGR's form (1006) after the modes asked for (1002, 1003), each on a line of its
         // own as cat -v shows it, until Ctrl+C; the modes put back after.

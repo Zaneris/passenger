@@ -57,7 +57,15 @@ public sealed partial class TerminalView
             DrawHiddenLink(context, line, y, screen.Columns);
         }
         drawings.EndFrame();
-        if (first == screen.ScreenTop && screen.CursorVisible)
+        if (first != screen.ScreenTop)
+        {
+            return;
+        }
+        if (Composing)
+        {
+            DrawComposition(context, screen);
+        }
+        else if (screen.CursorVisible)
         {
             DrawCursor(context, screen, plain);
         }
@@ -69,6 +77,7 @@ public sealed partial class TerminalView
         drawings.Clear();
         cursorText?.Text?.Dispose();
         cursorText = null;
+        ForgetComposed();
     }
 
     private void DrawLine(DrawingContext context, TerminalLine line, long index, double y, Typeface plain,
