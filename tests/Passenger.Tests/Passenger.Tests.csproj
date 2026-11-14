@@ -34,6 +34,9 @@
     <Compile Include="../../src/Passenger.Inspector/FrameWire.cs" Link="FrameWire.cs" />
     <!-- What Passenger's Hot Reload hook says, and the name its thread goes by in a debugged program. -->
     <Compile Include="../../src/Passenger.UpdateHandlers/Wire.cs" Link="UpdateHandlersWire.cs" />
+    <!-- Windows' jump list as the app writes it, which JumpListTests writes under an app ID of its own. -->
+    <Compile Include="../../src/Passenger.App/Welcome/JumpList.cs" Link="JumpList.cs" />
+    <Compile Include="../../src/Passenger.App/Welcome/RecentLists.cs" Link="RecentLists.cs" />
   </ItemGroup>
 
   <!-- Avalonia's templates, restored from nuget.org as every package is and served to the tests from the package cache

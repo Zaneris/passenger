@@ -37,27 +37,51 @@ internal static partial class JumpList
 
     /// <summary>The list made anew of <paramref name="entries"/> (path, title), the newest first, as many as the person's
     /// taskbar shows, leaving out those the person removed from it since it was last written: their links' arguments,
-    /// answered. Called on the window's thread, a single-threaded apartment like the shell's own objects.</summary>
-    public static IReadOnlyList<string> Write(string exe, IReadOnlyList<(string Path, string Title)> entries)
+    /// answered. The list is <paramref name="appId"/>'s where named (a test's own), else the process's. Called on the
+    /// window's thread, a single-threaded apartment like the shell's own objects.</summary>
+    public static IReadOnlyList<string> Write(string exe, IReadOnlyList<(string Path, string Title)> entries, string? appId = null)
     {
         try
         {
-            return Written(exe, entries);
+            return Written(exe, entries, appId);
         }
         finally
         {
-            // Let go here, in the shell objects' apartment, rather than on the finalizer's thread whenever it runs.
-            foreach (ComObject made in Held)
-            {
-                made.FinalRelease();
-            }
-            Held.Clear();
+            LetGo();
         }
     }
 
-    private static IReadOnlyList<string> Written(string exe, IReadOnlyList<(string Path, string Title)> entries)
+    /// <summary>The list of <paramref name="appId"/> taken away whole, as a test that wrote one leaves nothing behind.</summary>
+    public static void Delete(string appId)
+    {
+        try
+        {
+            Check(Create<ICustomDestinationList>(DestinationList).DeleteList(appId), "be deleted");
+        }
+        finally
+        {
+            LetGo();
+        }
+    }
+
+    /// <summary>Lets go of what a call made here, in the shell objects' apartment, rather than on the finalizer's thread
+    /// whenever it runs.</summary>
+    private static void LetGo()
+    {
+        foreach (ComObject made in Held)
+        {
+            made.FinalRelease();
+        }
+        Held.Clear();
+    }
+
+    private static IReadOnlyList<string> Written(string exe, IReadOnlyList<(string Path, string Title)> entries, string? appId)
     {
         ICustomDestinationList list = Create<ICustomDestinationList>(DestinationList);
+        if (appId is not null)
+        {
+            Check(list.SetAppID(appId), "take the app ID");
+        }
         Check(list.BeginList(out uint slots, typeof(IObjectArray).GUID, out nint removedPointer), "begin the jump list");
         bool committed = false;
         try
