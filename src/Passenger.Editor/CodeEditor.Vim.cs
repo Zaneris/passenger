@@ -154,6 +154,19 @@ public sealed partial class CodeEditor
         return Task.CompletedTask;
     }
 
+    /// <summary>A command line run as if typed after ':' (one of :bufdo's, in the file shown), what it does done and asked of
+    /// the host; the words it said, null for none or with Vim mode off.</summary>
+    public VimMessage? RunVimCommand(string line)
+    {
+        if (vim is null)
+        {
+            return null;
+        }
+        VimResult result = vim.RunCommand(line, document.Snapshot, selections, VimView);
+        FollowVim(result, vim.Mode);
+        return result.Message is { } said ? new VimMessage(said, result.MessageIsError) : null;
+    }
+
     /// <summary>Leaves insert mode as Escape does, where something else heard the Escape first (the code's choices it
     /// closed); false with Vim mode off or already in normal mode.</summary>
     public bool EndVimInsert()

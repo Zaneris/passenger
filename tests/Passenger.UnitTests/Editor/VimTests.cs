@@ -967,6 +967,30 @@ public class VimTests
         }
     }
 
+    [Theory]
+    [InlineData("%s/one/1/ge | update", new[] { "%s/one/1/ge", "update" })]
+    [InlineData("s/a\\|b/X/g | normal Ay|z", new[] { "s/a\\|b/X/g", "normal Ay|z" })]
+    [InlineData("'<,'>normal A|", new[] { "'<,'>normal A|" })]
+    [InlineData("g/x|y/s/a/b/ | w", new[] { "g/x|y/s/a/b/ | w" })]
+    [InlineData("/a|b/,$d|w", new[] { "/a|b/,$d", "w" })]
+    [InlineData("w||", new[] { "w" })]
+    public void A_command_line_parts_at_each_bar_but_where_its_command_takes_the_rest(string line, string[] commands)
+    {
+        Assert.Equal(commands, Vim.Bars(line));
+    }
+
+    [Fact]
+    public void Bufdo_and_windo_ask_the_host_to_run_their_command_line_in_each_file_and_update_saves()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|a");
+        Vim vim = new();
+        Assert.Equal((VimRequestKind.EachFile, "%s/a/b/ge | update"), Press(vim, ":bufdo %s/a/b/ge | update<CR>", text, carets).Request is { } each ? (each.Kind, each.Path) : default);
+        Assert.Equal((VimRequestKind.EachEditor, "normal x"), Press(vim, ":windo normal x<CR>", text, carets).Request is { } split ? (split.Kind, split.Path) : default);
+        Assert.Equal("E471: Argument required", Press(vim, ":bufdo<CR>", text, carets).Message);
+        Assert.Equal(VimRequestKind.Save, Press(vim, ":up<CR>", text, carets).Request?.Kind);
+        Assert.Equal(("|b", "up"), (Marked.Show(text.Apply(vim.RunCommand("s/a/b/", text, carets).Edit!.Edits), carets), vim.Registers.LastCommand));
+    }
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

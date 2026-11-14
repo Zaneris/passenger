@@ -1,4 +1,6 @@
+using Passenger.App.Editors;
 using Passenger.App.Run;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using A = Passenger.App.AppActions;
@@ -6,8 +8,8 @@ using A = Passenger.App.AppActions;
 namespace Passenger.App;
 
 /// <summary>What Vim mode asks of the window: :w, :q, :wq and :e as Save, Close Tab and opening a file, Ctrl+O and Ctrl+I
-/// as Back and Forward, = as Reformat Code over its lines, :action as any action of the IDE, its jumps kept among the
-/// places Back goes to, and its words in the status bar.</summary>
+/// as Back and Forward, = as Reformat Code over its lines, :action as any action of the IDE, :bufdo and :windo as its
+/// commands run in each file, its jumps kept among the places Back goes to, and its words in the status bar.</summary>
 public partial class MainWindow
 {
     /// <summary>Vim mode's mappings file, followed once Vim mode is first on.</summary>
@@ -97,12 +99,74 @@ public partial class MainWindow
             case VimRequestKind.Action:
                 RunNamed(request.Path!);
                 break;
+            case VimRequestKind.EachFile or VimRequestKind.EachEditor:
+                InEach(request.Kind == VimRequestKind.EachFile, request.Path!);
+                break;
             case VimRequestKind.Older or VimRequestKind.Newer:
                 for (int i = 0; i < Math.Clamp(request.Count, 1, Navigation.NavigationHistory.Limit); i++)
                 {
                     Request(request.Kind == VimRequestKind.Older ? A.Back : A.Forward);
                 }
                 break;
+        }
+    }
+
+    /// <summary>Set while :bufdo or :windo runs its commands, which run no other :bufdo or :windo inside them.</summary>
+    private bool vimInEach;
+
+    /// <summary>:bufdo and :windo: the command line, its commands parted at '|', run in each open file in turn (each editor
+    /// shown, split by split), each shown as it runs, as one command of global undo; the first command that fails ends it
+    /// there, as Vim's does, and a file shown read-only, which every change refuses, is passed over and said.</summary>
+    private void InEach(bool files, string line)
+    {
+        string named = $":{(files ? "bufdo" : "windo")}";
+        if (vimInEach)
+        {
+            status.Say($"{named} runs inside :bufdo or :windo: Vim mode runs one at a time", ProblemSeverity.Error);
+            return;
+        }
+        IReadOnlyList<string> commands = Vim.Bars(line);
+        List<(EditorGroup? Group, OpenDocument Document)> each = files
+            ? [.. Editors.Documents.Where(d => d.HoldsText).Select(d => ((EditorGroup?)null, d))]
+            : [.. Editors.Groups.Where(g => g.Active is { HoldsText: true }).Select(g => ((EditorGroup?)g, g.Active!))];
+        List<string> passed = [];
+        vimInEach = true;
+        try
+        {
+            using CommandHistory.Recording recording = Editors.Commands.Record($"{named} {line}");
+            foreach ((EditorGroup? group, OpenDocument document) in each)
+            {
+                if (document.IsReadOnly)
+                {
+                    passed.Add(document.Name);
+                    continue;
+                }
+                if (group is null)
+                {
+                    Editors.Activate(document);
+                }
+                else
+                {
+                    Editors.SetActiveGroup(group);
+                    group.FocusShown();
+                }
+                CodeEditor editor = Editors.CodeEditor;
+                foreach (string command in commands)
+                {
+                    if (editor.RunVimCommand(command) is { Error: true })
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            vimInEach = false;
+        }
+        if (passed.Count > 0)
+        {
+            status.Say($"{named} passed over {Plural.Of(passed.Count, "read-only file")}: {Plural.Listed(passed)}", null);
         }
     }
 

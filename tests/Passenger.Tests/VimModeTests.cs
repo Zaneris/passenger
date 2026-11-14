@@ -605,6 +605,61 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>:bufdo runs its commands, parted at '|', in each open file in turn as one command of the IDE's undo: :s over
+    /// two files and :update saving each, a read-only file passed over and said, the last file left shown, and u there taking
+    /// back both; :windo runs its command in each split's file, u taking back both again.</summary>
+    [AvaloniaFact]
+    public void Bufdo_and_windo_change_every_file_as_one_command_of_undo()
+    {
+        string decompiled = Path.Combine(folder, "MetadataAsSource");
+        Directory.CreateDirectory(decompiled);
+        string one = Path.Combine(folder, "One.txt");
+        string two = Path.Combine(folder, "Two.txt");
+        string three = Path.Combine(decompiled, "Three.txt");
+        File.WriteAllText(two, "one more\n");
+        File.WriteAllText(three, "one gone\n");
+        (MainWindow window, CodeEditor editor) = Open("one two\nthree\n");
+        try
+        {
+            window.OpenFile(three);
+            window.OpenFile(two);
+            window.OpenFile(one);
+            List<string> asked = [];
+            window.Confirm = (_, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, ":bufdo %s/one/1/ge | update<CR>");
+            Assert.Equal(("1 two\nthree\n", "1 more\n", "one gone\n"), (Shown(window, one), Shown(window, two), Shown(window, three)));
+            Ui.WaitFor(() => File.ReadAllText(one) == "1 two\nthree\n" && File.ReadAllText(two) == "1 more\n", "each file :update saved");
+            Assert.Equal(("Two.txt", ":bufdo passed over 1 read-only file: Three.txt"), (window.EditorArea.Active!.Name, StatusWords(window)));
+            Keys(window, "u");
+            Ui.WaitFor(() => Shown(window, one) == "one two\nthree\n" && Shown(window, two) == "one more\n",
+                () => $"u after :bufdo left \"{Shown(window, one)}\" and \"{Shown(window, two)}\", not both files as they were");
+            Assert.Equal(["Undo :bufdo %s/one/1/ge | update? It changes One.txt and Two.txt."], asked);
+
+            Assert.True(window.Perform(AppActions.SplitRight));
+            window.OpenFile(one);
+            Ui.Settle();
+            Assert.Equal(["One.txt", "Two.txt"], window.EditorArea.Groups.Select(g => g.Active!.Name));
+            Keys(window, ":windo 1s/^/> /<CR>");
+            Assert.Equal(("> one two\nthree\n", "> one more\n"), (Shown(window, one), Shown(window, two)));
+            Keys(window, "u");
+            Ui.WaitFor(() => Shown(window, one) == "one two\nthree\n" && Shown(window, two) == "one more\n",
+                () => $"u after :windo left \"{Shown(window, one)}\" and \"{Shown(window, two)}\", not both files as they were");
+            Assert.Equal("Undo :windo 1s/^/> /? It changes One.txt and Two.txt.", asked[^1]);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Shown(MainWindow window, string path) => window.EditorArea.Find(PathNames.Canonical(path))!.Text.Snapshot.ToString();
+    }
+
     /// <summary>A file shown read-only refuses Vim mode's every change as it refuses every other, the status bar saying
     /// so in Refusals' words: x, dd, an insert, u and :s leave its text as it was and normal mode as it was, while a motion
     /// and a yank work, the yank put in a file that takes changes.</summary>
@@ -781,6 +836,8 @@ public sealed class VimModeTests : IDisposable
                 '`' => "BACK_QUOTE",
                 '&' => "shift 7",
                 '@' => "shift 2",
+                '|' => "shift BACK_SLASH",
+                '^' => "shift 6",
                 _ => throw new ArgumentException($"No key types '{c}' here", nameof(keys)),
             };
             Ui.Type(window, key, c.ToString(), settle);

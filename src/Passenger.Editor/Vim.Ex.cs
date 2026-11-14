@@ -7,8 +7,8 @@ namespace Passenger.Editor;
 
 /// <summary>Ex commands, typed on the command line: a range of lines (%, ., $, a number, a mark, /pattern/, each with + and
 /// - after it, two joined by , or ;), then :{n}, :s, :g and :v, :d, :y, :j, :&gt; and :&lt;, :normal, :noh, :set, and
-/// :w, :q, :wq, :x, :e and :action, which the host does as its Save, Close Tab, open and the action named; a command Vim
-/// mode doesn't do is said.</summary>
+/// :w (:update), :q, :wq, :x, :e, :action, :bufdo and :windo, which the host does as its Save, Close Tab, open, the action
+/// named and the commands run in each file; a command Vim mode doesn't do is said.</summary>
 public sealed partial class Vim
 {
     /// <summary>An ex command run; a change it makes refused where the text refuses changes.</summary>
@@ -79,8 +79,10 @@ public sealed partial class Vim
                     return VimResult.Held;
                 }
                 return Jumped(text, selections, view, VimMotions.FirstNonBlank(text, range.Value.Last < 0 ? 0 : Math.Min(range.Value.Last, last)));
-            case "w" or "write":
-                return trimmed.Length > 0 ? Said($"Vim mode saves the file shown: :w {trimmed} is not done") : Asked(VimRequestKind.Save);
+            case "w" or "write" or "up" or "upd" or "upda" or "updat" or "update":
+                return trimmed.Length > 0 ? Said($"Vim mode saves the file shown: :{name} {trimmed} is not done") : Asked(VimRequestKind.Save);
+            case "bufd" or "bufdo" or "wind" or "windo":
+                return trimmed.Length > 0 ? Asked(name[0] == 'b' ? VimRequestKind.EachFile : VimRequestKind.EachEditor, trimmed) : Said("E471: Argument required");
             case "wa" or "wall":
                 return Asked(VimRequestKind.SaveAll);
             case "q" or "quit" or "clo" or "close":
@@ -116,6 +118,78 @@ public sealed partial class Vim
     }
 
     private static VimResult Asked(VimRequestKind kind, string? path = null) => new(true) { Request = new VimRequest(kind, path) };
+
+    /// <summary>A command line the host runs as if typed after ':' (:bufdo's, in each file), the line typed last kept for @:.</summary>
+    public VimResult RunCommand(string line, TextSnapshot text, SelectionSet selections, IVimView? view = null)
+    {
+        string? typed = Registers.LastCommand;
+        VimResult result = Ex(line, text, selections, view ?? PlainView);
+        Registers.LastCommand = typed;
+        return result;
+    }
+
+    /// <summary>A command line's commands, parted at each '|' not escaped (\\|) after their ranges, as :bufdo runs them in
+    /// turn; one that takes '|' as part of its own (:normal, :g, :v, :bufdo, :windo) takes the rest of the line.</summary>
+    public static IReadOnlyList<string> Bars(string line)
+    {
+        List<string> commands = [];
+        int start = 0;
+        while (start < line.Length)
+        {
+            int named = RangeEnd(line, start);
+            int letters = named;
+            while (letters < line.Length && char.IsAsciiLetter(line[letters]))
+            {
+                letters++;
+            }
+            int end = line.AsSpan(named, letters - named) is "norm" or "norma" or "normal" or "g" or "global" or "v" or "vglobal" or "bufd" or "bufdo" or "wind" or "windo"
+                ? line.Length
+                : named;
+            while (end < line.Length && (line[end] != '|' || end > 0 && line[end - 1] == '\\'))
+            {
+                end++;
+            }
+            if (line[start..end].Trim() is { Length: > 0 } command)
+            {
+                commands.Add(command);
+            }
+            start = end + 1;
+        }
+        return commands;
+    }
+
+    /// <summary>Where a command's name begins after the ':', blanks and range from <paramref name="start"/>: a pattern
+    /// address taken whole, a '|' inside it its own.</summary>
+    private static int RangeEnd(string line, int start)
+    {
+        int at = start;
+        while (at < line.Length)
+        {
+            char c = line[at];
+            if (c is '/' or '?')
+            {
+                at++;
+                while (at < line.Length && line[at] != c)
+                {
+                    at += line[at] == '\\' ? 2 : 1;
+                }
+                at++;
+            }
+            else if (c == '\'')
+            {
+                at += 2;
+            }
+            else if (char.IsAsciiDigit(c) || c is '%' or '.' or '$' or ',' or ';' or '+' or '-' or ' ' or '\t' or ':')
+            {
+                at++;
+            }
+            else
+            {
+                break;
+            }
+        }
+        return Math.Min(at, line.Length);
+    }
 
     /// <summary>A plan whose caret lands on the first non-blank of a line it leaves where it was, as a line command's does.</summary>
     private static EditPlan OnFirstNonBlank(TextSnapshot text, EditPlan plan, int line)

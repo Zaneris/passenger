@@ -20,6 +20,12 @@ public enum VimRequestKind
 
     /// <summary>:action: one of the IDE's actions run, by its id or title (<see cref="VimRequest.Path"/>).</summary>
     Action,
+
+    /// <summary>:bufdo: the command line (<see cref="VimRequest.Path"/>) run in each open file in turn.</summary>
+    EachFile,
+
+    /// <summary>:windo: the command line run in each editor shown, split by split.</summary>
+    EachEditor,
 }
 
 /// <summary>A request of the host: what to do, the file to open (or the action to run), and how many steps.</summary>
