@@ -1475,20 +1475,12 @@ public sealed partial class Git
                 return unstaged;
             }
         }
-        string file = System.IO.Path.GetTempFileName();
-        AtomicFile.Write(file, Encoding.UTF8.GetBytes(message), UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        try
-        {
-            string[] commit = [.. signing.Before, "commit", "-F", file, .. amend ? new[] { "--amend" } : [], .. signing.After];
-            // --only with no paths amends the message alone, leaving out what else the index holds (an IDE rename, a git add).
-            return merging ? await RunAsync(Root, commit, environment: signing.Environment, asker: asker)
-                : relative.Length > 0 ? await OnFilesAsync([.. commit, "--only"], relative, asker, signing.Environment)
-                : await RunAsync(Root, [.. commit, .. amend ? new[] { "--only" } : []], environment: signing.Environment, asker: asker);
-        }
-        finally
-        {
-            File.Delete(file);
-        }
+        using CommitFile file = CommitFile.Message(message);
+        string[] commit = [.. signing.Before, "commit", "-F", file.Path, .. amend ? new[] { "--amend" } : [], .. signing.After];
+        // --only with no paths amends the message alone, leaving out what else the index holds (an IDE rename, a git add).
+        return merging ? await RunAsync(Root, commit, environment: signing.Environment, asker: asker)
+            : relative.Length > 0 ? await OnFilesAsync([.. commit, "--only"], relative, asker, signing.Environment)
+            : await RunAsync(Root, [.. commit, .. amend ? new[] { "--only" } : []], environment: signing.Environment, asker: asker);
     }
 
     /// <summary>The files of <paramref name="moves"/> (each where it came from and where it is) that git would find no
@@ -1536,31 +1528,21 @@ public sealed partial class Git
     public async Task<GitResult> CommitMovesAsync(IReadOnlyList<(string From, string To)> moves, string message, CommitSigning? signing = null, GitAsker? asker = null)
     {
         signing ??= CommitSigning.AsConfigured;
-        string index = System.IO.Path.Combine(GitDir, $"passenger-moves-{Guid.NewGuid():N}");
-        string file = System.IO.Path.GetTempFileName();
-        Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index };
-        try
+        using CommitFile index = CommitFile.Index(GitDir, "moves");
+        Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index.Path };
+        // The real index's stats go along, or the commit reads every file again; -i asks nothing of a file staged and changed since.
+        GitResult read = await RunAsync(Root, ["read-tree", "-m", "-i", $"--index-output={index.Path}", "HEAD"]);
+        if (!read.Succeeded)
         {
-            // The real index's stats go along, or the commit reads every file again; -i asks nothing of a file staged and changed since.
-            GitResult read = await RunAsync(Root, ["read-tree", "-m", "-i", $"--index-output={index}", "HEAD"]);
-            if (!read.Succeeded)
-            {
-                return read;
-            }
-            (GitResult moved, bool any) = await MoveInIndexAsync(moves, environment);
-            if (!moved.Succeeded || !any)
-            {
-                return moved.Succeeded ? new GitResult(1, string.Empty, "The last commit has none of the moved files where they were") : moved;
-            }
-            AtomicFile.Write(file, Encoding.UTF8.GetBytes(message), UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            return await RunAsync(Root, [.. signing.Before, "commit", "-F", file, .. signing.After], environment: environment, asker: asker);
+            return read;
         }
-        finally
+        (GitResult moved, bool any) = await MoveInIndexAsync(moves, environment);
+        if (!moved.Succeeded || !any)
         {
-            File.Delete(index);
-            File.Delete(index + ".lock");
-            File.Delete(file);
+            return moved.Succeeded ? new GitResult(1, string.Empty, "The last commit has none of the moved files where they were") : moved;
         }
+        using CommitFile file = CommitFile.Message(message);
+        return await RunAsync(Root, [.. signing.Before, "commit", "-F", file.Path, .. signing.After], environment: environment, asker: asker);
     }
 
     /// <summary>A private index keeps excluded changes out of the commit and leaves the real index untouched on failure.</summary>
@@ -1580,69 +1562,59 @@ public sealed partial class Git
             }
             contents[path] = FileText.Encoded(selection.Content(), disk.Encoding, disk.HasBom, disk.CrBreaks);
         }
-        string index = System.IO.Path.Combine(GitDir, $"passenger-commit-{Guid.NewGuid():N}");
-        string file = System.IO.Path.GetTempFileName();
-        Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index };
-        try
+        using CommitFile index = CommitFile.Index(GitDir, "commit");
+        Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index.Path };
+        // The real index's stats go along, or the commit reads every file again; -i asks nothing of a file staged and changed since.
+        GitResult read = await RunAsync(Root, ["read-tree", "-m", "-i", $"--index-output={index.Path}", "HEAD"]);
+        if (!read.Succeeded)
         {
-            // The real index's stats go along, or the commit reads every file again; -i asks nothing of a file staged and changed since.
-            GitResult read = await RunAsync(Root, ["read-tree", "-m", "-i", $"--index-output={index}", "HEAD"]);
-            if (!read.Succeeded)
-            {
-                return read;
-            }
-            string[] relative = [.. paths.Select(Relative).Distinct()];
-            GitResult added = await OnFilesAsync(["add", "-A"], relative, environment: environment);
-            if (!added.Succeeded)
-            {
-                return added;
-            }
-            GitResult entries = await RunAsync(Root, ["ls-files", "--stage", "-z"], environment: environment);
-            if (!entries.Succeeded)
-            {
-                return entries;
-            }
-            bool composed = await ComposesAsync();
-            foreach ((string path, byte[] bytes) in contents)
-            {
-                string name = GitForm(Relative(path), composed);
-                string? entry = entries.Output.Split('\0').FirstOrDefault(e => e.IndexOf('\t') is > 0 and int tab && e[(tab + 1)..] == name);
-                if (entry is null || !entry.StartsWith("100", StringComparison.Ordinal))
-                {
-                    return new GitResult(1, string.Empty, "Only regular text files support partial commits");
-                }
-                // A path on git's command line, as hash-object takes none on stdin beside the bytes: --path picks their filters.
-                (GitResult Ran, string? Read) blob = await RunAsync(Root, ["hash-object", "-w", "--stdin", $"--path={name}"], TextAsync, bytes);
-                if (!blob.Ran.Succeeded)
-                {
-                    return blob.Ran;
-                }
-                GitResult updated = await RunAsync(Root, ["update-index", "-z", "--index-info"],
-                    $"{entry[..6]} {blob.Read!.Trim()}\t{name}\0", environment);
-                if (!updated.Succeeded)
-                {
-                    return updated;
-                }
-            }
-            AtomicFile.Write(file, Encoding.UTF8.GetBytes(message), UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            GitResult committed = await RunAsync(Root, [.. signing.Before, "commit", "-F", file, .. amend ? new[] { "--amend" } : [], .. signing.After],
-                environment: environment, asker: asker);
-            if (committed.Succeeded)
-            {
-                GitResult reset = await OnFilesAsync(["reset", "-q", "HEAD"], relative);
-                if (!reset.Succeeded)
-                {
-                    return committed with { Output = committed.Output + "\n" + reset.Message };
-                }
-            }
-            return committed;
+            return read;
         }
-        finally
+        string[] relative = [.. paths.Select(Relative).Distinct()];
+        GitResult added = await OnFilesAsync(["add", "-A"], relative, environment: environment);
+        if (!added.Succeeded)
         {
-            File.Delete(index);
-            File.Delete(index + ".lock");
-            File.Delete(file);
+            return added;
         }
+        GitResult entries = await RunAsync(Root, ["ls-files", "--stage", "-z"], environment: environment);
+        if (!entries.Succeeded)
+        {
+            return entries;
+        }
+        bool composed = await ComposesAsync();
+        foreach ((string path, byte[] bytes) in contents)
+        {
+            string name = GitForm(Relative(path), composed);
+            string? entry = entries.Output.Split('\0').FirstOrDefault(e => e.IndexOf('\t') is > 0 and int tab && e[(tab + 1)..] == name);
+            if (entry is null || !entry.StartsWith("100", StringComparison.Ordinal))
+            {
+                return new GitResult(1, string.Empty, "Only regular text files support partial commits");
+            }
+            // A path on git's command line, as hash-object takes none on stdin beside the bytes: --path picks their filters.
+            (GitResult Ran, string? Read) blob = await RunAsync(Root, ["hash-object", "-w", "--stdin", $"--path={name}"], TextAsync, bytes);
+            if (!blob.Ran.Succeeded)
+            {
+                return blob.Ran;
+            }
+            GitResult updated = await RunAsync(Root, ["update-index", "-z", "--index-info"],
+                $"{entry[..6]} {blob.Read!.Trim()}\t{name}\0", environment);
+            if (!updated.Succeeded)
+            {
+                return updated;
+            }
+        }
+        using CommitFile file = CommitFile.Message(message);
+        GitResult committed = await RunAsync(Root, [.. signing.Before, "commit", "-F", file.Path, .. amend ? new[] { "--amend" } : [], .. signing.After],
+            environment: environment, asker: asker);
+        if (committed.Succeeded)
+        {
+            GitResult reset = await OnFilesAsync(["reset", "-q", "HEAD"], relative);
+            if (!reset.Succeeded)
+            {
+                return committed with { Output = committed.Output + "\n" + reset.Message };
+            }
+        }
+        return committed;
     }
 
     /// <summary>Whether a path is on the disk: a file, a folder or a link, a broken one too, which git tracks as itself.</summary>

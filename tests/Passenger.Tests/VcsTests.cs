@@ -2314,6 +2314,71 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A commit's message file another program opens as git reads it (a scanner, an indexer; here a handle sharing
+    /// neither writes nor its deletion, which Windows then refuses) fails nothing: the commit is made and said, and the file
+    /// goes once the program lets go of it.</summary>
+    [AvaloniaFact]
+    public void A_commit_whose_message_file_another_program_holds_is_made_and_the_file_goes_once_let_go()
+    {
+        string tree = PathNames.Canonical(folder);
+        Lock gate = new();
+        string? message = null;
+        FileStream? holding = null;
+        Exception? unheld = null;
+        void Heard(object? sender, ChildStart start)
+        {
+            if (start.Start is not { } given || start.Folder.Length == 0 || PathNames.Canonical(start.Folder) != tree || !given.ArgumentList.Contains("commit")
+                || given.ArgumentList.IndexOf("-F") is not (>= 0 and int at) || at + 1 >= given.ArgumentList.Count)
+            {
+                return;
+            }
+            lock (gate)
+            {
+                message = given.ArgumentList[at + 1];
+                try
+                {
+                    holding = new FileStream(message, FileMode.Open, FileAccess.Read, FileShare.Read);
+                }
+                catch (IOException failed)
+                {
+                    unheld = failed;
+                }
+            }
+        }
+        File.AppendAllText(Path.Combine(tree, "Shop.cs"), "// held\n");
+        MainWindow window = Ui.OpenFolder(tree, languageServer: false);
+        CommitView commit = window.CommitView;
+        window.Perform(AppActions.ShowCommit);
+        Ui.WaitFor(() => commit.Chosen.Any(c => c.Name == "Shop.cs"), () => $"Shop.cs listed to commit, where the Commit window lists {string.Join(", ", commit.Chosen.Select(c => c.Name))}");
+        commit.Message = "Held a moment";
+        ChildProcesses.Started += Heard;
+        try
+        {
+            Ui.ClickButton(commit, "Commit");
+            Ui.WaitFor(() => window.Vcs.Changes.Count == 0 && !window.Vcs.IsBusy, () => $"the commit, where the status bar says '{window.Status}'");
+        }
+        finally
+        {
+            ChildProcesses.Started -= Heard;
+        }
+        lock (gate)
+        {
+            Assert.True(message is not null && unheld is null, $"The commit's message file was not held as git read it: {unheld?.Message ?? "git was given none"}");
+        }
+        Assert.Equal("1 file committed: Held a moment", window.Status);
+        Assert.Equal("Held a moment", Git("log", "-1", "--format=%s").Trim());
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.True(File.Exists(message), "The message file a program held was deleted under it, where Windows refuses that");
+        }
+        lock (gate)
+        {
+            holding!.Dispose();
+        }
+        Ui.WaitFor(() => !File.Exists(message), () => $"the commit's message file {message} to be deleted once let go");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_commit_whose_hook_leaves_a_job_holding_gits_output_is_done_within_seconds()
     {
