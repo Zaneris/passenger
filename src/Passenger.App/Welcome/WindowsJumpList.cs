@@ -7,10 +7,10 @@ namespace Passenger.App.Welcome;
 /// <summary>The jump list of Passenger's taskbar button, pinned or running: its recent folders and solutions under Recent
 /// Solutions and its tasks, each a shell link starting Passenger.exe with its arguments. The list belongs to the process's
 /// AppUserModelID, the one the installer's shortcut carries (tools/package-win.sh), so it shows on a button pinned from
-/// either. The shell's COM objects are called by their vtable slots, as ShObjIdl_core.h numbers them, on the window's
-/// thread, an STA's, every reference let go before it returns.</summary>
+/// either. The shell's COM objects are called by their vtable slots, as ShObjIdl_core.h numbers them, on a thread of a
+/// single-threaded apartment (the window's), every reference let go before it returns.</summary>
 [SupportedOSPlatform("windows")]
-internal static unsafe partial class WindowsJumpList
+public static unsafe partial class WindowsJumpList
 {
     private static readonly Guid DestinationList = new("77F10CF0-3DB5-4966-B520-B7C54FD35ED6");
     private static readonly Guid CustomDestinationList = new("6332DEBF-87B5-4670-90C0-5E57B408A49E");
@@ -24,12 +24,19 @@ internal static unsafe partial class WindowsJumpList
     /// <summary>PKEY_Title, the words a jump list shows for a link.</summary>
     private static readonly PropertyKey Title = new(new Guid("F29F85E0-4FF9-1068-AB91-08002B27B3D9"), 2);
 
-    /// <summary>ICustomDestinationList's BeginList, AppendCategory, AddUserTasks, CommitList and AbortList.</summary>
+    /// <summary>ICustomDestinationList's SetAppID, BeginList, AppendCategory, AddUserTasks, CommitList, DeleteList and
+    /// AbortList.</summary>
+    private const int SetAppID = 3;
     private const int BeginList = 4;
     private const int AppendCategory = 5;
     private const int AddUserTasks = 7;
     private const int CommitList = 8;
+    private const int DeleteList = 10;
     private const int AbortList = 11;
+
+    /// <summary>E_ACCESSDENIED, AppendCategory's answer where the person turned off Windows' showing of recently opened
+    /// items; the list still takes its tasks.</summary>
+    private const int RecentItemsOff = unchecked((int)0x80070005);
 
     /// <summary>IObjectArray's GetCount and GetAt, IObjectCollection's AddObject.</summary>
     private const int GetCount = 3;
@@ -55,43 +62,45 @@ internal static unsafe partial class WindowsJumpList
     /// <summary>The longest arguments read back from a link the person took off the list.</summary>
     private const int LongestArguments = 32768;
 
-    /// <summary>Sets the list: as many of <paramref name="recent"/> as the taskbar shows, the newest first, then the tasks.
-    /// Those the person took off it since it was last set (Remove from this list) are told to <paramref name="removed"/>
-    /// by path and left out, as the shell refuses a list holding one; a list the shell refuses is logged and left as it was.</summary>
-    public static void Set(IEnumerable<(string Path, RecentShortcut Shortcut)> recent, IReadOnlyList<RecentShortcut> tasks, Action<IReadOnlyList<string>> removed)
+    /// <summary>Sets the list of <paramref name="appId"/>, else the process's: as many of <paramref name="recent"/> as the
+    /// taskbar shows, the newest first and titled apart, then the tasks, the recent ones left out where the person turned
+    /// recent items off. Those the person took off it since it was last set (Remove from this list) are told to
+    /// <paramref name="removed"/> by path and left out, as the shell refuses a list holding one. Null once the list is
+    /// kept, else why the shell refused it, the list left as it was.</summary>
+    public static string? Set(IEnumerable<(string Path, RecentShortcut Shortcut)> recent, IReadOnlyList<RecentShortcut> tasks, Action<IReadOnlyList<string>> removed, string? appId = null)
     {
-        UiThread.Check();
         string? exe = Environment.ProcessPath;
         if (exe is null)
         {
-            return;
+            return null;
         }
         nint list = 0;
         nint gone = 0;
         nint category = 0;
         nint jobs = 0;
         bool begun = false;
-        string? failed = null;
         try
         {
             int made = Create(DestinationList, CustomDestinationList, out list);
             if (made < 0)
             {
-                failed = Failed("the shell's destination list was not made", made);
-                return;
+                return Failed("the shell's destination list was not made", made);
+            }
+            if (appId is not null && (made = Text(list, SetAppID, appId)) < 0)
+            {
+                return Failed("its app ID was not taken", made);
             }
             uint slots;
             Guid arrayId = ObjectArray;
             int done = ((delegate* unmanaged[Stdcall]<nint, uint*, Guid*, nint*, int>)Slot(list, BeginList))(list, &slots, &arrayId, &gone);
             if (done < 0)
             {
-                failed = Failed("the list was not begun", done);
-                return;
+                return Failed("the list was not begun", done);
             }
             begun = true;
             HashSet<string> taken = RemovedArguments(gone);
             List<string> forgotten = [];
-            List<RecentShortcut> shown = [];
+            List<(string Path, RecentShortcut Shortcut)> shown = [];
             foreach ((string path, RecentShortcut shortcut) in recent)
             {
                 if (taken.Contains(WindowsCommandLine.Of(shortcut.Arguments)))
@@ -100,7 +109,7 @@ internal static unsafe partial class WindowsJumpList
                 }
                 else if (shown.Count < slots)
                 {
-                    shown.Add(shortcut);
+                    shown.Add((path, shortcut));
                 }
                 else if (taken.Count == forgotten.Count)
                 {
@@ -113,33 +122,29 @@ internal static unsafe partial class WindowsJumpList
             }
             if (shown.Count > 0)
             {
-                if ((done = Links(exe, shown, out category)) < 0)
+                if ((done = Links(exe, RecentShortcut.ToldApart(shown, RecentRow.Home), out category)) < 0)
                 {
-                    failed = Failed("the recent ones' links were not made", done);
-                    return;
+                    return Failed("the recent ones' links were not made", done);
                 }
                 fixed (char* name = MainMenu.RecentSolutions)
                 {
                     done = ((delegate* unmanaged[Stdcall]<nint, char*, nint, int>)Slot(list, AppendCategory))(list, name, category);
                 }
-                if (done < 0)
+                if (done < 0 && done != RecentItemsOff)
                 {
-                    // E_ACCESSDENIED where the person turned off Windows' showing of recently opened items.
-                    failed = Failed("the recent ones were not added", done);
-                    return;
+                    return Failed("the recent ones were not added", done);
                 }
             }
             if ((done = Links(exe, tasks, out jobs)) < 0 || (done = ((delegate* unmanaged[Stdcall]<nint, nint, int>)Slot(list, AddUserTasks))(list, jobs)) < 0)
             {
-                failed = Failed("its tasks were not added", done);
-                return;
+                return Failed("its tasks were not added", done);
             }
             if ((done = ((delegate* unmanaged[Stdcall]<nint, int>)Slot(list, CommitList))(list)) < 0)
             {
-                failed = Failed("it was not kept", done);
-                return;
+                return Failed("it was not kept", done);
             }
             begun = false;
+            return null;
         }
         finally
         {
@@ -151,10 +156,25 @@ internal static unsafe partial class WindowsJumpList
             Release(category);
             Release(gone);
             Release(list);
-            if (failed is not null)
+        }
+    }
+
+    /// <summary>Takes away the list of <paramref name="appId"/> whole; null once it is gone, else why the shell refused.</summary>
+    public static string? Delete(string appId)
+    {
+        nint list = 0;
+        try
+        {
+            int done = Create(DestinationList, CustomDestinationList, out list);
+            if (done >= 0)
             {
-                IdeErrors.Write(failed);
+                done = Text(list, DeleteList, appId);
             }
+            return done < 0 ? $"The taskbar's jump list of {appId} was not deleted (0x{done:X8})" : null;
+        }
+        finally
+        {
+            Release(list);
         }
     }
 

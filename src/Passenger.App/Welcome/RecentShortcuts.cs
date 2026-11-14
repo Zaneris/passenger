@@ -30,6 +30,7 @@ public static class RecentShortcuts
     /// Passenger a person sees, or where a test's recently used list stands in.</summary>
     public static void Follow(MainWindow window)
     {
+        UiThread.Check();
         bool recentlyUsed = LinuxRecentlyUsed.StandIn is not null || OperatingSystem.IsLinux() && !PassengerApp.ShowsNoWindow;
         bool shell = !PassengerApp.ShowsNoWindow && (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS());
         if (!recentlyUsed && !shell)
@@ -63,20 +64,23 @@ public static class RecentShortcuts
         }
         else if (OperatingSystem.IsWindows())
         {
-            WindowsJumpList.Set(window.Shortcuts, [NewWindow], window.ForgetRemoved);
+            if (WindowsJumpList.Set(window.Shortcuts, [NewWindow], window.ForgetRemoved) is { } refused)
+            {
+                IdeErrors.Write(refused);
+            }
         }
         else if (OperatingSystem.IsMacOS() && Application.Current is { } app)
         {
-            NativeDock.SetMenu(app, DockMenu(window.Shortcuts.Take(DockShows)));
+            NativeDock.SetMenu(app, DockMenu([.. window.Shortcuts.Take(DockShows)]));
         }
     }
 
-    /// <summary>The Dock's menu: the recent ones, each opened from the window in front as File, Recent Solutions opens it,
-    /// then New Window.</summary>
-    private static NativeMenu DockMenu(IEnumerable<(string Path, RecentShortcut Shortcut)> recent)
+    /// <summary>The Dock's menu: the recent ones titled apart, each opened from the window in front as File, Recent
+    /// Solutions opens it, then New Window.</summary>
+    private static NativeMenu DockMenu(IReadOnlyList<(string Path, RecentShortcut Shortcut)> recent)
     {
         NativeMenu menu = new();
-        foreach ((string path, RecentShortcut shortcut) in recent)
+        foreach (((string path, _), RecentShortcut shortcut) in recent.Zip(RecentShortcut.ToldApart(recent, RecentRow.Home)))
         {
             NativeMenuItem item = new(NativeWords(shortcut.Title)) { ToolTip = shortcut.Tip };
             item.Click += (_, _) => PassengerApp.Front?.OpenRecent(path);
