@@ -127,9 +127,11 @@
     <Compile Include="../../src/Passenger.App/CrashText.cs" Link="App/CrashText.cs" />
   </ItemGroup>
 
-  <!-- The recent ones as the taskbar's jump list and the Dock's menu list them, a mapping alone. -->
+  <!-- The recent ones as the taskbar's jump list and the Dock's menu list them, a mapping alone, and freedesktop's
+       recently used list as Passenger changes it, as XML. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Welcome/RecentShortcut.cs" Link="App/RecentShortcut.cs" />
+    <Compile Include="../../src/Passenger.App/Welcome/RecentlyUsed.cs" Link="App/RecentlyUsed.cs" />
   </ItemGroup>
 
   <!-- Which run configuration a launch's run or debug starts, and why it would refuse, from the words and names alone,

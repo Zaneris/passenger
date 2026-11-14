@@ -7,8 +7,9 @@ namespace Passenger.App.Welcome;
 
 /// <summary>The system's lists of Passenger outside its windows, kept in step with the recent folders and solutions of the
 /// window that last changed them: the Windows taskbar's jump list (<see cref="WindowsJumpList"/>), whose entries start
-/// Passenger as a second start does, and the macOS Dock's menu, whose items open one as File, Recent Solutions does. Only
-/// a Passenger a person sees sets them; a UI-thread object.</summary>
+/// Passenger as a second start does, the macOS Dock's menu, whose items open one as File, Recent Solutions does, and on
+/// Linux freedesktop's recently used list (<see cref="LinuxRecentlyUsed"/>), which KDE shows as the Recent Files of
+/// Passenger's icon. Only a Passenger a person sees sets them; a UI-thread object.</summary>
 public static class RecentShortcuts
 {
     /// <summary>How many recent ones the Dock's menu lists; the jump list lists as many as the taskbar says it shows.</summary>
@@ -25,12 +26,19 @@ public static class RecentShortcuts
     /// <summary>The window whose recent list the system's lists follow next.</summary>
     private static MainWindow? from;
 
-    /// <summary>The window's recent list changed, or it opened on it: the system's lists follow once it rests.</summary>
+    /// <summary>The window's recent list changed, or it opened on it: the system's lists follow once it rests, in a
+    /// Passenger a person sees, or where a test's recently used list stands in.</summary>
     public static void Follow(MainWindow window)
     {
-        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
+        bool recentlyUsed = LinuxRecentlyUsed.StandIn is not null || OperatingSystem.IsLinux() && !PassengerApp.ShowsNoWindow;
+        bool shell = !PassengerApp.ShowsNoWindow && (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS());
+        if (!recentlyUsed && !shell)
         {
             return;
+        }
+        if (recentlyUsed && window.RecentKept is { } kept)
+        {
+            LinuxRecentlyUsed.Begin(kept);
         }
         from = window;
         following ??= new Debounce(Settle, () =>
@@ -46,7 +54,14 @@ public static class RecentShortcuts
 
     private static void Set(MainWindow window)
     {
-        if (OperatingSystem.IsWindows())
+        if (LinuxRecentlyUsed.StandIn is not null || OperatingSystem.IsLinux())
+        {
+            if (window.RecentKept is { } kept)
+            {
+                LinuxRecentlyUsed.Follow(kept);
+            }
+        }
+        else if (OperatingSystem.IsWindows())
         {
             WindowsJumpList.Set(window.Shortcuts, [NewWindow], window.ForgetRemoved);
         }

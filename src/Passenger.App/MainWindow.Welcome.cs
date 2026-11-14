@@ -211,15 +211,18 @@ public partial class MainWindow
     }
 
     /// <summary>The recent ones on the Welcome screen, and in the system's lists outside the window
-    /// (<see cref="RecentShortcuts"/>) where a person sees this Passenger.</summary>
+    /// (<see cref="RecentShortcuts"/>), which only a Passenger a person sees sets.</summary>
     private void ShowRecent()
     {
         welcome?.Show(RecentSolutions);
-        if (keepsWorkspace && !PassengerApp.ShowsNoWindow)
+        if (keepsWorkspace)
         {
             RecentShortcuts.Follow(this);
         }
     }
+
+    /// <summary>The recent list this window keeps, or null where it keeps no state.</summary>
+    internal State.StateDocument<RecentSolutionsState>? RecentKept => keepsWorkspace ? state!.Recent : null;
 
     /// <summary>The recent folders, solutions and projects as the system's lists outside the window give them, the newest
     /// first, those gone from disk left out, each with its path; none in a window that keeps no state.</summary>
