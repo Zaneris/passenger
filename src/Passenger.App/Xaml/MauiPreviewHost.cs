@@ -153,12 +153,13 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
         string platform = Preview.Look.Platform ?? Preview.BuiltPlatform;
         MauiScreen screen = Preview.Look.Screen ?? MauiLook.ScreenFor(platform);
         string theme = Preview.Look.Theme ?? (Application.Current?.ActualThemeVariant == ThemeVariant.Dark ? MauiPreviewThemes.Dark : MauiPreviewThemes.Light);
+        Dictionary<string, TextSnapshot> open = Preview.Document.Service.OpenTexts();
         return application => JsonSerializer.Serialize(new MauiPreviewRequest
         {
             Sequence = sequence,
             Path = path,
             Xaml = MauiPreviewText.Declared(text.ToString()),
-            Application = application is { } app ? new MauiPreviewSource(app.Path, MauiPreviewText.Declared(app.Xaml)) : null,
+            Application = application is { } app ? new MauiPreviewSource(app.Path, MauiPreviewText.Declared(MauiPreviewText.WithOpenDictionaries(app.Xaml, source => Opened(open, app.Path, source)))) : null,
             Scale = scale,
             Width = screen.Width,
             Height = screen.Height,
@@ -166,6 +167,23 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
             Idiom = screen.Idiom,
             Theme = theme,
         }, MauiPreviewJson.Options);
+    }
+
+    /// <summary>The text of an open file a merged dictionary's Source names, against the file naming it (against the
+    /// project's folder where it starts with a '/'); null where it is not open.</summary>
+    private string? Opened(Dictionary<string, TextSnapshot> open, string from, string source)
+    {
+        string folder = source.StartsWith('/') ? Builder.Current.Inputs.Folder : Path.GetDirectoryName(from)!;
+        string path;
+        try
+        {
+            path = Path.GetFullPath(Path.Combine(folder, source.TrimStart('/').Replace('/', Path.DirectorySeparatorChar)));
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        return open.FirstOrDefault(o => PathNames.Same(o.Key, path)).Value?.ToString();
     }
 
     protected override async IAsyncEnumerable<PreviewAnswer> AnswersAsync(Stream output, Action<string> unread)

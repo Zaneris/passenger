@@ -34,6 +34,9 @@ public sealed class XamlPreviewPane : DockPanel
     private readonly ComboBox platforms;
     private readonly ComboBox themes;
 
+    /// <summary>The bar of those choosers, under the header.</summary>
+    private readonly Border looks;
+
     /// <summary>Whether the choosers are being set to what the preview draws, which chooses nothing.</summary>
     private bool showingLook;
 
@@ -86,12 +89,12 @@ public sealed class XamlPreviewPane : DockPanel
             {
                 new TextBlock { Text = "Preview", FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) },
                 sizes,
-                themes,
-                platforms,
-                screens,
                 status,
             },
         });
+        // A bar of their own under the header, so in a narrow pane they wrap to rows rather than crowd the header out.
+        looks = ToolWindows.ToolBars.OverEditor(new ToolWindows.ToolFlow { Margin = new Thickness(10, 2), Spacing = 6, Children = { screens, platforms, themes } });
+        looks.IsVisible = false;
         error = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         error.Classes.Add(StyleClasses.Error);
         errorBar = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(10, 6), IsVisible = false, Child = error };
@@ -137,6 +140,7 @@ public sealed class XamlPreviewPane : DockPanel
         };
         properties.Bind(Border.BorderBrushProperty, properties.GetResourceObservable(TokenKeys.Divider));
         Children.Add(header);
+        Children.Add(looks);
         Children.Add(errorBar);
         Children.Add(properties);
         Children.Add(view);
@@ -265,16 +269,13 @@ public sealed class XamlPreviewPane : DockPanel
         outline.IsVisible = true;
     }
 
-    /// <summary>A chooser of the header's, hidden until the previewer takes what it chooses.</summary>
+    /// <summary>A chooser of what a MAUI page is drawn as.</summary>
     private static ComboBox Chooser(string[] items, string tip)
     {
         ComboBox chooser = new()
         {
-            [DockProperty] = Dock.Right,
             Classes = { StyleClasses.Compact },
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(6, 0, 0, 0),
-            IsVisible = false,
             ItemsSource = items,
         };
         ToolTip.SetTip(chooser, tip);
@@ -296,11 +297,8 @@ public sealed class XamlPreviewPane : DockPanel
     /// kind of screen and the IDE's theme.</summary>
     private void ShowLook()
     {
-        bool looks = preview.TakesLooks;
-        screens.IsVisible = looks;
-        platforms.IsVisible = looks;
-        themes.IsVisible = looks;
-        if (!looks)
+        looks.IsVisible = preview.TakesLooks;
+        if (!looks.IsVisible)
         {
             return;
         }

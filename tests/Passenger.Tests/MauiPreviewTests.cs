@@ -51,7 +51,7 @@ public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
         XamlPreviewPane pane = window.PreviewPaneOf(document)!;
         Assert.True(Near(preview, new Size(390, 844)),
             $"The page of a build for no platform is drawn {preview.FrameSize}, not on Android's phone of 390 × 844");
-        Assert.True(pane.Screens.IsVisible && pane.Platforms.IsVisible && pane.ThemeChooser.IsVisible, "The MAUI page's preview offers no screens, platforms or themes");
+        Assert.True(pane.Screens.IsEffectivelyVisible && pane.Platforms.IsEffectivelyVisible && pane.ThemeChooser.IsEffectivelyVisible, "The MAUI page's preview offers no screens, platforms or themes");
         Assert.Equal("Phone (390 × 844)", pane.Screens.SelectedItem);
         Assert.Equal("Android", pane.Platforms.SelectedItem);
         Assert.False(pane.Sizes.IsVisible, "The MAUI page's preview offers an Avalonia window's sizes");
@@ -129,6 +129,33 @@ public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
         nextPane.Screens.SelectedIndex = 2;
         Ui.WaitFor(() => Near(next, new Size(1280, 800)), () => $"the page on a desktop's screen, not {next.FrameSize} ({next.Status} {next.Error})", Drawing);
         Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(main) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
+    /// <summary>A colour edited in Colors.xaml and not saved is drawn in the page that takes it through App.xaml's merged
+    /// dictionaries, which the build's compiled dictionary would otherwise give the previewer as it was built.</summary>
+    [AvaloniaFact]
+    public void An_open_dictionarys_unsaved_colour_is_drawn_in_the_page_that_takes_it_through_app_xaml()
+    {
+        MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
+        OpenDocument page = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        string colours = app.PathOf("Resources/Styles/Colors.xaml");
+        window.OpenFile(colours);
+        Ui.Settle();
+        Replace(window.EditorArea.CodeEditor, "<Color x:Key=\"Primary\">#512BD4</Color>", "<Color x:Key=\"Primary\">#E2A33F</Color>");
+        window.OpenFile(app.PathOf("MainPage.xaml"));
+        Ui.Settle();
+        XamlPreview preview = Previewing(window, page);
+        XamlPreviewPane pane = window.PreviewPaneOf(page)!;
+        pane.ThemeChooser.SelectedItem = "Light";
+        Color orange = Color.Parse("#E2A33F");
+        Color Button() => preview.ElementAround(page.Text.Snapshot.ToString().IndexOf("Text=\"Click me\"", StringComparison.Ordinal)) is { } button
+            && pane.Frame.TranslatePoint(new Point(button.Box.X + 6, button.Box.Center.Y), window) is { } inside ? Ui.Pixel(window, inside) : default;
+        Ui.WaitFor(() => Button() == orange, () => $"the button drawn in Colors.xaml's unsaved Primary, not {Button()} ({preview.Status} {preview.Error})", Drawing);
+        Assert.DoesNotContain("#E2A33F", File.ReadAllText(colours), StringComparison.Ordinal);
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(page) is null, "XAML Preview stayed on");
         window.Close();
     }
 

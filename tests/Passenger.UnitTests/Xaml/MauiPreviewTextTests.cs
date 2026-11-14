@@ -30,6 +30,34 @@ public sealed class MauiPreviewTextTests
     }
 
     [Fact]
+    public void An_open_merged_dictionary_is_written_inline_with_its_own_namespaces_and_one_not_open_or_of_another_assembly_is_left()
+    {
+        const string App = """
+            <Application x:Class="App.App">
+                <Application.Resources>
+                    <ResourceDictionary>
+                        <ResourceDictionary.MergedDictionaries>
+                            <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
+                            <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
+                            <ResourceDictionary Source="Themes/Dark.xaml;assembly=Other" />
+                        </ResourceDictionary.MergedDictionaries>
+                    </ResourceDictionary>
+                </Application.Resources>
+            </Application>
+            """;
+        const string Colors = "<?xml version=\"1.0\" ?>\n<ResourceDictionary xmlns:local=\"clr-namespace:App\" x:Class=\"App.Colors\">\n    <Color x:Key=\"Primary\">#E2A33F</Color>\n</ResourceDictionary>\n";
+        List<string> asked = [];
+        string written = MauiPreviewText.WithOpenDictionaries(App, source =>
+        {
+            asked.Add(source);
+            return source == "Resources/Styles/Colors.xaml" ? Colors : null;
+        });
+        Assert.Equal(["Resources/Styles/Colors.xaml", "Resources/Styles/Styles.xaml"], asked);
+        Assert.Equal(App.Replace("<ResourceDictionary Source=\"Resources/Styles/Colors.xaml\" />",
+            "<ResourceDictionary xmlns:local=\"clr-namespace:App\">\n    <Color x:Key=\"Primary\">#E2A33F</Color>\n</ResourceDictionary>", StringComparison.Ordinal), written);
+    }
+
+    [Fact]
     public void A_root_that_declares_its_default_namespace_or_a_file_the_loader_must_refuse_is_sent_as_it_is()
     {
         const string Declared = "<ContentPage xmlns=\"http://schemas.microsoft.com/dotnet/2021/maui\" x:Class=\"App.MainPage\" />";

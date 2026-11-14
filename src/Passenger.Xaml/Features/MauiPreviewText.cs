@@ -35,4 +35,33 @@ public static class MauiPreviewText
         }
         return string.Concat(xaml.AsSpan(0, at), added, xaml.AsSpan(at));
     }
+
+    /// <summary>App.xaml's text with each merged dictionary it names by a Source of the project's own written inline as
+    /// that file's text stands where <paramref name="open"/> gives it (an open file, edited or not): the loader takes a
+    /// Source from the build's compiled dictionary, so an edit not yet built would not be drawn. The dictionary's own
+    /// namespaces go with its contents; lines move, which nothing places by in App.xaml's answer.</summary>
+    /// <param name="open">A Source as written to its file's text where it is open, else null.</param>
+    public static string WithOpenDictionaries(string xaml, Func<string, string?> open)
+    {
+        List<(int Start, int End, string Text)> inlined = [];
+        foreach (XmlElement merged in XmlTree.Parse(xaml).Elements)
+        {
+            if (merged.LocalName != "ResourceDictionary" || !merged.IsSelfClosing || merged.Attribute("Source") is not { IsValueClosed: true } source
+                || source.Value.Contains(";assembly=", StringComparison.Ordinal) || open(source.Value) is not { } text
+                || XmlTree.Parse(text).Root is not { LocalName: "ResourceDictionary", IsStartTagClosed: true, EndTagStart: { } contentEnd } root)
+            {
+                continue;
+            }
+            IEnumerable<string> attributes = merged.Attributes.Where(a => a != source).Select(a => xaml[a.NameStart..a.End])
+                .Concat(root.Attributes.Where(a => a.Name == "xmlns" || a.Prefix == "xmlns").Select(a => text[a.NameStart..a.End]));
+            string tag = string.Join(' ', [merged.Name, .. attributes]);
+            inlined.Add((merged.Start, merged.End, $"<{tag}>{text[root.StartTagEnd..contentEnd]}</{merged.Name}>"));
+        }
+        string written = xaml;
+        foreach ((int start, int end, string replacement) in inlined.OrderByDescending(i => i.Start))
+        {
+            written = string.Concat(written.AsSpan(0, start), replacement, written.AsSpan(end));
+        }
+        return written;
+    }
 }

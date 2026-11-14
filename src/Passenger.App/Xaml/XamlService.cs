@@ -453,8 +453,10 @@ public sealed class XamlService : IDisposable
         IdeErrors.Observe(AnnounceAsync(again));
     }
 
-    private Dictionary<string, TextSnapshot> OpenTexts()
+    /// <summary>Each open XAML or C# file's text as it stands, by its path.</summary>
+    internal Dictionary<string, TextSnapshot> OpenTexts()
     {
+        UiThread.Check();
         Dictionary<string, TextSnapshot> texts = new(StringComparer.Ordinal);
         foreach (OpenDocument document in documents.Keys.Concat(sources.Keys))
         {
