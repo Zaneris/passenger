@@ -56,6 +56,9 @@ public sealed class ProjectBuilds
     /// for on Windows (<see cref="HoldOff"/>).</summary>
     private DesignTimeRound? running;
 
+    /// <summary>The project whose next builds the server asks for are held for a test (<see cref="HoldNextAsked"/>).</summary>
+    private (string Project, Task Until, TaskCompletionSource Reached)? asked;
+
     /// <param name="projects">The open workspace's projects to load, those of the file shown (and those it references)
     /// apart, asked on the UI thread as the server is ready for them.</param>
     /// <param name="workspace">The open workspace, whose solution's global properties and build configuration chosen
@@ -268,10 +271,25 @@ public sealed class ProjectBuilds
         }
     }
 
+    /// <summary>The next builds of a project the server asks for wait until <paramref name="until"/> has ended before they
+    /// are looked for, as a slow host keeps the server's load of it meanwhile, for a test: done once they wait.</summary>
+    public Task HoldNextAsked(string project, Task until)
+    {
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        asked = (project, until, reached);
+        return reached.Task;
+    }
+
     /// <summary>One project's builds as the server asks for them: those kept when they stand, else built now, with what
     /// they read that changed as they were made.</summary>
     private async Task<FedProject> InfoAsync(string path)
     {
+        if (asked is { } hold && PathNames.Same(hold.Project, path))
+        {
+            asked = null;
+            hold.Reached.TrySetResult();
+            await hold.Until;
+        }
         await TakeCacheAsync();
         if (!waiting.ContainsKey(path) && known.TryGetValue(path, out KeptBuild? held) && await BackgroundWork.Run(() => held.Inputs.All(Stamps.Holds)))
         {

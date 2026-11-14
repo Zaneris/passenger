@@ -364,6 +364,44 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A file come into a project the language server met an error loading, asked about while the server's load of
+    /// the project again for it is held (its design-time builds not yet given), is in none of the server's projects, and no
+    /// load of the project can take it in until the project is mended: an agent's outline of it says at once that the
+    /// project did not load and why, never that the file is not loaded yet once the wait for it has run out.</summary>
+    [AvaloniaFact]
+    public void An_agent_asking_of_a_file_come_into_a_project_that_did_not_load_hears_why_while_the_project_loads_again()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-unloaded-came-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Good/Good.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Good/Fine.cs", "namespace Good;\n\npublic class Fine\n{\n}\n");
+        string bad = TestFolders.Write(folder, "Bad/Bad.csproj", TestProjects.Library().Replace("</Project>", string.Empty, StringComparison.Ordinal));
+        TestFolders.Write(folder, "Bad/Greeter.cs", "namespace Lib;\n\npublic class Greeter\n{\n}\n");
+        MainWindow window = AgentsWindow(folder);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true } csharp && csharp.ProjectProblems.Any(p => PathNames.Same(p.Project, bad)),
+            () => $"the language server to load the projects, Bad with an error ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        TaskCompletionSource building = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Task held = window.Session.DesignTimeBuilds.HoldNextAsked(bad, building.Task);
+            TestFolders.Write(folder, "Bad/Welcome.cs", "namespace Lib;\n\npublic static class Welcome\n{\n    public static string Say() => \"Welcome\";\n}\n");
+            // Pumped, not settled: the server's load held waits on the window.
+            Ui.PumpUntil(() => held.IsCompleted, "the server's load of Bad again, for the file come into it, to be held", AgentLimit);
+            CallToolResult answer = Ui.AwaitPumped(Waiting.Apart(() => Result(client, McpTools.Outline, new() { ["path"] = "Bad/Welcome.cs" })),
+                "the agent's outline of Welcome.cs", AgentLimit);
+            string said = Text(answer);
+            Assert.True(answer.IsError == true && said.Contains("Bad did not load into the C# language server, which holds none of its code to answer from: The project file could not be loaded.",
+                StringComparison.Ordinal), $"outline of a file come into a project that did not load, while the project loads again, answered: {said}");
+        }
+        finally
+        {
+            building.TrySetResult();
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>An agent's question of an open file costs the person's window what it asks, not the file's size: the disk,
     /// which the agent's own file tools may have written, is looked at off the UI thread and the file read only once its
     /// length or time changed, so editor_text of one line of an open 20,000-line file allocates on the UI thread about what

@@ -13,7 +13,15 @@ public sealed record ServerSaid(string Text, ProblemSeverity? Severity, ProjectL
 /// <summary>A warning or error the language server met loading a project (a package with a known vulnerability, an SDK
 /// that cannot be found): the project file, canonical, and what MSBuild or NuGet said, less its repeat of the
 /// file.</summary>
-public sealed record ProjectLoadProblem(string Project, ProblemSeverity Severity, string Message);
+public sealed record ProjectLoadProblem(string Project, ProblemSeverity Severity, string Message)
+{
+    /// <summary>Whether it was met restoring the project's packages, once a load had taken the project in; else met loading it.</summary>
+    public bool Restoring { get; init; }
+
+    /// <summary>Whether the load it was met in took in nothing of the project, as the server takes nothing of a load that
+    /// met an error: an error met loading, not restoring.</summary>
+    public bool FailedLoad => Severity == ProblemSeverity.Error && !Restoring;
+}
 
 /// <summary>The project Roslyn's server makes for the C# files no project of the folder holds (one opened before its project
 /// loads, or outside every project): <c>Canonical.csproj</c> in a folder of its own under the temp folder's
@@ -171,7 +179,7 @@ internal sealed partial class RestoreReports
             }
             return [.. each.Where(e => !CanonicalProject.IsAbout(e.Project)).GroupBy(e => e.Project, StringComparer.Ordinal)
                 .Select(g => new ProjectLoadProblem(PathNames.Canonical(g.Key), ProblemSeverity.Error,
-                    $"Restore failed: {string.Join(" ", g.Select(e => e.Message).Where(m => m.Length > 0).Distinct(StringComparer.Ordinal))}"))];
+                    $"Restore failed: {string.Join(" ", g.Select(e => e.Message).Where(m => m.Length > 0).Distinct(StringComparer.Ordinal))}") { Restoring = true })];
         }
     }
 

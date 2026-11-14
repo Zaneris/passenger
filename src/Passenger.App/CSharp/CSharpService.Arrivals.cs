@@ -27,6 +27,10 @@ public sealed partial class CSharpService
     /// <summary>When the server last asked for each project's design-time builds, by the project.</summary>
     private readonly Dictionary<string, DateTime> given = new(PathNames.Comparer);
 
+    /// <summary>When the server had last asked for each project's design-time builds as a load of it failed, by the project:
+    /// a load asked for since may take a file in.</summary>
+    private readonly Dictionary<string, DateTime> failedAsked = new(PathNames.Comparer);
+
     /// <summary>Done at the next load report, and made anew: what waits for a file to be taken in looks again then.</summary>
     private TaskCompletionSource reportHeard = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -34,7 +38,8 @@ public sealed partial class CSharpService
     private CancellationTokenSource? holding;
 
     /// <summary>A file come under a project (<paramref name="Project"/>), when it was on disk by (heard, or written as found),
-    /// and whether a load of the project that read the disk since then has ended, after which the server holds it or never will.</summary>
+    /// and whether a load of the project that read the disk since then has ended, or the project's last load failed with
+    /// none asked for since, after which the server holds it or never will.</summary>
     private sealed record Arrival(string Project, DateTime Heard)
     {
         public bool Decided { get; set; }
@@ -347,15 +352,23 @@ public sealed partial class CSharpService
     }
 
     /// <summary>A file waited for, as first on disk while undecided (a load that read the disk after that read it), and
-    /// again once decided only if it came since.</summary>
+    /// again once decided only if it came since; decided as it comes under a project whose last load failed, which no load
+    /// asked for since may take it into.</summary>
     private void Arrive(string path, string project, DateTime heard)
     {
         if (arriving.TryGetValue(path, out Arrival? was) && (was.Decided ? heard <= was.Heard : heard >= was.Heard))
         {
             return;
         }
-        arriving[path] = new Arrival(project, heard);
+        arriving[path] = new Arrival(project, heard)
+        {
+            Decided = LoadFailed(project) && given.GetValueOrDefault(project, DateTime.MinValue) <= failedAsked.GetValueOrDefault(project, DateTime.MinValue),
+        };
     }
+
+    /// <summary>Whether the server's last load of a project failed (<see cref="ProjectLoadProblem.FailedLoad"/>): it took in
+    /// none of the files come under it, and none until a load of it succeeds.</summary>
+    private bool LoadFailed(string project) => loadProblems.TryGetValue(project, out List<ProjectLoadProblem>? met) && met.Any(p => p.FailedLoad);
 
     /// <summary>A server asked for a project's design-time builds, from its thread.</summary>
     private void OnProjectGiven(LanguageServer from, ProjectGiven built)
@@ -371,14 +384,20 @@ public sealed partial class CSharpService
     }
 
     /// <summary>A project's load ended, as its report said: each file come under it before its design-time builds were asked
-    /// for is in it now or never will be (a server that builds its own projects asks none, so any load counts).</summary>
+    /// for is in it now or never will be (a server that builds its own projects asks none, so any load counts), and every
+    /// one where the load failed, having taken none in.</summary>
     private void Decide(string project)
     {
         bool fed = session?.Fed != false;
         DateTime asked = given.GetValueOrDefault(project, DateTime.MinValue);
+        bool failed = LoadFailed(project);
+        if (failed)
+        {
+            failedAsked[project] = asked;
+        }
         foreach (Arrival arrival in arriving.Values)
         {
-            if (!arrival.Decided && PathNames.Same(arrival.Project, project) && (!fed || asked > arrival.Heard))
+            if (!arrival.Decided && PathNames.Same(arrival.Project, project) && (failed || !fed || asked > arrival.Heard))
             {
                 arrival.Decided = true;
             }
@@ -452,6 +471,7 @@ public sealed partial class CSharpService
         arriving.Clear();
         leftOut.Clear();
         given.Clear();
+        failedAsked.Clear();
         HoldBack(null);
     }
 }

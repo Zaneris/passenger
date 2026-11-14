@@ -1562,8 +1562,10 @@ public sealed partial class CSharpService : IAsyncDisposable
                 restoringTheirs = false;
                 break;
             case { Kind: LoadReportKind.Loaded, Project: { } project }:
+                bool hadProblems = loadProblems.Remove(project);
+                // Taken out first: the files come under it are decided as a load that took it in decides them.
                 Reported(from, project);
-                if (loadProblems.Remove(project))
+                if (hadProblems)
                 {
                     ProjectProblemsChanged?.Invoke(this, EventArgs.Empty);
                 }
