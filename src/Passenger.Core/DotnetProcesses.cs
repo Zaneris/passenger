@@ -257,8 +257,7 @@ public static partial class DotnetProcesses
         }
         string? executable = Libc.ExecutableOf(id);
         // An app's executable is its bundle's, which is what is signed.
-        int bundle = executable?.IndexOf(".app/Contents/MacOS/", StringComparison.Ordinal) ?? -1;
-        string named = executable is null ? $"process {id}" : PathNames.Shown(bundle > 0 ? executable[..(bundle + ".app".Length)] : executable, null);
+        string named = executable is null ? $"process {id}" : PathNames.Shown(MacBundles.Of(executable) ?? executable, null);
         return $"{named} is signed with macOS's hardened runtime and without the com.apple.security.get-task-allow entitlement, so macOS lets no other "
             + "program read its memory: signed again with that entitlement (as a native debugger needs), or run on Linux or Windows, it can be";
     }

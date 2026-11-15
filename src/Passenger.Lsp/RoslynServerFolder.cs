@@ -41,7 +41,8 @@ public static class RoslynServerFolder
     internal static async Task<string?> CopyAsync(string? stateCache, CancellationToken cancel)
     {
         string carried = PathNames.Canonical(Carried);
-        if (stateCache is null || (!InAppBundle(carried) && CanWrite(carried)))
+        // A file added inside a macOS app bundle breaks its seal.
+        if (stateCache is null || (!(OperatingSystem.IsMacOS() && MacBundles.Holds(carried)) && CanWrite(carried)))
         {
             return null;
         }
@@ -91,24 +92,6 @@ public static class RoslynServerFolder
 
     /// <summary>The copies under the state's cache, each a folder kept by its mark.</summary>
     private static UsedCache Copies(string copies) => new(copies, UsedEntries.Folders(1, UsedMark), new UsedLimits(Unused, Unused, null, Unused));
-
-    /// <summary>Whether a folder is inside a macOS app bundle (<c>X.app/Contents/…</c>), whose seal a file added breaks.</summary>
-    private static bool InAppBundle(string folder)
-    {
-        if (!OperatingSystem.IsMacOS())
-        {
-            return false;
-        }
-        for (string? at = Path.GetDirectoryName(folder); at is not null; at = Path.GetDirectoryName(at))
-        {
-            if (Path.GetFileName(at) == "Contents" && Path.GetFileName(Path.GetDirectoryName(at)) is { } app
-                && app.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 
     /// <summary>Whether the server can write its caches beside itself: a file can be made where it writes them.</summary>
     private static bool CanWrite(string carried)

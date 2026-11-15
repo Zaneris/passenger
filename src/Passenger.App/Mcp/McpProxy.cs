@@ -907,7 +907,7 @@ public sealed partial class McpProxy
             IdeErrors.Observe(ChildProcesses.ErrorStream(headless).CopyToAsync(Stream.Null, CancellationToken.None));
             return;
         }
-        if (OperatingSystem.IsMacOS() && Bundle(self) is { } app)
+        if (OperatingSystem.IsMacOS() && MacBundles.Of(self) is { } app)
         {
             // The variable reaches only a Passenger LaunchServices starts; one running already opens the folder as it is.
             ChildResult opened = await ChildProcesses.RunAsync(ChildProcesses.Command("/usr/bin/open", ["--env", $"{StartedForVariable}=agent", "-a", app, here]),
@@ -928,15 +928,6 @@ public sealed partial class McpProxy
         {
             throw new NotJoined($"Passenger did not start: {error.Message}");
         }
-    }
-
-    /// <summary>The app bundle an executable is inside (<c>X.app/Contents/MacOS/Passenger</c>), or null.</summary>
-    private static string? Bundle(string executable)
-    {
-        string? macOS = Path.GetDirectoryName(executable);
-        string? contents = macOS is null ? null : Path.GetDirectoryName(macOS);
-        string? app = contents is null ? null : Path.GetDirectoryName(contents);
-        return app is not null && app.EndsWith(".app", StringComparison.OrdinalIgnoreCase) && Path.GetFileName(macOS) == "MacOS" ? app : null;
     }
 
     /// <summary>The agent went: the window it joined sees it go.</summary>

@@ -70,7 +70,7 @@ public static class DesktopPrograms
             {
                 return WindowsDesktop;
             }
-            if (folder.EndsWith(MacBundleFolder, StringComparison.Ordinal))
+            if (MacBundles.Of(file) is not null)
             {
                 return MacApp;
             }
@@ -88,9 +88,6 @@ public static class DesktopPrograms
             return null;
         }
     }
-
-    /// <summary>Where a Mac's app bundle keeps its program.</summary>
-    private static readonly string MacBundleFolder = Path.Join(".app", "Contents", "MacOS");
 
     private static bool OpensWindows(string library)
     {

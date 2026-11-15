@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.Workspace;
 
@@ -88,8 +89,7 @@ public static class GodotEditorSettings
         {
             return Path.Combine(beside, "editor_data");
         }
-        if (macOS && Path.GetFileName(beside) == "MacOS" && Path.GetFileName(Path.GetDirectoryName(beside)) == "Contents"
-            && Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(beside))) is { } bundleFolder && SelfContained(bundleFolder, exists))
+        if (macOS && MacBundles.Of(executable) is { } bundle && Path.GetDirectoryName(bundle) is { } bundleFolder && SelfContained(bundleFolder, exists))
         {
             return Path.Combine(bundleFolder, "editor_data");
         }

@@ -245,7 +245,7 @@ public static partial class GodotExecutables
     public static GodotFound At(string path, string from, bool windows)
     {
         string full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path.Trim().Trim('"')));
-        if (Directory.Exists(full) && full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+        if (Directory.Exists(full) && MacBundles.Named(full))
         {
             return InBundle(full, from);
         }
@@ -259,7 +259,7 @@ public static partial class GodotExecutables
             file = started;
         }
         // A link into a bundle (a package manager's) has the bundle's Resources beside its MacOS folder.
-        if (BundleOf(file) is { } bundle)
+        if (MacBundles.Of(file) is { } bundle)
         {
             return InBundle(bundle, from) with { Executable = file };
         }
@@ -281,9 +281,10 @@ public static partial class GodotExecutables
         char[] separators = windows ? ['/', '\\'] : ['/'];
         string[] parts = named.TrimEnd(separators).Split(separators);
         string name = parts[^1];
-        if (name.EndsWith(".app", StringComparison.OrdinalIgnoreCase) || parts is [.., { } bundle, "Contents", "MacOS", _] && bundle.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+        string? bundle = MacBundles.Named(name) ? name : MacBundles.Of(string.Join('/', parts)) is { } holding ? Path.GetFileName(holding) : null;
+        if (bundle is not null)
         {
-            return (name.EndsWith(".app", StringComparison.OrdinalIgnoreCase) ? name : parts[^4]).StartsWith("Godot", StringComparison.OrdinalIgnoreCase);
+            return bundle.StartsWith("Godot", StringComparison.OrdinalIgnoreCase);
         }
         string bare = windows && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name[..^".exe".Length] : name;
         return Names.Contains(bare, StringComparer.OrdinalIgnoreCase) || DownloadVersion().IsMatch(name);
@@ -333,16 +334,10 @@ public static partial class GodotExecutables
         return executable;
     }
 
-    /// <summary>The app bundle an executable is the program of (X.app/Contents/MacOS/Godot), or null.</summary>
-    private static string? BundleOf(string file) =>
-        Path.GetDirectoryName(file) is { } macOS && Path.GetFileName(macOS) == "MacOS" && Path.GetDirectoryName(macOS) is { } contents
-        && Path.GetFileName(contents) == "Contents" && Path.GetDirectoryName(contents) is { } bundle && bundle.EndsWith(".app", StringComparison.OrdinalIgnoreCase)
-            ? bundle : null;
-
     /// <summary>The Godot of an app bundle: Contents/MacOS/Godot, or the one program there, with its Resources' GodotSharp.</summary>
     private static GodotFound InBundle(string bundle, string from)
     {
-        string programs = Path.Combine(bundle, "Contents", "MacOS");
+        string programs = MacBundles.Programs(bundle);
         string executable = Path.Combine(programs, "Godot");
         if (!File.Exists(executable) && Directory.Exists(programs) && Directory.GetFiles(programs) is [{ } only])
         {

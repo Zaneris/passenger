@@ -72,11 +72,7 @@ public sealed partial class DiskImageUpdater : Updater
     internal static DiskImageUpdater? OfThisBundle(string staging, out string why)
     {
         string? executable = Environment.ProcessPath;
-        string? macOS = Path.GetDirectoryName(executable);
-        string? contents = Path.GetDirectoryName(macOS);
-        string? bundle = Path.GetDirectoryName(contents);
-        if (bundle is null || Path.GetFileName(macOS) != "MacOS" || Path.GetFileName(contents) != "Contents"
-            || !bundle.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+        if (MacBundles.Of(executable) is not { } bundle)
         {
             why = $"{executable} is not in an app bundle, as a build from source is not";
             return null;
@@ -244,7 +240,7 @@ public sealed partial class DiskImageUpdater : Updater
         await CleanAsync(keep: null).ConfigureAwait(false);
     }
 
-    protected override IReadOnlyList<int> RunningHere() => RunningAs(Path.Combine(Bundle, "Contents", "MacOS", "Passenger"));
+    protected override IReadOnlyList<int> RunningHere() => RunningAs(Path.Combine(MacBundles.Programs(Bundle), "Passenger"));
 
     /// <summary>The app at the image's top, copied out of it mounted read-only, and the image let go of, a failure included.</summary>
     private async Task CopyOutAsync(string image, string folder, string app, CancellationToken cancel)
