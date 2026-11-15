@@ -201,9 +201,9 @@ public sealed partial class Vim
     private VimResult Run(Command command, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         int n = Math.Max(command.Count, 1);
-        if (command is not { Operator: null, Name: "j" or "k" or "$" })
+        if (command is not { Operator: null, Name: "j" or "k" or "$" or "m" })
         {
-            // Any other command sets the column j and k aim for afresh, even where the caret stays.
+            // Any other command but setting a mark sets the column j and k aim for afresh, even where the caret stays.
             wantedFor = null;
         }
         changeExtent = null;

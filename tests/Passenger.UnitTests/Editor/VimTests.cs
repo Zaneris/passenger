@@ -1701,6 +1701,15 @@ public class VimTests
     public void A_counted_sentence_motion_counts_the_end_past_a_closing_mark(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>Setting a mark keeps the column j and k aim for, where a yank or any change sets it afresh, as Vim's do.</summary>
+    [Theory]
+    [InlineData("def f(x):\n    return |x + 1", "kmaj", "def f(x):\n    return |x + 1")]
+    [InlineData("def f(x):\n    return |x + 1", "kmbmaj", "def f(x):\n    return |x + 1")]
+    [InlineData("def f(x):\n    return |x + 1", "kyyj", "def f(x):\n    retu|rn x + 1")]
+    [InlineData("def f(x):\n    return |x + 1", "kyiwj", "def f(x):\n    ret|urn x + 1")]
+    public void A_mark_keeps_the_column_j_and_k_aim_for(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
