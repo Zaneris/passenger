@@ -106,7 +106,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   every theme (dark and light; the others live in Zaneris/passenger-themes, the tests' copy in
   `tests/Passenger.Tests/Themes`, Harbour's and Reef by hand, the rest by `just themes FOLDER`; Cubicle, carried in `Theme/BuiltIn`, by
   `tools/themes.py`'s `BUILT_IN`, `ThemeSource.Carried` naming what is carried); a theme file is read
-  only through `ThemeFiles` (format 1, `docs/themes.md`) and laid through `ThemeResources`, so a token added to
+  only through `ThemeFiles` (format 1, `docs/themes.md`; its JSON `ThemeJson.Read`; one kept over a VS Code theme through `KeptThemes.KeepOver`, its name `ThemeFiles.NameOf`) and laid through `ThemeResources`, so a token added to
   Tokens.axaml is one a theme may give. A theme is a `SourcedTheme`; a source is read only through `ThemeSourceReads` and
   `ThemeListing`, never at a start whose themes are kept (`KeptThemes`); `PASSENGER_THEMES` names the repository's place; a theme's picture is drawn only through `ThemeBackdrop`
   (`ThemeBackdrops`), its colours by language reach an editor only through `ThemeLanguages.Follow`; a VS Code colour theme is read as data only (`VsCodeThemes`, a `.vsix` as a zip, nothing of it run), mapped by `VsCodeColours`, a theme's base by `VsCodeBases`, and Open VSX reached only through `OpenVsx` while the explorer is open or a theme is picked, never Microsoft's Marketplace; a token a theme may leave out is in `ThemeFiles.Optional`; the code's size in force
@@ -202,7 +202,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 
 Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer's "never" is a rule.
 - `Passenger.Core` (no UI), where each of these is the one way: a command's program `Programs.Command`/`CommandIn` (never a Windows `.exe` or `.cmd` name spelled by hand), a file on the PATH `OnPath`; .NET's folder
-  `Dotnet.Root`, never `Dotnet.Host()`'s folder, for a folder's work `Dotnet.Root(folder)`/`Host(folder)` (the first installation holding the SDK its global.json takes, its `sdk.paths` searched as the muxer does, `Dotnet.Find(folder)`), which `DotnetCommand(args, folder)` and `NamingDotnet(start, folder)` take; a request of a host `OutboundHttp`; a Unix socket `SocketFolders`; a C
+  `Dotnet.Root`, never `Dotnet.Host()`'s folder, for a folder's work `Dotnet.Root(folder)`/`Host(folder)` (the first installation holding the SDK its global.json takes, its `sdk.paths` searched as the muxer does, `Dotnet.Find(folder)`), which `DotnetCommand(args, folder)` and `NamingDotnet(start, folder)` take; a request of a host `OutboundHttp` (an answer read whole `OutboundHttp.ReadAsync`, a stream held to a limit `Streams.Bounded`); a Unix socket `SocketFolders`; a C
   call made in more than one place `Libc`; whether a process runs `DotnetProcesses.Runs`, a `Process` held too, never
   `HasExited` (PSG0007): ended, one Passenger started has an `ExitCode` to read, one found by id none; a PASSENGER_*_MS
   `EnvironmentValues.Milliseconds`, a PASSENGER_* stand-in for a host `EnvironmentValues.Address` (read in Program.Main's checks); a Windows command line `WindowsCommandLine`; git's environment variables `GitVariables`; the version `Product`, Passenger's own program `Product.Program`; a log below the
@@ -239,7 +239,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   so every in-process parse goes through `CSharpParsing.Parse`/`Changed` (`DeepText`), never `ParseText`; its depth is
   read as Roslyn's lexer reads strings and comments (`Brackets.ReadCode`), a key's around what it changed
   (`TypedMayGoDeep`), and a `?[` is read ahead to its expression's end, so 11 of them at once are too deep.
-- `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
+- `Passenger.Xaml`: Passenger's own XAML core (a XAML file's URI in its assembly only `XamlProject.UriOf`/`PathIn`, never a pack:// or avares:// string built elsewhere) (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
   binding's path is read once (`BindingPath`) for the check, Go to Declaration, uses and completion. MAUI's XAML is a
   dialect of it (`MauiDialect`, its implied namespaces in `XamlFile`); a `{…}` a dialect reads as a C# expression is the
   compiler's to check (`XamlDialect.IsExpression`). A MAUI expression is answered through the extension's `MauiExpressionDocument`, written from the editor's text as MAUI's generator writes it, never from its `.xsg.cs`; MAUI's runtime loader reads only the namespaces a file writes and takes a merged dictionary's Source from the build, so the preview sends both written in (`MauiPreviewText`); the live check reruns the generator in a fork (`MauiXamlChecks`), asked again as the server loads projects (`XamlService.ServerLoaded`), never only as the file opens; a namespace whose `targetPlatform=` names another platform is passed over (`XamlDialect.TargetPlatformOf`, `BuildsFor`), and a framework's reference pack is the one the SDK's `KnownFrameworkReference` names (`FrameworkDependencies.TargetingPacks`), never `<framework>.Ref` built by hand.
@@ -270,7 +270,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   it crashed on Linux); recording in a container trusts nothing in a frame. A heap dump is Passenger's own (`DumpTool`):
   the runtime's createdump writes into the program's stdout, and Windows' dumps only its parent.
 - `Passenger.UpdateHandlers`, `Passenger.Inspector` (+`.Wpf`; `Protocol.cs` in both ends), `Passenger.WpfPreview`,
-  `Passenger.MauiPreview` (Avalonia.Controls.Maui, its Skia and HarfBuzz natives its own folder's, `OwnNatives`; hosts share
+  `Passenger.MauiPreview` (their wire Core's `PreviewWire` and `PreviewRequests`, linked into each, a JSON-lines peer's options `PeerJson`; Avalonia.Controls.Maui, its Skia and HarfBuzz natives its own folder's, `OwnNatives`; hosts share
   `ChildPreviewHost`; a project of platforms alone previews from `MauiPreviewHost.PlainBuild`), `Passenger.TestFrames`, `Passenger.Terminal` (Porta.Pty; a key's bytes from `TerminalKeys`, one table of function keys, `Functional`, both protocols read; a folder's shell finds its dotnet first through `FirstOnPath`, given again after the startup files, as a login shell's reorder PATH); `Passenger.Analyzers` (`Rules.cs`; a rule goes on only where
   nothing it flags is left); `tools/` (notices, the test runner, packaging, site shots).
 
