@@ -580,6 +580,59 @@ public sealed class ConflictsTests : IDisposable
         return window;
     }
 
+    /// <summary>The merge window's sides are read-only: every action of the Edit menu that would change one greys saying
+    /// so and that the result between them takes changes, and what is typed there and those actions' keys say it in the
+    /// status bar, changing nothing; Copy and Select All stay enabled there, and the result takes the changes.</summary>
+    [AvaloniaFact]
+    public void Every_action_of_the_edit_menu_that_would_change_a_merges_side_greys_saying_the_result_takes_changes()
+    {
+        Git("switch", "-q", "-c", "feature");
+        Write("Shop.cs", Shop.Replace("int count", "int total", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Total");
+        Git("switch", "-q", "main");
+        Write("Shop.cs", Shop.Replace("int count", "long count", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Long");
+        Conflicting("merge", "feature");
+
+        MainWindow window = Open();
+        ConflictsDialog dialog = window.ShowConflicts()!;
+        Ui.Settle();
+        dialog.Chosen = [dialog.Rows.Single()];
+        Press(dialog, "Merge…");
+        Ui.Landed(() => window.Frontmost is MergeWindow, "the merge window");
+        MergeWindow merge = (MergeWindow)window.Frontmost;
+        MergeView view = merge.View;
+        (string Left, string Right) sides = (view.Left.Document.Snapshot.ToString(), view.Right.Document.Snapshot.ToString());
+        foreach ((Passenger.Editor.CodeEditor side, string where) in new[] { (view.Left, "the merge's left side, yours"), (view.Right, "the merge's right side, theirs") })
+        {
+            side.Focus();
+            Ui.Settle();
+            Assert.Same(side, window.Actions.Context().Focused);
+            ReadOnlyFilesTests.AssertChangesGreyed(window, Refusals.MergeSideReadOnly, where);
+        }
+
+        // Save's key in the main window says something of its own, so the status bar holds other words before each.
+        Ui.Press(window, Ui.Shortcut(AppActions.Save));
+        Assert.NotEqual(Refusals.MergeSideReadOnly, window.Status);
+        merge.KeyTextInput("x");
+        Ui.Settle();
+        Assert.Equal(Refusals.MergeSideReadOnly, window.Status);
+        view.Left.Focus();
+        Ui.Press(window, Ui.Shortcut(AppActions.Save));
+        Assert.NotEqual(Refusals.MergeSideReadOnly, window.Status);
+        Ui.Run(merge, Passenger.Editor.EditorActions.Duplicate);
+        Assert.Equal(Refusals.MergeSideReadOnly, window.Status);
+        Assert.Equal(sides, (view.Left.Document.Snapshot.ToString(), view.Right.Document.Snapshot.ToString()));
+
+        view.Result.Focus();
+        Ui.Settle();
+        Assert.Null(window.Actions.WhyNot(Passenger.Editor.EditorActions.Duplicate, window.Actions.Context()));
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Press(merge, "Cancel");
+        Ui.Landed(() => !merge.IsVisible, "the merge window closed");
+        window.Close();
+    }
+
     /// <summary>A file Git has in conflict, opened in the editor, says so over its text with Merge…, which opens the merge
     /// window on it and writes nothing there until the merge is applied; a file in no conflict says nothing, and once the
     /// merge resolves the file its banner goes.</summary>

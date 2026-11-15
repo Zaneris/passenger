@@ -108,6 +108,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
         {
             Document = Document,
             IsReadOnly = true,
+            ReadOnlyWhy = Refusals.OutputReadOnly,
             LineCommentPrefix = null,
             ShowLineNumbers = false,
             ShowErrorStripe = false,
@@ -510,6 +511,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
             {
                 Document = new TextDocument(),
                 IsReadOnly = true,
+                ReadOnlyWhy = Refusals.OutputReadOnly,
                 LineCommentPrefix = null,
                 ShowLineNumbers = false,
                 ShowErrorStripe = false,
@@ -688,8 +690,37 @@ public sealed class OutputView : DockPanel, IOwnKeys
         : e.Key == Key.Enter && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift ? SendLine
         : e.Key == Key.Back && e.KeyModifiers == KeyModifiers.None ? Backspace
         : e.Key == Key.D && e.KeyModifiers == KeyModifiers.Control ? EndInput
-        : AppActions.Keymap().ActionFor(new Shortcut(Keystroke.From(e))) == EditorActions.Paste ? () => IdeErrors.Observe(PasteAsync())
+        : AppActions.Keymap().ActionFor(new Shortcut(Keystroke.From(e))) is EditorActions.Paste ? InputEdit(EditorActions.Paste)
         : null;
+
+    /// <summary>What an editor action does to the program's input, as the console's keys do: Paste types the clipboard,
+    /// Backspace takes back what was typed and New Line sends the line; null with none waiting or for one the output
+    /// refuses.</summary>
+    private Action? InputEdit(string action) =>
+        input is null ? null
+        : action switch
+        {
+            EditorActions.Paste => () => IdeErrors.Observe(PasteAsync()),
+            EditorActions.Backspace => Backspace,
+            EditorActions.NewLine => SendLine,
+            _ => null,
+        };
+
+    /// <summary>Whether an editor action run on <paramref name="at"/> (the Edit menu's, Find Action's) goes to the program's
+    /// input: only at the console's own editor, while a program reads it.</summary>
+    public bool TakesEdit(CodeEditor at, string action) => at == editor && InputEdit(action) is not null;
+
+    /// <summary>Runs an editor action on the program's input where it takes it (<see cref="TakesEdit"/>); false
+    /// elsewhere.</summary>
+    public bool EditInput(CodeEditor at, string action)
+    {
+        if (at != editor || InputEdit(action) is not { } edit)
+        {
+            return false;
+        }
+        edit();
+        return true;
+    }
 
     /// <summary>Text typed at the end of the line being typed, the caret after it.</summary>
     private void Type(string typed)

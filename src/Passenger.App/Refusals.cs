@@ -435,6 +435,16 @@ public static class Refusals
     /// saves.</summary>
     public static string ReadOnly(string name) => $"{name} is read-only";
 
+    /// <summary>A console's or a test's output, which only its program writes; a line typed at its end goes to a program
+    /// reading its input.</summary>
+    public const string OutputReadOnly = "The output is read-only";
+
+    /// <summary>A merge's own sides, which it takes changes from into the result between them.</summary>
+    public const string MergeSideReadOnly = "A merge's sides are read-only: edit the result between them";
+
+    /// <summary>A few lines shown of a file (a usage's, a search's match, a place gone to), not the file itself.</summary>
+    public const string PreviewReadOnly = "The preview is read-only: open its file to change it";
+
     /// <summary>Why edits found in a file as Passenger read it are not made once the file is another text.</summary>
     public static string ChangedSinceRead(string file) =>
         $"{file} changed after Passenger read it, so the places found there may be where they were before: nothing was changed; try again in a moment";

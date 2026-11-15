@@ -1,10 +1,12 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input.Platform;
 using Avalonia.Input.TextInput;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
+using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -14,10 +16,17 @@ namespace Passenger.Tests;
 /// <summary>A file the editor shows read-only (here decompiled code, as Go to Declaration opens it) is never edited or written,
 /// whatever asks: Save greys there, as on a file with nothing to save, Replace in Files names it as not replaced, and the
 /// Edit menu's changes, the find bar's replace row and the colour picker grey saying why, as what is typed there says it;
-/// what the disk holds still reaches its tab.</summary>
+/// what the disk holds still reaches its tab. A console's output refuses changes so too.</summary>
 public sealed class ReadOnlyFilesTests : IDisposable
 {
     private const string Trims = "root = true\n[*]\ntrim_trailing_whitespace = true\ninsert_final_newline = true\n";
+
+    /// <summary>The editor actions that change the text, which an editor refusing changes greys.</summary>
+    internal static readonly HashSet<string> Changing = [EditorActions.Backspace, EditorActions.Delete, EditorActions.DeleteWordLeft,
+        EditorActions.DeleteWordRight, EditorActions.NewLine, EditorActions.StartNewLine, EditorActions.StartNewLineBefore, EditorActions.Indent,
+        EditorActions.Outdent, EditorActions.Duplicate, EditorActions.DeleteLine, EditorActions.MoveLineUp, EditorActions.MoveLineDown,
+        EditorActions.ToggleLineComment, EditorActions.ToggleBlockComment, EditorActions.Comment, EditorActions.Uncomment, EditorActions.JoinLines,
+        EditorActions.ToggleCase, EditorActions.CutToLineEnd, EditorActions.Undo, EditorActions.Redo, EditorActions.Cut, EditorActions.Paste];
 
     private readonly string folder = TestFolders.Create("read-only-");
 
@@ -118,12 +127,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
         MainWindow window = Open("MetadataAsSource/A.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
         const string ReadOnly = "A.cs is read-only";
-        HashSet<string> changing = [EditorActions.Backspace, EditorActions.Delete, EditorActions.DeleteWordLeft, EditorActions.DeleteWordRight,
-            EditorActions.NewLine, EditorActions.StartNewLine, EditorActions.StartNewLineBefore, EditorActions.Indent, EditorActions.Outdent,
-            EditorActions.Duplicate, EditorActions.DeleteLine, EditorActions.MoveLineUp, EditorActions.MoveLineDown, EditorActions.ToggleLineComment,
-            EditorActions.ToggleBlockComment, EditorActions.Comment, EditorActions.Uncomment, EditorActions.JoinLines, EditorActions.ToggleCase,
-            EditorActions.CutToLineEnd, EditorActions.Undo, EditorActions.Redo, EditorActions.Cut, EditorActions.Paste];
-        List<string> edit = [.. ActionsIn(MainMenu.Build(window.Actions.All).Single(m => m.Title == "Edit"))];
+        List<string> edit = EditMenu(window);
         string[] named = [EditorActions.Cut, EditorActions.Paste, EditorActions.Duplicate, EditorActions.DeleteLine, EditorActions.MoveLineUp, EditorActions.MoveLineDown];
         Assert.True(named.All(edit.Contains), $"The Edit menu lacks some of {string.Join(", ", named)}: {string.Join(", ", edit)}");
 
@@ -133,9 +137,9 @@ public sealed class ReadOnlyFilesTests : IDisposable
         foreach (string id in edit.Concat(EditorActions.All.Select(a => a.Id)).Distinct())
         {
             string? why = window.Actions.WhyNot(id, context);
-            if (changing.Contains(id) ? why != ReadOnly : why is not null && !(id == AppActions.HighlightUsages && why == Refusals.NoCSharp))
+            if (Changing.Contains(id) ? why != ReadOnly : why is not null && !(id == AppActions.HighlightUsages && why == Refusals.NoCSharp))
             {
-                (changing.Contains(id) ? offered : greyed).Add($"{id} ({why ?? "enabled"})");
+                (Changing.Contains(id) ? offered : greyed).Add($"{id} ({why ?? "enabled"})");
             }
         }
         Assert.True(offered.Count == 0, $"On the decompiled A.cs, which nothing can change, these are offered or greyed for another reason: {string.Join(", ", offered)}");
@@ -158,8 +162,6 @@ public sealed class ReadOnlyFilesTests : IDisposable
             "Paste or Cut greyed in the find bar's field over a read-only file, which takes them itself");
         Assert.Equal(ReadOnly, window.Actions.WhyNot(EditorActions.Duplicate, context));
         window.Close();
-
-        static IEnumerable<string> ActionsIn(MenuEntry menu) => menu.Action is { } id ? [id] : (menu.Items ?? []).SelectMany(ActionsIn);
     }
 
     /// <summary>Text typed into a decompiled file, a key's or what an input method composed and committed, changes nothing
@@ -197,6 +199,84 @@ public sealed class ReadOnlyFilesTests : IDisposable
         Assert.True(editor.PointOf("class ".Length).X == after, "The composition the input method committed is still drawn in the read-only B.cs");
         window.Close();
     }
+
+    /// <summary>The Run console's output is read-only: every action of the Edit menu that would change it greys saying so,
+    /// and what is typed there and the keys of those actions say it in the status bar, changing nothing. While its program
+    /// reads its input, Paste, Backspace and New Line go to that input from the menu as from their keys, the rest greyed
+    /// still; Copy, Select All and Find stay enabled throughout.</summary>
+    [AvaloniaFact]
+    public void Every_action_of_the_edit_menu_that_would_change_the_Run_consoles_output_greys_saying_it_is_read_only_its_programs_input_taking_its_own()
+    {
+        const string Output = "alpha\nbeta\n";
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        OutputView run = window.BottomPanel.Run;
+        run.Append(Output);
+        window.DockHost.Show(ToolWindowIds.Run);
+        Ui.Settle();
+        Ui.Click(run.Editor);
+        Assert.Same(run.Editor, window.Actions.Context().Focused);
+        AssertChangesGreyed(window, Refusals.OutputReadOnly, "the Run console");
+        Assert.Null(window.Actions.WhyNot(AppActions.Find, window.Actions.Context()));
+
+        Assert.NotEqual(Refusals.OutputReadOnly, window.Status);
+        window.KeyTextInput("x");
+        Ui.Settle();
+        Assert.Equal(Output, run.Document.Snapshot.ToString());
+        Assert.Equal(Refusals.OutputReadOnly, window.Status);
+        // Save, with no file open, says so: the status bar holds other words before the key.
+        Ui.Press(window, Ui.Shortcut(AppActions.Save));
+        Assert.Equal(Refusals.NoFile, window.Status);
+        Ui.Run(window, EditorActions.Duplicate);
+        Assert.Equal(Output, run.Document.Snapshot.ToString());
+        Assert.Equal(Refusals.OutputReadOnly, window.Status);
+
+        List<string> sent = [];
+        run.Input = new ConsoleInput(sent.Add, () => { });
+        AssertChangesGreyed(window, Refusals.OutputReadOnly, "the Run console, its program reading its input", EditorActions.Paste, EditorActions.Backspace, EditorActions.NewLine);
+        Assert.Null(window.Actions.WhyNot(AppActions.Find, window.Actions.Context()));
+        window.KeyTextInput("typo");
+        Ui.Settle();
+        Assert.Null(window.Actions.Run(EditorActions.Backspace));
+        Ui.Await(window.Clipboard!.SetTextAsync("ed"), "the text on the clipboard");
+        Assert.Null(window.Actions.Run(EditorActions.Paste));
+        Ui.WaitFor(() => run.Document.Snapshot.ToString() == Output + "typed", () => $"the Edit menu's Paste to type the clipboard after \"typ\"; the console holds \"{run.Document.Snapshot}\"");
+        Assert.Equal(Refusals.OutputReadOnly, window.Actions.Run(EditorActions.Duplicate));
+        Assert.Null(window.Actions.Run(EditorActions.NewLine));
+        Ui.Settle();
+        Assert.True(sent is ["typed\n"], $"The Edit menu's Backspace, Paste and New Line sent [{string.Join(", ", sent)}] to the program's input, not the line typed");
+        run.Input = null;
+        window.Close();
+    }
+
+    /// <summary>Walks every editor action, those of the Edit menu among them, as the editor with the keys in front has them:
+    /// each that would change its text greys saying <paramref name="why"/> but those its own input takes
+    /// (<paramref name="taken"/>), and each that only reads, Copy and Select All among them, is enabled.</summary>
+    internal static void AssertChangesGreyed(MainWindow window, string why, string where, params string[] taken)
+    {
+        List<string> edit = EditMenu(window);
+        string[] named = [EditorActions.Undo, EditorActions.Cut, EditorActions.Copy, EditorActions.Paste, EditorActions.Duplicate, EditorActions.DeleteLine,
+            EditorActions.SelectAll, EditorActions.MoveLineUp, EditorActions.MoveLineDown];
+        Assert.True(named.All(edit.Contains), $"The Edit menu lacks some of {string.Join(", ", named)}: {string.Join(", ", edit)}");
+        ActionContext context = window.Actions.Context();
+        List<string> offered = [];
+        List<string> greyed = [];
+        foreach (string id in EditorActions.All.Select(a => a.Id))
+        {
+            string? whyNot = window.Actions.WhyNot(id, context);
+            bool refused = Changing.Contains(id) && !taken.Contains(id);
+            if (refused ? whyNot != why : whyNot is not null)
+            {
+                (refused ? offered : greyed).Add($"{id} ({whyNot ?? "enabled"})");
+            }
+        }
+        Assert.True(offered.Count == 0, $"In {where}, which nothing there can change, these are offered or greyed for another reason: {string.Join(", ", offered)}");
+        Assert.True(greyed.Count == 0, $"In {where}, these only read or go to its own input but are greyed: {string.Join(", ", greyed)}");
+    }
+
+    /// <summary>The actions of the main menu's Edit menu, in order.</summary>
+    private static List<string> EditMenu(MainWindow window) => [.. ActionsIn(MainMenu.Build(window.Actions.All).Single(m => m.Title == "Edit"))];
+
+    private static IEnumerable<string> ActionsIn(MenuEntry menu) => menu.Action is { } id ? [id] : (menu.Items ?? []).SelectMany(ActionsIn);
 
     [AvaloniaFact]
     public void The_colour_pickers_choose_is_greyed_in_a_read_only_tab_and_enter_writes_nothing()

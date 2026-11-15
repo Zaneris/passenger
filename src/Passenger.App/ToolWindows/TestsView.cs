@@ -184,6 +184,7 @@ public sealed class TestsView : DockPanel
         {
             Document = detailsText,
             IsReadOnly = true,
+            ReadOnlyWhy = Refusals.OutputReadOnly,
             LineCommentPrefix = null,
             ShowLineNumbers = false,
             ShowErrorStripe = false,

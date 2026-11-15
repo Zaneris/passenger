@@ -115,6 +115,7 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         CodeEditor code = new()
         {
             IsReadOnly = true,
+            ReadOnlyWhy = Refusals.PreviewReadOnly,
             ShowErrorStripe = false,
             ShowLineNumbers = false,
             ShowScrollBars = false,

@@ -142,7 +142,7 @@ public sealed class FindView : DockPanel
             ListMenus.Item("Copy Line", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
             ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
         ]);
-        preview = new CodeEditor { IsReadOnly = true, ShowErrorStripe = false, LineCommentPrefix = null, FontSize = 12.5, Document = new TextDocument() };
+        preview = new CodeEditor { IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly, ShowErrorStripe = false, LineCommentPrefix = null, FontSize = 12.5, Document = new TextDocument() };
         noneShown = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "No usages in your code", IsVisible = false };
         PaneSplit body = new(new Panel { Children = { list, noneShown } }, preview, "*,1,*");
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
