@@ -317,6 +317,13 @@ public static class VimTextObjects
         return line;
     }
 
+    /// <summary>Whether the line is a run of lines alike (blank or not) alone, its neighbours unlike it.</summary>
+    public static bool RunOfOneLine(TextSnapshot text, int line, bool breakEnds)
+    {
+        bool blank = BlankLine(text, line);
+        return (line == 0 || BlankLine(text, line - 1) != blank) && (line >= VimMotions.LastLine(text, breakEnds) || BlankLine(text, line + 1) != blank);
+    }
+
     /// <summary>The first line of the run of lines alike (blank or not) that the line is in.</summary>
     private static int RunStartOf(TextSnapshot text, int line)
     {

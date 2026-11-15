@@ -417,6 +417,36 @@ public class VimTests
     public void Counts_of_sentences_go_where_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>Text objects in visual mode carry a stretch on as Vim's do: words a run (or white and a word) at a time,
+    /// forward or back, over empty lines and line breaks as Vim steps over them; paragraphs by runs of lines, a line that
+    /// is a run alone in linewise mode held already; sentences to their own line's end; an inner block over whole lines
+    /// to its last line's break; a quoted string or a block around or after the stretch, linewise mode keeping its start.</summary>
+    [Theory]
+    [InlineData("a1\na2\n \n  \nb|1\n   \nc1\nc2\nc3\n    \nd1", "Vapd", "a1\na2\n \n  \n   | \nd1")]
+    [InlineData("a1\na2\n \n  \nb|1\n   \nc1\nc2\nc3\n    \nd1", "Vipd", "a1\na2\n \n  \n|c1\nc2\nc3\n    \nd1")]
+    [InlineData("a1\na2\n \n  \nb1\n   \nc1\nc2\nc3\n  |  \nd1", "V2apd", "a1\na2\n \n  \nb1\n   \nc1\nc2\nc3\n|d1")]
+    [InlineData("a b\nc d\n\ne f\ng h\n\ni| j", "Vipipd", "a b\nc d\n\ne f\ng h\n|")]
+    [InlineData("ab, cd.ef\n  g|h  ij\n\n\n  kl", "veiwd", "ab, cd.ef\n  g|  kl")]
+    [InlineData("ab, cd.ef\n  g|h  ij\n\n\n  kl", "vjiwd", "ab, cd.ef\n  g| kl")]
+    [InlineData("one two three\nfour five six\n\ns|even eight", "v0iwd", "one two three\nfour five six\n|ven eight")]
+    [InlineData("one two three\nfour five six\n\ns|even eight", "vb3iwd", "one two three\nfour five|ven eight")]
+    [InlineData("ab, cd.ef\n  |gh  ij\n\n\n  kl", "vhawd", "ab, cd.|h  ij\n\n\n  kl")]
+    [InlineData("ab, cd.ef\n  |gh  ij\n\n\n  kl", "vkawd", "a|h  ij\n\n\n  kl")]
+    [InlineData("ab cd|e fg\nhi jkl mn\nop qrs tu", "<C-v>jiprx", "|xxxxxx fg\nxxxxxx mn\nxxxxxx tu")]
+    [InlineData("if (x) {\n    call(|1, 2);\n}\nend", "vi{d", "if (x) {\n|}\nend")]
+    [InlineData("if (x) {\n    call(|1, 2);\n}\nend", "vi{<Esc>", "if (x) {\n    call(1, 2)|;\n}\nend")]
+    [InlineData("foo(bar, {k: [1, 2]},| 'q s')\nnext line here", "V2la'd", "foo(bar, {k: [1, 2]},|)\nnext line here")]
+    [InlineData("foo(bar, {k:| [1, 2]}, 'q s')\nnext line here", "v2li'd", "foo(bar, {k: [1, 2]}, '|')\nnext line here")]
+    [InlineData("<a><b>text</b> more</a>\n<c x=\"|1\">y</c>", "<C-v>li\"d", "<a><b>text</b> more</a>\n<c x=\"|>y</c>")]
+    [InlineData("  |alpha.beta(gamma, delta)\n  [1, 2, 3]", "Vwi(y", "  alpha.beta(|gamma, delta)\n  [1, 2, 3]")]
+    [InlineData("One two. Three four!  Five |six?\nSeven eight.\n\nNine ten.", "v2lisd", "One two. Three four!  Five| \nSeven eight.\n\nNine ten.")]
+    [InlineData("One |two. Three four!  Five six?\nSeven eight.\n\nNine ten.", "Vhisd", "|Seven eight.\n\nNine ten.")]
+    [InlineData("if (x) {\n    cal|l(1, 2);\n}\nend", "<C-v>wasd", "if (x) {\n  |(1, 2);\n}\nen")]
+    [InlineData("if (x) {\n    call(1, 2);\n|}\nend", "Vw2iwd", "if (x) {\n    |call(1, 2);")]
+    [InlineData("def f(x):\n    return x + 1\n\n\nclass A|:\n    pass", "<C-v>kiwd", "def f(x):\n    return x + 1\n|\n\n\n    pass")]
+    public void Visual_text_objects_carry_a_stretch_as_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     /// <summary>A text whose file keeps no final line break: where a change leaves its last line empty, that line is a
     /// line, as Vim's buffer holds it, which the caret stands on and j, G and dd reach.</summary>
     [Theory]
