@@ -64,6 +64,25 @@ public sealed class SharedProjectsTests : IDisposable
     }
 
     [Fact]
+    public void A_wildcard_takes_a_file_named_in_another_case_only_where_its_folder_ignores_case()
+    {
+        const string Text = """
+            <Project>
+              <ItemGroup>
+                <Compile Include="$(MSBuildThisFileDirectory)Views\*.CS;$(MSBuildThisFileDirectory)parts\*.cs" />
+              </ItemGroup>
+            </Project>
+            """;
+        Directory.CreateDirectory(Shared);
+        string[] files = [Path.Combine(Shared, "Parts", "Bar.cs"), Path.Combine(Shared, "Views", "Main.cs")];
+
+        IReadOnlyList<EvaluatedItem> read = SharedProjects.ItemsIn(Text, ItemsFile, folder => files.Where(f => PathNames.IsUnder(f, folder)));
+
+        string[] expected = PathNames.CaseIgnoredIn(Shared) ? [files[1], files[0]] : [];
+        Assert.Equal(expected, read.Select(i => i.Path));
+    }
+
+    [Fact]
     public void A_file_made_goes_after_the_last_item_of_its_type_from_the_items_folder_with_its_separators_and_one_named_already_stays()
     {
         string added = SharedProjects.WithAdded(Items, ItemsFile,

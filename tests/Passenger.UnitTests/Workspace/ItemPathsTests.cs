@@ -4,9 +4,16 @@ namespace Passenger.UnitTests.Workspace;
 
 /// <summary>A path written into a project file reads back as that path. Each spelling here is what a real evaluation takes:
 /// a plain name reads each %XX once; an Include, Remove or Update glob twice, an Exclude's or Import's once; and a glob with
-/// an escaped wildcard is a plain name fitting no file.</summary>
+/// an escaped wildcard is a plain name fitting no file. A value is matched against files as MSBuild's globs match them,
+/// each name in the letter case its folder tells: here a volume mounted at cs tells case apart, as a case-sensitive APFS
+/// volume does, and every other folder ignores it.</summary>
 public class ItemPathsTests
 {
+    private static readonly string Root = OperatingSystem.IsWindows() ? @"C:\v" : "/v";
+
+    /// <summary>Each folder asked whether it ignores case, in order.</summary>
+    private readonly List<string> asked = [];
+
     [Theory]
     [InlineData(@"..\semi;colon\App.csproj", @"..\semi%3Bcolon\App.csproj")]
     [InlineData("per%cent/a.cs", "per%25cent/a.cs")]
@@ -122,4 +129,57 @@ public class ItemPathsTests
     {
         Assert.Equal(whole, ItemPaths.Read(written)?.Whole);
     }
+
+    [Fact]
+    public void A_value_takes_a_file_named_in_another_case_only_where_its_folder_ignores_case()
+    {
+        Assert.True(Matches(At("plain", "lib", "*.cs"), At("plain", "Lib", "Util.cs")), "Where case is ignored, lib/*.cs did not take Lib/Util.cs");
+        Assert.True(Matches(At("plain", "lib", "util.cs"), At("plain", "lib", "Util.cs")), "Where case is ignored, lib/util.cs did not take lib/Util.cs");
+        Assert.False(Matches(At("cs", "lib", "*.cs"), At("cs", "Lib", "Util.cs")), "On a case-sensitive volume, lib/*.cs took Lib/Util.cs, a folder of its own");
+        Assert.False(Matches(At("cs", "lib", "*.CS"), At("cs", "lib", "Util.cs")), "On a case-sensitive volume, lib/*.CS took Util.cs");
+        Assert.False(Matches(At("cs", "lib", "util.cs"), At("cs", "lib", "Util.cs")), "On a case-sensitive volume, lib/util.cs took Util.cs beside it");
+        Assert.True(Matches(At("CS", "lib", "*.cs"), At("cs", "lib", "Util.cs")), "The volume's own name, in a folder that ignores case, was told apart by case");
+        Assert.True(Matches(At("cs", "**", "*.cs"), At("cs", "a", "B", "Util.cs")), "**/*.cs did not take a file folders down");
+    }
+
+    [Fact]
+    public void A_glob_goes_only_as_deep_as_the_path_it_matches_however_long_it_is()
+    {
+        string stars = string.Concat(Enumerable.Repeat($"**{Path.DirectorySeparatorChar}", 100_000));
+        SmallStack.Run(() =>
+        {
+            Assert.True(Matches(At("cs", stars + "*.cs"), At("cs", "a", "b", "Util.cs")), "A long run of ** did not take a file folders down");
+            Assert.False(Matches(At("cs", stars + "*.vb"), At("cs", "a", "b", "Util.cs")), "A long run of ** took a file its last part does not fit");
+        });
+    }
+
+    [Fact]
+    public void A_file_matching_in_its_own_case_or_in_none_asks_no_folder()
+    {
+        Assert.True(Matches(At("cs", "lib", "*.cs"), At("cs", "lib", "Util.cs")));
+        Assert.False(Matches(At("cs", "lib", "*.cs"), At("cs", "lib", "Util.vb")));
+        Assert.False(Matches(At("cs", "lib", "*.cs"), At("cs", "src", "Util.cs")));
+        Assert.True(asked.Count == 0, $"Names alike, or differing past case, asked {string.Join(", ", asked)}");
+    }
+
+    [Theory]
+    [InlineData("per%2525cent/*%253Bb.png", "per%cent/a;b.png")]
+    [InlineData("per%25cent/a%3Bb.png", "per%cent/a;b.png")]
+    [InlineData("per%2525cent/**", "per%cent/x/a;b.png")]
+    public void A_value_takes_the_files_msbuild_reads_it_to_name(string written, string file)
+    {
+        ItemPath read = Assert.IsType<ItemPath>(ItemPaths.Read(written));
+
+        Assert.True(ItemPaths.Matches(read.FromFolder(Root), Path.Join(Root, file), CaseIgnoredIn), $"{written} did not take {file}");
+    }
+
+    private bool Matches(string pattern, string path) => ItemPaths.Matches(Assert.IsType<ItemPath>(ItemPaths.Read(pattern)), path, CaseIgnoredIn);
+
+    private bool CaseIgnoredIn(string folder)
+    {
+        asked.Add(folder);
+        return !folder.Replace('\\', '/').StartsWith(At("cs").Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string At(params string[] names) => Path.Join([Root, .. names]);
 }

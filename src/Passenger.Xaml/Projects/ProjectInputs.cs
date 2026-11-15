@@ -108,7 +108,7 @@ public sealed record ProjectInputs(
         {
             framework = read.Framework;
             references.AddRange(read.Compile);
-            projectReferences.AddRange(read.Projects.Select(p => Path.GetFullPath(Path.Combine(folder, p))));
+            projectReferences.AddRange(read.Projects.Select(p => PathNames.Canonical(Path.Combine(folder, p))).Distinct(PathNames.Comparer));
             packages.AddRange(read.Packages);
             foreach (string shared in read.FrameworkReferences)
             {
@@ -120,13 +120,10 @@ public sealed record ProjectInputs(
         // The project file's own references, should the project not be restored yet.
         foreach (XElement reference in Elements(project, "ProjectReference"))
         {
-            if (reference.Attribute("Include")?.Value is { Length: > 0 } include)
+            if (reference.Attribute("Include")?.Value is { Length: > 0 } include && ProjectItems.PathOf(folder, include) is { Glob: false } named
+                && PathNames.Canonical(named.Path) is var full && !projectReferences.Contains(full, PathNames.Comparer))
             {
-                string full = Path.GetFullPath(Path.Combine(folder, ItemPaths.Unescaped(include).Replace('\\', Path.DirectorySeparatorChar)));
-                if (!projectReferences.Contains(full, StringComparer.Ordinal))
-                {
-                    projectReferences.Add(full);
-                }
+                projectReferences.Add(full);
             }
         }
         Dictionary<string, string> versions = read is null ? new(StringComparer.OrdinalIgnoreCase) : new(read.Versions, StringComparer.OrdinalIgnoreCase);
@@ -140,7 +137,7 @@ public sealed record ProjectInputs(
             {
                 packages.Add(id);
             }
-            if ((package.Attribute("Version")?.Value ?? package.Elements().FirstOrDefault(e => e.Name.LocalName == "Version")?.Value) is { Length: > 0 } version)
+            if (ProjectItems.Value(package, "Version") is { Length: > 0 } version)
             {
                 versions.TryAdd(id, version.Trim());
             }
@@ -203,58 +200,53 @@ public sealed record ProjectInputs(
     public IReadOnlyList<string> Items(string itemType)
     {
         XDocument? project = Load(ProjectPath);
-        HashSet<string> included = new(StringComparer.Ordinal);
+        Dictionary<string, string> included = new(StringComparer.Ordinal);
         foreach (XElement item in Elements(project, itemType))
         {
-            foreach (string include in Split(item.Attribute("Include")?.Value))
+            foreach (ItemPath include in Named(item.Attribute("Include")?.Value))
             {
-                included.UnionWith(Glob(Folder, include));
+                foreach ((string name, string path) in Found(include))
+                {
+                    included.TryAdd(name, path);
+                }
             }
-            foreach (string remove in Split(item.Attribute("Remove")?.Value))
+            foreach (ItemPath remove in Named(item.Attribute("Remove")?.Value).Select(Canonical))
             {
-                included.ExceptWith(Glob(Folder, remove));
+                foreach (string name in included.Where(i => ItemPaths.Matches(remove, i.Value, PathNames.CaseIgnoredIn)).Select(i => i.Key).ToList())
+                {
+                    included.Remove(name);
+                }
             }
         }
-        return [.. included.Order(StringComparer.Ordinal)];
+        return [.. included.Keys.Order(StringComparer.Ordinal)];
     }
 
-    private static IEnumerable<string> Split(string? value) =>
-        value is null ? [] : value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    /// <summary>The paths a value of the project file names from its folder, those MSBuild expands left out.</summary>
+    private static IEnumerable<ItemPath> Named(string? value) => ItemPaths.Parts(value).Select(p => ItemPaths.Read(p.Replace('\\', '/'))).OfType<ItemPath>();
 
-    /// <summary>The project folder's files a glob names (<c>Assets/**</c>, <c>Assets/*.png</c>), read as MSBuild reads it, bin
-    /// and obj left out.</summary>
-    private static IEnumerable<string> Glob(string folder, string pattern)
+    /// <summary>A path from the project's folder made canonical, as a walk names the files it finds.</summary>
+    private ItemPath Canonical(ItemPath written) => written with { Path = PathNames.Canonical(Path.Combine(Folder, written.Path)) };
+
+    /// <summary>The files a path from the project's folder names (<c>Assets/**</c>, <c>Assets/*.png</c>) as MSBuild names
+    /// them, each with its canonical path: a plain name as written, a glob's folder as written and what its wildcards found
+    /// as the disk names it, in the folders a project's wildcards enter (<see cref="ProjectFolders.Enters"/>).</summary>
+    private IEnumerable<(string Name, string Path)> Found(ItemPath written)
     {
-        if (ItemPaths.Read(pattern) is not { } read)
+        ItemPath whole = Canonical(written);
+        if (!written.Glob)
         {
-            yield break;
-        }
-        string normal = read.Whole.Replace('\\', '/');
-        if (!read.Glob)
-        {
-            if (File.Exists(Path.Combine(folder, normal)))
+            if (File.Exists(whole.Path))
             {
-                yield return normal;
+                yield return (written.Whole, whole.Path);
             }
             yield break;
         }
-        string start = Path.Combine(folder, read.Path.Replace('\\', '/'));
-        if (!Directory.Exists(start))
+        string head = written.Path.Length == 0 ? string.Empty : $"{written.Path}/";
+        foreach (string file in PathNames.FilesUnder(whole.Path, ProjectFolders.Enters).SelectMany(f => f.Files))
         {
-            yield break;
-        }
-        Regex matcher = new("^" + Regex.Escape(normal).Replace(@"\*\*/", "(.*/)?", StringComparison.Ordinal).Replace(@"\*\*", ".*", StringComparison.Ordinal)
-            .Replace(@"\*", "[^/]*", StringComparison.Ordinal).Replace(@"\?", "[^/]", StringComparison.Ordinal) + "$", RegexOptions.CultureInvariant);
-        foreach (string file in PathNames.FoldersUnder(start, _ => true).SelectMany(f => FilesIn(f, "*")))
-        {
-            string relative = Path.GetRelativePath(folder, file).Replace('\\', '/');
-            if (relative.StartsWith("bin/", StringComparison.Ordinal) || relative.StartsWith("obj/", StringComparison.Ordinal))
+            if (ItemPaths.Matches(whole, file, PathNames.CaseIgnoredIn))
             {
-                continue;
-            }
-            if (matcher.IsMatch(relative))
-            {
-                yield return relative;
+                yield return (head + PathNames.Below(file, whole.Path).ToString().Replace('\\', '/'), file);
             }
         }
     }

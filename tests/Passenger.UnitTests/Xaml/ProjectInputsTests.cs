@@ -121,6 +121,57 @@ public sealed class ProjectInputsTests : IDisposable
         Assert.Equal(["per%cent/b.png"], ProjectInputs.Read(project, null).Items("AvaloniaResource"));
     }
 
+    /// <summary>MSBuild's names on macOS for these items over a folder named assets: a glob's folder as written, what its
+    /// wildcards found as the disk names it, a name in another case taken and removed where its folder ignores case.</summary>
+    [Fact]
+    public void An_items_glob_and_remove_take_a_file_named_in_another_case_where_its_folder_ignores_case()
+    {
+        Write("App/assets/logo.png", string.Empty);
+        Write("App/assets/Sub/Icon.PNG", string.Empty);
+        string project = Write("App/App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <AvaloniaResource Include="Assets\**" />
+                <AvaloniaResource Include="assets\*.PNG;ASSETS/*/*.png" />
+                <AvaloniaResource Remove="ASSETS/LOGO.png" />
+              </ItemGroup>
+            </Project>
+            """);
+
+        string[] expected = PathNames.CaseIgnoredIn(root) ? ["ASSETS/Sub/Icon.PNG", "Assets/Sub/Icon.PNG"] : [];
+        Assert.Equal(expected, ProjectInputs.Read(project, null).Items("AvaloniaResource"));
+    }
+
+    [Fact]
+    public void An_items_glob_passes_over_build_output_dependencies_and_hidden_folders()
+    {
+        foreach (string file in (string[])["App/Assets/a.png", "App/node_modules/pkg/b.png", "App/.git/c.png", "App/bin/d.png", "App/Assets/obj/e.png", "App/Assets/.cache/f.png"])
+        {
+            Write(file, string.Empty);
+        }
+        string project = Write("App/App.csproj", """<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><AvaloniaResource Include="**/*.png" /></ItemGroup></Project>""");
+
+        Assert.Equal(["Assets/a.png"], ProjectInputs.Read(project, null).Items("AvaloniaResource"));
+    }
+
+    /// <summary>The project file names its reference in one letter case, its restore in the disk's.</summary>
+    [Fact]
+    public void A_project_referenced_in_two_spellings_of_one_path_is_one_reference()
+    {
+        Assert.SkipUnless(PathNames.CaseIgnoredIn(root), "Here lib and Lib are two folders");
+        Write("Lib/Lib.csproj", """<Project Sdk="Microsoft.NET.Sdk" />""");
+        string project = Write("App/App.csproj", """<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="..\lib\Lib.csproj" /></ItemGroup></Project>""");
+        Write("App/obj/project.assets.json", """
+            {
+              "version": 3,
+              "targets": { "net10.0": { "Lib/1.0.0": { "type": "project" } } },
+              "libraries": { "Lib/1.0.0": { "type": "project", "path": "../Lib/Lib.csproj", "msbuildProject": "../Lib/Lib.csproj" } }
+            }
+            """);
+
+        Assert.Equal([Path.Combine(root, "Lib", "Lib.csproj")], ProjectInputs.Read(project, null).ProjectReferences);
+    }
+
     /// <summary>A restore of two frameworks, each with its own version of a package and its own shared framework.</summary>
     private string Assets(string first, string second)
     {

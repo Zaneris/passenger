@@ -291,8 +291,8 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             found.AddRange(plain.Take(ProjectLimit - found.Count));
         }
         // A file a program includes, from any folder or by a wildcard, is that program's code, whatever its own head says.
-        List<(string Program, List<string> Patterns)> including = [.. found.Where(ProgramFiles.IsProgram).Select(p => (p, Included(p).ToList()))];
-        found.RemoveAll(q => ProgramFiles.IsProgram(q) && including.Any(i => !PathNames.Same(i.Program, q) && i.Patterns.Any(pattern => Globbed(pattern, q, PathNames.CaseIgnoredIn))));
+        List<(string Program, List<ItemPath> Patterns)> including = [.. found.Where(ProgramFiles.IsProgram).Select(p => (p, Included(p).ToList()))];
+        found.RemoveAll(q => ProgramFiles.IsProgram(q) && including.Any(i => !PathNames.Same(i.Program, q) && i.Patterns.Any(pattern => ItemPaths.Matches(pattern, q, PathNames.CaseIgnoredIn))));
         // A program another references (#:ref lib.cs) is one, its project the SDK's, whatever its head says.
         for (int i = 0; i < found.Count; i++)
         {
@@ -320,46 +320,19 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         }
     }
 
-    /// <summary>The C# files a program's <c>#:include</c> directives name, each a full path that may hold MSBuild's wildcards
-    /// (<c>lib/*.cs</c>, <c>**</c>) as the SDK hands it to MSBuild; none that names a property.</summary>
-    private static IEnumerable<string> Included(string program)
+    /// <summary>The C# files a program's <c>#:include</c> directives name, each from the program's folder as MSBuild reads
+    /// the SDK's Compile item of it, wildcards (<c>lib/*.cs</c>, <c>**</c>) and all; none that names a property.</summary>
+    private static IEnumerable<ItemPath> Included(string program)
     {
         foreach (string directive in ProgramFiles.Head(program))
         {
             if (ProgramFiles.Parse(directive) is ("include", { Length: > 0 } value) && !value.Contains('$', StringComparison.Ordinal)
-                && (ProgramFiles.IsProgram(value) || value.EndsWith('*')))
+                && (ProgramFiles.IsProgram(value) || value.EndsWith('*')) && ItemPaths.Read(value) is { } included)
             {
-                yield return Path.GetFullPath(value, Path.GetDirectoryName(program)!);
+                yield return included.FromFolder(Path.GetDirectoryName(program)!);
             }
         }
     }
-
-    /// <summary>Whether a file matches an include as MSBuild's globs match: <c>*</c> and <c>?</c> within a name, <c>**</c>
-    /// across folders, a name differing only in letter case where its folder ignores case (<paramref name="caseIgnoredIn"/>).</summary>
-    internal static bool Globbed(string pattern, string path, Func<string, bool> caseIgnoredIn) =>
-        Matches(Folded(pattern.Split(Separators)), 0, path, path.Split(Separators), 0, caseIgnoredIn);
-
-    private static readonly char[] Separators = ['/', '\\'];
-
-    /// <summary>A glob's parts with each run of <c>**</c> as the one it means, so a match goes as deep as its path and no
-    /// deeper, however long the glob.</summary>
-    private static string[] Folded(string[] parts) => [.. parts.Where((part, at) => at == 0 || part != "**" || parts[at - 1] != "**")];
-
-    private static bool Matches(string[] parts, int part, string path, string[] names, int name, Func<string, bool> caseIgnoredIn) =>
-        part == parts.Length ? name == names.Length
-        : parts[part] == "**" ? Matches(parts, part + 1, path, names, name, caseIgnoredIn) || (name < names.Length && Matches(parts, part, path, names, name + 1, caseIgnoredIn))
-        : name < names.Length && MatchesAt(parts[part], path, names, name, caseIgnoredIn) && Matches(parts, part + 1, path, names, name + 1, caseIgnoredIn);
-
-    /// <summary>Whether a path's name at an index matches one part of a glob, in the letter case its folder tells.</summary>
-    private static bool MatchesAt(string part, string path, string[] names, int name, Func<string, bool> caseIgnoredIn) =>
-        NameMatches(part, names[name], ignoreCase: false)
-        || NameMatches(part, names[name], ignoreCase: true) && caseIgnoredIn(path[..names.Take(name).Sum(n => n.Length + 1)]);
-
-    /// <summary>Whether a name matches one part of a glob; the empty part before a rooted path's first separator, which the
-    /// system's matcher matches with nothing, matches the empty name.</summary>
-    private static bool NameMatches(string part, string name, bool ignoreCase) => part.AsSpan().IndexOfAny('*', '?') < 0
-        ? name.Equals(part, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
-        : System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(part, name, ignoreCase);
 
     /// <summary>Whether a C# file's head makes it a file-based program, as <c>dotnet run</c> runs it: a <c>#!</c> line or a
     /// <c>#:</c> directive, unless it is a single-file Aspire AppHost, which Aspire runs. A folder's walk takes one only

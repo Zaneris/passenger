@@ -1,4 +1,3 @@
-using System.IO.Enumeration;
 using System.Text.Json;
 using Passenger.Core;
 
@@ -180,18 +179,13 @@ public static class NodeProjects
         {
             bool leaves = glob.StartsWith('!');
             string pattern = (leaves ? glob[1..] : glob).Trim().TrimStart('.', '/').TrimEnd('/');
-            if (Matches(pattern.Split('/', StringSplitOptions.RemoveEmptyEntries), 0, names, 0))
+            if (ItemPaths.Matches(pattern.Split('/', StringSplitOptions.RemoveEmptyEntries), names, _ => false))
             {
                 taken = !leaves;
             }
         }
         return taken;
     }
-
-    private static bool Matches(string[] parts, int part, string[] names, int name) =>
-        part == parts.Length ? name == names.Length
-        : parts[part] == "**" ? Matches(parts, part + 1, names, name) || (name < names.Length && Matches(parts, part, names, name + 1))
-        : name < names.Length && FileSystemName.MatchesSimpleExpression(parts[part], names[name], ignoreCase: false) && Matches(parts, part + 1, names, name + 1);
 
     /// <summary>The packages of these package.json files (canonical), those that read, under the folder open (<paramref name="top"/>):
     /// each with its workspace and package manager as the files beside it and above it say.</summary>

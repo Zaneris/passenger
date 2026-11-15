@@ -98,7 +98,7 @@ public sealed class XamlProjectBuilder
             assemblies = [.. inputs.References.AsParallel().AsOrdered().Select(AssemblyTypes.Get).OfType<AssemblyTypes>()];
             themeKeys = ThemeKeys(assemblies);
             referenced = [];
-            CollectReferences(inputs, new HashSet<string>(StringComparer.Ordinal) { inputs.ProjectPath });
+            CollectReferences(inputs, new HashSet<string>(PathNames.Comparer) { inputs.ProjectPath });
             sources.Clear();
             List<(string Path, ProjectInputs Project)> cs = [.. inputs.SourceFiles.Select(f => (f, inputs))];
             cs.AddRange(referenced.SelectMany(r => r.Inputs.SourceFiles.Select(f => (f, r.Inputs))));
