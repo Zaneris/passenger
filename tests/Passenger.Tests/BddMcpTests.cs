@@ -11,8 +11,10 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class BddMcpTests(RestoredFolders folders) : McpRig, IClassFixture<RestoredFolders>
 {
-    private const string Feature = "Calc.Specs/Features/Calculator.feature";
-    private const string Steps = "Calc.Specs/StepDefinitions/CalculatorStepDefinitions.cs";
+    /// <summary>The files by their paths in the folder as an agent is answered them, in the system's separators.</summary>
+    private static readonly string Feature = Path.Combine("Calc.Specs", "Features", "Calculator.feature");
+
+    private static readonly string Steps = Path.Combine("Calc.Specs", "StepDefinitions", "CalculatorStepDefinitions.cs");
 
     private static Dictionary<string, object?> At(string path, int line, int column) => new() { ["path"] = path, ["line"] = line, ["column"] = column };
 
