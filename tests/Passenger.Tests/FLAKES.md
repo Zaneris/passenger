@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-15
 
+- `BuildRunTests`' `A_build_under_dotnet_tests_environment_ends_and_stopping_a_build_ends_its_steps_wherever_msbuild_ran_them_and_nothing_more_is_written_after`,
+  CI 43716463750 (macOS gate, shard 1 of 2): "After Stop, the build went on writing to its output folder". **A race in
+  the IDE.** Stop killed the build's own process group once, and left a step running in a node an earlier build had left
+  (where the test's step ran in each of 23 logged runs on the Mac) to MSBuild, whose node, its build gone, ends the step
+  through the runtime's kill of the step's tree. Both kills pass over a process forked at that moment: on the Mac, a
+  fork outlived one kill of its group in 18 of 300 rounds and one kill of its tree in 1 of 150, the fork then writing.
+  The step's loop forks `date` and `sleep` five times a second, so now and then a `date` forked as its shell was killed
+  wrote one more line after the test had looked at the file. Not seen in CI's words in 72 runs on the Mac under load, as
+  it needs a fork at the moment of a kill. Fixed in 300ee00a2: a killed group is killed again until the system says it is
+  empty (0 of 450 rounds left a fork), and the Build window's builds keep MSBuild's nodes their own, which Stop kills
+  with what they run. The test now names, on failure, the file that grew, the process that wrote it and when against
+  Stop, with the build's processes before and after (#1731).
 - `BlazorBrowserDebuggingTests`' `A_Blazor_Web_App_an_AppHost_starts_debugged_has_its_WebAssembly_component_stop_in_the_browser`,
   CI 43716463750 (macOS shard 1 of the report lane): "Waited 360 s for the service's page component to stop in the
   browser", both sessions running, the WebAssembly tab's console showing the page's every download of its .NET code
