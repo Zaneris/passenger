@@ -569,7 +569,7 @@ a new name, and `just site-shots` retakes its images.
   macOS export of an arm64 or universal game needs `textures/vram_compression/import_etc2_astc`. A headless game's
   window is 64×64 (the helper sets `display/window/size`); it has no picture, picks no 3D mesh without a collision
   shape, and never pauses again after Next Frame (the helper's `step` ends it).
-- **Godot's editor on macOS builds with /usr/local/share/dotnet/dotnet** wherever that is, but runs on DOTNET_ROOT's .NET: lacking a release SDK of that major there, its Microsoft.Build.Locator 1.2.6 names a .NET 11 SDK's folders without their separator and no build finds Microsoft.NET.Sdk (#1715, #1726).
+- **Godot's editor on macOS builds with /usr/local/share/dotnet/dotnet** wherever that is, but runs on DOTNET_ROOT's .NET: lacking a release SDK of that major there, its Microsoft.Build.Locator 1.2.6 names a .NET 11 SDK's folders without their separator and no build finds Microsoft.NET.Sdk: every start of Godot's editor that builds (an editor configuration, a C# export) takes `GodotEditorDotnet.For`, never DOTNET_ROOT as it stands (#1715, #1726).
 - **Godot's headless editor** writes project.godot (a plugin's `ProjectSettings.save()` writes all it holds),
   `editor_layout.cfg`, `script_editor_cache.cfg` and `ide_messaging_meta.txt` into the project, imports and exports too,
   which `GodotScripts` puts back (a Passenger save meanwhile stays the person's); from 4.5 it runs `--recovery-mode`,

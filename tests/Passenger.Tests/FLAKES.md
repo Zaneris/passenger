@@ -1767,5 +1767,5 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   candidates, so it registered MSBuild through the Microsoft.Build.Locator 1.2.6 it carries, which appends Sdks to
   `dotnet --info`'s Base Path, written without its closing separator from .NET 11 on: the build got
   `MSBuildSDKsPath=…/11.0.100Sdks` and found no Microsoft.NET.Sdk (MSB4236). The VMs' Godot builds with its own runtime's
-  dotnet and passed; CI has no Godot. The test skips saying so where that holds, and a failure names the build's own errors
-  (ad09e8828, #1715; #1726 for what Passenger hands Godot's editor).
+  dotnet and passed; CI has no Godot. The test skipped saying so where that held (ad09e8828, #1715); since #1726 Passenger hands Godot's editor the
+  .NET that builds, or says why none can before it starts, which the test now holds, and a failure names the build's own errors.
