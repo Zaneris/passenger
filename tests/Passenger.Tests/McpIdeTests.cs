@@ -432,8 +432,8 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         [.. found.GetProperty("matches").EnumerateArray().Select(m => $"{m.GetProperty("path").GetString()}:{m.GetProperty("line").GetInt32()}").Order(StringComparer.Ordinal)];
 }
 
-/// <summary>Attach Profiler for an agent, McpIdeTests' where what it tests is held to a time: a profile's samples, so the class
-/// runs alone.</summary>
+/// <summary>Attach Profiler for an agent, and why a memory profile has no heap, McpIdeTests' where what it tests is held to a
+/// time: a profile's samples, so the class runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class McpIdeProfilingTests : McpRig, IClassFixture<RestoredFolders>
 {
@@ -465,6 +465,29 @@ public sealed class McpIdeProfilingTests : McpRig, IClassFixture<RestoredFolders
         using Process program = Process.GetProcessById(spinning);
         Assert.True(DotnetProcesses.Runs(program), "The program an agent attached the profiler to ended with its snapshot");
         await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>An agent's profile asking for a memory snapshot hears why it has no heap: without seconds, before anything is
+    /// built or run, as the heap is read from the program as it runs; with seconds, of a program that ended before they
+    /// passed, in the answer's heap note.</summary>
+    [Fact]
+    public async Task An_agents_memory_profile_says_why_it_has_no_heap()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", $"File.WriteAllText(Path.Combine(@\"{Folder}\", \"ran.txt\"), \"ran\");\nConsole.WriteLine(\"done\");\n");
+        string ran = Path.Combine(Folder, "ran.txt");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+
+        CallToolResult refused = await Result(client, McpTools.Profile, new() { ["memory"] = true });
+        Assert.True(refused.IsError == true && Text(refused).Contains(PassengerTools.MemoryWithoutSeconds, StringComparison.Ordinal),
+            $"A memory profile without seconds answered: {Text(refused)}");
+        Assert.False(File.Exists(ran), "A memory profile refused for want of seconds ran the program all the same");
+
+        JsonElement ended = await Call(client, McpTools.Profile, new() { ["memory"] = true, ["seconds"] = 60 });
+        Assert.True(File.Exists(ran), $"The memory profile with seconds never ran the program: {ended.GetRawText()}");
+        Assert.True(!ended.TryGetProperty("heap", out JsonElement heap) || heap.ValueKind == JsonValueKind.Null, $"The program that ended at once has a heap: {heap}");
+        Assert.True(ended.TryGetProperty("heapNote", out JsonElement note) && note.GetString()?.StartsWith("The program ended before its memory snapshot", StringComparison.Ordinal) == true,
+            $"The memory profile of a program that ended before its seconds passed says nothing of why it has no heap: {ended.GetRawText()}");
     }
 
     /// <summary>An agent's profile of a program the debugger holds answers at once rather than waiting on it: refused while

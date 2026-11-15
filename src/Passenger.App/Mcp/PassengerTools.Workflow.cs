@@ -516,6 +516,10 @@ public sealed partial class PassengerTools
 
     // The profiler
 
+    /// <summary>Why profile takes no memory snapshot without seconds: it is read from the program as it runs.</summary>
+    public const string MemoryWithoutSeconds = "A memory snapshot is read from the program as it runs, once seconds have passed; "
+        + "without seconds the profile lasts until the program ends, when there is no heap to read: give seconds with memory";
+
     [McpServerTool(Name = McpTools.Profile, Title = "Profile a configuration", Destructive = true), Description(
         "Profiles a configuration from its start, as Profile does, until it ends or for seconds (then the snapshot; it runs on " +
         "until stop). Returns its length, the hot spots by own time (the folder's with source, path:line), the busiest " +
@@ -548,6 +552,10 @@ public sealed partial class PassengerTools
         {
             throw new ArgumentException("A container's program is profiled as it runs: give attach with container");
         }
+        if (memory && seconds is null)
+        {
+            throw new ArgumentException(MemoryWithoutSeconds);
+        }
         if (!attach && resource is null)
         {
             Choose(configuration);
@@ -578,7 +586,11 @@ public sealed partial class PassengerTools
         {
             await When(() => running.HasExited, TimeSpan.FromSeconds(Math.Clamp(limit, 1, 3600)), cancel, Ends(running.ExitedAsync()), Ends(running.PutAway));
             CheckProfileTarget();
-            if (memory && !running.HasExited)
+            if (memory && running.HasExited)
+            {
+                heapNote = "The program ended before its memory snapshot, which is taken once seconds have passed";
+            }
+            else if (memory)
             {
                 (Passenger.Profiler.MemorySnapshot? taken, heapNote) = await window.MemorySnapshotUnaskedAsync(cancel);
                 if (taken is not null)
