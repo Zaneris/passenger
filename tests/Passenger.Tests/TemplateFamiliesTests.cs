@@ -262,6 +262,48 @@ public sealed class TemplateFamiliesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A template installed while the watcher of dotnet new's packages.json heard nothing, as a change the system
+    /// dropped without a word, fills in its family once the open dialog comes in front, as it does when a person comes back
+    /// to it from a terminal; one uninstalled so leaves it once the main window does. The watcher stops hearing while dotnet
+    /// new writes, so each change is lost as a dropped event loses it.</summary>
+    [AvaloniaFact]
+    public void A_template_installed_while_its_watcher_heard_nothing_fills_in_its_family_once_a_window_comes_in_front()
+    {
+        using IDisposable theme = TestsTheme();
+        string probe = WriteProbeTemplate();
+        MainWindow window = Started();
+        Assert.True(window.Perform(AppActions.NewSolution));
+        NewProjectDialog dialog = Opened(window);
+        Ui.Click(dialog.FamilyRow("Unit Test")!);
+        FileSystemWatcher watcher = ProjectTemplates.PackagesWatch?.Watcher ?? throw new InvalidOperationException("dotnet new's packages.json is not watched");
+        bool installed = false;
+        try
+        {
+            watcher.EnableRaisingEvents = false;
+            DotnetNew(["install", probe]);
+            installed = true;
+            dialog.Activate();
+            Ui.WaitFor(() => dialog.Family?.Types.Any(t => t.ShortName == "probetest") == true,
+                () => $"the template installed unheard to join Unit Test once the dialog came in front (it lists {string.Join(", ", dialog.TypeNames)})", TimeSpan.FromSeconds(60));
+
+            DotnetNew(["uninstall", probe]);
+            installed = false;
+            window.Activate();
+            Ui.WaitFor(() => dialog.Family?.Types.All(t => t.ShortName != "probetest") == true,
+                () => $"the template uninstalled unheard to leave Unit Test once the main window came in front (it lists {string.Join(", ", dialog.TypeNames)})", TimeSpan.FromSeconds(60));
+        }
+        finally
+        {
+            watcher.EnableRaisingEvents = true;
+            if (installed)
+            {
+                DotnetNew(["uninstall", probe]);
+            }
+        }
+        dialog.Cancel();
+        window.Close();
+    }
+
     /// <summary>A template whose ide.host.json shows two of its options still offers the parameters it leaves out, under
     /// More options, as dotnet new's command line does, but one its command line hides and one a computed symbol makes the
     /// same switch as one shown; an option only an IDE's host reads goes to the command line through the parameter that does.</summary>

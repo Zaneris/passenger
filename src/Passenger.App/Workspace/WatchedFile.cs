@@ -8,7 +8,7 @@ namespace Passenger.App.Workspace;
 /// the watcher fails, since a change it lost is in the file; and as <see cref="LookAgain"/> asks, as a window comes in
 /// front, for a change the system dropped without a word (macOS's watcher passes over its word that it did) or made to a
 /// link's file elsewhere, which no watcher here hears. The first look always tells.</summary>
-internal sealed class WatchedFile : IDisposable
+public sealed class WatchedFile : IDisposable
 {
     private readonly Lock stamped = new();
     private bool disposed;
@@ -51,7 +51,7 @@ internal sealed class WatchedFile : IDisposable
     public string Path { get; }
 
     /// <summary>The system's watcher of the file; null where it could not be watched.</summary>
-    internal FileSystemWatcher? Watcher { get; }
+    public FileSystemWatcher? Watcher { get; }
 
     /// <summary>The file found moved since it was last seen, with its stamp now (null: not there); raised off the UI thread,
     /// on the thread that looked.</summary>

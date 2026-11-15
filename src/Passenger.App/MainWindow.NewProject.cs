@@ -29,6 +29,7 @@ public partial class MainWindow
         {
             WhyNot = _ => Solution is null ? Refusals.NoSolution : WithoutAnySdk(),
         });
+        Activated += (_, _) => ProjectTemplates.LookAgain();
     }
 
     /// <summary>dotnet new's templates read ahead of New Solution (where it puts a solution) once a person's window is up,

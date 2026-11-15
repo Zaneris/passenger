@@ -94,8 +94,8 @@ public sealed class SettingsStore : IDisposable
     /// <summary>Whether the settings are kept in a file (the person's), rather than a window's own.</summary>
     public bool IsKept => document is not null;
 
-    /// <summary>The system's watcher of settings.json; null for a window's own settings, or a file that could not be watched.</summary>
-    public FileSystemWatcher? Watcher => watched?.Watcher;
+    /// <summary>The watch on settings.json; null for a window's own settings.</summary>
+    public WatchedFile? Watched => watched;
 
     /// <summary>The settings changed, by a window of this process or by another Passenger; raised once the process's
     /// share (theme, keymap, logs) is in force.</summary>

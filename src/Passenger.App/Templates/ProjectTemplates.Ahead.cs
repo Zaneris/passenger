@@ -1,15 +1,18 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Avalonia.Threading;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Workspace;
 
 namespace Passenger.App.Templates;
 
 /// <summary>The templates read ahead of New Solution and New Project, so the dialog opens with them listed: once the IDE
 /// has started, in the background, and again when what they come from changes (dotnet new's installed packages, the
-/// .NET install's SDKs and templates). What has been read is kept per SDK for a dialog to show at once. The process's,
-/// as dotnet new's home is.</summary>
+/// .NET install's SDKs and templates), heard by their watchers or found moved as a window comes in front (<see
+/// cref="LookAgain"/>). What has been read is kept per SDK for a dialog to show at once. The process's, as dotnet new's
+/// home is.</summary>
 public static partial class ProjectTemplates
 {
     /// <summary>How long the watch waits for the writes an install makes to end before reading again.</summary>
@@ -24,12 +27,15 @@ public static partial class ProjectTemplates
     /// <summary>The folders the templates were last asked for, newest first: read again when what they come from changes.</summary>
     private static readonly List<string> Asked = [];
 
-    /// <summary>The watches on the .NET install's folders the templates come from, kept for the process's life.</summary>
-    private static readonly List<FileSystemWatcher> Watches = [];
+    /// <summary>What the watches below are held by.</summary>
+    private static readonly Lock WatchGate = new();
+
+    /// <summary>The watch on the .NET install's folders the templates come from, kept for the process's life.</summary>
+    private static InstallFolders? installWatch;
 
     /// <summary>The watch on packages.json in the home or hive dotnet new reads, with that folder: watched again where
     /// the hive changes.</summary>
-    private static (string Root, FileSystemWatcher Watch)? packagesWatch;
+    private static (string Root, WatchedFile Watch)? packagesWatch;
 
     private static volatile string? lastSdk;
 
@@ -118,9 +124,37 @@ public static partial class ProjectTemplates
         }
     }
 
+    /// <summary>The watch on packages.json in the template home dotnet new reads now; null before any templates were read.</summary>
+    public static WatchedFile? PackagesWatch
+    {
+        get
+        {
+            lock (WatchGate)
+            {
+                return packagesWatch?.Watch;
+            }
+        }
+    }
+
+    /// <summary>Looks off the UI thread whether what the templates come from moved since it was last seen, as a window comes
+    /// in front, and reads them again only if it did: an install or an SDK whose change the system dropped without a word
+    /// (macOS's watcher passes over its word that it did) is found then.</summary>
+    public static void LookAgain()
+    {
+        UiThread.Check();
+        WatchedFile? packages;
+        InstallFolders? install;
+        lock (WatchGate)
+        {
+            (packages, install) = (packagesWatch?.Watch, installWatch);
+        }
+        packages?.LookAgain();
+        install?.LookAgain();
+    }
+
     /// <summary>Watches, once there is something read: dotnet new's packages.json in its home or the hive (<see
-    /// cref="WatchPackages"/>), which an install or uninstall rewrites, and the .NET install's sdk, templates and
-    /// template-packs folders, which an SDK or a workload changes. dotnet new list itself writes none of them.</summary>
+    /// cref="WatchPackages"/>), which an install or uninstall rewrites, and the .NET install's folders the templates come
+    /// from (<see cref="InstallFolders"/>), which an SDK or a workload changes. dotnet new list itself writes none of them.</summary>
     private static void Watch()
     {
         WatchPackages();
@@ -128,71 +162,51 @@ public static partial class ProjectTemplates
         {
             return;
         }
-        List<string> folders = [];
+        string dotnet;
         try
         {
-            string dotnet = Dotnet.Root();
-            folders.AddRange(((string[])["sdk", "templates", "template-packs"]).Select(f => Path.Combine(dotnet, f)));
+            dotnet = PathNames.Canonical(Dotnet.Root());
         }
         catch (FileNotFoundException)
         {
             // No .NET to watch: the read says so.
+            return;
         }
-        lock (Watches)
+        lock (WatchGate)
         {
-            foreach (string folder in folders.Where(Directory.Exists))
-            {
-                if (Watching(folder, "*") is { } watch)
-                {
-                    Watches.Add(watch);
-                }
-            }
+            installWatch = new InstallFolders(dotnet, Seen);
         }
     }
 
     /// <summary>Watches packages.json in the home or hive dotnet new reads now (<see cref="Hive"/>), letting go of the
-    /// watch on one it read before, so an install there is heard whichever was read first.</summary>
+    /// watch on one it read before, so an install there is heard whichever was read first. The file as it stands as the
+    /// watch begins is no change: the read just before took it in, or a new home's first read will.</summary>
     private static void WatchPackages()
     {
         string? root = TemplateRoot(Hive);
-        lock (Watches)
+        WatchedFile? before;
+        lock (WatchGate)
         {
             if (packagesWatch is { } watched && root is not null && PathNames.Same(watched.Root, root))
             {
                 return;
             }
-            packagesWatch?.Watch.Dispose();
-            packagesWatch = root is not null && Directory.Exists(root) && Watching(root, "packages.json") is { } watch ? (root, watch) : null;
-        }
-    }
-
-    /// <summary>A watch on the files of a folder that match a filter, raising <see cref="Seen"/>; null, said in the log,
-    /// where the system refuses one.</summary>
-    private static FileSystemWatcher? Watching(string folder, string filter)
-    {
-        try
-        {
-            FileSystemWatcher watch = new(folder, filter)
+            before = packagesWatch?.Watch;
+            packagesWatch = null;
+            if (root is not null && Directory.Exists(root))
             {
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
-            };
-            watch.Changed += Seen;
-            watch.Created += Seen;
-            watch.Deleted += Seen;
-            watch.Renamed += Seen;
-            watch.EnableRaisingEvents = true;
-            return watch;
+                WatchedFile watch = new(Path.Combine(root, "packages.json"), "New Solution's templates");
+                watch.Moved += _ => Seen();
+                watch.Saw(FileStamp.Of(watch.Path));
+                packagesWatch = (root, watch);
+            }
         }
-        catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException or PlatformNotSupportedException)
-        {
-            IdeErrors.Write($"New Solution's templates are not watched in {folder}: {error.Message}");
-            return null;
-        }
+        before?.Dispose();
     }
 
     /// <summary>Something the templates come from changed: once its writes have settled, what was read is let go and the
     /// folders asked for are read again, then the dialogs are told.</summary>
-    private static void Seen(object? sender, FileSystemEventArgs e)
+    private static void Seen()
     {
         long change = Interlocked.Increment(ref changes);
         // Not background work, as a read ahead isn't: a template installed while a window waits for a key holds nothing.
@@ -232,5 +246,64 @@ public static partial class ProjectTemplates
             }
             UiThread.Post(() => Changed?.Invoke());
         }));
+    }
+
+    /// <summary>The .NET install's folders the templates come from, watched for an SDK or a workload changing them: its sdk,
+    /// templates and template-packs folders, each on its own (what is under their entries is passed over), and the install's
+    /// own folder for one of them come or gone.</summary>
+    private sealed class InstallFolders : WatchedTree
+    {
+        private static readonly string[] Sources = ["sdk", "templates", "template-packs"];
+
+        private readonly Action moved;
+        private bool changed;
+
+        /// <summary>Watches the install in <paramref name="root"/> (canonical), telling <paramref name="moved"/> off the UI
+        /// thread of each batch of changes, or of changes lost.</summary>
+        public InstallFolders(string root, Action moved)
+            : base(root, FolderWatching.Platform, eachFolder: true)
+        {
+            this.moved = moved;
+            Begin();
+        }
+
+        protected override string Shown => $"New Solution's templates: the watcher of {Top}";
+
+        /// <summary>Nothing drawn waits on the install's folders, as nothing does on the templates read ahead.</summary>
+        protected override bool WalksApart => true;
+
+        protected override bool Kept(string path) => PathNames.Same(path, Top) || IsSource(path);
+
+        protected override bool Records(string at, string name, bool folder) => !PathNames.Same(at, Top) || Sources.Contains(name, PathNames.NamesIn(Top));
+
+        /// <summary>A source folder come or gone, an entry in one, or the install itself, which changes lost are noted at.</summary>
+        protected override Notice Noticed(string path, bool created) =>
+            PathNames.Same(path, Top) || IsSource(path) || (Path.GetDirectoryName(path) is { } parent && IsSource(parent))
+                ? new Notice(Takes: true, Counts: true, PathNames.Canonical(path))
+                : default;
+
+        protected override void Take(string path, bool created, Notice notice) => changed = true;
+
+        protected override FolderChanges? Gathered(bool lost, bool overflowed)
+        {
+            bool any = changed || lost || overflowed;
+            changed = false;
+            return any ? new FolderChanges(new HashSet<string>(), Structure: false, Projects: false, Git: false) : null;
+        }
+
+        protected override void Hand(FolderChanges changes)
+        {
+            if (!IsDisposed)
+            {
+                moved();
+            }
+        }
+
+        protected override void Unwatched(string at, Exception error) =>
+            IdeErrors.Write($"New Solution's templates are not watched in {at}: {OutOfWatches(error) ?? error.Message}");
+
+        /// <summary>Whether a path is one of the folders the templates come from, in the install's own folder.</summary>
+        private bool IsSource(string path) =>
+            Path.GetDirectoryName(path) is { } parent && PathNames.Same(parent, Top) && Sources.Contains(Path.GetFileName(path), PathNames.NamesIn(Top));
     }
 }

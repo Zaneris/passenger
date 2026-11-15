@@ -295,6 +295,8 @@ public sealed class NewProjectDialog : IdeWindow
         // What a read brings while the dialog is open (an install, another SDK) fills it in.
         Action changed = () => IdeErrors.Observe(RefreshAsync());
         ProjectTemplates.Changed += changed;
+        // A person back from a terminal's install comes to the dialog, not the window under it.
+        Activated += (_, _) => ProjectTemplates.LookAgain();
         Closed += (_, _) =>
         {
             ProjectTemplates.Changed -= changed;

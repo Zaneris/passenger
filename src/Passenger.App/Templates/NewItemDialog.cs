@@ -99,6 +99,7 @@ public sealed class NewItemDialog : IdeWindow
         Closing += (_, _) => creating?.Cancel();
         Action changed = () => IdeErrors.Observe(RefreshAsync(read));
         ProjectTemplates.Changed += changed;
+        Activated += (_, _) => ProjectTemplates.LookAgain();
         Closed += (_, _) => ProjectTemplates.Changed -= changed;
         DockPanel.SetDock(left, Dock.Left);
         Content = DialogFooter.Page(new DockPanel { Children = { left, new Border { Child = new ScrollViewer { Content = right } } } },

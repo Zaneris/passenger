@@ -880,7 +880,7 @@ public sealed class SettingsTests : IDisposable
         window.KeepSettings();
         StateStore store = StateStore.Open(settings);
         string file = Path.Combine(settings, StateStore.SettingsFile);
-        FileSystemWatcher watcher = store.Settings.Watcher ?? throw new InvalidOperationException($"{file} is not watched");
+        FileSystemWatcher watcher = store.Settings.Watched?.Watcher ?? throw new InvalidOperationException($"{file} is not watched");
         try
         {
             watcher.EnableRaisingEvents = false;
@@ -917,7 +917,7 @@ public sealed class SettingsTests : IDisposable
         window.KeepSettings();
         StateStore store = StateStore.Open(settings);
         string file = Path.Combine(settings, StateStore.SettingsFile);
-        FileSystemWatcher watcher = store.Settings.Watcher ?? throw new InvalidOperationException($"{file} is not watched");
+        FileSystemWatcher watcher = store.Settings.Watched?.Watcher ?? throw new InvalidOperationException($"{file} is not watched");
         try
         {
             // Deaf, so its word of the window's own write, which comes when the system sends it, is no part of the test.
