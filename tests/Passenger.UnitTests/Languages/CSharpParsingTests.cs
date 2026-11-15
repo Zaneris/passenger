@@ -195,6 +195,17 @@ public class CSharpParsingTests
         Assert.False(DeepText.TooDeep(before + string.Concat(Enumerable.Repeat(each, 5_000)) + "}", csharp: true), "What a string or a comment holds counted as open");
     }
 
+    /// <summary>A name holding a mark, or starting with a letter number as a verbatim name may, is read whole by the text
+    /// count, as by the compiler: a <c>not</c> ending a name opens no pattern, and <c>@Ⅻ</c> leaves the count sure of what
+    /// closes, so a file of either never waits on the lexer.</summary>
+    [Theory]
+    [InlineData("class C { object[] x = { ", "a\u0301not, ")]
+    [InlineData("class C { void M() {\n", "    F(@Ⅻ);\n")]
+    public void Names_holding_marks_or_starting_with_letter_numbers_read_open_nothing(string before, string each)
+    {
+        Assert.False(DeepText.TooDeep(before + string.Concat(Enumerable.Repeat(each, 5_000)) + "}", csharp: true), "A name's mark or letter number was read as no name's, so what follows counted as open");
+    }
+
     /// <summary>What a string, a character, a comment or a branch left out holds closes nothing, so brackets nested past
     /// what a parser is given around them are still too deep: in the text as it stands, and in an interpolated string's text
     /// read on its own before its holes.</summary>
@@ -382,6 +393,19 @@ public class CSharpParsingTests
         (long largeRead, long large) = Measured(4_000);
         Assert.True(largeRead == smallRead && smallRead < 1_000, $"Measuring a key read {largeRead} characters of a long file against {smallRead} of a short one, so a key costs what the file holds");
         Assert.True(large <= small + 256, $"Measuring a key allocated {large} bytes in a long file against {small} in a short one, so a key costs what the file holds");
+    }
+
+    /// <summary>A mark typed in a name changes words alone, so measuring the key reads nothing.</summary>
+    [Fact]
+    public void A_mark_typed_in_a_name_is_measured_as_a_word_typed()
+    {
+        SourceText text = SourceText.From("class C\n{\n    void M()\n    {\n        int नमस = F(\"(\", ')');\n    }\n}\n");
+        SyntaxTree tree = CSharpParsing.Parse(text);
+        int at = text.ToString().IndexOf("नमस", StringComparison.Ordinal) + "नमस".Length;
+        SourceText typed = text.WithChanges(new TextChange(new TextSpan(at, 0), "\u094Dते"));
+        long read = CSharpParsing.TypedRead;
+        Assert.False(CSharpParsing.TypedMayGoDeep(tree, typed, typed.GetChangeRanges(text)));
+        Assert.True(CSharpParsing.TypedRead == read, $"A virama typed in a name read {CSharpParsing.TypedRead - read} characters around it, as though it could open or close what follows");
     }
 
     [Fact]

@@ -296,7 +296,7 @@ public partial struct Brackets
 
     private static char After(ReadOnlySpan<char> text, int at) => at + 1 < text.Length ? text[at + 1] : '\0';
 
-    private static bool InWord(char c) => char.IsLetterOrDigit(c) || c is '_' or '@';
+    private static bool InWord(char c) => CSharpNames.Continues(c) || c == '@';
 
     /// <summary>What's open where the text is read to, kept whole so a string read on its own can be set aside.</summary>
     private struct Counts

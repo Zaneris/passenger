@@ -154,7 +154,7 @@ public static class CSharpParsing
     {
         for (int at = span.Start; at < span.End; at++)
         {
-            if (text[at] is not (' ' or '\t' or '_') && !char.IsLetterOrDigit(text[at]))
+            if (text[at] is not (' ' or '\t') && !SyntaxFacts.IsIdentifierPartCharacter(text[at]))
             {
                 return true;
             }

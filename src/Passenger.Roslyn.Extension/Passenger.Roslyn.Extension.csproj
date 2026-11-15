@@ -25,6 +25,7 @@
     <!-- A file nested past what a parser is given, left out of its project, read as the rest of Passenger reads it. -->
     <Compile Include="../Passenger.Core/DeepText.cs" Link="DeepText.cs" />
     <Compile Include="../Passenger.Core/Brackets.Code.cs" Link="Brackets.Code.cs" />
+    <Compile Include="../Passenger.Core/CSharpNames.cs" Link="CSharpNames.cs" />
     <Compile Include="../Passenger.Languages/CSharp/CodeBrackets.cs" Link="CodeBrackets.cs" />
     <!-- Godot's Variant types by name and number, and its paths' schemes, as the rest of Passenger reads them. -->
     <Compile Include="../Passenger.Workspace/GodotTypes.cs" Link="GodotTypes.cs" />

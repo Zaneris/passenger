@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Host;
 
 /// <summary>File-based programs (<c>dotnet run app.cs</c>) as their C# file's head tells them, one definition for both ends
@@ -220,7 +222,7 @@ public static class ProgramFiles
         return false;
     }
 
-    private static bool IsWord(string token) => token.Length > 0 && (char.IsLetter(token[0]) || token[0] is '_' or '@');
+    private static bool IsWord(string token) => token.Length > 0 && (CSharpNames.Starts(token[0]) || token[0] == '@');
 
     private static string? Peek(string code, int at) => Token(code, ref at);
 
@@ -277,10 +279,10 @@ public static class ProgramFiles
             return null;
         }
         int begin = at;
-        if (char.IsLetterOrDigit(code[at]) || code[at] == '_' || code[at] == '@' && at + 1 < code.Length && (char.IsLetter(code[at + 1]) || code[at + 1] == '_'))
+        if (CSharpNames.Starts(code[at]) || char.IsDigit(code[at]) || code[at] == '@' && at + 1 < code.Length && CSharpNames.Starts(code[at + 1]))
         {
             at++;
-            while (at < code.Length && (char.IsLetterOrDigit(code[at]) || code[at] == '_'))
+            while (at < code.Length && CSharpNames.Continues(code[at]))
             {
                 at++;
             }

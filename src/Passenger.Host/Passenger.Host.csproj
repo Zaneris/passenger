@@ -34,6 +34,8 @@
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
     <Compile Include="../Passenger.Core/PooledBytes.cs" Link="PooledBytes.cs" />
     <Compile Include="../Passenger.Core/MSBuildNames.cs" Link="MSBuildNames.cs" />
+    <!-- A C# name's characters, as a program's first member is read by them (ProgramFiles). -->
+    <Compile Include="../Passenger.Core/CSharpNames.cs" Link="CSharpNames.cs" />
   </ItemGroup>
 
   <!-- MSBuild's own dependencies come from the SDK with it: copied here, an older one would be loaded in their place. -->

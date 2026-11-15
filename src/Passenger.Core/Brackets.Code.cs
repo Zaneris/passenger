@@ -248,7 +248,7 @@ public partial struct Brackets
                 {
                     '"' => To(Place.Verbatim, at + 1),
                     '$' => To(Place.AtDollar, at + 1),
-                    _ when char.IsLetter(c) || c == '_' => To(Back, at),
+                    _ when CSharpNames.Starts(c) => To(Back, at),
                     _ => Lost(at),
                 };
             case Place.AtDollar or Place.DollarAt:
@@ -496,7 +496,7 @@ public partial struct Brackets
         {
             return at + 1;
         }
-        if (char.IsLetterOrDigit(c) || c == '_')
+        if (CSharpNames.Continues(c))
         {
             directive = c is >= 'a' and <= 'z' && named < 6 ? (directive * 32) + (c - 'a' + 1) : 0;
             named = directive == 0 ? 7 : named + 1;

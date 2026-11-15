@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -269,14 +270,15 @@ public static class TypeHints
         return name.Skip(from).Any(n => type.Skip(from).Contains(n, StringComparer.Ordinal));
     }
 
-    /// <summary>A name's words, lower case and without the digits that end them: <c>_xmlReader2</c> is xml and reader.</summary>
+    /// <summary>A name's words, lower case and without the digits that end them: <c>_xmlReader2</c> is xml and reader. A
+    /// word is a run of a name's characters but its connectors (<c>_</c>), its marks among them.</summary>
     private static List<string> Parts(string name)
     {
         List<string> parts = [];
         int start = -1;
         for (int i = 0; i <= name.Length; i++)
         {
-            bool end = i == name.Length || !char.IsLetterOrDigit(name[i]);
+            bool end = i == name.Length || !SyntaxFacts.IsIdentifierPartCharacter(name[i]) || char.GetUnicodeCategory(name[i]) == UnicodeCategory.ConnectorPunctuation;
             bool hump = !end && start >= 0 && char.IsUpper(name[i])
                 && (char.IsLower(name[i - 1]) || char.IsDigit(name[i - 1]) || (i + 1 < name.Length && char.IsLower(name[i + 1]) && char.IsUpper(name[i - 1])));
             if ((end || hump) && start >= 0)

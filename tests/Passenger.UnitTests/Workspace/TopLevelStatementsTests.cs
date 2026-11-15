@@ -41,6 +41,7 @@ public class TopLevelStatementsTests
     [InlineData("enum Colour { Red }\n")]
     [InlineData("public delegate void Changed(object sender);\n")]
     [InlineData("/* using Fake; Console.WriteLine(); */\nstruct Point { }\n")]
+    [InlineData("using नमस्ते.गिनती;\nusing सूची = नमस्ते.Tools;\n\nnamespace नमस्ते;\n\nclass गिनती { }\n")]
     public void Code_that_declares_types_or_nothing_is_no_programs(string code) =>
         Assert.False(ProgramFiles.BeginsWithStatement(code, 0), $"Code declaring types or nothing was taken for a program:\n{code}");
 }
