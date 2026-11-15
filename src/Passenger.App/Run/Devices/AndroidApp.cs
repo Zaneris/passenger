@@ -132,14 +132,15 @@ public sealed record AndroidApp(string Serial, string Adb, string Package, strin
     /// <summary>The app's own shell putting in what a start staged: the relay beside its assemblies (Debug's), the files
     /// named in <see cref="Carried"/> (the inspector's), and the environment over the build's own, saying first where that
     /// pointed (a link fast deployment made), which <see cref="TakeOut"/> puts back; where a start Passenger could not end
-    /// left its own file there, the build's environment beside what the assemblies' links point to.</summary>
+    /// left its own file there, the build's environment beside what the assemblies' links point to. The staged files are
+    /// taken away however it went, the shell then ending as the app's own did.</summary>
     public IReadOnlyList<string> PutIn(string abi, bool relay, IReadOnlyList<string> carried) => On("shell",
         $"run-as {Package} sh -c 'cd {OverrideFolder(abi)} || exit 1; readlink environment || "
         + "for f in *.dll; do d=$(readlink \"$f\") && { [ -e \"${d%/*}/environment\" ] && echo \"${d%/*}/environment\"; break; }; done; "
         + (relay ? $"cp {Staged("relay")} {RelayFile} && " : string.Empty)
         + (carried.Count > 0 ? $"mkdir -p {Carried} && {string.Concat(carried.Select(f => $"cp {Staged(f)} {Carried}/{f} && "))}" : string.Empty)
         + $"rm -f environment && cp {Staged("environment")} environment'"
-        + $"; rm -f {string.Join(' ', (relay ? (string[])["relay"] : []).Concat(carried).Append("environment").Select(Staged))}");
+        + $"; s=$?; rm -f {string.Join(' ', (relay ? (string[])["relay"] : []).Concat(carried).Append("environment").Select(Staged))}; exit $s");
 
     /// <summary>The app's own shell taking the relay and its environment out again, the build's link put back where there
     /// was one (<paramref name="linked"/>).</summary>

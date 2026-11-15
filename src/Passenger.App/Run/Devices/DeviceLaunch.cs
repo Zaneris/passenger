@@ -205,13 +205,14 @@ public static class DeviceLaunches
         string[] carried = [.. files.Select(f => Path.GetFileName(f))];
         // Run to its end however the start is stopped, so what it put in is known to take out again.
         ChildResult put = await AndroidDevices.AdbAsync(app.Adb, app.PutIn(abi, relayed, carried), CancellationToken.None);
-        string[] said = put.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (!put.Succeeded || said.Any(l => l.Contains("run-as:", StringComparison.Ordinal) || l.StartsWith("cp:", StringComparison.Ordinal) || l.StartsWith("mkdir:", StringComparison.Ordinal)))
-        {
-            return (null, null, $"Passenger's {(relayed ? "debug relay" : "inspector")} could not be put in {app.Package} (a Debug build run-as reaches): {ChildResult.FirstLineOf(put.Error + put.Output)}");
-        }
-        string? linked = said.FirstOrDefault(l => l.StartsWith('/'));
+        string? linked = put.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault(l => l.StartsWith('/'));
         DevicePut placed = new(abi, linked, relayed, carried.Length > 0, []);
+        if (Unput(put) is { } why)
+        {
+            // What went in before the step that failed comes out again, the build's environment put back.
+            await EndAsync(app, placed, stop: false);
+            return (null, null, $"Passenger's {(relayed ? "debug relay" : "inspector")} could not be put in {app.Package}: {why}");
+        }
         RelaySession? session = null;
         try
         {
@@ -265,6 +266,20 @@ public static class DeviceLaunches
             await EndAsync(app, placed, stop: false);
             throw;
         }
+    }
+
+    /// <summary>Why the app's shell could not put in what a start staged (<see cref="AndroidApp.PutIn"/>), in the words of the
+    /// step that failed; null where it put it all in. Its exit status and its errors say so, or, where the device's adb
+    /// has no shell protocol and so mixes the errors into the output and always exits 0, the output names a step's failure.</summary>
+    private static string? Unput(ChildResult put)
+    {
+        // adb's own notices of starting its server come on its errors too.
+        string? said = Lines(put.Error).FirstOrDefault(l => !l.StartsWith("* daemon", StringComparison.Ordinal));
+        string? failed = Lines(put.Output).FirstOrDefault(l => l.Contains("run-as:", StringComparison.Ordinal) || l.StartsWith("cp:", StringComparison.Ordinal)
+            || l.StartsWith("mkdir:", StringComparison.Ordinal) || l.StartsWith("rm:", StringComparison.Ordinal) || l.Contains(": cd:", StringComparison.Ordinal));
+        return said ?? failed ?? (put.Succeeded ? null : ExitCodes.Said(put.ExitCode));
+
+        static string[] Lines(string words) => words.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     /// <summary>A local port adb forwards to an abstract socket in the app, which the log names beside the socket, so a

@@ -16,9 +16,10 @@ namespace Passenger.Tests;
 /// and starts it there, its log in the Run window, and Stop ends it on the emulator; Debug stops at a breakpoint in its
 /// OnCreate through Passenger's relay in the app, its locals shown, and Stop ends it; Run and Debug with Hot Reload take
 /// an edit of its code through the relay, its update handler called after it, and under Debug a method the edit added is
-/// evaluated and a breakpoint on a line the edit changed stops the edited code. The emulator is the one ANDROID_SERIAL
-/// names where several run, and every adb call names it. Skips, saying why, without the Android workload, its SDK and
-/// Java, an emulator or the relays. Debugged through the window, so run alone.</summary>
+/// evaluated and a breakpoint on a line the edit changed stops the edited code; a start whose app run-as does not know is
+/// refused as its relay or inspector goes in. The emulator is the one ANDROID_SERIAL names where several run, and every
+/// adb call names it. Skips, saying why, without the Android workload, its SDK and Java, an emulator or the relays.
+/// Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class AndroidDeviceTests
 {
@@ -216,6 +217,50 @@ public sealed class AndroidDeviceTests
         finally
         {
             window.Close();
+        }
+    }
+
+    /// <summary>Passenger's relay and its inspector put in an app run-as does not know (one no longer on the device) refuse
+    /// the start at once in run-as's own words, where it went on as though they were in, forwarding a port to a relay that
+    /// never came and waiting out its hello; what the start staged on the emulator is taken away all the same.</summary>
+    [AvaloniaFact]
+    public void A_start_whose_app_run_as_does_not_know_is_refused_in_its_words_as_the_relay_or_inspector_goes_in()
+    {
+        (string folder, _, DeviceTarget target, AndroidTools tools) = Prepared();
+        string serial = target.Running ? target.Id
+            : Ui.Await(Waiting.Apart(() => AndroidDevices.BootAsync(tools, target.Avd ?? target.Id, unseen: true, _ => { }, CancellationToken.None)), "the emulator's start", Slow).Serial
+                ?? throw new InvalidOperationException($"{target.Name} did not start");
+        string abi = Adb(tools, serial, "shell", "getprop", "ro.product.cpu.abi").Trim();
+        const string Unknown = "net.passengeride.tests.notinstalled";
+        string intermediate = Path.Combine(folder, "obj", "Debug");
+        string built = Path.Combine(intermediate, "fastdeploy2-environment", abi, "environment");
+        Directory.CreateDirectory(Path.GetDirectoryName(built)!);
+        File.WriteAllBytes(built, AndroidEnvironment.Write([new("DOTNET_TieredPGO", "0")]));
+        string inspectorFile = Path.Combine(folder, "Passenger.Inspector.dll");
+        File.WriteAllBytes(inspectorFile, [0x4d, 0x5a]);
+        AndroidApp app = new(serial, tools.Adb, Unknown, "crc64.MainActivity", intermediate);
+        DeviceStart debugged = new("AndroidApp", app);
+        DeviceStart inspected = new("AndroidApp", app);
+        try
+        {
+            (RelaySession? relay, string? unrelayed) = Ui.Await(debugged.PutRelayAsync(null, null, CancellationToken.None), "the relay's put into an app run-as does not know", Slow);
+            Assert.True(relay is null && unrelayed is not null && unrelayed.Contains($"run-as: unknown package: {Unknown}", StringComparison.Ordinal),
+                $"A Debug start whose relay could not go in was not refused in run-as's words, so it would wait for a relay that is not there: {unrelayed ?? "nothing said"}");
+            DeviceInspector inspector = new("passenger-inspector-test", "token", [inspectorFile], []);
+            string? uninspected = Ui.Await(inspected.PutInspectorAsync(inspector, CancellationToken.None), "the inspector's put into an app run-as does not know", Slow);
+            Assert.True(uninspected is not null && uninspected.Contains($"run-as: unknown package: {Unknown}", StringComparison.Ordinal),
+                $"A Run whose inspector could not go in did not say so in run-as's words: {uninspected ?? "nothing said"}");
+            string staged = Adb(tools, serial, "shell", $"ls /data/local/tmp | grep -F passenger-{Unknown}-; true").Trim();
+            Assert.True(staged.Length == 0, $"What the refused starts staged on the emulator stayed there: {staged}");
+            Assert.True(Left(tools, serial).Length == 0, $"A refused start left its debugging on the emulator: {Left(tools, serial)}");
+        }
+        finally
+        {
+            foreach (DeviceStart start in (DeviceStart[])[debugged, inspected])
+            {
+                Ui.Await(start.TakeOutAsync(), "what a start put in taken out", Slow);
+                start.Dispose();
+            }
         }
     }
 
