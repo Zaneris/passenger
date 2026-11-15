@@ -121,10 +121,7 @@ internal sealed partial class GherkinAssist
     }
 
     /// <summary>Whether a hook runs in a context: one of its scopes (its tags among them) fits, or it has none.</summary>
-    private static bool Fits(StepHook hook, StepContext context) => hook.Scopes.Count == 0 || hook.Scopes.Any(scope =>
-        (scope.Tag is null || context.Tags.Any(t => t.TrimStart('@') == scope.Tag.TrimStart('@')))
-        && (scope.Feature is null || string.Equals(scope.Feature, context.FeatureTitle, StringComparison.CurrentCultureIgnoreCase))
-        && (scope.Scenario is null || context.ScenarioTitle is null || string.Equals(scope.Scenario, context.ScenarioTitle, StringComparison.CurrentCultureIgnoreCase)));
+    private static bool Fits(StepHook hook, StepContext context) => hook.Scopes.Count == 0 || hook.Scopes.Any(scope => scope.Fits(context, anyScenario: true));
 
     public override async Task<bool> UsagesAsync(int offset, bool inPopup)
     {

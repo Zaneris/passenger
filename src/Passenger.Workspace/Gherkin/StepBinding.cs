@@ -26,6 +26,13 @@ public sealed record StepScope(string? Tag, string? Feature, string? Scenario)
 {
     /// <summary>How many of its restrictions it names, the more the closer a fit.</summary>
     public int Restrictions => (Tag is null ? 0 : 1) + (Feature is null ? 0 : 1) + (Scenario is null ? 0 : 1);
+
+    /// <summary>Whether a step's context has all it names, titles in any letter case; a context of no scenario (a feature's
+    /// hooks run for any) has any scenario's where <paramref name="anyScenario"/>.</summary>
+    public bool Fits(StepContext context, bool anyScenario = false) =>
+        (Tag is null || context.Tags.Any(t => t.TrimStart('@') == Tag.TrimStart('@')))
+        && (Feature is null || string.Equals(Feature, context.FeatureTitle, StringComparison.CurrentCultureIgnoreCase))
+        && (Scenario is null || (anyScenario && context.ScenarioTitle is null) || string.Equals(Scenario, context.ScenarioTitle, StringComparison.CurrentCultureIgnoreCase));
 }
 
 /// <summary>Where a binding is written: a file, and a line and character from zero as the C# server counts them.</summary>

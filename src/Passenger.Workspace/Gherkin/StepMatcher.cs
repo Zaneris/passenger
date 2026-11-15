@@ -181,10 +181,7 @@ public sealed class StepMatcher
         int? best = null;
         foreach (StepScope scope in binding.Scopes)
         {
-            bool fits = (scope.Tag is null || context.Tags.Any(t => t.TrimStart('@') == scope.Tag.TrimStart('@')))
-                && (scope.Feature is null || string.Equals(scope.Feature, context.FeatureTitle, StringComparison.CurrentCultureIgnoreCase))
-                && (scope.Scenario is null || string.Equals(scope.Scenario, context.ScenarioTitle, StringComparison.CurrentCultureIgnoreCase));
-            if (fits)
+            if (scope.Fits(context))
             {
                 best = Math.Max(best ?? 0, scope.Restrictions);
             }
