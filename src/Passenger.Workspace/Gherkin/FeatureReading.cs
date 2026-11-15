@@ -71,6 +71,9 @@ public sealed record FeaturePlaceholder(int Column, string Name)
     public int Length => Name.Length + 2;
 }
 
+/// <summary>Lines that fold together, the first staying shown.</summary>
+public readonly record struct FeatureFold(int FirstLine, int LastLine);
+
 /// <summary>A mistake Gherkin's reader found, where it found it.</summary>
 public sealed record FeatureError(int Line, int Column, string Message);
 
@@ -215,6 +218,35 @@ public sealed partial class FeatureReading
 
     /// <summary>The scenario a line is in, from its tags to its last line.</summary>
     public FeatureScenario? ScenarioAt(int line) => Scenarios.LastOrDefault(s => FirstLineOf(s.Line, s.Tags) <= line && line <= s.EndLine);
+
+    /// <summary>What folds, in order of its first line: the feature, each rule, background, scenario and examples, each doc
+    /// string, and each table of more than one row, from its first line to its last.</summary>
+    public IReadOnlyList<FeatureFold> Folds()
+    {
+        List<FeatureFold> folds = [];
+        if (Feature is not null)
+        {
+            folds.Add(new FeatureFold(Feature.Line, Feature.EndLine));
+        }
+        folds.AddRange(Rules.Select(r => new FeatureFold(r.Line, r.EndLine)));
+        foreach (FeatureScenario part in Scenarios)
+        {
+            folds.Add(new FeatureFold(part.Line, part.EndLine));
+            folds.AddRange(part.Examples.Select(e => new FeatureFold(e.Line, e.EndLine)));
+        }
+        foreach (FeatureStep step in Steps)
+        {
+            if (step.DocString is { } doc)
+            {
+                folds.Add(new FeatureFold(doc.Line, doc.EndLine));
+            }
+            if (step.Table is { Rows.Count: > 1 } table)
+            {
+                folds.Add(new FeatureFold(table.Rows[0].Line, table.Rows[^1].Line));
+            }
+        }
+        return [.. folds.Where(f => f.LastLine > f.FirstLine).OrderBy(f => f.FirstLine).ThenByDescending(f => f.LastLine)];
+    }
 
     private List<FeatureTag> pendingTags = [];
     private FeatureHeader? rule;

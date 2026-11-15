@@ -96,6 +96,10 @@ internal static class ScopeColours
         ("punctuation.definition.tag.begin.yaml", TokenKind.Keyword),
         ("punctuation.definition.tag.end.yaml", TokenKind.Keyword),
 
+        // Gherkin: titles plain, as Reqnroll's editors show them, and a table's rows in the string's colour, as its data.
+        ("string.language.gherkin", TokenKind.Text),
+        ("keyword.control.cucumber.table", TokenKind.String),
+
         // Markdown: headings bold in the constant's colour, markers in the keyword's, code in its own.
         ("markup.heading", TokenKind.Heading),
         ("punctuation.definition.heading.markdown", TokenKind.Keyword),

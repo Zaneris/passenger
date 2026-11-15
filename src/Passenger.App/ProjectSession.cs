@@ -1080,10 +1080,15 @@ public sealed class ProjectSession : IAsyncDisposable
     /// else its web language's, else a Godot project's scene as Passenger reads it; null while none has it.</summary>
     public Passenger.App.Navigation.FileOutline? OutlineOf(OpenDocument document) =>
         document.Language == Languages.Language.Markdown ? new Editors.MarkdownOutline(document.Text)
+        : document.Language == Languages.Language.Gherkin ? new Editors.FeatureOutline(document.Text, () => FeatureProjectFolder(document.Path))
         : Godot.GodotScriptTypes.IsScript(document.Path) ? new Godot.GDScriptOutline(document.Text)
         : (CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp) is { } lsp ? Passenger.App.Navigation.FileOutline.Served(lsp)
         : Passenger.Workspace.GodotFile.IsText(document.Path) && GodotOf(document.Path) is { } folder ? new Godot.GodotSceneOutline.Source(GodotScenes, folder)
         : null;
+
+    /// <summary>The folder of the project a .feature file belongs to, whose configuration says the language it is read in;
+    /// null for a file of no project.</summary>
+    public string? FeatureProjectFolder(string path) => ProjectOf(path) is { } project ? Path.GetDirectoryName(project.Path) : null;
 
     /// <summary>A language server started (or none, after one ended) in place of the one before.</summary>
     public event EventHandler? CSharpChanged;

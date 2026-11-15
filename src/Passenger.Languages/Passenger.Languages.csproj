@@ -11,6 +11,8 @@
     <ProjectReference Include="../Passenger.Editor/Passenger.Editor.csproj" />
     <ProjectReference Include="../Passenger.Lsp/Passenger.Lsp.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
+    <!-- A .feature file's folds, from Gherkin's own reading of it (Gherkin/FeatureReading). -->
+    <ProjectReference Include="../Passenger.Workspace/Passenger.Workspace.csproj" />
   </ItemGroup>
 
   <!-- What C#'s refactorings refuse in the words they are asked, one rule for the extension and the dialogs, compiled here

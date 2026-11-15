@@ -944,6 +944,11 @@ And one that colours .http and .rest files: `http.tmLanguage.json`, REST Client'
 `syntaxes/http.tmLanguage.json` of Huachao/vscode-restclient (https://github.com/Huachao/vscode-restclient, MIT,
 Copyright (c) 2016 - present Huachao Mao) at commit 0773d56b, unchanged.
 
+And one that colours Gherkin's .feature files (Reqnroll's and SpecFlow's tests): `feature.tmLanguage.json`, the file
+`syntaxes/feature.tmLanguage.json` of the Cucumber (Gherkin) Full Support extension, alexkrechik/VSCucumberAutoComplete
+(https://github.com/alexkrechik/VSCucumberAutoComplete, MIT, Copyright (c) 2018 Alexander Krechik) at commit 7722cc93,
+its 3.1.1, unchanged.
+
 And three that colour Godot's files, from the Godot Engine's own VS Code extension, godotengine/godot-vscode-plugin
 (https://github.com/godotengine/godot-vscode-plugin, MIT, Copyright (c) 2016-2022 The Godot Engine community) at its
 tag 2.7.1 (commit 7317ea20), its `syntaxes/` folder, unchanged: `GDScript.tmLanguage.json` (GDScript's .gd files),
@@ -975,6 +980,7 @@ Copyright (c) 2016 .NET Foundation
 Copyright (c) 2016 - present Huachao Mao
 Copyright (c) 2016-2022 The Godot Engine community
 Copyright (c) 2015-present MagicStack Inc.  http://magic.io
+Copyright (c) 2018 Alexander Krechik
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
