@@ -2070,6 +2070,9 @@ public static class TestPackages
 
     /// <summary>xunit v3 on the Testing Platform alone, its second line (the tests' own xunit v3 is on its first).</summary>
     public static string XunitApp { get; } = AvaloniaApp.Metadata("XunitAppVersion");
+
+    /// <summary>Reqnroll on xunit v3 (Reqnroll.xunit.v3), beside the tests' own xunit v3, adapter and test SDK.</summary>
+    public static string Reqnroll { get; } = AvaloniaApp.Metadata("ReqnrollVersion");
 }
 
 public static class ExplorerRows

@@ -88,6 +88,17 @@
     <XunitAppAnalyzersVersion>2.2.0</XunitAppAnalyzersVersion>
     <XunitAppAccessControlVersion>6.0.1</XunitAppAccessControlVersion>
     <TestingPlatformTwoVersion>2.5.1</TestingPlatformTwoVersion>
+    <!-- Reqnroll on xunit v3 for the BDD tests' Reqnroll projects (tests/UnitTestGraphs/Reqnroll), with what it depends on
+         that the tests' own xunit v3, VSTest adapter and test SDK do not bring, at the versions its restore resolves. -->
+    <ReqnrollVersion>3.3.4</ReqnrollVersion>
+    <ReqnrollGherkinVersion>35.0.0</ReqnrollGherkinVersion>
+    <ReqnrollCucumberExpressionsVersion>17.1.0</ReqnrollCucumberExpressionsVersion>
+    <ReqnrollHtmlFormatterVersion>22.2.0</ReqnrollHtmlFormatterVersion>
+    <ReqnrollMessagesVersion>30.1.0</ReqnrollMessagesVersion>
+    <ReqnrollAsyncInterfacesVersion>9.0.6</ReqnrollAsyncInterfacesVersion>
+    <ReqnrollDependencyModelVersion>8.0.2</ReqnrollDependencyModelVersion>
+    <ReqnrollXunitAnalyzersVersion>1.27.0</ReqnrollXunitAnalyzersVersion>
+    <ReqnrollTestingPlatformVersion>1.9.1</ReqnrollTestingPlatformVersion>
     <!-- Serilog at the version the Solution view's evaluation tests pin centrally (ProjectEvaluationTests), which depends
          on nothing at the tests' target: downloaded for the tests' package cache, so the restore their language server
          makes reaches no feed. -->
@@ -142,6 +153,11 @@
     <!-- TextMate grammars' tokenizer, with GregsEx's managed regular expressions: colour for every
          language but C#. -->
     <PackageVersion Include="Tint" Version="0.2.3" />
+    <!-- Cucumber's own Gherkin reader (every language its keywords are written in) and Cucumber Expressions, which read a
+         .feature file and match its steps to their step definitions as Reqnroll does: at the versions Reqnroll 3 takes,
+         so a step reads and matches in the editor as it does in a test run. -->
+    <PackageVersion Include="Gherkin" Version="35.0.0" />
+    <PackageVersion Include="Cucumber.CucumberExpressions" Version="17.1.0" />
     <!-- VSTest's own client for the vstest.console the SDK ships: discovery, runs and debugging of tests. -->
     <PackageVersion Include="Microsoft.TestPlatform.TranslationLayer" Version="18.11.0" />
     <!-- The Windows install's hooks, at the version of the vpk tool that packs it (dotnet-tools.json). -->

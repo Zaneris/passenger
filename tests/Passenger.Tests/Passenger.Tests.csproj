@@ -148,6 +148,7 @@
     <AssemblyMetadata Include="NUnitFourAdapterVersion" Value="$(NUnitFourAdapterVersion)" />
     <AssemblyMetadata Include="MSTestRunnerVersion" Value="$(MSTestRunnerVersion)" />
     <AssemblyMetadata Include="XunitAppVersion" Value="$(XunitAppVersion)" />
+    <AssemblyMetadata Include="ReqnrollVersion" Value="$(ReqnrollVersion)" />
   </ItemGroup>
 
   <!-- WPF's reference pack, likewise, for the WPF app WpfXamlTests make (WpfApp.Feed), with the target they make it for

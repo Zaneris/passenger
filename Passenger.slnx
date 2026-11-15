@@ -63,6 +63,7 @@
   <Folder Name="/tests/UnitTestGraphs/">
     <Project Path="tests/UnitTestGraphs/MSTest/UnitTestGraphs.MSTest.csproj" />
     <Project Path="tests/UnitTestGraphs/NUnit/UnitTestGraphs.NUnit.csproj" />
+    <Project Path="tests/UnitTestGraphs/Reqnroll/UnitTestGraphs.Reqnroll.csproj" />
     <Project Path="tests/UnitTestGraphs/Xunit2/UnitTestGraphs.Xunit2.csproj" />
     <Project Path="tests/UnitTestGraphs/XunitV3/UnitTestGraphs.XunitV3.csproj" />
   </Folder>
