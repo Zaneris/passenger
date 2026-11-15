@@ -1,0 +1,10 @@
+{
+  "configProperties": {
+    "Passenger.Cases.Text": "café \"q\"",
+    "Passenger.Cases.On": true,
+    "Passenger.Cases.Count": 3,
+    "Passenger.Cases.Object": { "a" : "é \"x\"", "b": [ 3 , null ] },
+    "Passenger.Cases.List": [ 1, "two" ],
+    "Passenger.Cases.Null": null
+  }
+}

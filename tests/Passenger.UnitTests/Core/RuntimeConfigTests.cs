@@ -4,7 +4,8 @@ namespace Passenger.UnitTests.Core;
 
 /// <summary>A build's runtimeconfig.json, read one way by the XAML previews, Hot Reload, the Live Visual Tree, a run's
 /// desktop app and the SDKs found: the framework it was built for in the letter case its project wrote, the shared
-/// frameworks it runs on, and its switches written as JSON's or as text.</summary>
+/// frameworks it runs on, its switches written as JSON's or as text, and each property as .NET's host gives it to the runtime,
+/// which Passenger's helper host gives a helper.</summary>
 public sealed class RuntimeConfigTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -38,6 +39,31 @@ public sealed class RuntimeConfigTests : IDisposable
         Assert.True(read.Switch("System.GC.Server"), "A switch written as JSON's true is not read as on");
         Assert.Null(read.Switch("Count"));
         Assert.Null(read.Switch("System.Globalization.Invariant"));
+    }
+
+    /// <summary>What .NET 10's host gave a program for each, read back through AppContext.GetData.</summary>
+    [Fact]
+    public void Each_property_reads_as_the_host_gives_it_an_object_or_a_list_as_its_json_written_whole_on_one_line()
+    {
+        string assembly = Path.Combine(root, "Helper.dll");
+        File.WriteAllText(Path.ChangeExtension(assembly, ".runtimeconfig.json"), """
+            { "runtimeOptions": { "configProperties": {
+                "Text": "caf\u00e9 \"q\"", "On": true, "Off": false, "Count": 3,
+                "Thing": { "a" : "é \"x\"",
+                           "b": [ 3 , null ] },
+                "Nothing": null
+            } } }
+            """);
+
+        IReadOnlyDictionary<string, string>? read = RuntimeConfig.Read(assembly)?.Properties;
+
+        Dictionary<string, string> given = new(StringComparer.Ordinal)
+        {
+            ["Text"] = "café \"q\"", ["On"] = "true", ["Off"] = "false", ["Count"] = "3", ["Thing"] = """{"a":"é \"x\"","b":[3,null]}""", ["Nothing"] = "null",
+        };
+        Assert.True(read is not null && read.Count == given.Count && given.All(p => read.TryGetValue(p.Key, out string? value) && value == p.Value),
+            $"The properties read as {(read is null ? "nothing" : string.Join(", ", read.Select(p => $"{p.Key}={p.Value}")))}, where the host gives {string.Join(", ", given.Select(p => $"{p.Key}={p.Value}"))}: "
+            + "a helper Passenger runs is given its configuration otherwise than its own host would give it");
     }
 
     [Fact]

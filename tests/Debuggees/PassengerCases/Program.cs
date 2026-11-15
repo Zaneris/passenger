@@ -7,6 +7,15 @@ if (args is ["child"])
 	Console.WriteLine("child ran");
 	return;
 }
+if (args is ["appcontext"])
+{
+	// What the runtime was given of each property this program's runtimeconfig.template.json sets.
+	foreach (string name in (string[])["Passenger.Cases.Text", "Passenger.Cases.On", "Passenger.Cases.Count", "Passenger.Cases.Object", "Passenger.Cases.List", "Passenger.Cases.Null"])
+	{
+		Console.WriteLine($"{name}={AppContext.GetData(name) ?? "(not given)"}");
+	}
+	return;
+}
 if (args is ["flood"])
 {
 	// 64 KB on standard output, more than a pipe holds unread, then an exit code of its own.

@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
-using System.Text.Json;
 using Passenger.Core;
 
 namespace Passenger.Helper;
@@ -29,7 +28,20 @@ public static class Program
         }
         string folder = Path.GetDirectoryName(assembly)!;
         string name = Path.GetFileNameWithoutExtension(assembly);
-        Properties(Path.Combine(folder, name + ".runtimeconfig.json"));
+        string runtimeConfig = Path.ChangeExtension(assembly, ".runtimeconfig.json");
+        if (File.Exists(runtimeConfig))
+        {
+            if (RuntimeConfig.Read(assembly) is not { } config)
+            {
+                Console.Error.WriteLine($"passenger-helper: {runtimeConfig} does not read as a runtime configuration");
+                return 2;
+            }
+            // As its host gives them to the runtime, which AppContext's switches and data read.
+            foreach ((string property, string value) in config.Properties)
+            {
+                AppContext.SetData(property, value);
+            }
+        }
         AppContext.SetData("APP_CONTEXT_BASE_DIRECTORY", folder + Path.DirectorySeparatorChar);
         string deps = Path.Combine(folder, name + ".deps.json");
         AppContext.SetData("APP_CONTEXT_DEPS_FILES", File.Exists(deps) ? deps : string.Empty);
@@ -45,26 +57,5 @@ public static class Program
         // Not wrapped, so a helper's failure reads as its own host would have it.
         object? ended = main.Invoke(null, BindingFlags.DoNotWrapExceptions, null, given, null);
         return ended is int code ? code : Environment.ExitCode;
-    }
-
-    /// <summary>The helper's runtimeconfig.json properties, as its host gives them to the runtime: each a string, which
-    /// AppContext's switches and data read.</summary>
-    private static void Properties(string runtimeConfig)
-    {
-        if (!File.Exists(runtimeConfig))
-        {
-            return;
-        }
-        using JsonDocument config = JsonDocument.Parse(File.ReadAllBytes(runtimeConfig), LenientJson.Document);
-        foreach (JsonProperty property in JsonMembers.Properties(JsonMembers.Object(config.RootElement, "runtimeOptions"), "configProperties"))
-        {
-            AppContext.SetData(property.Name, property.Value.ValueKind switch
-            {
-                JsonValueKind.String => property.Value.GetString(),
-                JsonValueKind.True => "true",
-                JsonValueKind.False => "false",
-                _ => property.Value.GetRawText(),
-            });
-        }
     }
 }
