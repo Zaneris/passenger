@@ -222,24 +222,12 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         List<string> unheard = [];
         foreach ((string res, string text) in scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)).Concat(scenes.Files.Select(f => KeyValuePair.Create(f.Key, f.Value.Text))))
         {
-            if (scenes.FileOf(res) is { } file && !open.ContainsKey(file) && WrittenAt(file) >= since && EditorArea.ReadText(file) is { } now && now != text)
+            if (scenes.FileOf(res) is { } file && !open.ContainsKey(file) && FileStamp.WrittenAt(file) >= since && EditorArea.ReadText(file) is { } now && now != text)
             {
                 unheard.Add(file);
             }
         }
         return unheard;
-    }
-
-    private static DateTime WrittenAt(string file)
-    {
-        try
-        {
-            return File.GetLastWriteTimeUtc(file);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return DateTime.MinValue;
-        }
     }
 
     /// <summary>The project's autoloads that run a GDScript, by name, the res:// path of each's script; none outside a Godot project.</summary>

@@ -257,7 +257,7 @@ public static class FileSearch
     /// read; or why it is left as it was.</summary>
     public sealed record Replacing(string Path, TextSnapshot? Searched, IReadOnlyList<TextEdit> Edits, FileText? Closed, string? After, string? Why)
     {
-        public (long Length, DateTime Written)? Read { get; init; }
+        public FileStamp? Read { get; init; }
     }
 
     /// <summary>Replaces every match in a file, an open one's text as the editor has it (<paramref name="open"/>), else
@@ -275,7 +275,7 @@ public static class FileSearch
         try
         {
             // Taken before the read: a write as it reads moves it.
-            (long Length, DateTime Written)? read = Stamp(path);
+            FileStamp? read = FileStamp.Of(path);
             if (FileText.Load(path) is not { } file)
             {
                 return new Replacing(path, null, [], null, null, null);
@@ -305,7 +305,7 @@ public static class FileSearch
         }
         try
         {
-            if (Stamp(plan.Path) != plan.Read)
+            if (FileStamp.Of(plan.Path) != plan.Read)
             {
                 return new Written(plan.Path, null, null, null, ChangedWhy);
             }
@@ -334,13 +334,6 @@ public static class FileSearch
 
     /// <summary>Why a file written since it was searched is left as it was.</summary>
     public const string ChangedWhy = "edited while it was searched";
-
-    /// <summary>A file's length and last write time, or null when it is not there.</summary>
-    private static (long Length, DateTime Written)? Stamp(string path)
-    {
-        FileInfo info = new(path);
-        return info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
-    }
 
     /// <summary>Why a read-only file is left as it was: one marked so on disk, or one the editor shows read-only.</summary>
     public const string ReadOnlyWhy = "read-only";

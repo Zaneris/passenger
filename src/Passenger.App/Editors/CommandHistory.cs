@@ -661,11 +661,11 @@ public sealed class CommandHistory
             string name = Path.GetFileName(path);
             try
             {
-                if (Stamp(path) is not { } stamp)
+                if (FileStamp.Of(path) is not { } stamp)
                 {
                     return (made ? $"{name} is no longer there" : $"{name} has been changed since", looks);
                 }
-                if (earlier?.GetValueOrDefault(path) is { } seen && seen.Length == stamp.Length && seen.Written == stamp.Written)
+                if (earlier?.GetValueOrDefault(path) is { } seen && seen.Stamp == stamp)
                 {
                     looks[path] = seen;
                     continue;
@@ -674,7 +674,7 @@ public sealed class CommandHistory
                 {
                     return ($"{name} has been changed since", looks);
                 }
-                looks[path] = new Look(stamp.Length, stamp.Written, file with { Text = string.Empty });
+                looks[path] = new Look(stamp, file with { Text = string.Empty });
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
@@ -682,13 +682,6 @@ public sealed class CommandHistory
             }
         }
         return (null, looks);
-    }
-
-    /// <summary>A file's length and last write time (through a link, its target's), or null when it is not there.</summary>
-    private static (long Length, DateTime Written)? Stamp(string path)
-    {
-        FileInfo info = new(AtomicFile.Target(path));
-        return info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
     }
 
     /// <summary>A file not open that an Undo or Redo writes off the window's thread: how it is put, and how that is taken
@@ -831,9 +824,9 @@ public sealed class CommandHistory
         return null;
     }
 
-    /// <summary>A file not open as a look found it: its length and last write time, which a later look compares before it
-    /// reads the file again, and how it is stored (its text left out), which its Undo or Redo writes it in.</summary>
-    private sealed record Look(long Length, DateTime Written, FileText Stored);
+    /// <summary>A file not open as a look found it: its stamp, which a later look compares before it reads the file again,
+    /// and how it is stored (its text left out), which its Undo or Redo writes it in.</summary>
+    private sealed record Look(FileStamp Stamp, FileText Stored);
 
     /// <summary>What a command did: its name ("Rename Foo to Bar"), each file's text before and after it (at the path the
     /// file had then; an open file's with the undo step that made it), the files it moved, in order, the files it made, the

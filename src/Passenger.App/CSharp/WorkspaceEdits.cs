@@ -831,22 +831,11 @@ public sealed class Patience
         List<(string Path, FileStamp Stamp, string Hash)> unwritten = [];
         foreach (Roslyn.Extension.TextHeld text in texts)
         {
-            FileStamp stamp = FileStamp.Of(text.Path);
-            if (text.Hash is { } hash && HeldTexts.OnDisk(text.Path, hash) == true && FileStamp.Of(text.Path) == stamp)
+            if (FileStamp.Of(text.Path) is { } stamp && text.Hash is { } hash && HeldTexts.OnDisk(text.Path, hash) == true && FileStamp.Of(text.Path) == stamp)
             {
                 unwritten.Add((text.Path, stamp, hash));
             }
         }
         return unwritten;
-    }
-
-    /// <summary>When a file was last written and how long it was then.</summary>
-    private readonly record struct FileStamp(DateTime Written, long Length)
-    {
-        public static FileStamp Of(string path)
-        {
-            FileInfo file = new(path);
-            return file.Exists ? new FileStamp(file.LastWriteTimeUtc, file.Length) : default;
-        }
     }
 }

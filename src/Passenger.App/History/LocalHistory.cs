@@ -963,7 +963,7 @@ public sealed class LocalHistory
                 continue;
             }
             Store(bytes);
-            bool late = until is { } limit && WrittenAt(path) > limit;
+            bool late = until is { } limit && FileStamp.WrittenAt(path) > limit;
             (long Set, DateTimeOffset Time, string Name) named = late ? (laterSet ??= NewSet(), Keeping.Clock(), ExternalChange) : (set, time, name);
             made.Add(!isKnown
                 ? new HistoryEvent(isNew ? named.Set : NewSet(), named.Time, isNew ? HistoryKind.Created : HistoryKind.Seen, path, null, null, hash, isNew ? named.Name : null)
@@ -1032,19 +1032,6 @@ public sealed class LocalHistory
             return name == ExternalChange ? null
                 : activity?.Set == set || claims.Any(c => c.Named.Set == set && c.Until == DateTime.MaxValue) ? DateTime.MaxValue
                 : endedAt.TryGetValue(set, out DateTime until) ? until : null;
-        }
-    }
-
-    /// <summary>When a file was last written, as the system has it; the earliest time where it cannot say.</summary>
-    private static DateTime WrittenAt(string file)
-    {
-        try
-        {
-            return File.GetLastWriteTimeUtc(file);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return DateTime.MinValue;
         }
     }
 

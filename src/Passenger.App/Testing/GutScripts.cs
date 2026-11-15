@@ -80,24 +80,23 @@ public static partial class GutScripts
         }
     }
 
-    /// <summary>Each project's config as last read, by its folder, with the file's time and length it was read at.</summary>
-    private static readonly ConcurrentDictionary<string, (DateTime Written, long Length, Config? Config)> Configs = new(PathNames.Comparer);
+    /// <summary>Each project's config as last read, by its folder, with the file's stamp it was read at (null: none there).</summary>
+    private static readonly ConcurrentDictionary<string, (FileStamp? Stamp, Config? Config)> Configs = new(PathNames.Comparer);
 
     /// <summary>A project's GUT config (<see cref="Config.Read"/>), read again only once its file has changed; null for
     /// none. Any thread's.</summary>
     public static Config? ConfigOf(string folder)
     {
-        FileInfo file = new(Path.Combine(folder, ConfigFile));
+        string file = Path.Combine(folder, ConfigFile);
         try
         {
-            file.Refresh();
-            (DateTime written, long length) = file.Exists ? (file.LastWriteTimeUtc, file.Length) : (default, -1);
-            if (Configs.TryGetValue(folder, out (DateTime Written, long Length, Config? Config) known) && known.Written == written && known.Length == length)
+            FileStamp? stamp = FileStamp.Of(file);
+            if (Configs.TryGetValue(folder, out (FileStamp? Stamp, Config? Config) known) && known.Stamp == stamp)
             {
                 return known.Config;
             }
-            Config? config = file.Exists ? Config.Read(File.ReadAllText(file.FullName)) : null;
-            Configs[folder] = (written, length, config);
+            Config? config = stamp is null ? null : Config.Read(File.ReadAllText(file));
+            Configs[folder] = (stamp, config);
             return config;
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
