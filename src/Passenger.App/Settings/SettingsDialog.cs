@@ -94,8 +94,11 @@ public sealed partial class SettingsDialog : IdeWindow
     private readonly StackPanel body;
     private readonly TextBlock nothing;
 
+    /// <summary>The page's room at its right: its gutter, where its scroll bar shows over the page, clear of what it shows.</summary>
+    private const double Gutter = 20;
+
     /// <summary>What a page keeps above its options as they scroll (the Keymap page's toolbar).</summary>
-    private readonly Decorator pageTop = new();
+    private readonly Decorator pageTop = new() { Margin = new Thickness(0, 0, Gutter, 0) };
 
     /// <summary>OK and Apply, which put the options in force: greyed while an option holds a value Settings refuses.</summary>
     private readonly Button ok = DialogFooter.Default();
@@ -123,8 +126,9 @@ public sealed partial class SettingsDialog : IdeWindow
         search.TextChanged += (_, _) => Filter();
         pages = new ListBox { Classes = { StyleClasses.Tree, StyleClasses.Pages } };
         pages.SelectionChanged += (_, _) => ShowPage();
-        heading = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 14) };
-        body = new StackPanel { Spacing = 12 };
+        heading = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, Gutter, 14) };
+        // The scroll bar shows over the scrolled page's right, so the gutter is inside it: the bar stands there, beside the rows.
+        body = new StackPanel { Spacing = 12, Margin = new Thickness(0, 0, Gutter, 0) };
         nothing = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Nothing matches", IsVisible = false, Margin = new Thickness(21, 4) };
 
         ok.Click += (_, _) => Ok();
@@ -136,7 +140,7 @@ public sealed partial class SettingsDialog : IdeWindow
         left.Children.Add(new Panel { Children = { pages, nothing } });
         Border leftPane = new() { BorderThickness = new Thickness(0, 0, 1, 0), Child = left };
         leftPane.Bind(Border.BorderBrushProperty, leftPane.GetResourceObservable(TokenKeys.Divider));
-        DockPanel right = new() { Margin = new Thickness(20, 16, 20, 0) };
+        DockPanel right = new() { Margin = new Thickness(20, 16, 0, 0) };
         DockPanel.SetDock(heading, Dock.Top);
         DockPanel.SetDock(pageTop, Dock.Top);
         right.Children.Add(heading);

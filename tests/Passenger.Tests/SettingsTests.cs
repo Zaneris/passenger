@@ -1099,6 +1099,53 @@ public sealed class SettingsTests : IDisposable
         }
     }
 
+    /// <summary>At its smallest size, and at its own, no row of any page runs under the page's scroll bar, which shows over
+    /// the page's right: every label, editor and note keeps to the left of where the bar stands, so a note's last words are
+    /// never drawn under its thumb.</summary>
+    [AvaloniaFact]
+    public void No_row_of_any_page_runs_under_its_scroll_bar_at_the_dialogs_smallest_size_or_its_own()
+    {
+        MainWindow window = Open();
+        SettingsDialog dialog = window.ShowSettings();
+        try
+        {
+            List<string> under = [];
+            foreach ((double width, double height) in new[] { (dialog.Width, dialog.Height), (dialog.MinWidth, dialog.MinHeight) })
+            {
+                dialog.Width = width;
+                dialog.Height = height;
+                Ui.Settle();
+                bool scrolled = false;
+                foreach (string page in dialog.Pages.ToList())
+                {
+                    dialog.Page = page;
+                    Ui.Settle();
+                    ScrollViewer scroll = dialog.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Content is StackPanel && s.IsEffectivelyVisible);
+                    ScrollBar bar = scroll.GetVisualDescendants().OfType<ScrollBar>().First(b => b.Orientation == Avalonia.Layout.Orientation.Vertical);
+                    scrolled |= bar.IsEffectivelyVisible;
+                    // Where the bar stands, shown or not: the scroller's right, its own width in.
+                    double barLeft = scroll.Bounds.Width - bar.Width;
+                    foreach (Control row in ((StackPanel)scroll.Content!).Children.Where(r => r.IsEffectivelyVisible))
+                    {
+                        Rect at = new Rect(row.Bounds.Size).TransformToAABB(row.TransformToVisual(scroll)!.Value);
+                        if (at.Right > barLeft + 0.5)
+                        {
+                            string words = row.GetSelfAndVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => !string.IsNullOrEmpty(t.Text))?.Text ?? string.Empty;
+                            under.Add($"{width:0} wide, {page}: '{words[..Math.Min(words.Length, 40)]}' to {at.Right:0}, the bar from {barLeft:0}");
+                        }
+                    }
+                }
+                Assert.True(scrolled, $"At {width:0} by {height:0} no page of Settings scrolled, so none showed its scroll bar to keep clear of");
+            }
+            Assert.True(under.Count == 0, $"These rows of Settings run under the page's scroll bar, their right drawn under its thumb:\n{string.Join("\n", under.Take(40))}");
+        }
+        finally
+        {
+            dialog.Close();
+            window.Close();
+        }
+    }
+
     internal static SettingsDialog TerminalDialog(MainWindow window)
     {
         SettingsDialog dialog = window.ShowSettings();
