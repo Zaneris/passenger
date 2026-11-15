@@ -106,4 +106,12 @@ public sealed class StepSnippetsTests
 
         Assert.Contains("(string @class)", snippet.Code, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void A_quoted_word_that_is_a_csharp_keyword_is_a_verbatim_parameter()
+    {
+        StepSnippet snippet = Snippet("Feature: F\nScenario: S\n  Given the \"Class\" and 'string' are open\n");
+
+        Assert.StartsWith("[Given(\"the {string} and {string} are open\")]\npublic void GivenTheAndAreOpen(string @class, string @string)\n", snippet.Code, StringComparison.Ordinal);
+    }
 }

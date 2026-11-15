@@ -55,7 +55,7 @@ public static partial class StepSnippets
         method = Unique(async ? method + "Async" : method, taken);
         string attribute = cucumber ? CSharpLiterals.Quoted(expression.ToString()) : CSharpLiterals.Written(expression.ToString(), "@");
         string returns = async ? "async Task" : "void";
-        string code = $"[{step.Kind}({attribute})]\npublic {returns} {method}({string.Join(", ", parameters.Select(p => $"{p.Type} {p.Name}"))})\n{{\n    throw new PendingStepException();\n}}\n";
+        string code = $"[{step.Kind}({attribute})]\npublic {returns} {method}({string.Join(", ", parameters.Select(p => $"{p.Type} {Declared(p.Name)}"))})\n{{\n    throw new PendingStepException();\n}}\n";
         return new StepSnippet(code, method, step.Kind);
     }
 
@@ -199,8 +199,11 @@ public static partial class StepSnippets
             return "value";
         }
         string joined = words[0].ToLowerInvariant() + string.Concat(words.Skip(1).Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
-        return !CSharpNames.Starts(joined[0]) ? "p" + joined : Keywords.Contains(joined) ? "@" + joined : joined;
+        return CSharpNames.Starts(joined[0]) ? joined : "p" + joined;
     }
+
+    /// <summary>A parameter's name as its declaration writes it: one of C#'s reserved words verbatim (<c>@class</c>).</summary>
+    private static string Declared(string name) => Keywords.Contains(name) ? "@" + name : name;
 
     /// <summary>C#'s reserved words, which a parameter named after one is written verbatim to take.</summary>
     private static readonly HashSet<string> Keywords = new(StringComparer.Ordinal)
