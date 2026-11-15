@@ -60,6 +60,11 @@ public sealed record StepBinding(BindingKind Kind, string? Expression, string Me
     public string Shown => $"{ShortType}.{Method}({string.Join(", ", Parameters.Select(p => p.ShortType))})";
 
     public bool Binds(StepKind kind) => Kind == BindingKind.StepDefinition || (int)Kind == (int)kind;
+
+    /// <summary>Whether two readings name one definition (each project that sees it reads it apart): its type, method, kind,
+    /// expression and parameters' types.</summary>
+    public bool SameAs(StepBinding other) => Method == other.Method && Type == other.Type && Kind == other.Kind && Expression == other.Expression
+        && Parameters.Select(p => p.Type).SequenceEqual(other.Parameters.Select(p => p.Type));
 }
 
 /// <summary>A <c>[StepArgumentTransformation]</c>: its regular expression (none takes any text), its name, by which a

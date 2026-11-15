@@ -128,7 +128,7 @@ public sealed class StepMatcher
 
     /// <summary>The steps of the files given that a definition binds, each with its file's reading.</summary>
     public IEnumerable<(FeatureReading Reading, FeatureStep Step)> UsesOf(StepBinding binding, IEnumerable<FeatureReading> readings) =>
-        readings.SelectMany(r => r.Steps.Select(s => (r, s))).Where(u => Match(u.s, u.r).Bindings.Any(b => b.Binding == binding));
+        readings.SelectMany(r => r.Steps.Select(s => (r, s))).Where(u => Match(u.s, u.r).Bindings.Any(b => b.Binding.SameAs(binding)));
 
     private static StepArgument[] ArgumentsOf(Match match) =>
         [.. match.Groups.Cast<Group>().Skip(1).Where(g => g.Success).Select(g => new StepArgument(g.Index, g.Length))];

@@ -39,7 +39,9 @@ internal static class StepBindingReading
                 continue;
             }
             string? ns = Namespaces.FirstOrDefault(n => compilation.GetTypeByMetadataName(n + ".BindingAttribute") is not null);
-            if (ns is null)
+            // A project whose framework is not referenced yet (not restored, or still loading) binds no attribute: its
+            // bindings are unknown, never none, so no step of its features is said to be undefined.
+            if (ns is null || compilation.GetSpecialType(SpecialType.System_Object).TypeKind == TypeKind.Error)
             {
                 continue;
             }

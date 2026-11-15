@@ -17,6 +17,7 @@ public partial class MainWindow
     private Debounce? stepsLater;
     private Task? stepsRead;
     private CSharpService? stepsFrom;
+    private Bdd.BddSource? bdd;
 
     private void AddSteps()
     {

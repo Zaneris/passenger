@@ -88,7 +88,8 @@ public sealed class CodeAssist
         context.Languages = new LanguageAssists(new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
             new CssClassAssist(context, completion, navigation), gdscript, new WebAssist(context, popups, completion, parameterInfo, actions),
-            new GodotShaderAssist(context, completion, navigation, csharp), new GodotAssist(context, popups, completion, navigation, actions, csharp), csharp);
+            new GodotShaderAssist(context, completion, navigation, csharp), new GodotAssist(context, popups, completion, navigation, actions, csharp),
+            new GherkinAssist(context, completion, navigation), csharp);
         // Every editor a split makes is wired the same; what it asks is answered for the active one, which it is.
         editors.ForEachEditor(editor =>
         {
@@ -392,6 +393,13 @@ public sealed class CodeAssist
     }
 
     /// <summary>The routes the request on a line (the editor's, from zero) of an .http file calls.</summary>
+    /// <summary>What the window gives the editor's commands of its BDD (<see cref="GherkinAssist"/>).</summary>
+    internal Func<Bdd.BddSource?>? Bdd
+    {
+        get => context.Languages.Gherkin.Source;
+        set => context.Languages.Gherkin.Source = value;
+    }
+
     public Func<string, int, IReadOnlyList<LspLocation>>? HttpRouteTargets
     {
         get => context.Languages.Http.HttpRouteTargets;
@@ -552,25 +560,27 @@ public sealed class CodeAssist
             Menus = [new("Refactor", 4, 1)],
         });
         Code(AppActions.GoToDeclaration, "Go to Declaration", context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true,
-            godot: true, shader: true);
+            godot: true, shader: true, gherkin: true);
         Code(AppActions.DerivedSymbols, "Derived Symbols", context => IdeErrors.Observe(navigation.GoToDerivedSymbols(Caret)), new("Navigate", 2, 1));
         Code(AppActions.GoToImplementation, "Go to Implementation", context => IdeErrors.Observe(navigation.GoToImplementation(Caret)), new("Navigate", 2, 2));
         Code(AppActions.GoToTypeDeclaration, "Go to Type Declaration", context => IdeErrors.Observe(navigation.GoToTypeDeclaration(Caret)), new("Navigate", 2, 3));
         Code(AppActions.BaseSymbols, "Base Symbols", context => IdeErrors.Observe(navigation.GoToBaseSymbols(Caret)), new("Navigate", 2, 4));
-        Code(AppActions.FindUsages, "Find Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret)), new("Navigate", 2, 5), xaml: true, shader: true);
-        Code(AppActions.ShowUsages, "Show Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret, inPopup: true)), new("Navigate", 2, 8), xaml: true, shader: true);
+        Code(AppActions.FindUsages, "Find Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret)), new("Navigate", 2, 5), xaml: true, shader: true, gherkin: true);
+        Code(AppActions.ShowUsages, "Show Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret, inPopup: true)), new("Navigate", 2, 8), xaml: true, shader: true, gherkin: true);
         Code(AppActions.ParameterInfo, "Parameter Info", context => IdeErrors.Observe(parameterInfo.Show()), new("View", 1, 2));
         Code(AppActions.NextError, "Next Highlighted Error", _ => navigation.StepToMarker(forward: true), new("Navigate", 3, 0), server: false);
         Code(AppActions.PreviousError, "Previous Highlighted Error", _ => navigation.StepToMarker(forward: false), new("Navigate", 3, 1), server: false);
         Code(AppActions.QuickDocumentation, "Quick Documentation", context => quickInfo.QuickDocumentation(), new("View", 1, 1), server: false);
 
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
-            bool http = false, bool godot = false, bool shader = false, bool gdscript = false) =>
+            bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false) =>
             registry.Add(new IdeAction(id, title, "Code", run)
             {
-                // An .http file's requests, a Godot scene's paths and a shader's names are each read with no language server.
+                // An .http file's requests, a Godot scene's paths, a shader's names and a feature's steps are each read with no
+                // language server.
                 WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
-                    || shader && action.File is { } file && Godot.GodotShaderMarks.IsShader(file.Path) ? null
+                    || shader && action.File is { } file && Godot.GodotShaderMarks.IsShader(file.Path)
+                    || gherkin && action.File is { } feature && Passenger.App.Bdd.FeatureChecks.IsFeature(feature.Path) ? null
                     : gdscript && CodeActions.IsGDScript(action.File) ? (action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File!.Name) : null)
                     : WhyNot(action, server, syntax, xaml, markup, msbuild),
                 Menus = [menu],

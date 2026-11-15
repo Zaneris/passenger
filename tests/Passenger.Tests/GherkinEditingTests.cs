@@ -8,7 +8,8 @@ using Passenger.Text;
 
 namespace Passenger.Tests;
 
-/// <summary>A .feature file is Gherkin's: coloured by its grammar (keywords, tags, comments, its tables as data),
+/// <summary>A .feature file is Gherkin's: coloured by its grammar (keywords, tags, comments, its tables as data) and by
+/// Gherkin's reading of it (descriptions, placeholders, an examples table's header),
 /// folded by Gherkin's own reading of it (the feature, each scenario, its examples and doc strings), outlined in Structure
 /// and commented with a <c>#</c>, all with no project or language server.</summary>
 public sealed class GherkinEditingTests : FileColoursFolder
@@ -48,7 +49,11 @@ public sealed class GherkinEditingTests : FileColoursFolder
         Assert.Equal(TokenKind.Text, KindOf(editor, "Calculator"));
         Assert.Equal(TokenKind.Class, KindOf(editor, "@calc"));
         Assert.Equal(TokenKind.Keyword, KindOf(editor, "Given "));
-        Assert.Equal(TokenKind.String, KindOf(editor, "| a | sum |"));
+        Assert.Equal(TokenKind.String, KindOf(editor, "| 1 | 1   |"));
+        Ui.WaitFor(() => KindOf(editor, "<a>") == TokenKind.Number, "the outline's placeholder in a number's colour");
+        Assert.Equal(TokenKind.DocComment, KindOf(editor, "Adds numbers"));
+        int header = Feature.IndexOf("| a | sum |", StringComparison.Ordinal) + "| a | ".Length;
+        Assert.Contains(editor.Highlighter!.GetSpans(editor.Document.Snapshot, header, 3), s => s.Start == header && s.Length == 3 && s.Kind == TokenKind.Bold);
         Assert.Equal(TokenKind.Comment, KindOf(editor, "# The plain case"));
 
         Ui.WaitFor(() => document.FoldsFound, "the feature's folds");
