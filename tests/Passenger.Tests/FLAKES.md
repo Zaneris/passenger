@@ -1683,3 +1683,8 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   the method ran on to the next breakpoint (once in about 1,500 looped steps under load). The yield is now the async
   step's however late it comes, and a Debug build's run is watched where it resumes from the step's start;
   `PASSENGER_ENGINE_LATE_YIELD` holds the yield back as the runtime did, failing StepTests' new test 3 of 3 before (#1650).
+- CI's Disk image jobs (runs 42948909557, 43178423272, 43648783540): `hdiutil convert` failed three times with
+  "Resource temporarily unavailable". **The packaging script**: the read-write mount's detach unmounted the volume but
+  could not eject a disk a process held, `package-mac.sh` took a mount point no longer mounted as detached, and the image
+  stayed attached, its helper holding the file's lock (the orphan each failed job's cleanup ended). It now detaches by
+  disk until hdiutil lists the image no more, naming what held it (#1473).
