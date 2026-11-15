@@ -250,7 +250,7 @@ public sealed class XamlProjectBuilder
         foreach (XamlFileSummary file in files.Values)
         {
             if (file.Class is not { Length: > 0 } name || file.ClassPlace is not { } place || types.Find(name) is not null
-                || !name.Split('.').All(part => part.Length > 0 && part.All(c => char.IsLetterOrDigit(c) || c == '_')))
+                || !name.Split('.').All(SyntaxFacts.IsValidIdentifier))
             {
                 continue;
             }

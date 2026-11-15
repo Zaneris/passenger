@@ -136,6 +136,31 @@ public class CreateFromUsageTests
         Assert.Contains($"<local:{Key} x:Key=\"{Key}\" />", XamlFiles.Applied(window, fix.Edits(window)), StringComparison.Ordinal);
     }
 
+    /// <summary>A converter's namespace is written as its view's code-behind writes its own, block or file-scoped, the
+    /// code-behind's namespace named with marks.</summary>
+    [Theory]
+    [InlineData("namespace गिनती\n{\n    public partial class MainWindow\n    {\n    }\n}\n", false)]
+    [InlineData("namespace गिनती;\n\npublic partial class MainWindow\n{\n}\n", true)]
+    public void A_converter_writes_its_namespace_as_a_code_behind_named_with_marks_writes_its_own(string behind, bool scoped)
+    {
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("passenger-unit-");
+        try
+        {
+            string view = Path.Combine(folder.FullName, "MainWindow.axaml");
+            File.WriteAllText(view + ".cs", behind);
+            string window = "<Window xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">\n"
+                + "    <TextBlock Text=\"{Binding Title, Converter={StaticResource ShoutConverter}}\" />\n</Window>\n";
+            XamlFile file = new(view, XmlTree.Parse(window), XamlFiles.Project(AvaloniaDialect.Instance));
+            string made = Assert.Single(Assert.IsType<XamlFix>(CreateFromUsage.Converter(file, "ShoutConverter")).Others).Made!;
+            Assert.True(made.Contains(scoped ? ";\n\npublic class ShoutConverter" : "\n{\n    public class ShoutConverter", StringComparison.Ordinal),
+                $"The converter's namespace is not written {(scoped ? "file-scoped" : "in a block")} as its code-behind writes its own:\n{made}");
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
     /// <summary>The errors a file of C# compiles with, Avalonia's IValueConverter declared beside it.</summary>
     private static IReadOnlyList<Diagnostic> Errors(string code)
     {

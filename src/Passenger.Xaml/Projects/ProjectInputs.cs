@@ -1,9 +1,9 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Core;
 using Passenger.Packages;
+using Passenger.Xaml.Metadata;
 
 namespace Passenger.Xaml.Projects;
 
@@ -154,7 +154,7 @@ public sealed record ProjectInputs(
         FindInCache(folders, versions, [evaluation?.PackageRoot, .. read?.PackageFolders ?? []], folder);
         // Two profiles of one framework (WPF's and Windows Forms') share its pack.
         return new ProjectInputs(projectPath, assemblyName, framework, [.. references.Distinct(StringComparer.Ordinal)], projectReferences, SourceFilesOf(folder),
-            ImplicitUsingsOf(assets, framework), assets, packages)
+            ImplicitUsingsOf(assets, framework, assemblyName), assets, packages)
         {
             PackageVersions = versions,
             PackageFolders = folders,
@@ -480,30 +480,17 @@ public sealed record ProjectInputs(
         }
     }
 
-    /// <summary>The usings the SDK writes into the project's <c>GlobalUsings.g.cs</c> beside its assets file: the one in a
-    /// folder of the framework read (<paramref name="framework"/>) first.</summary>
-    private static List<string> ImplicitUsingsOf(string? assets, string? framework)
+    /// <summary>The usings the SDK writes into the project's <c>GlobalUsings.g.cs</c> beside its assets file, read as the
+    /// project's own C# is: the one in a folder of the framework read (<paramref name="framework"/>) first.</summary>
+    private static IReadOnlyList<string> ImplicitUsingsOf(string? assets, string? framework, string assemblyName)
     {
-        List<string> usings = [];
         if (assets is null || Path.GetDirectoryName(assets) is not { } obj || !Directory.Exists(obj))
         {
-            return usings;
+            return [];
         }
         string[] written = [.. Directory.EnumerateFiles(obj, "*.GlobalUsings.g.cs", SearchOption.AllDirectories)];
         string? generated = written.FirstOrDefault(f => framework is not null && InFolderOf(f, framework, obj)) ?? written.FirstOrDefault();
-        if (generated is null)
-        {
-            return usings;
-        }
-        foreach (string line in File.ReadLines(generated))
-        {
-            Match match = Regex.Match(line, @"^\s*global\s+using\s+(?:global::)?([\w.]+)\s*;");
-            if (match.Success)
-            {
-                usings.Add(match.Groups[1].Value);
-            }
-        }
-        return usings;
+        return generated is null ? [] : SourceTypes.Read(generated, File.ReadAllText(generated), assemblyName, CSharpParseOptions.Default).GlobalUsings;
     }
 
     /// <summary>Whether a build's file lies in a folder of a target framework's under <paramref name="within"/>: <c>net10.0/</c>,

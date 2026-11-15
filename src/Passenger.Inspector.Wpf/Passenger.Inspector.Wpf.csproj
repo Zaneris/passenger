@@ -37,6 +37,8 @@
     <!-- XAML Hot Reload's reading of a XAML file's two texts and what it refuses, as both inspectors read them. -->
     <Compile Include="../Passenger.Inspector/XamlRoot.cs" Link="XamlRoot.cs" />
     <Compile Include="../Passenger.Inspector/XamlReloading.cs" Link="XamlReloading.cs" />
+    <!-- A handler's name read as C# reads a name, for what XAML Hot Reload says of one the class lacks. -->
+    <Compile Include="../Passenger.Core/CSharpNames.cs" Link="CSharpNames.cs" />
     <!-- Which of the files an app's build recorded is the XAML file asked of, as both inspectors tell. -->
     <Compile Include="../Passenger.Inspector/XamlPlaces.cs" Link="XamlPlaces.cs" />
     <Compile Include="../Passenger.Inspector/Breaks.cs" Link="Breaks.cs" />

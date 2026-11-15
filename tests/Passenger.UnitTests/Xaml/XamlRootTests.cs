@@ -5,8 +5,8 @@ namespace Passenger.UnitTests.Xaml;
 /// <summary>What XAML Hot Reload reads of two texts of a XAML file's root: its type and x:Class, the properties a new text no
 /// longer sets (cleared before the app populates the root again), those it sets as before (whose live value stands, but for
 /// a markup extension, which may read what changed), a property element compared whole, what the text writes into the
-/// root's collections, against which what the app put there itself is told, and a text that does not read refused at its
-/// line.</summary>
+/// root's collections, against which what the app put there itself is told, a text that does not read refused at its
+/// line, and a handler an attribute names that the class lacks said as such.</summary>
 public sealed class XamlRootTests
 {
     private const string Before = """
@@ -168,5 +168,23 @@ public sealed class XamlRootTests
     {
         Assert.Equal(("Opened", "OnOpened"), XamlRoot.AttributeAt(Before, 3, 96));
         Assert.Null(XamlRoot.AttributeAt(Before, 3, 95));
+    }
+
+    [Fact]
+    public void A_handler_named_with_marks_that_the_class_lacks_is_said_whole_and_one_it_has_is_not()
+    {
+        string lacked = Before.Replace("Opened=\"OnOpened\"", "Opened=\"गिनती\"", StringComparison.Ordinal);
+        Assert.True(XamlReloading.MissingHandler(lacked, 3, 96, typeof(Greeter)) == "Opened=\"गिनती\" names a handler Greeter does not have: add गिनती in C# and apply both changes",
+            "A handler named with marks that the window lacks is not said, so the compiler's own words tell nothing of adding it in C#");
+        string had = Before.Replace("Opened=\"OnOpened\"", "Opened=\"नमस्ते\"", StringComparison.Ordinal);
+        Assert.Null(XamlReloading.MissingHandler(had, 3, 96, typeof(Greeter)));
+    }
+
+    /// <summary>A root whose one handler's name holds marks.</summary>
+    internal sealed class Greeter
+    {
+        public int Greeted { get; private set; }
+
+        public void नमस्ते(object? sender, EventArgs e) => Greeted++;
     }
 }

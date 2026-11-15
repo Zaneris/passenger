@@ -53,6 +53,8 @@
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
     <!-- C#'s keywords for the types of the values shown. -->
     <Compile Include="../Passenger.Core/PrimitiveTypes.cs" Link="PrimitiveTypes.cs" />
+    <!-- A handler's name read as C# reads a name, for what XAML Hot Reload says of one the class lacks. -->
+    <Compile Include="../Passenger.Core/CSharpNames.cs" Link="CSharpNames.cs" />
     <!-- A XAML file's path compared with where the app's build recorded it, as the rest of Passenger compares paths. -->
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
     <!-- The Windows calls PathNames makes, declared once. -->

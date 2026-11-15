@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using Passenger.Languages.CSharp;
 using Passenger.Text;
 using Passenger.Xaml.Dialects;
@@ -415,9 +416,8 @@ public static class CreateFromUsage
         {
             if (behind is not null && File.Exists(behind))
             {
-                string text = File.ReadAllText(behind);
-                return !System.Text.RegularExpressions.Regex.IsMatch(text, @"^\s*namespace\s+[\w.]+\s*(\{|$)", System.Text.RegularExpressions.RegexOptions.Multiline)
-                    || System.Text.RegularExpressions.Regex.IsMatch(text, @"^\s*namespace\s+[\w.]+\s*;", System.Text.RegularExpressions.RegexOptions.Multiline);
+                SyntaxList<MemberDeclarationSyntax> members = CodeBrackets.Parse(SourceText.From(File.ReadAllText(behind))).GetCompilationUnitRoot().Members;
+                return members.Any(m => m is FileScopedNamespaceDeclarationSyntax) || !members.Any(m => m is NamespaceDeclarationSyntax);
             }
         }
         catch (IOException)

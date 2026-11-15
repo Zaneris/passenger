@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Passenger.Core;
 
 namespace Passenger.Inspector;
 
@@ -68,7 +69,7 @@ internal static class XamlReloading
     public static string? MissingHandler(string text, int? line, int? column, Type? root)
     {
         if (root is null || line is not int at || column is not int position || XamlRoot.AttributeAt(text, at, position) is not (string name, string value)
-            || value.Length == 0 || !(char.IsLetter(value[0]) || value[0] == '_') || !value.All(c => char.IsLetterOrDigit(c) || c == '_')
+            || value.Length == 0 || !CSharpNames.Starts(value[0]) || !value.All(CSharpNames.Continues)
             || root.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Any(m => m.Name == value))
         {
             return null;

@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Workspace;
 
 /// <summary>An attribute of a start tag: its name, and its value's place between its quotes (none for one without a value).</summary>
@@ -49,7 +51,7 @@ public static class MarkupTags
                 i = end < 0 ? text.Length : end + 3;
                 continue;
             }
-            if (!char.IsAsciiLetter(text[lt + 1]))
+            if (!StartsTag(text[lt + 1], razor))
             {
                 i = lt + 1;
                 continue;
@@ -72,7 +74,7 @@ public static class MarkupTags
         // A tag that holds the place begins at a '<' and a letter before it, as no '<' between can.
         for (int lt = text.LastIndexOf('<', Math.Max(0, Math.Min(offset, text.Length) - 1)); lt >= 0 && offset - lt < 64 * 1024; lt = lt == 0 ? -1 : text.LastIndexOf('<', lt - 1))
         {
-            if (lt + 1 < text.Length && char.IsAsciiLetter(text[lt + 1]))
+            if (lt + 1 < text.Length && StartsTag(text[lt + 1], razor))
             {
                 (MarkupTag tag, int after) = Tag(text, lt, razor);
                 return offset > lt && (offset < after || after >= text.Length) ? tag : null;
@@ -133,11 +135,14 @@ public static class MarkupTags
         return null;
     }
 
+    /// <summary>Whether a tag's name starts with a character after its '&lt;': in Razor a component's, a C# name, too.</summary>
+    private static bool StartsTag(char c, bool razor) => char.IsAsciiLetter(c) || (razor && CSharpNames.Starts(c));
+
     /// <summary>A tag from its '&lt;' read to its '>' (past it), and its attributes.</summary>
     private static (MarkupTag Tag, int After) Tag(string text, int lt, bool razor)
     {
         int i = lt + 1;
-        while (i < text.Length && (char.IsAsciiLetterOrDigit(text[i]) || text[i] is '-' or ':' or '.' or '_'))
+        while (i < text.Length && (char.IsAsciiLetterOrDigit(text[i]) || text[i] is '-' or ':' or '.' or '_' || (razor && CSharpNames.Continues(text[i]))))
         {
             i++;
         }
@@ -241,12 +246,12 @@ public static class MarkupTags
         {
             return Balanced(text, i);
         }
-        if (!char.IsLetter(next) && next != '_')
+        if (!CSharpNames.Starts(next))
         {
             return i;
         }
         int start = i;
-        while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] == '_'))
+        while (i < text.Length && CSharpNames.Continues(text[i]))
         {
             i++;
         }
@@ -266,10 +271,10 @@ public static class MarkupTags
             {
                 i = Balanced(text, i);
             }
-            else if (text[i] == '.' && i + 1 < text.Length && (char.IsLetter(text[i + 1]) || text[i + 1] == '_'))
+            else if (text[i] == '.' && i + 1 < text.Length && CSharpNames.Starts(text[i + 1]))
             {
                 i++;
-                while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] == '_'))
+                while (i < text.Length && CSharpNames.Continues(text[i]))
                 {
                     i++;
                 }

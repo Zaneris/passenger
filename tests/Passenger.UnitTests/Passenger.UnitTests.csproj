@@ -160,10 +160,11 @@
     <Compile Include="../../src/Passenger.App/Run/LaunchedFrameworks.cs" Link="App/LaunchedFrameworks.cs" />
   </ItemGroup>
 
-  <!-- How XAML Hot Reload compares two texts of a XAML file's root, and which file an app's build recorded is the one asked
-       of, compiled in since their project is the inspector, which an app loads. -->
+  <!-- How XAML Hot Reload compares two texts of a XAML file's root and says why one could not apply, and which file an app's
+       build recorded is the one asked of, compiled in since their project is the inspector, which an app loads. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Inspector/XamlRoot.cs" Link="Inspector/XamlRoot.cs" />
+    <Compile Include="../../src/Passenger.Inspector/XamlReloading.cs" Link="Inspector/XamlReloading.cs" />
     <Compile Include="../../src/Passenger.Inspector/XamlPlaces.cs" Link="Inspector/XamlPlaces.cs" />
   </ItemGroup>
 

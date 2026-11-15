@@ -90,6 +90,22 @@ public class PageStylesTests
         Assert.Equal(["card", "shadow", "card-lg", "card-sm", "btn", "btn-primary", "lead"], MarkupTags.Classes(Component, razor: true).Select(c => c.Name));
     }
 
+    /// <summary>A component named with marks, and an expression whose names hold them, its string no markup.</summary>
+    private const string Marked = """
+        <गिनती CssClass="badge" />
+        <p>@नमस्ते.गिनती("<i class='hidden'>")</p>
+        <p class="lead"></p>
+        """;
+
+    [Fact]
+    public void A_components_tag_and_an_expressions_names_holding_marks_are_read_whole_as_razor_reads_a_csharp_name()
+    {
+        Assert.Equal(["गिनती", "p", "p"], MarkupTags.Read(Marked, razor: true).Select(t => t.Name));
+        string[] classes = [.. MarkupTags.Classes(Marked, razor: true).Select(c => c.Name)];
+        Assert.True(classes is ["badge", "lead"],
+            $"The component's classes read are [{string.Join(", ", classes)}]: a component named with marks is no tag, so its CssClass is never checked, or an expression's string is read as markup");
+    }
+
     [Fact]
     public void A_class_is_found_where_it_is_written_and_where_one_would_begin_but_never_inside_an_expressions_code()
     {
