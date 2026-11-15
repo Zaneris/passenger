@@ -107,7 +107,7 @@ internal sealed partial class GherkinAssist : LanguageAssist
         {
             start = lineStart + indent;
             items.AddRange(GherkinDialects.Languages.Select(l => (Item($"{LanguageLine}{l}", CompletionItemKind.Constant, "language", l),
-                $"Gherkin's keywords in {DialectName(l)}", (StepSample?)null, $"{LanguageLine}{l}")));
+                $"Gherkin's keywords in {Passenger.Xaml.Localization.ResourceFiles.LanguageOf(l)}", (StepSample?)null, $"{LanguageLine}{l}")));
         }
         else if (trimmed.StartsWith('@'))
         {
@@ -139,19 +139,6 @@ internal sealed partial class GherkinAssist : LanguageAssist
     }
 
     private const string LanguageLine = "# language: ";
-
-    /// <summary>A Gherkin language's code said as its culture's English name where .NET knows it ("de": German).</summary>
-    private static string DialectName(string code)
-    {
-        try
-        {
-            return System.Globalization.CultureInfo.GetCultureInfo(code).EnglishName;
-        }
-        catch (System.Globalization.CultureNotFoundException)
-        {
-            return code;
-        }
-    }
 
     private static CompletionItem Item(string label, CompletionItemKind kind, string detail, string sort) =>
         new() { Label = label, Kind = kind, Detail = detail, FilterText = label, SortText = sort };
