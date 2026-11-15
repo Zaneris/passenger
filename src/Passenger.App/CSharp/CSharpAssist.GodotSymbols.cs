@@ -174,7 +174,7 @@ internal sealed partial class CSharpAssist
             return [];
         }
         static Passenger.Workspace.GDScript.GDScriptPlace Placed(LspLocation at, string what) =>
-            new($"{Path.GetFileName(new Uri(at.Uri).LocalPath)}:{at.Range.Start.Line + 1}", 0, 0, what);
+            new($"{Path.GetFileName(DocumentUris.ToPath(at.Uri))}:{at.Range.Start.Line + 1}", 0, 0, what);
         return [.. named.Scenes.Where(_ => withScenes).Select(s => Placed(s, "a scene's connection names it")),
             .. named.Code.Where((_, i) => !followingCalls || named.Calls[i].Rest is null).Select(c => Placed(c, "C# names it in a string"))];
     }
@@ -244,7 +244,7 @@ internal sealed partial class CSharpAssist
     /// by file, in the server's places.</summary>
     internal async Task<IReadOnlyList<PlacedEdits>> GodotScriptRenameAsync(OpenDocument document, int offset, string name) =>
         await GodotScriptNamedWithCallsAsync(document, offset) is { } named
-            ? [.. named.Scenes.Concat(named.Sets).Concat(named.Code).GroupBy(u => new Uri(u.Uri).LocalPath, PathNames.Comparer)
+            ? [.. named.Scenes.Concat(named.Sets).Concat(named.Code).GroupBy(u => DocumentUris.ToPath(u.Uri), PathNames.Comparer)
                 .Select(file => new PlacedEdits(file.Key, [.. file.Select(u => new LspTextEdit(u.Range, name))], named.Read.ResPathOf(file.Key) is { } res && named.Read.Files.TryGetValue(res, out GodotFile? read) ? read.Text : null))]
             : [];
 

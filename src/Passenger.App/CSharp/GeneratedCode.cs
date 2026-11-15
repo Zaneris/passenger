@@ -143,7 +143,7 @@ public sealed class GeneratedCode
         return generated;
 
         static bool IsCode(string uri) => Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) && parsed.IsFile
-            && Languages.Language.ForPath(parsed.LocalPath) == Languages.Language.CSharp;
+            && Languages.Language.ForPath(DocumentUris.ToPath(uri)) == Languages.Language.CSharp;
     }
 
     /// <summary>A copy as the document the server has now, to ask about (<see cref="RoslynSession.Unopened"/>), else why it
