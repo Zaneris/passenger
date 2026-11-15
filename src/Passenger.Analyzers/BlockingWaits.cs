@@ -6,15 +6,19 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace Passenger.Analyzers;
 
-/// <summary>PSG0004: a thread held waiting on a task: a Task's or ValueTask's Result, Task's Wait, WaitAll and WaitAny, and
-/// an awaiter's GetResult. A read of a task known to have ended waits for nothing and is passed over (<see cref="Ended"/>):
-/// the task is one the member cannot swap for another (<see cref="Held"/>), and the read sits where its having ended is
-/// certain, as ending is for good.</summary>
+/// <summary>PSG0004: a thread held waiting on a task: a Task's or ValueTask's Result, Task's Wait, WaitAll and WaitAny, an
+/// awaiter's GetResult, and a task's AsyncWaitHandle (a task's, or an IAsyncResult's, which may be one). A read of a task
+/// known to have ended waits for nothing and is passed over (<see cref="Ended"/>): the task is one the member cannot swap
+/// for another (<see cref="Held"/>), and the read sits where its having ended is certain, as ending is for good. So is the
+/// wait inside <see cref="Home"/>, the libraries' one way for a caller that must stay synchronous to wait.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class BlockingWaits : DiagnosticAnalyzer
 {
     private static readonly ImmutableHashSet<string> EndedProperties =
         ImmutableHashSet.Create(StringComparer.Ordinal, "IsCompleted", "IsCompletedSuccessfully", "IsFaulted", "IsCanceled");
+
+    /// <summary>Where a library's thread that must stay synchronous waits on a task, each caller saying why.</summary>
+    private const string Home = "Passenger.Core.Blocking";
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = [Rules.BlockingWait];
 
@@ -26,23 +30,29 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
         {
             if (Tasks.Of(start.Compilation) is { } tasks)
             {
-                start.RegisterOperationAction(c => CheckRead(c, tasks), OperationKind.PropertyReference);
-                start.RegisterOperationAction(c => CheckCall(c, tasks), OperationKind.Invocation);
+                INamedTypeSymbol? home = start.Compilation.GetTypeByMetadataName(Home);
+                start.RegisterOperationAction(c => CheckRead(c, tasks, home), OperationKind.PropertyReference);
+                start.RegisterOperationAction(c => CheckCall(c, tasks, home), OperationKind.Invocation);
             }
         });
     }
 
-    private static void CheckRead(OperationAnalysisContext context, Tasks tasks)
+    private static void CheckRead(OperationAnalysisContext context, Tasks tasks, INamedTypeSymbol? home)
     {
         IPropertyReferenceOperation read = (IPropertyReferenceOperation)context.Operation;
-        if (read.Property.Name == "Result" && tasks.IsTask(read.Property.ContainingType) && !InNameOf(read)
-            && !Ended(read.Instance, read, tasks))
+        string? said = read.Property.Name switch
         {
-            context.ReportDiagnostic(Diagnostic.Create(Rules.BlockingWait, read.Syntax.GetLocation(), "Result"));
+            "Result" when tasks.IsTask(read.Property.ContainingType) => "Result",
+            "AsyncWaitHandle" when tasks.IsWaitHandle(read) => "A wait on AsyncWaitHandle",
+            _ => null,
+        };
+        if (said is not null && !InNameOf(read) && !InHome(context, home) && !Ended(read.Instance, read, tasks))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(Rules.BlockingWait, read.Syntax.GetLocation(), said));
         }
     }
 
-    private static void CheckCall(OperationAnalysisContext context, Tasks tasks)
+    private static void CheckCall(OperationAnalysisContext context, Tasks tasks, INamedTypeSymbol? home)
     {
         IInvocationOperation call = (IInvocationOperation)context.Operation;
         IMethodSymbol method = call.TargetMethod;
@@ -53,11 +63,14 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
             "GetResult" when Tasks.IsAwaiter(method.ContainingType) => ("GetResult", Awaited(call.Instance)),
             _ => (null, null),
         };
-        if (said is not null && !Ended(task, call, tasks))
+        if (said is not null && !InHome(context, home) && !Ended(task, call, tasks))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rules.BlockingWait, call.Syntax.GetLocation(), said));
         }
     }
+
+    private static bool InHome(OperationAnalysisContext context, INamedTypeSymbol? home) =>
+        home is not null && Symbols.Within(context.ContainingSymbol, home);
 
     /// <summary>The task an awaiter was got from (`task.GetAwaiter()`, `task.ConfigureAwait(false).GetAwaiter()`).</summary>
     private static IOperation? Awaited(IOperation? awaiter) =>
@@ -439,14 +452,19 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
         public override int GetHashCode() => Symbols.Length;
     }
 
-    /// <summary>The task types of one compilation.</summary>
-    private sealed class Tasks(INamedTypeSymbol task, INamedTypeSymbol? valueTask, INamedTypeSymbol? valueTaskOf)
+    /// <summary>The task types of one compilation, and IAsyncResult, which a task is.</summary>
+    private sealed class Tasks(INamedTypeSymbol task, INamedTypeSymbol? valueTask, INamedTypeSymbol? valueTaskOf, INamedTypeSymbol? asyncResult)
     {
         public static Tasks? Of(Compilation compilation) =>
             compilation.GetTypeByMetadataName("System.Threading.Tasks.Task") is { } task
                 ? new Tasks(task, compilation.GetTypeByMetadataName("System.Threading.Tasks.ValueTask"),
-                    compilation.GetTypeByMetadataName("System.Threading.Tasks.ValueTask`1"))
+                    compilation.GetTypeByMetadataName("System.Threading.Tasks.ValueTask`1"), compilation.GetTypeByMetadataName("System.IAsyncResult"))
                 : null;
+
+        /// <summary>Whether the read is IAsyncResult's AsyncWaitHandle of a task, or of an IAsyncResult that may be one.</summary>
+        public bool IsWaitHandle(IPropertyReferenceOperation read) =>
+            Symbols.Same(read.Property.ContainingType, asyncResult) && Unwrapped(read.Instance)?.Type is INamedTypeSymbol of
+            && (IsTask(of) || Symbols.Same(of, asyncResult));
 
         /// <summary>Task, Task&lt;T&gt;, ValueTask or ValueTask&lt;T&gt;.</summary>
         public bool IsTask(INamedTypeSymbol? type)

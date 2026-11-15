@@ -273,11 +273,9 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
         }
         long asked = Stopwatch.GetTimestamp();
         // Synchronous as the engine's calls into ICorDebug are: the reader's own thread ends the answer, never one held here.
-        ((IAsyncResult)answer).AsyncWaitHandle.WaitOne();
+        Blocking.Until(answer);
         Interlocked.Add(ref _waited, Stopwatch.GetTimestamp() - asked);
         Interlocked.Increment(ref _answered);
-        // Its wait handle let go now, rather than by a finalizer for every call.
-        answer.Dispose();
         return answer.IsCompletedSuccessfully ? answer.Result : throw answer.Exception!.InnerException!;
     }
 

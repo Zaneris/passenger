@@ -597,7 +597,8 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         if (basis is null && running is { } first)
         {
             firstParseWaits += first.IsCompleted ? 0 : 1;
-            ((IAsyncResult)first).AsyncWaitHandle.WaitOne();
+            // Synchronous as Current's getter is: the parse runs to its end on the pool, never on the thread held here.
+            Blocking.Until(first);
             basis = first.IsCompletedSuccessfully ? first.Result.Tree : null;
         }
         return basis is null ? CSharpParsing.Parse(text, options) : CSharpParsing.Changed(basis, text);

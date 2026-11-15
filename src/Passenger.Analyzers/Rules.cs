@@ -43,14 +43,17 @@ internal static class Rules
     public static readonly DiagnosticDescriptor BlockingWait = new(
         "PSG0004",
         "A thread waits on a task",
-        "{0} blocks until the task ends: await it, or read it only where it is known to have ended",
+        "{0} blocks until the task ends: await it, read it only where it is known to have ended, or stay synchronous through Synchronously.Run (the App) or Blocking.Until (a library), saying why",
         Category,
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "A thread held waiting on a task ties up a thread the task may need to end, the UI's or the pool's. A "
-            + "read of a task known to have ended is no wait: inside an if, ?:, && or pattern on its IsCompleted, "
+        description: "A thread held waiting on a task ties up a thread the task may need to end, the UI's or the pool's: by "
+            + "its Result, Wait, Task.WaitAll or WaitAny, its awaiter's GetResult, or a wait on its AsyncWaitHandle. A read of "
+            + "a task known to have ended is no wait: inside an if, ?:, && or pattern on its IsCompleted, "
             + "IsCompletedSuccessfully, IsFaulted or IsCanceled, after an early exit on its not having ended, after an await "
-            + "of it or of a WhenAll naming it, in its ContinueWith's continuation, or the task a WhenAny gave.");
+            + "of it or of a WhenAll naming it, in its ContinueWith's continuation, or the task a WhenAny gave. A caller that "
+            + "must stay synchronous runs its work through the App's Synchronously.Run, or, in a library, waits for a task no "
+            + "thread it holds ends through Core's Blocking.Until, the one wait this rule passes over, saying why.");
 
     public static readonly DiagnosticDescriptor CatchAll = new(
         "PSG0005",
