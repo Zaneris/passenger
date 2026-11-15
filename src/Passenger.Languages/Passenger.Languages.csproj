@@ -11,6 +11,8 @@
     <ProjectReference Include="../Passenger.Editor/Passenger.Editor.csproj" />
     <ProjectReference Include="../Passenger.Lsp/Passenger.Lsp.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
+    <!-- A .feature file's folds, from Gherkin's own reading of it (Gherkin/FeatureReading). -->
+    <ProjectReference Include="../Passenger.Workspace/Passenger.Workspace.csproj" />
   </ItemGroup>
 
   <!-- VS Code's TextMate grammars and dotnet/roslyn's Razor and C# ones, unchanged (THIRD_PARTY_NOTICES.md says where each

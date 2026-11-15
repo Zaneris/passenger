@@ -164,4 +164,14 @@ public sealed class FeatureReadingTests
         Assert.Equal("one rule", scenario.Rule!.Title);
         Assert.Equal(["@r"], scenario.AllTags);
     }
+
+    [Fact]
+    public void The_feature_its_rules_scenarios_examples_doc_strings_and_tables_of_several_rows_fold_from_their_first_line()
+    {
+        FeatureReading reading = FeatureReading.Read(Calculator, "en");
+
+        Assert.Equal(
+            [(1, 27), (4, 5), (8, 13), (15, 27), (19, 21), (24, 27)],
+            reading.Folds().Select(f => (f.FirstLine, f.LastLine)));
+    }
 }

@@ -2,6 +2,7 @@ using System.Buffers;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace.Gherkin;
 
 namespace Passenger.Languages.Markup;
 
@@ -38,6 +39,18 @@ public sealed class FoldScan : IFoldFinder, IDisposable
 
     /// <summary>A JSON file's folds: each object and array over several lines, and each block comment.</summary>
     public static FoldScan Json(TextDocument document) => new(document, JsonFolds.Find);
+
+    /// <summary>A .feature file's folds, as Gherkin's reader reads it (<see cref="FeatureReading.Folds"/>): the feature, its
+    /// rules, scenarios and examples, its doc strings and tables, each folded after its first line.</summary>
+    public static FoldScan Gherkin(TextDocument document) => new(document, GherkinFolds);
+
+    private static void GherkinFolds(TextSnapshot text, List<FoldRegion> found)
+    {
+        foreach (FeatureFold fold in FeatureReading.Read(text.ToString(), GherkinDialects.English).Folds())
+        {
+            found.Add(new FoldRegion(text.GetLine(fold.FirstLine).End, text.GetLine(fold.LastLine).End, "...", Kind: FoldKind.Code));
+        }
+    }
 
     public IReadOnlyList<FoldRegion> Folds { get; private set; } = [];
 

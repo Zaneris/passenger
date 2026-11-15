@@ -584,6 +584,7 @@
           "Passenger.Editor": "[0.3.4, )",
           "Passenger.Lsp": "[0.3.4, )",
           "Passenger.Text": "[0.3.4, )",
+          "Passenger.Workspace": "[0.3.4, )",
           "Tint": "[0.2.3, )"
         }
       },
