@@ -1966,6 +1966,30 @@ public class VimTests
     public void Dot_after_a_visual_join_with_nothing_to_join_leaves_the_caret(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A bracket object over a visual stretch takes the block around its start, one further out from an open
+    /// bracket it starts on, and an inner block the stretch holds already gives way to the one around the character
+    /// before it, or fails, keeping the stretch; a takes the first block ahead of a start outside any, as Vim's do.</summary>
+    [Theory]
+    [InlineData("x |= (a + (b * c)) - d;\ny = [e, f];", "vji(d", "x | [e, f];")]
+    [InlineData("x |= (a + (b * c)) - d;\ny = [e, f];", "vja(d", "x = | - d;\ny = [e, f];")]
+    [InlineData("x = |(a + (b * c)) - d;", "vli(d", "x = (a + (|)) - d;")]
+    [InlineData("x = |(a + (b * c)) - d;", "vla(d", "x = (a + |) - d;")]
+    [InlineData("x = (a + |(b * c)) - d;", "vli(d", "x = (|) - d;")]
+    [InlineData("x = |(a + (b * c)) - d;", "vl2i(d", "x = | + (b * c)) - d;")]
+    [InlineData("a (b\nc)| d (e\nf) g", "vji(d", "a (|) d (e\nf) g")]
+    [InlineData("a (b\nc)| d (e\nf) g", "vja(d", "a (b\nc) d | g")]
+    [InlineData("(a)| (b c) d", "v5li(d", "(|) (b c) d")]
+    [InlineData("(|(a b) c (d e))", "v4li(d", "(|)")]
+    [InlineData("(|(a b) c (d e))", "v12li(d", "(|)")]
+    [InlineData("f|(a,\n  g(b, c),\n  d)\nend", "vji(d", "f(a,\n  g(|),\n  d)\nend")]
+    [InlineData("a| (b (c d) e) f", "v12la(d", "a | f")]
+    [InlineData("a| (b (c d) e) f", "v10li(d", "a|) f")]
+    [InlineData("x = |(a + [b * c]) - d;", "vli[d", "x = (a + [|]) - d;")]
+    [InlineData("x = |{a + {b * c}} - d;", "vla{d", "x = {a + |} - d;")]
+    [InlineData("(a b) |(c d)", "vli(d", "(a b) | d)")]
+    public void Bracket_objects_over_a_visual_stretch_go_out_from_its_start_as_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

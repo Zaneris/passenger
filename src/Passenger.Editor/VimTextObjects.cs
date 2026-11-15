@@ -528,10 +528,41 @@ public static class VimTextObjects
         return -1;
     }
 
+    /// <summary>A bracketed block over a visual stretch from <paramref name="low"/> to before <paramref name="high"/>:
+    /// the <paramref name="n"/>th around its start, one level further out where it starts on an open bracket (with no
+    /// level there, the next ones ahead inside that block), outside any the ones ahead. An inner block of more than one
+    /// character the stretch holds already gives way to the one around the character before the stretch, and so on back,
+    /// never one ahead. Null where none is.</summary>
+    public static VimSpan? BlockOver(TextSnapshot text, int low, int high, string key, bool inner, int n)
+    {
+        (char open, char close) = key switch
+        {
+            "(" or ")" or "b" => ('(', ')'),
+            "{" or "}" or "B" => ('{', '}'),
+            "[" or "]" => ('[', ']'),
+            _ => ('<', '>'),
+        };
+        for (int at = low; at >= 0 && at < text.Length; at--)
+        {
+            int levels = n + (text[at] == open ? 1 : 0);
+            if (Block(text, at, levels, inner, open, close, ahead: at == low, pastOpen: at == low) is not { } span)
+            {
+                return null;
+            }
+            int end = span.Linewise ? VimMotions.LineOf(text, span.End).EndIncludingBreak : span.End;
+            if (!inner || end - span.Start <= 1 || span.Start < low || end > high)
+            {
+                return span;
+            }
+        }
+        return null;
+    }
+
     /// <summary>A bracketed block, the <paramref name="n"/>th around the caret (a bracket under it counting as its own),
-    /// or outside any the <paramref name="n"/>th ahead before a closing bracket; inner, a block whose brackets end and begin lines takes only the
-    /// lines between, linewise.</summary>
-    private static VimSpan? Block(TextSnapshot text, int caret, int n, bool inner, char open, char close)
+    /// or, with <paramref name="ahead"/>, outside any the <paramref name="n"/>th ahead before a closing bracket, and with
+    /// <paramref name="pastOpen"/> past the one opening at the caret the levels left ahead inside it; inner, a block
+    /// whose brackets end and begin lines takes only the lines between, linewise.</summary>
+    private static VimSpan? Block(TextSnapshot text, int caret, int n, bool inner, char open, char close, bool ahead = true, bool pastOpen = false)
     {
         int at = caret < text.Length && text[caret] == close ? Match(text, caret, open, close, forward: false) : caret;
         if (at < 0)
@@ -540,16 +571,22 @@ public static class VimTextObjects
         }
         int start = -1;
         int from = at < text.Length && text[at] == open ? at : at - 1;
-        bool ahead = false;
+        bool onward = false;
         for (int i = 0; i < n; i++)
         {
-            start = ahead ? Ahead(text, start + 1, open, close) : Unclosed(text, i == 0 ? from : start - 1, open, close);
-            if (start < 0 && i == 0)
+            int found = onward ? Ahead(text, start + 1, open, close) : Unclosed(text, i == 0 ? from : start - 1, open, close);
+            if (found < 0 && i == 0 && ahead)
             {
                 // Outside any block, the first one ahead, and a count's more the next ones ahead.
-                ahead = true;
-                start = Ahead(text, caret, open, close);
+                onward = true;
+                found = Ahead(text, caret, open, close);
             }
+            else if (found < 0 && i == 1 && pastOpen && start == caret)
+            {
+                onward = true;
+                found = Ahead(text, start + 1, open, close);
+            }
+            start = found;
             if (start < 0)
             {
                 return null;

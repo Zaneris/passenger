@@ -728,23 +728,26 @@ public sealed partial class Vim
     }
 
     /// <summary>A block, a tag or a quoted string in visual mode: at a single place the one there; over a longer stretch
-    /// the one around its start or the first after it, and for a block or a tag the one around that where the stretch
-    /// already holds more than a character of it. An inner block of whole lines runs to its last line's break. With
-    /// nothing inside, an inner block fails, an inner string takes its quotes, and an inner tag block takes its tags from
-    /// its end tag's first character.</summary>
+    /// a bracketed block as <see cref="VimTextObjects.BlockOver"/> finds it, and a tag or a string the one around its
+    /// start or the first after it, a tag the one around that where the stretch already holds more than a character of
+    /// it. An inner block of whole lines runs to its last line's break. With nothing inside, an inner block fails, an
+    /// inner string takes its quotes, and an inner tag block takes its tags from its end tag's first character.</summary>
     private Region? Around(TextSnapshot text, Region r, string key, bool inner, int n, bool block)
     {
         bool single = r.Anchor == r.Cursor;
         int low = r.Low;
         int high = CharEnd(text, r.High);
-        if (low >= text.Length || VimTextObjects.Of(text, single ? r.Cursor : low, key, inner, n, breakEnds) is not { } found)
+        bool brackets = block && key != "t";
+        if (low >= text.Length
+            || (!single && brackets ? VimTextObjects.BlockOver(text, low, high, key, inner, n) : VimTextObjects.Of(text, single ? r.Cursor : low, key, inner, n, breakEnds))
+                is not { } found)
         {
             return null;
         }
         (int start, int end) = Charwise(text, found);
         if (inner && end == start)
         {
-            if (block && key != "t")
+            if (brackets)
             {
                 return null;
             }
@@ -761,7 +764,7 @@ public sealed partial class Vim
         {
             return QuotedOn(text, r, key[0], inner);
         }
-        if (!single && block && end - start > 1 && start >= low && end <= high)
+        if (!single && key == "t" && end - start > 1 && start >= low && end <= high)
         {
             if (VimTextObjects.Of(text, low, key, inner, n + 1, breakEnds) is not { } outer)
             {
