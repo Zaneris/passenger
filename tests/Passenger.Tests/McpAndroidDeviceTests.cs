@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using Passenger.App;
 using Passenger.App.Mcp;
 using Passenger.App.Run.Devices;
@@ -13,9 +14,11 @@ namespace Passenger.Tests;
 /// there, answers once the app has started, naming the emulator and the app's process, rather than waiting out its
 /// whole wait; stop ends it. An agent that goes the moment stop answers a debugged app's leaves nothing of Passenger's on
 /// the emulator: the Passenger waits for the app's end there before it goes. An Avalonia app's Android head run there
-/// shows its view root as its one window to app_windows asked the moment run answers. Skips, saying why, without the
-/// Android workload, its SDK and Java, or an emulator (and the relays, for the debugged app; Avalonia's Android packages,
-/// for its app). Alone, as AndroidDeviceTests is, the emulator being one for both.</summary>
+/// shows its view root as its one window to app_windows asked the moment run answers; the MAUI template's Android head run
+/// there lists its main page's label and button to app_tree, its window's picture to app_screenshot, and app_click taps the
+/// button. Skips, saying why, without the Android workload, its SDK and Java, or an emulator (and the relays, for the
+/// debugged app; Avalonia's Android packages, or MAUI's workload, for their apps). Alone, as AndroidDeviceTests is, the
+/// emulator being one for both.</summary>
 [Collection(Alone.Name)]
 public sealed class McpAndroidDeviceTests : McpRig
 {
@@ -99,7 +102,7 @@ public sealed class McpAndroidDeviceTests : McpRig
         {
             Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
         }
-        DeviceTarget? target = targets.FirstOrDefault(t => t.Running) ?? targets.FirstOrDefault(t => t.Kind == TargetKind.Emulator);
+        DeviceTarget? target = MauiApp.Target(targets);
         if (target is null)
         {
             Assert.Skip("No Android device is connected and no emulator is made (an AVD of an installed system image), so there is nothing to run on");
@@ -152,6 +155,51 @@ public sealed class McpAndroidDeviceTests : McpRig
 
         await Call(client, McpTools.Stop);
         await EndedAsync(target, tools, "com.CompanyName.XApp");
+    }
+
+    [Fact]
+    public async Task An_agents_app_tree_on_a_maui_app_it_ran_on_an_emulator_lists_its_main_pages_label_and_button_which_app_click_taps()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-maui-android-"));
+        DeleteAtEnd(folder);
+        (string project, string? unmade) = await MauiApp.CreateAndroidHeadAsync(folder);
+        if (unmade is not null)
+        {
+            Assert.Skip(unmade);
+        }
+        (DeviceTarget target, AndroidTools tools) = await TargetAsync(project);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        await ChooseAsync(client, MauiApp.Name, target);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = MauiApp.Name, ["waitSeconds"] = 3600 });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"run said the app ended on the emulator: {ran}");
+
+        JsonElement windows = await Call(client, McpTools.AppWindows);
+        Assert.True(windows.GetProperty("framework").GetString()?.StartsWith("MAUI 11.", StringComparison.Ordinal) == true
+            && windows.GetProperty("windows").EnumerateArray().SingleOrDefault() is { ValueKind: JsonValueKind.Object } only && only.GetProperty("type").GetString() == "Window",
+            $"app_windows did not name the MAUI app's one window: {windows}");
+        string tree = Text(await Call(client, McpTools.AppTree));
+        string[] lines = tree.Split('\n');
+        Assert.True(lines.Any(l => l.TrimStart().StartsWith("MainPage @", StringComparison.Ordinal))
+            && lines.Any(l => l.TrimStart().StartsWith("Label \"Hello, World!\" @", StringComparison.Ordinal))
+            && lines.Any(l => l.TrimStart().StartsWith("Button#CounterBtn \"Click me\" @", StringComparison.Ordinal)),
+            $"app_tree did not list the main page with its label and its button, by its x:Name and text, so an agent finds nothing to click:\n{tree}");
+
+        CallToolResult picture = await Result(client, McpTools.AppScreenshot);
+        Assert.True(picture.IsError != true, $"The app's picture was refused: {Text(picture)}");
+        ImageContentBlock image = Assert.Single(picture.Content.OfType<ImageContentBlock>());
+        using (SkiaSharp.SKBitmap frame = SkiaSharp.SKBitmap.Decode(image.DecodedData.ToArray()))
+        {
+            Assert.True(frame is { Width: > 200, Height: > 400 }, $"app_screenshot's picture of the app's window is {frame?.Width}x{frame?.Height}: {Text(picture)}");
+        }
+
+        string clicked = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#CounterBtn" }));
+        Assert.True(clicked.StartsWith("Clicked Button#CounterBtn @", StringComparison.Ordinal) && clicked.Contains("it shows \"Clicked 1 time\"", StringComparison.Ordinal),
+            $"app_click did not tap the button so its click counted: {clicked}");
+        string counted = Text(await Call(client, McpTools.AppTree, new() { ["filter"] = "#CounterBtn" }));
+        Assert.True(counted.StartsWith("Button#CounterBtn \"Clicked 1 time\" @", StringComparison.Ordinal), $"The button does not show its click in app_tree: {counted}");
+
+        await Call(client, McpTools.Stop);
+        await EndedAsync(target, tools, MauiApp.Package);
     }
 
     [Fact]

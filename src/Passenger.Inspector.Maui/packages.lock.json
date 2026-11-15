@@ -1,0 +1,76 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net11.0": {
+      "Microsoft.CodeAnalysis.BannedApiAnalyzers": {
+        "type": "Direct",
+        "requested": "[5.6.0, )",
+        "resolved": "5.6.0",
+        "contentHash": "Kcobt3pnOdO0A+6CKiMHZdTEluJpsfxiV20axtZdmfBQnDmiWTKPJADlgAfdTuKNAnVarrkJa0UEGwuOo91muw=="
+      },
+      "Microsoft.Maui.Controls.Core": {
+        "type": "Direct",
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "C4iAu2tT8ZJcpFUtM5/Wi0l7W1UtYiqt09PHJftG5lzkQWY1Bjt7bpWDEO6O4tDbnWhAzmDTLKnASt8TAzosEQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "11.0.0",
+          "Microsoft.Extensions.DependencyInjection": "11.0.0",
+          "Microsoft.Extensions.Logging": "11.0.0",
+          "Microsoft.Maui.Core": "11.0.0"
+        }
+      },
+      "Microsoft.Extensions.Configuration": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "VQS/GkFU9oLQmXZv0AR/zluF0YAbEAoUQ5aYMqcRc2TWeKa6m2AjInAOnDhCcoWI5a6LQUCzTcl8B3DZZaPZLg=="
+      },
+      "Microsoft.Extensions.DependencyInjection": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "KygQMITBDDPXw7+AAgdwQvVAaTXuDsc1iCAuvhO73ERxKX+d92cdbgZmpoYF7DIUq2hfs/yO2KD87uIreRy3MA=="
+      },
+      "Microsoft.Extensions.Logging": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "zsse8MOgo0bj2KAEsSkg9WtNAfZbHbTlGeqfhy5PGozomM3zQM0XzumSQzQ0451IWNSJWLqYaSIQEpCi2j1sCA==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "11.0.0"
+        }
+      },
+      "Microsoft.Maui.Core": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "jjJHimUjp50E+Y7TRMDCGVtr35TaODtHrnDHOO4uXMuBEBb/1zAgCMJmJDoM7dYPuOGDXm0DKfw5VbHGwYjARQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "11.0.0",
+          "Microsoft.Extensions.DependencyInjection": "11.0.0",
+          "Microsoft.Extensions.Logging": "11.0.0",
+          "Microsoft.Maui.Essentials": "11.0.0",
+          "Microsoft.Maui.Graphics": "11.0.0"
+        }
+      },
+      "Microsoft.Maui.Essentials": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "PDNi9y0Kbdhx5hEqv7KrBzM6V7NicCNlJDtNNa7mHZPNNs2nuYLyCw9RI1KOy3exM5rs+QTVjwc6+PUBUDgTwA==",
+        "dependencies": {
+          "Microsoft.Maui.Graphics": "11.0.0"
+        }
+      },
+      "Microsoft.Maui.Graphics": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "orPHJSXXIlwCiMrkZM3/jT6TvH08qMcxKHuy0+goA7Af2+6fOwrEmCRzGV3kM/08AptpZ+cPXs6UVdzJaoKCIA=="
+      }
+    },
+    "net11.0/linux-arm64": {},
+    "net11.0/linux-musl-arm64": {},
+    "net11.0/linux-musl-x64": {},
+    "net11.0/linux-x64": {},
+    "net11.0/osx-arm64": {},
+    "net11.0/osx-x64": {},
+    "net11.0/win-arm64": {},
+    "net11.0/win-x64": {}
+  }
+}

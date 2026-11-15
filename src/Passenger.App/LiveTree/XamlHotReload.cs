@@ -21,10 +21,11 @@ public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts
     /// <summary>The files edited since the app last took them, each with how many edits it has had.</summary>
     private readonly Dictionary<string, int> edited = new(PathNames.Comparer);
 
-    /// <summary>Whether it is a file of the app's framework: an Avalonia app's .axaml (or .xaml), a WPF app's .xaml.</summary>
+    /// <summary>Whether it is a file of the app's framework: an Avalonia app's .axaml (or .xaml), a WPF app's .xaml; none of a
+    /// MAUI app's, which XAML Hot Reload does not reach yet.</summary>
     public bool Takes(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
-        ".xaml" => true,
+        ".xaml" => app.Kind != LiveAppKind.Maui,
         ".axaml" or ".paml" => app.Kind == LiveAppKind.Avalonia,
         _ => false,
     };

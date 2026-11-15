@@ -1,11 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-// What Passenger and its inspector inside an Avalonia app (src/Passenger.Inspector) or a WPF app
-// (src/Passenger.Inspector.Wpf) say to each other, compiled into all three: one JSON object a line over the socket
-// Passenger names in the app's environment. The messages are the same for both (a WPF dependency property is a
-// property, its value sources take the same words); what one framework has not (Avalonia's overlays, frames and binding
-// values) the other's inspector refuses. Passenger asks (Request) and the app answers each by its id (Reply); the app
+// What Passenger and its inspector inside an Avalonia app (src/Passenger.Inspector), a WPF app
+// (src/Passenger.Inspector.Wpf) or a .NET MAUI app (src/Passenger.Inspector.Maui) say to each other, compiled into all
+// four: one JSON object a line over the socket Passenger names in the app's environment. The messages are the same for
+// each (a WPF dependency property or a MAUI bindable one is a property, its value sources take the same words); what one
+// framework has not (Avalonia's overlays, frames and binding values) another's inspector refuses. Passenger asks (Request) and the app answers each by its id (Reply); the app
 // also tells without being asked (a Reply with an Event): hello once its UI runs, treeChanged as controls come and go,
 // picked when the person points at one, bindingFailed as a binding fails (from before hello), untold when it could not
 // tell all it had. While the app is paused its binding values are read through the debugger's evaluation of
@@ -36,7 +36,8 @@ public static class Wire
     [IdentifierHome]
     public const string OverlaysVariable = "PASSENGER_INSPECTOR_OVERLAYS";
 
-    /// <summary>A WPF app's environment: the launched project's folder, where its XAML is when its build's symbols do not say.</summary>
+    /// <summary>A WPF or MAUI app's environment: the launched project's folder, where its XAML is when its build's symbols do
+    /// not say (a MAUI app's places are relative to it).</summary>
     [IdentifierHome]
     public const string ProjectVariable = "PASSENGER_INSPECTOR_PROJECT";
 
@@ -332,7 +333,8 @@ public sealed record Untold(int Bindings, int Messages);
 /// serve it when it cannot (another major version of Avalonia, none at all).</summary>
 public sealed record Hello(int Protocol, int ProcessId, string? Avalonia, string? Problem)
 {
-    /// <summary>From a WPF app's inspector: WPF and its version ("WPF 10.0.1"), where an Avalonia app says its Avalonia.</summary>
+    /// <summary>From a WPF or MAUI app's inspector: the framework and its version ("WPF 10.0.1", "MAUI 11.0.0"), where an
+    /// Avalonia app says its Avalonia.</summary>
     public string? Framework { get; init; }
 
     /// <summary>Whether the app draws on Avalonia's headless platform, where nobody sees it.</summary>

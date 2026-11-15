@@ -28,7 +28,7 @@ public sealed partial class BuildRunController
         await DeviceLaunches.EndAsync(app, put);
     }
 
-    /// <summary>Passenger's inspector put in an Avalonia app Run starts on a device, before its start; where it cannot be,
+    /// <summary>Passenger's inspector put in an Avalonia or MAUI app Run starts on a device, before its start; where it cannot be,
     /// the app runs uninspected, the Run window saying why.</summary>
     private async Task<DevicePut?> InspectOnDeviceAsync(AndroidApp app, LiveApp? inspected, Working work)
     {
@@ -52,7 +52,7 @@ public sealed partial class BuildRunController
     private async Task<string?> DebugOnDeviceAsync(LaunchPlan plan, AndroidApp app, Working work, BuiltEdits? edits)
     {
         work.Say($"Putting Passenger's debugger in {app.Package}…");
-        // An Avalonia app's inspector goes in beside the relay, which the Live Visual Tree and XAML Hot Reload reach.
+        // An Avalonia or MAUI app's inspector goes in beside the relay, which the Live Visual Tree reaches.
         LiveApp? inspected = session.Inspected(plan).App;
         (RelaySession? relay, DevicePut? put, string? unrelayed) = await DeviceLaunches.PutRelayAsync(app, inspected?.Device, work.Stopping);
         if (relay is null)

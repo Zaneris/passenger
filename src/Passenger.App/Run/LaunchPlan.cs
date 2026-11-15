@@ -350,6 +350,11 @@ public sealed partial record LaunchPlan
             }
         }
         IReadOnlyDictionary<string, string> properties = await EvaluateAsync(project, framework, names, workspace, cancel);
+        // A project naming its one framework in TargetFrameworks evaluates as an outer build, which builds nothing itself.
+        if (framework is null && project.TargetFrameworks is [{ } only] && !properties.ContainsKey(CarriedProperties.TargetPath))
+        {
+            properties = await EvaluateAsync(project, only, names, workspace, cancel);
+        }
         string Expand(string text) => System.Environment.ExpandEnvironmentVariables(
             Macro().Replace(text, macro => properties.GetValueOrDefault(macro.Groups[1].Value, string.Empty)));
         // The configuration's own, its launch profile named as dotnet run names it.

@@ -179,6 +179,12 @@
     <Compile Include="../../src/Passenger.App/LiveTree/AppQuery.cs" Link="App/AppQuery.cs" />
   </ItemGroup>
 
+  <!-- Where a MAUI app's elements are in their window, from numbers alone, compiled in since its project is the MAUI
+       inspector, which an app loads. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Inspector.Maui/Placing.cs" Link="Inspector/MauiPlacing.cs" />
+  </ItemGroup>
+
   <!-- What the WPF previewer and Passenger say to each other, compiled in since its project is the previewer. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.WpfPreview/Protocol.cs" Link="WpfPreview/Protocol.cs" />

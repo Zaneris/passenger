@@ -112,6 +112,11 @@
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <!-- What Passenger and the inspector say to each other, one definition for both ends. -->
     <Compile Include="../Passenger.Inspector/Protocol.cs" Link="LiveTree/InspectorProtocol.cs" />
+    <!-- Built first and carried under inspector/maui/, never linked: a .NET MAUI app Passenger runs on a device loads it
+         (LiveTree/LiveApp.cs). It is built once for every platform, as MAUI's cross-platform assemblies it is compiled
+         against are the same on each. -->
+    <ProjectReference Include="../Passenger.Inspector.Maui/Passenger.Inspector.Maui.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <!-- Built first on every system and carried under inspector/wpf/ by a Windows build alone, never linked: a WPF app Passenger
          runs or debugs loads it (LiveTree/LiveApp.cs). It targets net8.0-windows, which this project's own framework is not, so
          it is built for its own framework rather than this one's. -->
@@ -248,6 +253,20 @@
     <ItemGroup>
       <InspectorFile Include="@(InspectorAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(InspectorAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
       <None Include="@(InspectorFile)" Link="inspector/%(InspectorFile.Filename)%(InspectorFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The MAUI inspector becomes this project's output under inspector/maui/: its own assembly alone, since the app it
+       loads into brings the MAUI it uses. -->
+  <Target Name="IncludeMauiInspector" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="../Passenger.Inspector.Maui/Passenger.Inspector.Maui.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="MauiInspectorAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <MauiInspectorFile Include="@(MauiInspectorAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(MauiInspectorAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <None Include="@(MauiInspectorFile)" Link="inspector/maui/%(MauiInspectorFile.Filename)%(MauiInspectorFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

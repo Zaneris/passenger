@@ -12,6 +12,7 @@
     <Project Path="src/Passenger.Helper/Passenger.Helper.csproj" />
     <Project Path="src/Passenger.Host/Passenger.Host.csproj" />
     <Project Path="src/Passenger.Inspector/Passenger.Inspector.csproj" />
+    <Project Path="src/Passenger.Inspector.Maui/Passenger.Inspector.Maui.csproj" />
     <Project Path="src/Passenger.Inspector.Wpf/Passenger.Inspector.Wpf.csproj" />
     <Project Path="src/Passenger.Languages/Passenger.Languages.csproj" />
     <Project Path="src/Passenger.Lsp/Passenger.Lsp.csproj" />

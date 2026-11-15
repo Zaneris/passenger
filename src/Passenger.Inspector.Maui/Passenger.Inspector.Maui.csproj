@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Passenger's inspector inside a .NET MAUI app it runs or debugs (the Live Visual Tree, an agent's app tools): the
+       runtime loads it as a startup hook (DOTNET_STARTUP_HOOKS) into a run Passenger launches, never into the app as built
+       or shipped, and it answers over the socket Passenger names, on the app's UI thread (Protocol.cs). It reads the app
+       through MAUI's own cross-platform API, so one inspector serves every head; carried under inspector/maui/, its own
+       assembly alone, as the app brings the MAUI it uses. -->
+  <PropertyGroup>
+    <!-- The first .NET whose MAUI apps run on CoreCLR on a device, so it loads into any of them. -->
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Passenger.Inspector.Maui</RootNamespace>
+    <!-- Never optimized, a Release build as a Debug one, as the other inspectors are. -->
+    <Optimize>false</Optimize>
+    <!-- OwnEnvironment changes the process's own environment through the C library's calls, imported as generated code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compiled against MAUI's cross-platform assemblies at the first release of the line, never carried: the app's own
+         MAUI, its head's, is what the inspector runs on. -->
+    <PackageReference Include="Microsoft.Maui.Controls.Core" ExcludeAssets="runtime;build;buildTransitive;analyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- What Passenger and its inspectors say to each other, and the app's end of the socket, one definition for all. -->
+    <Compile Include="../Passenger.Inspector/Protocol.cs" Link="Protocol.cs" />
+    <Compile Include="../Passenger.Inspector/Connection.cs" Link="Connection.cs" />
+    <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <Compile Include="../Passenger.Core/ApartThreads.cs" Link="ApartThreads.cs" />
+    <!-- The serve loop, the request switch and the words the inspectors answer in. -->
+    <Compile Include="../Passenger.Inspector/Serving.cs" Link="Serving.cs" />
+    <!-- The app's tree made into the wire's and walked, with stacks of their own, as every inspector walks it. -->
+    <Compile Include="../Passenger.Inspector/ElementTrees.cs" Link="ElementTrees.cs" />
+    <!-- The runtime's variables, and the startup hooks' rule (this hook first, taken out as it starts, out of the process's
+         own environment too), as Passenger names them. -->
+    <Compile Include="../Passenger.Core/RuntimeVariables.cs" Link="RuntimeVariables.cs" />
+    <Compile Include="../Passenger.Core/StartupHooks.cs" Link="StartupHooks.cs" />
+    <Compile Include="../Passenger.Core/OwnEnvironment.cs" Link="OwnEnvironment.cs" />
+    <!-- A socket's path checked against what a Unix socket's address holds, as Passenger checks the paths it makes. -->
+    <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />
+    <!-- A wait's limit on the clock that stops while the machine sleeps, as Passenger's own waits keep one. -->
+    <Compile Include="../Passenger.Core/Deadline.cs" Link="Deadline.cs" />
+    <!-- When a wait for the app to set itself up looks again, as every inspector looks. -->
+    <Compile Include="../Passenger.Inspector/Looking.cs" Link="Looking.cs" />
+  </ItemGroup>
+</Project>
