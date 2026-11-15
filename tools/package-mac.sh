@@ -52,39 +52,87 @@ if [ "$(git -C "$root" rev-parse --is-shallow-repository)" = true ]; then
 fi
 build=$(git -C "$root" rev-list --count HEAD)
 
-# The image is mounted under the work folder while it is made and checked, and never left mounted, a failure included.
-mounted=
+# The whole disk of each attachment of the image file $1, as hdiutil lists them.
+disks_of() {
+    hdiutil info -plist | python3 -I -c '
+import os, plistlib, sys
+for image in plistlib.loads(sys.stdin.buffer.read()).get("images", []):
+    path = image.get("image-path", "")
+    entries = [entity["dev-entry"] for entity in image.get("system-entities", []) if "dev-entry" in entity]
+    if entries and os.path.exists(path) and os.path.samefile(path, sys.argv[1]):
+        print(min(entries))
+' "$1"
+}
+# Whether the image file $1 takes the shared lock a convert asks for: a read-write attachment's helper holds it whole.
+unlocked() {
+    python3 -I -c '
+import os, sys
+try:
+    os.close(os.open(sys.argv[1], os.O_RDONLY | os.O_SHLOCK | os.O_NONBLOCK))
+except BlockingIOError:
+    sys.exit(1)
+except FileNotFoundError:
+    pass
+' "$1"
+}
+# What has the disk $1's device nodes or the image file $2 open, as root sees it where sudo asks no password.
+holders() {
+    nodes=
+    for node in "$1" "$1"s* "/dev/r${1#/dev/}" "/dev/r${1#/dev/}"s*; do
+        if [ -e "$node" ]; then
+            nodes="$nodes $node"
+        fi
+    done
+    as=
+    if sudo -n true 2>/dev/null; then
+        as="sudo -n"
+    fi
+    $as lsof $nodes "$2" 2>/dev/null || true
+}
+# The image is attached under the work folder while it is made and checked, and never left attached, a failure included.
+attached=
 attach() {
+    attached=$1
     mkdir -p "$mount"
     hdiutil attach "$@" -nobrowse -noautoopen -mountpoint "$mount" -quiet
-    mounted=1
 }
+# Detached is hdiutil listing the image no more and its file unlocked: a volume unmounted whose disk a process held open
+# stays attached, its helper locking the file (every convert then "Resource temporarily unavailable", #1473), and its
+# mount point answers each later detach "No such file or directory". So its disk is detached, for up to two minutes,
+# forced from the fourth try (Spotlight or XProtect holding the volume); what held it is said, and failing, fails.
 detach() {
-    # Spotlight or XProtect can hold a volume just made a moment: the last tries force it, the very last without -quiet.
-    for try in 1 2 3 4 5; do
+    said="$work/detach-said.txt"
+    : > "$said"
+    try=0
+    while disks=$(disks_of "$attached"); [ -n "$disks" ] || ! unlocked "$attached"; do
+        try=$((try + 1))
+        if [ "$try" -gt 1 ]; then
+            if [ "$try" -gt 15 ]; then
+                grep -v 'hdiutil: WARNING' "$said" >&2 || true
+                fail "$attached could not be detached in two minutes"
+            fi
+            sleep $((try - 1))
+        fi
         force=
         if [ "$try" -gt 3 ]; then
             force=-force
         fi
-        if hdiutil detach "$mount" $force -quiet; then
-            mounted=
-            return
-        fi
-        sleep "$try"
+        for disk in $disks; do
+            if ! hdiutil detach "$disk" $force >> "$said" 2>&1; then
+                echo "package-mac: what had $disk or $(basename "$attached") open after try $try:" >> "$said"
+                holders "$disk" "$attached" >> "$said"
+            fi
+        done
     done
-    # A try that failed may still have detached it (hdiutil then answers "No such file or directory"): not mounted is done.
-    if mount | grep -qF " on $mount "; then
-        if ! hdiutil detach "$mount" -force; then
-            lsof +D "$mount" >&2 || true
-            fail "the image mounted at $mount could not be detached"
-        fi
+    if [ "$try" -gt 1 ]; then
+        echo "package-mac: $(basename "$attached") was detached on try $try, the tries before saying:" >&2
+        grep -v 'hdiutil: WARNING' "$said" >&2 || true
     fi
-    mounted=
+    attached=
 }
-# hdiutil create and convert now and then fail ("Resource busy", the system's scanners on what was just written; on CI's
-# runner a convert's "Resource temporarily unavailable" partway through, #1473): tried three times, a moment apart, each
-# try's words kept (-quiet closes stderr), the last failure saying what memory, swap and disk the machine had left and
-# its largest processes. MADE is removed first.
+# hdiutil create and convert now and then fail ("Resource busy", the system's scanners on what was just written): tried
+# three times, a moment apart, each try's words kept (-quiet closes stderr), the last failure saying what images the
+# machine has attached and which process holds each. MADE is removed first.
 retry_hdiutil() {
     made=$1
     shift
@@ -99,25 +147,30 @@ retry_hdiutil() {
             sleep $((try * 5))
         fi
     done
-    { sysctl vm.swapusage; vm_stat; df -h "$work"; ps -axo rss=,pid=,comm= | sort -rn | head -n 8; } >&2 || true
+    hdiutil info >&2 || true
     fail "hdiutil $1 failed three times"
 }
-# The state of the copied app's runs (below), removed with it however the script ends.
+# The state of the copied app's runs (below).
 settings=
-trap '[ -z "$mounted" ] || hdiutil detach "$mount" -force -quiet; [ -z "$settings" ] || rm -rf "$settings"' EXIT
+# However the script ends, the image is detached and that state removed.
+leave() {
+    if [ -n "$attached" ]; then
+        for disk in $(disks_of "$attached"); do
+            hdiutil detach "$disk" -force -quiet || true
+        done
+    fi
+    if [ -n "$settings" ]; then
+        rm -rf "$settings"
+    fi
+}
+trap leave EXIT
 trap 'exit 1' HUP INT TERM
 if [ -d "$mount" ]; then
     hdiutil detach "$mount" -force -quiet 2>/dev/null || true
 fi
 # A mount of the image being replaced reads the new file as its own and calls its app damaged, so it is ejected first.
 if [ -f "$image" ]; then
-    for disk in $(hdiutil info -plist | python3 -I -c '
-import os, plistlib, sys
-for image in plistlib.loads(sys.stdin.buffer.read()).get("images", []):
-    path = image.get("image-path", "")
-    if os.path.exists(path) and os.path.samefile(path, sys.argv[1]):
-        print(min(entity["dev-entry"] for entity in image.get("system-entities", []) if "dev-entry" in entity))
-' "$image"); do
+    for disk in $(disks_of "$image"); do
         hdiutil detach "$disk" -quiet || fail "$image is mounted ($disk) and could not be ejected: eject it, then package again"
         echo "package-mac: ejected $disk, a mount of the image being replaced" >&2
     done
