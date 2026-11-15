@@ -1540,6 +1540,30 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Code Cleanup, Optimize Imports and Reformat Code grey on a library type's decompiled source, which the
+    /// language server serves, saying it is read-only, and Code Cleanup's keys there say so and change nothing.</summary>
+    [AvaloniaFact]
+    public void Code_cleanup_and_optimize_imports_grey_on_a_decompiled_file_saying_it_is_read_only()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "        in");
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+        Ui.WaitFor(() => window.EditorArea.Active?.IsDecompiled == true, "the decompiled source to open");
+        Passenger.App.Workspace.OpenDocument decompiled = window.EditorArea.Active!;
+        string before = decompiled.Text.Snapshot.ToString();
+
+        foreach (string action in new[] { AppActions.CodeCleanup, AppActions.OptimizeUsings, AppActions.Reformat })
+        {
+            Assert.True(window.Actions.WhyNot(action, window.Actions.Context()) == $"{decompiled.Name} is read-only",
+                $"{action} on the decompiled {decompiled.Name}, which nothing can change, is offered or greyed saying: {window.Actions.WhyNot(action, window.Actions.Context())}");
+        }
+        Ui.Run(window, AppActions.CodeCleanup);
+        Assert.Equal($"{decompiled.Name} is read-only", window.Status);
+        Assert.Equal(before, decompiled.Text.Snapshot.ToString());
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Code_cleanup_removes_unused_usings_sorts_the_rest_and_reformats()

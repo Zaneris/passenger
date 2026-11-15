@@ -517,8 +517,8 @@ public sealed class CodeAssist
             Menus = [new("Code", 1, 0)],
         });
         web.AddLintingActions(registry);
-        Code(AppActions.CodeCleanup, "Code Cleanup", context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true);
-        Code(AppActions.OptimizeUsings, "Optimize Imports", context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2));
+        Code(AppActions.CodeCleanup, "Code Cleanup", context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true, writes: true);
+        Code(AppActions.OptimizeUsings, "Optimize Imports", context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2), writes: true);
         registry.Add(new IdeAction(AppActions.FindUnusedStepDefinitions, "Find Unused Step Definitions", "Code",
             context => IdeErrors.Observe(this.context.Languages.Gherkin.ShowUnusedAsync()))
         {
@@ -578,16 +578,18 @@ public sealed class CodeAssist
         Code(AppActions.PreviousError, "Previous Highlighted Error", _ => navigation.StepToMarker(forward: false), new("Navigate", 3, 1), server: false);
         Code(AppActions.QuickDocumentation, "Quick Documentation", context => quickInfo.QuickDocumentation(), new("View", 1, 1), server: false);
 
+        // One that edits the file shown (writes) greys on a read-only one, a file the language server serves too.
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
-            bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false) =>
+            bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false) =>
             registry.Add(new IdeAction(id, title, "Code", run)
             {
                 // .http requests, Godot scenes' paths, shaders' names and features' steps are read with no language server.
-                WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
+                WhyNot = action => (http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
                     || shader && action.File is { } file && Godot.GodotShaderMarks.IsShader(file.Path)
                     || gherkin && action.File is { } feature && Passenger.App.Bdd.FeatureChecks.IsFeature(feature.Path) ? null
                     : gdscript && CodeActions.IsGDScript(action.File) ? (action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File!.Name) : null)
-                    : WhyNot(action, server, syntax, xaml, markup, msbuild),
+                    : WhyNot(action, server, syntax, xaml, markup, msbuild))
+                    ?? (writes && action.File is { } shown && action.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name) : null),
                 Menus = [menu],
             });
     }

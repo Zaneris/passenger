@@ -521,6 +521,10 @@ public sealed partial class PassengerTools
                 return new RefactorAnswer(kind, formatted.Said, formatted.Changed ? [new RefactorFile(Relative(markup.Path), Words(RefactoredChange.Changed), [], formatted.Said)] : [], []);
             }
             (OpenDocument document, LspDocument lsp) = await CSharpOnly(path, kind, cancel);
+            if (document.IsReadOnly)
+            {
+                throw new InvalidOperationException($"{name} was not applied: {Refusals.ReadOnly(document.Name)}");
+            }
             if (describe)
             {
                 return new RefactorAnswer(kind, $"{name} would tidy {Relative(document.Path)}", [], []);
@@ -589,6 +593,11 @@ public sealed partial class PassengerTools
             if (lsp is null)
             {
                 left.Add($"{Relative(document.Path)}: the language server does not read it");
+                return;
+            }
+            if (document.IsReadOnly)
+            {
+                left.Add($"{Relative(document.Path)}: it is read-only");
                 return;
             }
             // Its text's version says whether the tidy changed it, never the text made into a string twice.
