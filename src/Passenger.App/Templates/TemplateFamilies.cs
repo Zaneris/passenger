@@ -29,24 +29,31 @@ public sealed record TemplateFamily(string Name, IReadOnlyList<ProjectTemplate> 
 }
 
 /// <summary>How templates become families, from their own metadata: a template group (a groupIdentity's templates, its
-/// languages the Language option) is a Type, which joins the first project type its classifications name
-/// (<see cref="Kinds"/>) whoever made it (TUnit's is a Unit Test). Those none takes go by their short name's family
-/// (avalonia.app and avalonia.mvvm are Avalonia's), named by the words their names begin with, or stand alone. The
-/// project types come in their order, then the rest by name.</summary>
+/// languages the Language option) is a Type, which joins the product its classifications name first
+/// (<see cref="Products"/>), else the first of <see cref="Purposes"/> they name, whoever made it (TUnit's is a Unit
+/// Test). Those none takes go by their short name's family (avalonia.app and avalonia.mvvm are Avalonia's), named by the
+/// words their names begin with, or stand alone. The project types come in their order, then the rest by name.</summary>
 public static class TemplateFamilies
 {
-    /// <summary>The project types, in the order a template is tried against them: a product's first (an Aspire test
-    /// project is Aspire's), then what it is for (a test tagged Desktop and Web is a test). Web leaves workers and cloud
-    /// templates to the others; Desktop is WPF and Windows Forms, not all tagged Desktop (Avalonia's). The leading short
-    /// names give the one order metadata cannot (the plain template first, the test frameworks' order, an Aspire app's
-    /// starter before its single projects).</summary>
-    private static readonly Kind[] Kinds =
+    /// <summary>The project types that are products, which take a template before what it is for (an Aspire test project
+    /// is Aspire's); of two a template names, the one it names first (MAUI's Aspire service defaults is MAUI's, the AI chat
+    /// app tagged Aspire is AI's). The leading short names give the one order metadata cannot (an Aspire app's starter
+    /// before its single projects).</summary>
+    private static readonly Kind[] Products =
     [
         new("AI Extensions", c => c.Contains("AI"), [], []),
         new("Aspire", c => c.Contains("Aspire") || c.Contains(".NET Aspire"), [".NET Aspire ", "Aspire "], ["aspire-starter", "aspire"]),
         new("Azure Functions", c => c.Contains("Azure Functions"), [], []),
+        new("MAUI", c => c.Contains("MAUI"), [".NET MAUI for ", ".NET MAUI "], []),
+    ];
+
+    /// <summary>The project types for what a template is for, in the order one no product takes is tried against them (a
+    /// test tagged Desktop and Web is a test). Web leaves workers and cloud templates to the others; Desktop is WPF and
+    /// Windows Forms, not all tagged Desktop (Avalonia's). The leading short names give the one order metadata cannot (the
+    /// plain template first, the test frameworks' order).</summary>
+    private static readonly Kind[] Purposes =
+    [
         new("Unit Test", c => c.Contains("Test"), [" Test Project"], ["xunit", "nunit", "mstest"]),
-        new("MAUI", c => c.Contains("MAUI"), [".NET MAUI "], []),
         new("Desktop", c => c.Contains("WPF") || c.Contains("WinForms"), [], []),
         new("Web", c => c.Contains("Web") && !c.Contains("Worker") && !c.Contains("Cloud"), ["ASP.NET Core "], ["webapp", "mvc", "webapi", "web"]),
         new("Class Library", c => c.Contains("Library"), [" Class Library"], ["classlib"]),
@@ -63,8 +70,7 @@ public static class TemplateFamilies
         List<ProjectTemplate> rest = [];
         foreach (ProjectTemplate template in templates)
         {
-            HashSet<string> classifications = new(template.Classifications, StringComparer.OrdinalIgnoreCase);
-            if (Kinds.FirstOrDefault(k => k.Takes(classifications)) is { } kind)
+            if (KindOf(template) is { } kind)
             {
                 (kinds.TryGetValue(kind, out List<ProjectTemplate>? members) ? members : kinds[kind] = []).Add(template);
             }
@@ -89,6 +95,22 @@ public static class TemplateFamilies
             }
         }
         return [.. families, .. others.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>The project type a template joins: the product one of its classifications names first, else the first
+    /// purpose they name; null for none.</summary>
+    private static Kind? KindOf(ProjectTemplate template)
+    {
+        foreach (string classification in template.Classifications)
+        {
+            HashSet<string> named = new([classification], StringComparer.OrdinalIgnoreCase);
+            if (Products.FirstOrDefault(k => k.Takes(named)) is { } product)
+            {
+                return product;
+            }
+        }
+        HashSet<string> classifications = new(template.Classifications, StringComparer.OrdinalIgnoreCase);
+        return Purposes.FirstOrDefault(k => k.Takes(classifications));
     }
 
     /// <summary>The families with one more in its place: among those of no project type, by name.</summary>
