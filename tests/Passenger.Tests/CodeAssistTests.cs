@@ -1564,6 +1564,53 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>On a library type's decompiled source, every action of the Code and Refactor menus that would change the file
+    /// greys saying it is read-only (those of another language's files saying that instead), and those that only fold it
+    /// or act on the language server stay enabled, as do Go to Declaration and Find Usages, which only read it; Rename's
+    /// key there says so and changes nothing.</summary>
+    [AvaloniaFact]
+    public void Every_action_of_the_code_and_refactor_menus_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
+    {
+        MainWindow window = project.Open("Program.cs");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "        in");
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+        Ui.WaitFor(() => window.EditorArea.Active?.IsDecompiled == true, "the decompiled source to open");
+        Passenger.App.Workspace.OpenDocument decompiled = window.EditorArea.Active!;
+        string before = decompiled.Text.Snapshot.ToString();
+        string readOnly = $"{decompiled.Name} is read-only";
+        HashSet<string> reading = [EditorActions.Unfold, EditorActions.UnfoldAll, EditorActions.Fold, EditorActions.FoldToDefinitions, EditorActions.FoldAll,
+            EditorActions.UnfoldDocComments, EditorActions.FoldDocComments, EditorActions.ToggleFold, AppActions.ToggleSolutionAnalysis, AppActions.RestartCSharpServer];
+        HashSet<string> otherLanguage = [AppActions.OrderScriptParts, AppActions.ExtractResource, AppActions.ExtractStyle];
+
+        ActionContext context = window.Actions.Context();
+        List<string> offered = [];
+        List<string> greyed = [];
+        foreach (string id in MainMenu.Build(window.Actions.All).Where(m => m.Title is "Code" or "Refactor").SelectMany(ActionsIn))
+        {
+            string? why = window.Actions.WhyNot(id, context);
+            if (reading.Contains(id) ? why is not null : otherLanguage.Contains(id) ? why is null : why != readOnly)
+            {
+                (reading.Contains(id) ? greyed : offered).Add($"{id} ({why ?? "enabled"})");
+            }
+        }
+        foreach (string id in new[] { AppActions.GoToDeclaration, AppActions.FindUsages })
+        {
+            if (window.Actions.WhyNot(id, context) is { } why)
+            {
+                greyed.Add($"{id} ({why})");
+            }
+        }
+        Assert.True(offered.Count == 0, $"On the decompiled {decompiled.Name}, which nothing can change, these are offered or greyed for another reason: {string.Join(", ", offered)}");
+        Assert.True(greyed.Count == 0, $"On the decompiled {decompiled.Name}, these only read it but are greyed: {string.Join(", ", greyed)}");
+
+        Ui.Run(window, AppActions.Rename);
+        Assert.Equal(readOnly, window.Status);
+        Assert.Equal(before, decompiled.Text.Snapshot.ToString());
+        window.Close();
+
+        static IEnumerable<string> ActionsIn(MenuEntry menu) => menu.Action is { } id ? [id] : (menu.Items ?? []).SelectMany(ActionsIn);
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Code_cleanup_removes_unused_usings_sorts_the_rest_and_reformats()

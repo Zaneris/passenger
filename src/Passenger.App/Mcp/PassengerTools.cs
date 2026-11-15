@@ -589,6 +589,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
         }
         Served served = await Serve(at.Path, cancel);
+        if (served.Document.IsReadOnly)
+        {
+            throw new InvalidOperationException($"Rename was not applied: {Refusals.ReadOnly(served.Document.Name)}");
+        }
         int offset = Offset(served.Document, at.Line, at.Column);
         naming.Names(Renaming(served.Document, offset, newName));
         // A Reqnroll step, from a step or its definition's expression (its method's name is C#'s to rename).

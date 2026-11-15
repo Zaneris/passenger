@@ -87,6 +87,10 @@ public sealed partial class PassengerTools
             throw new ArgumentException($"{named} needs the place it works on: path, line and column", nameof(path));
         }
         (OpenDocument document, LspDocument lsp) = await CSharpOnly(path, named, cancel);
+        if (document.IsReadOnly)
+        {
+            throw new InvalidOperationException($"{Refactoring(named, null)} was not applied: {Refusals.ReadOnly(document.Name)}");
+        }
         int offset = Offset(document, line.Value, column.Value);
         naming.Names(Refactoring(named, NameAt(document, offset)));
         bool describing = describe || (given is null && named is "change_signature" or "move" or "extract_interface" or "pull_members_up" or "push_members_down");

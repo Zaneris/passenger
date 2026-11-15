@@ -1857,10 +1857,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's format, Code Cleanup and Optimize Imports of a file the editor shows read-only, a library's XAML
     /// as Source Link gave it and a framework type the language server decompiled, are refused saying so: nothing there
-    /// changes, so nothing is said to be reformatted, tidied or already so. Reformat Code, Code Cleanup and Optimize Imports
-    /// grey on the decompiled file, saying why.</summary>
+    /// changes, so nothing is said to be reformatted, tidied or already so; and each other refactoring and rename of the
+    /// decompiled type are refused up front in the same words. Reformat Code, Code Cleanup, Optimize Imports and the
+    /// refactorings grey on the decompiled file, saying why.</summary>
     [Fact]
-    public async Task An_agents_format_and_tidy_of_a_read_only_xaml_or_cs_file_are_refused_saying_it_is_read_only()
+    public async Task An_agents_format_tidy_refactorings_and_rename_of_a_read_only_xaml_or_cs_file_are_refused_saying_it_is_read_only()
     {
         string folder = await TakeFolderAsync();
         // Where Passenger keeps what Source Link gives of a library, as it would hold Fluent's Button.xaml.
@@ -1894,9 +1895,32 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
                 $"{kind} of a decompiled C# file answered: {Text(tidied)}");
         }
         Assert.True(File.ReadAllText(decompiled) == written, "Optimize Imports or Code Cleanup wrote a decompiled C# file");
+        // The type's declaration, where each refactoring and rename would begin.
+        string[] lines = written.Split('\n');
+        int declared = Array.FindIndex(lines, l => l.Contains("class Console", StringComparison.Ordinal));
+        Assert.True(declared >= 0, $"The decompiled {Path.GetFileName(decompiled)} declares no class Console:\n{written}");
+        int column = lines[declared].IndexOf("Console", StringComparison.Ordinal) + 1;
+        List<string> answered = [];
+        foreach ((string kind, string name) in new[] { ("change_signature", "Change Signature"), ("safe_delete", "Safe Delete"), ("move", "Move"),
+            ("extract_interface", "Extract Interface"), ("pull_members_up", "Pull Members Up"), ("push_members_down", "Push Members Down"),
+            ("introduce_field", "Introduce Field"), ("introduce_parameter", "Introduce Parameter"), ("encapsulate_field", "Encapsulate Field") })
+        {
+            CallToolResult refactored = await Result(client, McpTools.Refactor, new() { ["kind"] = kind, ["path"] = decompiled, ["line"] = declared + 1, ["column"] = column });
+            if (refactored.IsError != true || !Text(refactored).Contains($"{name} was not applied: {Path.GetFileName(decompiled)} is read-only", StringComparison.Ordinal))
+            {
+                answered.Add($"{kind}: {Text(refactored)}");
+            }
+        }
+        CallToolResult renamed = await Result(client, McpTools.Rename, new() { ["path"] = decompiled, ["line"] = declared + 1, ["column"] = column, ["newName"] = "Terminal" });
+        if (renamed.IsError != true || !Text(renamed).Contains($"Rename was not applied: {Path.GetFileName(decompiled)} is read-only", StringComparison.Ordinal))
+        {
+            answered.Add($"rename: {Text(renamed)}");
+        }
+        Assert.True(answered.Count == 0, $"Refactorings or rename of the decompiled {Path.GetFileName(decompiled)} were not refused as read-only:\n{string.Join('\n', answered)}");
+        Assert.True(File.ReadAllText(decompiled) == written, "A refactoring or rename wrote a decompiled C# file");
 
         await Call(client, McpTools.Open, new() { ["path"] = decompiled });
-        foreach (string id in new[] { AppActions.Reformat, AppActions.CodeCleanup, AppActions.OptimizeUsings })
+        foreach (string id in new[] { AppActions.Reformat, AppActions.CodeCleanup, AppActions.OptimizeUsings, AppActions.Rename, AppActions.ExtractMethod, AppActions.ChangeSignature })
         {
             string action = Assert.Single((await Call(client, McpTools.IdeActions, new() { ["query"] = id })).EnumerateArray(),
                 a => a.GetString()!.StartsWith($"{id}:", StringComparison.Ordinal)).GetString()!;
