@@ -112,7 +112,7 @@ internal sealed partial class GherkinAssist
         }
         string left = skipped > 0 ? $"; {skipped} {(skipped == 1 ? "step" : "steps")} with placeholders or no arguments to keep left as written" : string.Empty;
         return new RefactorOutcome($"Renamed the step to \"{renamed}\" in {changes.Count} {(changes.Count == 1 ? "file" : "files")}{left}", null,
-            [.. changes.Select(c => new RefactoredFile(c.Path, "changed", []))], []);
+            [.. changes.Select(c => new RefactoredFile(c.Path, RefactoredChange.Changed, []))], []);
     }
 
     /// <summary>The step definition an agent's place is on, its bindings read first: a step's one definition, or a C#

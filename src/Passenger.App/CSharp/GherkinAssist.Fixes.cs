@@ -131,7 +131,7 @@ internal sealed partial class GherkinAssist
             context.Navigate((target.Path, new TextPosition(line, at - snapshot.GetLineStart(line))));
         }
         string said = snippets.Count == 1 ? $"Defined {snippets[0].Method} {target.Shown}" : $"Defined {snippets.Count} steps {target.Shown}";
-        return new RefactorOutcome(said, null, [new RefactoredFile(target.Path, target.Class is null ? "created" : "changed", [])], []);
+        return new RefactorOutcome(said, null, [new RefactoredFile(target.Path, target.Class is null ? RefactoredChange.Created : RefactoredChange.Changed, [])], []);
     }
 
     private static string AttributeOf(StepSnippet snippet) => snippet.Code[..snippet.Code.IndexOf('\n', StringComparison.Ordinal)];
