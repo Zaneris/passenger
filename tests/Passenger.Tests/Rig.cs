@@ -1606,10 +1606,16 @@ public static class Ui
 
     /// <summary>A person's window shown on a folder, once the folder's opening work has landed; without the C# language
     /// server for a test that asks nothing of C# (<see cref="Passenger.App.MainWindow.StartsLanguageServer"/>), which then
-    /// waits for no server's start, load or restore; saving only when asked for a test that reads what it left unsaved.</summary>
-    public static Passenger.App.MainWindow OpenFolder(string folder, double width = 1200, double height = 800, bool languageServer = true, bool autosaves = true)
+    /// waits for no server's start, load or restore; saving only when asked for a test that reads what it left unsaved; on
+    /// <paramref name="engine"/> in place of the machine's container engine where given.</summary>
+    public static Passenger.App.MainWindow OpenFolder(string folder, double width = 1200, double height = 800, bool languageServer = true, bool autosaves = true,
+        Passenger.App.Containers.ContainerEngine? engine = null)
     {
-        Passenger.App.MainWindow window = new() { Width = width, Height = height, StartsLanguageServer = languageServer, Autosaves = autosaves };
+        Passenger.App.MainWindow window = new()
+        {
+            Width = width, Height = height, StartsLanguageServer = languageServer, Autosaves = autosaves,
+            Engine = engine ?? Passenger.App.Containers.ContainerEngine.Shared,
+        };
         window.Show();
         window.OpenFolder(folder);
         Settle();

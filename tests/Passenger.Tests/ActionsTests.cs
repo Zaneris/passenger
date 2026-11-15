@@ -26,7 +26,8 @@ public sealed class ActionsTests : IDisposable
     public void Every_action_Find_Action_lists_runs_where_it_was_asked_for_or_says_why_it_cannot()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One\n{\n    int Two() => 2;\n}\n");
-        MainWindow window = Ui.OpenFolder(folder);
+        // Every action may run here, Prune and Remove among them: on an engine of no program, never the machine's own.
+        MainWindow window = Ui.OpenFolder(folder, engine: new Passenger.App.Containers.ContainerEngine(cli: Path.Combine(folder, "no-docker")));
         window.OpenFile("One.cs");
         Ui.Settle();
         try
@@ -111,7 +112,8 @@ public sealed class ActionsTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One\n{\n    int Two() => 2;\n}\n");
         TestGit.Init(folder);
         Keymap platforms = AppActions.Keymap(new Dictionary<string, string[]>());
-        MainWindow window = Ui.OpenFolder(folder);
+        // Every action may run here, Prune and Remove among them: on an engine of no program, never the machine's own.
+        MainWindow window = Ui.OpenFolder(folder, engine: new Passenger.App.Containers.ContainerEngine(cli: Path.Combine(folder, "no-docker")));
         window.OpenFile("One.cs");
         Ui.Settle();
         Ui.WaitFor(() => window.Vcs.Repository is not null, "the folder's repository");
