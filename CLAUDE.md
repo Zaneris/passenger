@@ -205,7 +205,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `Dotnet.Root`, never `Dotnet.Host()`'s folder, for a folder's work `Dotnet.Root(folder)`/`Host(folder)` (the first installation holding the SDK its global.json takes, its `sdk.paths` searched as the muxer does, `Dotnet.Find(folder)`), which `DotnetCommand(args, folder)` and `NamingDotnet(start, folder)` take; a request of a host `OutboundHttp`; a Unix socket `SocketFolders`; a C
   call made in more than one place `Libc`; whether a process runs `DotnetProcesses.Runs`, a `Process` held too, never
   `HasExited` (PSG0007): ended, one Passenger started has an `ExitCode` to read, one found by id none; a PASSENGER_*_MS
-  `EnvironmentValues.Milliseconds`, a PASSENGER_* stand-in for a host `EnvironmentValues.Address` (read in Program.Main's checks); a Windows command line `WindowsCommandLine`; the version `Product`, Passenger's own program `Product.Program`; a log below the
+  `EnvironmentValues.Milliseconds`, a PASSENGER_* stand-in for a host `EnvironmentValues.Address` (read in Program.Main's checks); a Windows command line `WindowsCommandLine`; git's environment variables `GitVariables`; the version `Product`, Passenger's own program `Product.Program`; a log below the
   App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes `MSBuildNames`; another program's or a person's
   JSON `JsonMembers` (`Value` for a member of any kind), never a bare `TryGetProperty`/`GetProperty` (PSG0008); a search
   by halving `Sorted`, never a loop of your own; the newest of folders named by versions `VersionOrder.Newest`; a primitive `PrimitiveTypes`; an SDK into an installation
@@ -258,7 +258,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   through Passenger's own gpg (`GpgLoopback`; gpgsm's for X.509; Git for Windows' MSYS gpg given its home as MSYS reads
   one, `MsysGpg`, its agent inheriting none of Passenger's handles, `StandardHandles.NotInherited`; every gpg found by
   `GpgPrograms`); signatures read for the rows shown, never by `%G?` in a read; a git that may ask ends with its folder
-  (`GitQuestions`); the status bar's Git reads `VcsController.Upstream` and `Divergence`, counted only when the branch, upstream or refs move; an agent's `vcs_commit` lines go through `PartialCommit.Touched`; moves reach the index only through `VcsController.Moved`, batched (`Git.MoveInIndexAsync`, `IndexMoves`), never one git per file; a partial commit's own index starts from `read-tree -m -i --index-output` (without `-i` a staged file changed since is refused) (the real index's stats), never
+  (`GitQuestions`); the status bar's Git reads `VcsController.Upstream` and `Divergence`, counted only when the branch, upstream or refs move; an agent's `vcs_commit` lines go through `PartialCommit.Touched`; moves reach the index only through `VcsController.Moved`, batched (`Git.MoveInIndexAsync`, `IndexMoves`), never one git per file; a commit's own index is `Git.PrivateIndexAsync`, which starts from `read-tree -m -i --index-output` (without `-i` a staged file changed since is refused) (the real index's stats), never
   a plain `read-tree`, which reads every file again.
 - `Passenger.Dap`, `Passenger.Debugger`, `Passenger.DebugAdapter`: Passenger's own debugger behind its own DAP. On a
   device it runs through `Passenger.DebugRelay` (relay.c), loaded by the Debug app as its profiler, which knows only the
@@ -271,7 +271,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   the runtime's createdump writes into the program's stdout, and Windows' dumps only its parent.
 - `Passenger.UpdateHandlers`, `Passenger.Inspector` (+`.Wpf`; `Protocol.cs` in both ends), `Passenger.WpfPreview`,
   `Passenger.MauiPreview` (Avalonia.Controls.Maui, its Skia and HarfBuzz natives its own folder's, `OwnNatives`; hosts share
-  `ChildPreviewHost`; a project of platforms alone previews from `MauiPreviewHost.PlainBuild`), `Passenger.TestFrames`, `Passenger.Terminal` (Porta.Pty; a folder's shell finds its dotnet first through `FirstOnPath`, given again after the startup files, as a login shell's reorder PATH); `Passenger.Analyzers` (`Rules.cs`; a rule goes on only where
+  `ChildPreviewHost`; a project of platforms alone previews from `MauiPreviewHost.PlainBuild`), `Passenger.TestFrames`, `Passenger.Terminal` (Porta.Pty; a key's bytes from `TerminalKeys`, one table of function keys, `Functional`, both protocols read; a folder's shell finds its dotnet first through `FirstOnPath`, given again after the startup files, as a login shell's reorder PATH); `Passenger.Analyzers` (`Rules.cs`; a rule goes on only where
   nothing it flags is left); `tools/` (notices, the test runner, packaging, site shots).
 
 `src/Passenger.App`, by area:
