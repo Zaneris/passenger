@@ -271,6 +271,104 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         }
     }
 
+    /// <summary>The scene's one node's script, whose _ready counts a while, each turn a moment long, then says the sum.</summary>
+    private const string Readying = "extends Node\n\nvar total := 0\n\n\nfunc _ready() -> void:\n\tfor i in 300:\n\t\ttotal += i\n\t\tOS.delay_msec(5)\n"
+        + "\tprint(\"ready \", total)\n";
+
+    /// <summary>A tracepoint and a conditional breakpoint in the game's _ready, read while Godot sets its tree up, where the
+    /// open script's values are asked of the game too: the tracepoint logs its message at every turn up to the stop, the
+    /// condition stops the game where it holds alone, and Passenger's helper, which no tree setting nodes up takes, is
+    /// brought in only once the game runs on, so nothing it would raise is said as the game's or an expression's.</summary>
+    [AvaloniaFact]
+    public void A_conditional_breakpoint_and_a_tracepoint_in_the_games_ready_hold_while_godot_sets_its_tree_up()
+    {
+        File.WriteAllText(TickerPath, Readying);
+        MainWindow window = Open();
+        try
+        {
+            Choose(window);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int counted = LineOf(editor, "total += i");
+            int waited = LineOf(editor, "OS.delay_msec");
+            BreakpointStore store = window.Debugger.Breakpoints;
+            store.Update(store.Set(TickerPath, counted), enabled: true, suspend: false, condition: null, hitCondition: null, logMessage: "at {i}");
+            store.Update(store.Set(TickerPath, waited), enabled: true, suspend: true, condition: "i == 250", hitCondition: null, logMessage: null);
+            Ui.Launched(window, window.DebugAsync(), "the game's start under the debugger", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.GDScript, State: DebugState.Paused } && Stopped(editor) == waited && Row(window, "i") is not null,
+                () => $"the game to stop where i == 250 in ticker.gd's _ready ({Sessions(window)}, {Ui.Said(window)}; {Console(window)})", TimeSpan.FromMinutes(2));
+            string said = Console(window);
+            Assert.True(Row(window, "i")!.Value == "250", $"The game stopped with i {Row(window, "i")!.Value}, where its condition holds only at 250: {said}");
+            string[] logged = [.. said.Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.StartsWith("at ", StringComparison.Ordinal))];
+            Assert.True(logged.SequenceEqual(Enumerable.Range(0, 251).Select(i => $"at {i}")),
+                $"The tracepoint did not log each turn's i up to the stop: {string.Join(", ", logged.Where((l, i) => l != $"at {i}").Take(5))} ({logged.Length} logged): {said}");
+
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => Console(window).Contains("ready 44850", StringComparison.Ordinal), () => $"the game to say its sum ({Sessions(window)}; {Console(window)})", TimeSpan.FromMinutes(1));
+            Passenger.App.Workspace.OpenDocument script = window.EditorArea.Active!;
+            int member = LineOf(editor, "var total");
+            Ui.WaitFor(() => script.LiveValues.Any(a => a.Line == member && a.Text.Contains("44850", StringComparison.Ordinal)),
+                () => $"the open script's total read through Passenger's helper once the game ran on ({string.Join("; ", script.LiveValues.Select(a => $"{a.Line + 1}: {a.Text}"))}; "
+                    + $"the last read: {window.GodotValues.Unread ?? "answered"})", TimeSpan.FromMinutes(1));
+            Assert.True(!Console(window).Contains("busy setting up", StringComparison.Ordinal),
+                $"Passenger's helper was brought into the game as its tree was set up, where Godot refused it, saying so as the game's error: {Console(window)}");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging && window.Session.Games.Count == 0, () => $"the game to end with its session ({Sessions(window)})", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The scene's one node's script, which, told to grow, has the root call grow_up through its nodes, which runs for
+    /// seconds, the root setting its children up all that while.</summary>
+    private const string Growing = "extends Node\n\nvar grow := false:\n\tset(value):\n\t\tget_tree().root.propagate_call.call_deferred(\"grow_up\")\n\n\n"
+        + "func grow_up() -> void:\n\tprint(\"growing\")\n\tvar until := Time.get_ticks_msec() + 5000\n\tvar turns := 0\n"
+        + "\twhile Time.get_ticks_msec() < until:\n\t\tturns += 1\n\tprint(\"grown \", turns > 0)\n";
+
+    /// <summary>A call on Passenger's helper that brings it in while the game's root calls a method through its nodes, after the
+    /// game has run its loop, where Godot adds no node: the call says at once why the helper could not come in, Godot's refusal
+    /// is none of the game's errors, and a call once the root is done brings the helper in and is answered.</summary>
+    [AvaloniaFact]
+    public void A_helper_godot_refuses_while_the_root_sets_its_children_up_says_so_as_its_own_and_comes_in_on_a_later_call()
+    {
+        File.WriteAllText(TickerPath, Growing);
+        MainWindow window = Open();
+        try
+        {
+            // Nothing else brings the helper in.
+            window.ApplySettings(window.Settings with { GodotLiveValues = false });
+            Choose(window);
+            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Session.Game is { State: Passenger.App.LiveTree.LiveAppState.Connected, Monitors: not null },
+                () => $"the game to connect and run its loop ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
+            Passenger.App.Godot.GodotGame running = window.Session.Game!;
+            List<Passenger.App.Godot.GodotError> raised = [];
+            running.Raised += (_, error) => raised.Add(error);
+            ulong main = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1)).All().First(n => n.Name == "Main").Id;
+            Ui.AwaitPumped(running.SetPropertyAsync(main, "grow", true), "the game told to grow", TimeSpan.FromMinutes(1));
+            Ui.PumpUntil(() => Run(window).Contains("growing", StringComparison.Ordinal), "the root's call through its nodes to begin", TimeSpan.FromMinutes(1));
+
+            Task<List<object?>> refused = running.AskAsync("count");
+            Ui.PumpUntil(() => refused.IsCompleted, "the helper's count while the root sets its children up", TimeSpan.FromMinutes(1));
+            string ended = Run(window).Contains("grown ", StringComparison.Ordinal) ? "once the root's call had ended" : "while the root's call went on";
+            Assert.True(refused.Exception?.InnerException?.Message == Passenger.App.Godot.GodotAgent.NotPlaced(running.Name),
+                $"The helper's count asked as the root set its children up came {ended} to "
+                + $"{(refused.IsCompletedSuccessfully ? $"[{string.Join(", ", refused.Result)}]" : refused.Exception?.InnerException?.Message)}");
+            Assert.True(raised.Count == 0, $"Godot's refusal of the helper's node was said as the game's error: {string.Join("; ", raised.Select(e => e.Said))}");
+
+            Ui.PumpUntil(() => Run(window).Contains("grown true", StringComparison.Ordinal), "the root's call through its nodes to end", TimeSpan.FromMinutes(1));
+            List<object?> counted = Ui.AwaitPumped(running.AskAsync("count"), "the helper's count once the root's call ended", TimeSpan.FromMinutes(1));
+            Assert.True(counted is [long frames, ..] && frames > 0, $"The helper brought in once the root's call ended counted [{string.Join(", ", counted)}]");
+            Stop(window);
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { GodotLiveValues = true });
+            End(window);
+        }
+    }
+
     /// <summary>A script saved while Run runs the game with Hot Reload reaches it: what it says after is the edit's, its count
     /// going on.</summary>
     [AvaloniaFact]

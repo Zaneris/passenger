@@ -125,6 +125,10 @@ public static class GodotWords
 
     /// <summary>The function of Godot's that takes a picture of the game, whose errors say why it took none.</summary>
     public const string ScreenshotFunction = "_msg_rq_screenshot";
+
+    /// <summary>The function of Godot's that adds a node to its parent, and the file it is in, whose errors say it added none.</summary>
+    public const string AddChildFunction = "add_child";
+    public const string NodeSource = "scene/main/node.cpp";
 }
 
 /// <summary>What a click in a game picks under Godot's runtime node selection, as its <c>set_type</c> numbers it: nothing

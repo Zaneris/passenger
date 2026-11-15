@@ -71,6 +71,15 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// predate it, so only one asked since says the helper is gone.</summary>
     private int brought;
 
+    /// <summary>Whether the helper was last sent for and has not been heard since: a node Godot refused to add meanwhile is its.</summary>
+    private bool placing;
+
+    /// <summary>Whether the game has run its loop since it connected or last stopped in a script: its monitors, which its loop
+    /// alone sends, came since. Until then a node's _ready may still be running, its tree adding no node.</summary>
+    private bool looped;
+
+    /// <summary>Ends at the game's next monitors.</summary>
+    private TaskCompletionSource nextBeat = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private GodotGame(string name, string folder, string? version, bool headless, bool unseen, bool scriptsAlone, TcpListener? listener, GodotScriptStart? scripts,
         Func<byte[], CancellationToken, Task>? relay = null)
@@ -536,6 +545,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         {
             return;
         }
+        if (message.Name == GodotWords.DebugEnter)
+        {
+            looped = false;
+        }
         switch (message.Name)
         {
             case GodotWords.ProcessId when message.Data is [long id]:
@@ -572,6 +585,15 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
                 }
                 break;
             case GodotWords.Error when GodotError.Read(message.Data) is { } error && Scripts?.Claims(error) == true:
+                break;
+            case GodotWords.Error when placing && GodotError.Read(message.Data) is { } error && GodotAgent.Unplaced(error):
+                // The helper's node, refused by a parent setting its children up: the asks waiting say so, and the game's problems stay its own.
+                placing = false;
+                beside = null;
+                foreach (TaskCompletionSource<List<object?>> asked in agentAsked.Values)
+                {
+                    asked.TrySetException(new LiveAppException(GodotAgent.NotPlaced(Name)));
+                }
                 break;
             case GodotWords.Error when GodotError.Read(message.Data) is { } error:
                 lastRaised = (System.Diagnostics.Stopwatch.GetTimestamp(), error.Said);
@@ -614,10 +636,12 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
                 picturesAsked.GetValueOrDefault(id)?.TrySetResult(((int)width, (int)height, path));
                 break;
             case GodotAgent.Said when message.Data is List<object?> { Count: >= 2 } said && said[0] is long ask:
+                placing = false;
                 agentAsked.GetValueOrDefault(ask)?.TrySetResult(said);
                 break;
             case GodotAgent.Gone:
                 // The game's count of nodes may never show it: come and gone within one beat of its monitors, or a node made in its place.
+                placing = false;
                 beside = null;
                 Freed();
                 break;
@@ -630,6 +654,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             case GodotWords.Monitors when GodotMonitors.Read(message.Data, customMonitors) is { } monitors:
                 bool moved = Monitors is { } was && was.Nodes != monitors.Nodes;
                 Monitors = monitors;
+                looped = true;
+                TaskCompletionSource beat = nextBeat;
+                nextBeat = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                beat.TrySetResult();
                 if (moved)
                 {
                     // Counted before the beat's own asks, so they ask for the tree again rather than go beside a scene or helper gone.
@@ -718,13 +746,18 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>Sends a message to one of the game's threads: a thread stopped in a script reads only its own. Inside an
     /// agent's call (<see cref="Within"/>) it waits for its turn and its write no longer than the call may; a write given up
     /// part sent ends the connection, which no later message could be read on.</summary>
-    public async Task SendToAsync(string name, long thread, params object?[] data)
+    public Task SendToAsync(string name, long thread, params object?[] data) => SendTogetherAsync(thread, [(name, data)]);
+
+    /// <summary>Sends messages to one of the game's threads in turn as <see cref="SendToAsync"/> sends one, in one write, so
+    /// no other message of Passenger's comes between them.</summary>
+    public async Task SendTogetherAsync(long thread, IReadOnlyList<(string Name, object?[] Data)> messages)
     {
         if ((stream is null && relay is null) || !taken || disposed)
         {
             throw new LiveAppException($"{Name} is not connected");
         }
-        byte[] frame = GodotMessage.Frame(name, thread, data);
+        string name = string.Join(" and ", messages.Select(m => m.Name));
+        List<byte[]> frames = [.. messages.Select(m => GodotMessage.Frame(m.Name, thread, m.Data))];
         AgentAsking? asking = Asking.Value;
         CancellationToken giveUp = asking?.GiveUp ?? CancellationToken.None;
         if (!writing.Wait(0))
@@ -742,7 +775,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         using CancellationTokenSource writes = CancellationTokenSource.CreateLinkedTokenSource(ending.Token, giveUp);
         try
         {
-            Task written = relay is { } through ? through(frame[4..], writes.Token) : stream!.WriteAsync(frame, writes.Token).AsTask();
+            Task written = relay is { } through ? RelayedAsync(through, frames, writes.Token)
+                : stream!.WriteAsync(frames.Count == 1 ? frames[0] : [.. frames.SelectMany(f => f)], writes.Token).AsTask();
             if (!written.IsCompleted)
             {
                 Mcp.AgentCall.Say($"Telling {Name} {name}, which its connection has not yet taken");
@@ -761,6 +795,15 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         finally
         {
             writing.Release();
+        }
+
+        // Each message's bytes as a frame holds them after its length, in turn.
+        static async Task RelayedAsync(Func<byte[], CancellationToken, Task> through, List<byte[]> frames, CancellationToken cancel)
+        {
+            foreach (byte[] frame in frames)
+            {
+                await through(frame[4..], cancel);
+            }
         }
     }
 
@@ -800,6 +843,44 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             }
             Mcp.AgentCall.Say($"Waiting for {Name} to open its first scene");
             await Task.Delay(TimeSpan.FromMilliseconds(250), cancel);
+        }
+    }
+
+    /// <summary>Waits for the game to run its loop (<see cref="looped"/>), as Passenger's helper comes in only then: a game
+    /// reads Passenger's messages between a script's lines and in its script debugger, where a node's _ready may be running
+    /// under the root, which adds no node then. A <see cref="LiveAppException"/> says the game is paused, stopped meanwhile,
+    /// or ran no loop within an answer's limit.</summary>
+    private async Task LoopedAsync()
+    {
+        if (looped)
+        {
+            return;
+        }
+        if (Debugged is { State: Debugging.DebugState.Paused } || stoppedInEditor)
+        {
+            throw new LiveAppException($"{Name} is paused in a script before Passenger's helper came into it, which it does once the game runs on");
+        }
+        TimeSpan limit = Waits.Of(AnswerLimit);
+        AgentAsking? asking = Asking.Value;
+        Mcp.AgentCall.Say($"Waiting for {Name} to run its loop, before which Passenger's helper cannot come into its tree");
+        Task beat = nextBeat.Task;
+        Task stopped = nextStop.Task;
+        try
+        {
+            if (await Task.WhenAny(beat, stopped).WaitAsync(limit, asking?.GiveUp ?? CancellationToken.None) == stopped)
+            {
+                throw new LiveAppException($"{Name} stopped under the debugger before Passenger's helper came into it, which it does once the game runs on: "
+                    + "debug_state says where");
+            }
+        }
+        catch (OperationCanceledException) when (asking is { GiveUp.IsCancellationRequested: true })
+        {
+            throw new LiveAppException(GivenUp(asking, "for it to run its loop, before which Passenger's helper cannot come into its tree"));
+        }
+        catch (TimeoutException)
+        {
+            throw new LiveAppException($"{Name} ran no loop in {limit.TotalSeconds:0} s, its tree setting nodes up all that time (a node's _ready running, or "
+                + "a script stopped in one), where Godot adds no node: Passenger's helper comes in once the game has run its loop");
         }
     }
 
@@ -1008,6 +1089,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             List<GodotNode> all = [.. tree.All()];
             named = (tree.Children.Select(c => c.SceneFile).FirstOrDefault(f => f.Length > 0 && all.Count(n => n.SceneFile == f) == 1)
                 ?? throw new LiveAppException($"{Name} has no scene open once under its root, beside which Passenger's helper comes into the game"), asked.Value.Moves);
+            if (!tree.Children.Any(GodotAgent.Is))
+            {
+                await LoopedAsync();
+            }
         }
         (string scene, int namedAt) = named.Value;
         await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), scene);
@@ -1145,6 +1230,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         string script = await BackgroundWork.Run(GodotAgent.Written);
         try
         {
+            placing = true;
             await SendAsync(GodotWords.LiveCreateNode, GodotAgent.PathOf(".."), "Node", GodotAgent.NodeName);
             // Godot's own paths part their folders with '/' on every system.
             await SendAsync(GodotWords.LiveNodePropertyResource, GodotLiveEditIds.Agent, "script", script.Replace('\\', '/'));

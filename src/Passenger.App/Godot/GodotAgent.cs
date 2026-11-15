@@ -48,6 +48,15 @@ public static partial class GodotAgent
     /// <summary>Whether a place an error was raised at is the helper's script.</summary>
     public static bool Raised(GodotError error) => IsScript(error.File) || error.Frames.Any(f => IsScript(f.File));
 
+    /// <summary>Whether an error the game raised is Godot refusing to add a node to a parent setting up its children, as the
+    /// helper's node is refused while a node's _ready, or a call through the nodes, runs under the root.</summary>
+    public static bool Unplaced(GodotError error) =>
+        error.Function == GodotWords.AddChildFunction && error.File.Replace('\\', '/').EndsWith(GodotWords.NodeSource, StringComparison.Ordinal);
+
+    /// <summary>What a call on the helper says once Godot refused the helper's node.</summary>
+    public static string NotPlaced(string game) => $"{game} was setting up the nodes under its root (running a node's _ready, or a call through them) as "
+        + "Passenger's helper came in, and Godot adds no node to a parent then: the helper comes in on a later call, once the game runs on";
+
     /// <summary>Whether a script's file, as Godot names it, is the helper's.</summary>
     public static bool IsScript(string file) => file.EndsWith(FileName, StringComparison.Ordinal);
 

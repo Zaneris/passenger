@@ -66,7 +66,13 @@ public sealed class GodotScriptAdapter : InProcessAdapter
     private List<GodotScriptVariable>? variablesHeard;
     private int variablesExpected;
     private TaskCompletionSource<GodotScriptVariable>? evaluationAsked;
+
+    /// <summary>The errors of the evaluation under way, which the game raises after its answer and before it reads the next
+    /// message: taken from its answer (<see cref="claiming"/>) to the stack asked for with it, so no other message's is taken.</summary>
     private List<GodotError>? evaluationErrors;
+
+    /// <summary>Whether the evaluation under way has answered and the stack asked for with it has yet to come.</summary>
+    private bool claiming;
 
     private enum Going
     {
@@ -622,9 +628,8 @@ public sealed class GodotScriptAdapter : InProcessAdapter
             evaluationErrors = raised;
             Task<GodotScriptVariable> answered = evaluationAsked.Task;
             Task<IReadOnlyList<GodotScriptFrame>> fenced = stackAsked.Task;
-            await game.SendToAsync(GodotWords.Evaluate, stopped.Thread, expression, (long)level);
             // Its errors are written out before the game reads its next question, whose answer comes after them.
-            await game.SendToAsync(GodotWords.GetStackDump, stopped.Thread);
+            await game.SendTogetherAsync(stopped.Thread, [(GodotWords.Evaluate, [expression, (long)level]), (GodotWords.GetStackDump, [])]);
             GodotScriptVariable answer = await Answer(answered, "with the expression's value");
             await Answer(fenced, "with its stack");
             return raised.FirstOrDefault(e => !e.Warning) is { } failed ? throw new DapException(DapCommands.Evaluate, GodotScriptValues.Failure(failed)) : answer;
@@ -634,6 +639,7 @@ public sealed class GodotScriptAdapter : InProcessAdapter
             evaluationAsked = null;
             stackAsked = null;
             evaluationErrors = null;
+            claiming = false;
             asking.Release();
         }
     }
@@ -753,7 +759,7 @@ public sealed class GodotScriptAdapter : InProcessAdapter
     /// or Godot's word that a frame asked of is past its stack.</summary>
     internal bool Claims(GodotError error)
     {
-        if (evaluationErrors is { } raised)
+        if (claiming && evaluationErrors is { } raised)
         {
             raised.Add(error);
             return true;
@@ -778,6 +784,7 @@ public sealed class GodotScriptAdapter : InProcessAdapter
                 Tell(DapEvents.Continued, new ContinuedEvent((int)gone.Thread));
                 break;
             case GodotWords.StackDump:
+                claiming = false;
                 stackAsked?.TrySetResult(GodotScriptFrame.Stack(message.Data) ?? []);
                 break;
             case GodotWords.StackFrameVars when GodotScriptVariable.Count(message.Data) is int count && variablesAsked is { } asked:
@@ -799,6 +806,7 @@ public sealed class GodotScriptAdapter : InProcessAdapter
                 }
                 break;
             case GodotWords.EvaluationReturn when GodotScriptVariable.Read(message.Data) is { } answer:
+                claiming = evaluationErrors is not null;
                 evaluationAsked?.TrySetResult(answer);
                 break;
         }
