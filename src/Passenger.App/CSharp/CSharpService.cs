@@ -605,12 +605,29 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// since the service began: what a burst of keys costs the server.</summary>
     public int PullsAsked(string? source) => pullsAsked.GetValueOrDefault(source ?? string.Empty);
 
+    /// <summary>The analysis's last steps, written over in turn (<see cref="AnalysisSteps"/>).</summary>
+    private readonly AnalysisStep[] steps = new AnalysisStep[128];
+    private int stepsTaken;
+
+    private void Step(AnalysisStepKind kind, string? source = null, int count = 0) =>
+        steps[stepsTaken++ % steps.Length] = new AnalysisStep(Stopwatch.GetTimestamp(), kind, source, count);
+
+    /// <summary>The analysis's last steps, oldest first: which pull went when against the open files' pulls and the server's
+    /// refreshes, for a test's words as it fails.</summary>
+    public IReadOnlyList<AnalysisStep> AnalysisSteps()
+    {
+        UiThread.Check();
+        int kept = Math.Min(stepsTaken, steps.Length);
+        return [.. Enumerable.Range(stepsTaken - kept, kept).Select(i => steps[i % steps.Length])];
+    }
+
     /// <summary>An open file's pull begun at its change, held until it ends: the analysis's pulls held open are let go, and
     /// none is asked again until no open file's pull is under way.</summary>
     internal IDisposable FilePulling()
     {
         UiThread.Check();
         filesPulling++;
+        Step(AnalysisStepKind.FilePullBegun, count: filesPulling);
         // Taken apart first: a pull let go may end at once, leaving the list as it does.
         foreach (CancellationTokenSource held in askedPulls.Where(p => p.Value).Select(p => p.Key).ToList())
         {
@@ -626,7 +643,9 @@ public sealed partial class CSharpService : IAsyncDisposable
     private void SolutionMoved()
     {
         // Taken apart first: a pull let go may end at once, leaving the list as it does.
-        foreach (CancellationTokenSource asked in askedPulls.Keys.Where(p => !keptThroughMoves.Contains(p)).ToList())
+        List<CancellationTokenSource> letGo = [.. askedPulls.Keys.Where(p => !keptThroughMoves.Contains(p))];
+        Step(AnalysisStepKind.Refreshed, count: letGo.Count);
+        foreach (CancellationTokenSource asked in letGo)
         {
             asked.Cancel();
         }
@@ -647,6 +666,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 return;
             }
             ended = true;
+            service.Step(AnalysisStepKind.FilePullEnded, count: service.filesPulling - 1);
             if (--service.filesPulling == 0 && service.filesPulled is { } waiting)
             {
                 service.filesPulled = null;
@@ -969,6 +989,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 while (!first && filesPulling > 0)
                 {
                     waiting ??= BackgroundWork.Scope();
+                    Step(AnalysisStepKind.Waiting, source, filesPulling);
                     await FilesPulled().WaitAsync(cancel);
                 }
                 List<PreviousResultId> previous = [.. solutionReports
@@ -986,6 +1007,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                     keptThroughMoves.Add(round);
                 }
                 pullsAsked[source ?? string.Empty] = PullsAsked(source) + 1;
+                Step(AnalysisStepKind.Asked, source, PullsAsked(source));
                 TaskCompletionSource analysed = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 Task<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> pull = running.Server.WorkspaceDiagnosticsAsync(source, previous, reports => streamed.Writer.TryWrite(reports),
                     round.Token, frameworks, () => analysed.TrySetResult());
@@ -1007,6 +1029,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                             // Every source analysed, and the pull held open: the first round has its answer, though the pull has none yet.
                             told = pull;
                             changed += await TakeAsync(Drain(streamed.Reader));
+                            Step(AnalysisStepKind.Analysed, source, first ? 1 : 0);
                             Answered();
                             continue;
                         }
@@ -1038,6 +1061,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 // What a pull sent before it answered or failed is the server's word as much as its answer.
                 changed += await TakeAsync([.. Drain(streamed.Reader), .. answered]);
                 cancel.ThrowIfCancellationRequested();
+                Step(letGo ? AnalysisStepKind.LetGo : refused is not null ? AnalysisStepKind.Refused : AnalysisStepKind.Answered, source, changed);
                 if (letGo)
                 {
                     continue;
@@ -1054,6 +1078,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 // A source with nothing to hold a pull open on answers at once: it is asked again only now and then.
                 if (changed == 0 && Stopwatch.GetElapsedTime(asked) < TimeSpan.FromSeconds(1))
                 {
+                    Step(AnalysisStepKind.Resting, source);
                     await Task.Delay(TimeSpan.FromSeconds(2), cancel);
                 }
             }
@@ -2384,3 +2409,45 @@ internal sealed record WorkspaceReport(string Uri, string Path, PreviousResultId
 
 /// <summary>What a file's report is kept by: its source, its URI, and the id of the project it was analysed in, if named.</summary>
 internal readonly record struct ReportKey(string? Source, string Uri, string? Project);
+
+/// <summary>What a step of solution-wide analysis was (<see cref="AnalysisStep"/>).</summary>
+public enum AnalysisStepKind
+{
+    Asked,
+    Analysed,
+    Answered,
+    LetGo,
+    Refused,
+    Resting,
+    Waiting,
+    Refreshed,
+    FilePullBegun,
+    FilePullEnded,
+}
+
+/// <summary>A step of solution-wide analysis, or of an open file's pull that holds it back, when it came
+/// (<see cref="Stopwatch.GetTimestamp"/>): a pull of a source asked, its every source analysed, answered (with how many
+/// reports changed), let go or refused, a source resting after an answer with nothing new, a source waiting for the file
+/// pulls under way, the server's refresh (with how many pulls it let go), a file pull begun or ended (with how many are
+/// under way). What a test says of the analysis as it fails.</summary>
+public readonly record struct AnalysisStep(long At, AnalysisStepKind Kind, string? Source, int Count)
+{
+    public override string ToString()
+    {
+        string source = Source ?? "every source";
+        return Kind switch
+        {
+            AnalysisStepKind.Asked => $"{source} asked (its pull {Count})",
+            AnalysisStepKind.Analysed => $"{source} said every file analysed{(Count > 0 ? ", its first round over" : string.Empty)}",
+            AnalysisStepKind.Answered => $"{source} answered, {Plural.Of(Count, "report")} changed",
+            AnalysisStepKind.LetGo => $"{source} let go",
+            AnalysisStepKind.Refused => $"{source} refused",
+            AnalysisStepKind.Resting => $"{source} answered at once with nothing new: asks again in 2 s",
+            AnalysisStepKind.Waiting => $"{source} waits for {Plural.Of(Count, "file pull")}",
+            AnalysisStepKind.Refreshed => $"the server's refresh, {Plural.Of(Count, "pull")} let go",
+            AnalysisStepKind.FilePullBegun => $"a file pull begun, {Count} under way",
+            AnalysisStepKind.FilePullEnded => $"a file pull ended, {Count} under way",
+            _ => Kind.ToString(),
+        };
+    }
+}

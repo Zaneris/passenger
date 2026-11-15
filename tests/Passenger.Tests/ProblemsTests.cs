@@ -100,24 +100,34 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
         Avalonia.Controls.Button analysis = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.Button>(window, "AnalysisButton")!;
         WorkingRing? ring = Avalonia.Controls.ControlExtensions.FindControl<WorkingRing>(window, "AnalysisWorking");
-        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        List<(long At, string What)> marks = [];
+        long since = Mark(marks, "solution-wide analysis turned on");
+        (bool Analysing, string? Said, bool Ringed)? held = null;
         try
         {
-            // A first pull of the solution's diagnostics held unanswered, as by a server still analysing a large solution.
-            Task holding = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic, _ => true, answered.Task);
+            // The first pull held unsent, as by a server still analysing a large solution, the bar read as it is held: the server's refresh may let go of it before a later look.
+            Task holding = server.HoldNext(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic, _ =>
+            {
+                Mark(marks, "a pull held unsent, the status bar looked at");
+                held = Avalonia.Threading.Dispatcher.UIThread.CheckAccess()
+                    ? (window.CSharpService.IsAnalysing, Avalonia.Controls.ToolTip.GetTip(analysis) as string, ring?.IsVisible == true)
+                    : (false, "nothing: the pull was asked off the window's thread", false);
+                return true;
+            }, asked.Task);
             window.Perform(AppActions.ToggleSolutionAnalysis);
             // Pumped, not settled: the round is background work until it answers.
-            Ui.PumpUntil(() => holding.IsCompleted, "the first pull of the solution's diagnostics to be answered, and held");
-            Assert.True(window.CSharpService.IsAnalysing, "Solution-wide analysis ended its first round with a pull of it unanswered");
-            string? said = Avalonia.Controls.ToolTip.GetTip(analysis) as string;
-            Assert.True(said?.StartsWith("Solution-wide analysis is under way", StringComparison.Ordinal) == true && ring?.IsVisible == true,
-                $"While solution-wide analysis had yet to answer its first round, the status bar said \"{said}\" with {(ring?.IsVisible == true ? "a turning ring" : "no ring")}");
+            Ui.PumpUntil(() => holding.IsCompleted, "the first pull of the solution's diagnostics to be asked, and held");
+            Assert.True(held?.Analysing == true,
+                $"Solution-wide analysis's first round was over as its first pull was held unsent:\n{StepsSince(window.CSharpService, since, marks)}");
+            Assert.True(held?.Said?.StartsWith("Solution-wide analysis is under way", StringComparison.Ordinal) == true && held?.Ringed == true,
+                $"While solution-wide analysis had yet to answer its first round, the status bar said \"{held?.Said}\" with {(held?.Ringed == true ? "a turning ring" : "no ring")}");
         }
         finally
         {
-            answered.TrySetResult();
+            asked.TrySetResult();
         }
-        Ui.WaitFor(() => window.CSharpService is { IsAnalysing: false }, "the first round to answer once its pull was let go");
+        Ui.WaitFor(() => window.CSharpService is { IsAnalysing: false }, () => $"the first round to answer once its pull was let go:\n{StepsSince(window.CSharpService, since, marks)}");
         string? after = Avalonia.Controls.ToolTip.GetTip(analysis) as string;
         Assert.True(after?.StartsWith("Solution-wide analysis: ", StringComparison.Ordinal) == true && ring?.IsVisible == false,
             $"Once the first round answered, finding Bad.cs's error, the status bar said \"{after}\" with {(ring?.IsVisible == true ? "a ring still turning" : "no ring")}");
@@ -342,7 +352,8 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// <summary>Keys typed in a burst have solution-wide analysis ask the server again once typing pauses, not for every key:
     /// its pulls held open for a change are let go as the first key comes and asked again once the open file's own pull has
     /// answered, and the Solution tab then lists what the keys broke in a file nobody has open. The keys come one straight
-    /// after another, each with the work it posted run, so no pause comes between them however slow the machine.</summary>
+    /// after another, each with the work it posted run, so no pause comes between them however slow the machine; what is
+    /// asked counts from the first key's change, as the work come due before it runs as the key is sent.</summary>
     [AvaloniaFact]
     public void Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses()
     {
@@ -354,31 +365,71 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         editor.Selections = SelectionSet.Single(editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal) + "Twice".Length);
         editor.Focus();
         bool CallerBroken() => problems.SolutionProblems?.Any(p => p.Path?.EndsWith("Caller.cs", StringComparison.Ordinal) == true) == true;
+        Passenger.App.CSharp.CSharpService service = window.CSharpService!;
+        List<(long At, string What)> marks = [];
+        long since = Mark(marks, "the warm-up's space typed");
         // A key and its undoing first, which the server answers as it does a session's first change.
         string written = editor.Document.Snapshot.ToString();
         Ui.Type(window, "SPACE", " ");
         Ui.Press(window, "BACK_SPACE");
+        Mark(marks, "the warm-up's space taken back");
         Assert.True(editor.Document.Snapshot.ToString() == written, "A space typed after Twice and taken back left the file changed");
-        Passenger.App.CSharp.CSharpService service = window.CSharpService!;
         IReadOnlyList<string?> sources = service.Session!.Server.WorkspaceDiagnosticSources;
         int[] Asked() => [.. sources.Select(service.PullsAsked)];
         int[] before = Asked();
 
         const int Keys = 10;
-        int[] during = new int[sources.Count];
+        int[]? atFirstKey = null;
+        void FirstKey(object? sender, DocumentChangedEventArgs e)
+        {
+            if (atFirstKey is null)
+            {
+                atFirstKey = Asked();
+                Mark(marks, "key 1's change");
+            }
+        }
+        editor.Document.Changed += FirstKey;
         for (int typed = 0; typed < Keys; typed++)
         {
-            int[] asked = Asked();
+            Mark(marks, $"key {typed + 1} sent");
             window.KeyTextInput("x");
-            during = [.. Asked().Select((now, i) => during[i] + now - asked[i])];
+            Mark(marks, $"key {typed + 1}'s work run");
         }
+        editor.Document.Changed -= FirstKey;
+        int[] typing = Asked();
+        int[] first = atFirstKey ?? before;
+        int[] during = [.. typing.Select((now, i) => now - first[i])];
         Ui.WaitFor(CallerBroken, "the error the keys made in the caller nobody has open", TimeSpan.FromMinutes(1));
         Ui.Settle();
         int[] after = Asked();
-        string Said() => string.Join(", ", sources.Select((source, i) => $"{source ?? "every source"} {during[i]} then {after[i] - before[i] - during[i]}"));
+        string Said() => string.Join(", ", sources.Select((source, i) => $"{source ?? "every source"} {first[i] - before[i]}, {during[i]} then {after[i] - typing[i]}"));
         Assert.True(during.All(n => n == 0),
-            $"Solution-wide analysis asked the server again while {Keys} keys were typed in a burst, where it asks only once typing pauses (during the keys, then after: {Said()})");
+            $"Solution-wide analysis asked the server again while {Keys} keys were typed in a burst, where it asks only once typing pauses (before the first key's change, during the keys, then after: {Said()}):\n{StepsSince(service, since, marks)}");
         window.Close();
+    }
+
+    /// <summary>A step of the test's own, at the time it is marked, said among the analysis's (<see cref="StepsSince"/>).</summary>
+    private static long Mark(List<(long At, string What)> marks, string what)
+    {
+        long at = System.Diagnostics.Stopwatch.GetTimestamp();
+        lock (marks)
+        {
+            marks.Add((at, what));
+        }
+        return at;
+    }
+
+    /// <summary>Solution-wide analysis's steps since <paramref name="since"/> with the test's own marks among them, each at its
+    /// time from then: which pull went when against the keys, the open file's pulls and the server's refreshes.</summary>
+    private static string StepsSince(Passenger.App.CSharp.CSharpService service, long since, List<(long At, string What)> marks)
+    {
+        List<(long At, string What)> all = [.. service.AnalysisSteps().Where(s => s.At >= since).Select(s => (s.At, s.ToString()))];
+        lock (marks)
+        {
+            all.AddRange(marks);
+        }
+        return string.Join('\n', all.OrderBy(s => s.At).Select(s =>
+            $"{System.Diagnostics.Stopwatch.GetElapsedTime(since, s.At).TotalMilliseconds,9:0.0} ms  {s.What}"));
     }
 
     /// <summary>A file's markers are put in order once, as its diagnostics are taken, however its server's sources gave them
