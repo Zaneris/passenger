@@ -162,6 +162,33 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    [AvaloniaFact]
+    public void Rename_on_a_step_renames_its_definitions_expression_and_every_step_it_binds_leaving_an_outlines_as_written()
+    {
+        MainWindow window = Open(out _);
+        try
+        {
+            OpenDocument feature = window.EditorArea.Active!;
+            Ui.WaitFor(() => feature.Markers.Any(m => m.Code == Passenger.App.Bdd.FeatureAnalysis.Undefined), "the feature read and matched");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "Given the first num");
+            Ui.Run(window, AppActions.Rename);
+            Ui.Settle();
+            window.KeyTextInput("the initial number is {int}");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => feature.Text.Snapshot.ToString().Contains("  Given the initial number is 50\n", StringComparison.Ordinal),
+                () => $"the step renamed ({window.Status}): {feature.Text.Snapshot}");
+            Assert.Contains("  Given the first number is <a>\n", feature.Text.Snapshot.ToString(), StringComparison.Ordinal);
+            Ui.WaitFor(() => window.EditorArea.TextOf(StepsFile)?.ToString().Contains("[Given(\"the initial number is {int}\")]", StringComparison.Ordinal) == true
+                || File.ReadAllText(StepsFile).Contains("[Given(\"the initial number is {int}\")]", StringComparison.Ordinal),
+                () => $"the definition's expression renamed ({window.Status})");
+            Assert.Contains("1 outline step with placeholders left as written", window.Status ?? string.Empty, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static void Choose(MainWindow window, string label)
     {
         Ui.WaitFor(() => window.Assist.Offered.Contains(label), () => $"'{label}' offered among {string.Join(", ", window.Assist.Offered)}");

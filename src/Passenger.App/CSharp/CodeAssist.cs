@@ -89,7 +89,7 @@ public sealed class CodeAssist
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
             new CssClassAssist(context, completion, navigation), gdscript, new WebAssist(context, popups, completion, parameterInfo, actions),
             new GodotShaderAssist(context, completion, navigation, csharp), new GodotAssist(context, popups, completion, navigation, actions, csharp),
-            new GherkinAssist(context, completion, navigation, actions), csharp);
+            new GherkinAssist(context, popups, completion, navigation, actions), csharp);
         // Every editor a split makes is wired the same; what it asks is answered for the active one, which it is.
         editors.ForEachEditor(editor =>
         {
@@ -614,7 +614,8 @@ public sealed class CodeAssist
 
     /// <summary>Why Rename cannot run at the editor's caret; null when it can.</summary>
     public string? WhyNotRename(ActionContext context) =>
-        IsGodotScene(context.File) ? (context.Editor.IsReadOnly ? Refusals.ReadOnly(context.File!.Name) : null) : WhyNot(context, server: true, xaml: true);
+        IsGodotScene(context.File) || context.File is { } file && Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path)
+            ? (context.Editor.IsReadOnly ? Refusals.ReadOnly(context.File!.Name) : null) : WhyNot(context, server: true, xaml: true);
 
     /// <summary>Whether a file is a text scene or resource of a Godot project, which Passenger reads itself.</summary>
     private bool IsGodotScene(OpenDocument? file) =>
