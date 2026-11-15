@@ -353,7 +353,24 @@ public sealed class TestFinder
     /// <summary>The C# files a test project compiles: those of its folder, then those it takes from elsewhere
     /// (<see cref="Elsewhere"/>) that are there.</summary>
     private static IEnumerable<string> CompiledFiles(ProjectModel project) =>
-        FolderWalk.ProjectFiles(project, ".cs").Concat(Elsewhere(project).Where(File.Exists).Select(PathNames.Canonical)).Distinct(PathNames.Comparer);
+        FolderWalk.ProjectFiles(project, ".cs").Concat(Elsewhere(project).Where(File.Exists).Select(PathNames.Canonical)).Concat(CodeBehindsBuilt(project))
+            .Distinct(PathNames.Comparer);
+
+    /// <summary>The Reqnroll code-behinds a build wrote under the project's obj folder
+    /// (<c>ReqnrollUseIntermediateOutputPathForCodeBehind</c>), which the folder's walk passes over: of each feature's, the one
+    /// written last (under obj/&lt;configuration&gt;/&lt;framework&gt;/ each), by its place below those.</summary>
+    private static IEnumerable<string> CodeBehindsBuilt(ProjectModel project)
+    {
+        string obj = Path.Combine(project.Folder, "obj");
+        if (project.IsProgram || !Directory.Exists(obj))
+        {
+            return [];
+        }
+        return Directory.EnumerateFiles(obj, "*.feature.cs", SearchOption.AllDirectories)
+            .GroupBy(f => string.Join(Path.DirectorySeparatorChar, Path.GetRelativePath(obj, f).Split(Path.DirectorySeparatorChar).Skip(2)), PathNames.NamesIn(obj))
+            .Select(g => g.MaxBy(File.GetLastWriteTimeUtc)!)
+            .Select(PathNames.Canonical);
+    }
 
     /// <summary>The C# files a project compiles from outside its folder (a shared project's, a linked file), as evaluated.</summary>
     public static IEnumerable<string> Elsewhere(ProjectModel project) => (project.Evaluated?.Items ?? [])

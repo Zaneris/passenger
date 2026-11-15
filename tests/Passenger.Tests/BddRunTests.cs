@@ -146,3 +146,41 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
         return window.Assist.HoverText!;
     }
 }
+
+/// <summary>A Reqnroll project whose code-behind its build writes under obj (ReqnrollUseIntermediateOutputPathForCodeBehind),
+/// where the folder's walk never reads: a scenario run from its caret still finds its test by its feature line. Runs tests
+/// through the window, so the class runs alone.</summary>
+[Collection(Alone.Name)]
+public sealed class BddIntermediateRunTests : IClassFixture<RestoredFolders>, IDisposable
+{
+    private readonly string folder;
+
+    public BddIntermediateRunTests(RestoredFolders folders)
+    {
+        folder = PathNames.Canonical(folders.Take("bddobj-", made => ReqnrollProjects.Write(made, intermediate: true)));
+    }
+
+    public void Dispose() => TestFolders.Delete(folder);
+
+    [AvaloniaFact]
+    public void A_scenario_whose_code_behind_is_under_obj_runs_from_its_caret()
+    {
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900);
+        try
+        {
+            Assert.Null(window.OpenFile(Path.Combine(folder, "Calc.Specs", "Features", "Calculator.feature")));
+            Ui.Settle();
+            OpenDocument feature = window.EditorArea.Active!;
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "Given the first number is 5");
+            Ui.Run(window, AppActions.RunTests);
+            Ui.WaitFor(() => feature.TestMarks.Any(m => m.Line == 7 && m.Kind == TestMarkKind.Passed),
+                () => $"the scenario's mark to show it passed ({window.Status}): {string.Join(", ", feature.TestMarks.Select(m => $"{m.Line} {m.Kind}"))}",
+                TimeSpan.FromMinutes(4));
+            Assert.False(File.Exists(Path.Combine(folder, "Calc.Specs", "Features", "Calculator.feature.cs")), "Reqnroll wrote the code-behind beside the feature, not under obj");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+}

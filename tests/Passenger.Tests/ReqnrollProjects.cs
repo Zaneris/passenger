@@ -97,14 +97,16 @@ public static class ReqnrollProjects
         "    public double Percent(int value) => value / 100.0;\n" +
         "}\n";
 
-    /// <summary>Writes the solution into a folder and gives what to restore.</summary>
-    public static string Write(string folder)
+    /// <summary>Writes the solution into a folder and gives what to restore; <paramref name="intermediate"/> has Reqnroll
+    /// write its code-behind under obj (ReqnrollUseIntermediateOutputPathForCodeBehind).</summary>
+    public static string Write(string folder, bool intermediate = false)
     {
         TestFolders.Write(folder, "Calc.slnx",
             "<Solution>\n  <Project Path=\"Calc.Specs/Calc.Specs.csproj\" />\n  <Project Path=\"Calc.Steps/Calc.Steps.csproj\" />\n</Solution>\n");
         TestFolders.Write(folder, "Calc.Specs/Calc.Specs.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n" +
-            "    <ImplicitUsings>enable</ImplicitUsings>\n    <Nullable>enable</Nullable>\n    <IsPackable>false</IsPackable>\n  </PropertyGroup>\n" +
+            "    <ImplicitUsings>enable</ImplicitUsings>\n    <Nullable>enable</Nullable>\n    <IsPackable>false</IsPackable>\n" +
+            (intermediate ? "    <ReqnrollUseIntermediateOutputPathForCodeBehind>true</ReqnrollUseIntermediateOutputPathForCodeBehind>\n" : "") + "  </PropertyGroup>\n" +
             $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n" +
             $"    <PackageReference Include=\"Reqnroll.xunit.v3\" Version=\"{TestPackages.Reqnroll}\" />\n" +
             $"    <PackageReference Include=\"xunit.v3\" Version=\"{AvaloniaApp.Metadata("XunitVersion")}\" />\n" +
