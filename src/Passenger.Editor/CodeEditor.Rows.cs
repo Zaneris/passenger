@@ -520,7 +520,7 @@ public sealed partial class CodeEditor
         IReadOnlyList<Selection> items = selections.Items;
         for (int i = FirstSelectionEndingFrom(start); i < items.Count && items[i].Start < span.EndIncludingBreak; i++)
         {
-            key.Add(new TextRange(items[i].Start, items[i].End), start, end);
+            key.Add(items[i].Range, start, end);
             key.Add(items[i].End > end);
         }
         IReadOnlyList<TextRange> found = Highlights;

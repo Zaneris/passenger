@@ -1447,7 +1447,16 @@ public static class Ui
         Dragged(window, from, to, button, modifiers);
     }
 
-    private static void Dragged(TopLevel window, Point from, Point to, MouseButton button, RawInputModifiers modifiers)
+    /// <summary>A drag with the left button as <see cref="Drag(TopLevel, Point, Point)"/> makes one, a frame drawn after the
+    /// press and after each move, as the screen follows a person's hand: each frame draws what the moves so far changed
+    /// over what the frame before it drew.</summary>
+    public static void DragDrawn(TopLevel window, Point from, Point to)
+    {
+        Apart(window, from);
+        Dragged(window, from, to, MouseButton.Left, RawInputModifiers.None, drawn: true);
+    }
+
+    private static void Dragged(TopLevel window, Point from, Point to, MouseButton button, RawInputModifiers modifiers, bool drawn = false)
     {
         RawInputModifiers held = modifiers | button switch
         {
@@ -1459,7 +1468,15 @@ public static class Ui
         window.MouseDown(from, button, modifiers);
         for (int step = 1; step <= 10; step++)
         {
+            if (drawn)
+            {
+                Draw();
+            }
             window.MouseMove(from + ((to - from) * (step / 10.0)), held);
+        }
+        if (drawn)
+        {
+            Draw();
         }
         window.MouseUp(to, button, modifiers);
         Clicked(window, from);
