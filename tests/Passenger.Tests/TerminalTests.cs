@@ -976,6 +976,7 @@ public sealed class TerminalTests
             TerminalView view = window.TerminalPanel.View;
             RunCase(window, "lines", "1", "300");
             WaitForLine(shell, "300", "the program's lines");
+            WaitForPromptBelow(window, shell, "300");
             // Output that comes once the person is reading back: the program waits for a file the test makes.
             RunCase(window, "wait", "go", "1001", "1100");
             Ui.WaitFor(() => shell.Screen.Lines[shell.Screen.CursorRow].Text().Length == 0, "the loop to start waiting");
@@ -1015,6 +1016,7 @@ public sealed class TerminalTests
             RunCase(window, "lines", "1", text);
             WaitForLine(shell, text, "the program's lines");
             Assert.True(screen.Scrollback.Count == TerminalScreen.ScrollbackLimit, $"the scrollback holds {screen.Scrollback.Count} lines, short of its limit");
+            WaitForPromptBelow(window, shell, text);
             RunCase(window, "wait", "go", "20001", "20100");
             Ui.WaitFor(() => screen.Lines[screen.CursorRow].Text().Length == 0, "the loop to start waiting");
 
@@ -1552,7 +1554,8 @@ public sealed class TerminalTests
 
     /// <summary>Waits for the shell's prompt on a row below a program's last line, so the program has ended and its terminal
     /// modes are the shell's again: a line typed sooner comes while the program still puts them back, unechoed and its
-    /// Enter a bare carriage return, or echoed ahead of the prompt.</summary>
+    /// Enter a bare carriage return, or echoed ahead of the prompt, which comes with the line again a row lower once the
+    /// program has gone.</summary>
     private static void WaitForPromptBelow(MainWindow window, TerminalSession shell, string last)
     {
         WaitForScreen(window, shell, PromptBelow, $"the shell's prompt below the program's last line, {last}");
