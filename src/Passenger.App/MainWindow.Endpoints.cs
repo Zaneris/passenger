@@ -87,6 +87,7 @@ public partial class MainWindow
             endpoints?.Reload(session.Folder);
         }
         RouteFilesChanged(changes);
+        StepFilesChanged(changes);
     }
 
     /// <summary>Opens a request in the Interactive Test dialog, its variables those of the environment chosen as it sends.</summary>
