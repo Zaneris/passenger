@@ -81,7 +81,7 @@ public static class OutboundHttp
         }
         catch (Exception error) when (error is HttpRequestException or IOException || (error is TaskCanceledException && !cancel.IsCancellationRequested))
         {
-            return (null, $"{address} could not be read: {(error is TaskCanceledException ? $"no answer in {client.Timeout.TotalSeconds.ToString("0", CultureInfo.InvariantCulture)} s" : error.Message)}");
+            return (null, $"{address} could not be read: {(error is TaskCanceledException ? $"no answer in {Durations.Said(client.Timeout)}" : error.Message)}");
         }
     }
 

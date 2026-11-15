@@ -154,8 +154,8 @@ public sealed class LogsTests : IDisposable
             Assert.True(log.Contains($"Process {server} started", StringComparison.Ordinal) && log.Contains("Microsoft.CodeAnalysis.LanguageServer.dll --stdio", StringComparison.Ordinal),
                 $"The IDE's log does not have the language server's command line:\n{log}");
             Assert.Contains($"Opened {window.Folder}", log, StringComparison.Ordinal);
-            Assert.Matches($@"C# language server \(process {server}\) started for .* in \d+\.\d\d s, loading 1 project", log);
-            Assert.Matches($@"C# language server \(process {server}\) loaded 1 project in \d+\.\d\d s", log);
+            Assert.Matches($@"C# language server \(process {server}\) started for .* in {SaidWhile.Pattern}, loading 1 project", log);
+            Assert.Matches($@"C# language server \(process {server}\) loaded 1 project in {SaidWhile.Pattern}", log);
 
             window.ApplySettings(window.Settings with { TraceProtocols = false });
             int traced = Logged("lsp.log").Length;

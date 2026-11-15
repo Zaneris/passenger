@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Passenger.Core;
 
 namespace Passenger.Lsp;
 
@@ -14,7 +15,7 @@ public sealed class ServerRestarts
     private readonly List<long> restarts = [];
 
     /// <summary>How often a server left stopped stopped: "4 times in 5 minutes".</summary>
-    public static string Often => $"{Limit + 1} times in {Window.TotalMinutes:0} minutes";
+    public static string Often => $"{Limit + 1} times in {Durations.Said(Window)}";
 
     /// <summary>Whether a server lost now is started again, which counts as one of its restarts.</summary>
     public bool Again()

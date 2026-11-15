@@ -131,7 +131,7 @@ public static class HeldStart
             PortWait.Answered => null,
             PortWait.Ended => "it ended before it could be let go",
             _ => $"it is not a .NET program that can be reached: {(answered is null ? string.Empty : "no runtime in it answered, and ")}it opened no "
-                + $"diagnostic port within {PortLimit.TotalSeconds:0} s",
+                + $"diagnostic port within {Durations.Said(PortLimit)}",
         };
     }
 

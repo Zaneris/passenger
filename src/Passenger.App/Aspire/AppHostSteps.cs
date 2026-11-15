@@ -159,7 +159,7 @@ public static class AppHostSteps
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {
-            return new AppHostStepsRead([], $"it gave no steps within {Waits.Of(ReadLimit).TotalMinutes:0} minutes{Said()}");
+            return new AppHostStepsRead([], $"it gave no steps within {Durations.Said(Waits.Of(ReadLimit))}{Said()}");
         }
         catch (JsonRpcFailed failed)
         {

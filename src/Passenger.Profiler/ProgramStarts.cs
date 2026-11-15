@@ -69,5 +69,5 @@ public static class ProgramStarts
 
     /// <summary>What an answer says of a wait it made first.</summary>
     public static string Waited(string name, string reading, TimeSpan due) =>
-        $"Waited {Math.Ceiling(due.TotalSeconds):0} s for {name} to finish starting: {reading} as it starts can hang it on .NET 10 or earlier";
+        $"Waited {Durations.Said(due)} for {name} to finish starting: {reading} as it starts can hang it on .NET 10 or earlier";
 }

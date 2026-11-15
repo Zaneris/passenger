@@ -189,7 +189,7 @@ public sealed partial class AspireInteractions
         {
             throw cancellation.IsCancellationRequested
                 ? new IOException(Failure ?? "The AppHost's resource connection has ended.")
-                : new TimeoutException($"The AppHost sent no resources within {ResourcesWait.TotalSeconds:0} s.");
+                : new TimeoutException($"The AppHost sent no resources within {Durations.Said(ResourcesWait)}.");
         }
     }
 

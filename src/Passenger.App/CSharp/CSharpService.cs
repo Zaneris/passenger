@@ -385,7 +385,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 }
                 if (Stopwatch.GetElapsedTime(began) >= InputsUnheard)
                 {
-                    IdeErrors.Write($"C# language server (process {asked.Server.ProcessId}) still held {unread[0]} otherwise than the disk {InputsUnheard.TotalSeconds:0} s after its load: "
+                    IdeErrors.Write($"C# language server (process {asked.Server.ProcessId}) still held {unread[0]} otherwise than the disk {Durations.Said(InputsUnheard)} after its load: "
                         + "agents' questions no longer wait for it");
                     return;
                 }
@@ -1068,7 +1068,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 }
                 if (refused is not null)
                 {
-                    IdeErrors.Write($"Solution-wide analysis ({source ?? "every source"}) asks again in {pause.TotalSeconds:0} s: {refused.Message}");
+                    IdeErrors.Write($"Solution-wide analysis ({source ?? "every source"}) asks again in {Durations.Said(pause)}: {refused.Message}");
                     await Task.Delay(pause, cancel);
                     pause = TimeSpan.FromTicks(Math.Min(pause.Ticks * 2, RefusedPullsAtMost.Ticks));
                     continue;
@@ -1449,7 +1449,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                     if (!cancel.IsCancellationRequested)
                     {
                         string copy = begun.Server.ServerCopy is { } from ? $", run from its copy in {from}" : string.Empty;
-                        IdeErrors.Write($"C# language server (process {begun.Server.ProcessId}) started for {opening.Folder} in {Since(began)}{copy}, loading {loading}");
+                        IdeErrors.Write($"C# language server (process {begun.Server.ProcessId}) started for {opening.Folder} in {Durations.Said(Stopwatch.GetElapsedTime(began))}{copy}, loading {loading}");
                     }
                     return begun;
                 }, cancel);
@@ -1566,8 +1566,8 @@ public sealed partial class CSharpService : IAsyncDisposable
                 if (!loaded.Task.IsCompleted && !gone.Task.IsCompleted && session == started)
                 {
                     late = true;
-                    IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) had not loaded {loading} after {Spoken(slow)}, and goes on loading it");
-                    string still = $"Still loading {loading} after {Spoken(slow)}; the language server's log says where it is";
+                    IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) had not loaded {loading} after {Durations.Said(slow)}, and goes on loading it");
+                    string still = $"Still loading {loading} after {Durations.Said(slow)}; the language server's log says where it is";
                     SetState(still);
                     LoadRanLong?.Invoke(this, new ServerSaid(still, ProblemSeverity.Warning));
                     EndHold();
@@ -1581,13 +1581,13 @@ public sealed partial class CSharpService : IAsyncDisposable
                     return;
                 }
             }
-            IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) loaded {loading} in {Since(began)}");
+            IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) loaded {loading} in {Durations.Said(Stopwatch.GetElapsedTime(began))}");
             ConnectLoaded(started);
             loadedAt = (started, Stopwatch.GetTimestamp());
             SetState("C# ready");
             if (late)
             {
-                LoadRanLong?.Invoke(this, new ServerSaid($"C# ready: {loading} loaded after {Spoken(Stopwatch.GetElapsedTime(began))}", null));
+                LoadRanLong?.Invoke(this, new ServerSaid($"C# ready: {loading} loaded after {Durations.Said(Stopwatch.GetElapsedTime(began))}", null));
             }
             RefreshAll();
             StartAnalysis();
@@ -1638,8 +1638,8 @@ public sealed partial class CSharpService : IAsyncDisposable
             return false;
         }
         string awaited = ahead.Builds.IsCompleted ? "the language server" : "its design-time builds";
-        IdeErrors.Write($"C# language server started ahead for {ahead.Folder} had not begun loading {loading} after {Spoken(slow)}: it waits for {awaited}, and C# for it");
-        string still = $"Still starting C# for {loading} after {Spoken(slow)}, waiting for {awaited}";
+        IdeErrors.Write($"C# language server started ahead for {ahead.Folder} had not begun loading {loading} after {Durations.Said(slow)}: it waits for {awaited}, and C# for it");
+        string still = $"Still starting C# for {loading} after {Durations.Said(slow)}, waiting for {awaited}";
         SetState(still);
         LoadRanLong?.Invoke(this, new ServerSaid(still, ProblemSeverity.Warning));
         return true;
@@ -2009,7 +2009,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         await Task.WhenAny(started.FirstColours, Task.Delay(TimeSpan.FromMinutes(10), ended));
         if (started.FirstColours.IsCompleted && !disposed && session == started)
         {
-            IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) gave an open file its colours {Since(began)} after it was started");
+            IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) gave an open file its colours {Durations.Said(Stopwatch.GetElapsedTime(began))} after it was started");
         }
     }
 
@@ -2035,7 +2035,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 (long Asked, long Came) diagnosed = lsp.Diagnosed;
                 if (coloured.Asked >= inProject && diagnosed.Asked >= inProject)
                 {
-                    IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) had {open.Name} in {placed.Project} {Since(began, placed.At)}, its colours {Since(began, coloured.Came)} and its diagnostics {Since(began, diagnosed.Came)} after it was started");
+                    IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) had {open.Name} in {placed.Project} {Durations.Said(Stopwatch.GetElapsedTime(began, placed.At))}, its colours {Durations.Said(Stopwatch.GetElapsedTime(began, coloured.Came))} and its diagnostics {Durations.Said(Stopwatch.GetElapsedTime(began, diagnosed.Came))} after it was started");
                     return;
                 }
             }
@@ -2043,14 +2043,6 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
     }
 
-    private static string Since(long began) => $"{Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s";
-
-    private static string Since(long began, long at) => $"{Stopwatch.GetElapsedTime(began, at).TotalSeconds:0.00} s";
-
-    /// <summary>A while as the status bar says it: in whole minutes from a minute on, else in whole seconds.</summary>
-    private static string Spoken(TimeSpan time) => time >= TimeSpan.FromMinutes(1)
-        ? Plural.Of((long)time.TotalMinutes, "minute")
-        : Plural.Of(Math.Max(1, (long)time.TotalSeconds), "second");
 
     /// <summary>A load's error met where MSBuild cannot write, said as that folder's being read-only and the way on, the
     /// error's own words after.</summary>

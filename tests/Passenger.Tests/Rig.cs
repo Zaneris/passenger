@@ -374,6 +374,13 @@ public static class Limits
     public static TimeSpan Scaled(this TimeSpan limit) => limit == Timeout.InfiniteTimeSpan ? limit : limit * TestRun.TimeScale;
 }
 
+/// <summary>A while as the IDE says one (<see cref="Durations.Said"/>), as a regular expression: its number to a tenth and its
+/// unit, for words that say how long something took.</summary>
+public static class SaidWhile
+{
+    public const string Pattern = @"[\d,]+(\.\d)? (ms|s|minutes?|hours?)";
+}
+
 /// <summary>The run's nice value on macOS and Linux. MSBuild keeps no idle node for the next build at any nice value but 0,
 /// and GitHub's macOS runner starts everything at -10: the run is brought to 0 as it begins, which lowers its priority and
 /// so needs no privilege, and what it starts inherits that. A run started above 0 (by zsh's &amp;, at 5) could come down

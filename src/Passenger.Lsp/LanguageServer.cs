@@ -599,7 +599,7 @@ public sealed class LanguageServer : IAsyncDisposable
                 }
                 if (Stopwatch.GetElapsedTime(began) > limit)
                 {
-                    throw new LanguageServerFailed($"it did not listen on port {port} in {limit.TotalSeconds:0} s", LspMethods.Initialize, refused);
+                    throw new LanguageServerFailed($"it did not listen on port {port} in {Durations.Said(limit)}", LspMethods.Initialize, refused);
                 }
             }
             finally
@@ -1038,7 +1038,7 @@ public sealed class LanguageServer : IAsyncDisposable
             if (!disposing)
             {
                 hung = true;
-                NotResponding?.Invoke(this, $"{slowest} waited {waited.TotalSeconds:0} s, then a check went unanswered for {ResponseLimit.TotalSeconds:0} s");
+                NotResponding?.Invoke(this, $"{slowest} waited {Durations.Said(waited)}, then a check went unanswered for {Durations.Said(ResponseLimit)}");
             }
         }
         finally
@@ -1082,7 +1082,7 @@ public sealed class LanguageServer : IAsyncDisposable
             return;
         }
         (string method, TimeSpan longest) = past.MaxBy(p => p.Age);
-        LongWait wait = new($"{method} has waited {longest.TotalSeconds:0} s{(past.Count > 1 ? $", with {past.Count - 1} more past {Patience.TotalSeconds:0} s" : string.Empty)}",
+        LongWait wait = new($"{method} has waited {Durations.Said(longest)}{(past.Count > 1 ? $", with {past.Count - 1} more past {Durations.Said(Patience)}" : string.Empty)}",
             Conversation());
         Note($"{wait.Asked}: {wait.Conversation}");
         Waited?.Invoke(this, wait);
@@ -1105,11 +1105,11 @@ public sealed class LanguageServer : IAsyncDisposable
         List<string> parts =
         [
             asking.Count == 0 ? "no request waits on it" : $"{Plural.Of(asking.Count, "request")} {Plural.Agreeing(asking.Count, "waits", "wait")} on it ("
-                + string.Join(", ", asking.Take(6).Select(a => $"{a.Method} {a.Age.TotalSeconds:0} s")) + (asking.Count > 6 ? ", …" : string.Empty) + ")",
-            check == 0 ? "it has answered no check" : $"it answered Passenger's check {Stopwatch.GetElapsedTime(check).TotalSeconds:0} s ago",
-            heard == 0 ? "it has sent nothing" : $"it last sent a message {Stopwatch.GetElapsedTime(heard).TotalSeconds:0} s ago",
+                + string.Join(", ", asking.Take(6).Select(a => $"{a.Method} {Durations.Said(a.Age)}")) + (asking.Count > 6 ? ", …" : string.Empty) + ")",
+            check == 0 ? "it has answered no check" : $"it answered Passenger's check {Durations.Said(Stopwatch.GetElapsedTime(check))} ago",
+            heard == 0 ? "it has sent nothing" : $"it last sent a message {Durations.Said(Stopwatch.GetElapsedTime(heard))} ago",
             unanswered.Count == 0 ? "Passenger owes it no answer"
-                : "Passenger has not yet answered its " + string.Join(", ", unanswered.Take(4).Select(u => $"{u.Method} ({Stopwatch.GetElapsedTime(u.Since).TotalSeconds:0} s)")),
+                : "Passenger has not yet answered its " + string.Join(", ", unanswered.Take(4).Select(u => $"{u.Method} ({Durations.Said(Stopwatch.GetElapsedTime(u.Since))})")),
             unsent == 0 ? "every message Passenger wrote has reached it" : $"{unsent} of Passenger's messages have not yet reached its input",
         ];
         return $"{who}: {string.Join("; ", parts)}. Its last messages: {string.Join(", ", messages.Recent())}";

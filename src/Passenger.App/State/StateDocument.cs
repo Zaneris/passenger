@@ -384,7 +384,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         }
         else if (tries == 1)
         {
-            StateFile.Log($"{Path} could not be written ({error.Message}): it is tried again, {Again.Length} times over {Again.Sum(a => a.TotalSeconds)} s at most");
+            StateFile.Log($"{Path} could not be written ({error.Message}): it is tried again, {Again.Length} times over {Durations.Said(Again.Aggregate(TimeSpan.Zero, (all, one) => all + one))} at most");
         }
         else if (tries == Again.Length + 1)
         {
@@ -511,7 +511,7 @@ internal static class StateFile
         }
         catch (IOException refused)
         {
-            Log($"{path} is read without its lock, which another Passenger held past {HeldFor.TotalSeconds:0} s ({refused.Message})");
+            Log($"{path} is read without its lock, which another Passenger held past {Durations.Said(HeldFor)} ({refused.Message})");
         }
         catch (UnauthorizedAccessException)
         {

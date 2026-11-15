@@ -94,7 +94,7 @@ public static partial class ProjectTemplates
         {
             // Not background work: nothing is drawn from it, and holding a settle would outlast a chord's second key.
             TemplateCatalog catalog = await BackgroundWork.Unheld(() => LoadAsync(folder));
-            IdeErrors.Write($"New Solution's templates read ahead in {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds:0.00} s: "
+            IdeErrors.Write($"New Solution's templates read ahead in {Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(started))}: "
                 + $"{catalog.Templates.Count} templates in {catalog.Families.Count} families, SDK {catalog.Sdk}");
         }
         catch (Exception error) when (Unreadable(error))

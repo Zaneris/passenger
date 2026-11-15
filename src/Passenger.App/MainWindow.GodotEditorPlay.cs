@@ -66,7 +66,7 @@ public partial class MainWindow
                 peer.Debugs = null;
                 peer.Builds = null;
                 peer.PlayAsked = false;
-                return $"Godot's editor on {name} did not take the play within {Waits.Of(PlayTaken).TotalSeconds:0} s";
+                return $"Godot's editor on {name} did not take the play within {Durations.Said(Waits.Of(PlayTaken))}";
             }
             status.Text = debug ? $"{name} plays in Godot's editor, built here and debugged by this Passenger" : $"{name} plays in Godot's editor, built here";
             return null;

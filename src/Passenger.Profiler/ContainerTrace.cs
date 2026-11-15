@@ -72,6 +72,6 @@ internal sealed record ContainerTrace(Process Tools, Task Heard)
         cancel.ThrowIfCancellationRequested();
         throw new ProfilingException(ended
             ? Volatile.Read(ref said) ?? $"Passenger's tools in {place.Where} could not {to}"
-            : $"Passenger's tools in {place.Where} did not begin {doing} in {Limit.TotalSeconds:0} s");
+            : $"Passenger's tools in {place.Where} did not begin {doing} in {Durations.Said(Limit)}");
     }
 }

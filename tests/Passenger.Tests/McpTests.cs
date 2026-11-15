@@ -574,7 +574,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["solutionWideAnalysis"] = true } });
         await Call(client, McpTools.Open, new() { ["path"] = folder });
 
-        const string still = "Still loading 1 project after 2 seconds; the language server's log says where it is";
+        const string still = "Still loading 1 project after 2 s; the language server's log says where it is";
         string state = string.Empty;
         Assert.True(await Waiting.UntilAsync(async () => (state = await LanguageServerState(client)) == still, TimeSpan.FromMinutes(2), Cancel, TimeSpan.FromMilliseconds(100)),
             $"The language server's state past the limit was not that it is still loading but \"{state}\".{Said()}");
@@ -606,7 +606,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         HoldDesignTimeBuilds(folder);
         await using McpClient client = await Start(["--mcp", folder], environment: new() { [global::Passenger.App.CSharp.CSharpService.SlowLoadVariable] = "2000" });
 
-        const string still = "Still starting C# for 1 project after 2 seconds, waiting for its design-time builds";
+        const string still = "Still starting C# for 1 project after 2 s, waiting for its design-time builds";
         string state = string.Empty;
         Assert.True(await Waiting.UntilAsync(async () => (state = await LanguageServerState(client)) == still, TimeSpan.FromMinutes(2), Cancel, TimeSpan.FromMilliseconds(100)),
             $"The language server's state past the limit was not that it is still starting but \"{state}\".{Said()}");
@@ -639,7 +639,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             Assert.True(await Waiting.Within(passenger.WaitForExitAsync(Cancel), TimeSpan.FromMinutes(3), Cancel), $"The screenshot of a folder whose load runs long never ended.{Said()}");
             string said = Ui.Shared(Path.Combine(OwnState, "logs", "passenger.log"));
-            Assert.True(said.Contains("had not loaded 1 project after 2 seconds, and goes on loading it", StringComparison.Ordinal), $"The load was never said to run long.{Said()}");
+            Assert.True(said.Contains("had not loaded 1 project after 2 s, and goes on loading it", StringComparison.Ordinal), $"The load was never said to run long.{Said()}");
             Assert.True(passenger.ExitCode == 0 && File.Exists(picture),
                 $"The screenshot of a folder whose load was said to run long ended with exit code {passenger.ExitCode}, the load holding background work past its warning.{Said()}");
         }

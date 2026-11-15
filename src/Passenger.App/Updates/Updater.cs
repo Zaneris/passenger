@@ -309,7 +309,7 @@ public abstract class Updater
         }
         if (holding.Count > 0)
         {
-            IdeErrors.Write($"Updates: {Plural.Of(holding.Count, "agent's relay", "agents' relays")} did not let go of the app within {limit.TotalSeconds:0} s, and {Plural.Agreeing(holding.Count, "is", "are")} ended");
+            IdeErrors.Write($"Updates: {Plural.Of(holding.Count, "agent's relay", "agents' relays")} did not let go of the app within {Durations.Said(limit)}, and {Plural.Agreeing(holding.Count, "is", "are")} ended");
             EndRelays(holding, version);
         }
     }
@@ -371,7 +371,7 @@ public abstract class Updater
                     {
                         process.Kill();
                         process.WaitForExit(limit);
-                        how = $"killed, still running {limit.TotalSeconds:0} s after it was told to end";
+                        how = $"killed, still running {Durations.Said(limit)} after it was told to end";
                     }
                     IdeErrors.Write($"Updates: ended the agent's relay on {relay.Folder} (process {relay.ProcessId}) to install Passenger {version}: {how}");
                 }

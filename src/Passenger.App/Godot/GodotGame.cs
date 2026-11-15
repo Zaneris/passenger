@@ -741,7 +741,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
 
     /// <summary>What a message or question of an agent's call says once the call's limit is up, waiting on
     /// <paramref name="what"/>.</summary>
-    private string GivenUp(AgentAsking asking, string what) => $"{Name} did not answer within the {asking.Limit.TotalSeconds:0} s an agent's call on it has, waiting {what}";
+    private string GivenUp(AgentAsking asking, string what) => $"{Name} did not answer within the {Durations.Said(asking.Limit)} an agent's call on it has, waiting {what}";
 
     /// <summary>Sends a message to one of the game's threads: a thread stopped in a script reads only its own. Inside an
     /// agent's call (<see cref="Within"/>) it waits for its turn and its write no longer than the call may; a write given up
@@ -839,7 +839,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             }
             if (System.Diagnostics.Stopwatch.GetElapsedTime(began) >= limit)
             {
-                throw new LiveAppException($"{Name} has opened no scene in the {limit.TotalSeconds:0} s since it connected, and Passenger's helper comes into the game beside one");
+                throw new LiveAppException($"{Name} has opened no scene in the {Durations.Said(limit)} since it connected, and Passenger's helper comes into the game beside one");
             }
             Mcp.AgentCall.Say($"Waiting for {Name} to open its first scene");
             await Task.Delay(TimeSpan.FromMilliseconds(250), cancel);
@@ -879,7 +879,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         }
         catch (TimeoutException)
         {
-            throw new LiveAppException($"{Name} ran no loop in {limit.TotalSeconds:0} s, its tree setting nodes up all that time (a node's _ready running, or "
+            throw new LiveAppException($"{Name} ran no loop in {Durations.Said(limit)}, its tree setting nodes up all that time (a node's _ready running, or "
                 + "a script stopped in one), where Godot adds no node: Passenger's helper comes in once the game has run its loop");
         }
     }
@@ -987,10 +987,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             }
             long heard = Interlocked.Read(ref lastHeard);
             string meanwhile = heard > since
-                ? $", though it went on sending its other messages, the last {System.Diagnostics.Stopwatch.GetElapsedTime(heard).TotalSeconds:0.#} s ago"
+                ? $", though it went on sending its other messages, the last {Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(heard))} ago"
                 : ", and sent nothing else meanwhile";
             string raised = lastRaised is { } error && error.At > since ? $"; the last error it raised meanwhile: {error.Said}" : string.Empty;
-            throw new LiveAppException($"{Name} did not answer{(what is null ? string.Empty : $" {what}")} in {limit.TotalSeconds:0} s{meanwhile}{raised}");
+            throw new LiveAppException($"{Name} did not answer{(what is null ? string.Empty : $" {what}")} in {Durations.Said(limit)}{meanwhile}{raised}");
         }
     }
 

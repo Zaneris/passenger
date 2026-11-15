@@ -92,7 +92,7 @@ public static class Screenshot
         if (!settled)
         {
             // The picture is kept to show what was still going on, but it is not the settled window.
-            Console.Error.WriteLine($"screenshot: {options.Path} taken with background work still pending after {SettleLimit.TotalSeconds:0} s");
+            Console.Error.WriteLine($"screenshot: {options.Path} taken with background work still pending after {Durations.Said(SettleLimit)}");
             return 1;
         }
         Console.WriteLine($"screenshot: {options.Path} after {elapsed:F0} ms");
@@ -249,7 +249,7 @@ public static class Screenshot
             {
                 starting.Result.Stop();
             }
-            throw new StepRefused($"{named} was still running after {AgentLimit.TotalMinutes:0} minutes");
+            throw new StepRefused($"{named} was still running after {Durations.Said(AgentLimit)}");
         }
         if (ended.IsFaulted)
         {

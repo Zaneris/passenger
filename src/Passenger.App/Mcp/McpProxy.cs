@@ -748,7 +748,7 @@ public sealed partial class McpProxy
         }
         catch (OperationCanceledException) when (joiningCancel.IsCancellationRequested && !cancel.IsCancellationRequested)
         {
-            throw new NotJoined($"Joining the Passenger window on {here} timed out after {StartLimit.TotalSeconds:0} s; a later call tries again.");
+            throw new NotJoined($"Joining the Passenger window on {here} timed out after {Durations.Said(StartLimit)}; a later call tries again.");
         }
         finally
         {
@@ -866,12 +866,12 @@ public sealed partial class McpProxy
         }
         if (await AppSocket.AskAsync(here, cancel) is null)
         {
-            call.Waits($"Starting Passenger on {here} and waiting for its window (at most {StartLimit.TotalSeconds:0} s)");
+            call.Waits($"Starting Passenger on {here} and waiting for its window (at most {Durations.Said(StartLimit)})");
             await LaunchAsync(cancel);
         }
         else
         {
-            call.Waits($"Waiting for the running Passenger to open {here} (at most {StartLimit.TotalSeconds:0} s)");
+            call.Waits($"Waiting for the running Passenger to open {here} (at most {Durations.Said(StartLimit)})");
         }
         while (true)
         {

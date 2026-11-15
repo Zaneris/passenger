@@ -129,7 +129,7 @@ public static class AndroidDevices
             }
             await Task.Delay(TimeSpan.FromSeconds(1), cancel);
         }
-        return (null, $"The emulator {avd} did not finish starting in {BootLimit.TotalMinutes:0} minutes");
+        return (null, $"The emulator {avd} did not finish starting in {Durations.Said(BootLimit)}");
 
         static void Heard(List<string> heard, string line)
         {

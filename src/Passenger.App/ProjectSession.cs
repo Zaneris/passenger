@@ -1249,7 +1249,7 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         if (openedAt != 0 && Workspace is { } shown && shown.Projects.Where(p => p.Exists).All(p => p.Evaluated is { Complete: true }))
         {
-            IdeErrors.Write($"Solution view shows the {shown.Projects.Count} projects of {shown.Name} as MSBuild evaluates them {System.Diagnostics.Stopwatch.GetElapsedTime(openedAt).TotalSeconds:0.00} s after the folder opened ({Models.Evaluations} evaluated)");
+            IdeErrors.Write($"Solution view shows the {shown.Projects.Count} projects of {shown.Name} as MSBuild evaluates them {Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(openedAt))} after the folder opened ({Models.Evaluations} evaluated)");
             openedAt = 0;
         }
     }
@@ -1769,7 +1769,7 @@ public sealed class ProjectSession : IAsyncDisposable
             catch (TimeoutException)
             {
                 string late = Plural.Listed([.. parts.Where(p => !p.Ending.IsCompleted).Select(p => p.What)]);
-                IdeErrors.Write($"Closing{(folder is null ? string.Empty : $" {folder}")}: {late} had not ended after {limit.TotalSeconds:0} s");
+                IdeErrors.Write($"Closing{(folder is null ? string.Empty : $" {folder}")}: {late} had not ended after {Durations.Said(limit)}");
             }
             catch (Exception error)
             {

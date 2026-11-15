@@ -163,7 +163,7 @@ public sealed class StepMatcher
         }
         catch (RegexMatchTimeoutException)
         {
-            stopped[binding] = $"Its expression ran past {regex.MatchTimeout.TotalSeconds:0.#} s matching \"{text}\"";
+            stopped[binding] = $"Its expression ran past {Durations.Said(regex.MatchTimeout)} matching \"{text}\"";
             return null;
         }
     }

@@ -258,7 +258,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 // Each check that has not answered for the text as it stands, within the wait or its own.
                 string who = Plural.Agreeing(unanswered.Count, "it", "they");
-                string within = marked.IsChecking ? $", still checking after a wait of {(int)Math.Round(waited.TotalSeconds)} s" : string.Empty;
+                string within = marked.IsChecking ? $", still checking after a wait of {Durations.Said(waited)}" : string.Empty;
                 missing.Add(new Finding("info", null, $"Not yet checked as it stands by {string.Join(", ", unanswered)}{within}: what {who} found before is listed",
                     Relative(marked.Path), 1, 1));
             }
@@ -2100,7 +2100,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 : started;
             // The whole wait out with the program running: what it was waited for never stopped it.
             return waitedOut && shown.Debugged == DebugState.Running && stops is not null
-                ? shown with { Status = $"{shown.Status}; in the {limit.TotalSeconds:0} s waited it never stopped at {stops}" } : shown;
+                ? shown with { Status = $"{shown.Status}; in the {Durations.Said(limit)} waited it never stopped at {stops}" } : shown;
         }
         finally
         {
@@ -2114,7 +2114,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private static string Awaited(int phase, string? game, string? stops, TimeSpan limit, string? device = null)
     {
         string stop = stops is null ? "a stop" : $"a stop at {stops}";
-        string within = $"up to {limit.TotalSeconds:0} s in all";
+        string within = $"up to {Durations.Said(limit)} in all";
         return phase switch
         {
             0 => $"Debugging: waiting for the program to start, then for {stop}, its end, its UI or its host's start ({within})",
@@ -2645,7 +2645,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         if (limit > TimeSpan.Zero)
         {
-            AgentCall.Say($"The program runs: waiting up to {limit.TotalSeconds:0} s for it to stop or end");
+            AgentCall.Say($"The program runs: waiting up to {Durations.Said(limit)} for it to stop or end");
         }
         DebugSession? going = session ?? Session.Debug.Session;
         // A Godot game's other language stops for it too: its GDScript beside its C#, or the C# its GDScript is beside.

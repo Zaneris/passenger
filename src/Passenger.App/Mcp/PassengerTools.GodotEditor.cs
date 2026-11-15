@@ -93,7 +93,7 @@ public sealed partial class PassengerTools
         await When(() => Session.Game is { Relayed: true } game && game != before, GodotPlayLimit, cancel, On(h => Session.LiveAppChanged += h, h => Session.LiveAppChanged -= h));
         if (Session.Game is not { Relayed: true } played || played == before)
         {
-            throw new TimeoutException($"Godot's editor took the play, and its game did not come in within {GodotPlayLimit.TotalMinutes:0} minutes: {window.Status}");
+            throw new TimeoutException($"Godot's editor took the play, and its game did not come in within {Durations.Said(GodotPlayLimit)}: {window.Status}");
         }
         // Held at its start for the debugger, it is either attached to or let go saying why.
         await When(() => played.Debugged is not null || played.Undebugged is not null, AppUiLimit, cancel, On(h => played.DebuggedChanged += h, h => played.DebuggedChanged -= h));

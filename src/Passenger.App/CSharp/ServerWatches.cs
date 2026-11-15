@@ -637,7 +637,7 @@ public sealed class ServerWatches : IDisposable
                 }
                 (int folders, int entries) = RecordSize;
                 IdeErrors.Write($"{Shown} records {Plural.Of(folders, "folder")} and {Plural.Of(entries, "entry", "entries")} "
-                    + $"{System.Diagnostics.Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s after it started{(apart ? ", apart from the IDE's quiet" : string.Empty)}");
+                    + $"{Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(began))} after it started{(apart ? ", apart from the IDE's quiet" : string.Empty)}");
                 // Told whether or not a registration matches them yet: one the server's load sends later takes those kept for it.
                 owner.InTurn(() => TellAsync([.. written.Select(file => new FileEvent(file, FileChangeType.Changed))]), this);
             }, after: owner.WalkHeld(top));

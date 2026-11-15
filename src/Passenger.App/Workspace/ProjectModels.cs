@@ -444,7 +444,7 @@ public sealed class ProjectModels
                 // What the round evaluated may still wait in a posted landing, which this continuation can come before.
                 Land();
                 Keep(projects);
-                IdeErrors.Write($"Project host (process {host.ProcessId}) evaluated {stale.Count} of the {projects.Count} projects of {following} in {done.Seconds:0.00} s, {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s after they were checked");
+                IdeErrors.Write($"Project host (process {host.ProcessId}) evaluated {stale.Count} of the {projects.Count} projects of {following} in {Durations.Said(TimeSpan.FromSeconds(done.Seconds))}, {Durations.Said(Stopwatch.GetElapsedTime(began))} after they were checked");
             }
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)

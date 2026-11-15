@@ -242,7 +242,7 @@ public sealed class ProfilerView : DockPanel
         Children.Add(timelineBand);
         Children.Add(new Panel { Children = { tree, spots, flameScroll, framesPage, allocations, garbage, memory, keptPage, placeholder } });
         ticking = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-        ticking.Tick += (_, _) => status.Text = $"Profiling {running}: {elapsed?.Invoke().TotalSeconds:0.0} s";
+        ticking.Tick += (_, _) => status.Text = $"Profiling {running}: {Durations.Said(elapsed?.Invoke() ?? TimeSpan.Zero)}";
         ShowPage(ProfilerPage.CallTree);
         foreach (ToggleButton page in pages)
         {
@@ -466,9 +466,9 @@ public sealed class ProfilerView : DockPanel
         Snapshot = snapshot;
         Snapshot whole = snapshot.Whole;
         status.Text = snapshot.FramesAlone
-            ? $"{snapshotName}: {snapshot.Duration.TotalSeconds:0.0} s, {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them; no samples, as a game of GDScript alone runs no .NET code"
+            ? $"{snapshotName}: {Durations.Said(snapshot.Duration)}, {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them; no samples, as a game of GDScript alone runs no .NET code"
             : ReferenceEquals(whole, snapshot)
-            ? $"{snapshotName}: {snapshot.Duration.TotalSeconds:0.0} s, {Plural.Of(snapshot.Threads.Count, "thread")}, {snapshot.Samples:N0} samples"
+            ? $"{snapshotName}: {Durations.Said(snapshot.Duration)}, {Plural.Of(snapshot.Threads.Count, "thread")}, {snapshot.Samples:N0} samples"
             : $"{snapshotName}: {snapshot.StartMs - whole.StartMs:N0} to {snapshot.EndMs - whole.StartMs:N0} ms of {whole.Duration.TotalMilliseconds:N0}, {snapshot.Samples:N0} samples";
         foreach (ToggleButton page in pages)
         {

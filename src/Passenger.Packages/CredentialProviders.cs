@@ -130,7 +130,7 @@ public sealed class CredentialProviders
             }
             catch (TimeoutException)
             {
-                throw new TimeoutException($"{name} did not answer {method} in {limit.TotalSeconds:0} seconds");
+                throw new TimeoutException($"{name} did not answer {method} in {Durations.Said(limit)}");
             }
             finally
             {

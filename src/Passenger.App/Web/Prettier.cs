@@ -163,7 +163,7 @@ public sealed class PrettierService : IAsyncDisposable
                     throw;
                 }
                 return new PrettierAnswer(Error: disposed ? "the folder was closed"
-                    : error is TimeoutException ? $"Prettier did not answer in {Limit.TotalSeconds:0} s" : $"Prettier's runner ended: {error.Message}");
+                    : error is TimeoutException ? $"Prettier did not answer in {Durations.Said(Limit)}" : $"Prettier's runner ended: {error.Message}");
             }
             if (line is null)
             {
@@ -181,7 +181,7 @@ public sealed class PrettierService : IAsyncDisposable
             if (!running.Timed)
             {
                 running.Timed = true;
-                IdeErrors.Write($"Prettier {answer.Version} formatted {Path.GetFileName(path)} for {folder} in {Stopwatch.GetElapsedTime(began).TotalMilliseconds:0} ms, its runner started on Node.js {runtime.Version}");
+                IdeErrors.Write($"Prettier {answer.Version} formatted {Path.GetFileName(path)} for {folder} in {Durations.Said(Stopwatch.GetElapsedTime(began))}, its runner started on Node.js {runtime.Version}");
             }
             return answer;
         }

@@ -344,10 +344,7 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
     internal static string Where(MainWindow window) => window.Folder is { } folder ? $"the Passenger window on {folder}" : "the Passenger window";
 
     /// <summary>The window's limit on a question, as an answer says it.</summary>
-    internal static string Limit(MainWindow window) =>
-        window.AgentAnswerLimit.TotalSeconds >= 120 && window.AgentAnswerLimit.TotalSeconds % 60 == 0
-            ? $"{window.AgentAnswerLimit.TotalMinutes:0} minutes"
-            : $"{window.AgentAnswerLimit.TotalSeconds:0} s";
+    internal static string Limit(MainWindow window) => Durations.Said(window.AgentAnswerLimit);
 
     /// <summary>The window opened another folder and the agent stays let in (its own open, or agents let in unasked there):
     /// the tools allowed in the one it left are asked for again.</summary>

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -174,7 +175,7 @@ public partial class ManagedDebugger
         _logger?.Invoke($"Decompiling {wanted.Name} ({wanted.Mvid}) for its symbols, off the engine's lock");
         long began = Stopwatch.GetTimestamp();
         bool made = await _symbols!.WriteAsync(wanted.AssemblyPath, wanted.Name, wanted.Mvid, wanted.References, _ending.Token).ConfigureAwait(false);
-        _logger?.Invoke($"Decompiling {wanted.Name} {(made ? "made its symbols" : "made none")} in {Stopwatch.GetElapsedTime(began).TotalSeconds:0.0} s");
+        _logger?.Invoke($"Decompiling {wanted.Name} {(made ? "made its symbols" : "made none")} in {Durations.Said(Stopwatch.GetElapsedTime(began))}");
         return made;
     }
 }

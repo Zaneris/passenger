@@ -193,7 +193,7 @@ public sealed class HeadStart
         RoslynSession started = await RoslynSession.StartAsync(Folder, read.Solution?.Path, [.. read.Projects.Select(p => p.Path)], CSharpService.LogFolder, stop.Token,
             options, server => server.HoldSaid(), feed: new Feed(this), stateCache: CSharpService.ServerCache);
         IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) started ahead for {Folder} "
-            + $"{Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s after the folder was named, loading its projects");
+            + $"{Durations.Said(Stopwatch.GetElapsedTime(began))} after the folder was named, loading its projects");
         return started;
     }
 

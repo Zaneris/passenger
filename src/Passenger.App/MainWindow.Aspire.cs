@@ -558,7 +558,7 @@ public partial class MainWindow
                 }
                 catch (TimeoutException)
                 {
-                    throw new InvalidOperationException($"{((IRunService)start).Name} did not stop within {limit.TotalSeconds:0} s of its AppHost's stop command");
+                    throw new InvalidOperationException($"{((IRunService)start).Name} did not stop within {Durations.Said(limit)} of its AppHost's stop command");
                 }
             }
         }

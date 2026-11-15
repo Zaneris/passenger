@@ -119,7 +119,7 @@ public static partial class Releases
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {
-            return Failed(feed, FormattableString.Invariant($"no answer in {feed.Timeout.TotalSeconds:0.#} s"));
+            return Failed(feed, FormattableString.Invariant($"no answer in {Durations.Said(feed.Timeout)}"));
         }
         catch (OperationCanceledException)
         {

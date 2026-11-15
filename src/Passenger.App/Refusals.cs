@@ -122,13 +122,13 @@ public static class Refusals
     /// <summary>A C# file come under a project that the language server has not loaded into it (<see
     /// cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers about the solution would leave it out.</summary>
     public static string NotTakenIn(string file, string project) =>
-        $"{file} is not loaded into {project} yet: the C# language server has not taken it in after {CSharp.Patience.Limit.TotalSeconds:0} s, "
+        $"{file} is not loaded into {project} yet: the C# language server has not taken it in after {Durations.Said(CSharp.Patience.Limit)}, "
         + "and would answer without it; try again once it has";
 
     /// <summary>A project the C# language server was asked to load again (its file or an import changed) that it has not
     /// loaded since (<see cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers would be of the project as it was.</summary>
     public static string NotLoadedAgain(string project) =>
-        $"{project} is not loaded again yet: the C# language server has not loaded it as changed after {CSharp.Patience.Limit.TotalSeconds:0} s, "
+        $"{project} is not loaded again yet: the C# language server has not loaded it as changed after {Durations.Said(CSharp.Patience.Limit)}, "
         + "and would answer from it as it was; try again once it has";
 
     /// <summary>What an answer given before the C# language server took C# files come under its projects into them went
@@ -169,7 +169,7 @@ public static class Refusals
 
     /// <summary>A C# code tool asked while the language server is still loading the folder's projects after the wait.</summary>
     public static string StillLoading(TimeSpan waited, string state) =>
-        $"The C# language server is still loading the folder's projects after {waited.TotalSeconds:0} s ({(state.Length > 0 ? state : "starting")}), "
+        $"The C# language server is still loading the folder's projects after {Durations.Said(waited)} ({(state.Length > 0 ? state : "starting")}), "
         + "so it has nothing of them to answer from yet: ask again once workspace says languageServer is ready";
 
     /// <summary>An x64 Passenger the system translates found only a .NET SDK of the system's own processor, whose MSBuild it
@@ -554,7 +554,7 @@ public static class Refusals
 
     /// <summary>A debugged Functions app whose host started no worker within its time.</summary>
     public static string NoFunctionsWorker(TimeSpan limit) =>
-        $"Azure Functions Core Tools started no worker for it within {limit.TotalSeconds:0} s";
+        $"Azure Functions Core Tools started no worker for it within {Durations.Said(limit)}";
 
     /// <summary>The project has no device chosen to run on, where the chooser lists none.</summary>
     public const string NoTargets = "No device, emulator or simulator is listed for this project: connect a device, or make an emulator with Android Studio's Device Manager";

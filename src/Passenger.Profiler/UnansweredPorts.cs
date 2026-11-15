@@ -31,7 +31,7 @@ internal static class UnansweredPorts
         return await AnswerAsync(processId, cancel).ConfigureAwait(false) switch
         {
             null => $"process {processId} runs, and {port} answered another request at once",
-            "" => $"process {processId} runs, and {port} is there but answered no other request either in {AnswerLimit.TotalSeconds:0} s",
+            "" => $"process {processId} runs, and {port} is there but answered no other request either in {Durations.Said(AnswerLimit)}",
             { } failed => $"process {processId} runs, and {port} failed another request: {failed}",
         };
     }

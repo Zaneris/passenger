@@ -69,7 +69,7 @@ public static class InFlight
         return string.Join('\n', busy.Select(b =>
         {
             TimeSpan age = Stopwatch.GetElapsedTime(b.Since, now);
-            return $"  {b.What}, for {age.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)} s (since {(clock - age).ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)})";
+            return $"  {b.What}, for {Durations.Said(age)} (since {(clock - age).ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)})";
         }));
     }
 

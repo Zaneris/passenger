@@ -19,13 +19,10 @@ internal sealed class ExpressionTime(Deadline due)
     {
         if (evaluations.Count == 0)
         {
-            return $"{Seconds(whole)} of its own in the debugger, no evaluation having run in the program";
+            return $"{Durations.Said(whole)} of its own in the debugger, no evaluation having run in the program";
         }
         TimeSpan inProgram = evaluations.Aggregate(TimeSpan.Zero, (sum, took) => sum + took);
         TimeSpan own = whole > inProgram ? whole - inProgram : TimeSpan.Zero;
-        return $"{Plural.Of(evaluations.Count, "evaluation")} in the program took {Seconds(inProgram)}, the longest {Seconds(evaluations.Max())}, and the debugger {Seconds(own)}";
+        return $"{Plural.Of(evaluations.Count, "evaluation")} in the program took {Durations.Said(inProgram)}, the longest {Durations.Said(evaluations.Max())}, and the debugger {Durations.Said(own)}";
     }
-
-    /// <summary>A time as the engine's log gives it.</summary>
-    internal static string Seconds(TimeSpan time) => $"{time.TotalSeconds.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)} s";
 }

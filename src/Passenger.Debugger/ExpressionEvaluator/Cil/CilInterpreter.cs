@@ -191,7 +191,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 // A ret runs nothing more, so stopping there would save no time and only lose the answer already made.
                 if (instructions[index].Code is not ILOpCode.Ret)
                 {
-                    throw new ManagedDebugger.EvalException($"{TookTooLong}: it was stopped after {Extensions.EvaluationTimeout.TotalSeconds:0.#} s");
+                    throw new ManagedDebugger.EvalException($"{TookTooLong}: it was stopped after {Durations.Said(Extensions.EvaluationTimeout)}");
                 }
             }
             steppedAt = now;
@@ -459,8 +459,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
     /// as it gives up; the last step, which took <paramref name="took"/>, is what it was late from, none at its first.</summary>
     private void TellPastItsTime(Interpretation run, CilInstruction next, CilInstruction? stepped, TimeSpan took)
     {
-        string last = stepped is { } step ? $", {step.OpCode.Name} at IL_{step.Offset:X4} having taken {ExpressionTime.Seconds(took)}" : "";
-        debugger.Log($"The expression on thread {run.Context.ThreadId.Value} is past its {Extensions.EvaluationTimeout.TotalSeconds:0.#} s before {next.OpCode.Name} at IL_{next.Offset:X4}{last}: "
+        string last = stepped is { } step ? $", {step.OpCode.Name} at IL_{step.Offset:X4} having taken {Durations.Said(took)}" : "";
+        debugger.Log($"The expression on thread {run.Context.ThreadId.Value} is past its {Durations.Said(Extensions.EvaluationTimeout)} before {next.OpCode.Name} at IL_{next.Offset:X4}{last}: "
             + run.Time.Spent(Stopwatch.GetElapsedTime(run.Began)));
         debugger.EvalStatus.TellThreads?.Invoke(run.Context.Thread);
     }

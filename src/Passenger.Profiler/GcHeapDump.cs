@@ -62,7 +62,7 @@ internal static class GcHeapDump
         }
         if (!walked)
         {
-            throw new InvalidOperationException($"The program's runtime gave no heap dump within {Waits.Of(Limit).TotalMinutes:0} minutes");
+            throw new InvalidOperationException($"The program's runtime gave no heap dump within {Durations.Said(Waits.Of(Limit))}");
         }
         if (source.EventsLost > 0)
         {

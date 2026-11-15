@@ -189,7 +189,7 @@ public sealed class DiscordPresence(DiscordIpc ipc, Action<string> log)
     {
         if (!quiet)
         {
-            log($"Discord: {why}; looking for it again every {Seconds(ipc.Retry)} in silence");
+            log($"Discord: {why}; looking for it again every {Durations.Said(ipc.Retry)} in silence");
             quiet = true;
         }
     }
@@ -281,6 +281,4 @@ public sealed class DiscordPresence(DiscordIpc ipc, Action<string> log)
 
     private static string Line(string text) =>
         text.Length > 128 ? text[..127] + "…" : text.Length < 2 ? text + "​" : text;
-
-    private static string Seconds(TimeSpan time) => FormattableString.Invariant($"{time.TotalSeconds:0.###} s");
 }

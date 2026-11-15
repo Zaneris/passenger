@@ -904,7 +904,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         app.ProfileClaimed = true;
         string service = name ?? Path.GetFileNameWithoutExtension(path);
         TimeSpan limit = Waits.Of(ProfileLimit);
-        string past = $"{service} did not start under the profiler within {limit.TotalSeconds:0.##} s of its AppHost asking for it";
+        string past = $"{service} did not start under the profiler within {Durations.Said(limit)} of its AppHost asking for it";
         app.ProfileDue = (Stopwatch.GetTimestamp(), limit, past);
         app.ProfileAsked.TrySetResult(service);
         Task due = Task.Delay(limit, app.Lifetime.Token);
@@ -1176,7 +1176,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         {
             if (waiting.IsCancellationRequested)
             {
-                IdeLog.Write(IdeLog.Ide, $"Aspire: {((IRunService)resource).Name} starts with arguments its AppHost had not said within {Waits.Of(ArgumentsWait).TotalSeconds:0} s");
+                IdeLog.Write(IdeLog.Ide, $"Aspire: {((IRunService)resource).Name} starts with arguments its AppHost had not said within {Durations.Said(Waits.Of(ArgumentsWait))}");
             }
         }
         catch (IOException)
@@ -1769,7 +1769,7 @@ public sealed class AspireAppRun : ServiceRun
                 }
                 catch (TimeoutException)
                 {
-                    return $"{name} did not start again within {limit.TotalMinutes:0.#} minutes of its restart";
+                    return $"{name} did not start again within {Durations.Said(limit)} of its restart";
                 }
             }
         }

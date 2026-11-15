@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Passenger.Core;
 
 namespace Passenger.App.Discord;
 
@@ -66,7 +67,7 @@ internal sealed class DiscordConnection : IAsyncDisposable
             }
             catch (TimeoutException)
             {
-                refused = FormattableString.Invariant($"{endpoint} did not answer the handshake in {ipc.Timeout.TotalSeconds:0.#} s");
+                refused = FormattableString.Invariant($"{endpoint} did not answer the handshake in {Durations.Said(ipc.Timeout)}");
             }
             catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException)
             {

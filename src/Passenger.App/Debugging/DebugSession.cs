@@ -672,7 +672,7 @@ public sealed class DebugSession
         {
             return;
         }
-        IdeLog.Write(IdeLog.Debugger, $"[{adapter.Name}] {Program} has gone, and its adapter did not say its debugging ended within {AdapterSilence.TotalSeconds:0} s: "
+        IdeLog.Write(IdeLog.Debugger, $"[{adapter.Name}] {Program} has gone, and its adapter did not say its debugging ended within {Durations.Said(AdapterSilence)}: "
             + "the session ends without it");
         FallbackUsed = true;
         programEnded = true;

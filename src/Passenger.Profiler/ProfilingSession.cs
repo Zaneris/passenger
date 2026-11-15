@@ -315,7 +315,7 @@ public sealed class ProfilingSession : IAsyncDisposable
                 if (session is null)
                 {
                     throw new ProfilingException(waited == PortWait.Ended ? HasEnded(name)
-                        : $"The profiler could not reach {name}: it opened no diagnostic port in {HeldStart.PortLimit.TotalSeconds:0} s");
+                        : $"The profiler could not reach {name}: it opened no diagnostic port in {Durations.Said(HeldStart.PortLimit)}");
                 }
                 // Recorded either way: a runtime not held at its start may refuse what it never waits for, and runs.
                 _ = await HeldStart.LetGoAsync(processId);

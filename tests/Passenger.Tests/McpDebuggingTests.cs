@@ -461,7 +461,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(told.Any(t => t.Message?.StartsWith("Running Sum: waiting up to 4 s for it to end", StringComparison.Ordinal) == true),
             $"The agent was never told the run waits for its program: {heard}");
         // Each word says how long the call has taken so far.
-        Assert.Matches(@"\(\d+\.\d s\)$", told[^1].Message ?? string.Empty);
+        Assert.Matches($@"\({SaidWhile.Pattern}\)$", told[^1].Message ?? string.Empty);
         await Call(client, McpTools.Stop);
         Assert.True(Errors().Length == 0, $"The agent's Passenger wrote to its standard error, which an agent may never read:\n{string.Join('\n', Errors())}");
     }

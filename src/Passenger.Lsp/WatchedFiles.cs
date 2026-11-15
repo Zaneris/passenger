@@ -231,7 +231,7 @@ public sealed class WatchedFiles
                 else if (notRead.Contains(path) && change.Unread is { } first && Stopwatch.GetElapsedTime(first, now) > UnreadLimit)
                 {
                     changing.Remove(path);
-                    server.Note($"The server still held {path} otherwise than the disk {UnreadLimit.TotalSeconds:0} s after it was first found so: "
+                    server.Note($"The server still held {path} otherwise than the disk {Durations.Said(UnreadLimit)} after it was first found so: "
                         + "commands no longer wait for it to read it");
                 }
                 else if (notRead.Contains(path) && change.Unread is null)

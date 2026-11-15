@@ -306,7 +306,7 @@ public sealed class NUnitTests : NUnitFolders
 
     /// <summary>The tests' tally, less the time they took.</summary>
     private static string Tally(MainWindow window) =>
-        System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty);
+        System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty);
 
     /// <summary>What each test came to, a method's rows in place of the method, by method and then row.</summary>
     private static List<string> Ended(MainWindow window) =>

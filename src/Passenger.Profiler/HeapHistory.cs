@@ -103,7 +103,7 @@ internal sealed class HeapHistory : IAsyncDisposable
                         {
                             continue;
                         }
-                        string phases = $"dump {dumped.TotalSeconds:0.0} s, reading {graph.Walked.TotalSeconds:0.0} s, retention {graph.Analysed.TotalSeconds:0.0} s";
+                        string phases = $"dump {Durations.Said(dumped)}, reading {Durations.Said(graph.Walked)}, retention {Durations.Said(graph.Analysed)}";
                         return Place(graph, heard ? collections => Before(written, collections) : null, clock.Elapsed, phases);
                     }
                     finally
@@ -141,7 +141,7 @@ internal sealed class HeapHistory : IAsyncDisposable
         {
             (HeapGraph graph, int collection, TimeSpan dumped) = await GcHeapDump.ReadAsync(processId, cancel);
             bool heard = collection >= 0 && await HeardAsync(collection, TimeSpan.FromSeconds(30));
-            string phases = $"heap dump {dumped.TotalSeconds:0.0} s, retention {graph.Analysed.TotalSeconds:0.0} s";
+            string phases = $"heap dump {Durations.Said(dumped)}, retention {Durations.Said(graph.Analysed)}";
             return Place(graph, heard ? collections => collections.FindIndex(r => r.Count > collection) is var after and >= 0 ? after : collections.Count : null,
                 clock.Elapsed, phases, lacks);
         }

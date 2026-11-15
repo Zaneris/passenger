@@ -99,8 +99,8 @@ public sealed class ResponseView : DockPanel
         empty.IsVisible = false;
         bool passed = Passed;
         summary.Text = response.Error is { } error
-            ? $"Failed: {error} ({Milliseconds(response.Elapsed)})"
-            : $"{response.Status} {response.Reason}   {Milliseconds(response.Elapsed)}   {Sizes.Said(response.Size)}{(response.Cut ? ", the rest unread" : string.Empty)}";
+            ? $"Failed: {error} ({Durations.Said(response.Elapsed)})"
+            : $"{response.Status} {response.Reason}   {Durations.Said(response.Elapsed)}   {Sizes.Said(response.Size)}{(response.Cut ? ", the rest unread" : string.Empty)}";
         Paint(summary, passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed);
         criteria.Children.Clear();
         foreach (string note in response.Notes)
@@ -173,6 +173,4 @@ public sealed class ResponseView : DockPanel
         AvaloniaProperty property = control is PathIcon ? PathIcon.ForegroundProperty : TextBlock.ForegroundProperty;
         control.Bind(property, control.GetResourceObservable(token));
     }
-
-    private static string Milliseconds(TimeSpan elapsed) => $"{elapsed.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)} ms";
 }

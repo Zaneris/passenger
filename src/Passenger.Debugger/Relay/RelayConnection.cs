@@ -252,7 +252,7 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
         (int id, Task<byte[]> answer) = _pending.Add(what);
         if (id % 500 == 0)
         {
-            _log?.Invoke($"Relay calls so far: {id}, waiting {Stopwatch.GetElapsedTime(0, Interlocked.Read(ref _waited)).TotalMilliseconds / Math.Max(1, _answered):F2} ms for each answer");
+            _log?.Invoke($"Relay calls so far: {id}, waiting {Durations.Said(Stopwatch.GetElapsedTime(0, Interlocked.Read(ref _waited)) / Math.Max(1, _answered))} for each answer");
         }
         byte[] header = new byte[8];
         BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)body.Length + 4);

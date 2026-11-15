@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -353,10 +354,10 @@ public static class Extensions
                         : $"The evaluation on thread {thread.Id} is left to run on, unaborted");
                     evalStatus.TellThreads?.Invoke(thread);
                 }
-                evalStatus.ImplicitOff = $"Implicit evaluation is disabled: an evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s. It is enabled again once the program runs on";
+                evalStatus.ImplicitOff = $"Implicit evaluation is disabled: an evaluation took longer than {Durations.Said(EvaluationTimeout)}. It is enabled again once the program runs on";
                 if (!ended || aborted)
                 {
-                    string took = $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s{(evalStatus.LetThreadsRun ? " with every thread let go" : "")}";
+                    string took = $"The evaluation took longer than {Durations.Said(EvaluationTimeout)}{(evalStatus.LetThreadsRun ? " with every thread let go" : "")}";
                     string why = evalStatus.LetThreadsRun ? "" : $": {NeedsThreads}";
                     throw new ManagedDebugger.EvalException(aborted
                         ? $"{took} and was stopped{why}"
@@ -452,7 +453,7 @@ public static class Extensions
             }
             if (process.TryStop(0) is Cor.S_OK)
             {
-                evalStatus.Log?.Invoke($"The expression on thread {thread.Id} is past its time with an evaluation in the program under way for {ExpressionEvaluator.Cil.ExpressionTime.Seconds(System.Diagnostics.Stopwatch.GetElapsedTime(started))}");
+                evalStatus.Log?.Invoke($"The expression on thread {thread.Id} is past its time with an evaluation in the program under way for {Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(started))}");
                 tell(thread);
                 process.Continue(false);
             }

@@ -857,7 +857,7 @@ public sealed class TestController : IAsyncDisposable
         int failed = results.Count(r => r.State == TestState.Failed);
         int skipped = results.Count(r => r.State == TestState.Skipped);
         string ending = summary.Canceled ? ", stopped" : summary.Aborted ? $", broken off{(summary.Error is { } why ? $": {why}" : "")}" : string.Empty;
-        return $"Tests passed: {passed}, failed: {failed}{(skipped > 0 ? $", skipped: {skipped}" : "")} of {results.Count} in {summary.Elapsed.TotalSeconds:0.0} s{ending}";
+        return $"Tests passed: {passed}, failed: {failed}{(skipped > 0 ? $", skipped: {skipped}" : "")} of {results.Count} in {Durations.Said(summary.Elapsed)}{ending}";
     }
 
     /// <summary>What a run runs: rows chosen (every test for none), or the tree's methods a match takes once the tests built

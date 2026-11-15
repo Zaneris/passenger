@@ -302,7 +302,7 @@ public sealed class WebLanguages : IAsyncDisposable
                 gdscriptIdle.Remove(place);
                 IdeErrors.Observe(server.End());
                 godotAsked.Remove(place);
-                IdeErrors.Write($"GDScript's language server let go for {place.Project ?? folder}: no GDScript of it open for {GDScriptIdle.TotalSeconds:0} s");
+                IdeErrors.Write($"GDScript's language server let go for {place.Project ?? folder}: no GDScript of it open for {Durations.Said(GDScriptIdle)}");
                 StateChanged?.Invoke(this, EventArgs.Empty);
             });
         }));

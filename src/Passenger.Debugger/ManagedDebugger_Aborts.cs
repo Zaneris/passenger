@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Threading.Channels;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -152,14 +153,14 @@ public partial class ManagedDebugger
                     string? why = asked ? null : WhyNoAbortTakes(eval.Thread);
                     if (!asked && why is null)
                     {
-                        _logger?.Invoke($"The evaluation left running on thread {thread} has had its {Extensions.EvaluationTimeout.TotalSeconds:0.#} s and runs managed code, and is aborted");
+                        _logger?.Invoke($"The evaluation left running on thread {thread} has had its {Durations.Said(Extensions.EvaluationTimeout)} and runs managed code, and is aborted");
                         eval.TryAbort();
                         asked = true;
                         until = Stopwatch.GetTimestamp() + Extensions.Ticks(Extensions.AbortWait);
                     }
                     else if (why is not null && why != lastWhy)
                     {
-                        _logger?.Invoke($"The evaluation left running on thread {thread} has had its {Extensions.EvaluationTimeout.TotalSeconds:0.#} s, and is not aborted: {why}");
+                        _logger?.Invoke($"The evaluation left running on thread {thread} has had its {Durations.Said(Extensions.EvaluationTimeout)}, and is not aborted: {why}");
                         lastWhy = why;
                     }
                     if (heldForLook)
@@ -213,7 +214,7 @@ public partial class ManagedDebugger
         }
         catch (OperationCanceledException)
         {
-            _logger?.Invoke($"The evaluation left running on thread {thread.Id} had not returned {Extensions.EvaluationTimeout.TotalSeconds:0.#} s after every thread was let go");
+            _logger?.Invoke($"The evaluation left running on thread {thread.Id} had not returned {Durations.Said(Extensions.EvaluationTimeout)} after every thread was let go");
         }
         finally
         {

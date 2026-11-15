@@ -364,7 +364,7 @@ public static class ContainerTools
             }
             catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
             {
-                throw new ContainerToolsException($"Container {container} did not say within {ContainerEngine.AskLimit.TotalSeconds:0} s whether it has {path}");
+                throw new ContainerToolsException($"Container {container} did not say within {Durations.Said(ContainerEngine.AskLimit)} whether it has {path}");
             }
             finally
             {

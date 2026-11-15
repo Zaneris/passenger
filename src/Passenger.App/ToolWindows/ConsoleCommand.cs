@@ -44,7 +44,7 @@ public static class ConsoleCommand
             }
             catch (TimeoutException)
             {
-                IdeLog.Write(IdeLog.Ide, $"{ChildProcesses.Shown(start)} had not ended {Ending.TotalSeconds:0} s after it was ended");
+                IdeLog.Write(IdeLog.Ide, $"{ChildProcesses.Shown(start)} had not ended {Durations.Said(Ending)} after it was ended");
             }
             throw;
         }

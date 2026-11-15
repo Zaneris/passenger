@@ -204,7 +204,7 @@ public sealed partial class BrowserRun : IAsyncDisposable
                 }
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancel);
             }
-            throw new InvalidOperationException($"{found.Name} did not start its remote debugging within {Waits.Of(StartLimit).TotalSeconds:0} s");
+            throw new InvalidOperationException($"{found.Name} did not start its remote debugging within {Durations.Said(Waits.Of(StartLimit))}");
         }
         finally
         {
@@ -283,7 +283,7 @@ public sealed partial class BrowserRun : IAsyncDisposable
         catch (TimeoutException)
         {
             ChildProcesses.Kill(proxy);
-            throw new InvalidOperationException($".NET's browser debug proxy did not listen within {Waits.Of(StartLimit).TotalSeconds:0} s");
+            throw new InvalidOperationException($".NET's browser debug proxy did not listen within {Durations.Said(Waits.Of(StartLimit))}");
         }
         catch
         {

@@ -59,6 +59,6 @@ public static class GodotConsole
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         }
         run.Stop();
-        throw new LaunchException($"{Path.GetFileName(started)} started no Godot within {Waits.Of(StartLimit).TotalSeconds:0} s");
+        throw new LaunchException($"{Path.GetFileName(started)} started no Godot within {Durations.Said(Waits.Of(StartLimit))}");
     }
 }

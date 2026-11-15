@@ -1,3 +1,4 @@
+using System.Globalization;
 using Passenger.Core;
 
 namespace Passenger.UnitTests.Core;
@@ -75,5 +76,23 @@ public class ChildResultTests
             string.Empty);
         string said = echoed.SaidAs(words => words.Replace("\r", string.Empty, StringComparison.Ordinal).Replace(Key, "••••••", StringComparison.Ordinal));
         Assert.True(said == "invalid interpolation: SIGNING_KEY=•••••• is not valid", $"A PEM key compose echoed was shown, its lines joined before the mask could find it: {said}");
+    }
+
+    /// <summary>A child's line for the log says how long it ran in the IDE's digits, whatever the person's culture writes.</summary>
+    [Fact]
+    public void A_childs_end_says_how_long_it_ran_in_the_ides_digits_under_a_culture_writing_a_decimal_comma()
+    {
+        CultureInfo was = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+        try
+        {
+            string line = new ChildEnd(7, "dotnet build", 1, TimeSpan.FromMilliseconds(1500)).ToString();
+            Assert.True(line == "Process 7 exited with code 1 after 1.5 s: dotnet build",
+                $"A child's end under a German culture was logged as \"{line}\": its time read one way there and another in every other line");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = was;
+        }
     }
 }

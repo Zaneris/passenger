@@ -1014,7 +1014,7 @@ public sealed class GodotScriptAdapter : InProcessAdapter
         }
         catch (TimeoutException)
         {
-            throw new DapException("godot", $"{game.Name} did not answer {what} in {LiveTree.LiveApp.AnswerLimit.TotalSeconds:0} s");
+            throw new DapException("godot", $"{game.Name} did not answer {what} in {Durations.Said(LiveTree.LiveApp.AnswerLimit)}");
         }
         catch (LiveTree.LiveAppException gone)
         {

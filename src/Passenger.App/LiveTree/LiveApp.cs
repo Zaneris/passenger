@@ -481,7 +481,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         {
             // Forgotten, so its answer, if it ever comes, finds no one waiting.
             asked.Forget(id, answer);
-            throw new LiveAppException(limit is { } longer ? $"{Name} did not answer within {longer.TotalSeconds:0} s" : NotAnswered(Name));
+            throw new LiveAppException(limit is { } longer ? $"{Name} did not answer within {Durations.Said(longer)}" : NotAnswered(Name));
         }
         return reply.Error is { } why ? throw new LiveAppException(why) : reply;
     }
@@ -490,7 +490,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     public static readonly TimeSpan AnswerLimit = TimeSpan.FromSeconds(10);
 
     /// <summary>What a question the app left unanswered past <see cref="AnswerLimit"/> fails with.</summary>
-    public static string NotAnswered(string app) => $"{app} did not answer within {AnswerLimit.TotalSeconds:0} s";
+    public static string NotAnswered(string app) => $"{app} did not answer within {Durations.Said(AnswerLimit)}";
 
     /// <summary>Takes the app's one connection, then reads what it says until it goes.</summary>
     private async Task ServeAsync()

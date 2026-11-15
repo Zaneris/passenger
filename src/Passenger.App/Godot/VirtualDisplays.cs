@@ -70,7 +70,7 @@ public static class VirtualDisplays
             {
                 ChildProcesses.Kill(started);
                 started.Dispose();
-                IdeErrors.Write($"Xvfb did not say its display within {Starting.TotalSeconds:0} s ({number ?? "nothing"}): an agent's Godot games run headless, with no frames");
+                IdeErrors.Write($"Xvfb did not say its display within {Durations.Said(Starting)} ({number ?? "nothing"}): an agent's Godot games run headless, with no frames");
                 return null;
             }
             // What it says after its display is its log's, for as long as it runs.
@@ -131,7 +131,7 @@ public static class VirtualDisplays
                 ChildProcesses.Kill(ending);
                 ending.Dispose();
                 (server, display) = (null, null);
-                IdeErrors.Write($"Xvfb let go: no game drew on it for {Idle.TotalMinutes:0} minutes");
+                IdeErrors.Write($"Xvfb let go: no game drew on it for {Durations.Said(Idle)}");
             }
             finally
             {

@@ -57,7 +57,7 @@ public static class WorkspaceEdits
         if (gone.Count > 0)
         {
             string deleted = $"{Path.GetFileName(gone[0])} was deleted, which the language server still held";
-            return patience?.Behind(gone, held, $"{deleted} as it was asked", $"{deleted} after {Patience.Limit.TotalSeconds:0} s, so what it worked out may be from "
+            return patience?.Behind(gone, held, $"{deleted} as it was asked", $"{deleted} after {Durations.Said(Patience.Limit)}, so what it worked out may be from "
                 + "the files as they were: nothing was changed") ?? $"{deleted}, so what it worked out may be from the files as they were: nothing was changed; try again in a moment";
         }
         // With the files written for the command to wait for, which the server must have read as they are, in the edit or not.
@@ -76,7 +76,7 @@ public static class WorkspaceEdits
         {
             string name = Path.GetFileName(written[0].Path);
             return patience!.Behind([.. written.Select(f => f.Path)], held, $"{name} changed on disk a moment before the language server was asked",
-                $"{name} changed on disk a moment before the language server was asked, which had not read it after {Patience.Limit.TotalSeconds:0} s, "
+                $"{name} changed on disk a moment before the language server was asked, which had not read it after {Durations.Said(Patience.Limit)}, "
                 + "so the places it gave there may be where they were before: nothing was changed");
         }
         if (patience is not null && since is { } request && await WrittenElsewhereAsync(editors, elsewhere, request - Catching, patience, made) is { Count: > 0 } outside)
@@ -84,7 +84,7 @@ public static class WorkspaceEdits
             Roslyn.Extension.DocumentWritten first = outside[0];
             string what = $"{Path.GetFileName(first.Path)} {(first.Gone ? "was deleted" : "changed on disk")} a moment before the language server was asked";
             return patience.Behind([.. outside.Select(d => d.Path)], held, what, $"{what}, which {(first.Gone ? "still held it" : "had not read it")} after "
-                + $"{Patience.Limit.TotalSeconds:0} s, so what it worked out may be from the files as they were: nothing was changed");
+                + $"{Durations.Said(Patience.Limit)}, so what it worked out may be from the files as they were: nothing was changed");
         }
         if (closed.Count == 0 || held is null)
         {
@@ -111,7 +111,7 @@ public static class WorkspaceEdits
             string so = edited.Contains(unread[0]) ? "so the places it gave there would be the wrong ones" : "so what it worked out from it may be from the text before";
             string said = $"{name} on disk is not the text the language server read, {so}: nothing was changed; try again once the server has read it";
             return patience?.Behind(unread, held, said, $"{name} on disk was still not the text the language server read after "
-                + $"{Patience.Limit.TotalSeconds:0} s, {so}: nothing was changed") ?? said;
+                + $"{Durations.Said(Patience.Limit)}, {so}: nothing was changed") ?? said;
         }
         return null;
     }
@@ -775,7 +775,7 @@ public sealed class Patience
     {
         if (until.Passed)
         {
-            IdeLog.Write(IdeLog.Ide, $"Waited {Limit.TotalSeconds:0} s for the language server to read {Told(paths, session()?.Server.WatchedFiles)}");
+            IdeLog.Write(IdeLog.Ide, $"Waited {Durations.Said(Limit)} for the language server to read {Told(paths, session()?.Server.WatchedFiles)}");
             return kept;
         }
         behind.AddRange(paths);
@@ -789,8 +789,8 @@ public sealed class Patience
     {
         DateTime now = DateTime.UtcNow;
         long stamp = Stopwatch.GetTimestamp();
-        return string.Join("; ", paths.Select(p => $"{Path.GetFileName(p)}, {(File.Exists(p) ? $"written {(now - File.GetLastWriteTimeUtc(p)).TotalSeconds:0.00} s before" : "deleted")}, "
-            + (watched?.ToldAt(p) is { } at ? $"its change told the server {Stopwatch.GetElapsedTime(at, stamp).TotalSeconds:0.00} s before" : "no change of it told the server since it started")));
+        return string.Join("; ", paths.Select(p => $"{Path.GetFileName(p)}, {(File.Exists(p) ? $"written {Durations.Said(now - File.GetLastWriteTimeUtc(p))} before" : "deleted")}, "
+            + (watched?.ToldAt(p) is { } at ? $"its change told the server {Durations.Said(Stopwatch.GetElapsedTime(at, stamp))} before" : "no change of it told the server since it started")));
     }
 
     /// <summary>Waits until the server holds each file behind as the disk has it, unwritten while it was read, and none

@@ -131,7 +131,7 @@ internal sealed class CommitFile : IDisposable
         {
             if (Stopwatch.GetElapsedTime(began) > Limit)
             {
-                PassengerLog.Write($"A commit's file was left at {file}, another program holding it past {Limit.TotalMinutes:0} minutes: {refused.Message}");
+                PassengerLog.Write($"A commit's file was left at {file}, another program holding it past {Durations.Said(Limit)}: {refused.Message}");
                 return;
             }
             await Task.Delay(Pause).ConfigureAwait(false);

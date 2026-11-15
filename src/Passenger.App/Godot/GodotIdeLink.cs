@@ -177,7 +177,7 @@ internal sealed class GodotIdeLink : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            return $"did not answer within {Patience.TotalSeconds:0} s";
+            return $"did not answer within {Durations.Said(Patience)}";
         }
     }
 

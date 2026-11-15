@@ -7,6 +7,7 @@ using Passenger.App.Debugging;
 using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Workspace;
 
@@ -45,7 +46,7 @@ public sealed class GodotScriptQuestionsTests
             played.Send(GodotWords.DebugEnter, [true, "Breakpoint", true, GodotMessage.MainThread]);
             Ui.WaitFor(() => session.State == DebugState.Paused, () => $"the stop to be shown paused once its stack's question was given up on ({session.State}; said {string.Concat(said)})",
                 TimeSpan.FromMinutes(1));
-            Assert.Contains($"Unanswering did not answer with its stack in {LiveApp.AnswerLimit.TotalSeconds:0} s", string.Concat(said), StringComparison.Ordinal);
+            Assert.Contains($"Unanswering did not answer with its stack in {Durations.Said(LiveApp.AnswerLimit)}", string.Concat(said), StringComparison.Ordinal);
 
             // Asked again, the stack comes; an evaluation in its frame then has the game end under it.
             played.Answering = true;

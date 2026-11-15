@@ -466,7 +466,7 @@ public static class ChildProcesses
         }
         if (!ran)
         {
-            throw new TimeoutException($"{Shown(start)} had not ended after {limit.GetValueOrDefault().TotalSeconds:0} s");
+            throw new TimeoutException($"{Shown(start)} had not ended after {Durations.Said(limit.GetValueOrDefault())}");
         }
         return new ChildResult(process.ExitCode, output.Text, errors.Text);
     }
@@ -584,7 +584,7 @@ public static class ChildProcesses
             process.Dispose();
             ending.Dispose();
             cancel.ThrowIfCancellationRequested();
-            throw new TimeoutException($"{Shown(start)} had not answered after {limit.GetValueOrDefault().TotalSeconds:0} s");
+            throw new TimeoutException($"{Shown(start)} had not answered after {Durations.Said(limit.GetValueOrDefault())}");
         }
         UnawaitedWork.Dismiss(read);
         using (process)
@@ -1105,5 +1105,5 @@ public sealed record ChildEnd(int ProcessId, string Command, int ExitCode, TimeS
     public bool Notable => !EndedByIde && ((ExitCode != 0 && !Answered) || Time >= TimeSpan.FromSeconds(1));
 
     public override string ToString() =>
-        $"Process {ProcessId} {(EndedByIde ? "ended by the IDE, " : string.Empty)}exited with code {ExitCode} after {Time.TotalSeconds:0.00} s: {(Start is { } start ? ChildProcesses.Shown(start) : Command)}";
+        $"Process {ProcessId} {(EndedByIde ? "ended by the IDE, " : string.Empty)}exited with code {ExitCode} after {Durations.Said(Time)}: {(Start is { } start ? ChildProcesses.Shown(start) : Command)}";
 }

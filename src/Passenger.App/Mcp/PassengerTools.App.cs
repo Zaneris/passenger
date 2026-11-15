@@ -427,7 +427,7 @@ public sealed partial class PassengerTools
         return chosen.State switch
         {
             LiveAppState.Connected => chosen,
-            LiveAppState.Waiting => throw new TimeoutException($"{chosen.Name} has not shown its UI in {AppUiLimit.TotalSeconds:0} s"),
+            LiveAppState.Waiting => throw new TimeoutException($"{chosen.Name} has not shown its UI in {Durations.Said(AppUiLimit)}"),
             LiveAppState.Refused => throw new InvalidOperationException(chosen.Problem ?? $"{chosen.Name} cannot be inspected"),
             _ => throw new InvalidOperationException($"{chosen.Name} has ended"),
         };
@@ -455,7 +455,7 @@ public sealed partial class PassengerTools
                     On(h => live.TreeChanged += h, h => live.TreeChanged -= h), On(h => live.StateChanged += h, h => live.StateChanged -= h));
                 if (changes == seen && live.State == LiveAppState.Connected)
                 {
-                    throw new TimeoutException($"{live.Name} has not shown its UI in {AppUiLimit.TotalSeconds:0} s");
+                    throw new TimeoutException($"{live.Name} has not shown its UI in {Durations.Said(AppUiLimit)}");
                 }
             }
         }

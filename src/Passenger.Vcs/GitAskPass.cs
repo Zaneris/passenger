@@ -293,7 +293,7 @@ public static class GitAskPass
             asking.Shutdown(SocketShutdown.Send);
             if (!asking.Poll(taking, SelectMode.SelectRead))
             {
-                return (null, $"the IDE had not taken its question within {taking.TotalSeconds:0} s");
+                return (null, $"the IDE had not taken its question within {Durations.Said(taking)}");
             }
             using MemoryStream reply = new();
             byte[] buffer = new byte[4096];

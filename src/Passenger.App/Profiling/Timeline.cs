@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Media.TextFormatting;
+using Passenger.Core;
 using Passenger.Profiler;
 
 namespace Passenger.App.Profiling;
@@ -243,7 +244,7 @@ public sealed class Timeline : Control
         List<(double At, TextLayout Text)> ticks = [];
         for (double at = 0; at <= span; at += step)
         {
-            ticks.Add((at, Text(at >= 1000 ? $"{at / 1000:0.#} s" : $"{at:0} ms", colours, null)));
+            ticks.Add((at, Text(Durations.Said(TimeSpan.FromMilliseconds(at)), colours, null)));
         }
         Drawn made = new(run, width, colours, Text("GC", colours, Label - 10), names, rows, shades, [.. ticks]);
         drawn?.Dispose();

@@ -148,7 +148,7 @@ internal sealed class NodeServer
                 Session = own;
                 State = $"{Name} ready";
                 IdeErrors.Write($"{Name} language server ({(own.Server.ProcessId == 0 ? "the person's editor" : $"process {own.Server.ProcessId}")}) started for {folder} "
-                    + $"in {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s");
+                    + $"in {Durations.Said(Stopwatch.GetElapsedTime(began))}");
                 Started?.Invoke(own);
                 return own;
             }
@@ -204,7 +204,7 @@ internal sealed class NodeServer
             Session = started;
             Runtime = runtime;
             State = $"{Name} ready";
-            IdeErrors.Write($"{Name} language server (process {started.Server.ProcessId}) started for {folder} on Node.js {runtime.Version} in {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s");
+            IdeErrors.Write($"{Name} language server (process {started.Server.ProcessId}) started for {folder} on Node.js {runtime.Version} in {Durations.Said(Stopwatch.GetElapsedTime(began))}");
             Started?.Invoke(started);
             return started;
         }

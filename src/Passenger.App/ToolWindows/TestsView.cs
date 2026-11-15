@@ -9,6 +9,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.App.Testing;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -454,8 +455,6 @@ public sealed class TestsView : DockPanel
         }
     }
 
-    private static string Format(TimeSpan duration) =>
-        duration.TotalSeconds >= 1 ? $"{duration.TotalSeconds:0.0} s" : $"{Math.Max(1, (int)duration.TotalMilliseconds)} ms";
 
     /// <summary>A row of the tree for whichever node the list gives its container, handed another as the list scrolls: it
     /// follows its node's changes only while it is shown, and lets go of them when the list takes it away or gives it
@@ -587,7 +586,7 @@ public sealed class TestsView : DockPanel
             state.ForegroundKey = brush;
             state.Width = state.Height = size;
             state.Margin = new Thickness((16 - size) / 2, 0, ((16 - size) / 2) + 6, 0);
-            duration.Text = node.State is TestState.Passed or TestState.Failed && node.Duration > TimeSpan.Zero ? Format(node.Duration) : string.Empty;
+            duration.Text = node.State is TestState.Passed or TestState.Failed && node.Duration > TimeSpan.Zero ? Durations.Said(node.Duration) : string.Empty;
             earlier.Text = node.Kind is not (TestNodeKind.Method or TestNodeKind.Row) ? string.Empty
                 : node.EarlierRun is { } ran ? $"earlier run, {Earlier(ran)}{(node.CodeChanged ? "; code changed" : string.Empty)}"
                 : node.CodeChanged && node.State is not (TestState.NotRun or TestState.Running) ? "code changed"

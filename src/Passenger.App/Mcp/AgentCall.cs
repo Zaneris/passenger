@@ -130,13 +130,13 @@ public sealed class AgentCall : IAsyncDisposable
     {
         if (waitingOn is { } on)
         {
-            Log($"waited {Seconds(Stopwatch.GetElapsedTime(Interlocked.Read(ref waitBegan)))} ({on}): {outcome}");
+            Log($"waited {Durations.Said(Stopwatch.GetElapsedTime(Interlocked.Read(ref waitBegan)))} ({on}): {outcome}");
         }
         waitingOn = null;
     }
 
     /// <summary>A step of the call that is no wait, logged with the time since it began.</summary>
-    public void Logged(string what) => Log($"{what} at {Seconds(Stopwatch.GetElapsedTime(began))}");
+    public void Logged(string what) => Log($"{what} at {Durations.Said(Stopwatch.GetElapsedTime(began))}");
 
     /// <summary>Progress the window serving this call told, told on to the agent as this call's own, under this call's
     /// rising numbers, in the order heard and before the call's answer; the beat waits <see cref="Every"/> again from
@@ -161,7 +161,7 @@ public sealed class AgentCall : IAsyncDisposable
     }
 
     /// <summary>How the call ended, logged: answered, an error, given up by the agent, failed.</summary>
-    public void Ended(string how) => Log($"{how} after {Seconds(Stopwatch.GetElapsedTime(began))}");
+    public void Ended(string how) => Log($"{how} after {Durations.Said(Stopwatch.GetElapsedTime(began))}");
 
     public async ValueTask DisposeAsync()
     {
@@ -246,7 +246,7 @@ public sealed class AgentCall : IAsyncDisposable
         try
         {
             Interlocked.Exchange(ref lastTold, Stopwatch.GetTimestamp());
-            string words = message is { Length: > 0 } ? message : $"{Doing} ({Seconds(Stopwatch.GetElapsedTime(began))})";
+            string words = message is { Length: > 0 } ? message : $"{Doing} ({Durations.Said(Stopwatch.GetElapsedTime(began))})";
             await agent.NotifyProgressAsync(token, new ProgressNotificationValue { Progress = ++told, Message = words }, cancellationToken: cancel);
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or InvalidOperationException or McpException)
@@ -266,6 +266,4 @@ public sealed class AgentCall : IAsyncDisposable
             IdeLog.Write(IdeLog.Mcp, $"[{where} call {number} {Tool}] {what}");
         }
     }
-
-    private static string Seconds(TimeSpan time) => $"{time.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} s";
 }

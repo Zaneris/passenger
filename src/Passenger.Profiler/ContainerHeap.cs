@@ -65,7 +65,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
                 await EndAsync(running).ConfigureAwait(false);
                 UnawaitedWork.Dismiss(reading);
                 throw new ProfilingException(stopped is TimeoutException
-                    ? $"Passenger's tools in {place.Where} took no memory snapshot in {Limit.TotalMinutes:0} minutes, and were ended"
+                    ? $"Passenger's tools in {place.Where} took no memory snapshot in {Durations.Said(Limit)}, and were ended"
                     : $"The memory snapshot of the program in {place.Where} was stopped, and Passenger's tools there ended", stopped);
             }
             catch (InvalidDataException unreadable)

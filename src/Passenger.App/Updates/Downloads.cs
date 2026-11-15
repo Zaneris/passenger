@@ -117,7 +117,7 @@ public static partial class Releases
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {
-            throw new UpdateFailedException(FormattableString.Invariant($"nothing came for {Stall.TotalSeconds:0} s"));
+            throw new UpdateFailedException(FormattableString.Invariant($"nothing came for {Durations.Said(Stall)}"));
         }
     }
 }

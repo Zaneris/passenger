@@ -181,7 +181,7 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
         if (await Run.BrowserLaunch.ListeningAsync(debugging.Page, waiting.Token) != true)
         {
             throw new DapException(command, ending.IsCancellationRequested ? DebugSession.StoppedStarting
-                : $"Nothing listened at {debugging.Page} within {Waits.Of(ListenLimit).TotalMinutes:0} minutes, so there was no page to debug in the browser");
+                : $"Nothing listened at {debugging.Page} within {Durations.Said(Waits.Of(ListenLimit))}, so there was no page to debug in the browser");
         }
         BrowserRun run;
         try

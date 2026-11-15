@@ -101,7 +101,7 @@ public static class ShellEnvironment
         }
         catch (TimeoutException)
         {
-            Unread(shell, $"it had not ended after {Limit.TotalSeconds:0} s", errors);
+            Unread(shell, $"it had not ended after {Durations.Said(Limit)}", errors);
         }
         catch (Exception error) when (error is UnauthorizedAccessException || ChildFailures.Of(error))
         {

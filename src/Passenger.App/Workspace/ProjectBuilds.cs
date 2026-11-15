@@ -461,7 +461,7 @@ public sealed class ProjectBuilds
             }
             if (mine == generation)
             {
-                IdeErrors.Write($"Project host (process {host.ProcessId}) built {done.Built} projects of {following} at design time in {done.Seconds:0.00} s, {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s after they were asked for");
+                IdeErrors.Write($"Project host (process {host.ProcessId}) built {done.Built} projects of {following} at design time in {Durations.Said(TimeSpan.FromSeconds(done.Seconds))}, {Durations.Said(Stopwatch.GetElapsedTime(began))} after they were asked for");
                 Keep();
             }
         }

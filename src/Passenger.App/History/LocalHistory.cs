@@ -1340,7 +1340,7 @@ public sealed class LocalHistory
         }
         catch (IOException refused)
         {
-            IdeErrors.Write($"Local History of {Folder}: another Passenger on the same state held {held}.lock past {HeldFor.TotalSeconds:0} s: {refused.Message}");
+            IdeErrors.Write($"Local History of {Folder}: another Passenger on the same state held {held}.lock past {Durations.Said(HeldFor)}: {refused.Message}");
             return null;
         }
     }

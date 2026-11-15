@@ -2970,8 +2970,8 @@ public sealed class DebugController : IDisposable
         (string Action, TimeSpan After)? step = asked is { } going ? (going.Action, System.Diagnostics.Stopwatch.GetElapsedTime(going.At, stop.Came)) : null;
         asked = null;
         LastStopTimes = new StopTimes(step?.Action, step?.After, framed, listed);
-        IdeErrors.Write($"Debugging {name}: {(step is { } s ? $"{s.Action} stopped {s.After.TotalMilliseconds:0} ms after it was asked, and the stop" : "a stop")} "
-            + $"showed its frames {framed.TotalMilliseconds:0} ms and its locals {listed.TotalMilliseconds:0} ms after it came");
+        IdeErrors.Write($"Debugging {name}: {(step is { } s ? $"{s.Action} stopped {Durations.Said(s.After)} after it was asked, and the stop" : "a stop")} "
+            + $"showed its frames {Durations.Said(framed)} and its locals {Durations.Said(listed)} after it came");
     }
 
     /// <summary>The chosen frame's values after the lines of its method, in its file and no other.</summary>

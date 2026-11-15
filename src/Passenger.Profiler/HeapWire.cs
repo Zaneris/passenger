@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.Profiler;
 
@@ -142,7 +143,7 @@ internal static class HeapWire
             earlier[before + older] = new Identity(Column(reader, inflated, 1, -1, graph.Count), inexact);
         }
         TimeSpan sent = asked > took ? asked - took : TimeSpan.Zero;
-        return new MemorySnapshot(run, number, taken, graph, took + sent, $"{phases}, sent out of the container {sent.TotalSeconds:0.0} s", earlier);
+        return new MemorySnapshot(run, number, taken, graph, took + sent, $"{phases}, sent out of the container {Durations.Said(sent)}", earlier);
     }
 
     /// <summary>A body inflated whole, refused past <see cref="LargestInflated"/>, so what is left of it is known.</summary>

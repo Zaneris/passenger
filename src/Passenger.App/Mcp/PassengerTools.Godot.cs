@@ -54,7 +54,7 @@ public sealed partial class PassengerTools
                 await game.FirstSceneAsync(AppUiLimit, cancel);
                 return game;
             case LiveAppState.Waiting:
-                throw new TimeoutException($"{game.Name} has not connected to Passenger, its remote debugger, in {AppUiLimit.TotalSeconds:0} s");
+                throw new TimeoutException($"{game.Name} has not connected to Passenger, its remote debugger, in {Durations.Said(AppUiLimit)}");
             default:
                 throw new InvalidOperationException($"{game.Name} has ended: run or debug_start starts it again");
         }

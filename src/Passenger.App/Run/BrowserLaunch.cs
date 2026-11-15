@@ -33,8 +33,7 @@ public static class BrowserLaunch
 
     /// <summary>What is said when a service never answered within the limit.</summary>
     public static string NotAnswered(string service, Uri address, TimeSpan limit) =>
-        $"Unable to open {address} in the browser: {service} did not answer there within "
-        + (limit.TotalSeconds % 60 == 0 ? Plural.Of((long)limit.TotalMinutes, "minute") : Plural.Of((long)Math.Ceiling(limit.TotalSeconds), "second"));
+        $"Unable to open {address} in the browser: {service} did not answer there within {Durations.Said(limit)}";
 
     /// <summary>The client a wait for an answer asks through, which takes a service's development certificate unchecked
     /// (nothing is sent but the request, and nothing read but that an answer came) and takes a redirect as an answer.</summary>

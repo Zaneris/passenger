@@ -248,7 +248,7 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
                 throw new UpdateRefusedException($"{name} does not open as a disk image: {said}", $"{attached.Said}; {await HeldAsync(image, cancel).ConfigureAwait(false)}");
             }
             TimeSpan pause = Waits.Of(OpenAgainAfter[attempt - 1]);
-            IdeErrors.Write($"Updates: {name} did not open as a disk image at try {attempt} ({said}); trying again in {pause.TotalSeconds:0.#} s");
+            IdeErrors.Write($"Updates: {name} did not open as a disk image at try {attempt} ({said}); trying again in {Durations.Said(pause)}");
             await Task.Delay(pause, cancel).ConfigureAwait(false);
         }
     }

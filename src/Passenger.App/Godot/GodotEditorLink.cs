@@ -406,7 +406,7 @@ internal sealed class GodotEditorPeer : IDisposable
     public async Task<JsonElement> RequestAsync(string method, JsonObject parameters, TimeSpan limit, CancellationToken cancel = default)
     {
         JsonElement got = await ExchangeAsync(method, parameters, limit, cancel)
-            ?? throw new TimeoutException($"Godot's editor went, or gave no answer within {limit.TotalSeconds:0} s");
+            ?? throw new TimeoutException($"Godot's editor went, or gave no answer within {Durations.Said(limit)}");
         return JsonMembers.Object(got, "result") ?? throw new GodotEditorRefused(JsonMembers.Text(got, "error") ?? "Godot's editor refused, saying nothing of why");
     }
 

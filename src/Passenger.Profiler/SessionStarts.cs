@@ -40,7 +40,7 @@ public static class SessionStarts
         catch (OperationCanceledException unanswered) when (!cancel.IsCancellationRequested)
         {
             string why = await UnansweredPorts.WhyAsync(processId, cancel);
-            throw new ProfilingException($"{unread}: its runtime took no session in {Limit.TotalSeconds:0} s ({why})", unanswered);
+            throw new ProfilingException($"{unread}: its runtime took no session in {Durations.Said(Limit)} ({why})", unanswered);
         }
     }
 

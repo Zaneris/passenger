@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Profiler;
 
 namespace Passenger.App.Profiling;
@@ -85,7 +86,7 @@ public sealed class FrameChart : Control
         double budget = bottom - (Budget * scale);
         context.DrawLine(new Pen(muted, 0.5, new DashStyle([3, 3], 0)), new Point(Axis - 4, budget), new Point(Bounds.Width, budget));
         Label(context, "16.7 ms", budget, face, muted);
-        Label(context, span >= 1000 ? $"{span / 1000:0.0} s" : $"{span:0} ms", top, face, muted);
+        Label(context, Durations.Said(TimeSpan.FromMilliseconds(span)), top, face, muted);
 
         Dictionary<string, IBrush> brushes = [];
         for (int i = 0; i < frames.Count; i++)

@@ -571,9 +571,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             WrittenLately lately = await session.WrittenSinceAsync(asked.Since - TimeSpan.FromMinutes(1));
             IReadOnlyList<Roslyn.Extension.TextHeld> held = await session.HeldTextsAsync([.. lately.Written.Select(w => w.Path)]);
             // Each file read off the window's thread, as files of any size may have been written.
-            files = await BackgroundWork.Run(() => string.Join("; ", held.Select(t => $"{Path.GetFileName(t.Path)} {(asked.Since - File.GetLastWriteTimeUtc(t.Path)).TotalSeconds:0.00} s before, "
+            files = await BackgroundWork.Run(() => string.Join("; ", held.Select(t => $"{Path.GetFileName(t.Path)} {Durations.Said(asked.Since - File.GetLastWriteTimeUtc(t.Path))} before, "
                 + (t.Hash is { } hash && HeldTexts.OnDisk(t.Path, hash) == true ? "held as on disk" : "held otherwise")
-                + (session.Server.WatchedFiles.ToldAt(t.Path) is { } told ? $", told {Stopwatch.GetElapsedTime(told, asked.Sent).TotalSeconds:0.00} s before" : ", never told"))));
+                + (session.Server.WatchedFiles.ToldAt(t.Path) is { } told ? $", told {Durations.Said(Stopwatch.GetElapsedTime(told, asked.Sent))} before" : ", never told"))));
         }
         catch (LanguageServerFailed failed)
         {

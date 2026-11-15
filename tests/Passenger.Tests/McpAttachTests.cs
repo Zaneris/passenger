@@ -1168,7 +1168,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
                 "the window to ask whether the agent may work there");
             Assert.Equal("Test Agent waits for you: let it in?", said);
             CallToolResult notLetIn = Await(unanswered, "the call nobody let in");
-            Assert.True(notLetIn.IsError == true && Text(notLetIn).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may work there. A later call asks again.", StringComparison.Ordinal),
+            Assert.True(notLetIn.IsError == true && Text(notLetIn).Contains($"Nobody at {where} answered within {Durations.Said(limit)} whether Test Agent may work there. A later call asks again.", StringComparison.Ordinal),
                 $"The call nobody answered was answered: {Text(notLetIn)}");
             Assert.DoesNotContain(window.OwnedWindows.OfType<AgentAdmissionDialog>(), d => d.IsVisible);
             Assert.Null(window.AgentStatus);
@@ -1185,7 +1185,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             Assert.Contains(Texts(window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible)),
                 t => t.StartsWith("Test Agent, connected through Passenger's MCP server, wants to build", StringComparison.Ordinal));
             CallToolResult notAllowed = Await(unallowed, "the build nobody allowed");
-            Assert.True(notAllowed.IsError == true && Text(notAllowed).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may use build. A later call asks again.", StringComparison.Ordinal),
+            Assert.True(notAllowed.IsError == true && Text(notAllowed).Contains($"Nobody at {where} answered within {Durations.Said(limit)} whether Test Agent may use build. A later call asks again.", StringComparison.Ordinal),
                 $"The build nobody allowed was answered: {Text(notAllowed)}");
             WaitFor(() => !window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) && window.AgentStatus == "Agent connected",
                 "the question nobody answered to close and the status bar to stop saying the agent waits");
@@ -1196,7 +1196,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             // The SDK's client hands the progress over as it comes, not always in order.
             Assert.True(told.Select(t => t.Progress).Distinct().Count() == told.Count, $"The progress told through --mcp-attach repeated a count: {leave}");
             // The window's word passed on as it said it, never the proxy's own beat over it.
-            Assert.True(!told.Any(t => System.Text.RegularExpressions.Regex.IsMatch(t.Message ?? string.Empty, @"\(\d+\.\d s\) \(\d+\.\d s\)$")),
+            Assert.True(!told.Any(t => System.Text.RegularExpressions.Regex.IsMatch(t.Message ?? string.Empty, $@"\({SaidWhile.Pattern}\) \({SaidWhile.Pattern}\)$")),
                 $"--mcp-attach told its own beat over the window's words: {leave}");
 
             Task<CallToolResult> again = Waiting.Apart(() => Result(client, McpTools.Build));
@@ -1214,7 +1214,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             {
                 Assert.True(trace.Contains(line, StringComparison.Ordinal), $"mcp.log does not have \"{line}\":\n{string.Join('\n', trace.Split('\n').TakeLast(30))}");
             }
-            Assert.Matches(@"\[window call \d+ build\] waited \d+\.\d s \(Waiting for the person .* to allow Test Agent to use build .*\): Unanswered", trace);
+            Assert.Matches($@"\[window call \d+ build\] waited {SaidWhile.Pattern} \(Waiting for the person .* to allow Test Agent to use build .*\): Unanswered", trace);
         }
         finally
         {
@@ -1249,7 +1249,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             // The call's next beat stalls until well past the window's limit, which ends the call while the beat is written.
             window.StallNextAgentLine(limit + TimeSpan.FromSeconds(5).Scaled());
             CallToolResult notLetIn = Await(unanswered, "the call nobody let in, ended while its word to the agent was still written");
-            Assert.True(notLetIn.IsError == true && Text(notLetIn).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may work there.", StringComparison.Ordinal),
+            Assert.True(notLetIn.IsError == true && Text(notLetIn).Contains($"Nobody at {where} answered within {Durations.Said(limit)} whether Test Agent may work there.", StringComparison.Ordinal),
                 $"The call nobody let in was answered: {Text(notLetIn)}");
             // The agent's client hands each message over on a thread of its own: the word at times after the answer.
             Ui.WaitFor(() => told.Told.Any(t => t.Message?.StartsWith($"Waiting for the person at {where} to let Test Agent in", StringComparison.Ordinal) == true),

@@ -80,7 +80,7 @@ public static partial class DevelopmentCertificate
         }
         catch (TimeoutException)
         {
-            return (Standing.Unknown, $"dotnet dev-certs https --check did not answer within {CheckLimit.TotalSeconds:0} s", null);
+            return (Standing.Unknown, $"dotnet dev-certs https --check did not answer within {Durations.Said(CheckLimit)}", null);
         }
         catch (Exception failed) when (ChildFailures.Of(failed))
         {
@@ -104,7 +104,7 @@ public static partial class DevelopmentCertificate
         }
         catch (TimeoutException)
         {
-            return $"dotnet dev-certs https --trust did not end within {ExportLimit.TotalSeconds:0} s (the system's certificate store may be asking for a password)";
+            return $"dotnet dev-certs https --trust did not end within {Durations.Said(ExportLimit)} (the system's certificate store may be asking for a password)";
         }
         catch (Exception failed) when (ChildFailures.Of(failed))
         {
@@ -153,7 +153,7 @@ public static partial class DevelopmentCertificate
         }
         catch (TimeoutException)
         {
-            return (null, $"dotnet dev-certs https -ep did not end within {ExportLimit.TotalSeconds:0} s (the system's certificate store may be asking for a password)");
+            return (null, $"dotnet dev-certs https -ep did not end within {Durations.Said(ExportLimit)} (the system's certificate store may be asking for a password)");
         }
         catch (Exception failed) when (failed is UnauthorizedAccessException || ChildFailures.Of(failed))
         {

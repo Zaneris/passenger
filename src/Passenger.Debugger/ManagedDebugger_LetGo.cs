@@ -90,7 +90,7 @@ public partial class ManagedDebugger
                     Note(callbackEvent);
                 }
                 int still = held.Count(h => h.Value is { } place && PlaceOf(process, h.Key) == place);
-                _logger?.Invoke($"Letting go: after {running.TotalMilliseconds:0} ms running, {held.Count - still} of {held.Count} held threads have moved on");
+                _logger?.Invoke($"Letting go: after {Durations.Said(running)} running, {held.Count - still} of {held.Count} held threads have moved on");
                 if (still == 0)
                 {
                     return;
@@ -142,7 +142,7 @@ public partial class ManagedDebugger
                 }
             }
             _logger?.Invoke(left.Count == 0 ? "Letting go: the evaluations given up have ended"
-                : $"Letting go: {Plural.Of(left.Count, "evaluation")} given up had not ended after {since.Elapsed.TotalSeconds:0.0} s, their time up");
+                : $"Letting go: {Plural.Of(left.Count, "evaluation")} given up had not ended after {Durations.Said(since.Elapsed)}, their time up");
             if (!_exited.IsSet)
             {
                 process.TryStop(0);

@@ -575,7 +575,7 @@ public sealed class DebugAdapter
         }
         catch (OperationCanceledException) when (limit.IsCancellationRequested)
         {
-            throw new TimeoutException($"The client did not start {Path.GetFileName(programForTitle)} in its terminal within {RunInTerminalLimit.TotalSeconds:0} s");
+            throw new TimeoutException($"The client did not start {Path.GetFileName(programForTitle)} in its terminal within {Durations.Said(RunInTerminalLimit)}");
         }
         catch (DapException refused)
         {

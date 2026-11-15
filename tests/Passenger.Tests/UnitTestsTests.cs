@@ -62,12 +62,12 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Assert.Null(window.Actions.Work.Of(AppActions.RunTests));
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Tests), "After Run All the Unit Tests window was no longer in front, so its results had to be shown again");
         // vstest.console ran under the SDK's dotnet, which a VSTest package without the constructor for it fails here.
-        Assert.Equal("Tests passed: 3, failed: 1, skipped: 1 of 5", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Equal("Tests passed: 3, failed: 1, skipped: 1 of 5", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty));
         // The runner's log in the logs folder has what it found and how the run went.
         IdeErrors.Flush();
         string run = Ui.Shared(runnerLog)[Math.Min(logged, Ui.Shared(runnerLog).Length)..];
         Assert.Matches(@"Discovery complete: \d+ tests? found", run);
-        Assert.Matches(@"Run complete: \d+ results? in \d+\.\d\d s", run);
+        Assert.Matches($@"Run complete: \d+ results? in {SaidWhile.Pattern}", run);
         Assert.Equal(TestState.Failed, Method(window, "Two_and_two_make_five")!.State);
         Assert.Equal(TestState.Passed, Method(window, "Doubles")!.State);
         Assert.Equal(2, Method(window, "Doubles")!.Results.Count);
@@ -1106,7 +1106,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
         Assert.True(window.Perform(AppActions.RunAllTests));
         Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Named") is not null, "the run of every test", TimeSpan.FromSeconds(180));
-        Assert.Equal("Tests passed: 7, failed: 1 of 8", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Equal("Tests passed: 7, failed: 1 of 8", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty));
         Assert.Equal("8", Count(window, "All Tests"));
         Assert.Equal(["Fixtures.Tests", "  Fixtures.Tests", "    Parameterised", "      Positive", "    Typed", "      Named", "    Worded", "      Long"], Shown(window));
         TestNode positive = Method(window, "Positive")!;
@@ -1129,7 +1129,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         editor.GoTo(new TextPosition(17, 8));
         Ui.Run(window, AppActions.RunTests);
         Ui.WaitFor(() => !window.Tests.IsBusy && typed.Results.FirstOrDefault() is { } fresh && fresh != before, "the run of the generic fixture's test at the caret", TimeSpan.FromSeconds(120));
-        Assert.Equal("Tests passed: 2, failed: 0 of 2", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Equal("Tests passed: 2, failed: 0 of 2", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty));
 
         TestNode failing = positive.Children[0];
         TestNode passing = positive.Children[1];
@@ -1137,7 +1137,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         tree.SelectedItem = positive;
         Ui.ChooseFromMenu(tree, "Run");
         Ui.WaitFor(() => !window.Tests.IsBusy && failing.Results.FirstOrDefault() is { } fresh && fresh != failed, "the run of the fixture's method", TimeSpan.FromSeconds(120));
-        Assert.Equal("Tests passed: 1, failed: 1 of 2", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Equal("Tests passed: 1, failed: 1 of 2", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty));
 
         failed = failing.Results[0];
         TestOutcome passed = passing.Results[0];
@@ -1149,7 +1149,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         tree.SelectedItem = passing;
         Ui.ChooseFromMenu(tree, "Run");
         Ui.WaitFor(() => !window.Tests.IsBusy && passing.Results.FirstOrDefault() is { } fresh && fresh != passed, "the run of the instance found", TimeSpan.FromSeconds(120));
-        Assert.Equal("Tests passed: 1, failed: 0 of 1", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Equal("Tests passed: 1, failed: 0 of 1", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty));
         Assert.Same(failed, failing.Results[0]);
         Assert.Equal(TestState.Failed, failing.State);
         window.Close();
