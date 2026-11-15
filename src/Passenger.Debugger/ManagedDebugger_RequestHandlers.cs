@@ -13,8 +13,11 @@ using ZLinq;
 
 namespace Passenger.Debugger;
 
-public record BreakpointRequest(int Line, string? Condition = null, string? HitCondition = null, int? Column = null, string? LogMessage = null, bool? Suspend = null);
-public record FunctionBreakpointRequest(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null);
+/// <summary>A line breakpoint as asked for; <paramref name="RunTo"/> holds it for Run to Cursor, its next hit stopping whatever
+/// its condition, hit count and <paramref name="Suspend"/> say.</summary>
+public record BreakpointRequest(int Line, string? Condition = null, string? HitCondition = null, int? Column = null, string? LogMessage = null, bool? Suspend = null,
+    bool RunTo = false) : IAskedBreakpoint;
+public record FunctionBreakpointRequest(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null) : IAskedBreakpoint;
 public record ExceptionBreakpointRequest(ExceptionBreakpointFilter Filter, string? Condition = null);
 public enum ExceptionBreakpointFilter { All, UserUnhandled }
 
@@ -23,6 +26,7 @@ public enum ExceptionBreakpointFilter { All, UserUnhandled }
 /// message as a line breakpoint has. A type given without a namespace is any type of that name.</summary>
 public sealed record ExceptionRuleRequest(
     IReadOnlyList<string> Types, bool Excluded, Passenger.Dap.ExceptionScenarios Scenarios, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool Suspend = true)
+    : IAskedBreakpoint
 {
     public bool Equals(ExceptionRuleRequest? other) => other is not null && Types.SequenceEqual(other.Types) && Excluded == other.Excluded && Scenarios == other.Scenarios
         && Condition == other.Condition && HitCondition == other.HitCondition && LogMessage == other.LogMessage && Suspend == other.Suspend;
@@ -539,13 +543,13 @@ public partial class ManagedDebugger
     /// <summary>Sets a file's breakpoints to those asked for. One asked for again just as it was (its line, column,
     /// condition, hit count, message and whether it stops) is kept whole: its id, its binding and its hit count, so a hit
     /// of it already on its way still stops, and a change elsewhere in the file starts no count again; one asked for at the
-    /// same line and column with other settings counts on from the hits of the one it replaces. Those no longer asked for
-    /// are let go, and the new ones bound.</summary>
+    /// same line and column with the same condition and hit count counts on from the hits of the one it replaces
+    /// (<see cref="BreakpointHits.Reconcile"/>). Those no longer asked for are let go, and the new ones bound.</summary>
     public List<BreakpointManager.BreakpointInfo> SetBreakpoints(string filePath, BreakpointRequest[] breakpoints)
     {
         _logger?.Invoke($"SetBreakpoints: {filePath}, breakpoints: {string.Join(",", breakpoints.Select(b => $"L{b.Line} {(b.Column is not null ? $"C{b.Column}" : null)} {(b.Condition is not null ? $"[{b.Condition}]" : null)}{(b.HitCondition is not null ? $" hits {b.HitCondition}" : null)}"))}");
 
-        (BreakpointManager.BreakpointInfo? Kept, int Hits)[] matched = Reconcile(breakpoints, _breakpointManager.GetBreakpointsForFile(filePath), b => b.Request,
+        (BreakpointManager.BreakpointInfo? Kept, int Hits)[] matched = BreakpointHits.Reconcile(breakpoints, _breakpointManager.GetBreakpointsForFile(filePath), b => b.Request,
             static (was, now) => was.Line == now.Line && was.Column == now.Column, out List<BreakpointManager.BreakpointInfo> gone);
         Remove(gone);
 
@@ -584,11 +588,11 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Sets the function breakpoints to those asked for, which replace those set before, kept and counted on as
-    /// <see cref="SetBreakpoints"/> does a file's, one of the same name with other settings counting on from the hits of the
-    /// one it replaces: a change beside one (a property breakpoint added) starts no count again.</summary>
+    /// <see cref="SetBreakpoints"/> does a file's, one of the same name, condition and hit count counting on from the hits of
+    /// the one it replaces: a change beside one (a property breakpoint added) starts no count again.</summary>
     public List<BreakpointManager.BreakpointInfo> SetFunctionBreakpoints(FunctionBreakpointRequest[] breakpoints)
     {
-        (BreakpointManager.BreakpointInfo? Kept, int Hits)[] matched = Reconcile(breakpoints, _breakpointManager.GetFunctionBreakpoints(), b => b.FunctionRequest,
+        (BreakpointManager.BreakpointInfo? Kept, int Hits)[] matched = BreakpointHits.Reconcile(breakpoints, _breakpointManager.GetFunctionBreakpoints(), b => b.FunctionRequest,
             static (was, now) => was.Name == now.Name, out List<BreakpointManager.BreakpointInfo> gone);
         Remove(gone);
 
@@ -1512,7 +1516,7 @@ public partial class ManagedDebugger
 
     /// <summary>The client's exception filters, and its CLR exception breakpoints when it gives them (null when it gives none,
     /// so every unhandled exception stops), kept and counted on as a file's line breakpoints are, one for the same exception
-    /// types counting on from the hits of the one it replaces.</summary>
+    /// types, condition and hit count counting on from the hits of the one it replaces.</summary>
     public IReadOnlyList<ExceptionRule> SetExceptionBreakpoints(IReadOnlyList<ExceptionBreakpointRequest> filters, IReadOnlyList<ExceptionRuleRequest>? rules = null)
     {
         _exceptionBreakpoints = filters.ToArray();
@@ -1521,7 +1525,7 @@ public partial class ManagedDebugger
             _exceptionRules = null;
             return [];
         }
-        (ExceptionRule? Kept, int Hits)[] matched = Reconcile(rules, _exceptionRules ?? [], rule => rule.Request,
+        (ExceptionRule? Kept, int Hits)[] matched = BreakpointHits.Reconcile(rules, _exceptionRules ?? [], rule => rule.Request,
             static (was, now) => was.Excluded == now.Excluded && was.Types.SequenceEqual(now.Types), out _);
         List<ExceptionRule> now = [];
         for (int i = 0; i < rules.Count; i++)

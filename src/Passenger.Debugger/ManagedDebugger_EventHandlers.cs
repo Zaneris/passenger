@@ -367,7 +367,7 @@ public partial class ManagedDebugger
 
         BreakpointManager.BreakpointBinding? hit = managedBreakpoint.Bindings.Find(binding => binding.CorBreakpoint == functionBreakpoint);
         if (!await HitStopsAsync(corThread, managedBreakpoint, "the breakpoint",
-            () => $"Breakpoint reached at {Path.GetFileName(managedBreakpoint.FilePath)}:{(managedBreakpoint.IsFunctionBreakpoint ? managedBreakpoint.Line : hit?.Source.StartLine ?? managedBreakpoint.Line)}"))
+            () => BreakpointHits.Reached(managedBreakpoint.FilePath, managedBreakpoint.IsFunctionBreakpoint ? managedBreakpoint.Line : hit?.Source.StartLine ?? managedBreakpoint.Line)))
         {
             Continue(clearVariables: true);
             return;
@@ -802,7 +802,7 @@ public partial class ManagedDebugger
         List<int> stopping = [];
         foreach (ExceptionRule rule in rules)
         {
-            if (await HitStopsAsync(thread, rule, $"the breakpoint on {exceptionType}", () => $"Exception breakpoint reached: {exceptionType}"))
+            if (await HitStopsAsync(thread, rule, $"the breakpoint on {exceptionType}", () => BreakpointHits.ExceptionReached(exceptionType)))
             {
                 stopping.Add(rule.Id);
             }

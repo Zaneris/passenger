@@ -1,4 +1,3 @@
-using System.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
@@ -171,44 +170,6 @@ public static class GodotScriptBreakpoints
     /// its value, as its <c>if</c> reads it, which no value sent back could always say (an empty array, an identity transform,
     /// a value too large to send, a null Callable).</summary>
     public static string Truth(string condition) => $"not not ({condition})";
-
-    /// <summary>A tracepoint's message in pieces: its own words, and each <c>{expression}</c> to be read in the frame it stops
-    /// in, a <c>,nq</c> after it left out; <c>{{</c> and <c>}}</c> are braces.</summary>
-    public static IReadOnlyList<(string Text, bool Expression)> Pieces(string message)
-    {
-        List<(string, bool)> pieces = [];
-        StringBuilder words = new();
-        for (int at = 0; at < message.Length; at++)
-        {
-            char c = message[at];
-            if ((c == '{' || c == '}') && at + 1 < message.Length && message[at + 1] == c)
-            {
-                words.Append(c);
-                at++;
-                continue;
-            }
-            int end = c == '{' ? message.IndexOf('}', at + 1) : -1;
-            if (end < 0)
-            {
-                words.Append(c);
-                continue;
-            }
-            if (words.Length > 0)
-            {
-                pieces.Add((words.ToString(), false));
-                words.Clear();
-            }
-            string expression = message[(at + 1)..end];
-            int format = expression.LastIndexOf(",nq", StringComparison.Ordinal);
-            pieces.Add((format >= 0 && format == expression.Length - 3 ? expression[..format] : expression, true));
-            at = end;
-        }
-        if (words.Length > 0)
-        {
-            pieces.Add((words.ToString(), false));
-        }
-        return pieces;
-    }
 }
 
 /// <summary>What a game debugged with its GDScript starts with: its breakpoints by file and line from one, and whether its

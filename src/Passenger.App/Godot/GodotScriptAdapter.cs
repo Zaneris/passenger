@@ -9,11 +9,11 @@ namespace Passenger.App.Godot;
 /// an <see cref="InProcessEnd"/>) and Godot's remote debug protocol to the game, over the game's one connection
 /// (<see cref="GodotGame"/>), so the Debug window, Variables, the gutter and agents' debug tools show a GDScript stop as they
 /// show any. Godot sets breakpoints by file and line and stops at script errors; their conditions, hit counts and messages
-/// are read here at each hit, the game let go on where they say. An evaluation runs where Godot's own does, in a frame of a
-/// script's instance, and Set Value sets a member or property of an object the game has. Beside a game's C# it attaches to
-/// the game Debug started; for a game of GDScript alone it launches the game itself, its output the session's. Requests run
-/// on the UI thread, where the game's messages are heard.</summary>
-public sealed class GodotScriptAdapter
+/// are read here at each hit, as every debugger reads them (<see cref="BreakpointHits"/>), the game let go on where they
+/// say. An evaluation runs where Godot's own does, in a frame of a script's instance, and Set Value sets a member or property
+/// of an object the game has. Beside a game's C# it attaches to the game Debug started; for a game of GDScript alone it
+/// launches the game itself, its output the session's. Requests run on the UI thread, where the game's messages are heard.</summary>
+public sealed class GodotScriptAdapter : InProcessAdapter
 {
     /// <summary>The exception filter GDScript Errors is sent as.</summary>
     public const string ErrorsFilter = "gdscript-errors";
@@ -31,15 +31,10 @@ public sealed class GodotScriptAdapter
     public const string NoPartSet = "Godot sets an object's property whole: set the member or property that holds this value";
 
     private readonly GodotGame game;
-    private readonly InProcessEnd end;
-    private readonly DapConnection connection;
 
     /// <summary>What ends the game a Stop of this session ends: the session's beside it, or, for a game this adapter launched,
     /// null, the game's process ended here.</summary>
     private readonly Func<Task>? terminate;
-
-    /// <summary>The game's process, where this adapter launched it.</summary>
-    private System.Diagnostics.Process? launched;
 
     /// <summary>Whether its session starts a program in a tab of the Terminal window when asked (runInTerminal).</summary>
     private bool runsInTerminal;
@@ -51,22 +46,18 @@ public sealed class GodotScriptAdapter
     private readonly SemaphoreSlim asking = new(1, 1);
 
     /// <summary>The breakpoints wanted in each file, by its <c>res://</c> path.</summary>
-    private readonly Dictionary<string, List<Wanted>> wanted = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<AskedLine>> wanted = new(StringComparer.Ordinal);
 
     /// <summary>The breakpoints the game has, by file and line.</summary>
     private readonly HashSet<(string Resource, int Line)> inGame;
 
-    private Wanted? errors;
+    private AskedErrors? errors;
     private int lastId;
     private bool configured;
     private GodotBreak? stop;
     private int generation;
     private IReadOnlyList<GodotScriptFrame>? frames;
     private readonly Dictionary<int, IReadOnlyList<GodotScriptVariable>> variables = [];
-    private readonly Dictionary<int, Func<Task<IReadOnlyList<DapVariable>>>> inside = [];
-
-    /// <summary>The last reference given, never given again, so one of a stop gone names nothing.</summary>
-    private int lastReference;
     private Going going;
     private bool letGo;
 
@@ -84,75 +75,82 @@ public sealed class GodotScriptAdapter
         Pausing,
     }
 
-    /// <summary>A breakpoint as wanted, with its hits so far; GDScript Errors is one too.</summary>
-    private sealed record Wanted(int Id, int Line, string? Condition, HitCondition? Hits, string? Log, bool Suspend)
+    /// <summary>GDScript Errors as asked for, with its hits so far: a breakpoint of every script error.</summary>
+    private sealed class AskedErrors(DapExceptionFilterOptions request) : IHitBreakpoint
     {
-        public int Count { get; set; }
+        public int Id => 0;
+
+        public DapExceptionFilterOptions Request { get; } = request;
+
+        public string? Condition => Request.Condition;
+
+        public string? HitCondition => Request.HitCondition;
+
+        public string? LogMessage => Request.LogMessage;
+
+        public bool Suspend => Request.Suspend ?? true;
+
+        public int HitCount { get; set; }
+
+        public string? Message { get; set; }
     }
 
     /// <summary>The adapter of a game over <paramref name="end"/>; <paramref name="terminate"/> ends the game, as a Stop of
     /// this session asks; null where the session launches the game itself, which this adapter then ends.</summary>
-    public GodotScriptAdapter(GodotGame game, InProcessEnd end, Func<Task>? terminate)
+    public GodotScriptAdapter(GodotGame game, InProcessEnd end, Func<Task>? terminate) : base(end)
     {
         this.game = game;
-        this.end = end;
         this.terminate = terminate;
         inGame = [.. game.StartBreakpoints];
-        connection = new DapConnection(end.AdapterInput, end.AdapterOutput, line => IdeLog.Write(IdeLog.Debugger, $"[{end.Name}] {line}")) { Name = end.Name };
         Register();
     }
+
+    protected override string Debuggee => "game";
+
+    protected override string NoInput => $"{game.Name} reads its input from the program that started it";
+
+    protected override string LaunchedName => game.Name;
 
     /// <summary>Whether a file is a GDScript file, whose breakpoints this adapter takes.</summary>
     public static bool Takes(string path) => Languages.Language.ForPath(path) == Languages.Language.GDScript;
 
-    /// <summary>Starts answering its session.</summary>
-    public void Start() => connection.Start();
-
     private static Task<T> OnUi<T>(Func<Task<T>> work) => UiThread.InvokeAsync(work);
 
     /// <summary>What it answers the session's initialize with.</summary>
-    private static DapCapabilities Capabilities => new()
+    private static DapCapabilities Answered => Capabilities("Godot's debugger watches no data") with
     {
-        SupportsConfigurationDoneRequest = true,
-        SupportsConditionalBreakpoints = true,
-        SupportsHitConditionalBreakpoints = true,
-        SupportsLogPoints = true,
-        SupportsEvaluateForHovers = true,
-        SupportsExceptionInfoRequest = true,
         SupportsExceptionFilterOptions = true,
         SupportsSetExpression = true,
-        SupportsDataBreakpoints = false,
-        DataBreakpointsUnavailable = "Godot's debugger watches no data",
         ExceptionBreakpointFilters = [new DapExceptionFilter(ErrorsFilter, "GDScript errors", Default: true, SupportsCondition: true)],
     };
 
     private void Register()
     {
-        connection.Handle<InitializeArguments, DapCapabilities>(DapCommands.Initialize, arguments =>
+        Connection.Handle<InitializeArguments, DapCapabilities>(DapCommands.Initialize, arguments =>
         {
             runsInTerminal = arguments.SupportsRunInTerminalRequest == true;
-            return Task.FromResult(Capabilities);
+            return Task.FromResult(Answered);
         }, then: () => Tell(DapEvents.Initialized, null));
-        connection.Handle<AttachArguments>(DapCommands.Attach, _ => OnUi(AttachAsync));
-        connection.Handle<LaunchArguments>(DapCommands.Launch, arguments => OnUi(() => LaunchAsync(arguments)));
-        connection.Handle<InputArguments>(DapCommands.Input, arguments => OnUi(() => InputAsync(arguments)));
-        connection.Handle<SetExpressionArguments, SetExpressionResponse>(DapCommands.SetExpression, arguments => OnUi(() => SetAsync(arguments)));
-        connection.Handle<DapEmpty>(DapCommands.ConfigurationDone, _ => OnUi(ConfiguredAsync));
-        connection.Handle<SetBreakpointsArguments, SetBreakpointsResponse>(DapCommands.SetBreakpoints, arguments => OnUi(() => SetBreakpointsAsync(arguments)));
-        connection.Handle<SetExceptionBreakpointsArguments, SetExceptionBreakpointsResponse>(DapCommands.SetExceptionBreakpoints,
+        Connection.Handle<AttachArguments>(DapCommands.Attach, _ => OnUi(AttachAsync));
+        Connection.Handle<LaunchArguments>(DapCommands.Launch, arguments => OnUi(() => LaunchAsync(arguments)));
+        Connection.Handle<InputArguments>(DapCommands.Input, arguments => OnUi(() => InputAsync(arguments)));
+        Connection.Handle<SetExpressionArguments, SetExpressionResponse>(DapCommands.SetExpression, arguments => OnUi(() => SetAsync(arguments)));
+        Connection.Handle<DapEmpty>(DapCommands.ConfigurationDone, _ => OnUi(ConfiguredAsync));
+        Connection.Handle<SetBreakpointsArguments, SetBreakpointsResponse>(DapCommands.SetBreakpoints, arguments => OnUi(() => SetBreakpointsAsync(arguments)));
+        Connection.Handle<SetExceptionBreakpointsArguments, SetExceptionBreakpointsResponse>(DapCommands.SetExceptionBreakpoints,
             arguments => OnUi(() => SetErrorsAsync(arguments)));
-        connection.Handle<DapEmpty, ThreadsResponse>(DapCommands.Threads, _ => OnUi(() => Task.FromResult(Threads())));
-        connection.Handle<StackTraceArguments, StackTraceResponse>(DapCommands.StackTrace, arguments => OnUi(() => StackTraceAsync(arguments)));
-        connection.Handle<ScopesArguments, ScopesResponse>(DapCommands.Scopes, arguments => OnUi(() => ScopesAsync(arguments.FrameId)));
-        connection.Handle<VariablesArguments, VariablesResponse>(DapCommands.Variables, arguments => OnUi(() => VariablesAsync(arguments.VariablesReference)));
-        connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, arguments => OnUi(() => EvaluateAsync(arguments)));
-        connection.Handle<ThreadArguments, ExceptionInfoResponse>(DapCommands.ExceptionInfo, _ => OnUi(() => Task.FromResult(ExceptionInfo())));
-        connection.Handle<ThreadArguments>(DapCommands.Continue, _ => OnUi(() => ResumeAsync(DapCommands.Continue, GodotWords.Continue, Going.None)));
-        connection.Handle<ThreadArguments>(DapCommands.Next, _ => OnUi(() => ResumeAsync(DapCommands.Next, GodotWords.Next, Going.Stepping)));
-        connection.Handle<StepInArguments>(DapCommands.StepIn, _ => OnUi(() => ResumeAsync(DapCommands.StepIn, GodotWords.Step, Going.Stepping)));
-        connection.Handle<ThreadArguments>(DapCommands.StepOut, _ => OnUi(() => ResumeAsync(DapCommands.StepOut, GodotWords.Out, Going.Stepping)));
-        connection.Handle<ThreadArguments>(DapCommands.Pause, _ => OnUi(PauseAsync));
-        connection.Handle<DisconnectArguments>(DapCommands.Disconnect, arguments => OnUi(() => DisconnectAsync(arguments)), then: Ended, evenIfFailed: true);
+        Connection.Handle<DapEmpty, ThreadsResponse>(DapCommands.Threads, _ => OnUi(() => Task.FromResult(Threads())));
+        Connection.Handle<StackTraceArguments, StackTraceResponse>(DapCommands.StackTrace, arguments => OnUi(() => StackTraceAsync(arguments)));
+        Connection.Handle<ScopesArguments, ScopesResponse>(DapCommands.Scopes, arguments => OnUi(() => ScopesAsync(arguments.FrameId)));
+        Connection.Handle<VariablesArguments, VariablesResponse>(DapCommands.Variables, arguments => OnUi(() => VariablesAsync(arguments.VariablesReference)));
+        Connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, arguments => OnUi(() => EvaluateAsync(arguments)));
+        Connection.Handle<ThreadArguments, ExceptionInfoResponse>(DapCommands.ExceptionInfo, _ => OnUi(() => Task.FromResult(ExceptionInfo())));
+        Connection.Handle<ThreadArguments>(DapCommands.Continue, _ => OnUi(() => ResumeAsync(DapCommands.Continue, GodotWords.Continue, Going.None)));
+        Connection.Handle<ThreadArguments>(DapCommands.Next, _ => OnUi(() => ResumeAsync(DapCommands.Next, GodotWords.Next, Going.Stepping)));
+        Connection.Handle<StepInArguments>(DapCommands.StepIn, _ => OnUi(() => ResumeAsync(DapCommands.StepIn, GodotWords.Step, Going.Stepping)));
+        Connection.Handle<ThreadArguments>(DapCommands.StepOut, _ => OnUi(() => ResumeAsync(DapCommands.StepOut, GodotWords.Out, Going.Stepping)));
+        Connection.Handle<ThreadArguments>(DapCommands.Pause, _ => OnUi(PauseAsync));
+        Connection.Handle<DisconnectArguments>(DapCommands.Disconnect, arguments => OnUi(() => DisconnectAsync(arguments)), then: Ended, evenIfFailed: true);
     }
 
     /// <summary>Takes the game's debugging over once it has connected: its stops come here from then on.</summary>
@@ -220,14 +218,14 @@ public sealed class GodotScriptAdapter
         {
             throw new DapException(DapCommands.Launch, $"Could not start {Path.GetFileName(start.FileName)}: {error.Message}");
         }
-        launched = process;
+        Launched = process;
         // For the game's life: no wait for the IDE to be quiet waits out a game that runs until it is stopped.
         Task told = Task.WhenAll(BackgroundWork.Unheld(() => TellAsync(ChildProcesses.Output(process), DapOutputCategories.Stdout)),
             BackgroundWork.Unheld(() => TellAsync(ChildProcesses.Errors(process), DapOutputCategories.Stderr)));
         IdeErrors.Observe(BackgroundWork.Unheld(() => EndedAsync(process, told)));
         IdeErrors.Observe(BackgroundWork.Unheld(async () =>
         {
-            await end.Exited;
+            await End.Exited;
             ChildProcesses.Kill(process);
         }));
         return await AttachAsync();
@@ -240,7 +238,7 @@ public sealed class GodotScriptAdapter
     {
         try
         {
-            await connection.RequestAsync<RunInTerminalResponse>(DapCommands.RunInTerminal,
+            await Connection.RequestAsync<RunInTerminalResponse>(DapCommands.RunInTerminal,
                 new RunInTerminalArguments("integrated", game.Name, arguments.Cwd, [program, .. arguments.Args ?? []], arguments.Env));
         }
         catch (DapException refused)
@@ -286,35 +284,6 @@ public sealed class GodotScriptAdapter
         Tell(DapEvents.Terminated, new TerminatedEvent());
     }
 
-    /// <summary>An event for the session, unless it has gone: the game's last output, or its end, may come as the adapter ends.</summary>
-    private void Tell(string name, object? body) => end.SendEvent(connection, name, body);
-
-    /// <summary>Text typed into the console of a game launched, for its standard input; its end closes that input.</summary>
-    private async Task<bool> InputAsync(InputArguments arguments)
-    {
-        if (launched is not { } process)
-        {
-            throw new DapException(DapCommands.Input, $"{game.Name} reads its input from the program that started it");
-        }
-        try
-        {
-            if (arguments.Close == true)
-            {
-                process.StandardInput.Close();
-            }
-            else
-            {
-                await process.StandardInput.WriteAsync(arguments.Text);
-                await process.StandardInput.FlushAsync();
-            }
-        }
-        catch (Exception gone) when (gone is IOException or InvalidOperationException or ObjectDisposedException)
-        {
-            throw new DapException(DapCommands.Input, $"{game.Name} takes no more input: {gone.Message}");
-        }
-        return true;
-    }
-
     /// <summary>The session has sent its breakpoints: a stop the game made before (a breakpoint in what runs first) is told now.</summary>
     private Task<bool> ConfiguredAsync()
     {
@@ -341,19 +310,18 @@ public sealed class GodotScriptAdapter
             return new SetBreakpointsResponse([.. asked.Select(_ => new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = why })]);
         }
         string text = await BackgroundWork.Run(() => File.Exists(path) ? File.ReadAllText(path!) : string.Empty);
+        List<DapSourceBreakpoint> lines = [.. asked.Where(b => Refused(b) is null && GodotScriptBreakpoints.IsCodeLine(text, b.Line))];
+        (AskedLine? Kept, int Hits)[] matched = BreakpointHits.Reconcile(lines, wanted.GetValueOrDefault(resource) ?? [], w => w.Request,
+            static (was, now) => was.Line == now.Line, out _);
         List<DapBreakpoint> said = [];
-        List<Wanted> taken = [];
+        List<AskedLine> taken = [];
+        int next = 0;
         foreach (DapSourceBreakpoint breakpoint in asked)
         {
-            HitCondition? hits = null;
-            if (breakpoint.HitCondition is { } hitText)
+            if (Refused(breakpoint) is { } refused)
             {
-                if (!HitCondition.TryParse(hitText, out HitCondition parsed, out string? problem))
-                {
-                    said.Add(new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = problem, Line = breakpoint.Line });
-                    continue;
-                }
-                hits = parsed;
+                said.Add(refused);
+                continue;
             }
             if (!GodotScriptBreakpoints.IsCodeLine(text, breakpoint.Line))
             {
@@ -361,22 +329,19 @@ public sealed class GodotScriptAdapter
                     Message = $"Line {breakpoint.Line} has no code of the script's on it, and GDScript stops only at a line with code" });
                 continue;
             }
-            Wanted kept = wanted.GetValueOrDefault(resource)?.FirstOrDefault(w => w.Line == breakpoint.Line) is { } before
-                && before.Condition == breakpoint.Condition && before.Hits == hits && before.Log == breakpoint.LogMessage
-                ? before with { Suspend = breakpoint.Suspend ?? breakpoint.LogMessage is null }
-                : new Wanted(++lastId, breakpoint.Line, breakpoint.Condition, hits, breakpoint.LogMessage, breakpoint.Suspend ?? breakpoint.LogMessage is null);
-            kept.Count = wanted.GetValueOrDefault(resource)?.FirstOrDefault(w => w.Id == kept.Id)?.Count ?? 0;
-            taken.Add(kept);
-            said.Add(new DapBreakpoint { Id = kept.Id, Verified = true, Line = breakpoint.Line, Source = arguments.Source });
+            (AskedLine? kept, int hits) = matched[next++];
+            AskedLine now = kept ?? new AskedLine(++lastId, breakpoint) { HitCount = hits };
+            taken.Add(now);
+            said.Add(new DapBreakpoint { Id = now.Id, Verified = true, Line = breakpoint.Line, Source = arguments.Source });
         }
         wanted[resource] = taken;
-        HashSet<int> lines = [.. taken.Select(w => w.Line)];
-        foreach ((string file, int line) in inGame.Where(b => b.Resource == resource && !lines.Contains(b.Line)).ToList())
+        HashSet<int> stopping = [.. taken.Select(w => w.Request.Line)];
+        foreach ((string file, int line) in inGame.Where(b => b.Resource == resource && !stopping.Contains(b.Line)).ToList())
         {
             inGame.Remove((file, line));
             await SendAsync(GodotWords.Breakpoint, file, (long)line, false);
         }
-        foreach (int line in lines.Where(l => !inGame.Contains((resource, l))))
+        foreach (int line in stopping.Where(l => !inGame.Contains((resource, l))))
         {
             inGame.Add((resource, line));
             await SendAsync(GodotWords.Breakpoint, resource, (long)line, true);
@@ -388,13 +353,12 @@ public sealed class GodotScriptAdapter
     {
         bool on = arguments.Filters?.Contains(ErrorsFilter) == true;
         DapExceptionFilterOptions? options = arguments.FilterOptions?.FirstOrDefault(f => f.FilterId == ErrorsFilter);
-        HitCondition? hits = null;
-        string? problem = null;
-        if (options?.HitCondition is { } hitText && HitCondition.TryParse(hitText, out HitCondition parsed, out problem))
-        {
-            hits = parsed;
-        }
-        errors = on ? new Wanted(0, 0, options?.Condition, hits, options?.LogMessage, options?.Suspend ?? true) : null;
+        string? problem = BreakpointHits.Unreadable(options?.HitCondition);
+        // A hit count it cannot read is said, the errors stopping as if it had none.
+        DapExceptionFilterOptions asked = problem is null ? options ?? new DapExceptionFilterOptions(ErrorsFilter) : options! with { HitCondition = null };
+        (AskedErrors? Kept, int Hits)[] matched = BreakpointHits.Reconcile<AskedErrors, DapExceptionFilterOptions>([asked], errors is { } before ? [before] : [], e => e.Request,
+            static (_, _) => true, out _);
+        errors = on ? matched[0].Kept ?? new AskedErrors(asked) { HitCount = matched[0].Hits } : null;
         await SendAsync(GodotWords.IgnoreErrorBreaks, !on);
         return new SetExceptionBreakpointsResponse(on ? [new DapBreakpoint { Verified = problem is null, Reason = problem is null ? null : BreakpointReasons.Failed, Message = problem }] : []);
     }
@@ -537,18 +501,6 @@ public sealed class GodotScriptAdapter
         };
         return new DapVariable { Name = name, Value = GodotScriptValues.Shown(value, hint), Type = GodotScriptValues.TypeName(type, hint), EvaluateName = expression, VariablesReference = reference };
     }
-
-    /// <summary>A reference to what a row holds, read as it is opened, until the game goes on.</summary>
-    private int Reference(Func<Task<IReadOnlyList<DapVariable>>> read)
-    {
-        int reference = ++lastReference;
-        inside[reference] = read;
-        return reference;
-    }
-
-    private async Task<VariablesResponse> VariablesAsync(int reference) => inside.TryGetValue(reference, out Func<Task<IReadOnlyList<DapVariable>>>? read)
-        ? new VariablesResponse(await read())
-        : throw new DapException(DapCommands.Variables, "Those values are of a stop the game has gone on from");
 
     /// <summary>Set Value: the member or property a row names takes the value typed, read as every typed Godot value is
     /// (<see cref="GodotVariant.ReadAsync"/>: as its type's value is shown, else as GDScript in the frame), set in the game
@@ -721,7 +673,7 @@ public sealed class GodotScriptAdapter
 
     private async Task<bool> DisconnectAsync(DisconnectArguments arguments)
     {
-        if (launched is { } process)
+        if (Launched is { } process)
         {
             // A game this adapter launched is the session's to its end, Detach or not.
             ChildProcesses.Kill(process);
@@ -776,8 +728,8 @@ public sealed class GodotScriptAdapter
         {
             game.Scripts = null;
         }
-        end.End();
-        IdeErrors.Observe(connection.DisposeAsync().AsTask());
+        End.End();
+        IdeErrors.Observe(Connection.DisposeAsync().AsTask());
     });
 
     /// <summary>The game ended, its connection with it: its session hears the end, but of a game this adapter launched, which
@@ -788,7 +740,7 @@ public sealed class GodotScriptAdapter
         variablesAsked?.TrySetException(new LiveTree.LiveAppException($"{game.Name} has ended"));
         evaluationAsked?.TrySetException(new LiveTree.LiveAppException($"{game.Name} has ended"));
         stop = null;
-        if (launched is null)
+        if (Launched is null)
         {
             Tell(DapEvents.Terminated, new TerminatedEvent());
         }
@@ -849,8 +801,8 @@ public sealed class GodotScriptAdapter
         }
     }
 
-    /// <summary>A stop of the game's: told to the session as a step's end, a pause, an error or a breakpoint, where the
-    /// breakpoint's hit count and condition hold (a tracepoint logs and goes on); else the game goes on unseen. One whose
+    /// <summary>A stop of the game's: told to the session as a step's end, a pause, an error or a breakpoint, where its hit
+    /// stops as every debugger's does (a tracepoint logs and goes on); else the game goes on unseen. One whose
     /// stack the game does not say is told as a pause, saying so, the game held there until the session lets it go.</summary>
     private async Task OnBreakAsync(GodotBreak stopped)
     {
@@ -859,12 +811,9 @@ public sealed class GodotScriptAdapter
             await game.SendToAsync(GodotWords.Continue, stopped.Thread);
             return;
         }
+        Left();
         stop = stopped;
         generation++;
-        frames = null;
-        variables.Clear();
-        inside.Clear();
-        settable.Clear();
         Going was = going;
         going = Going.None;
         if (!stopped.HasStack)
@@ -885,14 +834,14 @@ public sealed class GodotScriptAdapter
         {
             if (stop == stopped && game.State == LiveTree.LiveAppState.Connected)
             {
-                Say($"{unanswered.Reason}\n");
+                Say(unanswered.Reason);
                 Stopped(StopReasons.Pause, null, null);
             }
             return;
         }
         if (stopped.IsError)
         {
-            if (errors is not { } watched || await HoldsAsync(watched, stopped))
+            if (errors is not { } watched || await HitStopsAsync(watched, stopped, "the breakpoint on GDScript errors", () => BreakpointHits.ExceptionReached("GDScript error"), _ => { }))
             {
                 Stopped(StopReasons.Exception, stopped.Error, null);
             }
@@ -903,46 +852,32 @@ public sealed class GodotScriptAdapter
             Stopped(was == Going.Stepping ? StopReasons.Step : StopReasons.Pause, null, null);
             return;
         }
-        Wanted? hit = stack.FirstOrDefault() is { } top ? wanted.GetValueOrDefault(top.File)?.FirstOrDefault(w => w.Line == top.Line) : null;
-        if (hit is null)
+        if (stack.FirstOrDefault() is not { } top || wanted.GetValueOrDefault(top.File)?.FirstOrDefault(w => w.Request.Line == top.Line) is not { } hit)
         {
             // GDScript's own breakpoint statement.
             Stopped(StopReasons.Breakpoint, null, null);
             return;
         }
-        if (await HoldsAsync(hit, stopped))
+        if (await HitStopsAsync(hit, stopped, "the breakpoint", () => BreakpointHits.Reached(top.File, top.Line), told => Told(told, game.PathOf(top.File) ?? top.File, top.Line)))
         {
             Stopped(StopReasons.Breakpoint, null, [hit.Id]);
         }
     }
 
-    /// <summary>Whether a hit of a breakpoint stops the game: its count reached, its condition true and it not a tracepoint,
-    /// whose message is logged; a condition that could not be read stops it, saying why. Where it does not, the game goes on.</summary>
-    private async Task<bool> HoldsAsync(Wanted breakpoint, GodotBreak stopped)
+    /// <summary>Whether a hit of a breakpoint stops the game, tried as every debugger tries one (<see cref="BreakpointHits.StopsAsync"/>),
+    /// its condition read as the game's own <c>if</c> reads it and its message read in the stop's frame. Where it does not,
+    /// the game goes on.</summary>
+    private async Task<bool> HitStopsAsync(IHitBreakpoint breakpoint, GodotBreak stopped, string named, Func<string> reached, Action<IHitBreakpoint> told)
     {
-        breakpoint.Count++;
-        bool holds = breakpoint.Hits is not { } hits || hits.IsMet(breakpoint.Count);
-        if (holds && breakpoint.Condition is { } condition)
+        if (await BreakpointHits.StopsAsync(breakpoint, new HitReading
         {
-            try
-            {
-                holds = (await ReadAsync(GodotScriptBreakpoints.Truth(condition), 0)).Value is true;
-            }
-            catch (DapException unread)
-            {
-                Say($"{BreakpointConditions.NotEvaluated(condition)}: {unread.Reason}\n");
-                return true;
-            }
-        }
-        if (holds && breakpoint.Log is { } message)
-        {
-            Say(await LoggedAsync(message) + "\n");
-        }
-        else if (holds && !breakpoint.Suspend)
-        {
-            Say("Breakpoint reached\n");
-        }
-        if (holds && breakpoint.Suspend)
+            Named = named,
+            Holds = HoldsAsync,
+            Logged = message => BreakpointHits.LoggedAsync(message, ShownAsync),
+            Reached = reached,
+            Say = Say,
+            Told = told,
+        }))
         {
             return true;
         }
@@ -951,51 +886,45 @@ public sealed class GodotScriptAdapter
         return false;
     }
 
-    /// <summary>A tracepoint's message with each expression in it read in the stop's frame.</summary>
-    private async Task<string> LoggedAsync(string message)
+    /// <summary>Whether a condition holds in the stop's frame, as the game's own <c>if</c> reads its value, or why it could
+    /// not be told.</summary>
+    private async Task<ConditionRead> HoldsAsync(string condition)
     {
-        System.Text.StringBuilder said = new();
-        foreach ((string text, bool expression) in GodotScriptBreakpoints.Pieces(message))
+        try
         {
-            if (!expression)
-            {
-                said.Append(text);
-                continue;
-            }
-            try
-            {
-                object? value = (await ReadAsync(text, 0)).Value;
-                said.Append(value is string words ? words : GodotScriptValues.Shown(value));
-            }
-            catch (DapException unread)
-            {
-                said.Append($"<{unread.Reason}>");
-            }
+            return new ConditionRead((await ReadAsync(GodotScriptBreakpoints.Truth(condition), 0)).Value is true);
         }
-        return said.ToString();
+        catch (DapException unread)
+        {
+            return new ConditionRead(true, unread.Reason);
+        }
     }
 
-    private void Say(string line) => Tell(DapEvents.Output, new OutputEvent(line, DapOutputCategories.Console));
-
-    private void Stopped(string reason, string? text, IReadOnlyList<int>? hit) => Tell(DapEvents.Stopped, new StoppedEvent
+    /// <summary>An expression of a tracepoint's message as read in the stop's frame, or why it could not be read.</summary>
+    private async Task<string> ShownAsync(string expression)
     {
-        Reason = reason,
-        Text = text,
-        Description = text,
-        ThreadId = (int)stop!.Thread,
-        AllThreadsStopped = false,
-        HitBreakpointIds = hit,
-        NoSteps = stop.CanStep ? null : NoStepFromError,
-    });
+        try
+        {
+            object? value = (await ReadAsync(expression, 0)).Value;
+            return value is string words ? words : GodotScriptValues.Shown(value);
+        }
+        catch (DapException unread)
+        {
+            return $"<{unread.Reason}>";
+        }
+    }
+
+    private void Stopped(string reason, string? text, IReadOnlyList<int>? hit) =>
+        Stopped(reason, text, hit, (int)stop!.Thread, allThreads: false, stop.CanStep ? null : NoStepFromError);
 
     /// <summary>The stop is over: what was read of it goes.</summary>
-    private void Left()
+    protected override void Left()
     {
         stop = null;
         frames = null;
         variables.Clear();
-        inside.Clear();
         settable.Clear();
+        base.Left();
     }
 
     private async Task<IReadOnlyList<GodotScriptFrame>> FramesAsync()

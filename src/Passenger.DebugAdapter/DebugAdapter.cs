@@ -444,7 +444,8 @@ public sealed class DebugAdapter
             b.HitCondition,
             b.Column is int column ? ColumnIn(column) : null,
             b.LogMessage,
-            b.Suspend))];
+            b.Suspend,
+            b.RunTo == true))];
         List<BreakpointManager.BreakpointInfo> breakpoints = await Locked(() => debugger.SetBreakpoints(path, requests));
         return new SetBreakpointsResponse([.. breakpoints.Select(b => ToProtocol(b, isEvent: false))]);
     }

@@ -7,8 +7,9 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>An agent debugging a standalone Blazor WebAssembly app's component in the browser: the breakpoint it sets stops the
-/// page there, debug_state says where with the component as this, and debug_evaluate reads its field after a step. The app
-/// is the SDK's template, restored from the package cache tests/BlazorGraphs fills. Skipped without a Chromium browser.</summary>
+/// page there, debug_state says where with the component as this, and debug_evaluate reads its field after a step; a hit
+/// count counts the hits its condition held on, as every debugger's does. The app is the SDK's template, restored from the
+/// package cache tests/BlazorGraphs fills. Skipped without a Chromium browser.</summary>
 [Collection(Alone.Name)]
 public sealed class McpBlazorTests : McpRig, IAsyncLifetime
 {
@@ -83,6 +84,72 @@ public sealed class McpBlazorTests : McpRig, IAsyncLifetime
         Assert.Contains(state.GetProperty("locals").EnumerateArray(), l => l.GetProperty("name").GetString() == "this");
         await Call(client, McpTools.DebugStep, new() { ["kind"] = "over" });
         Assert.Equal("41", (await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "currentCount" })).GetProperty("value").GetString());
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>A component whose loop adds each turn's number, the thirteenth pausing at a line of its own.</summary>
+    private const string Looping = """
+        @page "/counter"
+
+        <p role="status">Current count: @currentCount</p>
+
+        @code {
+            private int currentCount;
+
+            protected override void OnInitialized()
+            {
+                for (int i = 0; i < 30; i++)
+                {
+                    currentCount += i;
+                    if (i == 12)
+                    {
+                        currentCount += 0;
+                    }
+                }
+                currentCount++;
+            }
+        }
+
+        """;
+
+    /// <summary>A breakpoint's hit count counts only the hits where its condition held, and an edit of its message keeps its
+    /// count: with i &gt; 10 and ==4 the page stops at i 14, its message edited after its second such hit, as every debugger
+    /// counts (the managed debugger's and GDScript's tests stop the same breakpoint at the same hit); a breakpoint that
+    /// neither stops nor logs says where it was reached.</summary>
+    [Fact]
+    public async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message()
+    {
+        await File.WriteAllTextAsync(Path.Combine(app, "Pages", "Counter.razor"), Looping, TestContext.Current.CancellationToken);
+        await using McpClient client = await Start(["--mcp", app], languageServer: false);
+        string[] lines = Looping.Split('\n');
+        int counted = Array.FindIndex(lines, l => l.Contains("currentCount += i;", StringComparison.Ordinal)) + 1;
+        int paused = Array.FindIndex(lines, l => l.Contains("currentCount += 0;", StringComparison.Ordinal)) + 1;
+        int done = Array.FindIndex(lines, l => l.Contains("currentCount++;", StringComparison.Ordinal)) + 1;
+        string counter = Path.Combine("Pages", "Counter.razor");
+        Dictionary<string, object?> counting = new() { ["path"] = "Pages/Counter.razor", ["line"] = counted, ["condition"] = "i > 10", ["hitCondition"] = "==4", ["logMessage"] = "first {i}" };
+        await Call(client, McpTools.BreakpointSet, counting);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Pages/Counter.razor", ["line"] = paused });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Pages/Counter.razor", ["line"] = done, ["suspend"] = false });
+        port.LetGo();
+        await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Wasm: http", ["waitSeconds"] = 180 });
+        JsonElement state = default;
+        await Until(async () => (state = await Call(client, McpTools.DebugState)).GetProperty("state").GetString() == "paused", "the page's component to stop at its loop's pause");
+        Assert.StartsWith($"{counter}:{paused}:", state.GetProperty("location").GetString(), StringComparison.Ordinal);
+
+        await Call(client, McpTools.BreakpointSet, new(counting) { ["logMessage"] = "second {i}" });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Pages/Counter.razor", ["line"] = paused, ["remove"] = true });
+        await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 60 });
+        string location = (await Call(client, McpTools.DebugState)).GetProperty("location").GetString()!;
+        string i = (await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "i" })).GetProperty("value").GetString()!;
+        Assert.True(location.StartsWith($"{counter}:{counted}:", StringComparison.Ordinal) && i == "14",
+            $"The breakpoint counting where i > 10 stopped at {location} with i {i}, not on its fourth such hit at line {counted} with i 14");
+        await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 5 });
+        string said = string.Empty;
+        await Until(async () => (said = Text(await Call(client, McpTools.Output, new() { ["of"] = "debug" }))).Contains("Breakpoint reached", StringComparison.Ordinal),
+            "the breakpoint that neither stops nor logs to be reached");
+        Assert.True(said.Contains("second 14", StringComparison.Ordinal) && !said.Contains("first 1", StringComparison.Ordinal)
+            && said.Contains($"Breakpoint reached at Counter.razor:{done}", StringComparison.Ordinal),
+            $"The page's console did not say the edited message at the stop, then where the breakpoint that neither stops nor logs was reached: {said}");
         await Call(client, McpTools.Stop);
     }
 }

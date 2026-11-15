@@ -275,10 +275,10 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.True(added.Breakpoints[2].Verified, "the breakpoint added while paused binds");
     }
 
-    /// <summary>A breakpoint sent again at its line with its hit count set aside, as Run to Cursor sends one on its line, then
-    /// as it was: it stops on the hit it reaches meanwhile, and counts on from there to the hit its count names.</summary>
+    /// <summary>A breakpoint sent again at its line held for Run to Cursor, then as it was: it stops on the hit it reaches
+    /// meanwhile, whatever its hit count says, and counts on from there to the hit its count names.</summary>
     [Fact]
-    public async Task A_breakpoint_sent_again_at_its_line_with_other_settings_counts_on_from_its_hits()
+    public async Task A_breakpoint_held_for_Run_to_Cursor_stops_at_its_next_hit_and_counts_on_from_its_hits()
     {
         bool startSuspended = true;
         string file = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
@@ -294,14 +294,75 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         StoppedEvent third = await host.WaitForStoppedEvent();
         Assert.Equal((CountUp, "2"), (third.ReadStopInfo().line, await Count(host, third)));
 
-        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount)]);
+        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5", RunTo: true)]);
         StoppedEvent reached = await host.ContinueAsync().WaitForStoppedEvent();
-        Assert.Equal((AfterCount, "3"), (reached.ReadStopInfo().line, await Count(host, reached)));
+        Assert.True((AfterCount, "3") == (reached.ReadStopInfo().line, await Count(host, reached)),
+            $"Run to Cursor's hold of the breakpoint stopped at line {reached.ReadStopInfo().line}, the count {await Count(host, reached)}, not at its next hit, the third");
         await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5")]);
 
         // Its fifth hit, not five after it was sent back.
         StoppedEvent fifth = await host.ContinueAsync().WaitForStoppedEvent();
         Assert.Equal((AfterCount, "5"), (fifth.ReadStopInfo().line, await Count(host, fifth)));
+    }
+
+    /// <summary>A breakpoint's hit count counts only the hits where its condition held, and an edit of its message keeps its
+    /// count: with _count &gt; 10 and ==4 it stops on the fourth pass past ten, _count 14, its message edited after its
+    /// second, as every debugger counts (GDScript's and the browser's tests stop the same breakpoint at the same hit). A
+    /// breakpoint after it, on the twentieth pass, is where one counting every hit would stop instead.</summary>
+    [Fact]
+    public async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message()
+    {
+        bool startSuspended = true;
+        string file = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
+        await host
+            .InitializeAsync()
+            .AttachAsync(debuggee.Id)
+            .WaitForInitializedEvent();
+        DapSourceBreakpoint counted = new(AfterCount, Condition: "_count > 10", HitCondition: "==4", LogMessage: "first {_count}", Suspend: true);
+        DapSourceBreakpoint missed = new(TestEnd, Condition: "_count == 20", LogMessage: "missed {_count}", Suspend: true);
+        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, Condition: "_count == 12"), counted, missed]);
+        await host
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
+        StoppedEvent paused = await host.WaitForStoppedEvent();
+        Assert.Equal((CountUp, "12"), (paused.ReadStopInfo().line, await Count(host, paused)));
+
+        await host.SetBreakpointsAsync(file, [counted with { LogMessage = "second {_count}" }, missed]);
+        await host.ContinueAsync();
+        OutputEvent logged = await host.WaitForEvent<OutputEvent>(o => o.Output.StartsWith("second", StringComparison.Ordinal) || o.Output.StartsWith("first", StringComparison.Ordinal)
+            || o.Output.StartsWith("missed", StringComparison.Ordinal));
+        StoppedEvent stopped = await host.WaitForStoppedEvent();
+        (int line, string count) at = (stopped.ReadStopInfo().line, await Count(host, stopped));
+        Assert.True(at == (AfterCount, "14") && logged.Output == "second 14\n",
+            $"The breakpoint counting where _count > 10 stopped at line {at.line} with _count {at.count}, saying {logged.Output.Trim()}, not on its fourth such hit at line {AfterCount} with _count 14, saying second 14");
+    }
+
+    /// <summary>A breakpoint whose hit count is edited counts again from the edit, as one whose condition or place is edited
+    /// does: ==5 edited to ==2 after its second hit stops two hits later, on the fourth pass.</summary>
+    [Fact]
+    public async Task A_breakpoint_whose_hit_count_is_edited_counts_again_from_the_edit()
+    {
+        bool startSuspended = true;
+        string file = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
+        await host
+            .InitializeAsync()
+            .AttachAsync(debuggee.Id)
+            .WaitForInitializedEvent();
+        DapSourceBreakpoint missed = new(TestEnd, Condition: "_count == 9");
+        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5"), missed]);
+        await host
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
+        StoppedEvent third = await host.WaitForStoppedEvent();
+        Assert.Equal((CountUp, "2"), (third.ReadStopInfo().line, await Count(host, third)));
+
+        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==2"), missed]);
+        StoppedEvent stopped = await host.ContinueAsync().WaitForStoppedEvent();
+        (int line, string count) at = (stopped.ReadStopInfo().line, await Count(host, stopped));
+        Assert.True(at == (AfterCount, "4"),
+            $"The breakpoint whose hit count was edited to ==2 stopped at line {at.line} with _count {at.count}, not on its second hit after the edit at line {AfterCount} with _count 4");
     }
 
     /// <summary>Hit counts the debugger cannot read, each set in turn with the program's code loaded, where one it took would

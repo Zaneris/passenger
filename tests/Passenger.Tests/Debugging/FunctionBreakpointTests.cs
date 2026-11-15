@@ -132,11 +132,11 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
             "The function breakpoints asked for again just as they were were made anew, with new ids");
     }
 
-    /// <summary>A function breakpoint sent again with another hit count, as an edit in the Breakpoints window sends it,
-    /// counts on from the hits of the one it replaces: made to stop on its second hit after its first, it stops on the
-    /// program's second call, not two calls after the change.</summary>
+    /// <summary>A function breakpoint sent again, as an edit in the Breakpoints window sends it, counts on from its hits through
+    /// an edit of its message and again from an edit of its hit count: ==3 given a message after Test's first call stops on
+    /// its third, then edited to ==2 stops on its fifth, two calls after the edit.</summary>
     [Fact]
-    public async Task A_function_breakpoint_sent_again_with_other_settings_counts_on_from_its_hits()
+    public async Task A_function_breakpoint_sent_again_counts_on_through_an_edit_of_its_message_and_again_from_an_edit_of_its_hit_count()
     {
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
         await host
@@ -144,21 +144,37 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
             .AttachAsync(program.Id)
             .WaitForInitializedEvent();
         DapFunctionBreakpoint everyPass = new("DebuggableConsoleApp.MyClassNoMembers.MyMethod");
-        await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
-            new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.HitConditionClass.Test", HitCondition: "==3"), everyPass]));
+        DapFunctionBreakpoint test = new("DebuggableConsoleApp.HitConditionClass.Test", HitCondition: "==3");
+        await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([test, everyPass]));
         await host.ConfigurationDoneAsync();
 
         // Each pass of the program's loop stops in MyMethod first, then calls Test: the second pass's stop comes after Test's first hit.
         Assert.EndsWith("MyClassNoMembers.cs", (await host.WaitForStoppedEvent()).Source?.Path);
         Assert.EndsWith("MyClassNoMembers.cs", (await host.ContinueAsync().WaitForStoppedEvent()).Source?.Path);
         await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
-            new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.HitConditionClass.Test", HitCondition: "==2"), everyPass]));
+            new SetFunctionBreakpointsArguments([test with { LogMessage = "calls before {_count}", Suspend = true }, everyPass]));
+        Assert.Equal("2", await CountAtTestAsync(host, "its third call, the count going on through the edit of its message"));
 
-        StoppedEvent hit = await host.ContinueAsync().WaitForStoppedEvent();
-        Assert.True(hit.Source?.Path?.EndsWith("HitConditionClass.cs", StringComparison.Ordinal) == true,
-            $"Test's second call did not stop it, its hit count started again by the change: the program stopped in {hit.Source?.Path}:{hit.Line}");
-        EvaluateResponse passes = await host.EvaluateAsync((await host.TopFrameAsync(hit.ThreadId!.Value)).Id, "_count");
-        Assert.Equal("1", passes.Result);
+        Assert.EndsWith("MyClassNoMembers.cs", (await host.ContinueAsync().WaitForStoppedEvent()).Source?.Path);
+        await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
+            new SetFunctionBreakpointsArguments([test with { HitCondition = "==2", LogMessage = "calls before {_count}", Suspend = true }, everyPass]));
+        Assert.Equal("4", await CountAtTestAsync(host, "its fifth call, the count started again by the edit of its hit count"));
+    }
+
+    /// <summary>The calls of Test before the one its breakpoint next stops in, going on past MyMethod's stops; a failure says
+    /// the stop <paramref name="expected"/>.</summary>
+    private static async Task<string> CountAtTestAsync(DebugSession host, string expected)
+    {
+        for (int pass = 0; pass < 6; pass++)
+        {
+            StoppedEvent stop = await host.ContinueAsync().WaitForStoppedEvent();
+            if (stop.Source?.Path?.EndsWith("HitConditionClass.cs", StringComparison.Ordinal) == true)
+            {
+                return (await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "_count")).Result;
+            }
+        }
+        Assert.Fail($"Test's breakpoint never stopped in six passes, where it stops on {expected}");
+        return string.Empty;
     }
 
     [Gate]

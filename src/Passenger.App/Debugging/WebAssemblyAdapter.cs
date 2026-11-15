@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text;
 using System.Text.Json;
 using Passenger.Core;
 using Passenger.Dap;
@@ -9,11 +8,11 @@ namespace Passenger.App.Debugging;
 /// <summary>A Blazor app's WebAssembly half's debugger: a debug adapter inside the IDE speaking Passenger's protocol to its
 /// session (over an <see cref="InProcessEnd"/>) and the Chrome DevTools Protocol to the app's page in a Chromium browser,
 /// through .NET's browser debug proxy (<see cref="BrowserRun"/>), so the Debug window, Variables, the gutter and agents'
-/// debug tools show a stop in the browser as they show any. Breakpoints go by file and line, their conditions to the proxy,
-/// their hit counts and messages read here at each hit. Beside a Blazor Web App's server it attaches once the server
-/// listens; for a standalone app it launches the development server itself, its output the session's. Requests and the
-/// page's events are taken one at a time.</summary>
-public sealed class WebAssemblyAdapter
+/// debug tools show a stop in the browser as they show any. Breakpoints go by file and line, their conditions, hit counts
+/// and messages read here at each hit, as every debugger reads them (<see cref="BreakpointHits"/>). Beside a Blazor Web
+/// App's server it attaches once the server listens; for a standalone app it launches the development server itself, its
+/// output the session's. Requests and the page's events are taken one at a time.</summary>
+public sealed class WebAssemblyAdapter : InProcessAdapter
 {
     /// <summary>The one thread the page runs .NET on, as the Debug window lists it.</summary>
     private const int PageThread = 1;
@@ -30,8 +29,6 @@ public sealed class WebAssemblyAdapter
     private readonly BrowserDebugging debugging;
     private readonly string profiles;
     private readonly string name;
-    private readonly InProcessEnd end;
-    private readonly DapConnection connection;
 
     /// <summary>What ends the program a Stop of this session ends: the server's session beside it; null where this adapter
     /// launched the development server, which it ends itself.</summary>
@@ -40,7 +37,6 @@ public sealed class WebAssemblyAdapter
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly CancellationTokenSource ending = new();
     private BrowserRun? browser;
-    private Process? server;
 
     /// <summary>The breakpoints the page has, by file, each as asked and with its hits so far.</summary>
     private readonly Dictionary<string, List<Placed>> placed = new(PathNames.Comparer);
@@ -49,8 +45,6 @@ public sealed class WebAssemblyAdapter
     private JsonElement? stop;
     private IReadOnlyList<WebAssemblyFrame> frames = [];
     private int generation;
-    private readonly Dictionary<int, Func<Task<IReadOnlyList<DapVariable>>>> inside = [];
-    private int lastReference;
     private Going going;
 
     private enum Going
@@ -61,10 +55,13 @@ public sealed class WebAssemblyAdapter
         Resuming,
     }
 
-    /// <summary>A breakpoint as the page has it: the protocol's id and the proxy's, what was asked, and its hits.</summary>
-    private sealed record Placed(int Id, string BrowserId, int Line, int? Column, string? Condition, HitCondition? Hits, string? Log, bool Suspend)
+    /// <summary>A breakpoint as the page has it: what was asked, in which file, its hits, and the proxy's id of the page's
+    /// breakpoint at its place, which stops at every hit.</summary>
+    private sealed class Placed(int id, DapSourceBreakpoint request, string file, string browserId) : AskedLine(id, request)
     {
-        public int Count { get; set; }
+        public string File { get; } = file;
+
+        public string BrowserId { get; } = browserId;
 
         /// <summary>The line the page bound it to (from one), once it has loaded its code; null before.</summary>
         public int? Bound { get; set; }
@@ -73,60 +70,50 @@ public sealed class WebAssemblyAdapter
     /// <summary>The adapter of a WebAssembly app's page over <paramref name="end"/>, its browser's profile kept under
     /// <paramref name="profiles"/>; <paramref name="terminate"/> ends the app's server, as a Stop of this session asks, null
     /// where the session launches the development server itself.</summary>
-    public WebAssemblyAdapter(BrowserDebugging debugging, string profiles, string name, InProcessEnd end, Func<Task>? terminate)
+    public WebAssemblyAdapter(BrowserDebugging debugging, string profiles, string name, InProcessEnd end, Func<Task>? terminate) : base(end)
     {
         this.debugging = debugging;
         this.profiles = profiles;
         this.name = name;
-        this.end = end;
         this.terminate = terminate;
-        connection = new DapConnection(end.AdapterInput, end.AdapterOutput, line => IdeLog.Write(IdeLog.Debugger, $"[{end.Name}] {line}")) { Name = end.Name };
         Register();
     }
+
+    protected override string Debuggee => "page";
+
+    protected override string NoInput => "The page reads no input from the console";
+
+    protected override string LaunchedName => "The development server";
 
     /// <summary>Whether a file's breakpoints go to a browser session of these projects: one in their own folders.</summary>
     public static bool Takes(IReadOnlyList<string> projects, string path) => projects.Any(p => ProjectFolders.Holds(Path.GetDirectoryName(p)!, path));
 
-    /// <summary>Starts answering its session.</summary>
-    public void Start() => connection.Start();
-
-    private static DapCapabilities Capabilities => new()
-    {
-        SupportsConfigurationDoneRequest = true,
-        SupportsConditionalBreakpoints = true,
-        SupportsHitConditionalBreakpoints = true,
-        SupportsLogPoints = true,
-        SupportsEvaluateForHovers = true,
-        SupportsExceptionInfoRequest = true,
-        SupportsExceptionOptions = true,
-        SupportsDataBreakpoints = false,
-        DataBreakpointsUnavailable = ".NET's browser debug proxy watches no data",
-    };
+    private static DapCapabilities Answered => Capabilities(".NET's browser debug proxy watches no data") with { SupportsExceptionOptions = true };
 
     private void Register()
     {
-        connection.Handle<InitializeArguments, DapCapabilities>(DapCommands.Initialize, _ => Task.FromResult(Capabilities), then: () => Tell(DapEvents.Initialized, null));
-        connection.Handle<AttachArguments>(DapCommands.Attach, _ => Held(() => OpenAsync(DapCommands.Attach)));
-        connection.Handle<LaunchArguments>(DapCommands.Launch, arguments => Held(() => LaunchAsync(arguments)));
-        connection.Handle<DapEmpty>(DapCommands.ConfigurationDone, _ => Held(ConfiguredAsync));
-        connection.Handle<SetBreakpointsArguments, SetBreakpointsResponse>(DapCommands.SetBreakpoints, arguments => Held(() => SetBreakpointsAsync(arguments)));
-        connection.Handle<SetExceptionBreakpointsArguments, SetExceptionBreakpointsResponse>(DapCommands.SetExceptionBreakpoints,
+        Connection.Handle<InitializeArguments, DapCapabilities>(DapCommands.Initialize, _ => Task.FromResult(Answered), then: () => Tell(DapEvents.Initialized, null));
+        Connection.Handle<AttachArguments>(DapCommands.Attach, _ => Held(() => OpenAsync(DapCommands.Attach)));
+        Connection.Handle<LaunchArguments>(DapCommands.Launch, arguments => Held(() => LaunchAsync(arguments)));
+        Connection.Handle<DapEmpty>(DapCommands.ConfigurationDone, _ => Held(ConfiguredAsync));
+        Connection.Handle<SetBreakpointsArguments, SetBreakpointsResponse>(DapCommands.SetBreakpoints, arguments => Held(() => SetBreakpointsAsync(arguments)));
+        Connection.Handle<SetExceptionBreakpointsArguments, SetExceptionBreakpointsResponse>(DapCommands.SetExceptionBreakpoints,
             arguments => Held(() => SetExceptionsAsync(arguments)));
-        connection.Handle<DapEmpty, ThreadsResponse>(DapCommands.Threads, _ => Task.FromResult(new ThreadsResponse([new DapThread(PageThread, "Browser") { IsMain = true }])));
-        connection.Handle<StackTraceArguments, StackTraceResponse>(DapCommands.StackTrace, arguments => Held(() => Task.FromResult(StackTrace(arguments))));
-        connection.Handle<ScopesArguments, ScopesResponse>(DapCommands.Scopes, arguments => Held(() => Task.FromResult(Scopes(arguments.FrameId))));
-        connection.Handle<VariablesArguments, VariablesResponse>(DapCommands.Variables, arguments => Held(() => VariablesAsync(arguments.VariablesReference)));
-        connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, arguments => Held(() => EvaluateAsync(arguments)));
-        connection.Handle<SetExpressionArguments, SetExpressionResponse>(DapCommands.SetExpression,
+        Connection.Handle<DapEmpty, ThreadsResponse>(DapCommands.Threads, _ => Task.FromResult(new ThreadsResponse([new DapThread(PageThread, "Browser") { IsMain = true }])));
+        Connection.Handle<StackTraceArguments, StackTraceResponse>(DapCommands.StackTrace, arguments => Held(() => Task.FromResult(StackTrace(arguments))));
+        Connection.Handle<ScopesArguments, ScopesResponse>(DapCommands.Scopes, arguments => Held(() => Task.FromResult(Scopes(arguments.FrameId))));
+        Connection.Handle<VariablesArguments, VariablesResponse>(DapCommands.Variables, arguments => Held(() => VariablesAsync(arguments.VariablesReference)));
+        Connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, arguments => Held(() => EvaluateAsync(arguments)));
+        Connection.Handle<SetExpressionArguments, SetExpressionResponse>(DapCommands.SetExpression,
             _ => Task.FromException<SetExpressionResponse>(new DapException(DapCommands.SetExpression, NoSet)));
-        connection.Handle<ThreadArguments, ExceptionInfoResponse>(DapCommands.ExceptionInfo, _ => Held(() => Task.FromResult(ExceptionInfo())));
-        connection.Handle<ThreadArguments>(DapCommands.Continue, _ => Held(() => ResumeAsync(CdpCommands.Resume, Going.Resuming)));
-        connection.Handle<ThreadArguments>(DapCommands.Next, _ => Held(() => ResumeAsync(CdpCommands.StepOver, Going.Stepping)));
-        connection.Handle<StepInArguments>(DapCommands.StepIn, _ => Held(() => ResumeAsync(CdpCommands.StepInto, Going.Stepping)));
-        connection.Handle<ThreadArguments>(DapCommands.StepOut, _ => Held(() => ResumeAsync(CdpCommands.StepOut, Going.Stepping)));
-        connection.Handle<ThreadArguments>(DapCommands.Pause, _ => Held(PauseAsync));
-        connection.Handle<InputArguments>(DapCommands.Input, arguments => InputAsync(arguments));
-        connection.Handle<DisconnectArguments>(DapCommands.Disconnect, arguments => DisconnectAsync(arguments), then: Ended, evenIfFailed: true);
+        Connection.Handle<ThreadArguments, ExceptionInfoResponse>(DapCommands.ExceptionInfo, _ => Held(() => Task.FromResult(ExceptionInfo())));
+        Connection.Handle<ThreadArguments>(DapCommands.Continue, _ => Held(() => ResumeAsync(CdpCommands.Resume, Going.Resuming)));
+        Connection.Handle<ThreadArguments>(DapCommands.Next, _ => Held(() => ResumeAsync(CdpCommands.StepOver, Going.Stepping)));
+        Connection.Handle<StepInArguments>(DapCommands.StepIn, _ => Held(() => ResumeAsync(CdpCommands.StepInto, Going.Stepping)));
+        Connection.Handle<ThreadArguments>(DapCommands.StepOut, _ => Held(() => ResumeAsync(CdpCommands.StepOut, Going.Stepping)));
+        Connection.Handle<ThreadArguments>(DapCommands.Pause, _ => Held(PauseAsync));
+        Connection.Handle<InputArguments>(DapCommands.Input, arguments => InputAsync(arguments));
+        Connection.Handle<DisconnectArguments>(DapCommands.Disconnect, arguments => DisconnectAsync(arguments), then: Ended, evenIfFailed: true);
     }
 
     /// <summary>A request or an event taken in turn with the others.</summary>
@@ -166,7 +153,7 @@ public sealed class WebAssemblyAdapter
         {
             throw new DapException(DapCommands.Launch, $"Could not start {Path.GetFileName(start.FileName)}: {error.Message}");
         }
-        server = process;
+        Launched = process;
         Tell(DapEvents.Process, new ProcessEvent(name, process.Id, IsLocalProcess: true, StartMethod: DapCommands.Launch));
         // For the server's life: no wait for the IDE to be quiet waits out a server that runs until it is stopped.
         Task heard = ChildProcesses.Hear(process, line => Tell(DapEvents.Output, new OutputEvent($"{line}\n", DapOutputCategories.Stdout)),
@@ -212,7 +199,7 @@ public sealed class WebAssemblyAdapter
         await run.Page.SendAsync(CdpCommands.PageEnable);
         await run.Page.SendAsync(CdpCommands.RuntimeEnable);
         await run.Page.SendAsync(CdpCommands.DebuggerEnable);
-        if (server is null)
+        if (Launched is null)
         {
             Tell(DapEvents.Process, new ProcessEvent($"{debugging.Browser.Name} at {debugging.Page}", run.BrowserId, IsLocalProcess: true, StartMethod: DapCommands.Attach));
         }
@@ -223,12 +210,12 @@ public sealed class WebAssemblyAdapter
     private async Task BrowserEndedAsync(BrowserRun run)
     {
         await run.Ended;
-        if (end.HasEnded || ending.IsCancellationRequested)
+        if (End.HasEnded || ending.IsCancellationRequested)
         {
             return;
         }
         Say($"{debugging.Browser.Name} closed: debugging in the browser has ended");
-        if (server is { } launched)
+        if (Launched is { } launched)
         {
             ChildProcesses.Kill(launched);
             return;
@@ -246,6 +233,9 @@ public sealed class WebAssemblyAdapter
         return true;
     }
 
+    /// <summary>A file's breakpoints, asked for again: one asked for just as it was is kept, one in its place counts on from
+    /// its hits while its condition and hit count stay (<see cref="BreakpointHits.Reconcile"/>). The page holds one
+    /// breakpoint at each place, kept while a breakpoint stands there.</summary>
     private async Task<SetBreakpointsResponse> SetBreakpointsAsync(SetBreakpointsArguments arguments)
     {
         IReadOnlyList<DapSourceBreakpoint> asked = arguments.Breakpoints ?? [];
@@ -253,44 +243,42 @@ public sealed class WebAssemblyAdapter
         {
             return new SetBreakpointsResponse([.. asked.Select(_ => new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = "The browser is not debugged" })]);
         }
-        List<Placed> had = [.. placed.GetValueOrDefault(path) ?? []];
+        List<DapSourceBreakpoint> taken = [.. asked.Where(b => Refused(b) is null)];
+        (Placed? Kept, int Hits)[] matched = BreakpointHits.Reconcile(taken, placed.GetValueOrDefault(path) ?? [], p => p.Request,
+            static (was, now) => was.Line == now.Line && was.Column == now.Column, out List<Placed> gone);
         List<Placed> now = [];
         List<DapBreakpoint> said = [];
+        int next = 0;
         foreach (DapSourceBreakpoint breakpoint in asked)
         {
-            HitCondition? hits = null;
-            if (breakpoint.HitCondition is { } hitText)
+            if (Refused(breakpoint) is { } refused)
             {
-                if (!HitCondition.TryParse(hitText, out HitCondition parsed, out string? problem))
-                {
-                    said.Add(new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = problem, Line = breakpoint.Line });
-                    continue;
-                }
-                hits = parsed;
-            }
-            bool suspend = breakpoint.Suspend ?? breakpoint.LogMessage is null;
-            if (had.FirstOrDefault(p => p.Line == breakpoint.Line && p.Column == breakpoint.Column && p.Condition == breakpoint.Condition) is { } kept)
-            {
-                had.Remove(kept);
-                Placed again = kept with { Hits = hits, Log = breakpoint.LogMessage, Suspend = suspend };
-                again.Count = kept.Hits == hits ? kept.Count : 0;
-                now.Add(again);
-                said.Add(Said(again, arguments.Source));
+                said.Add(refused);
                 continue;
             }
-            JsonElement set = await run.Page.SendAsync(CdpCommands.SetBreakpointByUrl, new BreakpointByUrl(
-                breakpoint.Line - 1, WebAssemblyValues.PatternOf(path, ignoreCase: !OperatingSystem.IsLinux()), breakpoint.Column is int column ? column - 1 : 0, breakpoint.Condition));
-            string browserId = JsonMembers.Text(set, "breakpointId") ?? throw new DapException(DapCommands.SetBreakpoints, "The browser gave the breakpoint no id");
-            Placed made = new(++lastId, browserId, breakpoint.Line, breakpoint.Column, breakpoint.Condition, hits, breakpoint.LogMessage, suspend)
+            (Placed? kept, int hits) = matched[next++];
+            if (kept is null && gone.FirstOrDefault(p => p.Request.Line == breakpoint.Line && p.Request.Column == breakpoint.Column) is { } there)
             {
-                Bound = JsonMembers.Items(set, "locations") is [var location, ..] ? (JsonMembers.Number(location, "lineNumber") ?? breakpoint.Line - 1) + 1 : null,
-            };
-            now.Add(made);
-            said.Add(Said(made, arguments.Source));
+                gone.Remove(there);
+                kept = new Placed(++lastId, breakpoint, path, there.BrowserId) { Bound = there.Bound, HitCount = hits };
+            }
+            else if (kept is null)
+            {
+                JsonElement set = await run.Page.SendAsync(CdpCommands.SetBreakpointByUrl, new BreakpointByUrl(
+                    breakpoint.Line - 1, WebAssemblyValues.PatternOf(path, ignoreCase: !OperatingSystem.IsLinux()), breakpoint.Column is int column ? column - 1 : 0));
+                string browserId = JsonMembers.Text(set, "breakpointId") ?? throw new DapException(DapCommands.SetBreakpoints, "The browser gave the breakpoint no id");
+                kept = new Placed(++lastId, breakpoint, path, browserId)
+                {
+                    Bound = JsonMembers.Items(set, "locations") is [var location, ..] ? (JsonMembers.Number(location, "lineNumber") ?? breakpoint.Line - 1) + 1 : null,
+                    HitCount = hits,
+                };
+            }
+            now.Add(kept);
+            said.Add(Said(kept, arguments.Source));
         }
-        foreach (Placed gone in had)
+        foreach (Placed left in gone)
         {
-            await run.Page.SendAsync(CdpCommands.RemoveBreakpoint, new { breakpointId = gone.BrowserId });
+            await run.Page.SendAsync(CdpCommands.RemoveBreakpoint, new { breakpointId = left.BrowserId });
         }
         placed[path] = now;
         return new SetBreakpointsResponse(said);
@@ -299,11 +287,12 @@ public sealed class WebAssemblyAdapter
     /// <summary>What the session is told of a breakpoint: bound where the page has its code, else waiting for it to load.</summary>
     private static DapBreakpoint Said(Placed breakpoint, DapSource source) => breakpoint.Bound is int line
         ? new DapBreakpoint { Id = breakpoint.Id, Verified = true, Line = line, Source = source }
-        : new DapBreakpoint { Id = breakpoint.Id, Verified = false, Reason = BreakpointReasons.Pending, Line = breakpoint.Line, Source = source,
+        : new DapBreakpoint { Id = breakpoint.Id, Verified = false, Reason = BreakpointReasons.Pending, Line = breakpoint.Request.Line, Source = source,
             Message = "The page has not loaded this code yet: it binds as the browser loads it" };
 
-    /// <summary>A breakpoint by its file, for the proxy: its line and column from zero, the file matched whole by a pattern.</summary>
-    private sealed record BreakpointByUrl(int LineNumber, string UrlRegex, int ColumnNumber, string? Condition);
+    /// <summary>A breakpoint by its file, for the proxy: its line and column from zero, the file matched whole by a pattern. It
+    /// carries no condition: the proxy drops a breakpoint's condition as the page loads, so one is read here at each hit.</summary>
+    private sealed record BreakpointByUrl(int LineNumber, string UrlRegex, int ColumnNumber);
 
     /// <summary>Exceptions stop in the browser as a whole (every one, or every one left unhandled), never by type.</summary>
     private async Task<SetExceptionBreakpointsResponse> SetExceptionsAsync(SetExceptionBreakpointsArguments arguments)
@@ -404,18 +393,6 @@ public sealed class WebAssemblyAdapter
         Unsettable = NoSet,
     };
 
-    /// <summary>A reference to what a row holds, read as it is opened, until the page goes on.</summary>
-    private int Reference(Func<Task<IReadOnlyList<DapVariable>>> read)
-    {
-        int reference = ++lastReference;
-        inside[reference] = read;
-        return reference;
-    }
-
-    private async Task<VariablesResponse> VariablesAsync(int reference) => inside.TryGetValue(reference, out Func<Task<IReadOnlyList<DapVariable>>>? read)
-        ? new VariablesResponse(await read())
-        : throw new DapException(DapCommands.Variables, "Those values are of a stop the page has gone on from");
-
     private async Task<EvaluateResponse> EvaluateAsync(EvaluateArguments arguments)
     {
         if (stop is null || browser is not { } run || frames.Count == 0)
@@ -468,32 +445,6 @@ public sealed class WebAssemblyAdapter
         return true;
     }
 
-    /// <summary>Text typed into the console of a development server launched, for its standard input; its end closes that input.</summary>
-    private async Task<bool> InputAsync(InputArguments arguments)
-    {
-        if (server is not { } process)
-        {
-            throw new DapException(DapCommands.Input, "The page reads no input from the console");
-        }
-        try
-        {
-            if (arguments.Close == true)
-            {
-                process.StandardInput.Close();
-            }
-            else
-            {
-                await process.StandardInput.WriteAsync(arguments.Text);
-                await process.StandardInput.FlushAsync();
-            }
-        }
-        catch (Exception gone) when (gone is IOException or InvalidOperationException or ObjectDisposedException)
-        {
-            throw new DapException(DapCommands.Input, $"The development server takes no more input: {gone.Message}");
-        }
-        return true;
-    }
-
     /// <summary>Ends the browser and the proxy; a Stop of a Blazor Web App's page stops its server too, as a Stop of the
     /// server does, and a development server this adapter launched goes with its session whatever ends it.</summary>
     private async Task<bool> DisconnectAsync(DisconnectArguments arguments)
@@ -503,7 +454,7 @@ public sealed class WebAssemblyAdapter
         {
             await run.DisposeAsync();
         }
-        if (server is { } launched)
+        if (Launched is { } launched)
         {
             ChildProcesses.Kill(launched);
         }
@@ -517,8 +468,8 @@ public sealed class WebAssemblyAdapter
     /// <summary>The disconnect has been answered: the adapter ends, and its session hears it gone.</summary>
     private void Ended()
     {
-        end.End();
-        IdeErrors.Observe(connection.DisposeAsync().AsTask());
+        End.End();
+        IdeErrors.Observe(Connection.DisposeAsync().AsTask());
     }
 
     /// <summary>An event of the page's, taken in turn with the session's requests.</summary>
@@ -543,7 +494,8 @@ public sealed class WebAssemblyAdapter
     }
 
     /// <summary>The page stopped: in .NET code, told to the session as a step's end, a pause, an exception or a breakpoint,
-    /// where its hit count holds (a tracepoint logs and goes on); a stop in the browser's own code alone goes on unseen.</summary>
+    /// where its hit stops as every debugger's does (a tracepoint logs and goes on); a stop in the browser's own code alone
+    /// goes on unseen.</summary>
     private async Task<bool> OnPausedAsync(JsonElement paused)
     {
         IReadOnlyList<WebAssemblyFrame> stack = WebAssemblyValues.Frames(paused);
@@ -558,10 +510,10 @@ public sealed class WebAssemblyAdapter
             await run.Page.SendAsync(CdpCommands.Resume);
             return false;
         }
+        Left();
         stop = paused;
         frames = stack;
         generation++;
-        inside.Clear();
         string? reason = JsonMembers.Text(paused, "reason");
         if (reason is "exception" or "promiseRejection")
         {
@@ -574,23 +526,21 @@ public sealed class WebAssemblyAdapter
             return true;
         }
         HashSet<string> hit = [.. JsonMembers.Texts(paused, "hitBreakpoints")];
-        Placed? at = placed.Values.SelectMany(p => p).FirstOrDefault(p => hit.Contains(p.BrowserId));
-        if (at is null)
+        if (placed.Values.SelectMany(p => p).FirstOrDefault(p => hit.Contains(p.BrowserId)) is not { } at)
         {
             Stopped(StopReasons.Breakpoint, null, null);
             return true;
         }
-        at.Count++;
-        bool holds = at.Hits is not { } hits || hits.IsMet(at.Count);
-        if (holds && at.Log is { } message)
+        WebAssemblyFrame top = stack[0];
+        if (await BreakpointHits.StopsAsync(at, new HitReading
         {
-            Say(await LoggedAsync(message, stack[0]));
-        }
-        else if (holds && !at.Suspend)
-        {
-            Say("Breakpoint reached");
-        }
-        if (holds && at.Suspend)
+            Named = "the breakpoint",
+            Holds = condition => HoldsAsync(condition, top),
+            Logged = message => LoggedAsync(message, top),
+            Reached = () => BreakpointHits.Reached(at.File, top.Line + 1),
+            Say = Say,
+            Told = told => Told(told, at.File, at.Bound ?? at.Request.Line),
+        }))
         {
             Stopped(StopReasons.Breakpoint, null, [at.Id]);
             return true;
@@ -601,24 +551,35 @@ public sealed class WebAssemblyAdapter
         return false;
     }
 
-    /// <summary>A tracepoint's message with each expression in it read in the frame it stopped in.</summary>
-    private async Task<string> LoggedAsync(string message, WebAssemblyFrame frame)
+    /// <summary>Whether a breakpoint's condition holds in the frame it stopped in, or why it could not be told: one that
+    /// fails, or is no bool.</summary>
+    private async Task<ConditionRead> HoldsAsync(string condition, WebAssemblyFrame frame)
     {
-        StringBuilder said = new();
-        foreach ((string text, bool expression) in Godot.GodotScriptBreakpoints.Pieces(message))
+        JsonElement evaluated;
+        try
         {
-            if (!expression)
-            {
-                said.Append(text);
-                continue;
-            }
-            JsonElement evaluated = await browser!.Page.SendAsync(CdpCommands.EvaluateOnCallFrame, new { callFrameId = frame.Id, expression = text });
-            said.Append(JsonMembers.Object(evaluated, "exceptionDetails") is { } failed ? $"<{WebAssemblyValues.Failure(failed)}>"
-                : JsonMembers.Object(evaluated, "result") is { } value && JsonMembers.Text(value, "type") == "string" ? JsonMembers.Text(value, "value") ?? string.Empty
-                : WebAssemblyValues.Shown(JsonMembers.Object(evaluated, "result") ?? default));
+            evaluated = await browser!.Page.SendAsync(CdpCommands.EvaluateOnCallFrame, new { callFrameId = frame.Id, expression = condition });
         }
-        return said.ToString();
+        catch (CdpException refused)
+        {
+            return new ConditionRead(true, refused.Reason);
+        }
+        if (JsonMembers.Object(evaluated, "exceptionDetails") is { } failed)
+        {
+            return new ConditionRead(true, WebAssemblyValues.Failure(failed));
+        }
+        JsonElement? value = JsonMembers.Object(evaluated, "result");
+        return JsonMembers.Text(value, "type") == "boolean" && JsonMembers.Bool(value, "value") is bool holds ? new ConditionRead(holds) : new ConditionRead(true, "it is not a bool");
     }
+
+    /// <summary>A tracepoint's message with each expression in it read in the frame it stopped in.</summary>
+    private Task<string> LoggedAsync(string message, WebAssemblyFrame frame) => BreakpointHits.LoggedAsync(message, async expression =>
+    {
+        JsonElement evaluated = await browser!.Page.SendAsync(CdpCommands.EvaluateOnCallFrame, new { callFrameId = frame.Id, expression });
+        return JsonMembers.Object(evaluated, "exceptionDetails") is { } failed ? $"<{WebAssemblyValues.Failure(failed)}>"
+            : JsonMembers.Object(evaluated, "result") is { } value && JsonMembers.Text(value, "type") == "string" ? JsonMembers.Text(value, "value") ?? string.Empty
+            : WebAssemblyValues.Shown(JsonMembers.Object(evaluated, "result") ?? default);
+    });
 
     /// <summary>The page went on: of itself (no continue or step of the session's), the session hears it.</summary>
     private bool OnResumed()
@@ -653,7 +614,7 @@ public sealed class WebAssemblyAdapter
         {
             return false;
         }
-        int line = (JsonMembers.Number(JsonMembers.Object(parameters, "location"), "lineNumber") ?? bound.Line - 1) + 1;
+        int line = (JsonMembers.Number(JsonMembers.Object(parameters, "location"), "lineNumber") ?? bound.Request.Line - 1) + 1;
         bound.Bound = line;
         Tell(DapEvents.Breakpoint, new BreakpointEvent
         {
@@ -671,26 +632,13 @@ public sealed class WebAssemblyAdapter
         Tell(DapEvents.Output, new OutputEvent($"{words}\n", category));
     }
 
-    private void Stopped(string reason, string? text, IReadOnlyList<int>? hit) => Tell(DapEvents.Stopped, new StoppedEvent
-    {
-        Reason = reason,
-        Text = text,
-        Description = text,
-        ThreadId = PageThread,
-        AllThreadsStopped = true,
-        HitBreakpointIds = hit,
-    });
+    private void Stopped(string reason, string? text, IReadOnlyList<int>? hit) => Stopped(reason, text, hit, PageThread, allThreads: true);
 
     /// <summary>The stop is over: what was read of it goes.</summary>
-    private void Left()
+    protected override void Left()
     {
         stop = null;
         frames = [];
-        inside.Clear();
+        base.Left();
     }
-
-    private void Say(string line) => Tell(DapEvents.Output, new OutputEvent($"{line}\n", DapOutputCategories.Console));
-
-    /// <summary>An event for the session, unless it has gone.</summary>
-    private void Tell(string eventName, object? body) => end.SendEvent(connection, eventName, body);
 }

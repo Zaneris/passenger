@@ -146,12 +146,4 @@ public class GodotScriptStopsTests
         Assert.Equal("not not (items)", GodotScriptBreakpoints.Truth("items"));
         Assert.Equal("not not (a or b)", GodotScriptBreakpoints.Truth("a or b"));
     }
-
-    [Fact]
-    public void A_tracepoints_message_parts_its_words_from_the_expressions_read_where_it_stops()
-    {
-        Assert.Equal([("count is ", false), ("counter", true), (" of {all}", false)], GodotScriptBreakpoints.Pieces("count is {counter} of {{all}}"));
-        Assert.Equal([("name", true)], GodotScriptBreakpoints.Pieces("{name,nq}"));
-        Assert.Equal([("open { never closed", false)], GodotScriptBreakpoints.Pieces("open { never closed"));
-    }
 }

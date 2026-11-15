@@ -6,7 +6,7 @@ namespace Passenger.Debugger;
 
 /// <summary>A data breakpoint as the client asks for it: the data it watches (a <see cref="DataBreakpointAnswer"/>'s id),
 /// and what a line breakpoint has besides: a condition, a hit count, a message to log and whether a hit stops.</summary>
-public sealed record DataBreakpointRequest(string DataId, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool Suspend = true);
+public sealed record DataBreakpointRequest(string DataId, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool Suspend = true) : IAskedBreakpoint;
 
 /// <summary>What a data breakpoint could watch: its data's id, or none and why not, and what it is ("count on Counter").</summary>
 public sealed record DataBreakpointAnswer(string? DataId, string Description);
@@ -271,13 +271,13 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Sets the data breakpoints to those asked for, kept and counted on as a file's line breakpoints are, one on the
-    /// same data counting on from the hits of the one it replaces; the places no longer watched are let go (their objects
-    /// unpinned), and new ones are pinned and put in a free debug register of every thread. The program, stopped for it if
-    /// it runs, goes on as it was.</summary>
+    /// same data with the same condition and hit count counting on from the hits of the one it replaces; the places no
+    /// longer watched are let go (their objects unpinned), and new ones are pinned and put in a free debug register of every
+    /// thread. The program, stopped for it if it runs, goes on as it was.</summary>
     public List<DataBreakpointResult> SetDataBreakpoints(IReadOnlyList<DataBreakpointRequest> requests)
     {
         _logger?.Invoke($"SetDataBreakpoints: {string.Join(", ", requests.Select(r => r.DataId))}");
-        (DataWatch? Kept, int Hits)[] matched = Reconcile(requests, _dataWatches, w => w.Request, static (was, now) => was.DataId == now.DataId, out _);
+        (DataWatch? Kept, int Hits)[] matched = BreakpointHits.Reconcile(requests, _dataWatches, w => w.Request, static (was, now) => was.DataId == now.DataId, out _);
         _dataWatches.Clear();
         List<DataBreakpointResult> results = [];
         for (int i = 0; i < requests.Count; i++)

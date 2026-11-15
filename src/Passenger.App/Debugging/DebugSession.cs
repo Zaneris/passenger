@@ -1028,7 +1028,7 @@ public sealed class DebugSession
 
     /// <summary>Sends a file's breakpoints at their built lines; one on a line written since the build is refused here, as
     /// the debugger refuses a line with no code. The adapter keeps those sent as they were, hit counts and all. Run to
-    /// Cursor's line stops: its own breakpoint is sent there, or the one there sent stopping, its count going on.</summary>
+    /// Cursor's line stops: its own breakpoint is sent there, or the one there held for it, its count going on.</summary>
     private async Task SendBreakpointsAsync(string path)
     {
         // Muted, none is sent and each is as no debugger has said, though Run to Cursor's place still is.
@@ -1047,8 +1047,8 @@ public sealed class DebugSession
                 // A lambda's breakpoint is its own, stopping only inside the lambda.
                 if (requests[i].Line == target.At.Line && built[i].Column is null)
                 {
-                    // Its condition, hit count or going on set aside until the stop, which Run to Cursor makes whatever they say.
-                    requests[i] = requests[i] with { Condition = null, HitCondition = null, Suspend = true };
+                    // Held until the stop, which Run to Cursor makes whatever its condition, hit count or going on say.
+                    requests[i] = requests[i] with { RunTo = true };
                     held = true;
                 }
             }

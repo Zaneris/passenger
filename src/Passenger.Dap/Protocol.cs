@@ -133,8 +133,10 @@ public sealed record DapSource
 
 /// <summary>A line breakpoint as asked for. <c>Suspend</c> is Passenger's own: whether a hit stops the program, so a
 /// breakpoint can log and stop, or neither stop nor log a message of its own ("Breakpoint reached"); without it,
-/// a log message alone means no stop, as the protocol has it.</summary>
-public sealed record DapSourceBreakpoint(int Line, int? Column = null, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null);
+/// a log message alone means no stop, as the protocol has it. <c>RunTo</c> is Passenger's own too: Run to Cursor's line,
+/// whose next hit stops whatever the condition, hit count and Suspend say, tried as the breakpoint's own hit all the same.</summary>
+public sealed record DapSourceBreakpoint(int Line, int? Column = null, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null,
+    bool? RunTo = null) : IAskedBreakpoint;
 
 public sealed record SetBreakpointsArguments(DapSource Source, IReadOnlyList<DapSourceBreakpoint>? Breakpoints);
 
@@ -198,7 +200,7 @@ public sealed record SetDataBreakpointsResponse(IReadOnlyList<DapBreakpoint> Bre
 public sealed record SetExceptionBreakpointsArguments(
     IReadOnlyList<string>? Filters, IReadOnlyList<DapExceptionFilterOptions>? FilterOptions = null, IReadOnlyList<DapExceptionOptions>? ExceptionOptions = null);
 
-public sealed record DapExceptionFilterOptions(string FilterId, string? Condition = null)
+public sealed record DapExceptionFilterOptions(string FilterId, string? Condition = null) : IAskedBreakpoint
 {
     /// <summary>Passenger's own: a hit count, a message logged at each hit, and whether a hit stops, as a line breakpoint has.</summary>
     public string? HitCondition { get; init; }

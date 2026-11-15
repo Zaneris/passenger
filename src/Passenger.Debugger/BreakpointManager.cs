@@ -1,3 +1,4 @@
+using Passenger.Dap;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -48,6 +49,9 @@ public class BreakpointManager
 
         /// <summary>A source breakpoint's request as the client made it: one made again just so keeps this breakpoint.</summary>
         public BreakpointRequest? Request { get; set; }
+
+        /// <summary>Held for Run to Cursor: its next hit stops whatever its condition, hit count and Suspend say.</summary>
+        public bool RunTo => Request?.RunTo == true;
 
         /// <summary>A function breakpoint's request as the client made it: one made again just so keeps this breakpoint.</summary>
         public FunctionBreakpointRequest? FunctionRequest { get; set; }

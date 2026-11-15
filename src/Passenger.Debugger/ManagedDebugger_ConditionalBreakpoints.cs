@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.ExpressionEvaluator.Compiler;
@@ -7,21 +8,8 @@ using Passenger.Languages.CSharp;
 
 namespace Passenger.Debugger;
 
-/// <summary>A breakpoint of any kind (line, function, data, exception) as its hits are tried: what it asks of a hit, its
-/// hits so far, and the debugger's word on it, which a condition a hit could not tell is written to.</summary>
-internal interface IHitBreakpoint
-{
-    int Id { get; }
-    string? Condition { get; }
-    string? HitCondition { get; }
-    string? LogMessage { get; }
-    bool Suspend { get; }
-    int HitCount { get; set; }
-    string? Message { get; set; }
-}
-
-/// <summary>What every kind of breakpoint shares: one refusal of what the debugger cannot read, one reconciling of those
-/// asked for with those set, and one pipeline a hit goes through (hit count, condition, log message, suspend).</summary>
+/// <summary>What every kind of breakpoint shares: one refusal of what the debugger cannot read, and its hits tried through
+/// every debugger's one pipeline (<see cref="BreakpointHits"/>), the condition evaluated in the hit's top frame.</summary>
 public partial class ManagedDebugger
 {
     /// <summary>What's said of an expression the parser would recurse through past its stack (<see cref="CodeBrackets.Expression"/>),
@@ -44,80 +32,41 @@ public partial class ManagedDebugger
         {
             return "Lambda expressions are not supported in breakpoint conditions.";
         }
-        return hitCondition is { } hits && !Passenger.Dap.HitCondition.TryParse(hits, out _, out string? problem) ? problem : null;
+        return BreakpointHits.Unreadable(hitCondition);
     }
 
-    /// <summary>Matches the breakpoints asked for with those set: one asked for again just as it was keeps the one set (each
-    /// kept once), else counts on from the hits of one it replaces at its place (<paramref name="samePlace"/>). Those set
-    /// that no request keeps are <paramref name="gone"/>.</summary>
-    internal static (T? Kept, int Hits)[] Reconcile<T, TRequest>(IReadOnlyList<TRequest> requests, IReadOnlyList<T> set, Func<T, TRequest?> requestOf,
-        Func<TRequest, TRequest, bool> samePlace, out List<T> gone) where T : class, IHitBreakpoint where TRequest : class
+    /// <summary>A hit of a breakpoint of any kind, tried as every debugger tries one (<see cref="BreakpointHits.StopsAsync"/>):
+    /// its condition and message read in the thread's top frame, a condition that cannot be told written to the breakpoint as
+    /// <paramref name="named"/> having stopped; <paramref name="reached"/> said where it neither logs nor stops. Whether the
+    /// hit stops the program.</summary>
+    private Task<bool> HitStopsAsync(ICorDebugThread thread, IHitBreakpoint breakpoint, string named, Func<string> reached) => BreakpointHits.StopsAsync(breakpoint, new HitReading
     {
-        T?[] kept = new T?[requests.Count];
-        for (int i = 0; i < requests.Count; i++)
-        {
-            kept[i] = set.FirstOrDefault(b => EqualityComparer<TRequest>.Default.Equals(requestOf(b), requests[i]) && !kept.Contains(b));
-        }
-        gone = [.. set.Where(b => !kept.Contains(b))];
-        (T? Kept, int Hits)[] matched = new (T?, int)[requests.Count];
-        for (int i = 0; i < requests.Count; i++)
-        {
-            TRequest request = requests[i];
-            matched[i] = (kept[i], kept[i] is null && gone.FirstOrDefault(b => requestOf(b) is { } was && samePlace(was, request)) is { } replaced ? replaced.HitCount : 0);
-        }
-        return matched;
-    }
+        Named = named,
+        Holds = condition => EvaluateBreakpointCondition(thread, condition),
+        Logged = async message => (await RenderDebuggerDisplayAsync(message, null, new ThreadId(thread.Id), new FrameStackDepth(0), 0)).Text,
+        Reached = reached,
+        Say = line => OnConsole?.Invoke($"{line}\n"),
+        Told = Told,
+        Log = _logger,
+    });
 
-    /// <summary>A hit of a breakpoint of any kind, counted, then tried by its hit count and condition (one that cannot be
-    /// told goes on, written to the breakpoint as <paramref name="named"/> having stopped); its message is logged, or
-    /// <paramref name="reached"/> where it neither logs nor stops. Whether the hit stops the program.</summary>
-    private async Task<bool> HitStopsAsync(ICorDebugThread thread, IHitBreakpoint breakpoint, string named, Func<string> reached)
+    /// <summary>A breakpoint's message changed at a hit, told as its kind tells one.</summary>
+    private void Told(IHitBreakpoint breakpoint)
     {
-        breakpoint.HitCount++;
-        if (breakpoint.HitCondition is { } hits && !EvaluateHitCondition(breakpoint.HitCount, hits))
+        if (breakpoint is BreakpointManager.BreakpointInfo located)
         {
-            _logger?.Invoke($"Breakpoint {breakpoint.Id}: hit count not met: count={breakpoint.HitCount}, condition={hits}");
-            return false;
+            OnBreakpointChanged?.Invoke(located);
         }
-        if (breakpoint.Condition is { } condition)
+        else if (breakpoint.Message is { } message)
         {
-            (bool holds, string? error) = await EvaluateBreakpointCondition(thread, condition);
-            if (error is not null)
-            {
-                string message = $"{Passenger.Dap.BreakpointConditions.NotEvaluated(condition)}, so {named} stopped: {error}";
-                breakpoint.Message = message;
-                if (breakpoint is BreakpointManager.BreakpointInfo located)
-                {
-                    OnBreakpointChanged?.Invoke(located);
-                }
-                else
-                {
-                    OnBreakpointMessage?.Invoke(breakpoint.Id, message);
-                }
-                OnConsole?.Invoke($"{message}\n");
-            }
-            else if (!holds)
-            {
-                _logger?.Invoke($"Breakpoint {breakpoint.Id}: condition not met: {condition}");
-                return false;
-            }
+            OnBreakpointMessage?.Invoke(breakpoint.Id, message);
         }
-        if (breakpoint.LogMessage is { } logMessage)
-        {
-            (string text, _, _) = await RenderDebuggerDisplayAsync(logMessage, null, new ThreadId(thread.Id), new FrameStackDepth(0), 0);
-            OnConsole?.Invoke($"{text}\n");
-        }
-        else if (!breakpoint.Suspend)
-        {
-            OnConsole?.Invoke($"{reached()}\n");
-        }
-        return breakpoint.Suspend;
     }
 
     /// <summary>Whether a breakpoint's condition holds, or why it could not be told: a condition that does not evaluate
     /// (an unknown name, a throw) or is not a bool. Such a breakpoint stops, with the reason, rather than going missing
     /// unseen.</summary>
-    private async Task<(bool Holds, string? Error)> EvaluateBreakpointCondition(ICorDebugThread corThread, string condition)
+    private async Task<ConditionRead> EvaluateBreakpointCondition(ICorDebugThread corThread, string condition)
     {
         try
         {
@@ -130,23 +79,18 @@ public partial class ManagedDebugger
             if (result.Error is not null)
             {
                 _logger?.Invoke($"Condition evaluation error for '{condition}': {result.Error}");
-                return (true, result.Error);
+                return new ConditionRead(true, result.Error);
             }
             if (result.Value?.UnwrapDebugValue() is not ICorDebugGenericValue { Type: CorElementType.BOOLEAN } holds)
             {
-                return (true, "it is not a bool");
+                return new ConditionRead(true, "it is not a bool");
             }
-            return (holds.GetValueAsBytes()[0] != 0, null);
+            return new ConditionRead(holds.GetValueAsBytes()[0] != 0);
         }
         catch (Exception ex)
         {
             _logger?.Invoke($"Exception evaluating condition '{condition}': {ex}");
-            return (true, ex.Message);
+            return new ConditionRead(true, ex.Message);
         }
     }
-
-    /// <summary>Whether a breakpoint stops on this hit of it. One whose hit count cannot be read was refused when set, so
-    /// it is never bound to be hit.</summary>
-    private static bool EvaluateHitCondition(int hitCount, string hitCondition) =>
-        Passenger.Dap.HitCondition.TryParse(hitCondition, out Passenger.Dap.HitCondition condition, out _) && condition.IsMet(hitCount);
 }
