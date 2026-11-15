@@ -154,7 +154,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   a file handed to git for one call (a commit's message, a private index, the data Passenger's gpg signs: `CommitFile.Signed`, beside the operation's socket, deleted at its end) `CommitFile`, never `GetTempFileName` and a replace; any other whole file `AtomicFile.Write`, a written file put in another's place `AtomicFile.Move`, never `File.Move(…, overwrite: true)` (PSG0009), a file that may be a link (a shell's startup file) written to the file it
   names (`AtomicFile.Target`); a state file only the person may read `OwnFiles`; never `File.WriteAll*`. An open
   project, solution, filter, nuget.config or Directory.Packages.props is saved before Passenger writes it and loaded
-  after (`SaveBeforeWriting`). Server edits pass `LineEndings.Fit` then `Indentation.Fit`.
+  after (`SaveBeforeWriting`). Server edits pass `LineEndings.Fit` then `Indentation.Fit`. A formatter of Passenger's own that writes the file's indentation passes `LineEndings.Fit` alone (`GherkinAssist.LineEdits`); a closed file with no line break yet takes its .editorconfig's end_of_line (`WorkspaceEdits.Edited`).
 - **A change of several files, or a move, is one command of global undo** (`EditorArea.Commands.Record`; `RecordWrites`
   for one that waits between writes; moves through `Recording.Move`, never a bare `EditorArea.MoveFile`; deletes kept).
   A closed file changes through `Recording.Change`, written off the window's thread, every write of closed files in turn
