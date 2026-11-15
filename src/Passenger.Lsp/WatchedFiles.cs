@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Passenger.Core;
 using Passenger.Roslyn.Extension;
@@ -30,15 +31,16 @@ public sealed class WatchedFiles
     private static TimeSpan UnreadLimit => Waits.Of(TimeSpan.FromSeconds(15));
 
     /// <summary>The files heard changed on disk, told the server or about to be, that no command has yet seen it hold as the
-    /// disk has them: each with the number of its latest change heard, and when the server was first found holding it otherwise.</summary>
-    private readonly Dictionary<string, (long Heard, DateTime? Unread)> changing = new(PathNames.Comparer);
+    /// disk has them: each with the number of its latest change heard, and when the server was first found holding it otherwise
+    /// (a timestamp of Stopwatch's).</summary>
+    private readonly Dictionary<string, (long Heard, long? Unread)> changing = new(PathNames.Comparer);
 
     /// <summary>The number of the latest change heard (<see cref="changing"/>).</summary>
     private long heard;
 
-    /// <summary>When the server was last told of each file's change, as far back as <see cref="KeptLimit"/> files: for what a
-    /// command that waited out its time says of the files it waited for.</summary>
-    private readonly Dictionary<string, DateTime> told = new(PathNames.Comparer);
+    /// <summary>When the server was last told of each file's change (a timestamp of Stopwatch's), as far back as
+    /// <see cref="KeptLimit"/> files: for what a command that waited out its time says of the files it waited for.</summary>
+    private readonly Dictionary<string, long> told = new(PathNames.Comparer);
 
     /// <summary>Whether changed files were let go past <see cref="KeptLimit"/>, said once until they are fewer.</summary>
     private bool changesOverflowed;
@@ -196,13 +198,13 @@ public sealed class WatchedFiles
         }
     }
 
-    /// <summary>When the server was last told a file changed on disk; null when it was not since it started, or too many
-    /// files ago.</summary>
-    public DateTime? ToldAt(string path)
+    /// <summary>When the server was last told a file changed on disk, a timestamp of Stopwatch's; null when it was not since
+    /// it started, or too many files ago.</summary>
+    public long? ToldAt(string path)
     {
         lock (gate)
         {
-            return told.TryGetValue(path, out DateTime at) ? at : null;
+            return told.TryGetValue(path, out long at) ? at : null;
         }
     }
 
@@ -213,12 +215,12 @@ public sealed class WatchedFiles
     {
         HashSet<string> waited = new(behind, PathNames.Comparer);
         HashSet<string> notRead = new(unread, PathNames.Comparer);
-        DateTime now = DateTime.UtcNow;
+        long now = Stopwatch.GetTimestamp();
         lock (gate)
         {
             foreach (string path in asked)
             {
-                if (!changing.TryGetValue(path, out (long Heard, DateTime? Unread) change) || change.Heard > asOf)
+                if (!changing.TryGetValue(path, out (long Heard, long? Unread) change) || change.Heard > asOf)
                 {
                     continue;
                 }
@@ -226,7 +228,7 @@ public sealed class WatchedFiles
                 {
                     changing.Remove(path);
                 }
-                else if (notRead.Contains(path) && change.Unread is { } first && now - first > UnreadLimit)
+                else if (notRead.Contains(path) && change.Unread is { } first && Stopwatch.GetElapsedTime(first, now) > UnreadLimit)
                 {
                     changing.Remove(path);
                     server.Note($"The server still held {path} otherwise than the disk {UnreadLimit.TotalSeconds:0} s after it was first found so: "
@@ -370,7 +372,7 @@ public sealed class WatchedFiles
         {
             told.Clear();
         }
-        DateTime now = DateTime.UtcNow;
+        long now = Stopwatch.GetTimestamp();
         foreach (FileEvent change in changes)
         {
             Heard(change.Path);

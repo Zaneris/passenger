@@ -29,6 +29,8 @@ internal sealed class UndoEntry
     public EditKind Kind { get; }
     public SelectionSet SelectionsBefore { get; }
     public SelectionSet SelectionsAfter { get; private set; }
+
+    /// <summary>When its last key was, a timestamp of Stopwatch's.</summary>
     public long Time { get; private set; }
 
     /// <summary>Sorted and apart, in the text before the step; two at one place only as an insertion and then the edit

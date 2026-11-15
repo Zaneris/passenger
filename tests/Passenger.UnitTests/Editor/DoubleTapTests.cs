@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia.Input;
 using Passenger.Editor;
 
@@ -32,7 +33,7 @@ public class DoubleTapTests
     public void A_modifier_tapped_twice_within_half_a_second_runs_its_action_and_nothing_between_or_slower_does()
     {
         long now = 0;
-        KeymapDispatcher keys = new(new Keymap("taps").Bind(Search, "shift , shift").Bind("letter", "control A"), () => now);
+        KeymapDispatcher keys = new(new Keymap("taps").Bind(Search, "shift , shift").Bind("letter", "control A"), () => now * Stopwatch.Frequency / 1000);
         string? Down(Key key, KeyModifiers held) => keys.Press(new KeyEventArgs { Key = key, KeyModifiers = held }, out _, out _);
         void Up(Key key) => keys.Release(new KeyEventArgs { Key = key, KeyModifiers = KeyModifiers.None });
         string? Tap(Key key = Key.LeftShift)

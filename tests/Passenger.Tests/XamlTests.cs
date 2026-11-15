@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -1892,10 +1893,10 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         string xaml = PathNames.Canonical(app.PathOf("MainWindow.axaml"));
         IReadOnlyList<Passenger.Roslyn.Extension.TextHeld> held = Ui.Await(session.HeldTextsAsync([xaml]), "the language server's text of MainWindow.axaml");
         bool asOnDisk = held is [{ Hash: { } hash }] && Passenger.Lsp.HeldTexts.OnDisk(xaml, hash) == true;
-        DateTime? told = session.Server.WatchedFiles.ToldAt(xaml);
+        long? told = session.Server.WatchedFiles.ToldAt(xaml);
         Assert.True(asOnDisk && told is null,
             $"The language server started for the test {(asOnDisk ? "holds MainWindow.axaml as on disk" : "holds MainWindow.axaml otherwise than the disk, or no document of it")} "
-            + $"and {(told is { } at ? $"was told of a change of it {(DateTime.UtcNow - at).TotalSeconds:0.00} s ago" : "was told of no change of it")}, so it may read the XAML "
+            + $"and {(told is { } at ? $"was told of a change of it {Stopwatch.GetElapsedTime(at).TotalSeconds:0.00} s ago" : "was told of no change of it")}, so it may read the XAML "
             + "the test writes with no word of the write, leaving the rename nothing to wait for");
         return window;
     }

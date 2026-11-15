@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
@@ -666,6 +667,9 @@ public sealed class Asked(Dictionary<OpenDocument, ChangeTracker> trackers) : ID
     /// the server answered for as it was (<see cref="WorkspaceEdits.StaleAsync"/>).</summary>
     public DateTime Since { get; } = DateTime.UtcNow;
 
+    /// <summary>The same moment as a timestamp of Stopwatch's, to measure the IDE's own moments from.</summary>
+    public long Sent { get; } = Stopwatch.GetTimestamp();
+
     public void Dispose()
     {
         foreach (ChangeTracker tracker in trackers.Values)
@@ -784,8 +788,9 @@ public sealed class Patience
     internal static string Told(IEnumerable<string> paths, WatchedFiles? watched)
     {
         DateTime now = DateTime.UtcNow;
+        long stamp = Stopwatch.GetTimestamp();
         return string.Join("; ", paths.Select(p => $"{Path.GetFileName(p)}, {(File.Exists(p) ? $"written {(now - File.GetLastWriteTimeUtc(p)).TotalSeconds:0.00} s before" : "deleted")}, "
-            + (watched?.ToldAt(p) is { } at ? $"its change told the server {(now - at).TotalSeconds:0.00} s before" : "no change of it told the server since it started")));
+            + (watched?.ToldAt(p) is { } at ? $"its change told the server {Stopwatch.GetElapsedTime(at, stamp).TotalSeconds:0.00} s before" : "no change of it told the server since it started")));
     }
 
     /// <summary>Waits until the server holds each file behind as the disk has it, unwritten while it was read, and none

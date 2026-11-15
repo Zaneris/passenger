@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Passenger.App.Editors;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
@@ -572,7 +573,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             // Each file read off the window's thread, as files of any size may have been written.
             files = await BackgroundWork.Run(() => string.Join("; ", held.Select(t => $"{Path.GetFileName(t.Path)} {(asked.Since - File.GetLastWriteTimeUtc(t.Path)).TotalSeconds:0.00} s before, "
                 + (t.Hash is { } hash && HeldTexts.OnDisk(t.Path, hash) == true ? "held as on disk" : "held otherwise")
-                + (session.Server.WatchedFiles.ToldAt(t.Path) is { } told ? $", told {(asked.Since - told).TotalSeconds:0.00} s before" : ", never told"))));
+                + (session.Server.WatchedFiles.ToldAt(t.Path) is { } told ? $", told {Stopwatch.GetElapsedTime(told, asked.Sent).TotalSeconds:0.00} s before" : ", never told"))));
         }
         catch (LanguageServerFailed failed)
         {

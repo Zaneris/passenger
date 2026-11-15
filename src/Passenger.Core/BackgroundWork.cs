@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Passenger.Core;
@@ -39,7 +40,7 @@ public static class BackgroundWork
                 {
                     Begun[file] = lines = [];
                 }
-                lines.Add((line, DateTime.UtcNow.Ticks));
+                lines.Add((line, Stopwatch.GetTimestamp()));
             }
         }
     }
@@ -62,16 +63,17 @@ public static class BackgroundWork
         }
     }
 
-    /// <summary>Each hold now, as named while watched: the file and line that took it and when (UTC), the oldest first;
-    /// the count is <see cref="Pending"/>'s, the names as near as an End that names only its file lets them be.</summary>
-    public static IReadOnlyList<(string What, DateTime Since)> Held()
+    /// <summary>Each hold now, as named while watched: the file and line that took it and when (a timestamp of Stopwatch's),
+    /// the oldest first; the count is <see cref="Pending"/>'s, the names as near as an End that names only its file lets them
+    /// be.</summary>
+    public static IReadOnlyList<(string What, long Since)> Held()
     {
         lock (Scopes)
         {
             return [.. Scopes.Select(s => (s.Where, s.Since))
                 .Concat(Begun.SelectMany(b => b.Value.Select(l => (Where: $"{Path.GetFileName(b.Key)}:{l.Line}", l.Since))))
                 .OrderBy(h => h.Since)
-                .Select(h => ($"background work begun at {h.Where}", new DateTime(h.Since, DateTimeKind.Utc)))];
+                .Select(h => ($"background work begun at {h.Where}", h.Since))];
         }
     }
 
@@ -267,7 +269,7 @@ public static class BackgroundWork
     {
         private int ended;
 
-        public long Since { get; } = InFlight.Watched ? DateTime.UtcNow.Ticks : 0;
+        public long Since { get; } = InFlight.Watched ? Stopwatch.GetTimestamp() : 0;
 
         public string Where => $"{Path.GetFileName(file)}:{line}";
 

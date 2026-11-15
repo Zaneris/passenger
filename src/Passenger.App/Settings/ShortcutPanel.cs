@@ -153,7 +153,7 @@ public sealed class StrokeField : TextBox
         {
             return;
         }
-        if (tapped is { } tap && tap.Stroke == alone && Stopwatch.GetElapsedTime(tap.At) <= TimeSpan.FromMilliseconds(KeymapDispatcher.DoubleTapMs))
+        if (tapped is { } tap && tap.Stroke == alone && Stopwatch.GetElapsedTime(tap.At) <= KeymapDispatcher.DoubleTap)
         {
             tapped = null;
             Stroke = alone;

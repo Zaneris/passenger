@@ -1,12 +1,13 @@
+using System.Diagnostics;
 using System.Globalization;
 
 namespace Passenger.Core;
 
 /// <summary>Work under way that no frame of the window's waits for and a test's quiet wait does: a language server's
 /// request still unanswered, a state file's write still queued. Recorded only while <see cref="Watched"/>, so the IDE
-/// itself pays nothing for it. Each piece is named, with when it began, for a wait that gives up to say what was still
-/// busy. What is busy for as long as it runs, by design (a pull held open until the next change, a program still
-/// running), is never entered here.</summary>
+/// itself pays nothing for it. Each piece is named, with when it began on Stopwatch's clock, for a wait that gives up to
+/// say what was still busy and for how long. What is busy for as long as it runs, by design (a pull held open until the
+/// next change, a program still running), is never entered here.</summary>
 public static class InFlight
 {
     private static readonly object Gate = new();
@@ -31,7 +32,7 @@ public static class InFlight
         {
             return Nothing;
         }
-        Piece piece = new(what, of, DateTime.UtcNow.Ticks);
+        Piece piece = new(what, of, Stopwatch.GetTimestamp());
         lock (Gate)
         {
             Pieces.Add(piece);
@@ -40,12 +41,12 @@ public static class InFlight
         return piece;
     }
 
-    /// <summary>What is in flight now, the oldest first, each with when it began (UTC).</summary>
-    public static IReadOnlyList<(string What, DateTime Since)> Now()
+    /// <summary>What is in flight now, the oldest first, each with when it began (a timestamp of Stopwatch's).</summary>
+    public static IReadOnlyList<(string What, long Since)> Now()
     {
         lock (Gate)
         {
-            return [.. Pieces.OrderBy(p => p.Since).Select(p => (p.Name, new DateTime(p.Since, DateTimeKind.Utc)))];
+            return [.. Pieces.OrderBy(p => p.Since).Select(p => (p.Name, p.Since))];
         }
     }
 
@@ -60,10 +61,17 @@ public static class InFlight
         }
     }
 
-    /// <summary>A line for each piece of busy work, its age at <paramref name="now"/> and the time it began, as a wait that
-    /// gives up says it.</summary>
-    public static string Describe(IEnumerable<(string What, DateTime Since)> busy, DateTime now) => string.Join('\n', busy.Select(b =>
-        $"  {b.What}, for {(now - b.Since).TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)} s (since {b.Since.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)})"));
+    /// <summary>A line for each piece of busy work, its age at <paramref name="now"/> (timestamps of Stopwatch's) and the
+    /// time of day it began, as a wait that gives up says it.</summary>
+    public static string Describe(IEnumerable<(string What, long Since)> busy, long now)
+    {
+        DateTime clock = DateTime.Now;
+        return string.Join('\n', busy.Select(b =>
+        {
+            TimeSpan age = Stopwatch.GetElapsedTime(b.Since, now);
+            return $"  {b.What}, for {age.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)} s (since {(clock - age).ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)})";
+        }));
+    }
 
     private sealed class Piece(string what, string? of, long since) : IDisposable
     {

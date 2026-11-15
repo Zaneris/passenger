@@ -4,30 +4,38 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Passenger.Tests;
 
-/// <summary>A wait the App bounds, and any time it measures from or to a moment of its own, is on Stopwatch's clock (Core's
-/// Deadline, Stopwatch.GetElapsedTime), which stops while the machine sleeps: never on the wall clock (DateTime.UtcNow),
-/// which runs on through a sleep and is set back and forth, nor on Environment.TickCount64. The wall clock is read for a
-/// moment shown or kept, or set against a file's or another program's time. A time is measured where one of the code's own
-/// moments of the wall clock is set against the clock read now; a moment is followed by what holds it in the same file (a
-/// local, a field, a pattern's or an out variable, a dictionary's value), the way the App's waits are written.</summary>
+/// <summary>A wait Passenger's code bounds, and any time it measures from or to a moment of its own, is on Stopwatch's clock
+/// (Core's Deadline, Stopwatch.GetElapsedTime), which stops while the machine sleeps: never on the wall clock
+/// (DateTime.UtcNow), which runs on through a sleep and is set back and forth, nor on Environment.TickCount64. The wall clock
+/// is read for a moment shown or kept, or set against a file's or another program's time. A time is measured where one of
+/// the code's own moments of the wall clock is set against the clock read now; a moment is followed by what holds it in the
+/// same file (a local, a field, a pattern's, an out or a lambda's variable, a list's item or a dictionary's value), the way
+/// the code's waits are written.</summary>
 [Collection(Beside.Name)]
 public sealed class WallClockTests
 {
+    /// <summary>The reads of the tick count that are another program's time, by file: the input events the WPF inspector
+    /// raises are stamped as WPF stamps its own.</summary>
+    private static readonly Dictionary<string, string> TheirTicks = new(StringComparer.Ordinal)
+    {
+        ["src/Passenger.Inspector.Wpf/Driver.cs"] = "Environment.TickCount",
+    };
+
     [Fact]
-    public void No_wait_or_time_between_the_Apps_own_moments_is_measured_on_the_wall_clock()
+    public void No_wait_or_time_between_Passengers_own_moments_is_measured_on_the_wall_clock()
     {
         string root = Debugging.Helpers.Debuggees.Root;
         List<string> found = [];
-        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src", "Passenger.App"), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
             if (relative.Contains("/obj/", StringComparison.Ordinal) || relative.Contains("/bin/", StringComparison.Ordinal))
             {
                 continue;
             }
-            found.AddRange(Measured(File.ReadAllText(file)).Select(at => $"{relative}:{at.Line}: {at.Code}"));
+            found.AddRange(Measured(File.ReadAllText(file)).Where(at => TheirTicks.GetValueOrDefault(relative) != at.Code).Select(at => $"{relative}:{at.Line}: {at.Code}"));
         }
-        Assert.True(found.Count == 0, $"{found.Count} times between the App's own moments are measured on the wall clock, so a wait under way as the "
+        Assert.True(found.Count == 0, $"{found.Count} times between Passenger's own moments are measured on the wall clock, so a wait under way as the "
             + "machine sleeps gives up at once as it wakes, and one the clock is set back under lasts that much longer: measure each on Stopwatch's "
             + $"clock (Deadline, Stopwatch.GetElapsedTime):\n{string.Join("\n", found)}");
     }
@@ -64,10 +72,17 @@ public sealed class WallClockTests
                     DateTime now = DateTime.UtcNow;
                     bool quiet = now - first > limit;
                     DateTime later = until > ends ? until : ends;
+                    List<DateTime> restarts = [];
+                    restarts.Add(now);
+                    restarts.RemoveAll(then => now - then > limit);
+                    foreach (DateTime restart in restarts) { bool recent = DateTime.UtcNow - restart < limit; }
+                    List<DateTime> writes = [];
+                    writes.Add(File.GetLastWriteTimeUtc(path));
+                    bool fresh = writes.Exists(w => DateTime.UtcNow - w < limit);
                 }
             }
             """;
-        Assert.Equal([10, 11, 13, 14, 15, 17, 18, 27], Measured(Code).Select(at => at.Line));
+        Assert.Equal([10, 11, 13, 14, 15, 17, 18, 27, 31, 32], Measured(Code).Select(at => at.Line));
     }
 
     /// <summary>Where <paramref name="code"/> sets one of its own moments of the wall clock against the clock read now, or
@@ -97,7 +112,7 @@ public sealed class WallClockTests
     }
 
     /// <summary>The names in the code that hold a moment of the wall clock read in it, followed through each other and the
-    /// dictionaries whose values hold one until no more come.</summary>
+    /// lists and dictionaries that hold one, their items read by a loop, a lambda or an out variable, until no more come.</summary>
     private static HashSet<string> Followed(SyntaxNode root)
     {
         HashSet<string> moments = new(StringComparer.Ordinal);
@@ -134,8 +149,19 @@ public sealed class WallClockTests
                         moments.UnionWith(asked.ArgumentList.Arguments.Select(a => a.Expression).OfType<DeclarationExpressionSyntax>()
                             .SelectMany(d => d.Designation.DescendantNodesAndSelf().OfType<SingleVariableDesignationSyntax>()).Select(v => v.Identifier.ValueText));
                         break;
+                    case InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Add" or "Insert" or "Enqueue" or "Push" } call, ArgumentList.Arguments: [.., { } item] }
+                        when IsMoment(item.Expression, moments) && NameOf(call.Expression) is { } list:
+                        stores.Add(list);
+                        break;
                     case ForEachVariableStatementSyntax each when NameOf(each.Expression) is { } dictionary && stores.Contains(dictionary):
                         moments.UnionWith(each.Variable.DescendantNodesAndSelf().OfType<SingleVariableDesignationSyntax>().Select(v => v.Identifier.ValueText));
+                        break;
+                    case ForEachStatementSyntax each when NameOf(each.Expression) is { } list && stores.Contains(list):
+                        moments.Add(each.Identifier.ValueText);
+                        break;
+                    case SimpleLambdaExpressionSyntax lambda when lambda.Parent is ArgumentSyntax { Parent.Parent: InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax read } }
+                        && NameOf(read.Expression) is { } list && stores.Contains(list):
+                        moments.Add(lambda.Parameter.Identifier.ValueText);
                         break;
                 }
             }

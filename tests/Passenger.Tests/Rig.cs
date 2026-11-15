@@ -1064,9 +1064,9 @@ public static class Ui
     /// piece of work in flight, with how long it had been under way.</summary>
     public static string Busy()
     {
-        DateTime now = DateTime.UtcNow;
-        IReadOnlyList<(string What, DateTime Since)> held = BackgroundWork.Held();
-        IReadOnlyList<(string What, DateTime Since)> flying = Passenger.Core.InFlight.Now();
+        long now = Stopwatch.GetTimestamp();
+        IReadOnlyList<(string What, long Since)> held = BackgroundWork.Held();
+        IReadOnlyList<(string What, long Since)> flying = Passenger.Core.InFlight.Now();
         int unnamed = BackgroundWork.Pending - held.Count;
         string busy = Passenger.Core.InFlight.Describe(held.Concat(flying).OrderBy(b => b.Since), now);
         return (busy.Length == 0 && unnamed <= 0 ? "  nothing named" : busy)

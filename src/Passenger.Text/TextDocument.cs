@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Passenger.Text;
 
 /// <summary>Where a document's text was saved: the text then and its place in the history.</summary>
@@ -170,7 +172,7 @@ public sealed class TextDocument
         TextSnapshot after = before.Apply(sorted);
 
         DropRedo();
-        long now = Environment.TickCount64;
+        long now = Stopwatch.GetTimestamp();
         if (undo.Count > 0 && Continues(undo[^1], kind, selectionsBefore, sorted, now))
         {
             UndoEntry last = undo[^1];
@@ -204,7 +206,7 @@ public sealed class TextDocument
         TextSnapshot before = Snapshot;
         string[] removed = Removed(before, sorted);
         DropRedo();
-        Keep(new UndoEntry(++lastId, EditKind.Other, Carried(selectionsBefore), selectionsAfter, Environment.TickCount64, sorted, removed)
+        Keep(new UndoEntry(++lastId, EditKind.Other, Carried(selectionsBefore), selectionsAfter, Stopwatch.GetTimestamp(), sorted, removed)
         {
             Undone = undone,
             Redone = redone,
@@ -475,7 +477,7 @@ public sealed class TextDocument
 
     private bool Continues(UndoEntry last, EditKind kind, SelectionSet selectionsBefore, TextEdit[] edits, long now)
     {
-        if (mergeBroken || kind == EditKind.Other || last.Kind != kind || (kind != EditKind.Joined && now - last.Time > MergeWindow.TotalMilliseconds))
+        if (mergeBroken || kind == EditKind.Other || last.Kind != kind || (kind != EditKind.Joined && Stopwatch.GetElapsedTime(last.Time, now) > MergeWindow))
         {
             return false;
         }

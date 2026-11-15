@@ -142,10 +142,10 @@ public static class HeldStart
     public static async Task<PortWait> AtPortAsync(Process process, Func<DiagnosticsClient, Task> ask, CancellationToken stop = default, Task? answered = null,
         bool sinceItStarted = false, TimeSpan? within = null)
     {
-        DateTime until = (sinceItStarted ? StartOf(process) : DateTime.UtcNow) + PortLimit;
-        if (within is { } given && DateTime.UtcNow + given < until)
+        Deadline until = Deadline.In(PortLimit - (sinceItStarted ? Age(process) : TimeSpan.Zero));
+        if (within is { } given && Deadline.In(given) is { } sooner && sooner.At < until.At)
         {
-            until = DateTime.UtcNow + given;
+            until = sooner;
         }
         while (true)
         {
@@ -170,7 +170,7 @@ public static class HeldStart
             {
                 return PortWait.Ended;
             }
-            if (DateTime.UtcNow >= until)
+            if (until.Passed)
             {
                 return PortWait.NoPort;
             }
@@ -182,16 +182,17 @@ public static class HeldStart
     /// one that does not exist; elsewhere the client finds the socket at once, with no list of published processes made.</summary>
     private static bool Listed(int processId) => !OperatingSystem.IsWindows() || DiagnosticsClient.GetPublishedProcesses().Contains(processId);
 
-    /// <summary>When the process started, or now when the system will not say.</summary>
-    private static DateTime StartOf(Process process)
+    /// <summary>How long ago the process started, the system's start time set against the wall clock; none when the system
+    /// will not say.</summary>
+    private static TimeSpan Age(Process process)
     {
         try
         {
-            return process.StartTime.ToUniversalTime();
+            return DateTime.UtcNow - process.StartTime.ToUniversalTime();
         }
         catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
         {
-            return DateTime.UtcNow;
+            return TimeSpan.Zero;
         }
     }
 
