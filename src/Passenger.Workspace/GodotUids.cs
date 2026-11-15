@@ -8,10 +8,8 @@ namespace Passenger.Workspace;
 /// <c>.import</c> file beside an imported one, and in the cache Godot's editor writes of them all
 /// (<c>.godot/uid_cache.bin</c>: a count, then each entry's 64-bit id, its path's length and its UTF-8 path). An id is
 /// written as Godot writes it, in base 34 of the letters a to y and the digits 0 to 8. Pure.</summary>
-public static class GodotUids
+public static partial class GodotUids
 {
-    public const string Scheme = "uid://";
-
     /// <summary>The cache's file under a project's folder.</summary>
     public static readonly string CacheFile = Path.Combine(".godot", "uid_cache.bin");
 

@@ -24,14 +24,16 @@
     <Compile Include="../Passenger.Core/DeepText.cs" Link="DeepText.cs" />
     <Compile Include="../Passenger.Core/Brackets.Code.cs" Link="Brackets.Code.cs" />
     <Compile Include="../Passenger.Languages/CSharp/CodeBrackets.cs" Link="CodeBrackets.cs" />
-    <!-- Godot's Variant types by name and number, as the rest of Passenger reads them. -->
+    <!-- Godot's Variant types by name and number, and its paths' schemes, as the rest of Passenger reads them. -->
     <Compile Include="../Passenger.Workspace/GodotTypes.cs" Link="GodotTypes.cs" />
+    <Compile Include="../Passenger.Workspace/GodotSchemes.cs" Link="GodotSchemes.cs" />
     <!-- The names GodotSharp's engine classes give their members, read from its IL as the rest of Passenger reads them. -->
     <Compile Include="../Passenger.Workspace/GodotSharpIl.cs" Link="GodotSharpIl.cs" />
     <!-- The names the MVVM Toolkit's generators give, as Passenger's XAML reads them. -->
     <Compile Include="../Passenger.Xaml/Metadata/ToolkitNames.cs" Link="ToolkitNames.cs" />
     <!-- MAUI's expressions in XAML read as its source generator reads them, as Passenger's XAML reads them. -->
     <Compile Include="../Passenger.Xaml/Dialects/MauiExpressionCode.cs" Link="MauiExpressionCode.cs" />
+    <Compile Include="../Passenger.Core/Sorted.cs" Link="Sorted.cs" />
     <Compile Include="../Passenger.Text/XmlEntities.cs" Link="XmlEntities.cs" />
   </ItemGroup>
 

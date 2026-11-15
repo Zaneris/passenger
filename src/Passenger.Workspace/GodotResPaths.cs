@@ -5,10 +5,8 @@ namespace Passenger.Workspace;
 
 /// <summary>Godot's <c>res://</c> paths of a project's files: a file's path made from the project's folder, the file a path
 /// names there, and the path a file writes resolved as Godot resolves it. Pure.</summary>
-public static class GodotResPaths
+public static partial class GodotResPaths
 {
-    public const string Scheme = "res://";
-
     /// <summary>The res:// path of a file under a Godot project's folder; null outside it, or for the folder itself.</summary>
     public static string? Of(string project, string file) =>
         PathNames.IsUnder(file, project) ? Scheme + Path.GetRelativePath(project, file).Replace('\\', '/') : null;

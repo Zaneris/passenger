@@ -47,7 +47,7 @@ internal static partial class GodotSource
         }
         List<GodotNodeCall> calls = [.. Calls(root, model, declared, engine, text, cancel)];
         List<GodotPathRead> resources = [.. root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken)
-                && (t.ValueText.StartsWith("res://", StringComparison.Ordinal) || t.ValueText.StartsWith("uid://", StringComparison.Ordinal)))
+                && (t.ValueText.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) || t.ValueText.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)))
             .Select(t => Exact(t) ? new GodotPathRead(t.ValueText, PlaceAt(text, t.SpanStart + 1), PlaceAt(text, t.Span.End - 1))
                 : new GodotPathRead(t.ValueText, PlaceAt(text, t.SpanStart), PlaceAt(text, t.Span.End)))];
         List<GodotChain> chains = [.. asked.Engine.Distinct(StringComparer.Ordinal).Select(name => engine.Type(name) is { } type

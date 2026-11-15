@@ -161,7 +161,7 @@ public sealed class MauiXamlChecks : IExtensionWorkspaceMessageHandler<MauiCheck
             {
                 continue;
             }
-            checks.Add(new MauiCheck(-1, new Place(place.StartLinePosition.Line, place.StartLinePosition.Character), 0, 0,
+            checks.Add(new MauiCheck(-1, SyntaxReads.PlaceOf(place.StartLinePosition), 0, 0,
                 diagnostic.Severity == DiagnosticSeverity.Error, diagnostic.Id, diagnostic.GetMessage(CultureInfo.InvariantCulture)));
         }
         if (message.Expressions.Count > 0 && await MauiExpressionDocument.MakeAsync(project, message.Expressions, null, cancellationToken).ConfigureAwait(false) is { } made

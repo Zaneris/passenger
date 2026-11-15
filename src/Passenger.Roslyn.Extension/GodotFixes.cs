@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.Formatting;
+using Passenger.Workspace;
 using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
@@ -182,7 +183,7 @@ internal static partial class GodotSource
         {
             return null;
         }
-        if (godot.StartsWith("res://", StringComparison.Ordinal))
+        if (godot.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal))
         {
             return ScriptClass(compilation, godot, cancel);
         }

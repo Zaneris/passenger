@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Xaml.Dialects;
@@ -33,25 +34,9 @@ public sealed class MauiExpressionCode
     /// <summary>Where in the value a place of the code is written.</summary>
     public int WrittenAt(int code) => written[Math.Clamp(code, 0, written.Length - 1)];
 
-    /// <summary>The place in the code a place in the value comes to: the first character written there or after it.</summary>
-    public int CodeAt(int value)
-    {
-        int low = 0;
-        int high = written.Length - 1;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (written[middle] < value)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
-    }
+    /// <summary>The place in the code a place in the value comes to: the first character written there or after it, else
+    /// the code's end.</summary>
+    public int CodeAt(int value) => Sorted.FirstAtOrAfter(written.AsSpan(0, written.Length - 1), value);
 
     /// <summary>The code of a value that opens with a brace (a markup extension's or an expression's), as written between
     /// its quotes, a type named by its XAML prefix (<c>local:Helper</c>) written as <paramref name="types"/> names it in C#

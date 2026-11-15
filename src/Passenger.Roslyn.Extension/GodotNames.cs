@@ -245,7 +245,7 @@ internal static class GodotGenerated
                 }
                 SourceText? text = null;
                 foreach (SyntaxToken token in root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken) && Exact(t)
-                    && t.ValueText.StartsWith("res://", StringComparison.Ordinal) && asked.Paths.Any(p => Names(p, t.ValueText))))
+                    && t.ValueText.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && asked.Paths.Any(p => Names(p, t.ValueText))))
                 {
                     if (seen.Add((path, token.SpanStart)))
                     {
