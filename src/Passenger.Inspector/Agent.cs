@@ -11,7 +11,7 @@ namespace Passenger.Inspector;
 /// thread the UI's.</summary>
 public static class Agent
 {
-    /// <summary>How often it looks for the app's UI before it is up.</summary>
+    /// <summary>How often it looks for the app's UI while the app may be setting itself up (<see cref="Looking"/>).</summary>
     private static readonly TimeSpan Look = TimeSpan.FromMilliseconds(100);
 
     /// <summary>The app as the serve loop reaches it, once the hook has started serving it.</summary>
@@ -52,13 +52,14 @@ public static class Agent
     private static Dispatcher WaitForUi(Thread main)
     {
         FieldInfo? made = typeof(Dispatcher).GetField("s_uiThread", BindingFlags.NonPublic | BindingFlags.Static);
+        using Looking looking = new(Look);
         while (true)
         {
             if ((Dispatcher.FromThread(main) ?? made?.GetValue(null) as Dispatcher) is { } dispatcher && HasApplication())
             {
                 return dispatcher;
             }
-            Thread.Sleep(Look);
+            looking.Wait();
         }
     }
 

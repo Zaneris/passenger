@@ -17,6 +17,9 @@ namespace Passenger.Inspector;
 [DebuggerNonUserCode]
 internal static partial class Bindings
 {
+    /// <summary>How often the logger is taken again while the app may be setting itself up, which sets its own sink.</summary>
+    private static readonly TimeSpan SettingUp = TimeSpan.FromMilliseconds(5);
+
     private static readonly Dictionary<string, Type?> Types = [];
     private static Connection? connection;
     private static volatile bool stopped;
@@ -44,20 +47,24 @@ internal static partial class Bindings
         }
     }
 
-    /// <summary>Takes the logger again whenever the app has set a sink of its own: quickly while the app sets itself up,
-    /// before any window binds, then now and then.</summary>
+    /// <summary>Takes the logger again whenever the app has set a sink of its own: quickly while the app may be setting itself
+    /// up, before any window binds (<see cref="Looking"/>), then now and then once its Application is up.</summary>
     private static void Watch()
     {
-        DateTime up = DateTime.MaxValue;
-        while (!stopped)
+        using (Looking looking = new(SettingUp))
         {
             Take();
-            if (up == DateTime.MaxValue && Agent.HasApplication())
+            while (!stopped && !Agent.HasApplication())
             {
-                up = DateTime.UtcNow;
+                looking.Wait();
+                Take();
             }
-            TimeSpan since = DateTime.UtcNow - up;
-            Thread.Sleep(up == DateTime.MaxValue ? 5 : since < TimeSpan.FromSeconds(10) ? 100 : 1000);
+        }
+        long up = Stopwatch.GetTimestamp();
+        while (!stopped)
+        {
+            Thread.Sleep(Stopwatch.GetElapsedTime(up) < TimeSpan.FromSeconds(10) ? 100 : 1000);
+            Take();
         }
     }
 
