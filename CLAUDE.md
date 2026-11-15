@@ -833,7 +833,7 @@ to the window's tests.
   `Bar`, `Page`, `Default`, `Cancel`, `OkCancel`, `Headed`, `Popup`) in a `Border.footerBar`; `Border.framed`;
   `Passenger.Separator`, `Passenger.Divider`; `MenuChoice` (`Holding`); `ListMenus.PlaceForKeys`; `ToolTabs.Tab`;
   `PopupFrame` (`Framed`), `popupTitle`; a popup placed through `PopupPlacement.Place` (laid out first), a card beside a list narrowed by `InfoCard.Within`; `ListRow.Height` (24); `TextBlock.emptyText`, `EmptyState`;
-  `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name), `Grey` (greyed, its tip saying why); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
+  `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name), `Grey` (greyed, its tip saying why); `ColumnTitles.Of`/`Row`/`Ruled` (a table edited in place an `EditableTable`); a form's label rows `FormRows` (`Of`, `Scope`; a `BrowseRow`'s field is the one named); `ToolBars.OverEditor`; `Banner`; `CheckRows`;
   `MutedText`; `ListKeys.Move`; `Plural.Of`/`Listed`; `Border.kindBadge`/`tag`/`box` (never a literal radius);
   `RunRows`; `ShrinkingRow.KeepsWidth` (a row's version and tags kept whole, its name cut first); `ChangedFileRow` (`Show` of a `FileChange`, every list of changed files); `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
   `ToolWindows.FilterBox`; `FilterMenu` (a list's Sort and Filter, placed in its search); `DropDownSearch` (every ComboBox's search, never per control); `ToolFlow`; `PaneSplit` (a tool window's two panes and an editor's own pane, `EditorGroup.Side`); `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
