@@ -131,17 +131,18 @@ public abstract class Updater
         return here;
     }
 
-    /// <summary>The Passengers but the agents' relays running from <paramref name="from"/>, named, for which the install of
-    /// <paramref name="version"/> waits, as the log says; null where none runs.</summary>
-    protected static string? WaitsFor(IReadOnlyList<OtherCopy> others, string version, string from)
+    /// <summary>Whether the Passengers but the agents' relays running from <paramref name="from"/> hold the install of
+    /// <paramref name="version"/> back, each named in the log and in why it did not install (<see cref="NotInstalled"/>).</summary>
+    protected bool HeldBack(IReadOnlyList<OtherCopy> others, string version, string from)
     {
         if (!others.Any(other => !other.Relay))
         {
-            return null;
+            return false;
         }
         string named = Listed(others.Where(other => !other.Relay));
         IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {from}: {named}");
-        return named;
+        NotInstalled = $"another Passenger ran from {from} ({named})";
+        return true;
     }
 
     /// <summary>Removes a folder an update made, a failure logged.</summary>

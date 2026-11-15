@@ -953,6 +953,79 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
     }
 
+    /// <summary>On Windows a Passenger running from the install's current\ holds the update back as Passenger closes, as
+    /// Update.exe would find its files in use: the update stays ready, and the next start names what held it back.</summary>
+    [AvaloniaFact]
+    [SupportedOSPlatform("windows")]
+    public void On_Windows_another_Passenger_running_from_the_install_holds_the_update_back_and_the_next_start_names_it()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Velopack's install is Windows'");
+        using IDisposable theme = TestsTheme();
+        VelopackInstall copy = new(TestFolders.Create("installed-"));
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer));
+        Updater updater = copy.Updater();
+        MainWindow window = Started(updater);
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
+
+        // Another Passenger runs from current\: a program at its executable's path there, waiting.
+        string executable = Path.Combine(copy.Current, "Passenger.exe");
+        File.Copy(Path.Combine(Environment.SystemDirectory, "PING.EXE"), executable);
+        using System.Diagnostics.Process other = ChildProcesses.Start(ChildProcesses.Command(executable, ["-n", "600", "127.0.0.1"]));
+        try
+        {
+            Assert.True(updater.Others().Any(running => running.ProcessId == other.Id),
+                $"The program running from {executable} (process {other.Id}) is not found running from the install");
+            window.Close();
+            Ended(window);
+            window.InstallUpdate();
+            Assert.True(copy.Holds(newer), $"v{newer} is no longer ready once Passenger closed without installing it");
+            Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} waits to install: another Passenger runs from {copy.Current}", StringComparison.Ordinal));
+
+            window = Started(copy.Updater());
+            window.WatchForUpdates();
+            Assert.True(window.Status?.StartsWith($"Passenger {newer} did not install: another Passenger ran from {copy.Current} (process {other.Id}: ", StringComparison.Ordinal) == true
+                && window.Status.Contains("Passenger.exe", StringComparison.OrdinalIgnoreCase),
+                $"The next start does not say the Passenger running from the install held the update back: '{window.Status}'");
+            Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", "the update held back to be offered again");
+            window.Close();
+        }
+        finally
+        {
+            ChildProcesses.Kill(other);
+        }
+    }
+
+    /// <summary>On Windows an Update.exe that does not start as Passenger closes (the test's install has none) leaves the
+    /// install as it was and the update ready, and the next start says why.</summary>
+    [AvaloniaFact]
+    [SupportedOSPlatform("windows")]
+    public void On_Windows_an_Update_exe_that_does_not_start_leaves_the_update_ready_and_the_next_start_says_why()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Velopack's install is Windows'");
+        using IDisposable theme = TestsTheme();
+        VelopackInstall copy = new(TestFolders.Create("installed-"));
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer));
+        MainWindow window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
+        window.Close();
+        Ended(window);
+        window.InstallUpdate();
+        Assert.True(copy.Holds(newer), $"v{newer} is no longer ready once Update.exe did not start");
+        string started = $"Updates: Passenger {newer} was not installed: Update.exe did not start: ";
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains(started, StringComparison.Ordinal));
+
+        window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Assert.True(window.Status?.StartsWith($"Passenger {newer} did not install: Update.exe did not start: ", StringComparison.Ordinal) == true,
+            $"The next start does not say Update.exe did not start: '{window.Status}'");
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", "the update that did not install to be offered again");
+        window.Close();
+    }
+
     [AvaloniaFact]
     [SupportedOSPlatform("macos")]
     public void An_app_on_another_volume_than_Passengers_state_is_updated_in_place_too()
@@ -1754,6 +1827,9 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
 
         public override string? InstalledVersion => null;
+
+        /// <summary>The install's current\ folder, which the installed version runs from.</summary>
+        public string Current => current;
 
         public override Updater Updater() =>
             new VelopackUpdater(new TestVelopackLocator("PassengerIDE", Product.Version, packages, current, root, Path.Combine(root, "Update.exe"), channel));

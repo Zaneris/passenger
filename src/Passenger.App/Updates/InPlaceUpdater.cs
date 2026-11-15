@@ -60,9 +60,8 @@ public abstract class InPlaceUpdater(Func<string, Task> start) : Updater
             return;
         }
         IReadOnlyList<OtherCopy> others = Others();
-        if (WaitsFor(others, version, Installed) is { } named)
+        if (HeldBack(others, version, Installed))
         {
-            NotInstalled = $"another Passenger ran from {Installed} ({named})";
             return;
         }
         FollowRelays(others, version);

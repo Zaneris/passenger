@@ -63,13 +63,14 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
 
     public override void Install(bool restart)
     {
+        NotInstalled = null;
         if (manager is null || package is null || Ready is not { } version)
         {
             return;
         }
         IReadOnlyList<OtherCopy> others = Others();
         // None runs from a locator with no content folder (RunningHere).
-        if (WaitsFor(others, version, locator.AppContentDir ?? Installed) is not null)
+        if (HeldBack(others, version, locator.AppContentDir ?? Installed))
         {
             return;
         }
@@ -83,7 +84,8 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
         }
         catch (Exception error) when (error is IOException or Win32Exception or InvalidOperationException)
         {
-            IdeErrors.Write($"Updates: Passenger {version} was not installed: Update.exe did not start: {error.Message}");
+            NotInstalled = $"Update.exe did not start: {error.Message}";
+            IdeErrors.Write($"Updates: Passenger {version} was not installed: {NotInstalled}");
         }
         IdeErrors.Flush();
     }
