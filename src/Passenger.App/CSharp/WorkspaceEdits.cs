@@ -311,12 +311,14 @@ public static class WorkspaceEdits
         return files;
     }
 
-    /// <summary>A file not open's text with a server's edits made in it, in its own line breaks and indentation. Safe from
-    /// any thread.</summary>
+    /// <summary>A file not open's text with a server's edits made in it, in its own line breaks (one with none yet, a file
+    /// just made among them, its .editorconfig's <c>end_of_line</c>, as the editor gives it) and indentation. Safe from any
+    /// thread.</summary>
     internal static string Edited(string path, string text, IReadOnlyList<LspTextEdit> edits)
     {
         TextSnapshot snapshot = TextSnapshot.From(text);
-        return snapshot.Apply([.. Convert(snapshot, edits, TextDocument.DetectLineEnding(text), FileIndent.Of(path, text)).OrderBy(e => e.Start)]).ToString();
+        string eol = text.Contains('\n', StringComparison.Ordinal) ? TextDocument.DetectLineEnding(text) : (EditorConfig.For(path).EndOfLine ?? LineSeparator.LF).Held();
+        return snapshot.Apply([.. Convert(snapshot, edits, eol, FileIndent.Of(path, text)).OrderBy(e => e.Start)]).ToString();
     }
 
     /// <summary>Edits in an open file's text as it is now: through the active editor when it is the file shown there, so
