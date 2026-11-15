@@ -6,11 +6,12 @@ using Passenger.Core;
 
 namespace Passenger.App.Updates;
 
-/// <summary>macOS's update, from the disk image a person downloads (Passenger-macos-arm64.dmg or -x64), into the state
-/// folder's <c>updates/</c>: its SHA-256 checked against the release's SHA256SUMS, its Passenger.app copied out and
-/// checked again (bundle, version, signature, and the running app's team once there is one). As the process ends the
-/// two apps trade places in one step where the volume allows (renamex_np's swap), and Restart to Update starts the new
-/// one through LaunchServices: nothing of the update runs after Passenger has gone.</summary>
+/// <summary>macOS's update, from the disk image a person downloads (Passenger-macos-arm64.dmg or -x64), opened on the
+/// startup disk (<see cref="ImageFolder"/>): its SHA-256 checked against the release's SHA256SUMS, its Passenger.app
+/// copied out into the state folder's <c>updates/</c> and checked again (bundle, version, signature, and the running
+/// app's team once there is one). As the process ends the two apps trade places in one step where the volume allows
+/// (renamex_np's swap), and Restart to Update starts the new one through LaunchServices: nothing of the update runs
+/// after Passenger has gone.</summary>
 [SupportedOSPlatform("macos")]
 public sealed partial class DiskImageUpdater : InPlaceUpdater
 {
@@ -33,6 +34,7 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
     {
         Bundle = bundle;
         Staging = staging;
+        ImageFolder = PathNames.Canonical(UserTemporary.Of(staging, "updates"));
     }
 
     /// <summary>The installed Passenger.app this copy runs from.</summary>
@@ -40,6 +42,12 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
 
     /// <summary>The folder downloads are made ready in.</summary>
     public string Staging { get; }
+
+    /// <summary>The folder each release's disk image is downloaded to and opened in, by version: the state's own in the
+    /// user's temporary folder on the startup disk (<see cref="UserTemporary.Of"/>) unless a test names one, never under
+    /// <see cref="Staging"/>, which a home folder on an external drive takes with it, where macOS's disk image tools may
+    /// refuse what the startup disk lets them do ("hdiutil: attach failed - Permission denied").</summary>
+    public string ImageFolder { get; init; }
 
     public override string Installed => Bundle;
 
@@ -118,9 +126,13 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
             }
         }
         Directory.CreateDirectory(folder);
-        (string saved, string expected) = await DownloadCheckedAsync(package, folder, progress, cancel).ConfigureAwait(false);
-        await CopyOutAsync(saved, folder, app, cancel).ConfigureAwait(false);
+        string opened = Path.Combine(Directory.CreateDirectory(ImageFolder, OwnerOnly).FullName, release.Version);
+        Directory.CreateDirectory(opened);
+        (string saved, string expected) = await DownloadCheckedAsync(package, opened, progress, cancel).ConfigureAwait(false);
+        await CopyOutAsync(saved, opened, app, cancel).ConfigureAwait(false);
         File.Delete(saved);
+        RemoveEmpty(opened);
+        RemoveEmpty(ImageFolder);
         await CheckAsync(app, identifier, release.Version, team, cancel).ConfigureAwait(false);
         return new UpdateOutcome.Ready($"Passenger {release.Version} downloaded to {app}: {package.Download.Name}'s SHA-256 is {Sums}' {expected}, and the app's signature holds{Signed(team)}");
     }
@@ -187,6 +199,9 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
     /// <summary>The installed app's name while the new one takes its place in two renames.</summary>
     private const string Old = ".old";
 
+    /// <summary>The image folder's mode: the user's alone.</summary>
+    private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+
     public override async Task DiscardAsync()
     {
         Ready = null;
@@ -222,7 +237,7 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
 
     /// <summary>The image mounted read-only at <paramref name="mount"/>, tried again while it will not open: its SHA-256 is
     /// the release's, so what refuses it is this Mac (a program holding the file just written, which hdiutil calls
-    /// "Resource temporarily unavailable"), and that lets go. Refused in the tool's words once the tries are spent.</summary>
+    /// "Resource temporarily unavailable"), and that lets go. Refused once the tries are spent (<see cref="Refusal"/>).</summary>
     private async Task AttachAsync(string image, string mount, CancellationToken cancel)
     {
         string name = Path.GetFileName(image);
@@ -245,13 +260,20 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
             string said = FailureOf(attached);
             if (attempt > OpenAgainAfter.Count)
             {
-                throw new UpdateRefusedException($"{name} does not open as a disk image: {said}", $"{attached.Said}; {await HeldAsync(image, cancel).ConfigureAwait(false)}");
+                throw new UpdateRefusedException(Refusal(image, said), $"{attached.Said}; {await HeldAsync(image, cancel).ConfigureAwait(false)}");
             }
             TimeSpan pause = Waits.Of(OpenAgainAfter[attempt - 1]);
             IdeErrors.Write($"Updates: {name} did not open as a disk image at try {attempt} ({said}); trying again in {Durations.Said(pause)}");
             await Task.Delay(pause, cancel).ConfigureAwait(false);
         }
     }
+
+    /// <summary>Why the image did not open, as the update says it: where macOS refused access to it, the folder it was
+    /// refused in and that the release's page has it to install by hand, the tool's words beside; else the tool's
+    /// words.</summary>
+    private static string Refusal(string image, string said) => AttachedImages.RefusesAccess(said)
+        ? $"{Path.GetFileName(image)} does not open as a disk image: macOS refused access to it in {Path.GetDirectoryName(image)} ({said}); the release's page has it to install by hand"
+        : $"{Path.GetFileName(image)} does not open as a disk image: {said}";
 
     /// <summary>What has the image open, and where it is attached already, for a refusal to say.</summary>
     private static async Task<string> HeldAsync(string image, CancellationToken cancel)
@@ -311,14 +333,24 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
         return read.Succeeded ? read.Output.Trim() : null;
     }
 
-    /// <summary>Every download made ready but <paramref name="keep"/>'s, an image still mounted let go of first.</summary>
+    /// <summary>Every download made ready but <paramref name="keep"/>'s, and every image downloaded, an image still mounted
+    /// let go of first.</summary>
     private async Task CleanAsync(string? keep)
     {
-        if (!Directory.Exists(Staging))
+        await CleanAsync(ImageFolder, keep: null).ConfigureAwait(false);
+        RemoveEmpty(ImageFolder);
+        // Staging may hold images too, mounted where an older Passenger opened them.
+        await CleanAsync(Staging, keep).ConfigureAwait(false);
+    }
+
+    /// <summary>Every folder in <paramref name="root"/> but <paramref name="keep"/>, an image still mounted let go of first.</summary>
+    private async Task CleanAsync(string root, string? keep)
+    {
+        if (!Directory.Exists(root))
         {
             return;
         }
-        foreach (string folder in Directory.EnumerateDirectories(Staging))
+        foreach (string folder in Directory.EnumerateDirectories(root))
         {
             if (Path.GetFileName(folder) == keep)
             {
@@ -335,6 +367,22 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
                 continue;
             }
             Remove(folder);
+        }
+    }
+
+    /// <summary>A folder of the update's own once nothing is left in it, kept where something is.</summary>
+    private static void RemoveEmpty(string folder)
+    {
+        try
+        {
+            if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any())
+            {
+                Directory.Delete(folder);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Updates: {folder} could not be removed: {error.Message}");
         }
     }
 

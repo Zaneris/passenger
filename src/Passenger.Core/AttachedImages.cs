@@ -183,6 +183,14 @@ public static class AttachedImages
         return lines.Length == 0 ? ExitCodes.Said(result.ExitCode) : string.Join(' ', lines);
     }
 
+    /// <summary>Whether a tool's words end saying the system refused it access to a file or folder, "Permission denied"
+    /// or "Operation not permitted", as hdiutil's and diskutil's end.</summary>
+    public static bool RefusesAccess(string said)
+    {
+        string words = said.TrimEnd().TrimEnd('.');
+        return words.EndsWith("Permission denied", StringComparison.Ordinal) || words.EndsWith("Operation not permitted", StringComparison.Ordinal);
+    }
+
     /// <summary>Whether a name in /dev is one of a disk's nodes: the disk, its slices (disk5s1), or either raw (rdisk5).</summary>
     internal static bool NodeOf(string entry, string disk)
     {

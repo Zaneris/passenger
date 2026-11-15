@@ -452,12 +452,15 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>The Mac refusing the disk image just downloaded for a moment is waited out: hdiutil refuses one another
     /// program (a scanner) holds ("Resource temporarily unavailable"), as an exclusive lock taken on it here does, and
     /// diskutil image, which opens a held one, one it cannot read. The image, whose SHA-256 is the release's, is opened
-    /// again once let go; one never let go is refused in the tool's words, the log naming what had it open.</summary>
+    /// again once let go; one never let go is refused in the tool's words, the log naming what had it open, and one macOS
+    /// refused access to also names the folder it was refused in and where else to get it.</summary>
     [AvaloniaTheory]
-    [InlineData(DiskImageTool.Hdiutil, "hdiutil: attach failed - Resource temporarily unavailable")]
-    [InlineData(DiskImageTool.Diskutil, "diskutil: The operation couldn\u2019t be completed. Permission denied")]
+    [InlineData(DiskImageTool.Hdiutil, "hdiutil: attach failed - Resource temporarily unavailable", "{0}")]
+    [InlineData(DiskImageTool.Diskutil, "diskutil: The operation couldn\u2019t be completed. Permission denied",
+        "macOS refused access to it in {1} ({0}); the release's page has it to install by hand")]
     [SupportedOSPlatform("macos")]
-    public void A_disk_image_the_Mac_refuses_as_it_lands_opens_once_let_go_and_one_never_let_go_is_refused_in_the_tools_words(DiskImageTool tool, string refused)
+    public void A_disk_image_the_Mac_refuses_as_it_lands_opens_once_let_go_and_one_never_let_go_is_refused_in_the_tools_words(DiskImageTool tool, string refused,
+        string why)
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Disk images are macOS's");
         Assert.SkipWhen(tool == DiskImageTool.Diskutil && !OperatingSystem.IsMacOSVersionAtLeast(26), "diskutil image is macOS 26's");
@@ -507,7 +510,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             window = Started(neverLettingGo);
             window.WatchForUpdates();
             Ui.WaitFor(() => Settled(window, later), () => $"the update refused throughout to be refused, where {UpdatesSaid(window)}");
-            string words = $"Passenger {later} was not installed: {other.Package(later)} does not open as a disk image: {refused}";
+            string said = string.Format(System.Globalization.CultureInfo.InvariantCulture, why, refused, Path.Combine(other.Opened, later));
+            string words = $"Passenger {later} was not installed: {other.Package(later)} does not open as a disk image: {said}";
             Assert.True(window.Status == words, $"An image the Mac never opened was not said in the tool's words: the status bar says '{window.Status}', not '{words}'");
             Assert.Contains(words, ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty);
             Assert.True(tries.SequenceEqual([1, 2, 3]), $"The image refused throughout was tried {string.Join(", ", tries)}, not three times");
@@ -548,7 +552,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         try
         {
             string newer = Bumped(1, 0);
-            string folder = Path.Combine(copy.Staging, newer);
+            string folder = Path.Combine(copy.Opened, newer);
             github.Answer = Release($"v{newer}", files: copy.Update(newer));
             DiskImageUpdater lettingGo = copy.LettingGoUpdater((attached, attempt) =>
             {
@@ -569,7 +573,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Assert.True(Notice(window) == $"Restart to update to Passenger {newer}", $"An update whose image's disk was held a moment was not made ready: {UpdatesSaid(window)}");
             Assert.True(tries.Take(3).SequenceEqual([1, 2, 3]),
                 $"The image was let go of at tries {string.Join(", ", tries)}, not refused twice while its disk was held and let go at the third");
-            IReadOnlyList<string> left = AttachedUnder(copy.Staging);
+            IReadOnlyList<string> left = AttachedUnder(copy.Opened);
             Assert.True(left.Count == 0, $"The image whose disk was held a moment is still attached once let go, as {string.Join("; ", left)}");
             string[] said = [.. Ui.IdeLog().Split('\n').Where(line => line.Contains($"Updates: the disk image in {folder} ", StringComparison.Ordinal))];
             Assert.True(said.Any(line => line.Contains("was let go of at try ", StringComparison.Ordinal) && line.Contains($"(process {Environment.ProcessId}) on /dev/r", StringComparison.Ordinal)),
@@ -577,7 +581,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             window.Close();
 
             string later = Bumped(1, 1);
-            folder = Path.Combine(other.Staging, later);
+            folder = Path.Combine(other.Opened, later);
             github.Answer = Release($"v{later}", files: other.Update(later));
             tries.Clear();
             bool holding = true;
@@ -596,7 +600,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Assert.True(Notice(window) == $"Restart to update to Passenger {later}",
                 $"An update whose app was copied out and checked was not made ready because its image's disk stayed held: {UpdatesSaid(window)}");
             Assert.True(tries.SequenceEqual([1, 2, 3, 4, 5]), $"The image held throughout was let go of at tries {string.Join(", ", tries)}, not five");
-            Assert.True(AttachedUnder(other.Staging).Count > 0, "The image whose disk was held throughout is not attached, so the test held nothing");
+            Assert.True(AttachedUnder(other.Opened).Count > 0, "The image whose disk was held throughout is not attached, so the test held nothing");
             said = [.. Ui.IdeLog().Split('\n').Where(line => line.Contains($"Updates: the disk image in {folder} ", StringComparison.Ordinal))];
             Assert.True(said.Any(line => line.Contains("is still attached after 5 tries to let it go", StringComparison.Ordinal)
                     && line.Contains($"(process {Environment.ProcessId}) on /dev/r", StringComparison.Ordinal)),
@@ -610,15 +614,15 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             window.ApplySettings(window.Settings with { CheckForUpdates = true });
             Ui.WaitFor(() => Settled(window, later), () => $"the same release downloaded again to be made ready or refused, where {UpdatesSaid(window)}");
             Assert.True(Notice(window) == $"Restart to update to Passenger {later}", $"Once its disk was let go, the same release's image did not open again: {UpdatesSaid(window)}");
-            left = AttachedUnder(other.Staging);
+            left = AttachedUnder(other.Opened);
             Assert.True(left.Count == 0, $"The same release opened again left its images attached, as {string.Join("; ", left)}");
             window.Close();
         }
         finally
         {
             hold.Let();
-            TestVolumes.DetachUnder(copy.Staging);
-            TestVolumes.DetachUnder(other.Staging);
+            TestVolumes.DetachUnder(copy.Opened);
+            TestVolumes.DetachUnder(other.Opened);
         }
 
         static bool Settled(MainWindow window, string version) =>
@@ -1057,6 +1061,67 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
         finally
         {
+            TestVolumes.Detach(volume, disk);
+        }
+    }
+
+    /// <summary>Passenger and its state on a volume of their own, as a home folder moved to an external drive takes them,
+    /// where macOS's disk image tools may refuse to open an image or mount one: the release's disk image is downloaded to
+    /// and opened in a folder of the user's alone on the startup disk, its app copied out into the state, and nothing of
+    /// the image is left once the update is ready.</summary>
+    [AvaloniaFact]
+    [SupportedOSPlatform("macos")]
+    public void An_update_whose_state_is_on_another_volume_opens_its_disk_image_on_the_startup_disk_in_a_folder_of_the_users_alone()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Disk images are macOS's");
+        using IDisposable theme = TestsTheme();
+        string folder = TestFolders.Create("installed-");
+        (string volume, string disk) = HfsVolume(folder);
+        AppBundle copy = new(images, folder, volume, Path.Combine(volume, "Library", "Application Support", "Passenger")) { ImageFolder = null };
+        string opened = copy.Opened;
+        try
+        {
+            string newer = Bumped(1, 0);
+            github.Answer = Release($"v{newer}", files: copy.Update(newer));
+            string? image = null;
+            UnixFileMode? mode = null;
+            ConcurrentQueue<string> mounts = new();
+            MainWindow window = Started(copy.Updater(opening: (path, _) =>
+            {
+                image = path;
+                mode = File.GetUnixFileMode(opened);
+                return Task.CompletedTask;
+            }, lettingGo: (attached, _) =>
+            {
+                foreach (string mount in attached.SelectMany(a => a.Mounts))
+                {
+                    mounts.Enqueue(mount);
+                }
+                return Task.CompletedTask;
+            }));
+            window.WatchForUpdates();
+            Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}" || Notice(window) == $"Passenger {newer} not installed",
+                () => $"the update whose state is on another volume to be made ready or refused, where {UpdatesSaid(window)}");
+            Assert.True(Notice(window) == $"Restart to update to Passenger {newer}", $"An update whose state is on another volume was not made ready: {UpdatesSaid(window)}");
+            string temporary = PathNames.Canonical(UserTemporary.Folder());
+            Assert.True(image is not null && PathNames.IsUnder(PathNames.Canonical(image), temporary),
+                $"The disk image was opened at {image}, not in the user's temporary folder on the startup disk, {temporary}");
+            Assert.True(mounts.Count > 0 && mounts.All(mount => PathNames.IsUnder(PathNames.Canonical(mount), temporary)),
+                $"The disk image was mounted at {string.Join(", ", mounts)}, not in the user's temporary folder on the startup disk, {temporary}");
+            Assert.True(mode == (UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute),
+                $"The folder the disk image was opened in, {opened}, is {mode}, not the user's alone");
+            Assert.True(copy.Holds(newer), $"The status bar offers Restart to Update, but v{newer} is not in the state on the other volume, {copy.Staging}");
+            Assert.False(Directory.Exists(opened), $"The update made ready left the folder its disk image was opened in, {opened}");
+            window.Close();
+            Ended(window);
+            window.InstallUpdate();
+            Assert.True(copy.InstalledVersion == newer, $"Passenger on another volume with its state closed with v{newer} ready, and is {copy.InstalledVersion}");
+            Assert.True(copy.Downloaded().Count == 0, $"The update installed left {string.Join(", ", copy.Downloaded())} behind");
+        }
+        finally
+        {
+            TestVolumes.DetachUnder(opened);
+            TestFolders.Delete(opened);
             TestVolumes.Detach(volume, disk);
         }
     }
@@ -1634,13 +1699,15 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         /// <param name="images">The class's disk images, which the updates are.</param>
         /// <param name="folder">The test's folder, which holds Passenger's state and, unless another is given, its Applications.</param>
         /// <param name="applications">Where the app is installed, when not in the folder's Applications.</param>
-        public AppBundle(DiskImages images, string folder, string? applications = null)
+        /// <param name="state">Passenger's state folder, when not the folder's state.</param>
+        public AppBundle(DiskImages images, string folder, string? applications = null, string? state = null)
         {
             this.images = images;
             this.folder = folder;
             Applications = Directory.CreateDirectory(applications ?? Path.Combine(folder, "Applications")).FullName;
             Bundle = Path.Combine(Applications, "Passenger.app");
-            Staging = Path.Combine(folder, "state", "updates");
+            Staging = Path.Combine(state ?? Path.Combine(folder, "state"), "updates");
+            ImageFolder = Path.Combine(folder, "temporary", "updates");
             Make(Bundle, Product.Version);
         }
 
@@ -1651,6 +1718,13 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         public string Executable => Path.Combine(Bundle, "Contents", "MacOS", "Passenger");
 
         public string Staging { get; }
+
+        /// <summary>Where its updates download and open their disk images: a folder of the test's own, or the updater's own
+        /// in the user's temporary folder where a test makes it null.</summary>
+        public string? ImageFolder { get; init; }
+
+        /// <summary>The folder its updates' disk images are opened in.</summary>
+        public string Opened => ImageFolder ?? new DiskImageUpdater(Bundle, Staging).ImageFolder;
 
         /// <summary>Where each start of the app writes its version: in the folder above the one it is in, the test's own.</summary>
         public string Started => Path.Combine(folder, "started.txt");
@@ -1663,21 +1737,27 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         /// <summary>What its updates open their disk images with: this Mac's own unless a test names one.</summary>
         public DiskImageTool Images { get; init; } = DiskImageUpdater.ThisMacs;
 
-        public override Updater Updater() => new DiskImageUpdater(Bundle, Staging, StartAsync) { Images = Images };
+        public override Updater Updater() => new DiskImageUpdater(Bundle, Staging, StartAsync) { Images = Images, ImageFolder = Opened };
 
         /// <summary>The copy's updater, <paramref name="renaming"/> run as each rename of the two that put the new app in
         /// place on a volume that cannot swap two folders begins.</summary>
-        public DiskImageUpdater Updater(Action<string, string> renaming) => new(Bundle, Staging, StartAsync) { Renaming = renaming, Images = Images };
+        public DiskImageUpdater Updater(Action<string, string> renaming) =>
+            new(Bundle, Staging, StartAsync) { Renaming = renaming, Images = Images, ImageFolder = Opened };
 
         /// <summary>The copy's updater, <paramref name="opening"/> run as each try to open the image begins, waiting
         /// <paramref name="pauses"/> between tries.</summary>
         public DiskImageUpdater Updater(Func<string, int, Task> opening, IReadOnlyList<TimeSpan> pauses) =>
-            new(Bundle, Staging, StartAsync) { Opening = opening, OpenAgainAfter = pauses, Images = Images };
+            new(Bundle, Staging, StartAsync) { Opening = opening, OpenAgainAfter = pauses, Images = Images, ImageFolder = Opened };
 
         /// <summary>The copy's updater, <paramref name="lettingGo"/> run as each try to let its image go begins, waiting
         /// <paramref name="pauses"/> between tries.</summary>
         public DiskImageUpdater LettingGoUpdater(Func<IReadOnlyList<AttachedImages.Attachment>, int, Task> lettingGo, IReadOnlyList<TimeSpan> pauses) =>
-            new(Bundle, Staging, StartAsync) { LettingGo = lettingGo, LetGoAgainAfter = pauses, Images = Images };
+            new(Bundle, Staging, StartAsync) { LettingGo = lettingGo, LetGoAgainAfter = pauses, Images = Images, ImageFolder = Opened };
+
+        /// <summary>The copy's updater, <paramref name="opening"/> run as each try to open the image begins and
+        /// <paramref name="lettingGo"/> as each try to let it go does.</summary>
+        public DiskImageUpdater Updater(Func<string, int, Task> opening, Func<IReadOnlyList<AttachedImages.Attachment>, int, Task> lettingGo) =>
+            new(Bundle, Staging, StartAsync) { Opening = opening, LettingGo = lettingGo, Images = Images, ImageFolder = Opened };
 
         public override string Package(string version) => ThisSystemsDownload();
 
@@ -1703,16 +1783,18 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             }
         }
 
+        /// <summary>What its updates left where they download: in <see cref="Staging"/>, and <see cref="Opened"/> itself.</summary>
         public override IReadOnlyList<string> Downloaded()
         {
+            List<string> left = Directory.Exists(Opened) ? [Opened] : [];
             try
             {
-                return [.. Directory.EnumerateFileSystemEntries(Staging).Select(p => Path.GetFileName(p))];
+                left.AddRange(Directory.EnumerateFileSystemEntries(Staging).Select(p => Path.GetFileName(p)));
             }
             catch (DirectoryNotFoundException)
             {
-                return [];
             }
+            return left;
         }
 
         /// <summary>The installed app made the build's own Passenger, its executable beside the build's assemblies, signed

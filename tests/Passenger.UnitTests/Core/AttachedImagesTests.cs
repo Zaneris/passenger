@@ -4,7 +4,8 @@ namespace Passenger.UnitTests.Core;
 
 /// <summary>macOS's disk images as hdiutil lists them attached: each image by its file as given, its whole disk, and where
 /// its volumes are mounted, one still being attached passed over; what holds a disk as lsof lists it; a disk's device
-/// nodes told from another disk's; and a tool's words without hdiutil's deprecation warnings.</summary>
+/// nodes told from another disk's; a tool's words without hdiutil's deprecation warnings, and whether they refuse
+/// access.</summary>
 public class AttachedImagesTests
 {
     /// <summary>As hdiutil info -plist lists three images: one mounted, one whose volume was unmounted while its disk stayed
@@ -129,5 +130,17 @@ public class AttachedImagesTests
         Assert.Equal("Volume failed to eject", AttachedImages.Words(new ChildResult(1, string.Empty, "Volume failed to eject\n")));
         ChildResult silent = new(1, string.Empty, "hdiutil: WARNING: 'hdiutil detach -force ...' is deprecated.\n");
         Assert.Equal(ExitCodes.Said(1), AttachedImages.Words(silent));
+    }
+
+    [Theory]
+    [InlineData("hdiutil: attach failed - Permission denied", true)]
+    [InlineData("diskutil: The operation couldn\u2019t be completed. Permission denied", true)]
+    [InlineData("diskutil: The operation couldn\u2019t be completed. Operation not permitted.", true)]
+    [InlineData("hdiutil: attach failed - Resource temporarily unavailable", false)]
+    [InlineData("hdiutil: attach failed - image not recognized", false)]
+    [InlineData("diskutil: The disk image is corrupted", false)]
+    public void A_tools_words_refuse_access_where_they_end_saying_permission_was_denied_or_not_permitted(string said, bool refused)
+    {
+        Assert.Equal(refused, AttachedImages.RefusesAccess(said));
     }
 }
