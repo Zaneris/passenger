@@ -98,10 +98,10 @@ public class VsCodeThemesTests
     [Fact]
     public void A_theme_file_past_the_most_a_theme_file_holds_is_refused_unread()
     {
-        string big = $$"""{"colors": {"a": "#FFF"}, "name": "{{new string('x', ThemeFiles.MostBytes)}}"}""";
+        string big = $$"""{"colors": {"a": "#FFF"}, "name": "{{new string('x', 1_300_000)}}"}""";
         ThemeRead<VsCodeTheme> read = VsCodeThemes.ReadTheme("theme.json", null, null, Files(("theme.json", big)));
         Assert.Null(read.Read);
-        Assert.Contains($"more than the {ThemeFiles.MostBytes} a theme file may hold", read.Refused, StringComparison.Ordinal);
+        Assert.Equal("theme.json is 1.2 MB, more than the 1 MB a theme file may hold", read.Refused);
     }
 
     [Theory]
@@ -156,8 +156,8 @@ public class VsCodeThemesTests
         Assert.Contains("holds no extension/package.json", noManifest, StringComparison.Ordinal);
         Assert.Null(VsCodeThemes.Vsix(Vsix([.. Enumerable.Range(0, VsCodeThemes.MostEntries + 1).Select(i => ($"extension/{i}.txt", string.Empty))]), out string? many));
         Assert.Contains($"more than the {VsCodeThemes.MostEntries} Passenger reads", many, StringComparison.Ordinal);
-        VsCodeThemes.ExtensionFile files = VsCodeThemes.Vsix(Vsix(("extension/package.json", "{}"), ("extension/big.json", new string(' ', ThemeFiles.MostBytes + 1))), out _)!;
-        Assert.Contains("more than the", files("big.json").Why, StringComparison.Ordinal);
+        VsCodeThemes.ExtensionFile files = VsCodeThemes.Vsix(Vsix(("extension/package.json", "{}"), ("extension/big.json", new string(' ', 1_300_000))), out _)!;
+        Assert.Equal("the .vsix's big.json is 1.2 MB, more than the 1 MB a theme file may hold", files("big.json").Why);
         Assert.Contains("holds no gone.json", files("gone.json").Why, StringComparison.Ordinal);
     }
 

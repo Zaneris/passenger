@@ -55,7 +55,7 @@ public static partial class ThemeFiles
         }
         if (layout.Value.ValueKind != JsonValueKind.Object)
         {
-            throw new FormatException($"gives layout as {Shown(layout.Value)}: layout is {{\"places\": {{…}}, \"open\": […], \"sizes\": {{…}}}}");
+            throw new FormatException($"gives layout as {ThemeJson.Shown(layout.Value)}: layout is {{\"places\": {{…}}, \"open\": […], \"sizes\": {{…}}}}");
         }
         PassOver(file, layout.Value, ["places", "open", "sizes", "editorTabs", "toolWindows", "stripeIcons", "closedWindows", "findResults"], "layout", problems);
         List<PlacedWindow> places = [];
@@ -112,7 +112,7 @@ public static partial class ThemeFiles
         }
         int found = given.ValueKind == JsonValueKind.String ? Array.FindIndex(words, w => w.Word == given.GetString()) : -1;
         return found >= 0 ? words[found].Value
-            : throw new FormatException($"gives layout's {member} as {Shown(given)}: it is {Listed(words.Select(w => w.Word))}");
+            : throw new FormatException($"gives layout's {member} as {ThemeJson.Shown(given)}: it is {Listed(words.Select(w => w.Word))}");
     }
 
     private static JsonElement? Part(JsonElement layout, string member)
@@ -120,7 +120,7 @@ public static partial class ThemeFiles
         JsonElement? value = JsonMembers.Value(layout, member);
         if (value is { } given && given.ValueKind != JsonValueKind.Object)
         {
-            throw new FormatException($"gives layout's {member} as {Shown(given)}: {member} is an object");
+            throw new FormatException($"gives layout's {member} as {ThemeJson.Shown(given)}: {member} is an object");
         }
         return value;
     }
@@ -130,19 +130,19 @@ public static partial class ThemeFiles
     {
         if (list.ValueKind != JsonValueKind.Array || list.GetArrayLength() > MostEntries)
         {
-            throw new FormatException($"gives {where} as {Shown(list)}: it is a list of tool windows' ids (\"explorer\", \"problems\", …)");
+            throw new FormatException($"gives {where} as {ThemeJson.Shown(list)}: it is a list of tool windows' ids (\"explorer\", \"problems\", …)");
         }
         List<string> ids = [];
         foreach (JsonElement item in list.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.String)
             {
-                throw new FormatException($"lists {Shown(item)} in {where}: a tool window is named by its id (\"explorer\", \"problems\", …)");
+                throw new FormatException($"lists {ThemeJson.Shown(item)} in {where}: a tool window is named by its id (\"explorer\", \"problems\", …)");
             }
             string id = item.GetString()!;
             if (!ToolWindowIds.All.Contains(id))
             {
-                problems.Add($"{file}: {Shown(item)} in {where} is no tool window this Passenger has, so it was passed over");
+                problems.Add($"{file}: {ThemeJson.Shown(item)} in {where} is no tool window this Passenger has, so it was passed over");
                 continue;
             }
             ids.Add(id);
@@ -157,6 +157,6 @@ public static partial class ThemeFiles
             return null;
         }
         return Number(given, LeastArea, MostArea)
-            ?? throw new FormatException($"gives layout's {side} size as {Shown(given)}: an area's size is a number of pixels, {LeastArea} to {MostArea}");
+            ?? throw new FormatException($"gives layout's {side} size as {ThemeJson.Shown(given)}: an area's size is a number of pixels, {LeastArea} to {MostArea}");
     }
 }

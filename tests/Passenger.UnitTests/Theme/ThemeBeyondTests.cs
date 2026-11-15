@@ -185,7 +185,7 @@ public class ThemeBeyondTests
             ThemeImages.WhyNot("huge.png", Png(8193, 10)));
         Assert.Contains("is 5000×5000 pixels", ThemeImages.WhyNot("bomb.webp", WebP("VP8X", 5000, 5000)), StringComparison.Ordinal);
         Assert.Equal("a.gif is no PNG, JPEG or WebP picture", ThemeImages.WhyNot("a.gif", "GIF89a"u8));
-        Assert.StartsWith($"big.png is {ThemeFiles.MostImageBytes + 1} bytes", ThemeImages.WhyNot("big.png", new byte[ThemeFiles.MostImageBytes + 1]), StringComparison.Ordinal);
+        Assert.Equal("big.png is 9.1 MB, more than the 8 MB a background picture may hold", ThemeImages.WhyNot("big.png", new byte[9_500_000]));
     }
 
     [Theory]

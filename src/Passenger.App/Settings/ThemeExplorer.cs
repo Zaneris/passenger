@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -255,8 +254,8 @@ public sealed class ThemeExplorer : StackPanel
                 return (null, bytes, refused);
             }
             string named = KeptName(row);
-            string? unkept = KeptThemes.KeepBase(ThemeSource.OpenVsx, false, named, taken.Files)
-                ?? KeptThemes.Keep(ThemeSource.OpenVsx, false, named, Wrapper(named, row));
+            // No version pinned, so Refresh takes Open VSX's newest.
+            string? unkept = KeptThemes.KeepOver(ThemeSource.OpenVsx, false, named, new VsCodeBase(row.Entry.Id, row.Theme.Label, null), taken.Files);
             return (unkept is null ? named : null, bytes, unkept);
         }, cancel.Token);
         if (vsix is not null)
@@ -278,23 +277,15 @@ public sealed class ThemeExplorer : StackPanel
         Say($"{row.Theme.Label} from {row.Entry.DisplayName} {row.Entry.Version} is shown; Apply keeps it as your theme", problem: false);
     }
 
-    /// <summary>The name a theme is kept under: its label, unless another extension's theme of that label is kept, then
-    /// with its extension's name after it.</summary>
+    /// <summary>The name a theme is kept under, as a theme file holds one (<see cref="ThemeFiles.NameOf"/>): its label, unless
+    /// another extension's theme is kept under that, then with its extension's name after it.</summary>
     private static string KeptName(ExplorerRow row)
     {
-        string label = row.Theme.Label;
+        string label = ThemeFiles.NameOf(row.Theme.Label);
         byte[]? kept = KeptThemes.Bytes(ThemeSource.OpenVsx, false, label);
         VsCodeBase? held = kept is null ? null : ThemeFiles.ReadTheme(label, kept, new Dictionary<string, ThemeTokenKind>()).Read?.Base;
-        return held is null || held.Id == row.Entry.Id ? label : $"{label} ({row.Entry.DisplayName})";
+        return held is null || held.Id == row.Entry.Id ? label : ThemeFiles.NameOf(row.Theme.Label, $" ({row.Entry.DisplayName})");
     }
-
-    /// <summary>The theme kept for a choice: format 1, its name, and its base by id and label, its version left to Refresh.</summary>
-    private static byte[] Wrapper(string name, ExplorerRow row) => JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
-    {
-        ["format"] = ThemeFiles.Format,
-        ["name"] = name,
-        ["vscode"] = new Dictionary<string, string> { ["id"] = row.Entry.Id, ["theme"] = row.Theme.Label },
-    }, new JsonSerializerOptions { WriteIndented = true });
 
     private void Say(string? words, bool problem)
     {

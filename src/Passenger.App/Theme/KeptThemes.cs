@@ -122,9 +122,9 @@ public static class KeptThemes
                 {
                     return (null, $"{name}'s VS Code theme is not kept here ({path})");
                 }
-                if (new FileInfo(file).Length > ThemeFiles.MostBytes)
+                if (new FileInfo(file).Length is var length && length > ThemeFiles.MostBytes)
                 {
-                    return (null, $"the kept {file} is more than the {ThemeFiles.MostBytes} bytes a theme file may hold");
+                    return (null, $"the kept {file} is {Sizes.Said(length)}, more than the {Sizes.Said(ThemeFiles.MostBytes)} a theme file may hold");
                 }
                 return (File.ReadAllBytes(file), null);
             }
@@ -163,6 +163,14 @@ public static class KeptThemes
             return $"{name}'s VS Code theme could not be kept in {folder}: {error.Message}";
         }
     }
+
+    /// <summary>Keeps a theme laid over a VS Code theme and giving nothing of its own (<see cref="ThemeFiles.Wrapping"/>), with
+    /// its base's files: by their paths in its extension for a base by id, beside the theme's file for one by file; why not
+    /// where it cannot be written. Its name is one <see cref="ThemeFiles.NameOf"/> made.</summary>
+    public static string? KeepOver(ThemeSource source, bool code, string name, VsCodeBase based, IReadOnlyDictionary<string, byte[]> files) =>
+        based.File is null
+            ? KeepBase(source, code, name, files) ?? Keep(source, code, name, ThemeFiles.Wrapping(name, based))
+            : Keep(source, code, name, ThemeFiles.Wrapping(name, based), files);
 
     /// <summary>The file of every theme or scheme of a source kept here, for the list Settings shows without the source.</summary>
     public static IReadOnlyList<byte[]> Of(ThemeSource source, bool code)

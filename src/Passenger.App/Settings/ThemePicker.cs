@@ -35,8 +35,8 @@ public sealed class ThemePicker : StackPanel
     private readonly ThemeSetting setting;
     private readonly Func<AppSettings> working;
     private readonly Action<Func<AppSettings, AppSettings>> change;
-    private readonly TextBlock reading = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, MaxWidth = 420, HorizontalAlignment = HorizontalAlignment.Left };
-    private readonly TextBlock problems = new() { Classes = { StyleClasses.Error }, TextWrapping = TextWrapping.Wrap, MaxWidth = 420, HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly TextBlock reading = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, MaxWidth = OptionRow.EditorWidth, HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly TextBlock problems = new() { Classes = { StyleClasses.Error }, TextWrapping = TextWrapping.Wrap, MaxWidth = OptionRow.EditorWidth, HorizontalAlignment = HorizontalAlignment.Left };
     private bool filling;
     private string? said;
 
@@ -112,10 +112,9 @@ public sealed class ThemePicker : StackPanel
         {
             List<Added> added = [];
             List<string> said = [];
-            string? refused = path.EndsWith(".vsix", StringComparison.OrdinalIgnoreCase) ? FromVsix(path, added, said)
+            string? refused = path.EndsWith(".vsix", StringComparison.OrdinalIgnoreCase) ? FromVsix(path, code, added, said)
                 : await FromJsonAsync(path, code, kinds, added, said);
-            refused ??= added.Select(a => KeptThemes.KeepBase(ThemeSource.Added, code, a.Name, a.Base)
-                ?? KeptThemes.Keep(ThemeSource.Added, code, a.Name, a.Bytes, a.Beside)).FirstOrDefault(w => w is not null);
+            refused ??= added.Select(a => a.Keep()).FirstOrDefault(w => w is not null);
             return (refused is null ? added.Select(a => a.Name).ToList() : null, (IReadOnlyList<string>)said, refused);
         });
         if (names is not [string first, ..])
@@ -130,25 +129,16 @@ public sealed class ThemePicker : StackPanel
         return null;
     }
 
-    /// <summary>A theme added from a file: its name, its file as kept, the files kept beside it, and its VS Code base's.</summary>
-    private sealed record Added(string Name, byte[] Bytes, Dictionary<string, byte[]> Beside, IReadOnlyDictionary<string, byte[]> Base);
+    /// <summary>A theme added from a file: its name, and its keeping, with what it was read with, once every file read.</summary>
+    private sealed record Added(string Name, Func<string?> Keep);
 
     /// <summary>Every colour theme a .vsix contributes, each a theme over it kept with its files; why not where none reads.</summary>
-    private static string? FromVsix(string path, List<Added> added, List<string> said)
+    private static string? FromVsix(string path, bool code, List<Added> added, List<string> said)
     {
-        byte[] bytes;
-        try
+        (byte[]? bytes, string? unread) = ThemeSourceReads.FromFile(path, VsCodeThemes.MostVsixBytes);
+        if (bytes is null)
         {
-            long length = new FileInfo(path).Length;
-            if (length > VsCodeThemes.MostVsixBytes)
-            {
-                return $"{path} is {length} bytes, more than the {VsCodeThemes.MostVsixBytes} a .vsix may hold";
-            }
-            bytes = File.ReadAllBytes(path);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return $"{path} could not be read: {error.Message}";
+            return unread;
         }
         if (VsCodeThemes.Vsix(bytes, out string? unzipped) is not { } files)
         {
@@ -172,10 +162,10 @@ public sealed class ThemePicker : StackPanel
                 continue;
             }
             said.AddRange(taken.Problems);
-            added.Add(new Added(theme.Label, Wrapper(theme.Label, new Dictionary<string, string>
-            {
-                ["id"] = extension.Id, ["theme"] = theme.Label, ["version"] = extension.Version,
-            }), [], taken.Files));
+            string name = ThemeFiles.NameOf(theme.Label);
+            // Pinned at the file's version, so Refresh keeps what the person added rather than taking Open VSX's newest.
+            VsCodeBase based = new(extension.Id, theme.Label, extension.Version);
+            added.Add(new Added(name, () => KeptThemes.KeepOver(ThemeSource.Added, code, name, based, taken.Files)));
         }
         return added.Count > 0 ? null : string.Join("\n", said);
     }
@@ -206,8 +196,9 @@ public sealed class ThemePicker : StackPanel
                 return $"{path} is refused: {vs.Refused}";
             }
             said.AddRange(vs.Problems);
-            added.Add(new Added(theme.Name, Wrapper(theme.Name, new Dictionary<string, string> { ["file"] = $"{KeptThemes.BaseFolder}/{Path.GetFileName(path)}" }), read,
-                new Dictionary<string, byte[]>()));
+            string name = ThemeFiles.NameOf(theme.Name);
+            VsCodeBase over = new(null, null, null, $"{KeptThemes.BaseFolder}/{Path.GetFileName(path)}");
+            added.Add(new Added(name, () => KeptThemes.KeepOver(ThemeSource.Added, code, name, over, read)));
             return null;
         }
         ThemeRead<ThemeFile> own = code ? ThemeFiles.ReadCodeColours(path, found, kinds) : ThemeFiles.ReadTheme(path, found, kinds);
@@ -232,13 +223,9 @@ public sealed class ThemePicker : StackPanel
             fetched = taken.Files;
         }
         said.AddRange(own.Problems);
-        added.Add(new Added(whole.Name, found, beside, fetched));
+        added.Add(new Added(whole.Name, () => KeptThemes.KeepBase(ThemeSource.Added, code, whole.Name, fetched) ?? KeptThemes.Keep(ThemeSource.Added, code, whole.Name, found, beside)));
         return unseen ?? unbased;
     }
-
-    /// <summary>A theme file laid over a VS Code theme and giving nothing of its own.</summary>
-    private static byte[] Wrapper(string name, Dictionary<string, string> vscode) =>
-        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object> { ["format"] = ThemeFiles.Format, ["name"] = name, ["vscode"] = vscode });
 
     private async Task PickFileAsync()
     {

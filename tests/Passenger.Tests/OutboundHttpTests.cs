@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Passenger.App.Xaml;
 using Passenger.Core;
 
@@ -6,8 +7,8 @@ namespace Passenger.Tests;
 
 /// <summary>Passenger's own requests as a host sees them, Source Link's to a symbol server standing in for NuGet's: nothing
 /// in them but the request and a User-Agent naming Passenger, no cookie an earlier answer set and no trace header from
-/// the activity current as they are made. Not beside the window tests: it names the symbol server in the process's
-/// environment.</summary>
+/// the activity current as they are made; and an answer read whole held to the most its reader takes. Not beside the
+/// window tests: it names the symbol server in the process's environment.</summary>
 public sealed class OutboundHttpTests
 {
     [Fact]
@@ -58,6 +59,36 @@ public sealed class OutboundHttpTests
         }
         Assert.True(requests[1].Header("Cookie") is null,
             $"Source Link's second request sent back the cookie the symbol server's first answer set, so a host can follow one IDE's requests:\n{requests[1].Head}");
+    }
+
+    [Fact]
+    public async Task An_answer_read_whole_is_held_to_the_most_its_reader_takes_whether_or_not_it_says_its_length()
+    {
+        byte[] large = new byte[1_300_000];
+        await using StandInHttp host = new(async exchange =>
+        {
+            if (exchange.Path == "/untold")
+            {
+                // No length said: the body runs on until the connection closes.
+                await exchange.Stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n"), exchange.Ending);
+                await exchange.Stream.WriteAsync(large, exchange.Ending);
+                return;
+            }
+            await (exchange.Path switch
+            {
+                "/told" => exchange.ReplyAsync(200, "application/octet-stream", large),
+                "/small" => exchange.ReplyAsync(200, "application/json", "{}"),
+                _ => exchange.ReplyAsync(404, "text/plain", "none"),
+            });
+        });
+        using HttpClient client = OutboundHttp.Client(TimeSpan.FromSeconds(30), most: 1024 * 1024);
+        async Task<(byte[]? Bytes, string? Why)> Read(string path) =>
+            await OutboundHttp.ReadAsync(client, new Uri($"{host.Root}{path}"), 1024 * 1024, path[1..], "it is not there", TestContext.Current.CancellationToken);
+
+        Assert.Equal((null, "told is 1.2 MB, more than the 1 MB Passenger reads"), await Read("/told"));
+        Assert.Equal((null, "untold is more than the 1 MB Passenger reads"), await Read("/untold"));
+        Assert.Equal((null, "it is not there"), await Read("/gone"));
+        Assert.Equal("{}", Encoding.UTF8.GetString((await Read("/small")).Bytes!));
     }
 
     /// <summary>What Source Link said of each file it could not give, on the thread it said it.</summary>

@@ -198,6 +198,50 @@ public class VsCodeColoursTests
     }
 
     [Theory]
+    [InlineData("dracula-theme.theme-dracula", "Dracula", "2.25.1", null)]
+    [InlineData("dracula-theme.theme-dracula", "Dracula", null, null)]
+    [InlineData(null, null, null, "vscode/dark.json")]
+    public void A_theme_kept_over_a_vs_code_theme_is_written_as_its_file_is_read(string? id, string? theme, string? version, string? file)
+    {
+        VsCodeBase based = new(id, theme, version, file);
+        ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Kept.json", ThemeFiles.Wrapping("Dracula", based), new Dictionary<string, ThemeTokenKind>());
+        Assert.True(read.Read is not null, $"The theme written over {based} does not read: {read.Refused}");
+        Assert.Equal("Dracula", read.Read.Name);
+        Assert.Equal(based, read.Read.Base);
+        Assert.Empty(read.Problems);
+    }
+
+    [Theory]
+    [InlineData("Dracula", "", "Dracula")]
+    [InlineData("Dracula", " (Dracula Official)", "Dracula (Dracula Official)")]
+    [InlineData("Line one\nline two", "", "Line one line two")]
+    public void A_theme_s_name_from_a_vs_code_theme_s_words_is_kept_as_written_where_a_theme_file_holds_it(string words, string after, string name) =>
+        Assert.Equal(name, ThemeFiles.NameOf(words, after));
+
+    [Fact]
+    public void A_theme_s_name_from_words_longer_than_a_theme_file_holds_is_cut_short_keeping_what_follows_and_every_character_whole()
+    {
+        string label = new string('a', 62) + "😀" + "tail";
+        Assert.Equal(new string('a', 62) + "…", ThemeFiles.NameOf(label));
+        Assert.Equal(new string('a', 56) + "… (Quay)", ThemeFiles.NameOf(label, " (Quay)"));
+        string over = ThemeFiles.NameOf(label, " (" + new string('b', 40) + ")");
+        Assert.Equal(64, over.Length);
+        Assert.StartsWith(new string('a', 32) + "… (bbb", over, StringComparison.Ordinal);
+        Assert.NotEqual(ThemeFiles.NameOf(label), over);
+        foreach (string name in (string[])[ThemeFiles.NameOf(label), ThemeFiles.NameOf(label, " (Quay)"), over])
+        {
+            Assert.Equal(name, ThemeFiles.ReadTheme("Kept.json", ThemeFiles.Wrapping(name, new VsCodeBase("a.b", label, null)), new Dictionary<string, ThemeTokenKind>()).Read?.Name);
+        }
+    }
+
+    [Theory]
+    [InlineData("2.25.1", "2.25.1")]
+    [InlineData("1.0.0-beta.2+local", "1.0.0-beta.2+local")]
+    [InlineData("2.0 local", "0.0.0")]
+    public void An_extension_s_version_is_read_from_its_manifest_only_as_a_theme_pins_one(string written, string read) =>
+        Assert.Equal(read, VsCodeThemes.ReadManifest("package.json", Encoding.UTF8.GetBytes($$"""{"publisher": "a", "name": "b", "version": "{{written}}"}""")).Read?.Version);
+
+    [Theory]
     [InlineData("""{"vscode": "dracula"}""", "vscode is {\"id\": \"publisher.extension\"")]
     [InlineData("""{"vscode": {"id": "no-dot", "theme": "Dracula"}}""", "it is an extension's Open VSX id")]
     [InlineData("""{"vscode": {"id": "a.b", "theme": "Dracula", "version": "1 2"}}""", "it is the extension's version")]

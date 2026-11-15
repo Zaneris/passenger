@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 
@@ -47,6 +48,41 @@ public static class OutboundHttp
         HttpRequestMessage request = new(method, uri);
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Passenger", Product.Version));
         return request;
+    }
+
+    /// <summary>What an address answers, read whole through <paramref name="client"/> and held to <paramref name="most"/>
+    /// bytes, refused unread where its length says more; else why not: <paramref name="missing"/> where it answers 404, its
+    /// size where past the most (<paramref name="named"/> naming it), its status, or why no answer came.</summary>
+    public static async Task<(byte[]? Bytes, string? Why)> ReadAsync(HttpClient client, Uri address, long most, string named, string missing, CancellationToken cancel)
+    {
+        try
+        {
+            using HttpRequestMessage request = Request(HttpMethod.Get, address);
+            using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancel).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return (null, missing);
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                return (null, $"{address} answers {(int)response.StatusCode} {response.ReasonPhrase}");
+            }
+            if (response.Content.Headers.ContentLength is > 0 and var length && length > most)
+            {
+                return (null, $"{named} is {Sizes.Said(length)}, more than the {Sizes.Said(most)} Passenger reads");
+            }
+            Stream stream = await response.Content.ReadAsStreamAsync(cancel).ConfigureAwait(false);
+            await using (stream.ConfigureAwait(false))
+            {
+                return await Streams.BoundedAsync(stream, most, cancel).ConfigureAwait(false) is { } bytes
+                    ? (bytes, null)
+                    : (null, $"{named} is more than the {Sizes.Said(most)} Passenger reads");
+            }
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException || (error is TaskCanceledException && !cancel.IsCancellationRequested))
+        {
+            return (null, $"{address} could not be read: {(error is TaskCanceledException ? $"no answer in {client.Timeout.TotalSeconds.ToString("0", CultureInfo.InvariantCulture)} s" : error.Message)}");
+        }
     }
 
     /// <summary>Whether a variable .NET reads a proxy from is set, in lower case or upper.</summary>

@@ -135,6 +135,60 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void A_VS_Code_theme_from_the_explorer_or_a_vsix_is_kept_as_a_theme_file_reads_it_its_long_label_cut_short_and_draws()
+    {
+        string label = "Midnight Harbour Lights " + new string('x', 70);
+        string Plain(string colour) => $$$"""{"colors": {"editor.background": "{{{colour}}}"}}""";
+        using StandInOpenVsx registry = new();
+        registry.Add("harbour", "lights", "Harbour", 50, null, Vsix(
+            $$$"""{"publisher": "harbour", "name": "lights", "version": "1.0.0", "contributes": {"themes": [{"label": "{{{label}}}", "uiTheme": "vs-dark", "path": "./a.json"}]}}""",
+            ("extension/a.json", Plain("#102030"))));
+        registry.Add("quay", "lights", "Quay", 40, null, Vsix(
+            $$$"""{"publisher": "quay", "name": "lights", "version": "1.0.0", "contributes": {"themes": [{"label": "{{{label}}}", "uiTheme": "vs-dark", "path": "./b.json"}]}}""",
+            ("extension/b.json", Plain("#304050"))));
+        string vsix = Path.Combine(sources, "long.vsix");
+        File.WriteAllBytes(vsix, Vsix(
+            $$$"""{"publisher": "pier", "name": "lights", "version": "2.0.0 local", "contributes": {"themes": [{"label": "{{{label}}}", "uiTheme": "vs-dark", "path": "./c.json"}]}}""",
+            ("extension/c.json", Plain("#506070"))));
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(new AppSettings { Theme = ThemeChoice.Dark });
+            SettingsDialog dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.Appearance;
+            Ui.Settle();
+            ThemeExplorer explorer = dialog.ThemeExplorer;
+            Ui.Click(explorer.OpenButton);
+            Ui.WaitFor(() => explorer.Listed.Count == 2, () => $"both themes listed, where it lists {string.Join(", ", explorer.Listed)} and says {explorer.Said.Text}");
+
+            // Beside another extension's theme of its label, kept under its label cut short before its extension's name.
+            string cut = label[..63] + "…";
+            foreach ((string extension, string kept, string colour) in ((string, string, string)[])[("harbour.lights", cut, "#102030"), ("quay.lights", label[..56] + "… (Quay)", "#304050")])
+            {
+                explorer.Choose(label, extension);
+                Ui.WaitFor(() => explorer.Working.IsCompleted, () => $"{extension}'s theme chosen, where the explorer says {explorer.Said.Text}");
+                Ui.Settle();
+                Assert.True(Themes.Said is null, $"{extension}'s theme chosen does not read as kept: {Themes.Said}");
+                Assert.Equal(new SourcedTheme(ThemeSource.OpenVsx.Name, kept), dialog.Working.Look);
+                Assert.Equal(Color.Parse(colour), Drawn(window, TokenKeys.Editor_Background));
+            }
+            Assert.Equal("harbour.lights", ThemeFiles.ReadTheme(cut, KeptThemes.Bytes(ThemeSource.OpenVsx, false, cut)!, ThemeResources.Kinds).Read?.Base?.Id);
+
+            Assert.Null(Ui.Await(dialog.ThemePicker.AddFileAsync(vsix), "the .vsix of a long label added"));
+            Ui.Settle();
+            Assert.Equal(new SourcedTheme(ThemeSource.Added.Name, cut), dialog.Working.Look);
+            Assert.True(Themes.Said is null, $"The theme added from a .vsix does not read: {Themes.Said}");
+            Assert.Equal(Color.Parse("#506070"), Drawn(window, TokenKeys.Editor_Background));
+            dialog.Close();
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void A_theme_naming_a_VS_Code_theme_by_its_id_draws_it_under_its_own_tokens_and_is_kept_with_it_so_it_draws_offline()
     {
         StandInOpenVsx registry = new();
@@ -207,6 +261,11 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
         File.WriteAllBytes(vsix, LanternVsix());
         string broken = Path.Combine(files, "broken.vsix");
         File.WriteAllText(broken, "no zip at all");
+        string huge = Path.Combine(files, "huge.vsix");
+        using (FileStream sparse = File.Create(huge))
+        {
+            sparse.SetLength(VsCodeThemes.MostVsixBytes + 1024 * 1024);
+        }
         ThemeFile lantern = CarriedThemes.Theme(CarriedThemes.VsCodePrefix + "Lantern")!;
         MainWindow window = Open();
         try
@@ -231,6 +290,8 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
 
             string? refused = Ui.Await(dialog.ThemePicker.AddFileAsync(broken), "a broken .vsix refused");
             Assert.Contains("no zip Passenger reads", refused, StringComparison.Ordinal);
+            Assert.Equal(new SourcedTheme(ThemeSource.Added.Name, "Paper"), dialog.Working.Look);
+            Assert.EndsWith("huge.vsix is 33 MB, more than the 32 MB it may hold", Ui.Await(dialog.ThemePicker.AddFileAsync(huge), "a .vsix past the most refused"));
             Assert.Equal(new SourcedTheme(ThemeSource.Added.Name, "Paper"), dialog.Working.Look);
 
             // As a code colour scheme under Passenger's own theme: Lantern's code colours in Dark, moved to read in Light.

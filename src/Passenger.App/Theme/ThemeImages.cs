@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -31,7 +32,7 @@ public static class ThemeImages
     {
         if (bytes.Length > ThemeFiles.MostImageBytes)
         {
-            return $"{name} is {bytes.Length} bytes, more than the {ThemeFiles.MostImageBytes} a background picture may hold";
+            return $"{name} is {Sizes.Said(bytes.Length)}, more than the {Sizes.Said(ThemeFiles.MostImageBytes)} a background picture may hold";
         }
         if (SizeOf(bytes) is not (int width, int height))
         {

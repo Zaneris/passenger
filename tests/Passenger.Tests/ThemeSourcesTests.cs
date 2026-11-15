@@ -167,7 +167,14 @@ public sealed class ThemeSourcesTests : IDisposable
         string mixed = Path.Combine(sources, "mixed");
         CarriedThemes.CopyTo(mixed, "Ledger");
         File.WriteAllText(Path.Combine(mixed, "Broken.json"), """{"format": 1, "name": "Broken", "dark": {"Frame": "teal"}}""");
-        File.WriteAllText(Path.Combine(mixed, ThemeFiles.IndexFile), """{"format": 1, "themes": ["Ledger.json", "Broken.json"]}""");
+        File.WriteAllText(Path.Combine(mixed, "Huge.json"), $$"""{"format": 1, "name": "Huge", "description": "{{new string('x', 1_300_000)}}"}""");
+        File.WriteAllText(Path.Combine(mixed, ThemeFiles.IndexFile), """{"format": 1, "themes": ["Ledger.json", "Broken.json", "Huge.json"]}""");
+        using StandInHttp web = new(exchange => exchange.Path switch
+        {
+            "/themes/passenger-themes.json" => exchange.ReplyAsync(200, "application/json", """{"format": 1, "themes": ["Huge.json"]}"""),
+            "/themes/Huge.json" => exchange.ReplyAsync(200, "application/json", File.ReadAllBytes(Path.Combine(mixed, "Huge.json"))),
+            _ => exchange.ReplyAsync(404, "text/plain", "none"),
+        });
         string notJson = Path.Combine(folder, "Not a theme.json");
         File.WriteAllText(notJson, "frame: teal\n");
         string mine = Path.Combine(folder, "Mine.json");
@@ -199,6 +206,19 @@ public sealed class ThemeSourcesTests : IDisposable
             Assert.DoesNotContain(picker.Listed, l => l.StartsWith("Broken", StringComparison.Ordinal));
             Assert.True(picker.Problems?.Contains("Frame in dark as \"teal\", where it takes a colour", StringComparison.Ordinal) == true,
                 $"The file the source lists that does not read is not said: {picker.Problems}");
+            Assert.True(picker.Problems?.Contains($"{Path.Combine(added, "Huge.json")} is 1.2 MB, more than the 1 MB it may hold", StringComparison.Ordinal) == true,
+                $"The file the source lists past the most a theme file holds is not said in the sizes the IDE says: {picker.Problems}");
+
+            // A file an address lists past the most is said so too, before it is read.
+            string address = $"{web.Root}/themes/";
+            dialog.ThemeSourceBox.Text = address;
+            Ui.Click(dialog.AddThemeSourceButton);
+            Ui.Settle();
+            picker.Box.IsDropDownOpen = true;
+            Ui.WaitFor(() => picker.Problems?.Contains($"{address}'s Huge.json", StringComparison.Ordinal) == true, () => $"the address's file past the most said, where it says {picker.Problems}");
+            picker.Box.IsDropDownOpen = false;
+            Assert.True(picker.Problems?.Contains($"{address}'s Huge.json is 1.2 MB, more than the 1 MB Passenger reads", StringComparison.Ordinal) == true,
+                $"The address's file past the most a theme file holds is not said in the sizes the IDE says: {picker.Problems}");
 
             SourcedTheme? before = dialog.Working.Look;
             string? why = Ui.Await(picker.AddFileAsync(notJson), "a file that is no JSON added");

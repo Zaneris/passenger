@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Net;
 using System.Text.Json;
 using Passenger.Core;
 
@@ -191,41 +189,6 @@ public static class OpenVsx
     }
 
     /// <summary>What an address answers, at most <paramref name="most"/> bytes, or why not.</summary>
-    private static async Task<(byte[]? Bytes, string? Why)> BytesAsync(Uri address, long most, CancellationToken cancel)
-    {
-        try
-        {
-            using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, address);
-            using HttpResponseMessage response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancel);
-            if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                return (null, $"Open VSX has no {address.AbsolutePath}");
-            }
-            if (!response.IsSuccessStatusCode)
-            {
-                return (null, $"{address} answers {(int)response.StatusCode} {response.ReasonPhrase}");
-            }
-            if (response.Content.Headers.ContentLength is > 0 and var length && length > most)
-            {
-                return (null, $"{address} is {length.ToString("N0", CultureInfo.InvariantCulture)} bytes, more than the {most.ToString("N0", CultureInfo.InvariantCulture)} Passenger reads");
-            }
-            await using Stream stream = await response.Content.ReadAsStreamAsync(cancel);
-            using MemoryStream read = new();
-            byte[] chunk = new byte[81920];
-            int got;
-            while ((got = await stream.ReadAsync(chunk, cancel)) > 0)
-            {
-                if (read.Length + got > most)
-                {
-                    return (null, $"{address} is more than the {most.ToString("N0", CultureInfo.InvariantCulture)} bytes Passenger reads");
-                }
-                read.Write(chunk, 0, got);
-            }
-            return (read.ToArray(), null);
-        }
-        catch (Exception error) when (error is HttpRequestException or IOException || (error is TaskCanceledException && !cancel.IsCancellationRequested))
-        {
-            return (null, $"{address} could not be read: {(error is TaskCanceledException ? $"no answer in {Limit.TotalSeconds:0} s" : error.Message)}");
-        }
-    }
+    private static Task<(byte[]? Bytes, string? Why)> BytesAsync(Uri address, long most, CancellationToken cancel) =>
+        OutboundHttp.ReadAsync(Http, address, most, address.ToString(), $"Open VSX has no {address.AbsolutePath}", cancel);
 }

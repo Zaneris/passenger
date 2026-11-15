@@ -1,4 +1,3 @@
-using System.Net;
 using Passenger.Core;
 
 namespace Passenger.App;
@@ -92,29 +91,8 @@ public static class ThemeSourceReads
             return (null, $"{source.Shown} is read where Passenger keeps it");
         }
         Uri address = new(new Uri(place), path);
-        try
-        {
-            using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, address);
-            using HttpResponseMessage response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancel);
-            if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                return (null, $"{source.Shown} has no {path}{(source.Kind == ThemeSourceKind.GitHub ? " at its default branch, or is no public repository" : string.Empty)} ({address} answers 404)");
-            }
-            if (!response.IsSuccessStatusCode)
-            {
-                return (null, $"{address} answers {(int)response.StatusCode} {response.ReasonPhrase}");
-            }
-            if (response.Content.Headers.ContentLength is > 0 and var length && length > most)
-            {
-                return (null, $"{source.Shown}'s {path} is {length} bytes, more than the {most} it may hold");
-            }
-            await using Stream stream = await response.Content.ReadAsStreamAsync(cancel);
-            return await BoundedAsync(stream, most, cancel) is { } bytes ? (bytes, null) : (null, $"{source.Shown}'s {path} is more than the {most} bytes it may hold");
-        }
-        catch (Exception error) when (error is HttpRequestException or IOException || (error is TaskCanceledException && !cancel.IsCancellationRequested))
-        {
-            return (null, $"{address} could not be read: {(error is TaskCanceledException ? $"no answer in {Limit.TotalSeconds:0} s" : error.Message)}");
-        }
+        string missing = $"{source.Shown} has no {path}{(source.Kind == ThemeSourceKind.GitHub ? " at its default branch, or is no public repository" : string.Empty)} ({address} answers 404)";
+        return await OutboundHttp.ReadAsync(Http, address, most, $"{source.Shown}'s {path}", missing, cancel);
     }
 
     private static (byte[]? Bytes, string? Why) FromFolder(string folder, string path, long most)
@@ -137,10 +115,10 @@ public static class ThemeSourceReads
             }
             if (info.Length > most)
             {
-                return (null, $"{file} is {info.Length} bytes, more than the {most} it may hold");
+                return (null, $"{file} is {Sizes.Said(info.Length)}, more than the {Sizes.Said(most)} it may hold");
             }
             using FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            return Bounded(stream, most) is { } bytes ? (bytes, null) : (null, $"{file} is more than the {most} bytes it may hold");
+            return Streams.Bounded(stream, most) is { } bytes ? (bytes, null) : (null, $"{file} is more than the {Sizes.Said(most)} it may hold");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -170,39 +148,8 @@ public static class ThemeSourceReads
     public static (byte[]? Bytes, string? Why) BesideFile(string file, string image) =>
         System.IO.Path.GetDirectoryName(file) is { } folder ? FromFolder(folder, image, ThemeFiles.MostImageBytes) : (null, $"{file} is no file");
 
-    /// <summary>A file named by the person, as <see cref="FromFolder"/> reads one a source lists.</summary>
-    public static (byte[]? Bytes, string? Why) FromFile(string file) =>
-        System.IO.Path.GetDirectoryName(file) is { } folder ? FromFolder(folder, System.IO.Path.GetFileName(file), ThemeFiles.MostBytes) : (null, $"{file} is no file");
-
-    private static byte[]? Bounded(Stream stream, long most)
-    {
-        using MemoryStream read = new();
-        byte[] chunk = new byte[81920];
-        int got;
-        while ((got = stream.Read(chunk)) > 0)
-        {
-            if (read.Length + got > most)
-            {
-                return null;
-            }
-            read.Write(chunk, 0, got);
-        }
-        return read.ToArray();
-    }
-
-    private static async Task<byte[]?> BoundedAsync(Stream stream, long most, CancellationToken cancel)
-    {
-        using MemoryStream read = new();
-        byte[] chunk = new byte[81920];
-        int got;
-        while ((got = await stream.ReadAsync(chunk, cancel)) > 0)
-        {
-            if (read.Length + got > most)
-            {
-                return null;
-            }
-            read.Write(chunk, 0, got);
-        }
-        return read.ToArray();
-    }
+    /// <summary>A file named by the person, as <see cref="FromFolder"/> reads one a source lists: at most a theme file's
+    /// bytes, or <paramref name="most"/>.</summary>
+    public static (byte[]? Bytes, string? Why) FromFile(string file, long most = ThemeFiles.MostBytes) =>
+        System.IO.Path.GetDirectoryName(file) is { } folder ? FromFolder(folder, System.IO.Path.GetFileName(file), most) : (null, $"{file} is no file");
 }

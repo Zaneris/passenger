@@ -75,7 +75,7 @@ public static partial class VsCodeThemes
         {
             throw new FormatException("names no publisher and name an extension's id is made of");
         }
-        string version = JsonMembers.Text(root, "version") is { Length: > 0 and <= 64 } given && !given.Any(char.IsControl) ? given : "0.0.0";
+        string version = JsonMembers.Text(root, "version") is { } given && ThemeFiles.IsVersion(given) ? given : "0.0.0";
         string display = JsonMembers.Text(root, "displayName") is { Length: > 0 and <= LongestLabel } shown && !shown.Any(char.IsControl) && !shown.StartsWith('%') ? shown : name;
         List<VsCodeContribution> themes = [];
         IReadOnlyList<JsonElement> contributed = JsonMembers.Items(JsonMembers.Value(root, "contributes"), "themes");
@@ -91,7 +91,7 @@ public static partial class VsCodeThemes
             if (label is not { Length: > 0 and <= LongestLabel } || label.Any(char.IsControl) || path is null || Inside(path, ".") is null
                 || ui is not ("vs" or "vs-dark" or "hc-black" or "hc-light"))
             {
-                problems.Add($"{file}: a colour theme it contributes ({Shown(theme)}) names no label, path inside the extension or kind Passenger reads, so it was passed over");
+                problems.Add($"{file}: a colour theme it contributes ({ThemeJson.Shown(theme)}) names no label, path inside the extension or kind Passenger reads, so it was passed over");
                 continue;
             }
             themes.Add(new VsCodeContribution(label, ui, Inside(path, ".")!));
@@ -160,7 +160,7 @@ public static partial class VsCodeThemes
                 }
                 else
                 {
-                    problems.Add($"{file}: colors' {colour.Name} is {Shown(colour.Value)}, no colour Passenger reads, so it was passed over");
+                    problems.Add($"{file}: colors' {colour.Name} is {ThemeJson.Shown(colour.Value)}, no colour Passenger reads, so it was passed over");
                 }
             }
             JsonElement? tokens = JsonMembers.Value(root, "tokenColors");
@@ -245,7 +245,7 @@ public static partial class VsCodeThemes
         why = null;
         if (bytes.Length > MostVsixBytes)
         {
-            why = $"the .vsix is {bytes.Length} bytes, more than the {MostVsixBytes} Passenger reads";
+            why = $"the .vsix is {Sizes.Said(bytes.Length)}, more than the {Sizes.Said(MostVsixBytes)} Passenger reads";
             return null;
         }
         Dictionary<string, ZipArchiveEntry> entries = new(StringComparer.Ordinal);
@@ -288,25 +288,16 @@ public static partial class VsCodeThemes
             }
             if (entry.Length > ThemeFiles.MostBytes)
             {
-                return (null, $"the .vsix's {path} is {entry.Length} bytes, more than the {ThemeFiles.MostBytes} a theme file may hold");
+                return (null, $"the .vsix's {path} is {Sizes.Said(entry.Length)}, more than the {Sizes.Said(ThemeFiles.MostBytes)} a theme file may hold");
             }
             try
             {
                 lock (entries)
                 {
                     using Stream stream = entry.Open();
-                    using MemoryStream read = new();
-                    byte[] chunk = new byte[16384];
-                    int got;
-                    while ((got = stream.Read(chunk)) > 0)
-                    {
-                        if (read.Length + got > ThemeFiles.MostBytes)
-                        {
-                            return (null, $"the .vsix's {path} is more than the {ThemeFiles.MostBytes} bytes a theme file may hold");
-                        }
-                        read.Write(chunk, 0, got);
-                    }
-                    return (read.ToArray(), null);
+                    return Streams.Bounded(stream, ThemeFiles.MostBytes) is { } read
+                        ? (read, null)
+                        : (null, $"the .vsix's {path} is more than the {Sizes.Said(ThemeFiles.MostBytes)} a theme file may hold");
                 }
             }
             catch (InvalidDataException error)
@@ -421,46 +412,13 @@ public static partial class VsCodeThemes
         return foreground is null && bold is null && italic is null ? null : new VsCodeStyle(foreground, bold, italic);
     }
 
-    private static ThemeRead<T> Parse<T>(string file, ReadOnlyMemory<byte> bytes, Func<JsonElement, List<string>, T> read) where T : class
-    {
-        if (bytes.Length > ThemeFiles.MostBytes)
-        {
-            return new ThemeRead<T>(null, $"{file} is {bytes.Length} bytes, more than the {ThemeFiles.MostBytes} a theme file may hold", []);
-        }
-        List<string> problems = [];
-        try
-        {
-            ReadOnlyMemory<byte> text = bytes.Span.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]) ? bytes[3..] : bytes;
-            using JsonDocument document = JsonDocument.Parse(text, new JsonDocumentOptions
-            {
-                MaxDepth = Deepest, CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true,
-            });
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                throw new FormatException("is no JSON object");
-            }
-            return new ThemeRead<T>(read(document.RootElement, problems), null, problems);
-        }
-        catch (JsonException e)
-        {
-            return new ThemeRead<T>(null, $"{file} is not JSON as VS Code reads it: {e.Message}", []);
-        }
-        catch (FormatException e)
-        {
-            return new ThemeRead<T>(null, $"{file} {e.Message}", []);
-        }
-    }
+    private static ThemeRead<T> Parse<T>(string file, ReadOnlyMemory<byte> bytes, Func<JsonElement, List<string>, T> read) where T : class =>
+        ThemeJson.Read(file, bytes, LenientJson.Document with { MaxDepth = Deepest }, "VS Code", null, read);
 
     /// <summary>A file's JSON, its own copy apart from the document it was read from.</summary>
     private sealed record Parsed(JsonElement Root);
 
     private static string Folder(string file) => file.LastIndexOf('/') is >= 0 and var slash ? file[..slash] : string.Empty;
-
-    private static string Shown(JsonElement value)
-    {
-        string raw = value.GetRawText();
-        return raw.Length <= 40 ? raw : string.Concat(raw.AsSpan(0, 39), "…");
-    }
 
     // A publisher's or an extension's name as VS Code takes them: letters, digits, '-' and '_'.
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")]

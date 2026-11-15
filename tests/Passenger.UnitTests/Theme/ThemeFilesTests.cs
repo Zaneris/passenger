@@ -198,9 +198,9 @@ public class ThemeFilesTests
     [Fact]
     public void A_file_larger_than_a_theme_may_be_is_refused_unread()
     {
-        ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Mine.json", new byte[ThemeFiles.MostBytes + 1], Tokens);
+        ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Mine.json", new byte[1_300_000], Tokens);
         Assert.Null(read.Read);
-        Assert.Equal($"Mine.json is {ThemeFiles.MostBytes + 1} bytes, more than the {ThemeFiles.MostBytes} a theme file may hold", read.Refused);
+        Assert.Equal("Mine.json is 1.2 MB, more than the 1 MB a theme file may hold", read.Refused);
     }
 
     [Fact]

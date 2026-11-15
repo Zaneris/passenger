@@ -162,7 +162,7 @@ public static partial class ThemeFiles
     /// <summary>A source's index, <paramref name="file"/> naming it in what the read says.</summary>
     public static ThemeRead<ThemeIndex> ReadIndex(string file, ReadOnlyMemory<byte> bytes) => Read(file, bytes, (root, problems) =>
     {
-        PassOver(file, root, ["format", "themes", "codeColours"], "an index", problems);
+        PassOver(file, root, [Member.Format, "themes", "codeColours"], "an index", problems);
         return new ThemeIndex(Paths(root, "themes"), Paths(root, "codeColours"));
     });
 
@@ -174,57 +174,35 @@ public static partial class ThemeFiles
     public static ThemeRead<ThemeFile> ReadCodeColours(string file, ReadOnlyMemory<byte> bytes, IReadOnlyDictionary<string, ThemeTokenKind> tokens) =>
         Read(file, bytes, (root, problems) => Theme(file, root, tokens, code: true, problems));
 
-    private static ThemeRead<T> Read<T>(string file, ReadOnlyMemory<byte> bytes, Func<JsonElement, List<string>, T> read) where T : class
-    {
-        if (bytes.Length > MostBytes)
-        {
-            return new ThemeRead<T>(null, $"{file} is {bytes.Length} bytes, more than the {MostBytes} a theme file may hold", []);
-        }
-        List<string> problems = [];
-        try
-        {
-            // A byte order mark, as Windows' editors may save one, is no JSON of its own.
-            ReadOnlyMemory<byte> text = bytes.Span.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]) ? bytes[3..] : bytes;
-            using JsonDocument document = JsonDocument.Parse(text, new JsonDocumentOptions { MaxDepth = Deepest, AllowDuplicateProperties = false });
-            JsonElement root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
+    private static ThemeRead<T> Read<T>(string file, ReadOnlyMemory<byte> bytes, Func<JsonElement, List<string>, T> read) where T : class =>
+        ThemeJson.Read(file, bytes, new JsonDocumentOptions { MaxDepth = Deepest, AllowDuplicateProperties = false }, $"format {Format}",
+            $"a theme file is {{\"{Member.Format}\": {Format}, …}}", (root, problems) =>
             {
-                throw new FormatException("is no JSON object: a theme file is {\"format\": 1, …}");
-            }
-            CheckFormat(root);
-            return new ThemeRead<T>(read(root, problems), null, problems);
-        }
-        catch (JsonException e)
-        {
-            return new ThemeRead<T>(null, $"{file} is not JSON as format {Format} reads it: {e.Message}", []);
-        }
-        catch (FormatException e)
-        {
-            return new ThemeRead<T>(null, $"{file} {e.Message}", []);
-        }
-    }
+                CheckFormat(root);
+                return read(root, problems);
+            });
 
     private static void CheckFormat(JsonElement root)
     {
-        JsonElement? format = JsonMembers.Value(root, "format");
+        JsonElement? format = JsonMembers.Value(root, Member.Format);
         if (format is null)
         {
             throw new FormatException($"names no format: a theme file begins {{\"format\": {Format}, …}}");
         }
         if (format is not { ValueKind: JsonValueKind.Number } number || !number.TryGetInt32(out int which) || which != Format)
         {
-            throw new FormatException($"is format {Shown(format.Value)}, which this Passenger does not read: it reads format {Format}");
+            throw new FormatException($"is format {ThemeJson.Shown(format.Value)}, which this Passenger does not read: it reads format {Format}");
         }
     }
 
     private static ThemeFile Theme(string file, JsonElement root, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool code, List<string> problems)
     {
         string what = code ? "a code colour scheme" : "a theme";
-        PassOver(file, root, code ? ["format", "name", "description", .. Sections, "languages", "vscode"] : ["format", "name", "description", .. Sections, .. Beyond], what, problems);
-        string name = Words(root, "name", LongestName, needed: true);
+        PassOver(file, root, code ? [Member.Format, Member.Name, "description", .. Sections, "languages", Member.VsCode] : [Member.Format, Member.Name, "description", .. Sections, .. Beyond], what, problems);
+        string name = Words(root, Member.Name, LongestName, needed: true);
         string description = Words(root, "description", LongestDescription, needed: false);
         // Over a VS Code theme, the plain kinds a file leaves out are the base's own.
-        bool plain = JsonMembers.Value(root, "vscode") is null;
+        bool plain = JsonMembers.Value(root, Member.VsCode) is null;
         Dictionary<string, TokenValue>[] sections = TokenSections(file, root, tokens, code, null, plain, problems);
         (BackgroundValue? dark, BackgroundValue? light) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
         return new ThemeFile(name, description, sections[0], sections[1], sections[2])
@@ -234,7 +212,7 @@ public static partial class ThemeFiles
             LightBackground = light,
             Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, plain, problems),
             Layout = code ? null : Layout(file, JsonMembers.Value(root, "layout"), problems),
-            Base = Base(file, JsonMembers.Value(root, "vscode"), problems),
+            Base = Base(file, JsonMembers.Value(root, Member.VsCode), problems),
         };
     }
 
@@ -255,7 +233,7 @@ public static partial class ThemeFiles
             }
             if (section.Value.ValueKind != JsonValueKind.Object)
             {
-                throw new FormatException($"gives {Sections[i]}{inLanguage} as {Shown(section.Value)}: {Sections[i]} is an object of tokens and their values");
+                throw new FormatException($"gives {Sections[i]}{inLanguage} as {ThemeJson.Shown(section.Value)}: {Sections[i]} is an object of tokens and their values");
             }
             foreach (JsonProperty token in section.Value.EnumerateObject())
             {
@@ -306,7 +284,7 @@ public static partial class ThemeFiles
             ThemeTokenKind.TextStyle => value.ValueKind == JsonValueKind.String && Styles.Contains(value.GetString(), StringComparer.Ordinal) ? new TextStyleValue(value.GetString()!) : null,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "a token kind format 1 does not read"),
         };
-        return read ?? throw new FormatException($"gives {where} as {Shown(value)}, where it takes {Expected(kind)}");
+        return read ?? throw new FormatException($"gives {where} as {ThemeJson.Shown(value)}, where it takes {Expected(kind)}");
     }
 
     private static ColourValue? Colour(string file, string where, JsonElement value, List<string> problems)
@@ -418,7 +396,7 @@ public static partial class ThemeFiles
         if (value is not { ValueKind: JsonValueKind.String } text || text.GetString() is not { } words || words.Trim().Length == 0
             || words.Length > longest || words.Any(char.IsControl))
         {
-            throw new FormatException($"gives {(value is null ? "no " + member : $"{member} as {Shown(value.Value)}")}: its {member} is words on one line, at most {longest} characters");
+            throw new FormatException($"gives {(value is null ? "no " + member : $"{member} as {ThemeJson.Shown(value.Value)}")}: its {member} is words on one line, at most {longest} characters");
         }
         return words;
     }
@@ -432,14 +410,14 @@ public static partial class ThemeFiles
         }
         if (value.Value.ValueKind != JsonValueKind.Array || value.Value.GetArrayLength() > MostEntries)
         {
-            throw new FormatException($"gives {member} as {Shown(value.Value)}: {member} is a list of paths inside the source, at most {MostEntries}");
+            throw new FormatException($"gives {member} as {ThemeJson.Shown(value.Value)}: {member} is a list of paths inside the source, at most {MostEntries}");
         }
         List<string> paths = [];
         foreach (JsonElement item in value.Value.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.String || !Inside(item.GetString()!, [".json"]))
             {
-                throw new FormatException($"lists {Shown(item)} in {member}: each is a path inside the source, its folders joined by /, with no .. and ending .json");
+                throw new FormatException($"lists {ThemeJson.Shown(item)} in {member}: each is a path inside the source, its folders joined by /, with no .. and ending .json");
             }
             paths.Add(item.GetString()!);
         }
@@ -470,13 +448,8 @@ public static partial class ThemeFiles
         ThemeTokenKind.Radius => $"a radius: a number for every corner, or four [top left, top right, bottom right, bottom left], each 0 to {Farthest}",
         ThemeTokenKind.Thickness => $"a thickness: a number for every side, or four [left, top, right, bottom], each -{Farthest} to {Farthest}",
         ThemeTokenKind.Number => $"a number, 0 to {Farthest}",
-        ThemeTokenKind.TextStyle => string.Join(", ", Styles.SkipLast(1).Select(s => $"\"{s}\"")) + $" or \"{Styles[^1]}\"",
+        ThemeTokenKind.TextStyle => Listed(Styles),
         _ => kind.ToString(),
     };
 
-    private static string Shown(JsonElement value)
-    {
-        string raw = value.GetRawText();
-        return raw.Length <= 40 ? raw : string.Concat(raw.AsSpan(0, 39), "…");
-    }
 }
