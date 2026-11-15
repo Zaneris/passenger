@@ -53,6 +53,9 @@ public sealed record StepBinding(BindingKind Kind, string? Expression, string Me
     /// <summary>The project file of the code it is written in.</summary>
     public string? Project { get; init; }
 
+    /// <summary>Its method's documentation comment's summary, as words; null for none.</summary>
+    public string? Summary { get; init; }
+
     /// <summary>Its type's name without its namespace.</summary>
     public string ShortType => Type[(Type.LastIndexOfAny(['.', '+']) + 1)..];
 

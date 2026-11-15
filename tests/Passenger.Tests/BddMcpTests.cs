@@ -24,11 +24,11 @@ public sealed class BddMcpTests(RestoredFolders folders) : McpRig, IClassFixture
         McpClient client = await Start(["--mcp", folder]);
 
         JsonElement declared = Assert.Single((await Call(client, McpTools.Definition, At(Feature, 9, 12))).EnumerateArray());
-        Assert.Equal((Steps, 11), (declared.GetProperty("path").GetString(), declared.GetProperty("line").GetInt32()));
+        Assert.Equal((Steps, 12), (declared.GetProperty("path").GetString(), declared.GetProperty("line").GetInt32()));
 
         JsonElement fromStep = await Call(client, McpTools.Usages, At(Feature, 9, 12));
         Assert.Equal(2, fromStep.GetProperty("count").GetInt32());
-        JsonElement fromDefinition = await Call(client, McpTools.Usages, At(Steps, 11, 20));
+        JsonElement fromDefinition = await Call(client, McpTools.Usages, At(Steps, 12, 20));
         string[] files = [.. fromDefinition.GetProperty("files").EnumerateArray().Select(f => f.GetProperty("path").GetString()!)];
         Assert.Contains(Feature, files);
         Assert.Contains(Steps, files);

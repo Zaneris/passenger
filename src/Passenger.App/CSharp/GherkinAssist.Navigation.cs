@@ -9,6 +9,7 @@ namespace Passenger.App.CSharp;
 
 internal sealed partial class GherkinAssist
 {
+    /// <summary>A step's card: the definition binding it, with its documentation's summary, or why none binds it.</summary>
     public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
         if (!IsFeature(document) || Bdd is not { } bdd || await bdd.AnalysisAsync(document) is not { } analysis)
@@ -31,6 +32,10 @@ internal sealed partial class GherkinAssist
                 foreach (BoundStep bound in match.Bindings)
                 {
                     card.AddCode($"[{bound.Binding.Kind}({Quoted(bound.Binding.Expression)})]\n{bound.Binding.Shown}");
+                    if (bound.Binding.Summary is { } summary)
+                    {
+                        card.AddText(summary);
+                    }
                 }
                 card.AddText(match.Bindings.Count > 1 ? "Each example of the outline binds one of these" : $"The step definition that binds this {step.Kind} step");
                 break;

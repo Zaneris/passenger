@@ -45,6 +45,7 @@ public static class ReqnrollProjects
         "    private int second;\n" +
         "    private int result;\n" +
         "\n" +
+        "    /// <summary>Keys the first number into the <see cref=\"CalculatorStepDefinitions\"/>.</summary>\n" +
         "    [Given(\"the first number is {int}\")]\n" +
         "    public void GivenTheFirstNumberIs(int number)\n" +
         "    {\n" +

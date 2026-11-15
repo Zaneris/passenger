@@ -78,6 +78,7 @@ public sealed class StepCatalog
             ExpressionPlace = Place(found.ExpressionAt),
             ExpressionLength = found.ExpressionAt?.Length ?? 0,
             Project = step.DeclaredIn is { } declared ? PathNames.Canonical(declared) : null,
+            Summary = found.Summary,
         };
     }
 

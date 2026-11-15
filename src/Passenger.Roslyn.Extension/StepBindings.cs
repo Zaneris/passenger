@@ -182,7 +182,7 @@ internal static class StepBindingReading
                     };
                     StepPlace? expressionAt = await LiteralPlaceAsync(attribute).ConfigureAwait(false);
                     Steps.Add(new ProjectStep(new StepDefinitionFound(StepKindOf(kind), expression, expressionType, method.Name, typeName,
-                        [.. method.Parameters.Select(ParameterOf)], scopes, ErrorOf(method, type), methodAt, expressionAt), project));
+                        [.. method.Parameters.Select(ParameterOf)], scopes, ErrorOf(method, type), methodAt, expressionAt, SummaryOf(method, cancel)), project));
                 }
                 else if (Derives(kind, transformation))
                 {
@@ -265,6 +265,65 @@ internal static class StepBindingReading
                 }
             }
             return false;
+        }
+
+        /// <summary>A method's documentation comment's summary as words, its tags' text kept and its whitespace joined; null for none.</summary>
+        private static string? SummaryOf(IMethodSymbol method, CancellationToken cancel)
+        {
+            if ((method.GetDocumentationCommentXml(cancellationToken: cancel) is { Length: > 0 } documented ? documented : WrittenComment(method, cancel)) is not { Length: > 0 } xml)
+            {
+                return null;
+            }
+            try
+            {
+                System.Xml.Linq.XElement read = System.Xml.Linq.XElement.Parse(xml);
+                if (read.Element("summary") is not { } summary)
+                {
+                    return null;
+                }
+                System.Text.StringBuilder said = new();
+                foreach (System.Xml.Linq.XNode node in summary.DescendantNodes())
+                {
+                    // A <see cref="T:Shop.Basket"/> reads as the name it points at ("Basket"), in its place among the words.
+                    said.Append(node switch
+                    {
+                        System.Xml.Linq.XText text => text.Value,
+                        System.Xml.Linq.XElement { IsEmpty: true } empty => Named((string?)empty.Attribute("cref") ?? (string?)empty.Attribute("name") ?? (string?)empty.Attribute("langword")),
+                        _ => string.Empty,
+                    });
+                }
+                string words = string.Join(' ', said.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+                return words.Length > 0 ? words : null;
+            }
+            catch (System.Xml.XmlException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>A reference's name as C#'s hover shows it: its last part, past its kind and namespace and before its parameters.</summary>
+        private static string Named(string? reference)
+        {
+            if (reference is null)
+            {
+                return string.Empty;
+            }
+            string name = reference.Length > 2 && reference[1] == ':' ? reference[2..] : reference;
+            name = name.Split('(')[0];
+            return name[(name.LastIndexOf('.') + 1)..];
+        }
+
+        /// <summary>A method's <c>///</c> lines as written, where its project parses no documentation (no documentation file
+        /// asked for), as one element; null for none.</summary>
+        private static string? WrittenComment(IMethodSymbol method, CancellationToken cancel)
+        {
+            if (method.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax(cancel) is not { } declared)
+            {
+                return null;
+            }
+            string[] lines = [.. declared.GetLeadingTrivia().Select(t => t.ToFullString())
+                .SelectMany(t => t.Split('\n')).Select(l => l.Trim()).Where(l => l.StartsWith("///", StringComparison.Ordinal)).Select(l => l[3..])];
+            return lines.Length == 0 ? null : $"<member>{string.Join('\n', lines)}</member>";
         }
 
         private static StepParameterFound ParameterOf(IParameterSymbol parameter)
