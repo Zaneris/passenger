@@ -147,8 +147,9 @@ public sealed record ReferencedFound([property: JsonPropertyName("paths")] IRead
 /// <summary>A load of projects ended: the source generators' runs it queued are waited for.</summary>
 public sealed record GeneratorsAsked;
 
-/// <summary>The source generators' runs queued when asked have run.</summary>
-public sealed record GeneratorsRan;
+/// <summary>The source generators' runs queued when asked have run; the files a project's builds write that the server
+/// holds otherwise than the disk, which they read as the server holds them.</summary>
+public sealed record GeneratorsRan([property: JsonPropertyName("unread")] IReadOnlyList<string> Unread);
 
 /// <summary>A text's fingerprint as both sides make it: SHA-256 of its characters with every line break as '\n', since a
 /// server's line and column are the same whichever break a line ends in (and Passenger holds a CR file's as '\n').</summary>

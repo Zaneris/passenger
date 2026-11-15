@@ -270,9 +270,9 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     /// <summary>Whether a restore the server ran as it loaded has ended and the projects it restored are still to load again,
     /// which until then the server answers for as loaded before their restore (with no package's build files, its
-    /// generators among them); or have loaded again, and the generators' run that load queued has not yet run
-    /// (<see cref="WaitForGenerators"/>): none for a file of a project the restore failed for, which loads again with
-    /// nothing it brought.</summary>
+    /// generators among them); or have loaded again, and the generators' run that load queued has not yet run, or the
+    /// server has yet to read what the load's builds wrote (<see cref="WaitForGenerators"/>): none for a file of a project
+    /// the restore failed for, which loads again with nothing it brought.</summary>
     public bool ReloadingRestored(string path)
     {
         UiThread.Check();
@@ -300,7 +300,8 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return "the C# language server to load again the projects its restore brought packages to";
         }
-        return "the C# language server's source generators to run again after its load";
+        return unreadInputs.Count > 0 ? $"the C# language server to read {Path.GetFileName(unreadInputs[0])}, which a design-time build wrote again"
+            : "the C# language server's source generators to run again after its load";
     }
 
     /// <summary>How long after a load the generators are waited for, with no extension to say when they have run.</summary>
@@ -327,6 +328,10 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>Whether a project a restore brought something to is still to load again (<see cref="restoredToLoad"/>).</summary>
     private bool RestoredStillToLoad() => restoredToLoad.Count > 0 && (restoringTheirs || Stopwatch.GetElapsedTime(loadSaid) < LoadsQuiet);
 
+    /// <summary>The files the server's builds wrote that it held otherwise than the disk as the generators' wait last looked
+    /// (<see cref="WaitForGenerators"/>).</summary>
+    private IReadOnlyList<string> unreadInputs = [];
+
     /// <summary>When the projects a restore brought, or a project asked to load again, loaded again, and the server's answer
     /// once the source generators' runs queued by then have run; with no extension to ask, none, the server's next word
     /// that its solution moved ending the wait.</summary>
@@ -344,10 +349,11 @@ public sealed partial class CSharpService : IAsyncDisposable
     }
 
     /// <summary>A load that may have changed projects' generators ended: the server, which runs them again only a moment
-    /// later, answers for their code as made before until then, so its extension is asked when they have run.</summary>
+    /// later, answers for their code as made before until then, so its extension is asked when they have run, and until
+    /// the server holds as the disk has them the files the load's builds wrote again (<see cref="GeneratorsReadAsync"/>).</summary>
     private void WaitForGenerators()
     {
-        Task? run = session is { Server.ExtensionProblem: null } asked ? asked.GeneratorsRunAsync() : null;
+        Task? run = session is { Server.ExtensionProblem: null } asked ? GeneratorsReadAsync(asked) : null;
         if (run is not null)
         {
             // A server gone, or refusing, has nothing left to run: the wait ends either way.
@@ -355,6 +361,48 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
         generatorsRun = (Stopwatch.GetTimestamp(), run);
     }
+
+    /// <summary>Done once the generators' runs the server has queued have run and it holds as the disk has them the files in
+    /// its projects' intermediate output folders: a load keeps the text it read of a file its builds wrote again (the
+    /// settings MAUI's generator reads of a page) until the server hears it changed, a moment later, and a generator run
+    /// before then makes nothing of it. Asked again each moment while one is not, for <see cref="InputsUnheard"/> at most.</summary>
+    private async Task GeneratorsReadAsync(RoslynSession asked)
+    {
+        long began = Stopwatch.GetTimestamp();
+        try
+        {
+            while (true)
+            {
+                IReadOnlyList<string> unread = (await asked.GeneratorsRunAsync()).Unread ?? [];
+                if (session != asked)
+                {
+                    return;
+                }
+                unreadInputs = unread;
+                if (unread.Count == 0)
+                {
+                    return;
+                }
+                if (Stopwatch.GetElapsedTime(began) >= InputsUnheard)
+                {
+                    IdeErrors.Write($"C# language server (process {asked.Server.ProcessId}) still held {unread[0]} otherwise than the disk {InputsUnheard.TotalSeconds:0} s after its load: "
+                        + "agents' questions no longer wait for it");
+                    return;
+                }
+                await Task.Delay(TimeSpan.FromMilliseconds(100));
+            }
+        }
+        finally
+        {
+            if (session == asked)
+            {
+                unreadInputs = [];
+            }
+        }
+    }
+
+    /// <summary>How long after a load the server is waited for to read what its builds wrote again.</summary>
+    private static TimeSpan InputsUnheard => Waits.Of(TimeSpan.FromSeconds(15));
 
     /// <summary>Whether a generators' run a load queued is still waited for (<see cref="WaitForGenerators"/>).</summary>
     private bool GeneratorsWaited() => generatorsRun is { } queued
@@ -1112,6 +1160,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         restoredNone.Clear();
         restoreFailedFor.Clear();
         restoredToLoad.Clear();
+        unreadInputs = [];
         generatorsRun = null;
         hearingSaid = false;
         SetState("Starting C#…");

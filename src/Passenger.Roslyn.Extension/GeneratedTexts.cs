@@ -10,13 +10,52 @@ namespace Passenger.Roslyn.Extension;
 
 /// <summary>Answers once the source generators' runs the server has queued have run: a load that changes a project's
 /// analyzers queues one, run a moment later, and until then the project's generated code is what its generators made
-/// before, none of a generator just come.</summary>
+/// before, none of a generator just come. Its answer names the files in each project's intermediate output folder that the
+/// server holds otherwise than the disk: a load takes a design-time build's documents by their paths, so one it held
+/// before keeps the text it read until it hears the file changed, though the build has written it again (the analyzers'
+/// settings a generator reads, the global usings).</summary>
 public sealed class GeneratorsRun : IExtensionWorkspaceMessageHandler<GeneratorsAsked, GeneratorsRan>
 {
     public async Task<GeneratorsRan> ExecuteAsync(GeneratorsAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
-        await context.Solution.Workspace._updateSourceGeneratorsQueue.WaitUntilCurrentBatchCompletesAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
-        return new GeneratorsRan();
+        Microsoft.CodeAnalysis.Workspace workspace = context.Solution.Workspace;
+        await workspace._updateSourceGeneratorsQueue.WaitUntilCurrentBatchCompletesAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new GeneratorsRan(await UnreadAsync(workspace.CurrentSolution, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>The documents of every kind in a project's intermediate output folder, where its builds write, whose text the
+    /// solution holds otherwise than the disk; one gone from disk is passed over.</summary>
+    private static async Task<List<string>> UnreadAsync(Solution solution, CancellationToken cancellationToken)
+    {
+        List<string> unread = [];
+        foreach (Project project in solution.Projects)
+        {
+            if (Path.GetDirectoryName(project.CompilationOutputInfo.AssemblyPath) is not { Length: > 0 } built)
+            {
+                continue;
+            }
+            foreach (TextDocument document in project.Documents.Concat<TextDocument>(project.AdditionalDocuments).Concat(project.AnalyzerConfigDocuments))
+            {
+                if (document.FilePath is not { } path || !Passenger.Core.PathNames.IsUnder(path, built) || unread.Contains(path))
+                {
+                    continue;
+                }
+                string disk;
+                try
+                {
+                    disk = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
+                if (TextHash.Of((await document.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString()) != TextHash.Of(disk))
+                {
+                    unread.Add(path);
+                }
+            }
+        }
+        return unread;
     }
 }
 

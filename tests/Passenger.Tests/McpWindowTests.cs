@@ -453,6 +453,59 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A MAUI page's folder whose first load restores MAUI: the design-time build the load after the restore takes
+    /// writes again the settings MAUI's generator reads of the page and the global usings, and the server keeps the texts it
+    /// read of them until it hears of them, held back here past the generators' run. An agent's definition of the
+    /// InitializeComponent the generator declares waits, saying so, until the server has read them, never answering nothing
+    /// because the generator ran on the settings of the load before the restore.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_server_to_read_what_its_build_wrote_again()
+    {
+        string folder = McpNavigationTests.MauiPage("mcp-maui-unread-");
+        DeleteAtEnd(folder);
+        string project = Path.Combine(folder, "MauiApp1.csproj");
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        TaskCompletionSource loading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource telling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        McpClient? client = null;
+        try
+        {
+            // Pumped, not settled throughout: the server's load held waits on the window.
+            Task opening = window.OpenFolder(folder);
+            Ui.PumpUntil(() => opening.IsCompleted && window.CSharpService is not null, "the folder to open with a language server", AgentLimit);
+            Task loadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, loading.Task);
+            window.ApplySettings(window.Settings with { McpServer = true });
+            Assert.True(window.AgentSocket is not null, $"The window does not listen for agents: {window.Status}");
+            client = Ui.AwaitPumped(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching", AgentLimit);
+            Heard heard = new();
+            Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 }, heard: heard));
+            Ui.PumpUntil(() => loadHeld.IsCompleted && window.CSharpService!.Session is not null && (heard.Told.Count > 0 || asked.IsCompleted),
+                "the server's first load of MauiApp1 to be held while the agent's definition waits", AgentLimit);
+            window.CSharpService!.Session!.Server.WatchedFiles.HoldTelling(
+                path => path.EndsWith(".GeneratedMSBuildEditorConfig.editorconfig", StringComparison.Ordinal) || path.EndsWith(".GlobalUsings.g.cs", StringComparison.Ordinal), telling.Task);
+            loading.SetResult();
+            Ui.PumpUntil(() => asked.IsCompleted || heard.Told.Any(t => t.Message?.Contains("which a design-time build wrote again", StringComparison.Ordinal) == true),
+                "the agent's definition to wait for the server to read what the build after the restore wrote again", AgentLimit);
+            telling.SetResult();
+            CallToolResult answer = Ui.AwaitPumped(asked, "the agent's definition of InitializeComponent", AgentLimit);
+            string said = Text(answer);
+            Assert.True(answer.IsError != true && said.Contains("MainPage.xaml.sg.cs", StringComparison.Ordinal)
+                && said.Contains("private partial void InitializeComponent();", StringComparison.Ordinal),
+                $"definition of a MAUI page's InitializeComponent, asked before the server read what the build after the restore wrote again, answered: {said}");
+        }
+        finally
+        {
+            loading.TrySetResult();
+            telling.TrySetResult();
+            if (client is not null)
+            {
+                Gone(client);
+            }
+            window.Close();
+        }
+    }
+
     /// <summary>Two projects each given a package once loaded, the first's change loaded and restored as the second's waits:
     /// the server's next batch loads the second alone, before it hears of the first's restore (held back here), then
     /// restores the second, which fails, no feed holding its package. An agent's definition of the class the first's
