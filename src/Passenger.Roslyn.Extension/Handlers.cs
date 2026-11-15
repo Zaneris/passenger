@@ -88,16 +88,11 @@ public sealed class DocumentTexts : IExtensionWorkspaceMessageHandler<TextsAsked
         return new TextsHeld(held);
     }
 
-    /// <summary>The <see cref="TextHash"/> of the text a solution holds for a path, null where it has no document of it.
-    /// The solution finds a path's documents ignoring case, so one of a name differing only in letter case, another file
-    /// where the file system tells case apart (a file renamed so), is passed over there.</summary>
-    internal static async Task<string?> HashOfAsync(Solution solution, string path, CancellationToken cancellationToken)
-    {
-        TextDocument? document = solution.GetDocumentIdsWithFilePath(path)
-            .Select(id => (TextDocument?)solution.GetDocument(id) ?? solution.GetAdditionalDocument(id) ?? solution.GetAnalyzerConfigDocument(id))
-            .FirstOrDefault(d => d?.FilePath is { } held && Passenger.Core.PathNames.Same(held, path));
-        return document is null ? null : TextHash.Of((await document.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString());
-    }
+    /// <summary>The <see cref="TextHash"/> of the text a solution holds for a path, null where it has no document of it.</summary>
+    internal static async Task<string?> HashOfAsync(Solution solution, string path, CancellationToken cancellationToken) =>
+        SyntaxReads.DocumentIdsOf(solution, path).Select(id => SyntaxReads.TextDocumentOf(solution, id)).FirstOrDefault() is { } document
+            ? TextHash.Of((await document.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString())
+            : null;
 }
 
 /// <summary>The solution's documents written on disk since a time, or gone from it since, the nearest folder above that is

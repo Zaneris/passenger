@@ -138,7 +138,7 @@ public sealed class MauiXamlChecks : IExtensionWorkspaceMessageHandler<MauiCheck
     public async Task<MauiChecksFound> ExecuteAsync(MauiChecksAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         Solution solution = context.Solution;
-        if (solution.GetDocumentIdsWithFilePath(message.Path).FirstOrDefault(id => solution.GetAdditionalDocument(id) is not null) is not { } id)
+        if (SyntaxReads.DocumentIdsOf(solution, message.Path).FirstOrDefault(id => solution.GetAdditionalDocument(id) is not null) is not { } id)
         {
             return new MauiChecksFound([]);
         }
@@ -220,7 +220,7 @@ internal sealed class MauiExpressionDocument
 
     /// <summary>The project the server holds a XAML file in, as one of its additional files; null for none.</summary>
     public static Project? ProjectOf(Solution solution, string path) =>
-        solution.GetDocumentIdsWithFilePath(path).FirstOrDefault(id => solution.GetAdditionalDocument(id) is not null) is { } id ? solution.GetProject(id.ProjectId) : null;
+        SyntaxReads.DocumentIdsOf(solution, path).FirstOrDefault(id => solution.GetAdditionalDocument(id) is not null) is { } id ? solution.GetProject(id.ProjectId) : null;
 
     /// <summary>Where a name being written at a place of the code starts, where MAUI may bind it to the data type: not
     /// after a dot, in a string or past a name's end; null elsewhere.</summary>

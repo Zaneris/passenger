@@ -85,7 +85,7 @@ internal static class LocalizationSource
     {
         if (!razor)
         {
-            return [.. solution.GetDocumentIdsWithFilePath(path).Select(solution.GetDocument).OfType<Document>().Select(d => (d, d.Project))];
+            return [.. DocumentIdsOf(solution, path).Select(solution.GetDocument).OfType<Document>().Select(d => (d, d.Project))];
         }
         List<(Document, Project)> generated = [];
         foreach (Project project in solution.Projects)

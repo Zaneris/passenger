@@ -92,7 +92,7 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
         HashSet<string> holding = new(StringComparer.Ordinal);
         foreach (string path in paths)
         {
-            foreach (DocumentId document in solution.GetDocumentIdsWithFilePath(path))
+            foreach (DocumentId document in SyntaxReads.DocumentIdsOf(solution, path))
             {
                 if (solution.GetProject(document.ProjectId)?.FilePath is { } project)
                 {

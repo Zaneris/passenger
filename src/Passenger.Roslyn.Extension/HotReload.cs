@@ -58,7 +58,7 @@ internal static class HotReload
         // The files edited before the session began are taken back to their texts before (the build's), its baseline.
         foreach (HotReloadOriginal original in message.Originals)
         {
-            ImmutableArray<DocumentId> ids = solution.GetDocumentIdsWithFilePath(original.Path);
+            ImmutableArray<DocumentId> ids = SyntaxReads.DocumentIdsOf(solution, original.Path);
             if (!ids.IsEmpty && solution.GetDocument(ids[0]) is { } document)
             {
                 SourceText now = await document.GetTextAsync(cancel).ConfigureAwait(false);

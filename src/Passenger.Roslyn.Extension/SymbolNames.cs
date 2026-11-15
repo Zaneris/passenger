@@ -53,7 +53,7 @@ internal static class SymbolNames
     /// project's.</summary>
     public static async Task<ComponentFound> ComponentAsync(Solution solution, string path, CancellationToken cancel)
     {
-        foreach (DocumentId id in solution.GetDocumentIdsWithFilePath(path))
+        foreach (DocumentId id in DocumentIdsOf(solution, path))
         {
             if (solution.GetAdditionalDocument(id) is not { FilePath: { } file } razor || !RazorFiles.Is(file) || MadeOf(razor.Project, file) is not { } made)
             {

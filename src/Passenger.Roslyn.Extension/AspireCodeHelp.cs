@@ -612,8 +612,8 @@ internal static class AspireSource
                 (IReadOnlyList<ConnectionRead> Reads, IReadOnlyList<ConfigurationKey> Keys) known;
                 if (file is not null)
                 {
-                    known = await ReadAsync(path, project, solution.GetDocumentIdsWithFilePath(file).Where(id => id.ProjectId == project.Id).Select(project.GetDocument)
-                        .OfType<Document>().Where(d => SamePath(d.FilePath, file)), cancel).ConfigureAwait(false);
+                    known = await ReadAsync(path, project, DocumentIdsOf(solution, file).Where(id => id.ProjectId == project.Id).Select(project.GetDocument)
+                        .OfType<Document>(), cancel).ConfigureAwait(false);
                 }
                 else
                 {
