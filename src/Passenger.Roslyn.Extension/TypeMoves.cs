@@ -52,16 +52,12 @@ internal static class TypeMoves
         {
             return Changes.Refused(problem!);
         }
-        string target = string.Join(".", move.Namespace.Split('.').Select(p => p.Trim()));
-        if (target.Length == 0 || target.Split('.').Any(p => !Changes.IsName(p)))
-        {
-            return Changes.Refused(target.Length == 0 ? "Specify namespace" : $"'{move.Namespace}' is not a valid namespace name");
-        }
         string from = Interfaces.Namespace(type);
-        if (target == from)
+        if (RefactoringChecks.WhyNotNamespace(move.Namespace, type.Name, from) is { } wrong)
         {
-            return Changes.Refused($"'{type.Name}' is already in namespace '{target}'");
+            return Changes.Refused(wrong);
         }
+        string target = RefactoringChecks.Namespace(move.Namespace);
         Compilation compilation = (await document.Project.GetCompilationAsync(cancel).ConfigureAwait(false))!;
         if (compilation.GetTypeByMetadataName($"{target}.{type.MetadataName}") is not null)
         {

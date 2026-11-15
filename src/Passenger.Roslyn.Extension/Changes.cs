@@ -97,9 +97,6 @@ internal static class Changes
         return token;
     }
 
-    /// <summary>A name a C# type or member can have.</summary>
-    public static bool IsName(string name) => SyntaxFacts.IsValidIdentifier(name) && SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None;
-
     /// <summary>A node led by as many blank lines as another is, as a member that takes another's place is.</summary>
     public static T WithBlankLinesOf<T>(T node, SyntaxNode model) where T : SyntaxNode
     {

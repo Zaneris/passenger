@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Core;
 using Passenger.Roslyn.Extension;
 
@@ -43,22 +42,12 @@ public sealed class MoveTypeDialog : RefactoringDialog
     protected override string? Check()
     {
         string target = TargetBox.Text?.Trim() ?? string.Empty;
-        if (toFile)
+        if (!toFile)
         {
-            return target.Length == 0 ? "file name is empty"
-                : !target.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ? "The new file name extension is not valid for source code files"
-                : PathNames.NamesIn(folder).Equals(target, type.FileName) ? $"'{type.Name}' is in {type.FileName} already"
-                : null;
+            return RefactoringChecks.WhyNotNamespace(target, type.Name, type.Namespace);
         }
-        if (target.Length == 0)
-        {
-            return "Specify namespace";
-        }
-        if (target.Split('.').Any(p => !SyntaxFacts.IsValidIdentifier(p.Trim()) || SyntaxFacts.GetKeywordKind(p.Trim()) != SyntaxKind.None))
-        {
-            return $"'{target}' is not a valid namespace name";
-        }
-        return target == type.Namespace ? $"'{type.Name}' is in namespace '{target}' already" : null;
+        return RefactoringChecks.WhyNotFileName(target)
+            ?? (PathNames.NamesIn(folder).Equals(target, type.FileName) ? $"'{type.Name}' is in {type.FileName} already" : null);
     }
 
     protected override Task<string?> MakeAsync() => make(TargetBox.Text?.Trim() ?? string.Empty);

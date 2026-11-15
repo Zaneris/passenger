@@ -322,6 +322,12 @@
     <Compile Include="../../src/Passenger.Roslyn.Extension/DocumentReadsKept.cs" Link="Roslyn/DocumentReadsKept.cs" />
   </ItemGroup>
 
+  <!-- What C#'s refactorings refuse in the words they are asked, compiled in as Passenger.Languages compiles it, reading
+       through the debugger's CodeBrackets. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Roslyn.Extension/RefactoringChecks.cs" Link="Roslyn/RefactoringChecks.cs" />
+  </ItemGroup>
+
   <!-- Where a launch profile's browser opens, read from its URLs alone, the Node.js versions a package.json's engines
        range takes, read from its text alone, a game's copies' names and arguments, and whether a project's inputs changed
        since a build began, read from a temporary folder, compiled in since their project is the app's. -->

@@ -381,7 +381,7 @@ public sealed partial class PassengerTools
         }
         throw new ArgumentException(space is null
             ? "move takes file (a new file beside the type's) or namespace, as the window's Move to Another File and Move to Namespace do"
-            : $"'{type.Name}' is in namespace '{space}' already: move takes the namespace it goes to, or file");
+            : $"{RefactoringChecks.InNamespaceAlready(type.Name, space)}: move takes the namespace it goes to, or file");
     }
 
     private async Task<RefactorAnswer> MembersAsync(OpenDocument document, LspDocument lsp, int offset, JsonElement? options, bool describing, bool up, Patience patience)

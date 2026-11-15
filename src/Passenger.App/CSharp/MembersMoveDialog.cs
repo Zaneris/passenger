@@ -108,11 +108,8 @@ public sealed class MembersMoveDialog : RefactoringDialog
                 made.IsChecked = false;
             }
         }
-        if (!up && !inheritors.Any(i => i.Box.IsChecked == true))
-        {
-            return "Choose the inheritors to push members down to";
-        }
-        return members.Any(m => m.Moved.IsChecked == true) ? null : up ? "Select the members to pull up" : "Select the members to push down";
+        return (up ? null : RefactoringChecks.WhyNotInheritors(inheritors.Count(i => i.Box.IsChecked == true), hierarchy.Type))
+            ?? RefactoringChecks.WhyNotMembersMoved(members.Count(m => m.Moved.IsChecked == true), up);
     }
 
     protected override Task<string?> MakeAsync()

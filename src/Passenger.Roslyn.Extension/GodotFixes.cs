@@ -56,7 +56,7 @@ internal static partial class GodotSource
     private static async Task<Refactored> HandlerAsync(Solution solution, Document holder, SemanticModel model, ClassDeclarationSyntax declaration, INamedTypeSymbol type,
         Compilation compilation, Engine engine, GodotFixRequest asked, CancellationToken cancel)
     {
-        if (!Changes.IsName(asked.Name))
+        if (!RefactoringChecks.IsName(asked.Name))
         {
             return Changes.Refused($"'{asked.Name}' is not a name C# takes for a method");
         }
@@ -91,7 +91,7 @@ internal static partial class GodotSource
     private static async Task<Refactored> ExportAsync(Solution solution, Document holder, SemanticModel model, ClassDeclarationSyntax declaration, INamedTypeSymbol type,
         Compilation compilation, Engine engine, GodotFixRequest asked, CancellationToken cancel)
     {
-        if (!Changes.IsName(asked.Name))
+        if (!RefactoringChecks.IsName(asked.Name))
         {
             return Changes.Refused($"'{asked.Name}' is not a name C# takes for a property");
         }

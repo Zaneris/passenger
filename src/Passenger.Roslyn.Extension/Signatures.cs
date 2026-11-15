@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Core;
 using Passenger.Languages.CSharp;
+using static Passenger.Roslyn.Extension.RefactoringChecks;
 using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
@@ -19,18 +20,12 @@ namespace Passenger.Roslyn.Extension;
 /// and passing a new one's value. Parameters and the method are renamed by Roslyn's Renamer, which resolves conflicts.</summary>
 internal static class Signatures
 {
-    private static readonly string[] Modifiers = ["", "ref", "out", "in", "params", "this", "ref readonly", "scoped", "scoped ref", "this ref", "ref this", "this in", "in this"];
-
     public static async Task<Signature> DescribeAsync(Document document, Place at, CancellationToken cancel)
     {
         (IMethodSymbol? method, string? problem) = await FindAsync(document, at, cancel).ConfigureAwait(false);
         if (method is not null && (await DeclarationsAsync(method, cancel).ConfigureAwait(false)).FirstOrDefault() is { } declaration)
         {
-            return new Signature(null, method.MethodKind == MethodKind.Constructor ? "constructor" : "method", method.ContainingType.Name,
-                string.Join(" ", declaration.Modifiers.Select(m => m.Text)),
-                method.MethodKind == MethodKind.Constructor ? method.ContainingType.Name : method.Name,
-                declaration is MethodDeclarationSyntax named ? named.ReturnType.ToString() : string.Empty,
-                [.. declaration.ParameterList.Parameters.Select(ParameterOf)], method.IsExtensionMethod);
+            return SignatureOf(method, declaration);
         }
         problem ??= $"Unable to change signature of {Describe(method!)}: it is declared as a record's or a type's parameters";
         return new Signature(problem, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, [], false);
@@ -47,11 +42,12 @@ internal static class Signatures
         {
             return Changes.Refused($"Unable to change signature of {Describe(method)}: it is declared as a record's or a type's parameters");
         }
-        IReadOnlyList<Parameter> original = [.. declaration.ParameterList.Parameters.Select(ParameterOf)];
-        if (Problem(method, original, change) is { } wrong)
+        Signature was = SignatureOf(method, declaration);
+        if (RefactoringChecks.WhyNotSignature(was, change.Name, change.ReturnType, change.Parameters) is { } wrong)
         {
             return Changes.Refused(wrong);
         }
+        IReadOnlyList<Parameter> original = was.Parameters;
         Solution before = document.Project.Solution;
         List<IMethodSymbol> family = await FamilyAsync(method, before, cancel).ConfigureAwait(false);
         if (family.FirstOrDefault(m => !m.Locations.Any(l => l.IsInSource)) is { } outside)
@@ -155,102 +151,19 @@ internal static class Signatures
         return declarations;
     }
 
+    /// <summary>A method or constructor as Change Signature describes it, from the declaration that carries its parameters.</summary>
+    private static Signature SignatureOf(IMethodSymbol method, BaseMethodDeclarationSyntax declaration) =>
+        new(null, method.MethodKind == MethodKind.Constructor ? "constructor" : "method", method.ContainingType.Name,
+            string.Join(" ", declaration.Modifiers.Select(m => m.Text)),
+            method.MethodKind == MethodKind.Constructor ? method.ContainingType.Name : method.Name,
+            declaration is MethodDeclarationSyntax named ? named.ReturnType.ToString() : string.Empty,
+            [.. declaration.ParameterList.Parameters.Select(ParameterOf)], method.IsExtensionMethod);
+
     private static Parameter ParameterOf(ParameterSyntax parameter) => new(
         string.Join(" ", parameter.Modifiers.Select(m => m.Text)),
         parameter.Type?.ToString() ?? string.Empty,
         parameter.Identifier.ValueText,
         parameter.Default?.Value.ToString() ?? string.Empty);
-
-    /// <summary>Why the signature asked for cannot be made; null when it can.</summary>
-    private static string? Problem(IMethodSymbol method, IReadOnlyList<Parameter> original, SignatureChange change)
-    {
-        if (method.MethodKind == MethodKind.Ordinary && !Changes.IsName(change.Name))
-        {
-            return change.Name.Trim().Length == 0 ? "Method name can not be empty" : $"'{change.Name}' is not a valid method name";
-        }
-        if (method.MethodKind == MethodKind.Ordinary)
-        {
-            switch (IsReturnType(change.ReturnType))
-            {
-                case null:
-                    return "The return type is nested too deeply to read";
-                case false:
-                    return "The return type is invalid";
-            }
-        }
-        HashSet<string> names = new(StringComparer.Ordinal);
-        HashSet<int> kept = [];
-        bool optional = false;
-        for (int i = 0; i < change.Parameters.Count; i++)
-        {
-            ParameterChange parameter = change.Parameters[i];
-            if (parameter.From >= original.Count || (parameter.From >= 0 && !kept.Add(parameter.From)))
-            {
-                return "A parameter is listed twice";
-            }
-            if (parameter.Name.Trim().Length == 0)
-            {
-                return "Parameter name can not be empty";
-            }
-            if (!Changes.IsName(parameter.Name))
-            {
-                return "A parameter has an invalid name";
-            }
-            if (!names.Add(parameter.Name))
-            {
-                return "Parameters should have different names";
-            }
-            switch (IsType(parameter.Type))
-            {
-                case null:
-                    return "A parameter's type is nested too deeply to read";
-                case false:
-                    return "A parameter has an invalid type";
-            }
-            if (!Modifiers.Contains(Normalized(parameter.Modifier)))
-            {
-                return $"'{parameter.Modifier}' is not a parameter modifier";
-            }
-            foreach (string value in (string[])[parameter.DefaultValue, parameter.CallValue])
-            {
-                switch (IsExpression(value))
-                {
-                    case null:
-                        return "A parameter's value is nested too deeply to read";
-                    case false:
-                        return "Error in default value expression";
-                }
-            }
-            if (Normalized(parameter.Modifier) == "params" && i != change.Parameters.Count - 1)
-            {
-                return $"'{parameter.Name}' parameter must appear after all other parameters";
-            }
-            if (parameter.DefaultValue.Trim().Length > 0)
-            {
-                optional = true;
-            }
-            else if (optional && Normalized(parameter.Modifier) != "params")
-            {
-                return "Optional parameters must appear after all regular parameters";
-            }
-        }
-        if (method.IsExtensionMethod && (change.Parameters.Count == 0 || change.Parameters[0].From != 0))
-        {
-            return $"The first parameter of the extension method '{method.Name}' must stay first";
-        }
-        return null;
-    }
-
-    private static string Normalized(string modifier) => string.Join(" ", modifier.Split(' ', StringSplitOptions.RemoveEmptyEntries));
-
-    /// <summary>Whether a text is a type; null for one nested too deeply for the parser to be given.</summary>
-    private static bool? IsType(string text) => text.Trim().Length == 0 ? false : CodeBrackets.TypeName(text) is { } type ? !type.ContainsDiagnostics : null;
-
-    /// <summary>A type a method can return: any type, or void, which a type's parser takes for none.</summary>
-    private static bool? IsReturnType(string text) => Normalized(text) == "void" ? true : IsType(text);
-
-    /// <summary>Whether a text is an expression or nothing; null for one nested too deeply for the parser to be given.</summary>
-    private static bool? IsExpression(string text) => text.Trim().Length == 0 ? true : CodeBrackets.Expression(text) is { } expression ? !expression.ContainsDiagnostics : null;
 
     /// <summary>The method and every method its signature is tied to: what it overrides and implements, and what overrides
     /// and implements those, as far as they go both ways. A constructor stands alone.</summary>
@@ -595,7 +508,7 @@ internal static class Signatures
     /// <summary>A method of the hierarchy as its words name it, by the name the change gives it.</summary>
     private static string Named(IMethodSymbol method, SignatureChange change) => method.MethodKind == MethodKind.Constructor
         ? $"{method.ContainingType.Name}'s constructor"
-        : $"{method.ContainingType.Name}.{(Changes.IsName(change.Name) ? change.Name : method.Name)}";
+        : $"{method.ContainingType.Name}.{(IsName(change.Name) ? change.Name : method.Name)}";
 
     /// <summary>The expression a method's name stands in as a method group: the name, or the member access it ends.</summary>
     private static SyntaxNode Grouped(SyntaxNode name)
@@ -713,12 +626,9 @@ internal static class Signatures
         return list.WithParameters(SyntaxFactory.SeparatedList(parameters, Separators(list.Parameters.GetSeparators().ToList(), parameters.Count)));
     }
 
-    private static ParameterSyntax Parse(string modifier, string type, string name, string defaultValue)
-    {
-        string text = $"({Normalized(modifier)} {type.Trim()} {name}{(defaultValue.Trim().Length > 0 ? " = " + defaultValue.Trim() : string.Empty)})";
-        // The type and the value were each read within what a parser is given; the list's brackets add a level to them.
-        return (CodeBrackets.ParameterList(text) ?? throw new InvalidOperationException("A parameter is nested too deeply to read")).Parameters[0];
-    }
+    /// <summary>A parameter as asked, which <see cref="RefactoringChecks.WhyNotSignature"/> read whole before.</summary>
+    private static ParameterSyntax Parse(string modifier, string type, string name, string defaultValue) =>
+        RefactoringChecks.Declared(modifier, type, name, defaultValue) ?? throw new InvalidOperationException("A parameter is nested too deeply to read");
 
     /// <summary>A list's commas: those it had, then new ones followed by a space.</summary>
     private static IEnumerable<SyntaxToken> Separators(List<SyntaxToken> had, int items)

@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Roslyn.Extension;
 
 namespace Passenger.App.CSharp;
@@ -84,28 +83,9 @@ public sealed class ExtractInterfaceDialog : RefactoringDialog
     /// <summary>Each member offered, by how it reads, with its check box.</summary>
     public IReadOnlyList<(string Text, CheckBox Box)> Members => [.. members.Select(m => (m.Member.Text, m.Box))];
 
-    protected override string? Check()
-    {
-        string name = NameBox.Text?.Trim() ?? string.Empty;
-        if (name.Length == 0)
-        {
-            return "The interface needs a name";
-        }
-        if (!SyntaxFacts.IsValidIdentifier(name) || SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None)
-        {
-            return $"'{name}' is not a valid interface name";
-        }
-        string file = FileBox.Text?.Trim() ?? string.Empty;
-        if (file.Length == 0)
-        {
-            return "file name is empty";
-        }
-        if (!file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            return "The new file name extension is not valid for source code files";
-        }
-        return members.Any(m => m.Box.IsChecked == true) ? null : "Choose the members the interface is to have";
-    }
+    protected override string? Check() => RefactoringChecks.WhyNotInterfaceName(NameBox.Text?.Trim() ?? string.Empty)
+        ?? RefactoringChecks.WhyNotFileName(FileBox.Text?.Trim() ?? string.Empty)
+        ?? RefactoringChecks.WhyNotInterfaceMembers(members.Count(m => m.Box.IsChecked == true));
 
     protected override Task<string?> MakeAsync() => make(NameBox.Text?.Trim() ?? string.Empty, FileBox.Text?.Trim() ?? string.Empty,
         [.. members.Where(m => m.Box.IsChecked == true).Select(m => m.Member.Id)]);

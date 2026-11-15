@@ -396,6 +396,22 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         }));
         Assert.True(deepValue.IsError == true && Text(deepValue).Contains("A parameter's value is nested too deeply to read", StringComparison.Ordinal),
             $"Change Signature giving a parameter a default value nested 1100 deep answered: {Text(deepValue)}");
+        // As deep as the server reads a type, which the parameter's declaration takes a level deeper.
+        string limitType = string.Concat(Enumerable.Repeat("List<", 1000)) + "int" + new string('>', 1000);
+        CallToolResult atLimit = await Result(client, McpTools.Refactor, Place("change_signature", "Tally.cs", Tally, "int Ad", new
+        {
+            parameters = new object[] { new { from = "a", type = limitType }, new { from = "b" } },
+        }));
+        Assert.True(atLimit.IsError == true && Text(atLimit).Contains("A parameter is nested too deeply to read", StringComparison.Ordinal)
+            && !Text(atLimit).Contains("failed", StringComparison.Ordinal),
+            $"Change Signature retyping a parameter to a type nested 1000 deep, which its declaration takes past what the parser is given, answered: {Text(atLimit)}");
+        // A parameter's row is checked as it reads: its type before its name.
+        CallToolResult unwritten = await Result(client, McpTools.Refactor, Place("change_signature", "Tally.cs", Tally, "int Ad", new
+        {
+            parameters = new object[] { new { from = "a" }, new { from = "b" }, new { type = "int[", name = "2nd", callValue = "0" } },
+        }));
+        Assert.True(unwritten.IsError == true && Text(unwritten).Contains("A parameter has an invalid type", StringComparison.Ordinal),
+            $"Change Signature adding a parameter whose type and name are both wrong answered: {Text(unwritten)}");
         Assert.Equal(Tally, File.ReadAllText(PathOf("Tally.cs")));
         const string Twins = "namespace Shop;\n\npublic class Twins\n{\n    public int Of(int a) => a;\n\n    public int Of(int b) => b;\n}\n";
         Write("Twins.cs", Twins);

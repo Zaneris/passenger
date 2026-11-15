@@ -50,9 +50,9 @@ internal static class MemberMoves
         INamedTypeSymbol declaring = target.OriginalDefinition;
         Dictionary<ITypeParameterSymbol, ITypeParameterSymbol> named = NamedBy(type, target);
         List<ISymbol> members = Chosen(type, move.Members);
-        if (members.Count == 0)
+        if (RefactoringChecks.WhyNotMembersMoved(members.Count, up: true) is { } none)
         {
-            return Changes.Refused("Select the members to pull up");
+            return Changes.Refused(none);
         }
         Solution solution = document.Project.Solution;
         Editors editors = new(solution, cancel);
@@ -143,14 +143,14 @@ internal static class MemberMoves
         IEnumerable<INamedTypeSymbol> derived = await SymbolFinder.FindDerivedClassesAsync(type, solution, transitive: false, cancellationToken: cancel).ConfigureAwait(false);
         HashSet<string> wanted = [.. move.Target.Split('\n', StringSplitOptions.RemoveEmptyEntries)];
         List<INamedTypeSymbol> targets = [.. derived.Where(d => InSource(d) && wanted.Contains(TypeId(d)))];
-        if (targets.Count == 0)
+        if (RefactoringChecks.WhyNotInheritors(targets.Count, type.Name) is { } noTarget)
         {
-            return Changes.Refused($"Choose the classes derived from '{type.Name}' to push members down to");
+            return Changes.Refused(noTarget);
         }
         List<ISymbol> members = Chosen(type, move.Members);
-        if (members.Count == 0)
+        if (RefactoringChecks.WhyNotMembersMoved(members.Count, up: false) is { } none)
         {
-            return Changes.Refused("Select the members to push down");
+            return Changes.Refused(none);
         }
         Editors editors = new(solution, cancel);
         TypeDeclarationSyntax from = await DeclarationAsync(type, cancel).ConfigureAwait(false);

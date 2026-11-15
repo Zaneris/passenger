@@ -38,9 +38,9 @@ internal static class Interfaces
             return Changes.Refused("Extract Interface extracts from a class, a struct or a record: put the caret on one");
         }
         string name = extraction.Name.Trim();
-        if (!Changes.IsName(name))
+        if (RefactoringChecks.WhyNotInterfaceName(name) is { } wrongName)
         {
-            return Changes.Refused(name.Length == 0 ? "The interface needs a name" : $"'{name}' is not a valid interface name");
+            return Changes.Refused(wrongName);
         }
         if (type.ContainingNamespace.GetTypeMembers(name).Length > 0 || type.GetTypeMembers(name).Length > 0)
         {
@@ -60,9 +60,9 @@ internal static class Interfaces
             }
             members.Add(member);
         }
-        if (members.Count == 0)
+        if (RefactoringChecks.WhyNotInterfaceMembers(members.Count) is { } none)
         {
-            return Changes.Refused("Choose the members the interface is to have");
+            return Changes.Refused(none);
         }
 
         SyntaxGenerator generator = SyntaxGenerator.GetGenerator(document);
@@ -124,17 +124,9 @@ internal static class Interfaces
     /// <summary>Why a new file of a name cannot be made beside a document; null when it can.</summary>
     public static string? FileProblem(Document document, string fileName, string what)
     {
-        if (fileName.Length == 0)
+        if (RefactoringChecks.WhyNotFileName(fileName) is { } wrong)
         {
-            return "file name is empty";
-        }
-        if (!fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            return "The new file name extension is not valid for source code files";
-        }
-        if (fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || fileName.Contains('/') || fileName.Contains('\\'))
-        {
-            return $"'{fileName}' is not a file name";
+            return wrong;
         }
         if (document.FilePath is not { } path)
         {

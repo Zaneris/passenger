@@ -13,6 +13,12 @@
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
   </ItemGroup>
 
+  <!-- What C#'s refactorings refuse in the words they are asked, one rule for the extension and the dialogs, compiled here
+       beside the CodeBrackets it reads through. -->
+  <ItemGroup>
+    <Compile Include="../Passenger.Roslyn.Extension/RefactoringChecks.cs" Link="CSharp/RefactoringChecks.cs" />
+  </ItemGroup>
+
   <!-- VS Code's TextMate grammars and dotnet/roslyn's Razor and C# ones, unchanged (THIRD_PARTY_NOTICES.md says where each
        came from), read by their file name. -->
   <ItemGroup>
