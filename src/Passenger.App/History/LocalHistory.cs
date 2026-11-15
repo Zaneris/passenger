@@ -116,6 +116,10 @@ public sealed class LocalHistory
     /// <summary>When each named activity's moment ended (its end, and <see cref="Lingering"/> after), by its set: a change
     /// written to a file after it is no longer that activity's, however early the watcher heard the file.</summary>
     private readonly Dictionary<long, DateTime> endedAt = [];
+
+    /// <summary>The activities over files alone (<see cref="Over"/>), under way or just ended, on the gate.</summary>
+    private readonly List<Claim> claims = [];
+
     /// <summary>The change set the saves made on this flow are kept under, whatever activity is under way (<see cref="Activity.Own"/>).</summary>
     private readonly AsyncLocal<(long Set, string Name)?> own = new();
 
@@ -216,18 +220,70 @@ public sealed class LocalHistory
         }
     }
 
-    /// <summary>An activity under way until disposed (<see cref="During"/>), whose change set also names the saves made
-    /// within <see cref="Own"/> on any thread, before it ends or after.</summary>
-    public sealed class Activity(LocalHistory history, (long Set, string Name) named) : IDisposable
+    /// <summary>Names one change set until disposed, and a moment after, as <see cref="During"/> does, but of
+    /// <paramref name="files"/> alone: what the folder watcher sees written to them by then, however late it hears it,
+    /// and the saves made within its <see cref="Activity.Own"/>. The person's saves meanwhile, and every other file's
+    /// changes, stay their own (a package change, which another program writes for a while). One <paramref name="joining"/>
+    /// an earlier activity names its files in that one's set, so a change made in steps is one set.</summary>
+    public Activity Over(string name, IEnumerable<string> files, Activity? joining = null)
     {
+        lock (gate)
+        {
+            Claim claim = new(joining?.Named ?? (NewSet(), name), new HashSet<string>(files.Select(PathNames.Canonical), PathNames.Comparer));
+            claims.Add(claim);
+            return new Activity(this, claim.Named, claim);
+        }
+    }
+
+    /// <summary>An activity over files alone ended: what the watcher sees of them a moment after is still its.</summary>
+    private void End(Claim claim)
+    {
+        lock (gate)
+        {
+            DateTime until = DateTime.UtcNow + Lingering;
+            claim.Until = until;
+            endedAt[claim.Named.Set] = endedAt.TryGetValue(claim.Named.Set, out DateTime later) && later > until ? later : until;
+            claims.RemoveAll(c => c.Until < DateTime.UtcNow - HeardWithin);
+        }
+    }
+
+    /// <summary>The activity over files that names what the watcher saw of a file now, if any: one ended a while ago still
+    /// does, heard late, unless another activity names what is seen now, its notice taking only what was written before its
+    /// moment ended (<see cref="NamedUntil"/>).</summary>
+    private (long Set, string Name)? Claimed(string path)
+    {
+        lock (gate)
+        {
+            DateTime now = DateTime.UtcNow;
+            bool another = activity is not null || (lingering is { } after && now < after.Until);
+            return claims.LastOrDefault(c => c.Files.Contains(path) && (c.Until == DateTime.MaxValue || (!another && now - HeardWithin < c.Until)))?.Named;
+        }
+    }
+
+    /// <summary>An activity under way until disposed (<see cref="During"/>, or <see cref="Over"/> its files alone), whose
+    /// change set also names the saves made within <see cref="Own"/> on any thread, before it ends or after.</summary>
+    public sealed class Activity : IDisposable
+    {
+        private readonly LocalHistory history;
+        private readonly Claim? over;
         private int ended;
+
+        internal Activity(LocalHistory history, (long Set, string Name) named, Claim? over = null)
+        {
+            this.history = history;
+            this.over = over;
+            Named = named;
+        }
+
+        /// <summary>The change set it names and its name.</summary>
+        internal (long Set, string Name) Named { get; }
 
         /// <summary>Names the saves made on the calling flow until disposed, and nothing else: a change's own writes made
         /// off the window's thread while the person saves other files.</summary>
         public IDisposable Own()
         {
             (long Set, string Name)? outer = history.own.Value;
-            history.own.Value = named;
+            history.own.Value = Named;
             return new Owning(history, outer);
         }
 
@@ -235,9 +291,26 @@ public sealed class LocalHistory
         {
             if (Interlocked.Exchange(ref ended, 1) == 0)
             {
-                history.End();
+                if (over is null)
+                {
+                    history.End();
+                }
+                else
+                {
+                    history.End(over);
+                }
             }
         }
+    }
+
+    /// <summary>The files an activity over files alone names, until when (none while it is under way).</summary>
+    internal sealed class Claim((long Set, string Name) named, HashSet<string> files)
+    {
+        public (long Set, string Name) Named { get; } = named;
+
+        public HashSet<string> Files { get; } = files;
+
+        public DateTime Until { get; set; } = DateTime.MaxValue;
     }
 
     private sealed class Owning(LocalHistory history, (long Set, string Name)? outer) : IDisposable
@@ -257,9 +330,10 @@ public sealed class LocalHistory
     }
 
     /// <summary>Paths the folder watcher saw change: a file the history knows is read and compared with what it knew, a
-    /// change kept under the activity under way, else as an external change; one it does not know is read and kept only
-    /// as <see cref="BulkArrivals"/> says. A folder made is looked in for its files, one deleted takes what the history knew
-    /// under it, and a file gone whose content another just made has is a move.</summary>
+    /// change kept under the activity over that file (<see cref="Over"/>), else the activity under way, else as an
+    /// external change; one it does not know is read and kept only as <see cref="BulkArrivals"/> says. A folder made is
+    /// looked in for its files, one deleted takes what the history knew under it, and a file gone whose content another
+    /// just made has is a move.</summary>
     public void Noticed(IReadOnlyCollection<string> paths)
     {
         List<string> kept = [.. paths.Where(Keeps)];
@@ -267,10 +341,14 @@ public sealed class LocalHistory
         {
             return;
         }
-        (long set, string name) = Seen();
         DateTimeOffset time = Keeping.Clock();
         DateTime heard = DateTime.UtcNow;
-        Enqueue(() => RecordNotice(kept, set, name, time, heard));
+        foreach (IGrouping<(long Set, string Name)?, string> named in kept.GroupBy(Claimed))
+        {
+            (long set, string name) = named.Key ?? Seen();
+            List<string> these = [.. named];
+            Enqueue(() => RecordNotice(these, set, name, time, heard));
+        }
     }
 
     /// <summary>Reads what a delete is about to take, off the UI thread: the file, or every text file under the folder.</summary>
@@ -950,7 +1028,9 @@ public sealed class LocalHistory
     {
         lock (gate)
         {
-            return name == ExternalChange ? null : activity?.Set == set ? DateTime.MaxValue : endedAt.TryGetValue(set, out DateTime until) ? until : null;
+            return name == ExternalChange ? null
+                : activity?.Set == set || claims.Any(c => c.Named.Set == set && c.Until == DateTime.MaxValue) ? DateTime.MaxValue
+                : endedAt.TryGetValue(set, out DateTime until) ? until : null;
         }
     }
 

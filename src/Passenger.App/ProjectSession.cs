@@ -198,6 +198,7 @@ public sealed class ProjectSession : IAsyncDisposable
             Work = setup.Work,
             SaveFirst = setup.Editors.SaveAllLandedAsync,
             Commands = setup.Editors.Commands,
+            History = () => LocalHistory,
         };
         MSBuild = new MSBuild.MSBuildService(() => Folder, () => Workspace)
         {

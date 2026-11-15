@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Passenger.App.Editors;
+using Passenger.App.History;
 using Passenger.App.MSBuild;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -34,6 +36,9 @@ public sealed partial class FolderPackages
 
     private (Task Until, TaskCompletionSource Reached)? holdNext;
 
+    /// <summary>The Local History set each command's package changes are named in, so a command of several is one set.</summary>
+    private readonly ConditionalWeakTable<CommandHistory.Recording, LocalHistory.Activity> named = [];
+
     /// <summary>Each assets file as last read, with the time it was written and its length then, so a list made again reads
     /// only what a restore wrote since.</summary>
     private readonly ConcurrentDictionary<string, (DateTime Written, long Length, RestoredVersions Read)> assetsRead = new(PathNames.Comparer);
@@ -67,6 +72,9 @@ public sealed partial class FolderPackages
 
     /// <summary>Where a package change is recorded as one command of Undo, unless its caller records it; null records none.</summary>
     public CommandHistory? Commands { get; set; }
+
+    /// <summary>The folder's Local History, which keeps each package change as one set named as its command, or null.</summary>
+    public Func<LocalHistory?>? History { get; set; }
 
     /// <summary>Saves the open files and waits for the saves still landing before a change rewrites a project or a
     /// nuget.config, so what is rewritten, and what the restore then reads, holds their edits. Null once all are on disk,
@@ -487,6 +495,9 @@ public sealed partial class FolderPackages
                     {
                         recording?.Watch(file);
                     }
+                    // One set of Local History, named as the command, over the change's own files: a save meanwhile is the person's.
+                    using LocalHistory.Activity? history = Naming(recording?.Name ?? name, files, recording);
+                    using IDisposable? owned = history?.Own();
                     // Its own writes before a save is heard as the person's.
                     string? unwritten = heldChange ?? (bulkStopping?.IsCancellationRequested == true ? "Stopped"
                         : bulkRecording is not null && ChangedBulkFile() is { } changed ? changed : own is null ? null : await own());
@@ -574,6 +585,21 @@ public sealed partial class FolderPackages
             // Ended once the window has taken the files into its editors, so the command holds their reload.
             recorded?.Dispose();
         }
+    }
+
+    /// <summary>A change's files named one set of Local History until disposed, the set of its command's earlier changes.</summary>
+    private LocalHistory.Activity? Naming(string name, IReadOnlyList<string> files, CommandHistory.Recording? recording)
+    {
+        if (History?.Invoke() is not { } history)
+        {
+            return null;
+        }
+        LocalHistory.Activity over = history.Over(name, files, recording is not null && named.TryGetValue(recording, out LocalHistory.Activity? earlier) ? earlier : null);
+        if (recording is not null)
+        {
+            named.AddOrUpdate(recording, over);
+        }
+        return over;
     }
 
     /// <summary>Where the files' bytes are not those read before.</summary>

@@ -742,6 +742,75 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>An install under central package management, which Passenger writes into the project and its
+    /// Directory.Packages.props and then restores, is one change set of Local History named as the install, holding both
+    /// files, as Undo takes it back as one.</summary>
+    [AvaloniaFact]
+    public void An_install_under_central_management_is_one_change_set_of_local_history_named_as_the_install()
+    {
+        File.WriteAllText(Path.Combine(folder, "Directory.Packages.props"),
+            "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n  </ItemGroup>\n</Project>\n");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Search(nuget);
+        Choose(nuget, "1.1.0");
+        Ui.Click(Action(nuget, "Lib", "Install") ?? throw new Xunit.Sdk.XunitException("The NuGet window offers no Install on Lib's line"));
+        Ui.Landed(() => !nuget.IsBusy, "Lib's install");
+        Assert.True(File.ReadAllText(lib).Contains(Id, StringComparison.Ordinal), $"The install left Lib.csproj without {Id}: {nuget.Status}\n{nuget.Log}");
+
+        string install = $"Install {Id} 1.1.0 in Lib";
+        Passenger.App.History.HistoryTab history = window.ShowLocalHistory(folder) ?? throw new Xunit.Sdk.XunitException($"No history of the folder: {window.Status}");
+        Ui.WaitFor(() => history.Rows.Any(r => r.Title == install), () => $"the install in the folder's history, which lists [{string.Join(", ", history.Rows.Select(r => r.Title))}]");
+        Assert.True(history.Rows.Select(r => r.Title).SequenceEqual([install]),
+            $"The folder's history lists [{string.Join(", ", history.Rows.Select(r => r.Title))}], not the install as one change set");
+        history.Select(history.Rows[0]);
+        Ui.Settle();
+        Assert.Equal(["Directory.Packages.props", "Lib.csproj"], history.Files.Select(f => Path.GetFileName(f.Path)).Order(StringComparer.Ordinal));
+        window.Close();
+    }
+
+    /// <summary>An install dotnet add package writes, of a project open in the editor, is named as the install in the
+    /// project's Local History, while a save the person makes of another file as it runs stays their own change.</summary>
+    [AvaloniaFact]
+    public void An_install_dotnet_writes_is_named_in_local_history_and_a_save_made_as_it_runs_stays_the_persons()
+    {
+        string notes = Path.Combine(folder, "Notes.txt");
+        File.WriteAllText(notes, "a note\n");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Assert.Null(window.OpenFile(lib));
+        Assert.Null(window.OpenFile(notes));
+        Ui.Settle();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task reached = nuget.Packages.HoldNextChange(release.Task);
+        Task<PackageOutcome> change = nuget.Packages.InstallAsync(Named(window, "Lib"), Id, "1.1.0");
+        try
+        {
+            // Pumped, not settled: the held change keeps the window's work from landing.
+            Ui.PumpUntil(() => reached.IsCompleted, "Lib's install to be under way");
+            Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PumpUntil(() => window.EditorArea.Active?.Path == Passenger.Core.PathNames.Canonical(notes), "Notes.txt in front");
+            editor.Focus();
+            Avalonia.Headless.HeadlessWindowExtensions.KeyTextInput(window, "saved meanwhile, ");
+            Ui.Run(window, AppActions.Save, settle: false);
+            Ui.PumpUntil(() => File.ReadAllText(notes).StartsWith("saved meanwhile, ", StringComparison.Ordinal), "the edit to Notes.txt saved");
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+        PackageOutcome outcome = Ui.Landed(change, "Lib's install");
+        Assert.True(outcome.Done, $"The install failed: {outcome.Failure("failed")}\n{nuget.Log}");
+
+        Passenger.App.History.HistoryTab project = window.ShowLocalHistory(lib) ?? throw new Xunit.Sdk.XunitException($"No history of Lib.csproj: {window.Status}");
+        Ui.Landed(() => project.Rows.Count > 0, "the install in Lib.csproj's history");
+        Assert.True(project.Rows[0].Title == $"Install {Id} 1.1.0 in Lib", $"dotnet's write of Lib.csproj is kept as \"{project.Rows[0].Title}\", not as the install");
+        Passenger.App.History.HistoryTab saved = window.ShowLocalHistory(notes) ?? throw new Xunit.Sdk.XunitException($"No history of Notes.txt: {window.Status}");
+        Ui.Landed(() => saved.Rows.Count > 0, "the save of Notes.txt");
+        Assert.True(saved.Rows[0].Title == "Change", $"The save of Notes.txt made as the install ran is kept as \"{saved.Rows[0].Title}\", not as the person's own change");
+        window.Close();
+    }
+
     /// <summary>Another folder opened in the window while the NuGet window is shown has that folder's packages listed in
     /// place of the last folder's, whose rows never stay to be acted on against the new folder's projects.</summary>
     [AvaloniaFact]
