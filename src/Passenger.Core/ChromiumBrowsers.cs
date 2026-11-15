@@ -88,6 +88,10 @@ public static class ChromiumBrowsers
     /// <summary>Whether a line a Chromium browser wrote is its refusal to run without the sandbox the system refused it.</summary>
     public static bool RefusesSandbox(string line) => line.Contains("No usable sandbox!", StringComparison.Ordinal);
 
+    /// <summary>Whether a line a Chromium browser wrote is its word that its network service ended (crashed or was killed)
+    /// and is started again: a page's requests under way then fail, and so do those it makes in the moments after.</summary>
+    public static bool NetworkServiceEnded(string line) => line.Contains("Network service crashed", StringComparison.Ordinal);
+
     /// <summary>Why a browser ended as it started when the system refused its sandbox, which browser it was, and the ways
     /// to one that runs.</summary>
     public static string SandboxRefused(ChromiumFound browser) =>

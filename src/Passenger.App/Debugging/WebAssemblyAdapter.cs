@@ -38,6 +38,12 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
     private readonly CancellationTokenSource ending = new();
     private BrowserRun? browser;
 
+    /// <summary>Whether the page has been opened at the app's address.</summary>
+    private volatile bool opened;
+
+    /// <summary>Whether the page's .NET runtime has started since the page was last loaded, as the proxy says.</summary>
+    private volatile bool runtimeReady;
+
     /// <summary>The breakpoints the page has, by file, each as asked and with its hits so far.</summary>
     private readonly Dictionary<string, List<Placed>> placed = new(PathNames.Comparer);
     private int lastId;
@@ -186,7 +192,7 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
         BrowserRun run;
         try
         {
-            run = await BrowserRun.StartAsync(debugging, profiles, Say, ending.Token);
+            run = await BrowserRun.StartAsync(debugging, profiles, Say, NetworkEnded, ending.Token);
         }
         catch (InvalidOperationException failed)
         {
@@ -228,7 +234,42 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
     {
         if (browser is { } run)
         {
+            opened = true;
             await run.Page.SendAsync(CdpCommands.PageNavigate, new { url = debugging.Page.ToString() });
+        }
+        return true;
+    }
+
+    /// <summary>The browser's network service ended, on any thread: a page still loading its .NET code lost what it was
+    /// fetching and fails to start it in the moments the service takes to come back, which nothing in a page left as it is
+    /// would try again, so it is loaded again.</summary>
+    private void NetworkEnded()
+    {
+        if (opened && !runtimeReady && !ending.IsCancellationRequested)
+        {
+            IdeErrors.Observe(BackgroundWork.Run(() => Held(ReloadAsync)));
+        }
+    }
+
+    /// <summary>The page loaded again, saying why, unless its .NET code has started meanwhile or the session has ended.</summary>
+    private async Task<bool> ReloadAsync()
+    {
+        if (browser is not { } run || runtimeReady || End.HasEnded || ending.IsCancellationRequested)
+        {
+            return false;
+        }
+        Say($"{debugging.Browser.Name}'s network service ended as the page loaded its .NET code, which it could then not fetch: the page is loaded again");
+        try
+        {
+            await run.Page.SendAsync(CdpCommands.PageReload);
+        }
+        catch (CdpException refused) when (!End.HasEnded && !ending.IsCancellationRequested)
+        {
+            Say($"The page could not be loaded again: {refused.Reason}");
+        }
+        catch (CdpException)
+        {
+            // The session ended meanwhile, and the browser with it.
         }
         return true;
     }
@@ -483,6 +524,13 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
                 return Held(() => Task.FromResult(OnResumed()));
             case CdpEvents.BreakpointResolved:
                 return Held(() => Task.FromResult(Resolved(parameters)));
+            case CdpEvents.RuntimeReady:
+                runtimeReady = true;
+                break;
+            case CdpEvents.FrameNavigated when JsonMembers.Object(parameters, "frame") is { } frame && JsonMembers.Text(frame, "parentId") is null:
+                // The page's own document came again: its .NET code starts again with it.
+                runtimeReady = false;
+                break;
             case CdpEvents.ConsoleCalled:
                 Console(parameters);
                 break;

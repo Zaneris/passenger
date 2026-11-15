@@ -7,6 +7,7 @@ public static class CdpCommands
 {
     public const string PageEnable = "Page.enable";
     public const string PageNavigate = "Page.navigate";
+    public const string PageReload = "Page.reload";
     public const string RuntimeEnable = "Runtime.enable";
     public const string GetProperties = "Runtime.getProperties";
     public const string CallFunctionOn = "Runtime.callFunctionOn";
@@ -32,4 +33,8 @@ public static class CdpEvents
     public const string ConsoleCalled = "Runtime.consoleAPICalled";
     public const string ExceptionThrown = "Runtime.exceptionThrown";
     public const string Detached = "Inspector.detached";
+    public const string FrameNavigated = "Page.frameNavigated";
+
+    /// <summary>The proxy's own event: the page's .NET runtime has started and its code can stop.</summary>
+    public const string RuntimeReady = "Mono.runtimeReady";
 }

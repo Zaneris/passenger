@@ -67,6 +67,15 @@ public sealed class ChromiumBrowsersTests
     }
 
     [Fact]
+    public void Chromiums_word_that_its_network_service_crashed_or_was_terminated_is_its_network_services_end_and_its_other_errors_are_not()
+    {
+        Assert.True(ChromiumBrowsers.NetworkServiceEnded(
+            "[5517:93912688:1115/103621.768538:ERROR:content/browser/network_service_instance_impl.cc:652] Network service crashed or was terminated, restarting service."));
+        Assert.False(ChromiumBrowsers.NetworkServiceEnded("[77108:93787120:1115/102555.667304:ERROR:ui/display/mac/cv_display_link_mac.mm:188] CVDisplayLinkCreateWithCGDisplay failed."));
+        Assert.False(ChromiumBrowsers.NetworkServiceEnded("DevTools listening on ws://127.0.0.1:61669/devtools/browser/4f00d654-428c-4e44-a469-4ccf3b36e780"));
+    }
+
+    [Fact]
     public void A_macs_browsers_are_looked_for_in_the_accounts_own_applications_whatever_HOME_says()
     {
         Assert.Equal(["/Applications", Path.Combine("/Users/ada", "Applications")], ChromiumBrowsers.MacFolders("/Users/ada", "/private/tmp/run/home"));

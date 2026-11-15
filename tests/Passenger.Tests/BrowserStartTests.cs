@@ -52,7 +52,7 @@ public sealed class BrowserStartTests : IDisposable
         try
         {
             BrowserDebugging debugging = new(new ChromiumFound(program, "Stand-in"), Path.Combine(folder, "none.dll"), new Uri("http://localhost/"), []);
-            Task<BrowserRun> starting = BrowserRun.StartAsync(debugging, profiles, _ => { }, giving.Token);
+            Task<BrowserRun> starting = BrowserRun.StartAsync(debugging, profiles, _ => { }, () => { }, giving.Token);
             Assert.True(await Waiting.UntilAsync(() => Volatile.Read(ref begun) == browsers, TimeSpan.FromSeconds(30), giving.Token), "The stand-in browser never came to wait for good");
             await giving.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);

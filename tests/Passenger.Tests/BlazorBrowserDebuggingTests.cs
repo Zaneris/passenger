@@ -13,8 +13,9 @@ namespace Passenger.Tests;
 /// <summary>A Blazor app's WebAssembly components debugged in a headless Chromium browser through .NET's browser debug proxy:
 /// a Blazor Web App debugs its server on Passenger's engine and its client in a WebAssembly tab beside it, a standalone app
 /// in its WebAssembly tab alone; a component's breakpoint stops as the page renders it, Step Over goes to the next line
-/// and Variables shows its field; a server component's breakpoint stops in the same run. With no browser where Settings
-/// names one, Debug says so and how to get one, and of one the system refuses its sandbox, why and how to run one. The apps
+/// and Variables shows its field; a server component's breakpoint stops in the same run; a page whose browser's network
+/// service ended as it loaded is loaded again. With no browser where Settings names one, Debug says so and how to get
+/// one, and of one the system refuses its sandbox, why and how to run one. The apps
 /// are the SDK's templates, restored from the package cache tests/BlazorGraphs fills. Skipped without a Chromium browser.
 /// Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
@@ -101,6 +102,57 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         }
     }
 
+    /// <summary>A Blazor Web App's page whose browser's network service ends as the page fetches its .NET code (killed here, as
+    /// a crash ends it), which leaves the page failing to fetch it for good: its WebAssembly session says so and loads the
+    /// page again, and the component stops at its breakpoint. The server holds the page's .NET code until the test lets it
+    /// go, so the service ends while the page waits for it.</summary>
+    [AvaloniaFact]
+    public void A_page_whose_browsers_network_service_ends_as_it_fetches_its_dotnet_code_is_loaded_again_and_its_component_stops()
+    {
+        SkipWithoutBrowser();
+        Make("blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
+        string counter = Path.Combine(folder, "Bwa.Client", "Pages", "Counter.razor");
+        File.WriteAllText(counter, Counter);
+        using HeldPort port = new();
+        string settings = Path.Combine(folder, "Bwa", "Properties", "launchSettings.json");
+        Profile(settings, port.Port, HeldPort.GateIn(folder));
+        Gate(Path.Combine(folder, "Bwa"));
+        string held = Path.Combine(folder, "code-held");
+        HoldCode(Path.Combine(folder, "Bwa"), settings, held);
+        Restore.Run(Path.Combine(folder, "Bwa", "Bwa.csproj"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Projects.Count == 2 && window.Projects.All(p => p.IsEvaluated) && window.Configurations.Any(c => c.Name == "Bwa: http"),
+                () => $"Bwa and Bwa.Client evaluated with Bwa's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
+                TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration("Bwa: http"));
+            int set = LineOf(counter, "currentCount = 41;");
+            window.Debugger.Breakpoints.Set(counter, set, null);
+
+            Ui.Launched(window, window.DebugAsync(), "Bwa to build and start under the debugger", TimeSpan.FromMinutes(3));
+            port.LetGo(HeldPort.GateIn(folder));
+            Ui.WaitFor(() => File.Exists(held + Asked) || BrowserRefused(window),
+                () => $"the page to ask for its .NET code ({Sessions(window)}; {Ui.Said(window)}; {Consoles(window)}; the browser said: {BrowserSaid()})", TimeSpan.FromMinutes(3));
+            Assert.False(BrowserRefused(window), $"No browser asks for the page, as none started: {Ui.Said(window)}");
+            int ended = Ui.Await(Waiting.Apart(EndNetworkService), "the browser's network service to be ended");
+            Assert.True(ended > 0, $"The browser Passenger started has no network service to end: {BrowserSaid()}");
+
+            string browser = ChromiumBrowsers.Find(null)!.Name;
+            Ui.WaitFor(() => Consoles(window).Contains($"{browser}'s network service ended as the page loaded its .NET code, which it could then not fetch: the page is loaded again",
+                StringComparison.Ordinal), () => $"the page to be loaded again ({Sessions(window)}; {Consoles(window)}; the browser said: {BrowserSaid()})", TimeSpan.FromMinutes(1));
+            File.WriteAllText(held, string.Empty);
+            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.WebAssembly, State: DebugState.Paused } && Stopped(window, counter) == set,
+                () => $"the page's component to stop in the browser once loaded again ({Sessions(window)}; {Ui.Said(window)}; {Consoles(window)}; the browser said: {BrowserSaid()})",
+                TimeSpan.FromMinutes(3));
+        }
+        finally
+        {
+            File.WriteAllText(held, string.Empty);
+            End(window);
+        }
+    }
+
     /// <summary>A Blazor Web App an AppHost starts debugged, as DCP asks for it, has its WebAssembly half debugged in the
     /// browser beside its server's tab, at the page its run serves (the address DCP gave it on its launch profile's path):
     /// the stand-in AppHost's service, its page's component stopping at its breakpoint in its WebAssembly tab.</summary>
@@ -146,7 +198,8 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
 
             Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.WebAssembly, State: DebugState.Paused } && Stopped(window, counter) == set || BrowserRefused(window),
                 () => $"the service's page component to stop in the browser ({Sessions(window)}; {Ui.Said(window)}; {Consoles(window)}; the service said: "
-                    + string.Join("\n", window.AspireRuntime.Apps.SelectMany(a => a.Services).Select(service => service.Console.Document.Snapshot.ToString())) + ")", TimeSpan.FromMinutes(3));
+                    + string.Join("\n", window.AspireRuntime.Apps.SelectMany(a => a.Services).Select(service => service.Console.Document.Snapshot.ToString()))
+                    + $"; the browser said: {BrowserSaid()})", TimeSpan.FromMinutes(3));
             Assert.False(BrowserRefused(window), $"Bwa's components in the browser were not debugged: {Ui.Said(window)}");
             DebugTab browser = window.Debugger.Tabs.Single(t => t.Name.EndsWith(" (WebAssembly)", StringComparison.Ordinal));
             Assert.True(browser.Companion is { } beside && beside.Name.Contains("bwa", StringComparison.OrdinalIgnoreCase),
@@ -473,6 +526,70 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     {
         string program = Path.Combine(project, "Program.cs");
         File.WriteAllText(program, HeldPort.Gated(File.ReadAllText(program)));
+    }
+
+    /// <summary>What a server of <see cref="HoldCode"/> writes after its held file's name once the page first asks for its code.</summary>
+    private const string Asked = ".asked";
+
+    /// <summary>The server project's Program.cs made to hold each request for the page's .NET code (a .wasm file) until the
+    /// file <paramref name="held"/> is there, writing <see cref="Asked"/> after its name at the first; its http profile in
+    /// <paramref name="settings"/> names the file to the program.</summary>
+    private static void HoldCode(string project, string settings, string held)
+    {
+        string program = Path.Combine(project, "Program.cs");
+        string text = File.ReadAllText(program);
+        const string Built = "var app = builder.Build();";
+        Assert.Contains(Built, text, StringComparison.Ordinal);
+        File.WriteAllText(program, text.Replace(Built, Built + "\n" + $$"""
+            if (System.Environment.GetEnvironmentVariable("CODE_HELD") is { Length: > 0 } codeHeld)
+            {
+                int asked = 0;
+                app.Use(async (context, next) =>
+                {
+                    if (context.Request.Path.Value?.EndsWith(".wasm", System.StringComparison.Ordinal) == true)
+                    {
+                        if (System.Threading.Interlocked.Exchange(ref asked, 1) == 0)
+                        {
+                            System.IO.File.WriteAllText(codeHeld + "{{Asked}}", string.Empty);
+                        }
+                        while (!System.IO.File.Exists(codeHeld))
+                        {
+                            await System.Threading.Tasks.Task.Delay(50);
+                        }
+                    }
+                    await next();
+                });
+            }
+
+            """, StringComparison.Ordinal));
+        JsonNode launch = JsonNode.Parse(File.ReadAllText(settings))!;
+        ((launch["profiles"]!["http"]!["environmentVariables"] ??= new JsonObject()).AsObject())["CODE_HELD"] = held;
+        File.WriteAllText(settings, launch.ToJsonString());
+    }
+
+    /// <summary>Ends the network service of the browser this process started for debugging, alone, as a crash ends it: each
+    /// of the browser's processes whose command line names the service. How many it ended.</summary>
+    private static int EndNetworkService()
+    {
+        static IEnumerable<int> Under(int id) => DotnetProcesses.StartedBy(id).SelectMany(child => (int[])[child, .. Under(child)]);
+        int[] services = [.. DotnetProcesses.StartedBy(Environment.ProcessId)
+            .Where(id => DotnetProcesses.Describe(id)?.CommandLine.Contains("--remote-debugging-port=", StringComparison.Ordinal) == true)
+            .SelectMany(Under).Where(id => DotnetProcesses.Describe(id)?.CommandLine.Contains("network.mojom.NetworkService", StringComparison.Ordinal) == true)];
+        foreach (int service in services)
+        {
+            OwnProcess.Of(service).Kill(alone: true, waited: true);
+        }
+        return services.Length;
+    }
+
+    /// <summary>The last lines the debugging browser wrote, as the IDE's log keeps them, but for its verbose ones (the system
+    /// updater's it starts) and its headless display's.</summary>
+    private static string BrowserSaid()
+    {
+        string tag = $"[{ChromiumBrowsers.Find(null)?.Name}] ";
+        return string.Join("\n", Ui.Shared(IdeLog.PathOf(IdeLog.Debugger)).Split('\n')
+            .Where(l => l.Contains(tag, StringComparison.Ordinal) && !l.Contains(":VERBOSE", StringComparison.Ordinal) && !l.Contains("CVDisplayLink", StringComparison.Ordinal))
+            .TakeLast(12));
     }
 
     /// <summary>The line (from zero) of a file's text.</summary>
