@@ -523,9 +523,11 @@ public sealed partial class FeatureReading
     private void Check(string text, string language)
     {
         Parser parser = new() { StopAtFirstError = false };
+        // Its reader breaks lines at a lone '\r' too, where the editor and this reading do not: read as a space, its places are theirs.
+        string read = LoneReturn().Replace(text, " ");
         try
         {
-            parser.Parse(new TokenScanner(new StringReader(text)), new TokenMatcher(language));
+            parser.Parse(new TokenScanner(new StringReader(read)), new TokenMatcher(language));
         }
         catch (CompositeParserException composite)
         {
@@ -546,6 +548,9 @@ public sealed partial class FeatureReading
         int column = Math.Max((error.Location?.Column ?? 1) - 1, 0);
         Errors.Add(new FeatureError(line, column, ErrorPlace().Replace(error.Message, "")));
     }
+
+    [GeneratedRegex("\r(?!\n)")]
+    private static partial Regex LoneReturn();
 
     /// <summary>The place the reader writes before each of its messages, "(6:3): ", which the editor shows apart.</summary>
     [GeneratedRegex(@"^\(\d+:\d+\):\s*")]

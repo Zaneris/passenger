@@ -129,15 +129,20 @@ public static class ServerPlaces
     /// reader does (<see cref="ServerLines.OfXml"/>) in the places they write: a PDB's sequence points, an element's own.</summary>
     public static bool CountedAsXml(string path) => Xaml.XamlService.IsXaml(path);
 
-    /// <summary>Whether a file's compiler counts its lines apart from the editor's, Roslyn's or XAML's.</summary>
-    public static bool CountedApart(string path) => CountedByRoslyn(path) || CountedAsXml(path);
+    /// <summary>Whether a file is Gherkin, whose reader and Reqnroll's code-behind generator break its lines as a TextReader
+    /// does, at a lone '\r' too as an XML reader (<see cref="ServerLines.OfXml"/>), in the <c>#line</c> places a feature's
+    /// tests are compiled with: a breakpoint's, a stack frame's.</summary>
+    public static bool CountedAsGherkin(string path) => Bdd.FeatureChecks.IsFeature(path);
 
-    /// <summary>A text's lines as its file's compiler counts them (Roslyn's, else an XML reader's for XAML) where they are
-    /// not the editor's, else null, as for a text that could not be read or a file no such compiler reads.</summary>
+    /// <summary>Whether a file's compiler counts its lines apart from the editor's, Roslyn's, XAML's or Gherkin's.</summary>
+    public static bool CountedApart(string path) => CountedByRoslyn(path) || CountedAsXml(path) || CountedAsGherkin(path);
+
+    /// <summary>A text's lines as its file's compiler counts them (Roslyn's, else an XML reader's for XAML and Gherkin) where
+    /// they are not the editor's, else null, as for a text that could not be read or a file no such compiler reads.</summary>
     public static ServerLines? Compiled(string path, TextSnapshot? text) =>
         text is null ? null
         : CountedByRoslyn(path) ? Differing(text)
-        : CountedAsXml(path) && ServerLines.OfXml(text) is { } lines && lines.LineCount != text.LineCount ? lines : null;
+        : (CountedAsXml(path) || CountedAsGherkin(path)) && ServerLines.OfXml(text) is { } lines && lines.LineCount != text.LineCount ? lines : null;
 
     /// <summary>A place a compiler wrote of a file (a PDB's line, a XAML element's; from zero) as the editor's line and
     /// column in the file's text; as written in a file that cannot be read.</summary>

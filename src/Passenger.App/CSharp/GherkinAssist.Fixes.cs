@@ -92,7 +92,7 @@ internal sealed partial class GherkinAssist
     private async Task<RefactorOutcome> DefineAsync(FeatureAnalysis analysis, IReadOnlyList<FeatureStep> steps, Target target)
     {
         ProjectSteps project = analysis.Steps!;
-        CultureInfo culture = CultureOf(analysis.Config.BindingCulture ?? analysis.Config.FeatureLanguage);
+        CultureInfo culture = CultureOf(analysis.Config.BindingCultureOf(analysis.Reading));
         List<string> taken = [.. project.Bindings.Where(b => b.ShortType == target.Class).Select(b => b.Method)];
         List<StepSnippet> snippets = [];
         foreach (FeatureStep step in steps)

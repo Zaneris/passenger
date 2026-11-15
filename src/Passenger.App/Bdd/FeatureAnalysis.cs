@@ -39,7 +39,7 @@ public sealed class FeatureAnalysis
     /// <summary>The project's bindings; null where none are known.</summary>
     public ProjectSteps? Steps { get; }
 
-    public StepMatcher? Matcher => Steps?.Matcher(Config.BindingCulture ?? Config.FeatureLanguage);
+    public StepMatcher? Matcher => Steps?.Matcher(Config.BindingCultureOf(Reading));
 
     public IReadOnlyDictionary<FeatureStep, StepMatch> Matches { get; private set; } = new Dictionary<FeatureStep, StepMatch>();
 

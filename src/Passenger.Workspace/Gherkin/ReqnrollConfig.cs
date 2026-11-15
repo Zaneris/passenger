@@ -23,6 +23,10 @@ public sealed record ReqnrollConfig(string? FeatureLanguage, string? BindingCult
     /// <summary>Whether it was read from a file, rather than the defaults of a folder with none.</summary>
     public bool Written { get; init; }
 
+    /// <summary>The culture a feature's steps' arguments are converted in, as Reqnroll's runtime takes it: the configuration's
+    /// binding culture, else the language the feature is written in (its own <c># language:</c>, else the project's).</summary>
+    public string BindingCultureOf(FeatureReading reading) => BindingCulture ?? reading.Dialect.Language;
+
     /// <summary>How a project's missing step is written: as its file says, else as its framework writes one by default
     /// (Reqnroll a Cucumber Expression, SpecFlow a regular expression).</summary>
     public SkeletonStyle SkeletonFor(bool specFlow) => Written ? Skeleton : specFlow ? SkeletonStyle.Regex : SkeletonStyle.CucumberExpression;
