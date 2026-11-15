@@ -248,15 +248,15 @@ public static partial class Dotnet
     /// names it and the PATH has it first, and it comes before even the dotnet running this app.</summary>
     public static void Use(string root)
     {
-        string[] path = Programs.PathFolders();
-        bool taken = path.Length > 0 && PathNames.Same(path[0], root) && PathNames.Same(Environment.GetEnvironmentVariable(RuntimeVariables.Root) ?? string.Empty, root);
+        string path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        bool taken = PathNames.Same(path.Split(Path.PathSeparator)[0], root) && PathNames.Same(Environment.GetEnvironmentVariable(RuntimeVariables.Root) ?? string.Empty, root);
         Chosen = PathNames.Canonical(root);
         if (taken)
         {
             return;
         }
         OwnEnvironment.Set(RuntimeVariables.Root, root);
-        OwnEnvironment.Set("PATH", string.Join(Path.PathSeparator, [root, .. path.Where(p => !PathNames.Same(p, root))]));
+        OwnEnvironment.Set("PATH", Programs.FirstOnPath(path, root));
         ForgetSdks();
     }
 

@@ -108,7 +108,7 @@ public sealed class TerminalSession : IAsyncDisposable
         FirstOnPath? first = null)
     {
         (string app, string[] args) = shell is null ? DefaultShell() : (shell, [.. arguments ?? []]);
-        Shell = ShellWords.KindOf(app);
+        Shell = ShellKinds.Of(app);
         Dictionary<string, string> environment = new(variables ?? new Dictionary<string, string>())
         {
             ["TERM"] = "xterm-256color",

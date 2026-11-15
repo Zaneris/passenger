@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Terminal;
 
 namespace Passenger.UnitTests.Terminal;
@@ -83,17 +84,13 @@ public class ShellWordsTests
     }
 
     [Theory]
-    [InlineData("C:\\Program Files\\PowerShell\\7\\pwsh.exe", ShellKind.PowerShell)]
-    [InlineData("C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", ShellKind.PowerShell)]
-    [InlineData("/usr/local/bin/pwsh", ShellKind.PowerShell)]
-    [InlineData("cmd.exe", ShellKind.Cmd)]
-    [InlineData("C:\\WINDOWS\\system32\\CMD.EXE", ShellKind.Cmd)]
-    [InlineData("C:\\Program Files\\Git\\bin\\bash.exe", ShellKind.Posix)]
-    [InlineData("/bin/zsh", ShellKind.Posix)]
-    [InlineData("/opt/homebrew/bin/fish", ShellKind.Fish)]
-    [InlineData("/home/me/.cargo/bin/nu", ShellKind.Nushell)]
-    [InlineData("C:\\Program Files\\nu\\bin\\nu.exe", ShellKind.Nushell)]
-    public void A_shell_is_known_by_its_files_name(string program, ShellKind kind) => Assert.Equal(kind, ShellWords.KindOf(program));
+    [InlineData(ShellKind.Zsh)]
+    [InlineData(ShellKind.Bash)]
+    public void Zsh_and_bash_take_a_word_as_sh_does(ShellKind shell)
+    {
+        Assert.Equal(ShellWords.Quoted("/tmp/$(touch ran) it's.txt", ShellKind.Posix), ShellWords.Quoted("/tmp/$(touch ran) it's.txt", shell));
+        Assert.Equal("/Users/me/my-app_1.0+b@x,y=z%.cs", ShellWords.Quoted("/Users/me/my-app_1.0+b@x,y=z%.cs", shell));
+    }
 
     /// <summary>A word as fish reads it: in single quotes, a backslash escapes a backslash or a quote and is kept before
     /// anything else; null where the quote is never closed or the word goes on after it.</summary>

@@ -25,7 +25,7 @@ public sealed record AgentSetup(string Executable, string? Folder, ShellKind She
     /// <summary>The kind of the Terminal's shell: the program the command line Settings give it (<paramref
     /// name="terminalShell"/>) starts, else the system's.</summary>
     public static ShellKind ShellOf(string? terminalShell) =>
-        ShellWords.KindOf(CommandLine.Split(terminalShell) is [{ Length: > 0 } program, ..] ? program : TerminalSession.DefaultShell().App);
+        ShellKinds.Of(CommandLine.Split(terminalShell) is [{ Length: > 0 } program, ..] ? program : TerminalSession.DefaultShell().App);
 
     /// <summary>Where Settings' notes say to run the commands: the shell they are written for, by its name, or a terminal
     /// for sh and the shells that quote as it does.</summary>

@@ -16,29 +16,29 @@ public class ShellPathTests
     [Fact]
     public void Zsh_takes_them_in_its_zshrc_beside_ZDOTDIR_when_it_is_set()
     {
-        (string file, string lines) = ShellPath.Of("zsh", Home, Installed, macOS: true, zdotdir: null, NoneThere);
+        (string file, string lines) = ShellPath.Of(ShellKind.Zsh, Home, Installed, macOS: true, zdotdir: null, NoneThere);
         Assert.Equal(Path.Combine(Home, ".zshrc"), file);
         Assert.Equal("# The .NET SDK Passenger installed\nexport DOTNET_ROOT=\"$HOME/.dotnet\"\nexport PATH=\"$DOTNET_ROOT:$PATH\"\n", lines);
-        Assert.Equal(Path.Combine(Home, "zsh", ".zshrc"), ShellPath.Of("zsh", Home, Installed, macOS: true, zdotdir: Path.Combine(Home, "zsh"), NoneThere).File);
+        Assert.Equal(Path.Combine(Home, "zsh", ".zshrc"), ShellPath.Of(ShellKind.Zsh, Home, Installed, macOS: true, zdotdir: Path.Combine(Home, "zsh"), NoneThere).File);
     }
 
     [Fact]
     public void Bash_on_macOS_takes_them_in_the_first_login_file_it_reads_that_is_there_and_elsewhere_in_its_bashrc()
     {
         string Chosen(params string[] there) =>
-            Path.GetFileName(ShellPath.Of("bash", Home, Installed, macOS: true, zdotdir: null, f => there.Any(t => f == Path.Combine(Home, t))).File);
+            Path.GetFileName(ShellPath.Of(ShellKind.Bash, Home, Installed, macOS: true, zdotdir: null, f => there.Any(t => f == Path.Combine(Home, t))).File);
         Assert.Equal(".bash_profile", Chosen());
         Assert.True(Chosen(".profile") == ".profile", "With ~/.profile alone the lines went to a new ~/.bash_profile, so a login shell stops reading ~/.profile");
         Assert.Equal(".bash_login", Chosen(".bash_login", ".profile"));
         Assert.Equal(".bash_profile", Chosen(".bash_profile", ".bash_login", ".profile"));
-        Assert.Equal(Path.Combine(Home, ".bashrc"), ShellPath.Of("bash", Home, Installed, macOS: false, zdotdir: null, f => f.EndsWith(".profile", StringComparison.Ordinal)).File);
-        Assert.Equal(Path.Combine(Home, ".profile"), ShellPath.Of("dash", Home, Installed, macOS: false, zdotdir: null, NoneThere).File);
+        Assert.Equal(Path.Combine(Home, ".bashrc"), ShellPath.Of(ShellKind.Bash, Home, Installed, macOS: false, zdotdir: null, f => f.EndsWith(".profile", StringComparison.Ordinal)).File);
+        Assert.Equal(Path.Combine(Home, ".profile"), ShellPath.Of(ShellKind.Posix, Home, Installed, macOS: false, zdotdir: null, NoneThere).File);
     }
 
     [Fact]
     public void Fish_takes_its_own_words_in_a_file_of_its_conf_d()
     {
-        (string file, string lines) = ShellPath.Of("fish", Home, Installed, macOS: false, zdotdir: null, NoneThere);
+        (string file, string lines) = ShellPath.Of(ShellKind.Fish, Home, Installed, macOS: false, zdotdir: null, NoneThere);
         Assert.Equal(Path.Combine(Home, ".config", "fish", "conf.d", "dotnet.fish"), file);
         Assert.Equal("# The .NET SDK Passenger installed\nset -gx DOTNET_ROOT \"$HOME/.dotnet\"\nset -gx PATH \"$DOTNET_ROOT\" $PATH\n", lines);
     }
@@ -46,7 +46,7 @@ public class ShellPathTests
     [Fact]
     public void An_installation_outside_home_is_named_whole_and_quoted()
     {
-        Assert.Contains("export DOTNET_ROOT=\"/opt/dot net\"\n", ShellPath.Of("zsh", Home, "/opt/dot net", macOS: false, zdotdir: null, NoneThere).Lines, StringComparison.Ordinal);
+        Assert.Contains("export DOTNET_ROOT=\"/opt/dot net\"\n", ShellPath.Of(ShellKind.Zsh, Home, "/opt/dot net", macOS: false, zdotdir: null, NoneThere).Lines, StringComparison.Ordinal);
     }
 
     /// <summary>A $, a backtick, a backslash and a quote, which a shell reads inside double quotes, each escaped; fish's
@@ -55,9 +55,9 @@ public class ShellPathTests
     public void What_a_shell_reads_inside_quotes_is_escaped_so_it_takes_the_path_as_written()
     {
         string odd = "/opt/a$b`c\\d\"e";
-        Assert.Contains(@"export DOTNET_ROOT=""/opt/a\$b\`c\\d\""e""", ShellPath.Of("bash", Home, odd, macOS: false, zdotdir: null, NoneThere).Lines, StringComparison.Ordinal);
-        Assert.Contains(@"set -gx DOTNET_ROOT ""/opt/a\$b`c\\d\""e""", ShellPath.Of("fish", Home, odd, macOS: false, zdotdir: null, NoneThere).Lines, StringComparison.Ordinal);
-        Assert.Contains(@"export DOTNET_ROOT=""$HOME/dot\$net\`s""", ShellPath.Of("zsh", Home, Path.Combine(Home, "dot$net`s"), macOS: true, zdotdir: null, NoneThere).Lines,
+        Assert.Contains(@"export DOTNET_ROOT=""/opt/a\$b\`c\\d\""e""", ShellPath.Of(ShellKind.Bash, Home, odd, macOS: false, zdotdir: null, NoneThere).Lines, StringComparison.Ordinal);
+        Assert.Contains(@"set -gx DOTNET_ROOT ""/opt/a\$b`c\\d\""e""", ShellPath.Of(ShellKind.Fish, Home, odd, macOS: false, zdotdir: null, NoneThere).Lines, StringComparison.Ordinal);
+        Assert.Contains(@"export DOTNET_ROOT=""$HOME/dot\$net\`s""", ShellPath.Of(ShellKind.Zsh, Home, Path.Combine(Home, "dot$net`s"), macOS: true, zdotdir: null, NoneThere).Lines,
             StringComparison.Ordinal);
     }
 
@@ -74,7 +74,7 @@ public class ShellPathTests
             File.WriteAllText(kept, "alias ll='ls -l'\n");
             string link = Path.Combine(home, ".zshrc");
             File.CreateSymbolicLink(link, Path.Combine("dotfiles", "zshrc"));
-            (string file, string lines) = ShellPath.Of("zsh", home, Path.Combine(home, ".dotnet"), macOS: OperatingSystem.IsMacOS(), zdotdir: null, File.Exists);
+            (string file, string lines) = ShellPath.Of(ShellKind.Zsh, home, Path.Combine(home, ".dotnet"), macOS: OperatingSystem.IsMacOS(), zdotdir: null, File.Exists);
             new ShellPath(Path.Combine(home, ".dotnet"), file, lines, string.Empty).Make();
             Assert.True(new FileInfo(link).LinkTarget == Path.Combine("dotfiles", "zshrc"),
                 $"~/.zshrc is no longer the link into the dotfiles folder (it links to {new FileInfo(link).LinkTarget ?? "nothing"}), so their later changes never reach the shell");

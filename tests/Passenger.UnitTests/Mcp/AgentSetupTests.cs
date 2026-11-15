@@ -1,5 +1,6 @@
 using System.Text;
 using Passenger.App.Mcp;
+using Passenger.Core;
 using Passenger.Terminal;
 using Passenger.UnitTests.Core;
 
@@ -39,7 +40,7 @@ public sealed class AgentSetupTests
         Assert.Equal(ShellKind.PowerShell, AgentSetup.ShellOf("pwsh -NoLogo"));
         Assert.Equal(ShellKind.PowerShell, AgentSetup.ShellOf("\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoLogo"));
         Assert.Equal(ShellKind.Cmd, AgentSetup.ShellOf("C:\\WINDOWS\\system32\\cmd.exe"));
-        Assert.Equal(ShellKind.Posix, AgentSetup.ShellOf("/bin/zsh -l"));
+        Assert.Equal(ShellKind.Zsh, AgentSetup.ShellOf("/bin/zsh -l"));
         Assert.Equal(ShellKind.Fish, AgentSetup.ShellOf("/opt/homebrew/bin/fish"));
     }
 

@@ -374,6 +374,19 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Assert.True(PathNames.Same(Dotnet.Root(), Installs), $"With {Installs} chosen, Passenger starts the dotnet in {Dotnet.Root()}");
     }
 
+    /// <summary>A POSIX shell reads an empty entry of the PATH as the folder it works in.</summary>
+    [Fact]
+    public void An_installation_used_goes_first_on_the_PATH_once_and_keeps_its_empty_entry()
+    {
+        string bin = Path.Combine(folder, "bin");
+        OwnEnvironment.Set("PATH", string.Join(Path.PathSeparator, bin, string.Empty, Installs, "/usr/bin"));
+
+        Dotnet.Use(Installs);
+
+        Assert.True(Environment.GetEnvironmentVariable("PATH") == string.Join(Path.PathSeparator, Installs, bin, string.Empty, "/usr/bin"),
+            $"With {Installs} used the PATH every program Passenger starts takes is {Environment.GetEnvironmentVariable("PATH")}, so a program the person runs from its own folder by name is no longer found");
+    }
+
     [AvaloniaFact]
     public void An_SDK_in_the_home_dotnet_folder_no_PATH_names_is_found_named_and_used_and_Add_to_PATH_puts_it_there()
     {

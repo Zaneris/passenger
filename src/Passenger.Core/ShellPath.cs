@@ -18,7 +18,7 @@ public sealed partial record ShellPath(string Root, string? File, string Lines, 
     /// <summary>A test's stand-in for Windows' user environment, its variables by name; null for the person's own.</summary>
     public static Dictionary<string, string>? UserStandIn { get; set; }
 
-    /// <summary>The change for <paramref name="root"/>, by the login shell's name; null where it is made already.</summary>
+    /// <summary>The change for <paramref name="root"/>, by the login shell's kind; null where it is made already.</summary>
     public static ShellPath? For(string root)
     {
         if (OperatingSystem.IsWindows())
@@ -30,7 +30,7 @@ public sealed partial record ShellPath(string Root, string? File, string Lines, 
                 : new ShellPath(root, null, root, $"puts {root} first on your user Path and sets your DOTNET_ROOT to it, for the programs you start from now on");
         }
         string home = HomeStandIn ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        (string file, string lines) = Of(Path.GetFileName(ShellEnvironment.LoginShell()), home, root, OperatingSystem.IsMacOS(), Environment.GetEnvironmentVariable("ZDOTDIR"),
+        (string file, string lines) = Of(ShellKinds.Of(ShellEnvironment.LoginShell()), home, root, OperatingSystem.IsMacOS(), Environment.GetEnvironmentVariable("ZDOTDIR"),
             System.IO.File.Exists);
         try
         {
@@ -46,11 +46,11 @@ public sealed partial record ShellPath(string Root, string? File, string Lines, 
         return new ShellPath(root, file, lines, $"adds {Plural(lines)} to the end of {PathNames.Shown(file, null)}, which put {PathNames.Shown(root, null)} first on the PATH of the shells you start from now on");
     }
 
-    /// <summary>The startup file and its lines for a shell by name (zsh, bash, fish, any other taking .profile) in
+    /// <summary>The startup file and its lines for a shell of a kind (zsh, bash, fish, any other taking .profile) in
     /// <paramref name="home"/>, bash's on macOS the first of its login files that <paramref name="exists"/>: DOTNET_ROOT
     /// naming <paramref name="root"/> (from $HOME where it is under it), quoted so the shell reads it as written, and the
     /// PATH with it first.</summary>
-    public static (string File, string Lines) Of(string shell, string home, string root, bool macOS, string? zdotdir, Func<string, bool> exists)
+    public static (string File, string Lines) Of(ShellKind shell, string home, string root, bool macOS, string? zdotdir, Func<string, bool> exists)
     {
         bool fromHome = PathNames.IsUnder(root, home) && !PathNames.Same(root, home);
         string named = fromHome ? PathNames.Below(root, home).ToString().Replace(Path.DirectorySeparatorChar, '/') : root;
@@ -60,11 +60,11 @@ public sealed partial record ShellPath(string Root, string? File, string Lines, 
         const string Said = "# The .NET SDK Passenger installed";
         return shell switch
         {
-            "fish" => (Path.Combine(home, ".config", "fish", "conf.d", "dotnet.fish"),
+            ShellKind.Fish => (Path.Combine(home, ".config", "fish", "conf.d", "dotnet.fish"),
                 $"{Said}\nset -gx DOTNET_ROOT {Quoted(FishRead)}\nset -gx PATH \"$DOTNET_ROOT\" $PATH\n"),
-            "zsh" => (Path.Combine(zdotdir is { Length: > 0 } ? zdotdir : home, ".zshrc"), Posix(Quoted(PosixRead))),
-            "bash" when macOS => (BashLogin(home, exists), Posix(Quoted(PosixRead))),
-            "bash" => (Path.Combine(home, ".bashrc"), Posix(Quoted(PosixRead))),
+            ShellKind.Zsh => (Path.Combine(zdotdir is { Length: > 0 } ? zdotdir : home, ".zshrc"), Posix(Quoted(PosixRead))),
+            ShellKind.Bash when macOS => (BashLogin(home, exists), Posix(Quoted(PosixRead))),
+            ShellKind.Bash => (Path.Combine(home, ".bashrc"), Posix(Quoted(PosixRead))),
             _ => (Path.Combine(home, ".profile"), Posix(Quoted(PosixRead))),
         };
 

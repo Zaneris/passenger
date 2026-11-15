@@ -83,6 +83,11 @@ public static class Programs
     public static string[] PathFolders() =>
         (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
 
+    /// <summary>A PATH's value with <paramref name="folder"/> first and nowhere else, its other entries kept in their order,
+    /// an empty one too, which a POSIX shell reads as the folder it works in; the folder alone for an empty PATH.</summary>
+    public static string FirstOnPath(string path, string folder) =>
+        path.Length == 0 ? folder : string.Join(Path.PathSeparator, [folder, .. path.Split(Path.PathSeparator).Where(at => !PathNames.Same(at, folder))]);
+
     /// <summary>Node.js on the PATH; null when there is none.</summary>
     public static string? Node() => Command("node");
 

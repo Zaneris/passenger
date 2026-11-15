@@ -1,23 +1,6 @@
+using Passenger.Core;
+
 namespace Passenger.Terminal;
-
-/// <summary>A shell by how it reads a quoted word.</summary>
-public enum ShellKind
-{
-    /// <summary>sh and the shells that quote as it does (bash, zsh): nothing in single quotes is expanded.</summary>
-    Posix,
-
-    /// <summary>PowerShell (pwsh, powershell): nothing in single quotes is expanded, each single quote in them doubled.</summary>
-    PowerShell,
-
-    /// <summary>Windows' cmd.exe, which expands %NAME% inside double quotes too.</summary>
-    Cmd,
-
-    /// <summary>fish: nothing in single quotes is expanded, but a backslash there escapes a backslash or a single quote.</summary>
-    Fish,
-
-    /// <summary>Nushell (nu): its single quotes take no escapes, so a single quote goes only in a raw string, r#'…'#.</summary>
-    Nushell,
-}
 
 /// <summary>A path, or any word, written for a shell as one word it takes as it is, nothing in it expanded or run: bare
 /// where nothing in it means anything to that shell, else quoted as the shell reads quotes.</summary>
@@ -25,24 +8,6 @@ public static class ShellWords
 {
     /// <summary>The quotes PowerShell reads as a single quote: the ASCII one and the typographic ones.</summary>
     private const string PowerShellQuotes = "'‘’‚‛";
-
-    /// <summary>The kind of shell a program is, by its file's name; one not known otherwise quotes as sh does.</summary>
-    public static ShellKind KindOf(string program)
-    {
-        string name = program[(program.LastIndexOfAny(['/', '\\']) + 1)..];
-        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-        {
-            name = name[..^".exe".Length];
-        }
-        return name.ToLowerInvariant() switch
-        {
-            "pwsh" or "powershell" => ShellKind.PowerShell,
-            "cmd" => ShellKind.Cmd,
-            "fish" => ShellKind.Fish,
-            "nu" => ShellKind.Nushell,
-            _ => ShellKind.Posix,
-        };
-    }
 
     /// <summary>A path as one word the shell takes as it is.</summary>
     public static string Quoted(string path, ShellKind shell)
@@ -65,9 +30,8 @@ public static class ShellWords
     /// bare word that is not a path as a value of its own (10kb a file size), so only a path from the root goes bare there.</summary>
     private static bool IsBare(string path, ShellKind shell)
     {
-        string marks = shell switch
+        string marks = shell.QuotesAsSh() ? "/._-+:@%,=" : shell switch
         {
-            ShellKind.Posix => "/._-+:@%,=",
             ShellKind.Fish => "/._-+:@,=",
             ShellKind.Nushell => "/._-",
             _ => "/\\._-:",

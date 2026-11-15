@@ -4,7 +4,7 @@ namespace Passenger.UnitTests.Core;
 
 /// <summary>A command's program found as a terminal finds it, by one rule for every program Passenger runs: on Windows a
 /// bare name is tried with each extension PATHEXT lists of what Windows starts, in its order, in each folder of the PATH in
-/// turn, and never alone.</summary>
+/// turn, and never alone. A folder put first on a PATH keeps the rest as it was.</summary>
 public sealed class ProgramsTests
 {
     private const string Default = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC";
@@ -45,5 +45,18 @@ public sealed class ProgramsTests
         files = [Path.Combine(tools, "npm.exe")];
         Assert.True(Programs.First(folders, Programs.WindowsNames("npm", Default), files.Contains) == Path.Combine(tools, "npm.exe"),
             "An npm.exe shim was missed, where a terminal runs it as npm");
+    }
+
+    /// <summary>A POSIX shell reads an empty entry of the PATH as the folder it works in.</summary>
+    [Fact]
+    public void A_folder_put_first_on_the_PATH_is_there_once_and_every_other_entry_kept_an_empty_one_too()
+    {
+        char separator = Path.PathSeparator;
+        string dotnet = Path.Combine(Path.GetTempPath(), "dotnet");
+        string bin = Path.Combine(Path.GetTempPath(), "bin");
+        string path = string.Join(separator, bin, string.Empty, dotnet, "/usr/bin");
+        Assert.True(Programs.FirstOnPath(path, dotnet) == string.Join(separator, dotnet, bin, string.Empty, "/usr/bin"),
+            $"The PATH with {dotnet} first is {Programs.FirstOnPath(path, dotnet)}, so a program run by name from the folder a shell works in is no longer found");
+        Assert.True(Programs.FirstOnPath(string.Empty, dotnet) == dotnet, "An empty PATH gained an empty entry, so a shell would search the folder it works in");
     }
 }

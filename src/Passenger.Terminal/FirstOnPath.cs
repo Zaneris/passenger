@@ -88,17 +88,16 @@ public sealed record FirstOnPath(string Folder, string Variable, string ZshStart
         // Windows names it as it pleases (Path), and two of one name in an environment are one too many.
         string pathName = inherited.Keys.FirstOrDefault(name => name.Equals("PATH", names)) ?? "PATH";
         string path = environment.TryGetValue(pathName, out string? given) ? given : inherited.GetValueOrDefault(pathName, string.Empty);
-        string[] rest = path.Length == 0 ? [] : [.. path.Split(Path.PathSeparator).Where(at => !PathNames.Same(at, Folder))];
-        environment[pathName] = string.Join(Path.PathSeparator, [Folder, .. rest]);
+        environment[pathName] = Programs.FirstOnPath(path, Folder);
         environment[Variable] = Folder;
-        string name = Path.GetFileNameWithoutExtension(shell);
-        if (name is not ("zsh" or "bash") || OperatingSystem.IsWindows())
+        ShellKind kind = ShellKinds.Of(shell);
+        if (kind is not (ShellKind.Zsh or ShellKind.Bash) || OperatingSystem.IsWindows())
         {
             return;
         }
         environment[FolderVariable] = Folder;
         environment[AgainVariable] = Again;
-        if (name == "zsh")
+        if (kind == ShellKind.Zsh)
         {
             string? own = environment.TryGetValue("ZDOTDIR", out string? set) ? set : inherited.GetValueOrDefault("ZDOTDIR");
             if (own is { Length: > 0 })
