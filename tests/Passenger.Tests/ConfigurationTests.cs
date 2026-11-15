@@ -377,6 +377,51 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         }
     }
 
+    /// <summary>Launch profiles running the app in Development and in Staging have a key nothing gives warned of with every
+    /// settings file it was looked for in, one choice with what else might give it, as every choice in Passenger is said:
+    /// never "appsettings.json or appsettings.Development.json or appsettings.Staging.json".</summary>
+    [AvaloniaFact]
+    public void A_key_nothing_gives_is_warned_of_with_each_environment_s_settings_listed_once_as_one_choice()
+    {
+        project.Write("Shop/Properties/launchSettings.json", """
+            {
+              "profiles": {
+                "http": {
+                  "commandName": "Project",
+                  "applicationUrl": "http://localhost:5180",
+                  "environmentVariables": {
+                    "ASPNETCORE_ENVIRONMENT": "Development",
+                    "Shop__Theme": "dark"
+                  }
+                },
+                "staging": {
+                  "commandName": "Project",
+                  "applicationUrl": "http://localhost:5181",
+                  "environmentVariables": {
+                    "ASPNETCORE_ENVIRONMENT": "Staging",
+                    "Shop__Theme": "dark"
+                  }
+                }
+              }
+            }
+
+            """);
+        MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
+        try
+        {
+            const string Said = "Nothing Shop runs with gives the configuration key 'Shop:Banner': not appsettings.json, appsettings.Development.json, "
+                + "appsettings.Staging.json, a launch profile, its user secrets, a compose file or an AppHost.";
+            Ui.WaitFor(() => window.EditorArea.Active!.Markers.Any(m => m.Message.Contains("'Shop:Banner'", StringComparison.Ordinal)),
+                () => $"Shop:Banner, which nothing gives, to be warned of: {Marked(window)}");
+            string warned = window.EditorArea.Active!.Markers.First(m => m.Message.Contains("'Shop:Banner'", StringComparison.Ordinal)).Message;
+            Assert.True(warned == Said, $"Shop:Banner's warning does not say the files it was looked for in as one choice:\n{warned}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A key compose-dev.yml at the folder's top sets for the project is known as given once the file is written
     /// to set it, as compose.yaml's is: the warning that nothing gives it goes, the edit itself having it looked at again.</summary>
     [AvaloniaFact]

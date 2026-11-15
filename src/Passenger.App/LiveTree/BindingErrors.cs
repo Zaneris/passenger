@@ -55,7 +55,7 @@ public static partial class BindingErrors
     /// <summary>The framework's message, and the nearest members when the path named one its source's type does not have.</summary>
     public static string Message(BindingFailure failure) => failure.Nearest.Count == 0
         ? failure.Message
-        : $"{failure.Message.TrimEnd()} Did you mean {string.Join(" or ", failure.Nearest)}?";
+        : $"{failure.Message.TrimEnd()} Did you mean {Plural.Either(failure.Nearest)}?";
 
     /// <summary>A failure the debugger stopped at (Avalonia Binding Errors), as the Debug console says it, its place first so
     /// the console links it: "MainWindow.axaml(10,26): paused on a binding error: TextBlock#Caption.Text to Nmae (DataContext

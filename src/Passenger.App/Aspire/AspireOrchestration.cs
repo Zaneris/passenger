@@ -572,7 +572,7 @@ public static class AspireOrchestration
         if (builders.Count != 1 || builders[0].Builder.Ancestors().OfType<StatementSyntax>().FirstOrDefault()
             is not LocalDeclarationStatementSyntax { Declaration.Variables.Count: 1 })
         {
-            throw new InvalidOperationException($"{path}: expected one local builder created with {string.Join(" or ", types)}.CreateBuilder; no file was changed");
+            throw new InvalidOperationException($"{path}: expected one local builder created with {Plural.Either(types)}.CreateBuilder; no file was changed");
         }
         return builders[0];
     }

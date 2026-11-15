@@ -16,5 +16,7 @@
     <!-- At an MIT release: netstandard2.0's library takes 1.1.0, under Microsoft's .NET Library terms, not an open licence. -->
     <PackageReference Include="Microsoft.NETCore.Platforms" PrivateAssets="all" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md;AnalyzerReleases.Unshipped.md" />
+    <!-- A choice of names as Passenger says one, compiled in since netstandard2.0 takes no Passenger.Core. -->
+    <Compile Include="../Passenger.Core/Plural.cs" Link="Plural.cs" />
   </ItemGroup>
 </Project>

@@ -981,7 +981,7 @@ internal static class GodotChecks
                 }
             }
         }
-        string where = string.Join(" or ", told.Select(t => $"{t.Name}, {Article(Shown(t))}"));
+        string where = Core.Plural.Either([.. told.Select(t => $"{t.Name}, {Article(Shown(t))}")]);
         return new Candidates(Merged(names), where, whole && told.Count > 0);
 
         static string Word(GodotScriptKind kind) => kind switch

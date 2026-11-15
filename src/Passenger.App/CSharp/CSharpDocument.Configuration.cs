@@ -6,6 +6,7 @@ using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
+using Passenger.Workspace;
 using static Microsoft.CodeAnalysis.CSharpExtensions;
 
 namespace Passenger.App.CSharp;
@@ -124,15 +125,14 @@ public sealed partial class CSharpDocument
         Func<string, string?> text = service.OpenTexts().Text;
         (IReadOnlyList<GivenKey> given, IReadOnlyList<string> environments) = await BackgroundWork.Run(() =>
             ((IReadOnlyList<GivenKey>)[.. code.Given(text).Select(g => g.Given)], code.Environments(text)));
-        string settings = string.Join(" or ", environments.Select(e => $"appsettings.{e}.json").Prepend("appsettings.json"));
-        string secrets = Plural.Agreeing(code.Programs.Count, "its", "their");
+        string sources = Plural.Either([.. AppSettingsFiles.Read(environments), "a launch profile", $"{Plural.Agreeing(code.Programs.Count, "its", "their")} user secrets",
+            "a compose file", "an AppHost"]);
         return [.. reads.Where(r => !ConfigurationFiles.Gives(given, r.Key, r.Kind == ConfigurationKinds.Section)).Select(r => new Diagnostic
         {
             Range = new LspRange(new LspPosition(r.At!.Line, r.At.Character), new LspPosition(r.End!.Line, r.End.Character)),
             Severity = DiagnosticSeverity.Warning,
             Source = ConfigurationDiagnosticSource,
-            Message = $"Nothing {code.Names} runs with gives the configuration key '{r.Key}': not {settings}, a launch profile, {secrets} user secrets, "
-                + "a compose file or an AppHost.",
+            Message = $"Nothing {code.Names} runs with gives the configuration key '{r.Key}': not {sources}.",
             Data = JsonSerializer.SerializeToElement(new Dictionary<string, string> { ["key"] = r.Key, ["secret"] = SecretKey(r.Key) ? "true" : "false" }),
         })];
     }

@@ -1,17 +1,46 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.App.LiveTree;
 using Passenger.Core;
+using Passenger.Inspector;
 
 namespace Passenger.Tests;
 
 /// <summary>Names listed in a sentence read alike wherever they are said, as <see cref="Plural.Listed"/> lists them ("Api,
-/// Web and Worker"): no code of Passenger's joins them with " and " of its own, which says "Api and Web and Worker".</summary>
+/// Web and Worker") and <see cref="Plural.Either"/> offers a choice of them ("Api, Web or Worker"): no code of Passenger's
+/// joins them with " and " or " or " of its own, which says "Api and Web and Worker".</summary>
 [Collection(Beside.Name)]
 public sealed class ListedNamesTests
 {
     [Fact]
     public void Names_in_a_sentence_are_listed_only_through_Plural_Listed()
+    {
+        IReadOnlyList<string> found = Joins("and");
+        Assert.True(found.Count == 0, $"{found.Count} joins list names with \" and \" of their own, which says three or more as \"A and B and C\" where "
+            + $"every other list says \"A, B and C\": list them through {nameof(Plural)}.{nameof(Plural.Listed)}:\n{string.Join("\n", found)}");
+    }
+
+    [Fact]
+    public void A_choice_of_names_in_a_sentence_is_offered_only_through_Plural_Either()
+    {
+        IReadOnlyList<string> found = Joins("or");
+        Assert.True(found.Count == 0, $"{found.Count} joins offer a choice of names with \" or \" of their own, which says three or more as \"A or B or C\" "
+            + $"where every other choice says \"A, B or C\": offer them through {nameof(Plural)}.{nameof(Plural.Either)}:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A binding to a member its source lacks offers the members nearest it as every choice in Passenger is offered.</summary>
+    [Fact]
+    public void A_failed_binding_offers_its_nearest_members_as_one_choice()
+    {
+        BindingFailure failure = new(1, "Warning", "TextBlock#Caption", "Text", "Nmae", null, "Could not find a matching property accessor for 'Nmae'.",
+            null, "MainViewModel", "Nmae", ["Name", "Game", "Mane"], 1);
+        Assert.Equal("Could not find a matching property accessor for 'Nmae'. Did you mean Name, Game or Mane?", BindingErrors.Message(failure));
+    }
+
+    /// <summary>The calls of Passenger's source that join names with a word alone (" and ", " or "), each with its file and
+    /// line.</summary>
+    private static IReadOnlyList<string> Joins(string word)
     {
         string root = Debugging.Helpers.Debuggees.Root;
         List<string> found = [];
@@ -26,13 +55,13 @@ public sealed class ListedNamesTests
             foreach (InvocationExpressionSyntax call in tree.GetRoot(TestContext.Current.CancellationToken).DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 if (call.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Join" } join && join.Expression.ToString() is "string" or "String"
-                    && call.ArgumentList.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax { Token.ValueText: { } separator } && separator.Trim() == "and")
+                    && call.ArgumentList.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax { Token.ValueText: { } separator }
+                    && separator.Trim() == word)
                 {
                     found.Add($"{relative}:{call.GetLocation().GetLineSpan().StartLinePosition.Line + 1}: {call}");
                 }
             }
         }
-        Assert.True(found.Count == 0, $"{found.Count} joins list names with \" and \" of their own, which says three or more as \"A and B and C\" where "
-            + $"every other list says \"A, B and C\": list them through {nameof(Plural)}.{nameof(Plural.Listed)}:\n{string.Join("\n", found)}");
+        return found;
     }
 }

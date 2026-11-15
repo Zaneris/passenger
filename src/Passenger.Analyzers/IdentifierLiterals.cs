@@ -49,7 +49,7 @@ public sealed class IdentifierLiterals : DiagnosticAnalyzer
         IReadOnlyList<IFieldSymbol> named = Distinctive(text) ? homes.Named(text) : homes.Named(text, TakenBy(context.Operation));
         if (named.Count > 0)
         {
-            string members = string.Join(" or ", named.Select(Name).Distinct());
+            string members = Passenger.Core.Plural.Either([.. named.Select(Name).Distinct()]);
             context.ReportDiagnostic(Diagnostic.Create(Rules.IdentifierLiteral, context.Operation.Syntax.GetLocation(), text, members));
         }
     }
