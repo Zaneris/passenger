@@ -47,28 +47,42 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>Passenger's relay put in an app Run starts on a device with Hot Reload, its inspector beside it where it is an
-    /// Avalonia app's, so the debugger attaches quietly as its start waits there (<see cref="AttachOnDeviceForHotReloadAsync"/>):
-    /// the relay and what was put in, else why not, the app then running without Hot Reload.</summary>
-    private async Task<(RelaySession? Relay, DevicePut? Put, string? Problem)> RelayOnDeviceAsync(AndroidApp app, LiveApp? inspected, Working work)
+    /// Avalonia app's and the hook that calls its update handlers after each update, so the debugger attaches quietly as its
+    /// start waits there (<see cref="AttachOnDeviceForHotReloadAsync"/>): the relay, what was put in and the hook, else why
+    /// not, the app then running without Hot Reload.</summary>
+    private async Task<(RelaySession? Relay, DevicePut? Put, UpdateHandlerHook? Handlers, string? Problem)> RelayOnDeviceAsync(LaunchPlan plan, AndroidApp app,
+        LiveApp? inspected, Working work)
     {
         work.Say($"Putting Passenger's debugger in {app.Package} for Hot Reload…");
-        (RelaySession? relay, DevicePut? put, string? unrelayed) = await DeviceLaunches.PutRelayAsync(app, inspected?.Device, work.Stopping);
-        return relay is null ? (null, null, unrelayed ?? "Passenger's debugger could not be put in the app") : (relay, put, null);
+        UpdateHandlerHook? handlers = HandlersOnDevice(plan);
+        (RelaySession? relay, DevicePut? put, string? unrelayed) = await DeviceLaunches.PutRelayAsync(app, inspected?.Device, handlers, work.Stopping);
+        if (relay is null)
+        {
+            handlers?.Dispose();
+            return (null, null, null, unrelayed ?? "Passenger's debugger could not be put in the app");
+        }
+        return (relay, put, handlers, null);
     }
 
+    /// <summary>The hook that calls the update handlers of a plan's app on a device after each Hot Reload update; null where
+    /// it cannot be loaded there.</summary>
+    private static UpdateHandlerHook? HandlersOnDevice(LaunchPlan plan) =>
+        plan.Device is { } device ? UpdateHandlerHook.OnDevice(device.Framework, plan.Name) : null;
+
     /// <summary>An app Run started on a device with Passenger's relay in it, attached to quietly for Hot Reload alone, which
-    /// lets its start there go: what its applies come to is said in <paramref name="console"/> (null for the terminal's tab)
-    /// and the status bar, which says <paramref name="running"/> once attached. After an attach that fails, saying why, the
-    /// app goes on without Hot Reload: the relay lets its start go as the connection ends, or once its wait is over.</summary>
+    /// lets its start there go, each update told to <paramref name="handlers"/>: what its applies come to is said in
+    /// <paramref name="console"/> (null for the terminal's tab) and the status bar, which says <paramref name="running"/>
+    /// once attached. After an attach that fails, saying why, the app goes on without Hot Reload: the relay lets its start go
+    /// as the connection ends, or once its wait is over.</summary>
     private async Task AttachOnDeviceForHotReloadAsync(string name, RelaySession relay, ConsoleSink? console, Working work, BuiltEdits? edits, string running,
-        LiveApp? app, ProgramBuild? builds)
+        LiveApp? app, ProgramBuild? builds, UpdateHandlerHook? handlers)
     {
         work.Say($"Attaching to {name} on its device for Hot Reload…");
         string? refused = await session.Debug.AttachForHotReloadThroughRelayAsync(relay, name, (line, error) =>
         {
             console?.Write($"{line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);
             parts.Say(line);
-        }, work.Stopping, edits, app, builds);
+        }, work.Stopping, edits, app, builds, handlers);
         parts.Say(refused is null ? running : $"Running {name} without Hot Reload: {refused}");
     }
 
@@ -80,9 +94,12 @@ public sealed partial class BuildRunController
         work.Say($"Putting Passenger's debugger in {app.Package}…");
         // An Avalonia or MAUI app's inspector goes in beside the relay, which the Live Visual Tree reaches.
         LiveApp? inspected = session.Inspected(plan).App;
-        (RelaySession? relay, DevicePut? put, string? unrelayed) = await DeviceLaunches.PutRelayAsync(app, inspected?.Device, work.Stopping);
+        // With Hot Reload, the hook that calls its update handlers after each update goes in too.
+        UpdateHandlerHook? handlers = session.Debug.HotReloadOn() ? HandlersOnDevice(plan) : null;
+        (RelaySession? relay, DevicePut? put, string? unrelayed) = await DeviceLaunches.PutRelayAsync(app, inspected?.Device, handlers, work.Stopping);
         if (relay is null)
         {
+            handlers?.Dispose();
             inspected?.Dispose();
             await DeviceLaunches.EndAsync(app, put);
             return unrelayed;
@@ -102,12 +119,13 @@ public sealed partial class BuildRunController
         }
         catch (System.ComponentModel.Win32Exception unstarted)
         {
+            handlers?.Dispose();
             inspected?.Dispose();
             await DeviceLaunches.EndAsync(app, put);
             return $"{plan.Name} could not be started on its device: {unstarted.Message}";
         }
         DebugController debug = session.Debug;
-        string? refused = await debug.AttachThroughRelayAsync(plan, relay, edits, inspected);
+        string? refused = await debug.AttachThroughRelayAsync(plan, relay, edits, inspected, handlers);
         if (refused is not null || debug.Tabs.FirstOrDefault(t => t.Name == plan.Name && t.IsLive) is not { } tab)
         {
             ChildProcesses.Kill(shell);

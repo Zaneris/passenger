@@ -1275,8 +1275,9 @@ public sealed partial class BuildRunController
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
             LiveApp? inspected = session.RunApp;
-            (Devices.RelaySession? relay, Devices.DevicePut? put, string? unrelayed) = reloaded && plan.Device?.App is { } relayed
-                ? await RelayOnDeviceAsync(relayed, inspected, work) : (null, null, null);
+            (Devices.RelaySession? relay, Devices.DevicePut? put, UpdateHandlerHook? deviceHandlers, string? unrelayed) = reloaded && plan.Device?.App is { } relayed
+                ? await RelayOnDeviceAsync(plan, relayed, inspected, work) : (null, null, null, null);
+            handlers ??= deviceHandlers;
             if (unrelayed is not null)
             {
                 running = $"Running {chosen.Name} without Hot Reload: {unrelayed}";
@@ -1333,7 +1334,7 @@ public sealed partial class BuildRunController
                         () => DeviceLaunches.EndAsync(inTerminalOnDevice, put));
                     if (refused is null && relay is not null)
                     {
-                        await AttachOnDeviceForHotReloadAsync(chosen.Name, relay, null, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan));
+                        await AttachOnDeviceForHotReloadAsync(chosen.Name, relay, null, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan), Take(ref handlers));
                     }
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
@@ -1379,7 +1380,8 @@ public sealed partial class BuildRunController
             }
             if (notStarted is null && relay is not null)
             {
-                await AttachOnDeviceForHotReloadAsync(chosen.Name, relay, parts.Views.Run.Sink, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan));
+                await AttachOnDeviceForHotReloadAsync(chosen.Name, relay, parts.Views.Run.Sink, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan),
+                    Take(ref handlers));
             }
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {

@@ -3,12 +3,13 @@ using Passenger.Core;
 using Passenger.UpdateHandlers;
 
 /// <summary>Run before the program's Main, as DOTNET_STARTUP_HOOKS names this assembly, only in a program Passenger debugs
-/// with Hot Reload: it takes itself and its variable out of what the program's children inherit, connects to Passenger's
-/// socket, starts a thread of its own to read it and answer, and returns once that thread has made every call of its own
-/// and is about to wait in its first read. A stop between updates then finds the thread in the system's receive, partway
-/// through nothing an evaluation there could need; the program's handlers still run for the first time at the first
-/// update, as under the runtime's own agent. It never waits on Passenger: connecting waits for nothing of Passenger's, the
-/// thread waits only to start, and a socket that cannot be reached leaves the program as it would run without the hook.</summary>
+/// with Hot Reload: it takes itself and its variables out of what the program's children inherit, connects to Passenger's
+/// socket (saying its token, where it has one), starts a thread of its own to read it and answer, and returns once that
+/// thread has made every call of its own and is about to wait in its first read. A stop between updates then finds the
+/// thread in the system's receive, partway through nothing an evaluation there could need; the program's handlers still
+/// run for the first time at the first update, as under the runtime's own agent. It never waits on Passenger: connecting
+/// waits for nothing of Passenger's, the thread waits only to start, and a socket that cannot be reached leaves the program
+/// as it would run without the hook.</summary>
 internal static class StartupHook
 {
     /// <summary>The longest Main waits for the thread to reach its first read, the time a debugger holds the program counted
@@ -25,10 +26,17 @@ internal static class StartupHook
     public static void Initialize()
     {
         string? socket = Environment.GetEnvironmentVariable(Wire.SocketVariable);
+        string? token = Environment.GetEnvironmentVariable(Wire.TokenVariable);
         OwnEnvironment.Set(Wire.SocketVariable, null);
+        OwnEnvironment.Set(Wire.TokenVariable, null);
         StartupHooks.TakeOut(typeof(StartupHook).Assembly.Location);
         if (socket is not { Length: > 0 } || Connection.Open(socket) is not { } connection)
         {
+            return;
+        }
+        if (token is { Length: > 0 } && !connection.Send(Line(token)))
+        {
+            connection.Dispose();
             return;
         }
         Thread listening = new(() => Serve(connection)) { IsBackground = true, Name = Wire.ThreadName };

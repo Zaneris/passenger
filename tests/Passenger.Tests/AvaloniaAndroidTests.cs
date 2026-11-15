@@ -165,16 +165,19 @@ public sealed class AvaloniaAndroidTests
     }
 
     /// <summary>What a start left on the emulator of <paramref name="serial"/>: a port forwarded to a relay's or an
-    /// inspector's socket, the inspector's files in the app, the app marked as debugged; empty once its end took them away.</summary>
+    /// inspector's socket, a socket reversed to Passenger, the inspector's files in the app, the app marked as debugged;
+    /// empty once its end took them away.</summary>
     private static string Left(AndroidTools tools, string serial)
     {
         string forwards = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "forward", "--list"]))), "adb's forwards").Output;
+        string reverses = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "reverse", "--list"]))), "adb's reverses").Output;
         string files = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", $"run-as {Package} ls -a files"]))),
             "the app's files").Output;
         string debugged = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "dumpsys activity processes | grep mDebugApp="]))),
             "the device's debugged app").Output;
         return string.Join("; ", [.. forwards.Split('\n').Where(l => l.StartsWith(serial + " ", StringComparison.Ordinal) && l.Contains("localabstract:passenger-", StringComparison.Ordinal))
                 .Select(l => l.Trim()),
+            .. reverses.Split('\n').Where(l => l.Contains("localabstract:passenger-", StringComparison.Ordinal)).Select(l => l.Trim()),
             .. files.Split('\n').Any(l => l.Trim() == ".passenger") ? ["the inspector's files"] : (string[])[],
             .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [$"{Package} marked as debugged"] : (string[])[]]);
     }

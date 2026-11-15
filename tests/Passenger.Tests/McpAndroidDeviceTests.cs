@@ -256,15 +256,18 @@ public sealed class McpAndroidDeviceTests : McpRig
     }
 
     /// <summary>What a Debug start leaves on the emulator of <paramref name="serial"/>: a port forwarded to a relay's or an
-    /// inspector's socket, the relay in the app's folder, the app marked as debugged; empty once its end took them away.</summary>
+    /// inspector's socket, a socket reversed to Passenger, the relay in the app's folder, the app marked as debugged; empty
+    /// once its end took them away.</summary>
     private static async Task<string> LeftAsync(AndroidTools tools, string serial)
     {
         string forwards = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "forward", "--list"]))).Output;
+        string reverses = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "reverse", "--list"]))).Output;
         string relay = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb,
             ["-s", serial, "shell", $"run-as {Package} ls files/.__override__/arm64-v8a files/.__override__/x86_64 2>/dev/null"]))).Output;
         string debugged = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "dumpsys activity processes | grep mDebugApp="]))).Output;
         return string.Join("; ", [.. forwards.Split('\n').Where(l => l.StartsWith(serial + " ", StringComparison.Ordinal) && l.Contains("localabstract:passenger-", StringComparison.Ordinal))
                 .Select(l => l.Trim()),
+            .. reverses.Split('\n').Where(l => l.Contains("localabstract:passenger-", StringComparison.Ordinal)).Select(l => l.Trim()),
             .. relay.Contains(AndroidApp.RelayFile, StringComparison.Ordinal) ? ["the relay in the app"] : (string[])[],
             .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [$"{Package} marked as debugged"] : (string[])[]]);
     }

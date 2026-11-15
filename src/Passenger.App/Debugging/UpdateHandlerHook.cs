@@ -1,4 +1,6 @@
+using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using Passenger.App.State;
 using Passenger.Core;
@@ -10,7 +12,9 @@ namespace Passenger.App.Debugging;
 /// launch's own the hook connects to as the program starts, told after each update the debugger applied, so the program's
 /// MetadataUpdateHandlers run as the runtime's own Hot Reload agent runs them and a Blazor component renders the edit at
 /// once. A handler that failed is said where the program's output is. Never waited on: the program may be paused, its
-/// hook's thread with it, and runs the handlers as it goes on. Ended with its session.</summary>
+/// hook's thread with it, and runs the handlers as it goes on. Ended with its session. For an app on a device it listens
+/// on a port of this machine instead, which adb's reverse reaches from an abstract socket there (<see cref="OnDevice"/>),
+/// taking only the hook that says the token it was given.</summary>
 public sealed class UpdateHandlerHook : IDisposable
 {
     private static int made;
@@ -19,10 +23,11 @@ public sealed class UpdateHandlerHook : IDisposable
     private readonly SemaphoreSlim writing = new(1, 1);
     private NetworkStream? stream;
 
-    private UpdateHandlerHook(string socket, Socket listener)
+    private UpdateHandlerHook(string? socket, Socket listener, DeviceReach? device = null)
     {
         this.listener = listener;
         SocketPath = socket;
+        Device = device;
         // Not held: it waits as long as the program runs, which nothing drawn waits for.
         IdeErrors.Observe(BackgroundWork.Unheld(ServeAsync));
     }
@@ -30,8 +35,26 @@ public sealed class UpdateHandlerHook : IDisposable
     /// <summary>The hook beside the app, as its build carries it.</summary>
     public static string HookPath => Path.Combine(AppContext.BaseDirectory, "updatehandlers", "Passenger.UpdateHandlers.dll");
 
-    /// <summary>Where it listens for the hook.</summary>
-    public string SocketPath { get; }
+    /// <summary>Where it listens for the hook on this machine; null where it listens for an app on a device.</summary>
+    public string? SocketPath { get; }
+
+    /// <summary>How the hook in an app on a device reaches it: the abstract socket adb's reverse listens on there, the port
+    /// here it carries connections to, and the token the hook says first; null for a program on this machine.</summary>
+    public DeviceReach? Device { get; }
+
+    /// <summary>How the hook in an app on a device reaches Passenger, and the variables the app's environment takes for the
+    /// hook carried in <c>folder</c> (<see cref="Variables"/>).</summary>
+    public sealed record DeviceReach(string Socket, int Port, string Token)
+    {
+        /// <summary>The hook first among the startup hooks <paramref name="built"/> names, its abstract socket and its token.</summary>
+        public IReadOnlyList<KeyValuePair<string, string>> Variables(string folder, IReadOnlyList<KeyValuePair<string, string>> built)
+        {
+            string hook = $"{folder}/{Path.GetFileName(HookPath)}";
+            string? others = built.LastOrDefault(v => v.Key == RuntimeVariables.StartupHooks).Value;
+            return [new(RuntimeVariables.StartupHooks, others is { Length: > 0 } ? $"{hook}:{others}" : hook),
+                new(Wire.SocketVariable, $"{Wire.Abstract}{Socket}"), new(Wire.TokenVariable, Token)];
+        }
+    }
 
     /// <summary>Says a line where the program's output is (a handler's failure); set by the session's tab.</summary>
     public Action<string, bool>? Says { get; set; }
@@ -67,11 +90,40 @@ public sealed class UpdateHandlerHook : IDisposable
         return (hook, new Dictionary<string, string>(variables) { [RuntimeVariables.ModifiableAssemblies] = "debug" });
     }
 
+    /// <summary>The hook for an app on a device built for <paramref name="framework"/>, listening on a port of this machine of
+    /// its own for the start to reach from the device (<see cref="Device"/>); null where it cannot be loaded there or no
+    /// port can be had.</summary>
+    public static UpdateHandlerHook? OnDevice(string framework, string name)
+    {
+        if (!Loads(framework))
+        {
+            return null;
+        }
+        Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        try
+        {
+            listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            listener.Listen(4);
+        }
+        catch (SocketException error)
+        {
+            listener.Dispose();
+            IdeErrors.Write($"Hot Reload could not listen for {name}'s update handlers on its device, so they are not called: {error.Message}");
+            return null;
+        }
+        string socket = $"passenger-handlers-{Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
+        DeviceReach reach = new(socket, ((IPEndPoint)listener.LocalEndPoint!).Port, Convert.ToHexString(RandomNumberGenerator.GetBytes(16)));
+        return new UpdateHandlerHook(null, listener, reach);
+    }
+
+    /// <summary>Whether the hook loads in a program on <paramref name="framework"/>: one on .NET 8 or later, the hook carried.</summary>
+    private static bool Loads(string framework) => FrameworkNames.Major(framework) is >= 8 && File.Exists(HookPath);
+
     /// <summary>A hook listening on a socket of its own for a program on <paramref name="framework"/>, and the variables that
     /// load it there; null on a .NET older than the hook's (8), with the hook missing, or no socket to be made.</summary>
     private static (UpdateHandlerHook Hook, IReadOnlyDictionary<string, string> Variables)? Listen(string framework, string name, IReadOnlyDictionary<string, string> environment)
     {
-        if (FrameworkNames.Major(framework) is not >= 8 || !File.Exists(HookPath))
+        if (!Loads(framework))
         {
             return null;
         }
@@ -137,13 +189,23 @@ public sealed class UpdateHandlerHook : IDisposable
         }
     }
 
-    /// <summary>Takes the hook's one connection, then says each handler's failure it answers until the program goes.</summary>
+    /// <summary>Takes the hook's one connection (on a device, the first to say its token), then says each handler's failure
+    /// it answers until the program goes.</summary>
     private async Task ServeAsync()
     {
-        Socket client;
+        NetworkStream network;
         try
         {
-            client = await listener.AcceptAsync(closing.Token);
+            while (true)
+            {
+                NetworkStream client = new(await listener.AcceptAsync(closing.Token), ownsSocket: true);
+                if (Device is not { } device || await SaysAsync(client, device.Token))
+                {
+                    network = client;
+                    break;
+                }
+                await client.DisposeAsync();
+            }
         }
         catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
         {
@@ -155,7 +217,6 @@ public sealed class UpdateHandlerHook : IDisposable
             listener.Dispose();
             Forget(SocketPath);
         }
-        NetworkStream network = new(client, ownsSocket: true);
         stream = network;
         try
         {
@@ -175,6 +236,28 @@ public sealed class UpdateHandlerHook : IDisposable
         }
     }
 
+    /// <summary>How long a connection to a device's hook has to say its token before the next is taken.</summary>
+    private static readonly TimeSpan TokenLimit = TimeSpan.FromSeconds(10);
+
+    /// <summary>Whether a connection's first line is <paramref name="token"/>; false for any other, one that ends first, or
+    /// one that says nothing in time.</summary>
+    private async Task<bool> SaysAsync(NetworkStream client, string token)
+    {
+        byte[] expected = Encoding.ASCII.GetBytes(token + "\n");
+        byte[] said = new byte[expected.Length];
+        using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(closing.Token);
+        limit.CancelAfter(TokenLimit);
+        try
+        {
+            await client.ReadExactlyAsync(said, limit.Token);
+            return said.AsSpan().SequenceEqual(expected);
+        }
+        catch (Exception error) when (error is IOException or SocketException || error is OperationCanceledException && !closing.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         closing.Cancel();
@@ -183,8 +266,12 @@ public sealed class UpdateHandlerHook : IDisposable
         Forget(SocketPath);
     }
 
-    private static void Forget(string socket)
+    private static void Forget(string? socket)
     {
+        if (socket is null)
+        {
+            return;
+        }
         try
         {
             File.Delete(socket);

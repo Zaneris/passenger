@@ -56,7 +56,7 @@ internal sealed unsafe partial class Connection : IDisposable
                 }
                 return new Connection(made);
             }
-            int socket = UnixSocket(UnixFamily, OperatingSystem.IsLinux() ? StreamKind | LinuxCloseOnRun : StreamKind, 0);
+            int socket = UnixSocket(UnixFamily, LinuxKernel ? StreamKind | LinuxCloseOnRun : StreamKind, 0);
             if (socket < 0)
             {
                 return null;
@@ -73,13 +73,22 @@ internal sealed unsafe partial class Connection : IDisposable
     }
 
     /// <summary>A sockaddr_un naming <paramref name="path"/> in UTF-8, as .NET's own Unix endpoint names it: on macOS a length
-    /// and a family byte then 104 bytes of path, elsewhere a two-byte family then 108; null for a path that does not fit
-    /// (<see cref="SocketFolders.Fits"/>).</summary>
+    /// and a family byte then 104 bytes of path, elsewhere a two-byte family then 108; on Linux and Android an abstract name
+    /// (<see cref="Wire.Abstract"/>) as a NUL then its bytes alone, as long as the name is; null for a path that does not
+    /// fit (<see cref="SocketFolders.Fits"/>).</summary>
     private static byte[]? Address(string path)
     {
         if (!SocketFolders.Fits(path))
         {
             return null;
+        }
+        if (path[0] == Wire.Abstract && LinuxKernel)
+        {
+            byte[] named = Encoding.UTF8.GetBytes(path[1..]);
+            byte[] abstractAddress = new byte[3 + named.Length];
+            abstractAddress[0] = UnixFamily;
+            named.CopyTo(abstractAddress, 3);
+            return abstractAddress;
         }
         byte[] name = Encoding.UTF8.GetBytes(path);
         byte[] address = new byte[2 + SocketFolders.PathLimit];
@@ -142,7 +151,7 @@ internal sealed unsafe partial class Connection : IDisposable
             {
                 nint wrote = OperatingSystem.IsWindows()
                     ? WindowsSend(handle, start + sent, bytes.Length - sent, 0)
-                    : UnixSend((int)handle, start + sent, (nuint)(bytes.Length - sent), OperatingSystem.IsLinux() ? LinuxNoSignal : 0);
+                    : UnixSend((int)handle, start + sent, (nuint)(bytes.Length - sent), LinuxKernel ? LinuxNoSignal : 0);
                 if (wrote < 0 && (OperatingSystem.IsWindows() || Marshal.GetLastPInvokeError() != Interrupted))
                 {
                     return false;
@@ -174,7 +183,10 @@ internal sealed unsafe partial class Connection : IDisposable
     }
 
     /// <summary>MSG_DONTWAIT: Linux's, else macOS's.</summary>
-    private static int UnixNoWaiting => OperatingSystem.IsLinux() ? 0x40 : 0x80;
+    private static int UnixNoWaiting => LinuxKernel ? 0x40 : 0x80;
+
+    /// <summary>Whether the system's calls are Linux's: on Linux, and on Android, which .NET tells apart from it.</summary>
+    private static bool LinuxKernel => OperatingSystem.IsLinux() || OperatingSystem.IsAndroid();
 
     /// <summary>SOCK_CLOEXEC, Linux's, added to a socket's type.</summary>
     private const int LinuxCloseOnRun = 0x80000;

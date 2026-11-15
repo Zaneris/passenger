@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Passenger.App.Debugging;
 using Passenger.Core;
 
 namespace Passenger.App.Run.Devices;
@@ -15,9 +16,13 @@ public sealed record DeviceLaunch(KeptTarget Target, string Framework)
 public sealed record RelaySession(string Address, int Port, string Token, string Modules, string Abi, string? Linked);
 
 /// <summary>What a start put in an app on its device beside its build, which its end takes out: the device's ABI, where
-/// the build's environment file pointed, whether the relay and the inspector's files went in, and the local ports adb
-/// forwards to their sockets.</summary>
-public sealed record DevicePut(string Abi, string? Linked, bool Relayed, bool Carried, IReadOnlyList<int> Ports);
+/// the build's environment file pointed, whether the relay and the files carried in (the inspector's, the update handlers'
+/// hook) went in, the local ports adb forwards to their sockets, and the abstract sockets it reverses to Passenger.</summary>
+public sealed record DevicePut(string Abi, string? Linked, bool Relayed, bool Carried, IReadOnlyList<int> Ports)
+{
+    /// <summary>The abstract sockets on the device adb's reverse carries to this machine.</summary>
+    public IReadOnlyList<string> Reversed { get; init; } = [];
+}
 
 /// <summary>Passenger's inspector as a start puts it in an Avalonia app on a device: its files, the variables its startup
 /// hook reads (<see cref="Variables"/>), the abstract socket it listens on, and the port Passenger reaches it through once
@@ -115,10 +120,12 @@ public static class DeviceLaunches
 
     /// <summary>Passenger's relay put in an installed Debug app, with the runtime's profiler variables beside the build's own
     /// and a token only Passenger knows, a local port forwarded to its socket and the app marked as debugged (and the
-    /// inspector beside it, where one is given): the relay's session and what was put in, or why not.</summary>
-    public static async Task<(RelaySession? Relay, DevicePut? Put, string? Problem)> PutRelayAsync(AndroidApp app, DeviceInspector? inspector, CancellationToken cancel)
+    /// inspector beside it, where one is given, and the hook that calls its update handlers after each Hot Reload update,
+    /// reaching <paramref name="handlers"/> through adb's reverse): the relay's session and what was put in, or why not.</summary>
+    public static async Task<(RelaySession? Relay, DevicePut? Put, string? Problem)> PutRelayAsync(AndroidApp app, DeviceInspector? inspector, UpdateHandlerHook? handlers,
+        CancellationToken cancel)
     {
-        (DevicePut? put, RelaySession? relay, string? problem) = await PutInAsync(app, relayed: true, inspector, cancel);
+        (DevicePut? put, RelaySession? relay, string? problem) = await PutInAsync(app, relayed: true, inspector, handlers?.Device, cancel);
         return (relay, put, problem);
     }
 
@@ -126,16 +133,17 @@ public static class DeviceLaunches
     /// what was put in, or why not.</summary>
     public static async Task<(DevicePut? Put, string? Problem)> PutInspectorAsync(AndroidApp app, DeviceInspector inspector, CancellationToken cancel)
     {
-        (DevicePut? put, _, string? problem) = await PutInAsync(app, relayed: false, inspector, cancel);
+        (DevicePut? put, _, string? problem) = await PutInAsync(app, relayed: false, inspector, null, cancel);
         return (put, problem);
     }
 
-    /// <summary>What a start puts in an app beside its build: the relay (<paramref name="relayed"/>) and the inspector's files,
-    /// copied in by the app's own shell; the build's environment file with their variables added; a local port forwarded to
-    /// each one's socket in the app, the inspector told its own; and, for the relay, the app marked as debugged. Whatever
-    /// fails partway is taken out again.</summary>
+    /// <summary>What a start puts in an app beside its build: the relay (<paramref name="relayed"/>), the inspector's files and
+    /// the update handlers' hook (<paramref name="handlers"/>), copied in by the app's own shell; the build's environment file
+    /// with their variables added; a local port forwarded to the relay's and the inspector's socket in the app, the
+    /// inspector told its own, and the hook's socket reversed to Passenger; and, for the relay, the app marked as debugged.
+    /// Whatever fails partway is taken out again.</summary>
     private static async Task<(DevicePut? Put, RelaySession? Relay, string? Problem)> PutInAsync(AndroidApp app, bool relayed, DeviceInspector? inspector,
-        CancellationToken cancel)
+        UpdateHandlerHook.DeviceReach? handlers, CancellationToken cancel)
     {
         ChildResult abiRead = await AndroidDevices.AdbAsync(app.Adb, app.On("shell", "getprop", "ro.product.cpu.abi"), cancel);
         string abi = abiRead.Output.Trim();
@@ -168,13 +176,18 @@ public static class DeviceLaunches
         {
             variables = AndroidEnvironment.With(variables, inspector.Variables(app.Carried, variables));
         }
+        if (handlers is not null)
+        {
+            variables = AndroidEnvironment.With(variables, handlers.Variables(app.Carried, variables));
+        }
         byte[] environment = AndroidEnvironment.Write(variables);
         List<(string Local, string Remote)> pushed = [];
         if (relay is not null)
         {
             pushed.Add((relay, app.Staged("relay")));
         }
-        foreach (string file in inspector?.Files ?? [])
+        IReadOnlyList<string> files = [.. inspector?.Files ?? [], .. handlers is null ? [] : (string[])[UpdateHandlerHook.HookPath]];
+        foreach (string file in files)
         {
             pushed.Add((file, app.Staged(Path.GetFileName(file))));
         }
@@ -195,7 +208,7 @@ public static class DeviceLaunches
         {
             File.Delete(staged);
         }
-        string[] carried = [.. (inspector?.Files ?? []).Select(f => Path.GetFileName(f))];
+        string[] carried = [.. files.Select(f => Path.GetFileName(f))];
         ChildResult put = await AndroidDevices.AdbAsync(app.Adb, app.PutIn(abi, relayed, carried), cancel);
         string[] said = put.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (!put.Succeeded || said.Any(l => l.Contains("run-as:", StringComparison.Ordinal) || l.StartsWith("cp:", StringComparison.Ordinal) || l.StartsWith("mkdir:", StringComparison.Ordinal)))
@@ -228,6 +241,18 @@ public static class DeviceLaunches
                 inspector.Unreached("adb could not forward a port to Passenger's inspector in the app");
             }
         }
+        if (handlers is not null)
+        {
+            // Where the reverse fails, the hook reaches nothing and the app runs on, its update handlers uncalled.
+            if (await AndroidDevices.AdbAsync(app.Adb, app.On("reverse", $"localabstract:{handlers.Socket}", $"tcp:{handlers.Port}"), cancel) is { Succeeded: true })
+            {
+                placed = placed with { Reversed = [handlers.Socket] };
+            }
+            else
+            {
+                IdeLog.Write(IdeLog.Ide, $"adb could not reverse {handlers.Socket} on {app.Serial} to the update handlers' hook");
+            }
+        }
         return (placed, session, null);
     }
 
@@ -255,6 +280,10 @@ public static class DeviceLaunches
                 foreach (int port in put.Ports)
                 {
                     await AndroidDevices.AdbAsync(app.Adb, app.On("forward", "--remove", $"tcp:{port}"), CancellationToken.None);
+                }
+                foreach (string socket in put.Reversed)
+                {
+                    await AndroidDevices.AdbAsync(app.Adb, app.On("reverse", "--remove", $"localabstract:{socket}"), CancellationToken.None);
                 }
                 if (put.Relayed)
                 {

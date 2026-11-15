@@ -603,7 +603,7 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>The program's update handlers told of an update it took, so a Blazor component renders it at once; a program
-    /// in a container, on a device or on another machine, which Passenger's hook cannot reach, says once that its handlers are not called.</summary>
+    /// in a container or on another machine, which Passenger's hook cannot reach, says once that its handlers are not called.</summary>
     private static void ToldHandlers(DebugTab tab, DebugSession session, HotReloadOutcome outcome)
     {
         if (tab.Handlers is { } hook)
@@ -627,8 +627,8 @@ public sealed class DebugController : IDisposable
         }
     }
 
-    /// <summary>Why a program in a container, on a device or on another machine shows an update only as its code next runs.</summary>
-    internal const string HandlersUnreached = "Hot Reload: Passenger's hook cannot reach a program in a container, on a device or on another machine, so its update handlers "
+    /// <summary>Why a program in a container or on another machine shows an update only as its code next runs.</summary>
+    internal const string HandlersUnreached = "Hot Reload: Passenger's hook cannot reach a program in a container or on another machine, so its update handlers "
         + "are not called: a Blazor component shows an edit only as it next renders";
 
     /// <summary>A tab's program that took an apply's C#, whatever its XAML came to: the files' lines as the update was made of
@@ -806,14 +806,16 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>Attaches the debugger to an app on a device through Passenger's relay in it (<see cref="Run.Devices.DeviceLaunches"/>),
-    /// with Hot Reload as Settings has it (a Debug build's runtime takes edits); its console is the app's log, which its start
-    /// writes there. Null once the session is open, else why it could not.</summary>
-    public Task<string?> AttachThroughRelayAsync(Run.LaunchPlan plan, Run.Devices.RelaySession relay, BuiltEdits? edits = null, LiveApp? app = null)
+    /// with Hot Reload as Settings has it (a Debug build's runtime takes edits), each update told to <paramref name="handlers"/>;
+    /// its console is the app's log, which its start writes there. Null once the session is open, else why it could not.</summary>
+    public Task<string?> AttachThroughRelayAsync(Run.LaunchPlan plan, Run.Devices.RelaySession relay, BuiltEdits? edits = null, LiveApp? app = null,
+        UpdateHandlerHook? handlers = null)
     {
         bool hotReloadOn = HotReloadOn();
         string where = plan.Device?.Target.Name ?? "its device";
         return OpenAsync((built, log, output, starting) => DebugSession.AttachThroughRelayAsync(plan.Name, relay, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn),
-            plan.Name, launched: false, hotReloadOn: hotReloadOn, plan: plan, edits: edits, app: app, attachedWords: $"{plan.Name} runs on {where}; what it logs there is shown here");
+            plan.Name, launched: false, hotReloadOn: hotReloadOn, plan: plan, edits: edits, app: app, hook: hotReloadOn ? handlers : Unheld(handlers),
+            attachedWords: $"{plan.Name} runs on {where}; what it logs there is shown here");
     }
 
     /// <summary>What no session will tell of an update (a hook, a browser refresh), let go of: null.</summary>
@@ -1335,11 +1337,11 @@ public sealed class DebugController : IDisposable
 
     /// <summary>Attaches quietly for Hot Reload alone, as <see cref="AttachForHotReloadAsync"/> does, to an app Run started on
     /// a device through Passenger's relay in it (<see cref="Run.Devices.DeviceLaunches.PutRelayAsync"/>), whose start waits
-    /// there until the attach lets it go. Null once attached, else why not.</summary>
+    /// there until the attach lets it go, each update told to <paramref name="handlers"/>. Null once attached, else why not.</summary>
     public Task<string?> AttachForHotReloadThroughRelayAsync(Run.Devices.RelaySession relay, string name, Action<string, bool> says, CancellationToken cancellation,
-        BuiltEdits? edits, LiveTree.LiveApp? app, ProgramBuild? builds) =>
+        BuiltEdits? edits, LiveTree.LiveApp? app, ProgramBuild? builds, UpdateHandlerHook? handlers) =>
         AttachQuietlyAsync(name, (built, starting) => DebugSession.AttachThroughRelayAsync(name, relay, Breakpoints, built, _ => { }, _ => { }, starting: starting, hotReload: true,
-            quiet: true), says, cancellation, edits, null, null, app, builds);
+            quiet: true), says, cancellation, edits, handlers, null, app, builds);
 
     /// <summary>A quiet session for Hot Reload alone, opened by <paramref name="attach"/> over the lines built and handed the
     /// session as it begins, kept among <see cref="Running"/> until it ends. Null once attached, else why not.</summary>
