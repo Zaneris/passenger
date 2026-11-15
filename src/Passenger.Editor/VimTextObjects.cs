@@ -56,101 +56,170 @@ public static class VimTextObjects
 
     private static int KindIn(TextSnapshot text, int offset, bool bigWord) => White(text[offset]) ? 0 : VimMotions.Kind(text[offset], bigWord);
 
-    /// <summary>iw, aw, iW and aW: <paramref name="n"/> words, white between them counted too for the inner object; the
-    /// outer one takes the white after each, or where none is after the first the white before it and before each word
-    /// after, or from white the white before each word. An empty line followed by another is a word, the empty lines
-    /// after it its white.</summary>
-    private static VimSpan? Word(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>
-        Word(text, caret, n, inner, bigWord, breakEnds, out _);
-
-    /// <summary>Where a count of words cut short by the text's end left off: the last character of the words it took;
-    /// null where the object is found, or fails from the first.</summary>
-    public static int? WordsRanOut(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>
-        Word(text, caret, n, inner, bigWord, breakEnds, out int ranOut) is null && ranOut >= 0 ? ranOut : null;
-
-    private static VimSpan? Word(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds, out int ranOut)
+    /// <summary>iw, aw, iW and aW as an operator takes them: the places <see cref="WordsWalked"/> walks over, an end
+    /// it leaves at a later line's start ending at the line before, the lines whole where they begin in an indent.</summary>
+    private static VimSpan? Word(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds)
     {
-        ranOut = -1;
-        LineSpan line = VimMotions.LineOf(text, caret);
-        if (line.Length == 0)
+        if (WordsWalked(text, caret, n, inner, bigWord, breakEnds, out _) is not { } walked)
         {
-            return inner ? new VimSpan(caret, caret, false) : EmptyLineWords(text, line, n, bigWord, breakEnds, out ranOut);
+            return null;
         }
-        (int start, int end) = Run(text, caret, bigWord);
-        bool onWhite = KindIn(text, caret, bigWord) == 0;
+        (int start, int end, bool exclusive) = walked;
+        LineSpan endLine = VimMotions.LineOf(text, end);
+        if (!exclusive)
+        {
+            // An empty line's place adds nothing of its own.
+            return new VimSpan(start, endLine.Length == 0 ? end : Math.Max(end + 1, Math.Min(TextNavigation.NextGrapheme(text, end), endLine.End)), false);
+        }
+        LineSpan startLine = VimMotions.LineOf(text, start);
+        if (end != endLine.Start || endLine.Line <= startLine.Line)
+        {
+            return new VimSpan(start, end, false);
+        }
+        LineSpan before = text.GetLine(endLine.Line - 1);
+        return VimMotions.InIndent(text, start)
+            ? new VimSpan(startLine.Start, before.Start, true)
+            : new VimSpan(start, before.Length == 0 ? before.Start : before.End, false);
+    }
+
+    /// <summary>Where a count of words cut short by the text's end left off, where the walk stopped; null where the
+    /// object is found.</summary>
+    public static int? WordsRanOut(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>
+        WordsWalked(text, caret, n, inner, bigWord, breakEnds, out int ranOut) is null ? ranOut : null;
+
+    /// <summary>iw, aw, iW and aW in visual mode from a single place: the places walked over, the last one taken, a
+    /// count the text cuts short stopping where it ran out.</summary>
+    public static (int Start, int End)? WordsShown(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>
+        WordsWalked(text, caret, n, inner, bigWord, breakEnds, out _, visual: true) is { } walked ? (walked.Start, walked.End) : null;
+
+    /// <summary>The place after one, on the line below past a line's last character; null at the text's last place, but
+    /// in visual mode (<paramref name="visual"/>) the last line's end is one more.</summary>
+    private static int? NextPlace(TextSnapshot text, int place, bool breakEnds, bool visual = false)
+    {
+        LineSpan line = VimMotions.LineOf(text, place);
+        int next = line.Length == 0 || place >= line.End ? line.End : TextNavigation.NextGrapheme(text, place);
+        if (next < line.End)
+        {
+            return next;
+        }
+        if (line.Line < VimMotions.LastLine(text, breakEnds))
+        {
+            return line.EndIncludingBreak;
+        }
+        return visual && line.Length > 0 && place < line.End ? line.End : null;
+    }
+
+    /// <summary>The place before one, on the line above's last character before a line's first; null at the text's start.</summary>
+    private static int? PlaceBefore(TextSnapshot text, int place)
+    {
+        LineSpan line = VimMotions.LineOf(text, place);
+        if (place > line.Start)
+        {
+            return VimMotions.StepBack(text, Math.Min(place, line.End));
+        }
+        if (line.Line == 0)
+        {
+            return null;
+        }
+        LineSpan above = text.GetLine(line.Line - 1);
+        return above.Length == 0 ? above.Start : VimMotions.StepBack(text, above.End);
+    }
+
+    /// <summary>Whether a place is a blank, the walks' white; a line's end past its last character counts as one.</summary>
+    private static bool BlankAt(TextSnapshot text, int place, bool bigWord) =>
+        !EmptyAt(text, place) && (place >= VimMotions.LineOf(text, place).End || KindIn(text, place, bigWord) == 0);
+
+    private static bool EmptyAt(TextSnapshot text, int place) => VimMotions.LineOf(text, place).Length == 0;
+
+    /// <summary>The last place of the run of one kind (word, punctuation, blank) a place is in, within its line.</summary>
+    private static int RunLast(TextSnapshot text, int place, bool bigWord) =>
+        EmptyAt(text, place) || place >= VimMotions.LineOf(text, place).End ? place : VimMotions.StepBack(text, Run(text, place, bigWord).End);
+
+    /// <summary>iw, aw, iW and aW walked a place at a time (a character, or an empty line): iw by runs, a step onto an
+    /// empty line going on to the next place, which an operator stops before (<c>Exclusive</c>); aw by a run and its
+    /// blanks on its line, or from blanks (an empty line first) over blanks and line breaks to a run or empty line, with
+    /// the blanks before where it begins and ends on runs. Null where the text runs out (<paramref name="ranOut"/> the
+    /// last place walked), but in visual mode that stops the walk there, the last line's end one more place.</summary>
+    private static (int Start, int End, bool Exclusive)? WordsWalked(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds,
+        out int ranOut, bool visual = false)
+    {
+        ranOut = caret;
+        LineSpan line = VimMotions.LineOf(text, caret);
+        bool empty = line.Length == 0;
+        if (inner && empty && line.Line > 0 && NextPlace(text, caret, breakEnds) is null)
+        {
+            // On an empty last line, iw reaches back to the line above's last place; with a count, to nothing.
+            LineSpan above = text.GetLine(line.Line - 1);
+            int from = above.Length == 0 ? above.Start : VimMotions.StepBack(text, above.End);
+            return n == 1 ? (from, caret, false) : (caret, caret, false);
+        }
+        int start = empty ? caret : Run(text, caret, bigWord).Start;
+        int end = empty ? caret : RunLast(text, caret, bigWord);
+        bool exclusive = false;
         if (inner)
         {
-            for (int i = 1; i < n; i++)
+            for (long i = 1; i < n; i++)
             {
-                int next = NextRunEnd(text, end, bigWord, breakEnds);
-                if (next == end)
+                if (NextPlace(text, end, breakEnds, visual) is not { } next)
                 {
-                    ranOut = Math.Max(start, end - 1);
-                    return null;
+                    ranOut = end;
+                    return visual ? (start, end, exclusive) : null;
                 }
-                end = next;
+                (end, exclusive) = !EmptyAt(text, next) ? (RunLast(text, next, bigWord), false)
+                    : NextPlace(text, next, breakEnds, visual) is { } after ? (after, true) : (next, true);
             }
-            return new VimSpan(start, end, false);
+            return (start, end, exclusive);
         }
-        if (onWhite)
+        for (long i = 0; i < n; i++)
         {
-            // White before a word: the white and the word after it, n times.
-            for (int i = 0; i < n; i++)
-            {
-                int word = i == 0 ? end : WhiteEnd(text, end);
-                int next = NextRunEnd(text, word, bigWord, breakEnds);
-                if (next == word)
-                {
-                    ranOut = i == 0 ? -1 : Math.Max(start, end - 1);
-                    return null;
-                }
-                end = next;
-            }
-            return new VimSpan(start, end, false);
-        }
-        // Units of a word and its white on its line (a line's break where more follow), or from white the white and a word.
-        bool trailing = false;
-        for (int i = 0; i < n; i++)
-        {
-            int at = end;
+            int at = start;
             if (i > 0)
             {
-                LineSpan atLine = VimMotions.LineOf(text, at);
-                if (at == atLine.End && atLine.BreakLength > 0 && atLine.Length > 0)
+                if (NextPlace(text, end, breakEnds, visual) is not { } next)
                 {
-                    at = atLine.EndIncludingBreak;
+                    ranOut = end;
+                    return visual ? (start, end, false) : null;
                 }
-                if (at >= text.Length || VimMotions.LineOf(text, at).Line > VimMotions.LastLine(text, breakEnds))
+                at = next;
+            }
+            if (EmptyAt(text, at) || BlankAt(text, at, bigWord))
+            {
+                // Blanks and line breaks up to a run or an empty line, which ends the unit.
+                int white = at;
+                int? word = NextPlace(text, white, breakEnds, visual);
+                while (word is { } w && BlankAt(text, w, bigWord) && w < VimMotions.LineOf(text, w).End)
                 {
-                    ranOut = Math.Max(start, end - 1);
-                    return null;
+                    white = w;
+                    word = NextPlace(text, white, breakEnds, visual);
                 }
-                if (KindIn(text, at, bigWord) == 0 && at < VimMotions.LineOf(text, at).End)
+                if (word is not { } found)
                 {
-                    int word = WhiteEnd(text, at);
-                    if (word >= VimMotions.LineOf(text, at).End)
+                    ranOut = white;
+                    if (!visual)
                     {
-                        ranOut = Math.Max(start, end - 1);
                         return null;
                     }
-                    end = Run(text, word, bigWord).End;
-                    trailing = false;
-                    continue;
+                    end = white;
+                    break;
                 }
-                at = VimMotions.LineOf(text, at).Length == 0 ? at : Run(text, at, bigWord).End;
+                if (visual && i == 0 && found >= VimMotions.LineOf(text, found).End && !EmptyAt(text, found))
+                {
+                    // Blanks ending the text are taken from the caret, up to the last line's end.
+                    start = caret;
+                }
+                end = RunLast(text, found, bigWord);
+                continue;
             }
-            end = WhiteEnd(text, at);
-            trailing = end > at;
-            LineSpan here = VimMotions.LineOf(text, end);
-            if (!trailing && i + 1 < n && end == here.End && here.BreakLength > 0)
+            end = RunLast(text, at, bigWord);
+            if (NextPlace(text, end, breakEnds, visual) is { } after && VimMotions.LineOf(text, after).Line == VimMotions.LineOf(text, end).Line
+                && BlankAt(text, after, bigWord) && after < VimMotions.LineOf(text, after).End)
             {
-                end = here.EndIncludingBreak;
-                trailing = true;
+                end = RunLast(text, after, bigWord);
             }
         }
-        if (!trailing)
+        if (!empty && !BlankAt(text, start, bigWord) && !EmptyAt(text, end) && !BlankAt(text, end, bigWord))
         {
-            // No white after the last word: the white before the first goes instead, unless it is the line's indent.
+            // Ending on a run, the blanks before the first go too, unless they are the line's indent.
             int white = start;
             while (white > line.Start && White(text[white - 1]))
             {
@@ -158,63 +227,67 @@ public static class VimTextObjects
             }
             start = white > line.Start ? white : start;
         }
-        return new VimSpan(start, end, false);
+        return (start, end, false);
     }
 
-    /// <summary>aw and aW from an empty line followed by another: that line as a word and the empty lines after it as its
-    /// white, then words with the white after each; null from any other empty line.</summary>
-    private static VimSpan? EmptyLineWords(TextSnapshot text, LineSpan line, int n, bool bigWord, bool breakEnds, out int ranOut)
+    /// <summary>iw, aw, iW and aW carrying a longer visual stretch's cursor on, forward or <paramref name="back"/>, as
+    /// <see cref="WordsWalked"/> walks (back, a run's blanks before it), the last line's end a place but in linewise mode
+    /// (<paramref name="lines"/>), a walk back to the text's very start stopping at its second character where Vim's
+    /// does. Where the text runs out the cursor stays; <c>Moved</c> false where it could not move at all, <c>Whole</c>
+    /// whether the count was walked whole.</summary>
+    public static (int To, bool Moved, bool Whole) WordsCarried(TextSnapshot text, int cursor, bool back, int n, bool inner, bool bigWord, bool breakEnds, bool lines)
     {
-        ranOut = -1;
-        int last = VimMotions.LastLine(text, breakEnds);
-        if (line.Line >= last || text.GetLine(line.Line + 1).Length > 0)
+        int at = cursor;
+        for (long i = 0; i < n; i++)
         {
-            return null;
-        }
-        int below = line.Line + 1;
-        while (below < last && text.GetLine(below + 1).Length == 0)
-        {
-            below++;
-        }
-        int end = text.GetLine(below).EndIncludingBreak;
-        for (int i = 1; i < n; i++)
-        {
-            if (end >= text.Length || below >= last)
+            if ((back ? PlaceBefore(text, at) : NextPlace(text, at, breakEnds, visual: !lines)) is not { } q)
             {
-                ranOut = Math.Max(line.Start, end - 1);
-                return null;
+                return (at, i > 0, false);
             }
-            end = WhiteEnd(text, Run(text, end, bigWord).End);
-        }
-        return new VimSpan(line.Start, end, false);
-    }
-
-    /// <summary>The end of the white run starting at the offset on its line, or the offset itself.</summary>
-    private static int WhiteEnd(TextSnapshot text, int offset)
-    {
-        int lineEnd = VimMotions.LineOf(text, offset).End;
-        int p = offset;
-        while (p < lineEnd && White(text[p]))
-        {
-            p++;
-        }
-        return p;
-    }
-
-    /// <summary>The end of the run after the one ending at the offset, the next line's first where the line ends there.</summary>
-    private static int NextRunEnd(TextSnapshot text, int offset, bool bigWord, bool breakEnds)
-    {
-        LineSpan line = VimMotions.LineOf(text, offset);
-        if (offset >= line.End)
-        {
-            if (line.Line >= VimMotions.LastLine(text, breakEnds))
+            if (inner)
             {
-                return offset;
+                at = EmptyAt(text, q) ? (back ? q : NextPlace(text, q, breakEnds, visual: !lines) ?? q)
+                    : back ? RunStartWalked(text, q, bigWord, stopsShort: BlankAt(text, q, bigWord)) : RunLast(text, q, bigWord);
+                continue;
             }
-            LineSpan next = text.GetLine(line.Line + 1);
-            return next.Length == 0 ? next.Start : Run(text, next.Start, bigWord).End;
+            if (EmptyAt(text, q) || BlankAt(text, q, bigWord))
+            {
+                int white = q;
+                int? word = back ? PlaceBefore(text, white) : NextPlace(text, white, breakEnds, visual: !lines);
+                while (word is { } w && BlankAt(text, w, bigWord) && w < VimMotions.LineOf(text, w).End)
+                {
+                    white = w;
+                    word = back ? PlaceBefore(text, white) : NextPlace(text, white, breakEnds, visual: !lines);
+                }
+                if (word is not { } found)
+                {
+                    return (white, true, false);
+                }
+                at = EmptyAt(text, found) ? found : back ? Run(text, found, bigWord).Start : RunLast(text, found, bigWord);
+                continue;
+            }
+            int edge = back ? RunStartWalked(text, q, bigWord, stopsShort: true) : RunLast(text, q, bigWord);
+            if ((back ? PlaceBefore(text, edge) : NextPlace(text, edge, breakEnds, visual: !lines)) is { } beyond
+                && VimMotions.LineOf(text, beyond).Line == VimMotions.LineOf(text, edge).Line && BlankAt(text, beyond, bigWord) && beyond < VimMotions.LineOf(text, beyond).End)
+            {
+                // The blanks before a run walked back stop short of the text's very start too.
+                edge = !back ? RunLast(text, beyond, bigWord) : Run(text, beyond, bigWord).Start is var blanks && blanks == 0 ? TextNavigation.NextGrapheme(text, 0) : blanks;
+            }
+            at = edge;
         }
-        return Run(text, offset, bigWord).End;
+        return (at, true, true);
+    }
+
+    /// <summary>Where a run walked back from a place begins: its start, but its second character where that start is the
+    /// text's very first, the walk began past it and it <paramref name="stopsShort"/>.</summary>
+    private static int RunStartWalked(TextSnapshot text, int place, bool bigWord, bool stopsShort)
+    {
+        if (EmptyAt(text, place))
+        {
+            return place;
+        }
+        int start = Run(text, place, bigWord).Start;
+        return stopsShort && start == 0 && place > 0 ? TextNavigation.NextGrapheme(text, 0) : start;
     }
 
     /// <summary>is and as: the sentence the caret is in, or the white after it; the outer one takes the white after, or

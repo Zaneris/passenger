@@ -1530,6 +1530,36 @@ public class VimTests
     public void A_counted_inner_string_takes_its_quotes(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A count of word objects walks the text a place at a time as Vim's cursor does: iw's step onto an empty
+    /// line goes on to the line after, which an operator then stops before, taking whole lines from an indent; aw's
+    /// white runs over line breaks to a word or an empty line; in visual mode the walk carries a stretch either way,
+    /// reaches the last line's end past its last character (as e does there), and back stops at the text's second
+    /// character where Vim's does.</summary>
+    [Theory]
+    [InlineData("x| = 1\n\n\nclass A:\n    pass", "3daw", "|x\nclass A:\n    pass")]
+    [InlineData("x =| 1\n\n\nclass A:\n    pass", "3daw", "x =|A:\n    pass")]
+    [InlineData("x = 1\n|\n\nclass A:\n    pass", "2diw", "x = 1\n|class A:\n    pass")]
+    [InlineData("x = 1\n|\n\nclass A:\n    pass", "4diw", "x = 1\n|A:\n    pass")]
+    [InlineData("x = 1\n\n|\nclass A:\n    pass", "daw", "x = 1\n\n| A:\n    pass")]
+    [InlineData("x = 1\n\n|\nclass A:\n    pass", "3daw", "x = 1\n\n    |pass")]
+    [InlineData("x = 1\n\n\nclass| A:\n    pass", "3daw", "x = 1\n\n\nclas|s")]
+    [InlineData("|  ab  \n\nx.y .\n", "4diw", "|x.y .\n")]
+    [InlineData("  ab| \n\nx.y .\n", "2yiwP", "  ab| \n \n\nx.y .\n")]
+    [InlineData("\t\n|\n ,;ab  ", "daw", "\t\n|ab  ")]
+    [InlineData("\n .  |ab x.y", "2daw", "\n .|.y")]
+    [InlineData("ab\n|\n", "diw", "|a\n")]
+    [InlineData("def f(x):\n    7\n\n\n|class A:", "2daW", "def f(x):\n    7\n\n\n|")]
+    [InlineData("one two three\nfour five six\n\nse|ven eight", "v2h2awd", "one two three\nfour |en eight")]
+    [InlineData(" ,;  c \n\n  de|ab ,; ", "vh2awd", " ,;  |b ,; ")]
+    [InlineData("one\n\n|two three", "vkiwd", "|wo three")]
+    [InlineData("ab c|d", "veiwd", "ab |c")]
+    [InlineData(".  c  \na|b ", "vj2awd", ".  c  \n|")]
+    [InlineData("ab c|d\n", "v3iwd", "ab| \n")]
+    [InlineData("if (x) {\n    call(1, 2);\n|}\nend", "Vw2iwd", "if (x) {\n    |call(1, 2);")]
+    [InlineData("foo\nen|d", "<C-v>eA7<Esc>", "foo\nen|d 7")]
+    public void Counts_of_word_objects_walk_over_empty_lines_and_line_ends_as_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
