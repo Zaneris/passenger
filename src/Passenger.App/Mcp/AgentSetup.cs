@@ -20,7 +20,7 @@ public sealed record AgentSetup(string Executable, string? Folder, ShellKind She
 
     /// <summary>The running copy's setup, with the window's folder, its commands written for the Terminal's shell
     /// (<see cref="ShellOf"/>).</summary>
-    public static AgentSetup Here(string? folder, string? terminalShell) => new(ThisExecutable(), folder, ShellOf(terminalShell));
+    public static AgentSetup Here(string? folder, string? terminalShell) => new(Product.Program, folder, ShellOf(terminalShell));
 
     /// <summary>The kind of the Terminal's shell: the program the command line Settings give it (<paramref
     /// name="terminalShell"/>) starts, else the system's.</summary>
@@ -37,17 +37,6 @@ public sealed record AgentSetup(string Executable, string? Folder, ShellKind She
         ShellKind.Nushell => "Nushell",
         _ => "a terminal",
     };
-
-    /// <summary>The executable an agent starts: this process's, or the app host beside it when it runs through dotnet.</summary>
-    public static string ThisExecutable()
-    {
-        string? path = Environment.ProcessPath;
-        if (path is null || Path.GetFileNameWithoutExtension(path).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-        {
-            path = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
-        }
-        return PathNames.Canonical(path);
-    }
 
     /// <summary>Claude Code's command, run in a terminal's <see cref="Shell"/>.</summary>
     public string ClaudeCode => $"claude mcp add passenger -- {ShellWords.Quoted(Executable, Shell)} --mcp-attach";

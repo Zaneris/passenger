@@ -1268,8 +1268,7 @@ public sealed class VcsController : IDisposable
     {
         try
         {
-            return new GitAsker(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger"),
-                SocketFolders.Own(State.StateStore.DefaultRoot), ask);
+            return new GitAsker(Product.Program, SocketFolders.Own(State.StateStore.DefaultRoot), ask);
         }
         catch (Exception unowned) when (unowned is IOException or UnauthorizedAccessException)
         {

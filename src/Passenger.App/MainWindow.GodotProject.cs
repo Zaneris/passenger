@@ -82,7 +82,7 @@ public partial class MainWindow
         string? setting = settings.GodotExecutable;
         bool scripts = !Projects.Any(p => p.GodotFolder is { } game && PathNames.Same(game, folder));
         IReadOnlyDictionary<string, string>? folders = GodotFolders;
-        IReadOnlyList<KeyValuePair<string, object>> values = GodotEditorSettings.ForPassenger(ScriptEditor);
+        IReadOnlyList<KeyValuePair<string, object>> values = GodotEditorSettings.ForPassenger(Product.Program);
         return await BackgroundWork.Run(async () =>
         {
             GodotDefinitions defined = scenes.Defined;

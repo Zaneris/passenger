@@ -69,7 +69,7 @@ public sealed class AskPassHelperTests
         // A clone held at its first request: git runs on asking nothing, while the test asks as its helper would.
         await using StandInHttp remote = new(exchange => exchange.UntilClosedAsync());
         string sockets = Directory.CreateDirectory(Path.Combine(SocketFolders.Own(StateStore.DefaultRoot), $"{Environment.ProcessId}-asked")).FullName;
-        GitAsker asker = new(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger"), sockets,
+        GitAsker asker = new(Product.Program, sockets,
             (question, _) => Task.FromResult(question.Kind == GitQuestionKind.User ? new GitAnswer("tester") : GitAnswer.No($"asked \"{question.Prompt}\"")));
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         Task<GitResult> cloning = Git.CloneAsync($"{remote.Root}/repo.git", Path.Combine(TestFolders.Create("asked-"), "repo"), _ => { }, stop.Token, asker);

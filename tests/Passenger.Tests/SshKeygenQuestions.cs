@@ -79,7 +79,7 @@ public sealed class SshKeygenQuestions : IAsyncDisposable
     /// <summary>The ssh-keygen's start given the helper, forced, and this socket.</summary>
     public void Give(ProcessStartInfo start)
     {
-        start.Environment["SSH_ASKPASS"] = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
+        start.Environment["SSH_ASKPASS"] = Product.Program;
         start.Environment["SSH_ASKPASS_REQUIRE"] = "force";
         start.Environment[Passenger.Vcs.GitAskPass.Variable] = socket;
     }

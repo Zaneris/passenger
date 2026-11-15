@@ -26,7 +26,7 @@ public abstract class McpRig : IDisposable
     /// installer job has an agent debug through the Passenger its Windows installer installed.</summary>
     private static readonly string Passenger = Environment.GetEnvironmentVariable(ExecutableVariable) is { Length: > 0 } installed
         ? installed
-        : Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
+        : Product.Program;
 
     private readonly RestoredFolders? folders;
     private string? sum;

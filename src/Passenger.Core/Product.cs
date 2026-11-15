@@ -21,6 +21,13 @@ public static class Product
     /// <summary>The .NET it runs on and the processor it runs as (".NET 11.0.0 arm64").</summary>
     public static string Runtime => $"{RuntimeInformation.FrameworkDescription} {RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()}";
 
+    /// <summary>Passenger's own program, the app host beside its assemblies, by its canonical path: what another program is
+    /// told to start to reach Passenger, whatever started this process (dotnet, or a test's host).</summary>
+    public static string Program => Own.Value;
+
+    private static readonly Lazy<string> Own = new(() =>
+        PathNames.Canonical(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger")));
+
     /// <summary>Passenger's licence, beside the app.</summary>
     public static string License => Path.Combine(AppContext.BaseDirectory, "LICENSE.txt");
 

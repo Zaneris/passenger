@@ -15,7 +15,7 @@ namespace Passenger.Tests;
 /// names, as Windows does for one double-clicked, opens in the window as the workspace.</summary>
 public sealed class CommandLineTests : IDisposable
 {
-    private static readonly string Passenger = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
+    private static readonly string Passenger = Product.Program;
 
     private readonly string folder = TestFolders.Create("command-line-");
     private readonly string settings = TestFolders.Create("settings-");

@@ -50,7 +50,7 @@ public sealed class GodotScriptEditorTests
             $"Passenger was to ask once, naming the file it writes, before writing it; it asked: {string.Join(" | ", asked)}");
         string text = File.ReadAllText(written);
         IReadOnlyDictionary<string, object> read = GodotEditorSettings.Read(text, Keys);
-        string self = Environment.ProcessPath!;
+        string self = Product.Program;
         Assert.True(Equals(read[GodotEditorSettings.ExternalEditor], GodotEditorSettings.Custom) && Equals(read[GodotEditorSettings.CustomExecPath], self)
             && Equals(read[GodotEditorSettings.CustomExecPathArgs], GodotEditorSettings.ScriptArguments) && Equals(read[GodotEditorSettings.UseExternalEditor], true)
             && Equals(read[GodotEditorSettings.ExecPath], self) && Equals(read[GodotEditorSettings.ExecFlags], GodotEditorSettings.TextArguments)

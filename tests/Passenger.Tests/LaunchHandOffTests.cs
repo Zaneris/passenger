@@ -15,7 +15,7 @@ namespace Passenger.Tests;
 /// Passenger (headless here, as the run's launches are), and the next launch goes to it.</summary>
 public sealed class LaunchHandOffTests
 {
-    private static readonly string Passenger = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
+    private static readonly string Passenger = Product.Program;
 
     [AvaloniaFact]
     public void A_second_launch_with_a_file_and_caret_goes_to_the_window_on_its_folder_at_its_line_with_no_second_window()

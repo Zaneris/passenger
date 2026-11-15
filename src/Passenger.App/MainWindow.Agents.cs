@@ -114,7 +114,7 @@ public partial class MainWindow
             agentSocket.Describe(Folder);
         }
         System.Diagnostics.ProcessStartInfo start = Core.ChildProcesses.Command(command[0], command.Skip(1), Folder ?? Environment.CurrentDirectory);
-        start.Environment[AgentExecutableVariable] = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
+        start.Environment[AgentExecutableVariable] = Core.Product.Program;
         start.Environment[AgentPidVariable] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return ShowInTerminal("Agent", start);
     }
