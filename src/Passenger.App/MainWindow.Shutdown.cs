@@ -14,9 +14,10 @@ public partial class MainWindow
     /// language server to end as asked; each kills its own process when it will not go.</summary>
     public static readonly TimeSpan EndLimit = TimeSpan.FromSeconds(5);
 
-    /// <summary>Finishes when what the window started has ended, or <see cref="EndLimit"/> after it closed; null while it
-    /// is open. It needs no UI thread, so the process waits for it once the window's loop has stopped (Program, the MCP
-    /// host, a screenshot). A logout does not wait: macOS ends the process, after the programs' and builds' kills.</summary>
+    /// <summary>Finishes when what the window started has ended, or <see cref="EndLimit"/> after it closed (its apps' ends on
+    /// devices <see cref="Run.Devices.DeviceLaunches.EndLimit"/>); null while it is open. It needs no UI thread, so the
+    /// process waits for it once the window's loop has stopped (Program, the MCP host, a screenshot). A logout does not
+    /// wait: macOS ends the process, after the programs' and builds' kills.</summary>
     public Task? Ended { get; private set; }
 
     private const string ClosingSolution = "closing the solution";

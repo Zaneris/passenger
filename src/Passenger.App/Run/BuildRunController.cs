@@ -1275,14 +1275,19 @@ public sealed partial class BuildRunController
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
             LiveApp? inspected = session.RunApp;
-            (Devices.RelaySession? relay, Devices.DevicePut? put, UpdateHandlerHook? deviceHandlers, string? unrelayed) = reloaded && plan.Device?.App is { } relayed
-                ? await RelayOnDeviceAsync(plan, relayed, inspected, work) : (null, null, null, null);
+            // Held from its first step on a device until what it puts in there is out again, which Stop and the folder's end wait for.
+            using Devices.DeviceStart? onDevice = plan.Device?.App is { } app ? session.StartsOnDevice(chosen.Name, app) : null;
+            (Devices.RelaySession? relay, UpdateHandlerHook? deviceHandlers, string? unrelayed) = reloaded && onDevice is not null
+                ? await RelayOnDeviceAsync(plan, onDevice, inspected, work) : (null, null, null);
             handlers ??= deviceHandlers;
             if (unrelayed is not null)
             {
                 running = $"Running {chosen.Name} without Hot Reload: {unrelayed}";
             }
-            put ??= plan.Device?.App is { } inspecting ? await InspectOnDeviceAsync(inspecting, inspected, work) : null;
+            if (relay is null && onDevice is not null)
+            {
+                await InspectOnDeviceAsync(onDevice, inspected, work);
+            }
             ShowBindings();
             // dotnet watch opens no browser of its own: the plan's opens through the window once the program listens.
             Dictionary<string, string> variables = watched
@@ -1328,10 +1333,9 @@ public sealed partial class BuildRunController
                         await AttachForHotReloadAsync(chosen.Name, inTerminal.Debuggee, null, work, Take(ref edits), running, Take(ref handlers), inspected, ProgramBuild.Of(plan));
                     }
                 }
-                if (plan.Device?.App is { } inTerminalOnDevice)
+                if (onDevice is not null)
                 {
-                    session.EndsOnDevices(chosen.Name, EndOnDeviceAsync(refused is null && session.InTerminal is { } shell ? shell.Ended : Task.FromResult(0), inTerminalOnDevice, put),
-                        () => DeviceLaunches.EndAsync(inTerminalOnDevice, put));
+                    onDevice.EndsWith(EndOnDeviceAsync(refused is null && session.InTerminal is { } shell ? shell.Ended : Task.FromResult(0), onDevice));
                     if (refused is null && relay is not null)
                     {
                         await AttachOnDeviceForHotReloadAsync(chosen.Name, relay, null, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan), Take(ref handlers));
@@ -1373,10 +1377,10 @@ public sealed partial class BuildRunController
             {
                 Keep(Take(ref dashboard), session.Runner.Ended, () => session.Runner.WasStopped, said => parts.Views.Run.Append($"{said}\n"));
             }
-            if (plan.Device?.App is { } onDevice)
+            if (onDevice is not null)
             {
                 // Its shell on the device ends with the app; Stop ends the shell here, so the app is ended there too.
-                session.EndsOnDevices(chosen.Name, EndOnDeviceAsync(notStarted is null ? session.Runner.Ended : Task.FromResult(0), onDevice, put), () => DeviceLaunches.EndAsync(onDevice, put));
+                onDevice.EndsWith(EndOnDeviceAsync(notStarted is null ? session.Runner.Ended : Task.FromResult(0), onDevice));
             }
             if (notStarted is null && relay is not null)
             {
@@ -2890,7 +2894,7 @@ public sealed partial class BuildRunController
     /// <summary>Stop All, the window's and an agent's stop: as Stop, every program debugged ended rather than the chosen one;
     /// done once each has ended, Run's program has let go of the Run console (its end landed there, so a start after the
     /// answer finds it free), a container run's containers are taken down (not left running as its log's end would leave
-    /// them) and an app on a device has ended there.</summary>
+    /// them), an app on a device has ended there, and a start on one it stopped has taken out what it had put in.</summary>
     public Task StopAllAsync()
     {
         parts.Work.Stop();

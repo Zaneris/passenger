@@ -8,6 +8,7 @@ using Passenger.App.Packages;
 using Passenger.App.Navigation;
 using Passenger.App.Profiling;
 using Passenger.App.Run;
+using Passenger.App.Run.Devices;
 using Passenger.App.State;
 using Passenger.App.Testing;
 using Passenger.App.ToolWindows;
@@ -819,30 +820,37 @@ public sealed class ProjectSession : IAsyncDisposable
         InspectedChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>What ends apps Run and Debug started on devices and takes out what their starts put in them, still under
-    /// way: the folder's end waits for it (<see cref="CloseAsync"/>), so a Passenger that quits leaves no port forwarded to an
-    /// app, nor an app marked as debugged.</summary>
-    private readonly List<(string Name, Task Ending, Func<Task> Now)> deviceEnds = [];
+    /// <summary>The starts of apps Run and Debug started on devices, each held from before its first step there until what it
+    /// put in is out again: Stop waits for them, and the folder's end takes out what each still holds within a limit of its
+    /// own (<see cref="EndOnDevices"/>), so a Passenger that quits leaves no port forwarded to an app, nor an app marked as
+    /// debugged.</summary>
+    private readonly List<DeviceStart> onDevices = [];
 
-    /// <summary>The end on its device of the app of a program named <paramref name="name"/>, under way until its run or
-    /// session ends and what its start put in is taken out; <paramref name="now"/> ends it at once, which the folder's end
-    /// does where its run or session has not ended first.</summary>
-    public void EndsOnDevices(string name, Task ending, Func<Task> now)
+    /// <summary>A start of the app of a program named <paramref name="name"/> on its device, held from now until what it puts
+    /// in there is out again, however its start, its run or session, or the folder ends.</summary>
+    public DeviceStart StartsOnDevice(string name, AndroidApp app)
     {
         UiThread.Check();
-        deviceEnds.RemoveAll(d => d.Ending.IsCompleted);
-        deviceEnds.Add((name, ending, now));
-        IdeErrors.Observe(ending);
+        onDevices.RemoveAll(d => d.Out.IsCompleted);
+        DeviceStart start = new(name, app);
+        onDevices.Add(start);
+        return start;
     }
 
     /// <summary>Done once the apps on devices of the program named <paramref name="name"/> (of every program where null) have
-    /// ended there, their processes gone and what their starts put in taken out, however each ended: what a Stop waits for
-    /// after its runs and sessions here.</summary>
+    /// ended there, their processes gone and what their starts put in taken out, however each ended, and each of their
+    /// starts still under way, as Stop ends it, has taken out what it put in or handed it to its run's or session's end:
+    /// what a Stop waits for after its runs and sessions here.</summary>
     public Task EndedOnDevicesAsync(string? name = null)
     {
         UiThread.Check();
-        return Task.WhenAll(deviceEnds.Where(d => name is null || d.Name == name).Select(d => d.Ending.Ended()));
+        return Task.WhenAll(onDevices.Where(d => name is null || d.Name == name).Select(d => d.Settled.IsCompleted ? d.Out : d.Settled));
     }
+
+    /// <summary>What every start on a device still holds there taken out at once, off the window's thread, whose loop may stop
+    /// first: done once all of it is out, or <see cref="DeviceLaunches.EndLimit"/> after, the rest named in the log.</summary>
+    private Task EndOnDevices() => Within(DeviceLaunches.EndLimit, Folder,
+        [("the apps on devices", Task.WhenAll(onDevices.Select(d => d.Out.IsCompleted ? d.Out : BackgroundWork.Unheld(d.EndNowAsync))))]);
 
     /// <summary>The Avalonia or WPF app Run started last, inspected for its failed bindings and agents' tools (the Live Visual
     /// Tree follows the debugger's); null after any other program, or one Hot Reload runs. It ends with its run, and with the
@@ -1671,9 +1679,9 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>Leaves the folder while its window stays: everything it runs ends (one the debugger attached to let go as the
     /// window's close lets it go, <see cref="DebugController.LeaveAsync"/>), and the task finishes once each end has landed
-    /// (a stopped build's outcome, a killed program's exit, said in the window's views before another folder takes them) and
-    /// the session has let go of the window's views, or <see cref="MainWindow.EndLimit"/> after, each late one named in the
-    /// log. What else ends with it (the folder's terminals, the window's) is waited for alike.</summary>
+    /// (a stopped build's outcome, a killed program's exit, said before another folder takes the views) and the session has
+    /// let go of the window's views, or <see cref="MainWindow.EndLimit"/> after (apps on devices <see cref="DeviceLaunches.EndLimit"/>),
+    /// each late one named in the log; what else ends with it (the folder's terminals, the window's) alike.</summary>
     public Task LeaveAsync(params (string What, Task Ending)[] with)
     {
         UiThread.Check();
@@ -1696,7 +1704,7 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             parts.Add(("the profiled program", program.Landed));
         }
-        Task ended = Within(MainWindow.EndLimit, Folder, End(parts, debuggers));
+        Task ended = Task.WhenAll(Within(MainWindow.EndLimit, Folder, End(parts, debuggers)), EndOnDevices());
         ending = LetGoOnceEnded();
         return ending;
 
@@ -1708,8 +1716,9 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>Ends what the folder runs as its window closes: programs and builds killed, the rest asked to end, and the
-    /// task finishes once those have, or <see cref="MainWindow.EndLimit"/> after. It needs no UI thread once begun, so the
-    /// process can wait for it after the window's loop has stopped.</summary>
+    /// task finishes once those have, or <see cref="MainWindow.EndLimit"/> after (its apps' ends on devices
+    /// <see cref="DeviceLaunches.EndLimit"/>). It needs no UI thread once begun, so the process can wait for it after the
+    /// window's loop has stopped.</summary>
     public Task CloseAsync(params (string What, Task Ending)[] with)
     {
         UiThread.Check();
@@ -1718,7 +1727,7 @@ public sealed class ProjectSession : IAsyncDisposable
             return ending;
         }
         Task debuggers = Debug.CloseAsync();
-        ending = Within(MainWindow.EndLimit, Folder, End([.. with, ("the debuggers", debuggers)], debuggers));
+        ending = Task.WhenAll(Within(MainWindow.EndLimit, Folder, End([.. with, ("the debuggers", debuggers)], debuggers)), EndOnDevices());
         LetGo();
         return ending;
     }
@@ -1787,8 +1796,6 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotShaders.Dispose();
         GodotScriptTypes.Dispose();
         parts.Add(("Godot's editors", GodotEditors.DisposeAsync().AsTask()));
-        // Not held, and off the window's thread, whose loop may stop first: a session's end told there would never come.
-        parts.Add(("the apps on devices", Task.WhenAll(deviceEnds.Select(d => d.Ending.IsCompleted ? d.Ending : BackgroundWork.Unheld(d.Now)))));
         parts.Add(("the Godot editor's IDE messaging connection", GodotIde.DisposeAsync().AsTask()));
         MSBuild.Dispose();
         FileChecks.Dispose();

@@ -229,6 +229,101 @@ public sealed class AndroidDeviceTests
         }
     }
 
+    /// <summary>Stop All of a Debug start held once Passenger's relay is in the app answers only once the start has taken out
+    /// what it put on the emulator, so an agent or a person going on from Stop's answer finds the device as the start found
+    /// it.</summary>
+    [AvaloniaFact]
+    public void Stop_of_a_debug_start_held_once_its_relay_is_in_the_app_answers_only_once_it_is_out_again()
+    {
+        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource go = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Choose(window, project, target);
+            DeviceLaunches.HeldPuts = () =>
+            {
+                reached.TrySetResult();
+                return go.Task;
+            };
+            Task<string?> debugging = window.DebugAsync();
+            Ui.PumpUntil(() => reached.Task.IsCompleted || debugging.IsCompleted, "the build, the install and the relay put in the app", Slow);
+            if (!reached.Task.IsCompleted)
+            {
+                Assert.Fail($"The debug start ended before it put its relay in the app: {Ui.AwaitPumped(debugging, "the start's end")}{Ui.BuildErrors(window)}");
+            }
+            Task stopped = window.Builds.StopAllAsync();
+            Ui.Hold(TimeSpan.FromSeconds(2), "a moment in which Stop must not answer, the start still holding its relay in the app");
+            // What the held start has put in is known, and the window is not quiet enough to ask adb while it holds it.
+            Assert.False(stopped.IsCompleted, "Stop answered while the start it stopped still held its relay in the app and a port forwarded to it");
+            go.TrySetResult();
+            Ui.AwaitPumped(stopped, "Stop's answer once the start it stopped has taken out what it put on the emulator", Slow);
+            string serial = Serial(target, project);
+            string left = Left(tools, serial);
+            Assert.True(left.Length == 0, $"Stop answered with {left} still on the emulator, so what goes on from its answer finds the start's relay there");
+            Ui.WaitFor(() => debugging.IsCompleted, "the stopped start to end", Slow);
+        }
+        finally
+        {
+            DeviceLaunches.HeldPuts = null;
+            go.TrySetResult();
+            window.Close();
+        }
+    }
+
+    /// <summary>Passenger ending while a debugged app's end on the emulator is held past the limit it gives the rest of what
+    /// it started waits for it, as it may take force-stop's ten seconds and more on a loaded machine: the process goes only
+    /// once the app has ended there and nothing of its debugging is left, the relay's forward, the relay, the app's mark as
+    /// debugged.</summary>
+    [AvaloniaFact]
+    public void Passenger_ending_while_a_debugged_apps_end_on_the_emulator_is_held_waits_until_nothing_of_it_is_left_there()
+    {
+        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource go = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool closed = false;
+        try
+        {
+            Choose(window, project, target);
+            Ui.Launched(window, window.DebugAsync(), "the debug session's start on the emulator", Slow);
+            string serial = AndroidSerials.Of(window, target);
+            Ui.WaitFor(() => Pid(tools, serial).Length > 0, () => $"the debugged app to run on the emulator: {Ui.Said(window)}\n{Console(window)}", Slow);
+            Assert.True(Left(tools, serial).Length > 0, "The debug start put nothing of its own on the emulator, so there is nothing Passenger's end must take out");
+
+            DeviceLaunches.HeldEnds = () =>
+            {
+                reached.TrySetResult();
+                return go.Task;
+            };
+            Ui.CloseAsQuit(window);
+            closed = true;
+            Task ended = window.Ended ?? throw new InvalidOperationException("The window closed with no end to wait for");
+            Ui.PumpUntil(() => reached.Task.IsCompleted, "the debugged app's end on the emulator to begin as Passenger ends", Slow);
+            Ui.Hold(MainWindow.EndLimit + TimeSpan.FromSeconds(2), "past the limit Passenger's end gives the rest of what it started");
+            if (ended.IsCompleted)
+            {
+                Assert.Fail($"Passenger would have gone with {Left(tools, serial)} still on the emulator, its app's end there held");
+            }
+            go.TrySetResult();
+            Ui.AwaitPumped(ended, "Passenger's end once the app's end on the emulator goes on", Slow);
+            string left = Left(tools, serial);
+            Assert.True(left.Length == 0, $"Passenger's end was done with {left} still on the emulator");
+            string running = Pid(tools, serial);
+            Assert.True(running.Length == 0, $"Passenger's end was done with its debugged app still running on the emulator as {running}");
+        }
+        finally
+        {
+            DeviceLaunches.HeldEnds = null;
+            go.TrySetResult();
+            if (!closed)
+            {
+                window.Close();
+            }
+        }
+    }
+
     /// <summary>A copy of the test app, the emulator or device to run it on and the Android tools; skipped, saying why, where
     /// the workload, its SDK and Java, a target or the relays are missing.</summary>
     private static (string Folder, string Project, DeviceTarget Target, AndroidTools Tools) Prepared()

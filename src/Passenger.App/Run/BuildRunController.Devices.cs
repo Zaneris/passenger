@@ -22,46 +22,44 @@ public sealed partial class BuildRunController
         && (session.Targets.InForce(project) is { } target ? target.Kind != TargetKind.ThisMachine : DeviceTargets.RunsOnlyElsewhere(project.TargetFrameworks));
 
     /// <summary>The app ended on its device once its run here ends, however it ended, and what its start put in taken out.</summary>
-    private static async Task EndOnDeviceAsync(Task<int> ended, AndroidApp app, DevicePut? put)
+    private static async Task EndOnDeviceAsync(Task<int> ended, DeviceStart start)
     {
         await ended.Ended();
-        await DeviceLaunches.EndAsync(app, put);
+        await start.TakeOutAsync();
     }
 
     /// <summary>Passenger's inspector put in an Avalonia or MAUI app Run starts on a device, before its start; where it cannot be,
     /// the app runs uninspected, the Run window saying why.</summary>
-    private async Task<DevicePut?> InspectOnDeviceAsync(AndroidApp app, LiveApp? inspected, Working work)
+    private async Task InspectOnDeviceAsync(DeviceStart start, LiveApp? inspected, Working work)
     {
         if (inspected?.Device is not { } device)
         {
-            return null;
+            return;
         }
-        work.Say($"Putting Passenger's inspector in {app.Package}…");
-        (DevicePut? put, string? problem) = await DeviceLaunches.PutInspectorAsync(app, device, work.Stopping);
-        if (problem is not null)
+        work.Say($"Putting Passenger's inspector in {start.App.Package}…");
+        if (await start.PutInspectorAsync(device, work.Stopping) is { } problem)
         {
             device.Unreached(problem);
             parts.Views.Run.Append($"{problem}; it runs uninspected\n");
         }
-        return put;
     }
 
     /// <summary>Passenger's relay put in an app Run starts on a device with Hot Reload, its inspector beside it where it is an
     /// Avalonia app's and the hook that calls its update handlers after each update, so the debugger attaches quietly as its
-    /// start waits there (<see cref="AttachOnDeviceForHotReloadAsync"/>): the relay, what was put in and the hook, else why
-    /// not, the app then running without Hot Reload.</summary>
-    private async Task<(RelaySession? Relay, DevicePut? Put, UpdateHandlerHook? Handlers, string? Problem)> RelayOnDeviceAsync(LaunchPlan plan, AndroidApp app,
-        LiveApp? inspected, Working work)
+    /// start waits there (<see cref="AttachOnDeviceForHotReloadAsync"/>): the relay and the hook, else why not, the app then
+    /// running without Hot Reload.</summary>
+    private async Task<(RelaySession? Relay, UpdateHandlerHook? Handlers, string? Problem)> RelayOnDeviceAsync(LaunchPlan plan, DeviceStart start, LiveApp? inspected,
+        Working work)
     {
-        work.Say($"Putting Passenger's debugger in {app.Package} for Hot Reload…");
+        work.Say($"Putting Passenger's debugger in {start.App.Package} for Hot Reload…");
         UpdateHandlerHook? handlers = HandlersOnDevice(plan);
-        (RelaySession? relay, DevicePut? put, string? unrelayed) = await DeviceLaunches.PutRelayAsync(app, inspected?.Device, handlers, work.Stopping);
+        (RelaySession? relay, string? unrelayed) = await start.PutRelayAsync(inspected?.Device, handlers, work.Stopping);
         if (relay is null)
         {
             handlers?.Dispose();
-            return (null, null, null, unrelayed ?? "Passenger's debugger could not be put in the app");
+            return (null, null, unrelayed ?? "Passenger's debugger could not be put in the app");
         }
-        return (relay, put, handlers, null);
+        return (relay, handlers, null);
     }
 
     /// <summary>The hook that calls the update handlers of a plan's app on a device after each Hot Reload update; null where
@@ -88,7 +86,8 @@ public sealed partial class BuildRunController
 
     /// <summary>Debugs an app installed on a device: Passenger's relay put in it, the app started there by its shell (whose
     /// log is the session's console), and the session attached through the relay as the app's runtime waits for it. Once the
-    /// session ends, however it ends, the app ends there and the relay comes out. Null once the session is open, else why not.</summary>
+    /// session ends, however it ends, the app ends there and the relay comes out; Stop and the folder's end wait for it from
+    /// the start's first step there (<see cref="DeviceStart"/>). Null once the session is open, else why not.</summary>
     private async Task<string?> DebugOnDeviceAsync(LaunchPlan plan, AndroidApp app, Working work, BuiltEdits? edits)
     {
         work.Say($"Putting Passenger's debugger in {app.Package}…");
@@ -96,12 +95,13 @@ public sealed partial class BuildRunController
         LiveApp? inspected = session.Inspected(plan).App;
         // With Hot Reload, the hook that calls its update handlers after each update goes in too.
         UpdateHandlerHook? handlers = session.Debug.HotReloadOn() ? HandlersOnDevice(plan) : null;
-        (RelaySession? relay, DevicePut? put, string? unrelayed) = await DeviceLaunches.PutRelayAsync(app, inspected?.Device, handlers, work.Stopping);
+        using DeviceStart onDevice = session.StartsOnDevice(plan.Name, app);
+        (RelaySession? relay, string? unrelayed) = await onDevice.PutRelayAsync(inspected?.Device, handlers, work.Stopping);
         if (relay is null)
         {
             handlers?.Dispose();
             inspected?.Dispose();
-            await DeviceLaunches.EndAsync(app, put);
+            await onDevice.TakeOutAsync();
             return unrelayed;
         }
         work.Say($"Starting {plan.Name} on its device under the debugger…");
@@ -121,7 +121,7 @@ public sealed partial class BuildRunController
         {
             handlers?.Dispose();
             inspected?.Dispose();
-            await DeviceLaunches.EndAsync(app, put);
+            await onDevice.TakeOutAsync();
             return $"{plan.Name} could not be started on its device: {unstarted.Message}";
         }
         DebugController debug = session.Debug;
@@ -130,20 +130,20 @@ public sealed partial class BuildRunController
         {
             ChildProcesses.Kill(shell);
             inspected?.Dispose();
-            await DeviceLaunches.EndAsync(app, put);
+            await onDevice.TakeOutAsync();
             return refused ?? $"Debugging {plan.Name} ended as it started";
         }
         ConsoleSink console = tab.Console.Sink;
         Task log = Task.WhenAll(console.PumpAsync(ChildProcesses.Output(shell), ConsoleStream.Output), console.PumpAsync(ChildProcesses.Errors(shell), ConsoleStream.Error));
-        session.EndsOnDevices(plan.Name, EndDebuggedOnDeviceAsync(DebugEnded(debug.SessionNamed(plan.Name)), shell, log, app, put), () => DeviceLaunches.EndAsync(app, put));
+        onDevice.EndsWith(EndDebuggedOnDeviceAsync(DebugEnded(debug.SessionNamed(plan.Name)), shell, log, onDevice));
         return null;
     }
 
     /// <summary>A device's debugged app ended once its session ends: its shell here, the app there, what its start put in taken out.</summary>
-    private static async Task EndDebuggedOnDeviceAsync(Task sessionEnded, Process shell, Task log, AndroidApp app, DevicePut? put)
+    private static async Task EndDebuggedOnDeviceAsync(Task sessionEnded, Process shell, Task log, DeviceStart start)
     {
         await sessionEnded;
-        await DeviceLaunches.EndAsync(app, put);
+        await start.TakeOutAsync();
         ChildProcesses.Kill(shell);
         await log.Ended();
     }

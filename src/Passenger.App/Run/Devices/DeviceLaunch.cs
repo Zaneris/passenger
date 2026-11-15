@@ -61,8 +61,9 @@ public sealed class DeviceInspector(string socket, string token, IReadOnlyList<s
 
 /// <summary>An Android launch's steps around its build: the target found again (an emulator started where its AVD is
 /// not running), the app installed and its start read (<see cref="ReadyAsync"/>); for Debug, Passenger's relay put in
-/// the app with the runtime's profiler variables in the build's own environment file (<see cref="PutRelayAsync"/>), and
-/// all of it taken out again as the session ends (<see cref="EndAsync"/>). Nothing goes into the project or its build.</summary>
+/// the app with the runtime's profiler variables in the build's own environment file (<see cref="PutInAsync"/>), and
+/// all of it taken out again as the session ends (<see cref="EndAsync"/>), each start's held by its <see cref="DeviceStart"/>.
+/// Nothing goes into the project or its build.</summary>
 public static class DeviceLaunches
 {
     /// <summary>A plan's device found and its app installed, the plan's program then the device's shell running the app and
@@ -122,31 +123,20 @@ public static class DeviceLaunches
     /// on: a test's way to stop a start there. Null waits for nothing.</summary>
     public static Func<Task>? HeldPuts { get; set; }
 
-    /// <summary>Passenger's relay put in an installed Debug app, with the runtime's profiler variables beside the build's own
-    /// and a token only Passenger knows, a local port forwarded to its socket and the app marked as debugged (and the
-    /// inspector beside it, where one is given, and the hook that calls its update handlers after each Hot Reload update,
-    /// reaching <paramref name="handlers"/> through adb's reverse): the relay's session and what was put in, or why not.</summary>
-    public static async Task<(RelaySession? Relay, DevicePut? Put, string? Problem)> PutRelayAsync(AndroidApp app, DeviceInspector? inspector, UpdateHandlerHook? handlers,
-        CancellationToken cancel)
-    {
-        (DevicePut? put, RelaySession? relay, string? problem) = await PutInAsync(app, relayed: true, inspector, handlers?.Device, cancel);
-        return (relay, put, problem);
-    }
+    /// <summary>Waited for as an app's end on its device begins, before anything there is ended or taken out: a test's way to
+    /// hold a clean-up. Null waits for nothing.</summary>
+    public static Func<Task>? HeldEnds { get; set; }
 
-    /// <summary>Passenger's inspector put in an installed Debug app that Run starts, as Debug puts it in beside the relay:
-    /// what was put in, or why not.</summary>
-    public static async Task<(DevicePut? Put, string? Problem)> PutInspectorAsync(AndroidApp app, DeviceInspector inspector, CancellationToken cancel)
-    {
-        (DevicePut? put, _, string? problem) = await PutInAsync(app, relayed: false, inspector, null, cancel);
-        return (put, problem);
-    }
+    /// <summary>How long Passenger's end and a folder's wait for its apps' ends on devices, apart from what else they wait for:
+    /// force-stop's own wait for the process to go, then each thing taken out, one adb call at a time, on a loaded machine.</summary>
+    public static TimeSpan EndLimit => Waits.Of(TimeSpan.FromSeconds(30));
 
-    /// <summary>What a start puts in an app beside its build: the relay (<paramref name="relayed"/>), the inspector's files and
-    /// the update handlers' hook (<paramref name="handlers"/>), copied in by the app's own shell; the build's environment file
-    /// with their variables added; a local port forwarded to the relay's and the inspector's socket in the app, the
-    /// inspector told its own, and the hook's socket reversed to Passenger; and, for the relay, the app marked as debugged.
-    /// Whatever fails partway, or is stopped once the files are in, is taken out again.</summary>
-    private static async Task<(DevicePut? Put, RelaySession? Relay, string? Problem)> PutInAsync(AndroidApp app, bool relayed, DeviceInspector? inspector,
+    /// <summary>What a start puts in an app beside its build (<see cref="DeviceStart"/>): the relay (<paramref name="relayed"/>)
+    /// and its token, the inspector's files and the update handlers' hook (<paramref name="handlers"/>), copied in by the
+    /// app's own shell; the build's environment with their variables; a port forwarded to the relay's and the inspector's
+    /// socket, the hook's reversed to Passenger; and, for the relay, the app marked as debugged. Whatever fails partway, or
+    /// is stopped once the files are in, is taken out again.</summary>
+    internal static async Task<(DevicePut? Put, RelaySession? Relay, string? Problem)> PutInAsync(AndroidApp app, bool relayed, DeviceInspector? inspector,
         UpdateHandlerHook.DeviceReach? handlers, CancellationToken cancel)
     {
         ChildResult abiRead = await AndroidDevices.AdbAsync(app.Adb, app.On("shell", "getprop", "ro.product.cpu.abi"), cancel);
@@ -291,30 +281,40 @@ public static class DeviceLaunches
 
     /// <summary>The app ended on its device (unless <paramref name="stop"/> is false), and what a start put in taken out: the
     /// relay and the inspector's files, the build's environment put back, the ports' forwards removed and, where it was
-    /// debugged, the app no longer marked so. Never throws.</summary>
-    public static async Task EndAsync(AndroidApp app, DevicePut? put, bool stop = true)
+    /// debugged, the app no longer marked so; at once where adb says the device has gone. Never throws.</summary>
+    internal static async Task EndAsync(AndroidApp app, DevicePut? put, bool stop = true)
     {
         try
         {
-            if (stop)
+            if (HeldEnds is { } held)
             {
-                await AndroidDevices.AdbAsync(app.Adb, app.ForceStop(), CancellationToken.None);
+                await held();
             }
-            if (put is not null)
+            if (stop && Gone(app, await AndroidDevices.AdbAsync(app.Adb, app.ForceStop(), CancellationToken.None)))
             {
-                await AndroidDevices.AdbAsync(app.Adb, app.TakeOut(put.Abi, put.Linked, put.Relayed, put.Carried), CancellationToken.None);
-                foreach (int port in put.Ports)
+                return;
+            }
+            if (put is null || Gone(app, await AndroidDevices.AdbAsync(app.Adb, app.TakeOut(put.Abi, put.Linked, put.Relayed, put.Carried), CancellationToken.None)))
+            {
+                return;
+            }
+            foreach (int port in put.Ports)
+            {
+                if (Gone(app, await RemoveAsync(app, "forward", $"tcp:{port}")))
                 {
-                    await RemoveAsync(app, "forward", $"tcp:{port}");
+                    return;
                 }
-                foreach (string socket in put.Reversed)
+            }
+            foreach (string socket in put.Reversed)
+            {
+                if (Gone(app, await RemoveAsync(app, "reverse", $"localabstract:{socket}")))
                 {
-                    await RemoveAsync(app, "reverse", $"localabstract:{socket}");
+                    return;
                 }
-                if (put.Relayed)
-                {
-                    await AndroidDevices.AdbAsync(app.Adb, app.ClearDebugApp(), CancellationToken.None);
-                }
+            }
+            if (put.Relayed)
+            {
+                await AndroidDevices.AdbAsync(app.Adb, app.ClearDebugApp(), CancellationToken.None);
             }
         }
         catch (Exception gone) when (gone is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
@@ -323,12 +323,26 @@ public static class DeviceLaunches
         }
     }
 
+    /// <summary>Whether adb answered that the app's device is no longer there (unplugged, its emulator ended, offline), so
+    /// nothing more of an end can reach it, which the log says.</summary>
+    private static bool Gone(AndroidApp app, ChildResult answer)
+    {
+        string words = answer.Error + answer.Output;
+        if (answer.Succeeded || !words.Contains($"device '{app.Serial}' not found", StringComparison.Ordinal) && !words.Contains("device offline", StringComparison.Ordinal))
+        {
+            return false;
+        }
+        IdeLog.Write(IdeLog.Ide, $"{app.Serial} was gone before {app.Package}'s end there was done, so nothing more of it was taken out: {answer.Said}");
+        return true;
+    }
+
     /// <summary>A forward or a reverse a start made taken out, adb's answer in the log whatever it was, so one left behind
     /// says why.</summary>
-    private static async Task RemoveAsync(AndroidApp app, string kind, string what)
+    private static async Task<ChildResult> RemoveAsync(AndroidApp app, string kind, string what)
     {
         ChildResult removed = await AndroidDevices.AdbAsync(app.Adb, app.On(kind, "--remove", what), CancellationToken.None);
         IdeLog.Write(IdeLog.Ide, removed.Succeeded ? $"adb took out the {kind} of {what} on {app.Serial}"
             : $"adb did not take out the {kind} of {what} on {app.Serial}: {removed.Said}");
+        return removed;
     }
 }
