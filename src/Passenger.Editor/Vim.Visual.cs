@@ -70,8 +70,8 @@ public sealed partial class Vim
     /// <summary>The spaces a block's A padded each line it inserts on with, top to bottom, for the session to remember.</summary>
     private int[]? blockPads;
 
-    /// <summary>A block's insert session as it began over several lines: the text then, each caret's line, top to
-    /// bottom, and the spaces padding it, for what it types with a line break to go on the first line alone.</summary>
+    /// <summary>A block's insert session as it began: the text then, each caret's line, top to bottom, and the spaces
+    /// padding it, for what it types with a line break to go on the first line alone.</summary>
     private (TextSnapshot Text, int[] Lines, int[] Pads)? blockStart;
 
     /// <summary>The visual extent of the change under way, kept with it for . to take again.</summary>

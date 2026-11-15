@@ -303,12 +303,12 @@ public sealed partial class Vim(VimRegisters registers)
         return new VimResult(true, Edits: [plan]);
     }
 
-    /// <summary>A block's insert or change over several lines remembered as it begins (<see cref="blockStart"/>).</summary>
+    /// <summary>A block's insert or change remembered as it begins (<see cref="blockStart"/>).</summary>
     private void RememberBlock(TextSnapshot text, SelectionSet carets)
     {
         int[] pads = blockPads ?? [];
         blockPads = null;
-        blockStart = (blockCorner is not null || blockChange) && carets.Count > 1
+        blockStart = blockCorner is not null || blockChange
             ? (text, [.. carets.Items.Select(c => text.GetLineFromOffset(c.Caret)).Order()], pads)
             : null;
     }
@@ -319,7 +319,7 @@ public sealed partial class Vim(VimRegisters registers)
     {
         int count = start.Lines.Length;
         int added = text.LineCount - start.Text.LineCount;
-        if (carets.Count != count || added <= 0 || added % count != 0)
+        if (count < 2 || carets.Count != count || added <= 0 || added % count != 0)
         {
             return null;
         }
@@ -360,10 +360,14 @@ public sealed partial class Vim(VimRegisters registers)
             typed = text.GetText(trimmed.Top, top - trimmed.Top).Replace("\r\n", "\n", StringComparison.Ordinal);
         }
         List<EditPlan> plans = [];
-        if (blockStart is { } start && OnFirstLineAlone(text, selections, start) is { } alone)
+        if (blockStart is { } start && text.LineCount > start.Text.LineCount)
         {
-            plans.Add(alone);
-            (text, selections) = (text.Apply(alone.Edits), alone.Selections);
+            // A block's session that typed a line break leaves its cursor where typing ended.
+            if (OnFirstLineAlone(text, selections, start) is { } alone)
+            {
+                plans.Add(alone);
+                (text, selections) = (text.Apply(alone.Edits), alone.Selections);
+            }
             (blockCorner, blockChange) = (null, false);
         }
         blockStart = null;

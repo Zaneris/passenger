@@ -2032,7 +2032,7 @@ public class VimTests
         Assert.Equal(after, Run(before, keys));
 
     /// <summary>A block's c, s, I or A whose text has a line break types it on the block's first line alone, the other
-    /// lines left as the change found them, with no padding, as Vim's do.</summary>
+    /// lines left as the change found them, with no padding, the cursor where typing ended, as Vim's do.</summary>
     [Theory]
     [InlineData("|one two\nthree\nfour five six\nseven", "<C-v>jlc7<CR>8<Esc>", "7\n|8e two\nree\nfour five six\nseven")]
     [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jlc7<CR>8<Esc>", "o7\n|8two\ntee\nfour five six\nseven")]
@@ -2045,6 +2045,8 @@ public class VimTests
     [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>j$A7<CR>8<Esc>", "one two7\n|8\nthree\nfour five six\nseven")]
     [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jlc7<CR>8<Esc>j.", "o7\n8two\n7\n|8e\nur five six\nseven")]
     [InlineData("    a|b cd\n    ef gh\n    ij kl", "<C-v>jjc7<CR>8<Esc>", "    a7\n    |8cd\n    e gh\n    i kl")]
+    [InlineData("abcdefgh\nij\nklmnopqrstu\nvw\nx|yzABCDEFGHI", "<C-v>j$I7<CR>8<Esc>", "abcdefgh\nij\nklmnopqrstu\nvw\nx7\n|8yzABCDEFGHI")]
+    [InlineData("f(a,\n  g(b, c),\n  d)\nen|d", "<C-v>jl$A7<CR>8<Esc>", "f(a,\n  g(b, c),\n  d)\nend7\n|8")]
     public void A_blocks_text_with_a_line_break_goes_on_its_first_line_alone(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
