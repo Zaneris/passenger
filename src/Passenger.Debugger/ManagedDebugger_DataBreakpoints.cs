@@ -284,7 +284,7 @@ public partial class ManagedDebugger
         {
             DataBreakpointRequest request = requests[i];
             DataWatch? watch = matched[i].Kept;
-            string? refused = Unreadable(request.Condition, request.HitCondition) ?? DataBreakpointsUnavailable;
+            string? refused = Unreadable(request.Condition, request.HitCondition, request.LogMessage) ?? DataBreakpointsUnavailable;
             DataTarget? target = watch?.Target ?? _dataTargets.FirstOrDefault(t => t.Id == request.DataId);
             if (refused is null && target is null)
             {

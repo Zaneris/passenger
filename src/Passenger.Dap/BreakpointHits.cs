@@ -151,52 +151,22 @@ public static class BreakpointHits
     public static string ExceptionReached(string thrown) => $"Exception breakpoint reached: {thrown}";
 
     /// <summary>A tracepoint's message with each <c>{expression}</c> in it read by <paramref name="read"/>, which says a
-    /// failure in its own words.</summary>
+    /// failure in its own words; the message is read as every debugger reads one (<see cref="DisplayFormat"/>), an empty
+    /// expression showing nothing.</summary>
     public static async Task<string> LoggedAsync(string message, Func<string, Task<string>> read)
     {
         StringBuilder said = new();
-        foreach ((string text, bool expression) in Pieces(message))
+        foreach ((string text, bool expression) in DisplayFormat.Pieces(message))
         {
-            said.Append(expression ? await read(text) : text);
+            if (!expression)
+            {
+                said.Append(text);
+            }
+            else if (DisplayFormat.Specifiers(text).Expression is { Length: > 0 } asked)
+            {
+                said.Append(await read(asked));
+            }
         }
         return said.ToString();
-    }
-
-    /// <summary>A tracepoint's message in pieces: its own words, and each <c>{expression}</c> to be read in the frame it stops
-    /// in, a <c>,nq</c> after it left out; <c>{{</c> and <c>}}</c> are braces.</summary>
-    public static IReadOnlyList<(string Text, bool Expression)> Pieces(string message)
-    {
-        List<(string, bool)> pieces = [];
-        StringBuilder words = new();
-        for (int at = 0; at < message.Length; at++)
-        {
-            char c = message[at];
-            if ((c == '{' || c == '}') && at + 1 < message.Length && message[at + 1] == c)
-            {
-                words.Append(c);
-                at++;
-                continue;
-            }
-            int end = c == '{' ? message.IndexOf('}', at + 1) : -1;
-            if (end < 0)
-            {
-                words.Append(c);
-                continue;
-            }
-            if (words.Length > 0)
-            {
-                pieces.Add((words.ToString(), false));
-                words.Clear();
-            }
-            string expression = message[(at + 1)..end];
-            int format = expression.LastIndexOf(",nq", StringComparison.Ordinal);
-            pieces.Add((format >= 0 && format == expression.Length - 3 ? expression[..format] : expression, true));
-            at = end;
-        }
-        if (words.Length > 0)
-        {
-            pieces.Add((words.ToString(), false));
-        }
-        return pieces;
     }
 }

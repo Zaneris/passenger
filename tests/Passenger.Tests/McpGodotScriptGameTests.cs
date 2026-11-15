@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App.Mcp;
 using Passenger.Core;
+using Passenger.Dap;
 
 namespace Passenger.Tests;
 
@@ -250,9 +251,10 @@ public sealed class McpGodotScriptGameTests : McpRig
     /// <summary>A breakpoint's hit count counts only the hits where its condition held, and an edit of its message keeps its
     /// count: with i &gt; 10 and ==4 the game stops at i 14, its message edited after its second such hit, as every debugger
     /// counts (the managed debugger's and the browser's tests stop the same breakpoint at the same hit); a breakpoint that
-    /// neither stops nor logs says where it was reached.</summary>
+    /// neither stops nor logs says where it was reached. The edited message logs braces written \{ and \} as every debugger
+    /// does, and one writing {{ is refused saying how to write a brace.</summary>
     [Fact]
-    public async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message()
+    public async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it()
     {
         File.WriteAllText(Path.Combine(folder, "ticker.gd"), Loop);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false,
@@ -268,7 +270,11 @@ public sealed class McpGodotScriptGameTests : McpRig
         await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["arguments"] = "--headless", ["waitSeconds"] = 60 });
         Assert.Equal($"ticker.gd:{paused}:1", (await Call(client, McpTools.DebugState)).GetProperty("location").GetString());
 
-        await Call(client, McpTools.BreakpointSet, new(counting) { ["logMessage"] = "second {i}" });
+        await Call(client, McpTools.BreakpointSet, new(counting) { ["logMessage"] = "second \\{{i}\\}" });
+        JsonElement doubled = (await Call(client, McpTools.BreakpointSet, new() { ["path"] = "ticker.gd", ["line"] = paused, ["logMessage"] = "{{i}}" }))
+            .EnumerateArray().Single(b => b.GetProperty("line").GetInt32() == paused);
+        string? refused = doubled.TryGetProperty("message", out JsonElement message) ? message.GetString() : null;
+        Assert.True(refused == DisplayFormat.Misread("{{i}}"), $"The tracepoint writing a brace as {{{{ was taken, to log what it was not meant to, or refused saying something else: {doubled}");
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "ticker.gd", ["line"] = paused, ["remove"] = true });
         await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 30 });
         string location = (await Call(client, McpTools.DebugState)).GetProperty("location").GetString()!;
@@ -278,7 +284,7 @@ public sealed class McpGodotScriptGameTests : McpRig
         await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 5 });
         string said = string.Empty;
         await Until(async () => (said = Text(await Call(client, McpTools.Output, new() { ["of"] = "debug" }))).Contains("done ", StringComparison.Ordinal), "the game to say the loop's end");
-        Assert.True(said.Contains("second 14", StringComparison.Ordinal) && !said.Contains("first 1", StringComparison.Ordinal)
+        Assert.True(said.Contains("second {14}", StringComparison.Ordinal) && !said.Contains("first 1", StringComparison.Ordinal)
             && said.Contains($"Breakpoint reached at ticker.gd:{done}", StringComparison.Ordinal),
             $"The game's console did not say the edited message at the stop, then where the breakpoint that neither stops nor logs was reached: {said}");
         await Call(client, McpTools.Stop);

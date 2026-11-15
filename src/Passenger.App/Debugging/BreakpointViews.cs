@@ -10,8 +10,8 @@ namespace Passenger.App.Debugging;
 
 /// <summary>What a breakpoint does, as its popup and the Breakpoints window edit it: on or off, whether it stops, its
 /// condition and hit count, and a message to log; for an exception breakpoint, "Suspend If", where the exception was
-/// thrown and where it is handled. Enter submits, Escape gives up. A hit count the debugger cannot read is said under its
-/// field as it is typed; the debugger refuses it in the same words.</summary>
+/// thrown and where it is handled. Enter submits, Escape gives up. A hit count the debugger cannot read, or a log message it
+/// would misread, is said under its field as it is typed; the debugger refuses it in the same words.</summary>
 public sealed class BreakpointProperties : UserControl
 {
     private readonly CheckBox enabled = new() { Content = "Enabled" };
@@ -20,6 +20,7 @@ public sealed class BreakpointProperties : UserControl
     private readonly TextBox hitCount = Field("Stop on hits: ==3, >=2, %2");
     private readonly TextBlock hitCountProblem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(0, 6, 0, 0) };
     private readonly TextBox log = Field("Logged on each hit: count is {count}");
+    private readonly TextBlock logProblem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(0, 6, 0, 0) };
     private readonly CheckBox thrownInUserCode = new() { Content = "User code" };
     private readonly CheckBox thrownInExternalCode = new() { Content = "External code" };
     private readonly CheckBox handledInUserCode = new() { Content = "User code" };
@@ -37,12 +38,14 @@ public sealed class BreakpointProperties : UserControl
             {
                 FormRows.Of("Condition:", condition),
                 new StackPanel { Children = { FormRows.Of("Hit count:", hitCount), FormRows.Of(null, hitCountProblem) } },
-                FormRows.Of("Log message:", log),
+                new StackPanel { Children = { FormRows.Of("Log message:", log), FormRows.Of(null, logProblem) } },
             },
         };
         hitCountProblem.Classes.Add(StyleClasses.Error);
+        logProblem.Classes.Add(StyleClasses.Error);
         inactive.Classes.Add(StyleClasses.Error);
         hitCount.TextChanged += (_, _) => CheckHitCount();
+        log.TextChanged += (_, _) => CheckLog();
 
         // The "Suspend If" panel: the exception breakpoint stops when one of each row holds.
         StackPanel scenarios = new()
@@ -167,6 +170,12 @@ public sealed class BreakpointProperties : UserControl
         bool readable = string.IsNullOrWhiteSpace(hitCount.Text) || HitCondition.TryParse(hitCount.Text, out _, out problem);
         hitCountProblem.Text = problem;
         hitCountProblem.IsVisible = !readable;
+    }
+
+    private void CheckLog()
+    {
+        logProblem.Text = DisplayFormat.Misread(log.Text);
+        logProblem.IsVisible = logProblem.Text is not null;
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)

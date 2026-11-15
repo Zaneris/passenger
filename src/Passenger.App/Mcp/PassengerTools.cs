@@ -1737,7 +1737,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "and Xaml); GDScript Errors (scriptErrors: a debugged Godot game stops at a script error, on by default); or Break When " +
         "Value Changes on control's property (as app_details names it) in the app debugged, for the " +
         "session, condition reading newValue, oldValue and control. condition is a C# bool (GDScript in .gd); hitCondition \"==3\", \">=2\" or " +
-        "\"%2\"; logMessage (\"count is {count}\") is written each hit; suspend false makes a tracepoint. Bound at once while " +
+        "\"%2\"; logMessage (\"count is {count}\", \\{ for a brace) is written each hit; suspend false makes a tracepoint. Bound at once while " +
         "debugging.")]
     public Task<IReadOnlyList<BreakpointInfo>> SetBreakpoint(
         string? path = null,

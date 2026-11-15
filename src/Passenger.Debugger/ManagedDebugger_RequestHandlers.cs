@@ -236,10 +236,11 @@ public partial class ManagedDebugger
     /// <summary>What a breakpoint asked for before the program is there says: it binds once the program loads its code.</summary>
     private const string NotProcessed = "Breakpoint has not been processed by the debugger.";
 
-    /// <summary>Whether a new breakpoint is refused for a condition or hit count that does not read, its message saying why.</summary>
+    /// <summary>Whether a new breakpoint is refused for a condition, hit count or log message that does not read, its message
+    /// saying why.</summary>
     private static bool RefusedUnread(BreakpointManager.BreakpointInfo bp)
     {
-        if (Unreadable(bp.Condition, bp.HitCondition) is not { } unreadable)
+        if (Unreadable(bp.Condition, bp.HitCondition, bp.LogMessage) is not { } unreadable)
         {
             return false;
         }
@@ -1534,7 +1535,7 @@ public partial class ManagedDebugger
             now.Add(matched[i].Kept ?? new ExceptionRule(_breakpointManager.NextId(), request)
             {
                 HitCount = matched[i].Hits,
-                Refused = Unreadable(request.Condition, request.HitCondition),
+                Refused = Unreadable(request.Condition, request.HitCondition, request.LogMessage),
             });
         }
         _exceptionRules = now;

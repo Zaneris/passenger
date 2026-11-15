@@ -12,14 +12,15 @@ public class BreakpointKindsTests
     private const string NoLambdas = "Lambda expressions are not supported in breakpoint conditions.";
 
     [Fact]
-    public void A_condition_holding_a_lambda_anywhere_and_a_hit_count_the_debugger_cannot_read_are_refused()
+    public void A_condition_holding_a_lambda_anywhere_a_hit_count_the_debugger_cannot_read_and_a_message_it_would_misread_are_refused()
     {
-        Assert.Equal(NoLambdas, ManagedDebugger.Unreadable("items.Any(item => item > 4)", null));
-        Assert.Equal(NoLambdas, ManagedDebugger.Unreadable("count > 1 && items.Where((item, at) => at > count).Any()", "==2"));
-        Assert.Equal(NoLambdas, ManagedDebugger.Unreadable("Run(delegate { return 1; }) == 1", null));
-        Assert.Contains("The hit count \"abc\" is not one the debugger can read", ManagedDebugger.Unreadable("count > 1", "abc"), StringComparison.Ordinal);
-        Assert.Null(ManagedDebugger.Unreadable("count > 1 && name == \"=>\"", ">=3"));
-        Assert.Null(ManagedDebugger.Unreadable(null, null));
+        Assert.Equal(NoLambdas, ManagedDebugger.Unreadable("items.Any(item => item > 4)", null, null));
+        Assert.Equal(NoLambdas, ManagedDebugger.Unreadable("count > 1 && items.Where((item, at) => at > count).Any()", "==2", null));
+        Assert.Equal(NoLambdas, ManagedDebugger.Unreadable("Run(delegate { return 1; }) == 1", null, null));
+        Assert.Contains("The hit count \"abc\" is not one the debugger can read", ManagedDebugger.Unreadable("count > 1", "abc", null), StringComparison.Ordinal);
+        Assert.Equal(DisplayFormat.Misread("{{count}}"), ManagedDebugger.Unreadable("count > 1", ">=3", "{{count}}"));
+        Assert.Null(ManagedDebugger.Unreadable("count > 1 && name == \"=>\"", ">=3", "\\{count\\} is {count}"));
+        Assert.Null(ManagedDebugger.Unreadable(null, null, null));
     }
 
     /// <summary>A condition nested past what the parser reads, by interpolations (each hole a level of the lexer, which
@@ -32,13 +33,13 @@ public class BreakpointKindsTests
         string brackets = new string('(', 20_000) + "true" + new string(')', 20_000);
         SmallStack.Run(() =>
         {
-            Assert.Equal("The condition nests deeper than the debugger reads.", ManagedDebugger.Unreadable(holes, null));
-            Assert.Equal("The condition nests deeper than the debugger reads.", ManagedDebugger.Unreadable(brackets, "==2"));
+            Assert.Equal("The condition nests deeper than the debugger reads.", ManagedDebugger.Unreadable(holes, null, null));
+            Assert.Equal("The condition nests deeper than the debugger reads.", ManagedDebugger.Unreadable(brackets, "==2", null));
             Assert.False(CilExpressionCompiler.NamesLinq(holes), "An expression too deep to read was read as naming LINQ");
             Assert.Equal($"({brackets})", RowExpressions.Operand(brackets));
             Assert.Empty(WritableTargets.Of(brackets, _ => false));
         });
-        Assert.Null(ManagedDebugger.Unreadable(new string('(', 900) + "true" + new string(')', 900), null));
+        Assert.Null(ManagedDebugger.Unreadable(new string('(', 900) + "true" + new string(')', 900), null, null));
     }
 
     /// <summary>One asked for again just as it was is kept, once; one in its place counts on from its hits while its condition
@@ -124,14 +125,6 @@ public class BreakpointKindsTests
         reached.Suspend = false;
         Assert.False(await BreakpointHits.StopsAsync(reached, Reading(0, _ => new ConditionRead(true), said, [])), "A breakpoint that does not suspend stopped");
         Assert.Equal(["Breakpoint reached at Loop.cs:5"], said);
-    }
-
-    [Fact]
-    public void A_tracepoints_message_parts_its_words_from_the_expressions_read_where_it_stops()
-    {
-        Assert.Equal([("count is ", false), ("counter", true), (" of {all}", false)], BreakpointHits.Pieces("count is {counter} of {{all}}"));
-        Assert.Equal([("name", true)], BreakpointHits.Pieces("{name,nq}"));
-        Assert.Equal([("open { never closed", false)], BreakpointHits.Pieces("open { never closed"));
     }
 
     /// <summary>The values of i at which a breakpoint stops through a loop of 30 turns, its condition read as <paramref name="holds"/>.</summary>

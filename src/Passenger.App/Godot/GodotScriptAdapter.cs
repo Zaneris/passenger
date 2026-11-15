@@ -353,9 +353,12 @@ public sealed class GodotScriptAdapter : InProcessAdapter
     {
         bool on = arguments.Filters?.Contains(ErrorsFilter) == true;
         DapExceptionFilterOptions? options = arguments.FilterOptions?.FirstOrDefault(f => f.FilterId == ErrorsFilter);
-        string? problem = BreakpointHits.Unreadable(options?.HitCondition);
-        // A hit count it cannot read is said, the errors stopping as if it had none.
-        DapExceptionFilterOptions asked = problem is null ? options ?? new DapExceptionFilterOptions(ErrorsFilter) : options! with { HitCondition = null };
+        string? unreadHits = BreakpointHits.Unreadable(options?.HitCondition);
+        string? misread = DisplayFormat.Misread(options?.LogMessage);
+        string? problem = unreadHits ?? misread;
+        // A hit count it cannot read or a message it would misread is said, the errors stopping as if it were not written.
+        DapExceptionFilterOptions asked = problem is null ? options ?? new DapExceptionFilterOptions(ErrorsFilter)
+            : options! with { HitCondition = unreadHits is null ? options.HitCondition : null, LogMessage = misread is null ? options.LogMessage : null };
         (AskedErrors? Kept, int Hits)[] matched = BreakpointHits.Reconcile<AskedErrors, DapExceptionFilterOptions>([asked], errors is { } before ? [before] : [], e => e.Request,
             static (_, _) => true, out _);
         errors = on ? matched[0].Kept ?? new AskedErrors(asked) { HitCount = matched[0].Hits } : null;

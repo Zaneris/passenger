@@ -1,6 +1,7 @@
 using System.Reflection.Metadata;
 using System.Text;
 using Microsoft.CodeAnalysis.CSharp;
+using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
@@ -11,11 +12,10 @@ namespace Passenger.Debugger;
 /// gives them.</summary>
 public sealed record DebuggerDisplay(string Value, string? Name, string? Type);
 
-/// <summary>[DebuggerDisplay] rendered. The format is literal text and {fragments}, \{ and \} being braces; each
-/// fragment is an expression on the value, with format specifiers after its last top-level comma (",nq" leaves a string
-/// unquoted), and is evaluated on its own, so one that fails says so in its own place and the rest still shows. A
-/// fragment's value is formatted as the debugger formats any value: a string quoted, a value with its own display shown
-/// by it. The attribute is inherited, as it is declared to be.</summary>
+/// <summary>[DebuggerDisplay] rendered, its format read as a tracepoint's message is (<see cref="DisplayFormat"/>): each
+/// fragment is an expression on the value (",nq" leaves a string unquoted), evaluated on its own, so one that fails says
+/// so in its own place and the rest still shows. A fragment's value is formatted as the debugger formats any value: a
+/// string quoted, a value with its own display shown by it. The attribute is inherited, as it is declared to be.</summary>
 public partial class ManagedDebugger
 {
     /// <summary>How deep displays inside displays go, before a value is shown by its type alone.</summary>
@@ -112,28 +112,18 @@ public partial class ManagedDebugger
         StringBuilder rendered = new();
         bool failed = false;
         string? loneType = null;
-        int i = 0;
-        while (i < format.Length)
+        IReadOnlyList<(string Text, bool Expression)> pieces = DisplayFormat.Pieces(format);
+        foreach ((string text, bool expression) in pieces)
         {
-            char c = format[i];
-            if (c == '\\' && i + 1 < format.Length && format[i + 1] is '{' or '}')
+            if (!expression)
             {
-                rendered.Append(format[i + 1]);
-                i += 2;
-            }
-            else if (c == '{' && FragmentEnd(format, i) is int end)
-            {
-                (string text, bool fragmentFailed, string? type) = await RenderFragmentAsync(format[(i + 1)..end], target, threadId, frameStackDepth, nesting);
                 rendered.Append(text);
-                failed |= fragmentFailed;
-                loneType = i == 0 && end == format.Length - 1 ? type : null;
-                i = end + 1;
+                continue;
             }
-            else
-            {
-                rendered.Append(c);
-                i++;
-            }
+            (string shown, bool fragmentFailed, string? type) = await RenderFragmentAsync(text, target, threadId, frameStackDepth, nesting);
+            rendered.Append(shown);
+            failed |= fragmentFailed;
+            loneType = pieces.Count == 1 ? type : null;
         }
         return (rendered.ToString(), failed, loneType);
     }
@@ -141,7 +131,7 @@ public partial class ManagedDebugger
     /// <summary>A fragment's text, whether it failed, and the type of the value it shows, where it shows one.</summary>
     private async Task<(string Text, bool Failed, string? Type)> RenderFragmentAsync(string fragment, ICorDebugValue? target, ThreadId threadId, FrameStackDepth frameStackDepth, int nesting)
     {
-        (string expression, IReadOnlyList<string> specifiers) = SplitSpecifiers(fragment);
+        (string expression, IReadOnlyList<string> specifiers) = DisplayFormat.Specifiers(fragment);
         if (expression.Length == 0)
         {
             return (string.Empty, false, null);
@@ -190,90 +180,5 @@ public partial class ManagedDebugger
         string text = error ?? "no value";
         int colon = text.IndexOf(": ", StringComparison.Ordinal);
         return colon > 0 && text.StartsWith("error", StringComparison.OrdinalIgnoreCase) ? text[(colon + 2)..] : text;
-    }
-
-    /// <summary>Where a fragment opened at <paramref name="open"/> closes, skipping braces nested in it
-    /// and anything inside quotes; null for one that never closes, which is then literal text.</summary>
-    private static int? FragmentEnd(string format, int open)
-    {
-        int depth = 0;
-        char? quote = null;
-        for (int i = open; i < format.Length; i++)
-        {
-            char c = format[i];
-            if (quote is { } q)
-            {
-                if (c == '\\')
-                {
-                    i++;
-                }
-                else if (c == q)
-                {
-                    quote = null;
-                }
-                continue;
-            }
-            switch (c)
-            {
-                case '"' or '\'':
-                    quote = c;
-                    break;
-                case '{':
-                    depth++;
-                    break;
-                case '}' when --depth == 0:
-                    return i;
-            }
-        }
-        return null;
-    }
-
-    /// <summary>A fragment's expression and the format specifiers after its last comma that is outside
-    /// brackets and quotes: "Items.Count, d" is the count, in decimal.</summary>
-    private static (string Expression, IReadOnlyList<string> Specifiers) SplitSpecifiers(string fragment)
-    {
-        int depth = 0;
-        char? quote = null;
-        int comma = -1;
-        for (int i = 0; i < fragment.Length; i++)
-        {
-            char c = fragment[i];
-            if (quote is { } q)
-            {
-                if (c == '\\')
-                {
-                    i++;
-                }
-                else if (c == q)
-                {
-                    quote = null;
-                }
-                continue;
-            }
-            switch (c)
-            {
-                case '"' or '\'':
-                    quote = c;
-                    break;
-                case '(' or '[' or '{' or '<':
-                    depth++;
-                    break;
-                case ')' or ']' or '}' or '>':
-                    depth--;
-                    break;
-                case ',' when depth == 0:
-                    comma = i;
-                    break;
-            }
-        }
-        if (comma < 0)
-        {
-            return (fragment.Trim(), []);
-        }
-        string[] specifiers = fragment[(comma + 1)..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        // Only words are specifiers: "a, b" in a call's arguments never reaches here, but "x, 2" is not one either.
-        return specifiers.All(s => s.All(char.IsAsciiLetterOrDigit) && char.IsAsciiLetter(s[0]))
-            ? (fragment[..comma].Trim(), specifiers)
-            : (fragment.Trim(), []);
     }
 }

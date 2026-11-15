@@ -19,9 +19,10 @@ public partial class ManagedDebugger
     /// <summary>A data or exception breakpoint's message, by its id, written by a hit whose condition could not be told.</summary>
     public event Action<int, string>? OnBreakpointMessage;
 
-    /// <summary>Why the debugger will not take a breakpoint's condition or hit count as it is, if it will not: such a
-    /// breakpoint is refused when set, of every kind, rather than stopping at every hit saying it could not be told.</summary>
-    internal static string? Unreadable(string? condition, string? hitCondition)
+    /// <summary>Why the debugger will not take a breakpoint's condition, hit count or message as it is, if it will not: such
+    /// a breakpoint is refused when set, of every kind, rather than stopping at every hit saying it could not be told, or
+    /// logging what its message was not meant to say.</summary>
+    internal static string? Unreadable(string? condition, string? hitCondition, string? logMessage)
     {
         ExpressionSyntax? parsed = condition is null ? null : CodeBrackets.Expression(condition);
         if (condition is not null && parsed is null)
@@ -32,7 +33,7 @@ public partial class ManagedDebugger
         {
             return "Lambda expressions are not supported in breakpoint conditions.";
         }
-        return BreakpointHits.Unreadable(hitCondition);
+        return BreakpointHits.Unreadable(hitCondition) ?? DisplayFormat.Misread(logMessage);
     }
 
     /// <summary>A hit of a breakpoint of any kind, tried as every debugger tries one (<see cref="BreakpointHits.StopsAsync"/>):
