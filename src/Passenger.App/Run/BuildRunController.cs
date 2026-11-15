@@ -1209,15 +1209,17 @@ public sealed partial class BuildRunController
             UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
             bool functions = chosen.RunsFunctions(session.Projects);
-            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects) && !RunsOnDevice(chosen) && !functions;
+            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects) && !functions;
             bool godot = chosen.RunsGodot(session.Projects);
+            // An app on a device takes its edits through Passenger's relay in it, which holds its start there until the debugger attaches.
+            bool elsewhere = RunsOnDevice(chosen);
             // A game's errors, which Godot writes every frame they happen, folded in its console.
             parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
             // An Avalonia or WPF app's XAML edits reach it through the inspector, which the app dotnet watch starts never carries.
             bool markup = wanted && !godot && await RunsXamlAppAsync(chosen);
-            bool watched = wanted && !godot && !markup;
+            bool watched = wanted && !godot && !markup && !elsewhere;
             // A Godot game and a XAML app take their edits through the debugger, attached quietly as each starts held; Godot's editor loads its builds itself.
-            bool reloaded = wanted && (godot && !chosen.GodotEditor || markup);
+            bool reloaded = wanted && (godot && !chosen.GodotEditor || markup || elsewhere);
             watching = watched;
             (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, build: !watched, reading: reloaded ? () =>
             {
@@ -1244,7 +1246,7 @@ public sealed partial class BuildRunController
                 return await RunCopiesAsync(chosen, plan, count, reloaded, work, Take(ref edits));
             }
             // A game of GDScript alone takes its saved scripts over its own connection: no debugger holds its start for C#'s edits.
-            bool heldStart = reloaded && !plan.ScriptsAlone;
+            bool heldStart = reloaded && !plan.ScriptsAlone && plan.Device is null;
             work.Say($"Starting {chosen.Name}…");
             ran = chosen.Name;
             RunProject = Path.GetDirectoryName(plan.Project);
@@ -1260,7 +1262,13 @@ public sealed partial class BuildRunController
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
             LiveApp? inspected = session.RunApp;
-            Devices.DevicePut? put = plan.Device?.App is { } inspecting ? await InspectOnDeviceAsync(inspecting, inspected, work) : null;
+            (Devices.RelaySession? relay, Devices.DevicePut? put, string? unrelayed) = reloaded && plan.Device?.App is { } relayed
+                ? await RelayOnDeviceAsync(relayed, inspected, work) : (null, null, null);
+            if (unrelayed is not null)
+            {
+                running = $"Running {chosen.Name} without Hot Reload: {unrelayed}";
+            }
+            put ??= plan.Device?.App is { } inspecting ? await InspectOnDeviceAsync(inspecting, inspected, work) : null;
             ShowBindings();
             // dotnet watch opens no browser of its own: the plan's opens through the window once the program listens.
             Dictionary<string, string> variables = watched
@@ -1306,6 +1314,15 @@ public sealed partial class BuildRunController
                         await AttachForHotReloadAsync(chosen.Name, inTerminal.Debuggee, null, work, Take(ref edits), running, Take(ref handlers), inspected, ProgramBuild.Of(plan));
                     }
                 }
+                if (plan.Device?.App is { } inTerminalOnDevice)
+                {
+                    session.EndsOnDevices(EndOnDeviceAsync(refused is null && session.InTerminal is { } shell ? shell.Ended : Task.FromResult(0), inTerminalOnDevice, put),
+                        () => DeviceLaunches.EndAsync(inTerminalOnDevice, put));
+                    if (refused is null && relay is not null)
+                    {
+                        await AttachOnDeviceForHotReloadAsync(chosen.Name, relay, null, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan));
+                    }
+                }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
                 EndWith(game, refused is null && session.InTerminal is { } played ? played.Ended : Task.CompletedTask);
                 if (refused is null && session.InTerminal is { } collected)
@@ -1346,6 +1363,10 @@ public sealed partial class BuildRunController
             {
                 // Its shell on the device ends with the app; Stop ends the shell here, so the app is ended there too.
                 session.EndsOnDevices(EndOnDeviceAsync(notStarted is null ? session.Runner.Ended : Task.FromResult(0), onDevice, put), () => DeviceLaunches.EndAsync(onDevice, put));
+            }
+            if (notStarted is null && relay is not null)
+            {
+                await AttachOnDeviceForHotReloadAsync(chosen.Name, relay, parts.Views.Run.Sink, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan));
             }
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {

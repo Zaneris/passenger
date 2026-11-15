@@ -46,6 +46,32 @@ public sealed partial class BuildRunController
         return put;
     }
 
+    /// <summary>Passenger's relay put in an app Run starts on a device with Hot Reload, its inspector beside it where it is an
+    /// Avalonia app's, so the debugger attaches quietly as its start waits there (<see cref="AttachOnDeviceForHotReloadAsync"/>):
+    /// the relay and what was put in, else why not, the app then running without Hot Reload.</summary>
+    private async Task<(RelaySession? Relay, DevicePut? Put, string? Problem)> RelayOnDeviceAsync(AndroidApp app, LiveApp? inspected, Working work)
+    {
+        work.Say($"Putting Passenger's debugger in {app.Package} for Hot Reload…");
+        (RelaySession? relay, DevicePut? put, string? unrelayed) = await DeviceLaunches.PutRelayAsync(app, inspected?.Device, work.Stopping);
+        return relay is null ? (null, null, unrelayed ?? "Passenger's debugger could not be put in the app") : (relay, put, null);
+    }
+
+    /// <summary>An app Run started on a device with Passenger's relay in it, attached to quietly for Hot Reload alone, which
+    /// lets its start there go: what its applies come to is said in <paramref name="console"/> (null for the terminal's tab)
+    /// and the status bar, which says <paramref name="running"/> once attached. After an attach that fails, saying why, the
+    /// app goes on without Hot Reload: the relay lets its start go as the connection ends, or once its wait is over.</summary>
+    private async Task AttachOnDeviceForHotReloadAsync(string name, RelaySession relay, ConsoleSink? console, Working work, BuiltEdits? edits, string running,
+        LiveApp? app, ProgramBuild? builds)
+    {
+        work.Say($"Attaching to {name} on its device for Hot Reload…");
+        string? refused = await session.Debug.AttachForHotReloadThroughRelayAsync(relay, name, (line, error) =>
+        {
+            console?.Write($"{line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);
+            parts.Say(line);
+        }, work.Stopping, edits, app, builds);
+        parts.Say(refused is null ? running : $"Running {name} without Hot Reload: {refused}");
+    }
+
     /// <summary>Debugs an app installed on a device: Passenger's relay put in it, the app started there by its shell (whose
     /// log is the session's console), and the session attached through the relay as the app's runtime waits for it. Once the
     /// session ends, however it ends, the app ends there and the relay comes out. Null once the session is open, else why not.</summary>

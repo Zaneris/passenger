@@ -1434,7 +1434,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         int? code = ended.IsCompletedSuccessfully ? ended.Result : null;
         string output = AppHostOutput(200) ?? RunOutput(200);
-        // A game or a XAML app Run attached to quietly takes hot_reload; one asked for with it and not attached says why not.
+        // A game, a XAML app or an app on a device Run attached to quietly takes hot_reload; one asked for with it and not attached says why not.
         string reloads = Session.Debug.Running.Any(r => r.Name == name) ? $" with Hot Reload: {McpTools.HotReload} applies the editors' edits"
             : hotReload == true && window.Status is { } told && told.StartsWith($"Running {name} without Hot Reload: ", StringComparison.Ordinal) ? told[$"Running {name}".Length..]
             : string.Empty;
@@ -1444,7 +1444,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : app is { State: LiveTree.LiveAppState.Connected } ? $"Running {name}{reloads}, {UiUp(app)}"
             : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? $"Running {name}{reloads}, {GameUp}"
             : serving.Said is { } said ? $"Running {name}, {said}"
-            : device is not null && onDevice is not null ? $"Running {name}, {device.App!.Package} started on {device.Target.Name} as process {onDevice}"
+            : device is not null && onDevice is not null ? $"Running {name}{reloads}, {device.App!.Package} started on {device.Target.Name} as process {onDevice}"
             : $"Running {name}";
         // What an Aspire run said of itself as it started (its HTTPS over HTTP).
         if (Session.Configurations.Chosen is { } chosen && Session.Aspire.IsAspire(chosen) && Session.Aspire.FindApp(chosen.Project) is { } aspire)

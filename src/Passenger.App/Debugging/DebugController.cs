@@ -603,7 +603,7 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>The program's update handlers told of an update it took, so a Blazor component renders it at once; a program
-    /// in a container or on another machine, which Passenger's hook cannot reach, says once that its handlers are not called.</summary>
+    /// in a container, on a device or on another machine, which Passenger's hook cannot reach, says once that its handlers are not called.</summary>
     private static void ToldHandlers(DebugTab tab, DebugSession session, HotReloadOutcome outcome)
     {
         if (tab.Handlers is { } hook)
@@ -627,8 +627,8 @@ public sealed class DebugController : IDisposable
         }
     }
 
-    /// <summary>Why a program in a container or on another machine shows an update only as its code next runs.</summary>
-    internal const string HandlersUnreached = "Hot Reload: Passenger's hook cannot reach a program in a container or on another machine, so its update handlers "
+    /// <summary>Why a program in a container, on a device or on another machine shows an update only as its code next runs.</summary>
+    internal const string HandlersUnreached = "Hot Reload: Passenger's hook cannot reach a program in a container, on a device or on another machine, so its update handlers "
         + "are not called: a Blazor component shows an edit only as it next renders";
 
     /// <summary>A tab's program that took an apply's C#, whatever its XAML came to: the files' lines as the update was made of
@@ -1327,9 +1327,24 @@ public sealed class DebugController : IDisposable
     /// game) held at its start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
     /// <paramref name="says"/>, where its output is, each told to <paramref name="handlers"/> it started with; its build,
     /// which Hot Reload checks, <paramref name="builds"/>. Null once attached, else why not.</summary>
-    public async Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
+    public Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
         CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null,
-        LiveTree.LiveApp? app = null, ProgramBuild? builds = null)
+        LiveTree.LiveApp? app = null, ProgramBuild? builds = null) =>
+        AttachQuietlyAsync(name, (built, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, _ => { }, _ => { }, starting: starting, hotReload: true, place: place,
+            quiet: true), says, cancellation, edits, handlers, browser, app, builds);
+
+    /// <summary>Attaches quietly for Hot Reload alone, as <see cref="AttachForHotReloadAsync"/> does, to an app Run started on
+    /// a device through Passenger's relay in it (<see cref="Run.Devices.DeviceLaunches.PutRelayAsync"/>), whose start waits
+    /// there until the attach lets it go. Null once attached, else why not.</summary>
+    public Task<string?> AttachForHotReloadThroughRelayAsync(Run.Devices.RelaySession relay, string name, Action<string, bool> says, CancellationToken cancellation,
+        BuiltEdits? edits, LiveTree.LiveApp? app, ProgramBuild? builds) =>
+        AttachQuietlyAsync(name, (built, starting) => DebugSession.AttachThroughRelayAsync(name, relay, Breakpoints, built, _ => { }, _ => { }, starting: starting, hotReload: true,
+            quiet: true), says, cancellation, edits, null, null, app, builds);
+
+    /// <summary>A quiet session for Hot Reload alone, opened by <paramref name="attach"/> over the lines built and handed the
+    /// session as it begins, kept among <see cref="Running"/> until it ends. Null once attached, else why not.</summary>
+    private async Task<string?> AttachQuietlyAsync(string name, Func<BuiltLines, Action<DebugSession>, Task<DebugSession>> attach, Action<string, bool> says,
+        CancellationToken cancellation, BuiltEdits? edits, UpdateHandlerHook? handlers, BrowserRefresh? browser, LiveTree.LiveApp? app, ProgramBuild? builds)
     {
         UiThread.Check();
         if (disposed)
@@ -1355,8 +1370,7 @@ public sealed class DebugController : IDisposable
                     Send(pending.CloseAsync());
                 }
             }));
-            DebugSession session = await DebugSession.AttachAsync(processId, Breakpoints, built, _ => { }, _ => { },
-                starting: session => attaching = session, hotReload: true, place: place, quiet: true);
+            DebugSession session = await attach(built, session => attaching = session);
             cancellation.ThrowIfCancellationRequested();
             if (disposed || ending)
             {
