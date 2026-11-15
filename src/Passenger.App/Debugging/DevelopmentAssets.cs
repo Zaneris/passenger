@@ -107,9 +107,8 @@ public sealed class DevelopmentAssets
         }
         foreach ((string folder, string under) in folders)
         {
-            if (PathNames.IsUnder(path, folder))
+            if (PathNames.IsUnder(path, folder) && PathNames.Relative(path, folder) is { } relative)
             {
-                string relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
                 return under.Length == 0 ? relative : $"{under}/{relative}";
             }
         }

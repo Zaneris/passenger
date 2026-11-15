@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Explorer;
+using Passenger.Core;
 using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
@@ -76,7 +77,7 @@ public sealed class ChangedFileRow
 
     /// <summary>The folder a path from a top folder (a repository's, the one a history is of) names, with '/' between its
     /// names.</summary>
-    public static string Folder(string relative) => Path.GetDirectoryName(relative)?.Replace('\\', '/') ?? string.Empty;
+    public static string Folder(string relative) => Path.GetDirectoryName(relative) is { } folder ? PathNames.Slashed(folder) : string.Empty;
 
     /// <summary>A changed file's colour by how it changed (modified, added, deleted, new, conflicted).</summary>
     public static string KindToken(ChangeKind kind) => kind switch

@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Features;
@@ -244,11 +245,7 @@ public sealed class XamlProject
     /// linked in from outside, each part escaped.</summary>
     public static string PathIn(string folder, string file)
     {
-        string relative = Path.GetRelativePath(folder, file).Replace('\\', '/');
-        if (relative == ".." || relative.StartsWith("../", StringComparison.Ordinal) || Path.IsPathRooted(relative))
-        {
-            relative = Path.GetFileName(file);
-        }
+        string relative = PathNames.Relative(file, folder) ?? Path.GetFileName(file);
         return string.Join('/', relative.Split('/').Select(Uri.EscapeDataString));
     }
 

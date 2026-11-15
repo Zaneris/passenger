@@ -95,9 +95,9 @@ public static class ProjectPackages
         {
             return false;
         }
-        string relative = PathNames.IsUnder(file, folder) ? Path.GetRelativePath(folder, file) : Path.GetFileName(file);
+        string relative = PathNames.IsUnder(file, folder) && PathNames.Relative(file, folder) is { } below ? below : Path.GetFileName(file);
         return glob.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(one => EditorConfig.Matches(one, "/" + relative.Replace('\\', '/')));
+            .Any(one => EditorConfig.Matches(one, "/" + relative));
     }
 }
 

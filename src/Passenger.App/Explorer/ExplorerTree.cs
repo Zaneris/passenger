@@ -949,8 +949,8 @@ public sealed class ExplorerTree
             {
                 // A project's folder reads what it holds when opened, so it shows the project as evaluated once it is.
                 bool passed = IgnoredFolders.Is(entry.FullName);
-                nodes.Add(within is not null && !passed
-                    ? HeldFolder(within, entry.FullName, Path.GetRelativePath(within.Folder, entry.FullName).Replace('\\', '/'), depth, dimmed)
+                nodes.Add(within is not null && !passed && PathNames.Relative(entry.FullName, within.Folder) is { } relative
+                    ? HeldFolder(within, entry.FullName, relative, depth, dimmed)
                     : Folder(entry.FullName, depth, dimmed || passed, nesting));
             }
             else if (!parents.ContainsKey(entry.FullName))

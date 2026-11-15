@@ -41,7 +41,7 @@ public static class ContainerConfigurations
                 continue;
             }
             covered.UnionWith(files);
-            string relative = Path.GetRelativePath(workspace.Folder, file).Replace('\\', '/');
+            string relative = PathNames.Relative(file, workspace.Folder) ?? file;
             made.Add(new RunConfiguration
             {
                 Name = $"Compose: {relative}",

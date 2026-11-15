@@ -106,9 +106,8 @@ public sealed class ContainerPaths
     {
         foreach ((string container, string host) in pairs.Where(p => p.Container != "/_/").OrderByDescending(p => p.Host.Length))
         {
-            if (Core.PathNames.IsUnder(hostPath, host) || Core.PathNames.Same(hostPath, host))
+            if (Core.PathNames.Relative(hostPath, host) is { } rest)
             {
-                string rest = Path.GetRelativePath(host, hostPath).Replace('\\', '/');
                 return rest == "." ? container.TrimEnd('/') : container + rest;
             }
         }

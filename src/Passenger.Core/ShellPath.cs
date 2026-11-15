@@ -52,8 +52,9 @@ public sealed partial record ShellPath(string Root, string? File, string Lines, 
     /// PATH with it first.</summary>
     public static (string File, string Lines) Of(ShellKind shell, string home, string root, bool macOS, string? zdotdir, Func<string, bool> exists)
     {
-        bool fromHome = PathNames.IsUnder(root, home) && !PathNames.Same(root, home);
-        string named = fromHome ? PathNames.Below(root, home).ToString().Replace(Path.DirectorySeparatorChar, '/') : root;
+        string? below = PathNames.IsUnder(root, home) ? PathNames.Relative(root, home) : null;
+        bool fromHome = below is not null;
+        string named = below ?? root;
         // Double quotes keep spaces; a backslash before each character they still read keeps that one as written.
         string Quoted(string read) =>
             '"' + (fromHome ? "$HOME/" : string.Empty) + string.Concat(named.Select(c => read.Contains(c, StringComparison.Ordinal) ? $"\\{c}" : c.ToString())) + '"';

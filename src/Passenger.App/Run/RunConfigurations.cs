@@ -351,9 +351,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         ServiceProjects = configuration.ServiceProjects.ToDictionary(p => p.Key, p => Full(p.Value)),
     };
 
-    private string Relative(string path) => folder is not null && path.Length > 0 && (PathNames.IsUnder(path, folder) || PathNames.Same(path, folder))
-        ? Path.GetRelativePath(folder, path).Replace('\\', '/')
-        : path;
+    private string Relative(string path) => folder is not null && path.Length > 0 && PathNames.Relative(path, folder) is { } relative ? relative : path;
 
     private string Full(string path) => folder is null || path.Length == 0 ? path : PathNames.Canonical(Path.Combine(folder, path));
 }

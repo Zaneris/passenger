@@ -59,7 +59,7 @@ public sealed class SourceLink : ILibraryFiles
                 return null;
             }
             (Dictionary<string, string> map, string? project) = Read(pdb, assemblyName);
-            string relative = Path.GetRelativePath(PathNames.Canonical(folder), local).Replace('\\', '/');
+            string relative = PathNames.Relative(local, PathNames.Canonical(folder)) ?? Path.GetFileName(local);
             if (project is null || Map(map, project + relative) is not { } url)
             {
                 why?.Report($"{assemblyName}'s PDB has no Source Link for {path}");

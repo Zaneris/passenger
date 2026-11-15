@@ -229,7 +229,7 @@ public static class DockerFiles
     /// <summary>A path from the build's context, with '/' as the Dockerfile writes it.</summary>
     public static string Relative(string context, string path)
     {
-        string relative = System.IO.Path.GetRelativePath(context, path).Replace('\\', '/');
+        string relative = PathNames.Route(path, context);
         return relative == "." ? string.Empty : relative;
     }
 

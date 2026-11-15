@@ -371,7 +371,7 @@ public static class AspireOrchestration
             {
                 throw new InvalidOperationException($"{service.Name} does not have a unique Aspire resource name: rename the project or add its resource by hand");
             }
-            string relative = Path.GetRelativePath(Path.GetDirectoryName(host)!, service.Path).Replace('\\', '/');
+            string relative = PathNames.Route(service.Path, Path.GetDirectoryName(host)!);
             string generatedType = Path.GetFileNameWithoutExtension(service.Path).Replace('.', '_').Replace('-', '_');
             bool SameProject((InvocationExpressionSyntax Call, string Name, string? ProjectPath, string? ProjectType) project)
             {

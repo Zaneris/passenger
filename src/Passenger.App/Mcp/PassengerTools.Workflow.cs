@@ -110,7 +110,7 @@ public sealed partial class PassengerTools
     /// <summary>vcs_status of a file: its changes since the last commit, as the repository was read just before.</summary>
     private async Task<string> VcsDiffAsync(string full, CancellationToken cancel)
     {
-        string name = Relative(full).Replace('\\', '/');
+        string name = Session.Folder is { } folder && PathNames.Relative(full, folder) is { } below ? below : full;
         // Git's own words for a change of mode come first, as its diff says it.
         string? mode = Session.Vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, full))?.Mode?.Unified;
         if (await Session.Vcs.BinaryChangeAsync(full) is { } binary)

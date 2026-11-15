@@ -51,6 +51,16 @@ public class XamlUrisTests
         Assert.Equal("Page.xaml", XamlProject.PathIn(XamlFiles.Folder, XamlFiles.PathOf("Page.xaml")));
     }
 
+    /// <summary>A backslash parts a path's names only on Windows: on macOS and Linux it is a letter of the file's name, which
+    /// its URI escapes as one.</summary>
+    [Fact]
+    public void A_backslash_in_a_files_name_is_escaped_as_a_letter_where_the_system_takes_it_as_one()
+    {
+        string expected = OperatingSystem.IsWindows() ? "Views/Page.xaml" : "Views%5CPage.xaml";
+        string named = XamlProject.PathIn(XamlFiles.Folder, XamlFiles.PathOf(@"Views\Page.xaml"));
+        Assert.True(named == expected, $"The file named Views\\Page.xaml was put in its assembly as {named}, not {expected}: a URI naming it names another file");
+    }
+
     [Fact]
     public void A_maui_file_has_no_uri_its_build_names_it_by()
     {

@@ -246,7 +246,7 @@ public sealed record ProjectInputs(
         {
             if (ItemPaths.Matches(whole, file, PathNames.CaseIgnoredIn))
             {
-                yield return (head + PathNames.Below(file, whole.Path).ToString().Replace('\\', '/'), file);
+                yield return (head + PathNames.Relative(file, whole.Path), file);
             }
         }
     }

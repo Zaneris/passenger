@@ -86,7 +86,7 @@ public sealed class XamlProjectBuilder
     /// <summary>Whether a file is one of the project's XAML files.</summary>
     public bool Owns(string path) =>
         Dialect.Extensions.Contains(Path.GetExtension(path).ToLowerInvariant()) && ProjectFolders.Holds(Folder, path)
-        && !Dialect.LeavesOut(Path.GetRelativePath(Folder, path).Replace('\\', '/'));
+        && (PathNames.Relative(path, Folder) is not { } within || !Dialect.LeavesOut(within));
 
     /// <summary>Reads everything: the assemblies, every C# and XAML file (an open file's text from <paramref name="open"/>
     /// rather than disk), the assets.</summary>
@@ -335,7 +335,7 @@ public sealed class XamlProjectBuilder
     /// <summary>The project's own XAML files: those in its own folders (<see cref="ProjectFolders.Under"/>).</summary>
     private IEnumerable<string> XamlFilesUnder(string folder) =>
         ProjectFolders.Under(folder).SelectMany(f => ProjectInputs.FilesIn(f, "*")).Where(f => Dialect.Extensions.Contains(Path.GetExtension(f).ToLowerInvariant())
-            && !Dialect.LeavesOut(Path.GetRelativePath(folder, f).Replace('\\', '/')));
+            && (PathNames.Relative(f, folder) is not { } within || !Dialect.LeavesOut(within)));
 
     private static string ReadText(string path)
     {

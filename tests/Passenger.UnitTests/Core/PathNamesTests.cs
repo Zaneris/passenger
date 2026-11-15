@@ -34,6 +34,25 @@ public class PathNamesTests
         Assert.Equal(string.Empty, PathNames.Below(At("app2", "A.cs"), At("app")).ToString());
     }
 
+    /// <summary>A path below a folder is written in forward slashes, a backslash a separator only on Windows and elsewhere a
+    /// letter of a name; the folder itself is ".", a path outside it none, and only a route climbs out by "..".</summary>
+    [Fact]
+    public void A_path_below_a_folder_is_its_names_in_forward_slashes_the_folder_itself_a_dot_and_one_outside_none()
+    {
+        Assert.Equal("src/A.cs", PathNames.Relative(At("app", "src", "A.cs"), At("app")));
+        Assert.Equal("src/A.cs", PathNames.Relative(At("app", "src", "A.cs"), At("app") + Path.DirectorySeparatorChar));
+        Assert.Equal(OperatingSystem.IsWindows() ? "src/a/b.css" : @"src/a\b.css", PathNames.Relative(At("app", "src", @"a\b.css"), At("app")));
+        Assert.Equal(".", PathNames.Relative(At("app"), At("app")));
+        Assert.Equal(".", PathNames.Relative(At("app") + Path.DirectorySeparatorChar, At("app")));
+        Assert.Null(PathNames.Relative(At("app2", "A.cs"), At("app")));
+        Assert.Null(PathNames.Relative(At("app", "..", "lib", "A.cs"), At("app")));
+        Assert.Equal(CaseBlind ? "A.cs" : null, PathNames.Relative(At("App", "A.cs"), At("app")));
+        Assert.Equal("../lib/A.cs", PathNames.Route(At("lib", "A.cs"), At("app")));
+        Assert.Equal("src/A.cs", PathNames.Route(At("app", "src", "A.cs"), At("app")));
+        Assert.Equal(".", PathNames.Route(At("app"), At("app")));
+        Assert.Equal(OperatingSystem.IsWindows() ? "a/b.css" : @"a\b.css", PathNames.Slashed(@"a\b.css"));
+    }
+
     [Fact]
     public void A_moved_folder_takes_the_paths_in_it_along_and_leaves_one_beside_it_whose_name_begins_the_same()
     {

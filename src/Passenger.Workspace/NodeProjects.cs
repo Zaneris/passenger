@@ -216,7 +216,7 @@ public static class NodeProjects
         foreach ((string manifest, NodeManifest made) in read.OrderBy(r => r.Key, StringComparer.Ordinal))
         {
             string folder = Path.GetDirectoryName(manifest)!;
-            string? root = roots.Where(r => PathNames.IsUnder(folder, r.Folder) && Covers(r.Globs, Path.GetRelativePath(r.Folder, folder).Replace('\\', '/')))
+            string? root = roots.Where(r => PathNames.IsUnder(folder, r.Folder) && PathNames.Relative(folder, r.Folder) is { } below && Covers(r.Globs, below))
                 .OrderByDescending(r => r.Folder.Length).Select(r => r.Manifest).FirstOrDefault();
             (NodeManager manager, string source) = ManagerFor(top, folder, read, saidIn);
             packages.Add(new NodePackage(manifest, made.Name ?? Path.GetFileName(folder), manager, source, made.Scripts, made.Engines, root));

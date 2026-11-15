@@ -9,7 +9,7 @@ public static partial class GodotResPaths
 {
     /// <summary>The res:// path of a file under a Godot project's folder; null outside it, or for the folder itself.</summary>
     public static string? Of(string project, string file) =>
-        PathNames.IsUnder(file, project) ? Scheme + Path.GetRelativePath(project, file).Replace('\\', '/') : null;
+        PathNames.IsUnder(file, project) ? Scheme + PathNames.Relative(file, project) : null;
 
     /// <summary>The file a res:// path names under a Godot project's folder, a sub-resource's <c>::</c> and what follows
     /// dropped; null for a path not res://, or one that climbs out of the folder.</summary>

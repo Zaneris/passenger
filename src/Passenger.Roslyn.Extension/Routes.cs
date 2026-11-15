@@ -802,7 +802,10 @@ internal static partial class RouteReading
                 return;
             }
             // A page's route is its path under Pages (an area's under Areas/X/Pages), Index being its folder's.
-            string relative = Path.GetRelativePath(folder, path).Replace('\\', '/');
+            if (PathNames.Relative(path, folder) is not { } relative)
+            {
+                return;
+            }
             string? area = null;
             string under;
             if (relative.StartsWith("Pages/", StringComparison.OrdinalIgnoreCase))
@@ -925,8 +928,8 @@ internal static partial class RouteReading
             List<string> found = [];
             foreach (string proto in Directory.EnumerateFiles(folder, "*.proto", SearchOption.AllDirectories))
             {
-                string relative = Path.GetRelativePath(folder, proto).Replace('\\', '/');
-                if (relative.StartsWith("bin/", StringComparison.OrdinalIgnoreCase) || relative.StartsWith("obj/", StringComparison.OrdinalIgnoreCase))
+                if (PathNames.Relative(proto, folder) is not { } relative
+                    || relative.StartsWith("bin/", StringComparison.OrdinalIgnoreCase) || relative.StartsWith("obj/", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }

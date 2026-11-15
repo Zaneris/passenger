@@ -50,7 +50,7 @@ public sealed class EditorConfig
         {
             (string folder, ConfigFile config) = chain[i];
             string file = Path.Combine(folder, FileName);
-            string relative = "/" + Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
+            string relative = "/" + PathNames.Relative(path, folder);
             foreach (Section section in config.Sections)
             {
                 CompiledGlob glob = Compiled(section.Glob);

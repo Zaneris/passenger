@@ -108,6 +108,26 @@ public static partial class PathNames
     public static ReadOnlySpan<char> Below(ReadOnlySpan<char> path, string folder) =>
         IsUnder(path, folder) ? path[(folder.AsSpan().TrimEnd(Separators).Length + 1)..] : [];
 
+    /// <summary>The names from a folder down to a path under it in forward slashes ("src/App/App.cs"), as a URL, a glob, a
+    /// container's path or a file the IDE keeps writes one: "." for the folder itself, and null for a path outside it,
+    /// never a "..". A backslash parts names only on Windows; elsewhere it is a letter of one and stays.</summary>
+    public static string? Relative(string path, string folder)
+    {
+        string full = Path.GetFullPath(path);
+        string top = Path.GetFullPath(folder);
+        return IsUnder(full, top) ? Slashed(Below(full, top).ToString())
+            : Alike(full.AsSpan().TrimEnd(Separators), top.AsSpan().TrimEnd(Separators)) ? "." : null;
+    }
+
+    /// <summary>The way from a folder to a path in forward slashes, climbing out of the folder by ".." where the path lies
+    /// outside it ("../Api/Api.csproj"), as one project's file names another: "." for the folder itself, and on Windows a
+    /// path on another drive whole.</summary>
+    public static string Route(string path, string folder) => Slashed(Path.GetRelativePath(folder, path));
+
+    /// <summary>A path with forward slashes between its names: its backslashes made slashes on Windows, where they part
+    /// names, and kept elsewhere, where they are letters of one.</summary>
+    public static string Slashed(string path) => OperatingSystem.IsWindows() ? path.Replace('\\', '/') : path;
+
     /// <summary>Whether a path is a file or folder, or under it.</summary>
     public static bool Within(string path, string place) => Same(path, place) || IsUnder(path, place);
 

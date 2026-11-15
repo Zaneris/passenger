@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Workspace;
@@ -31,7 +32,7 @@ public static class GodotScriptTemplates
     /// <summary>The folder of a Godot project's templates, which the game's build leaves out, as they are no code of its own:
     /// as its C# project names it, from that project's folder (<paramref name="project"/>) to the Godot project's.</summary>
     public static string Excluded(string project, string godot) =>
-        Path.GetRelativePath(project, godot) is var relative && relative == "." ? Folder : $"{relative.Replace(Path.DirectorySeparatorChar, '/')}/{Folder}";
+        PathNames.Route(godot, project) is var relative && relative == "." ? Folder : $"{relative}/{Folder}";
 
     /// <summary>Whether a template's text is one Passenger wrote, which it keeps up to date.</summary>
     public static bool IsPassengers(string text) => text.Contains($"// meta-name: {Name}", StringComparison.Ordinal);

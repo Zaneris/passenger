@@ -1890,11 +1890,7 @@ public sealed partial class Git
     /// <summary>A path from <paramref name="root"/> as git names it: its separators made '/' where the system's is a
     /// backslash, and elsewhere as the disk names it, a backslash being a letter of a file's name there (a\b.txt is not
     /// a/b.txt).</summary>
-    internal static string RelativeIn(string root, string path)
-    {
-        string relative = System.IO.Path.GetRelativePath(root, path);
-        return System.IO.Path.DirectorySeparatorChar == '/' ? relative : relative.Replace(System.IO.Path.DirectorySeparatorChar, '/');
-    }
+    internal static string RelativeIn(string root, string path) => PathNames.Route(path, root);
 
     /// <summary>The .gitignore line that matches the file or folder at <paramref name="path"/> and nothing else: its path
     /// from the tree's top anchored there by a leading '/' (so a '#' or '!' it starts with is no comment or negation), a

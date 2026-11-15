@@ -125,7 +125,7 @@ public sealed class XamlDocument : IDisposable
         }
         while (loading != Loading && !disposed);
         // Another framework's XAML in the project (a MAUI app's WinUI head) is not read as the project's.
-        if (builder is null || builder.Dialect.LeavesOut(Path.GetRelativePath(builder.Folder, path).Replace('\\', '/')))
+        if (builder is null || PathNames.Relative(path, builder.Folder) is { } within && builder.Dialect.LeavesOut(within))
         {
             return null;
         }

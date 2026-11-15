@@ -504,8 +504,8 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
         {
             return false;
         }
-        string named = Folder is null ? path : PathNames.Below(path, Folder).ToString();
-        string relative = "/" + named.Replace('\\', '/').TrimStart('/');
+        string named = Folder is null ? PathNames.Slashed(path) : PathNames.Relative(path, Folder) ?? path;
+        string relative = "/" + named.TrimStart('/');
         foreach (string choice in ChoicesOf.GetOrAdd(Pattern, Choices))
         {
             string glob = "/" + choice.TrimStart('/');

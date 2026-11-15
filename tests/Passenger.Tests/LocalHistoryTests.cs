@@ -630,6 +630,27 @@ public sealed class LocalHistoryTests : IDisposable
         static string Hash(string text) => LocalHistory.Hash(System.Text.Encoding.UTF8.GetBytes(text));
     }
 
+    /// <summary>On macOS and Linux a backslash is a letter of a file's name, so its history is kept under that name and a
+    /// later Passenger on the same state lists it, where a slash in its place named another file.</summary>
+    [AvaloniaFact]
+    public void A_files_history_kept_under_a_name_holding_a_backslash_is_listed_by_a_later_passenger_on_the_same_state()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "A backslash parts a path's names on Windows, so no file's name there holds one");
+        string state = TestFolders.Create("history-state-");
+        Write(@"Shop\Copy.cs", Original);
+        MainWindow first = Open(@"Shop\Copy.cs", state, new HistoryKeeping());
+        Save(first, 2, 4, "long ");
+        first.Close();
+        Ui.Settle();
+
+        MainWindow later = Open(@"Shop\Copy.cs", state, new HistoryKeeping());
+        HistoryTab history = ShowFromFileMenu(later, "Show History…");
+        Ui.Settle();
+        Assert.True(history.Rows.Any(r => r.Title == "Change"),
+            $"A later Passenger on the same state listed none of the save kept for Shop\\Copy.cs, only [{string.Join(", ", history.Rows.Select(r => r.Title))}]: its history was kept under Shop/Copy.cs, another file's name");
+        later.Close();
+    }
+
     /// <summary>A revert follows only what it changes: a file's text put back leaves every Explorer row as it was, with Go to
     /// File's folder never walked again and the project not checked again, and a file deleted brought back puts in its own
     /// row alone.</summary>

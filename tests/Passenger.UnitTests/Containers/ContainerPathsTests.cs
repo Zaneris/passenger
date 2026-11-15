@@ -29,6 +29,17 @@ public sealed class ContainerPathsTests
         Assert.Contains(("/src/.github/", Path.Combine(Context, ".github")), Map("COPY [\"./.github/ci.yml\", \"/src/.github/\"]\n").Pairs);
     }
 
+    /// <summary>A backslash parts a path's names only on Windows: on macOS and Linux it is a letter of a file's name, which
+    /// the container's path keeps, where a slash would name another file.</summary>
+    [Fact]
+    public void A_workspace_files_container_path_keeps_a_backslash_its_name_holds_where_the_system_takes_it_as_a_letter()
+    {
+        string file = Path.Combine(Context, "wwwroot", @"site\app.css");
+        string expected = OperatingSystem.IsWindows() ? "/app/wwwroot/site/app.css" : @"/app/wwwroot/site\app.css";
+        string? container = Map("COPY . /app/\n").ToContainer(file);
+        Assert.True(container == expected, $"{file} was mapped to {container} in the container, not {expected}: a debugger at the container's edge names another file");
+    }
+
     private static ContainerPaths Map(string copies) =>
         ContainerPaths.For(DockerfileStages.Read($"FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build\n{copies}"), Context);
 }

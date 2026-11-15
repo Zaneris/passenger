@@ -1438,7 +1438,7 @@ public sealed class LocalHistory
         }
     }
 
-    private string Relative(string path) => Path.GetRelativePath(Folder, path).Replace('\\', '/');
+    private string Relative(string path) => PathNames.Relative(path, Folder) ?? path;
 
     private string Full(string relative) => Path.Combine(Folder, relative.Replace('/', Path.DirectorySeparatorChar));
 }

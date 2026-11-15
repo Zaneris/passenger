@@ -96,7 +96,7 @@ internal sealed class ProjectFiles
             return link.Replace('\\', '/').Trim('/');
         }
         string full = Path.TrimEndingDirectorySeparator(item.Path);
-        return PathNames.IsUnder(full, root) ? Path.GetRelativePath(root, full).Replace('\\', '/') : Path.GetFileName(full);
+        return PathNames.IsUnder(full, root) && PathNames.Relative(full, root) is { } below ? below : Path.GetFileName(full);
     }
 
     private void AddFolder(string relative)

@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Localization;
 using Passenger.Xaml.Metadata;
@@ -645,7 +646,7 @@ public static class XamlCompletion
         string typed = file.Text[attribute.ValueStart..offset];
         XamlProject project = file.Project;
         List<XamlItem> items = [];
-        IEnumerable<string> own = project.Assets.Concat(project.Files.Keys.Select(f => Path.GetRelativePath(project.Folder, f).Replace('\\', '/')))
+        IEnumerable<string> own = project.Assets.Concat(project.Files.Keys.Select(f => PathNames.Relative(f, project.Folder) ?? Path.GetFileName(f)))
             .Distinct(StringComparer.Ordinal);
         string folder = Path.GetDirectoryName(file.Path) ?? project.Folder;
         foreach (string asset in own)
@@ -662,7 +663,7 @@ public static class XamlCompletion
             else
             {
                 // WPF's: a path from the file's folder, or with a pack URI from the project's.
-                string relative = Path.GetRelativePath(folder, Path.Combine(project.Folder, asset)).Replace('\\', '/');
+                string relative = PathNames.Route(Path.Combine(project.Folder, asset), folder);
                 if (relative != Path.GetFileName(file.Path))
                 {
                     items.Add(new XamlItem(relative, XamlItemKind.Asset, relative, Path.GetFileName(asset)));

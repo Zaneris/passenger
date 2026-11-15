@@ -700,9 +700,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     }
 
     /// <summary>A path as the form shows it: relative to the open folder when inside it.</summary>
-    private string Shown(string path) => Folder is { } folder && path.Length > 0 && Core.PathNames.IsUnder(path, folder)
-        ? Path.GetRelativePath(folder, path).Replace('\\', '/')
-        : path;
+    private string Shown(string path) => Folder is { } folder && path.Length > 0 && Core.PathNames.Relative(path, folder) is { } relative ? relative : path;
 
     /// <summary>A path typed, made full against the open folder.</summary>
     private string Full(string? typed) => typed?.Trim() is not { Length: > 0 } path ? string.Empty

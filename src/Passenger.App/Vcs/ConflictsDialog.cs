@@ -167,7 +167,7 @@ public sealed class ConflictsDialog : IdeWindow
         rows.Clear();
         foreach (GitConflict conflict in vcs.Conflicts.OrderBy(c => c.Path, StringComparer.Ordinal))
         {
-            string folder = vcs.Repository is { } repository ? Path.GetDirectoryName(repository.Relative(conflict.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty;
+            string folder = vcs.Repository is { } repository ? ChangedFileRow.Folder(repository.Relative(conflict.Path)) : string.Empty;
             rows.Add(new ConflictRow(conflict, folder, sides.YoursHas(conflict) ? "Modified" : "Deleted", sides.TheirsHas(conflict) ? "Modified" : "Deleted"));
         }
         Chosen = [.. rows.Where(r => chosen.Contains(r.Conflict.Path))];

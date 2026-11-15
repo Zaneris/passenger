@@ -301,7 +301,7 @@ public sealed class BrowserRefresh : IDisposable
             return url;
         }
         string root = Path.Combine(Path.GetDirectoryName(project)!, "wwwroot");
-        return PathNames.IsUnder(path, root) ? Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/') : null;
+        return PathNames.IsUnder(path, root) ? PathNames.Relative(path, root) : null;
     }
 
     /// <summary>The project a file is one of its own of (<see cref="ProjectFolders.Holds"/>), of the app's own and those it
