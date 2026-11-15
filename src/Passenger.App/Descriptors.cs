@@ -1,16 +1,10 @@
-using System.Runtime.InteropServices;
-
 namespace Passenger.App;
 
 /// <summary>The process's open files as macOS and Linux number them.</summary>
-internal static partial class Descriptors
+internal static class Descriptors
 {
-    /// <summary>FIOCLEX: macOS's _IO('f', 1), Linux's 0x5451.</summary>
-    private static readonly nuint CloseOnExecRequest = OperatingSystem.IsMacOS() ? 0x20006601u : 0x5451u;
-
-    /// <summary>Marks a descriptor to close as the process becomes another program, through ioctl, which takes no third
-    /// argument here: fcntl's is variadic, which arm64 macOS passes on the stack, where a fixed signature never puts it.</summary>
-    public static bool CloseOnExec(int descriptor) => Control(descriptor, CloseOnExecRequest) == 0;
+    /// <summary>Marks a descriptor to close as the process becomes another program (<see cref="Core.Libc.CloseOnExec"/>).</summary>
+    public static bool CloseOnExec(int descriptor) => Core.Libc.CloseOnExec(descriptor);
 
     /// <summary>Marks every descriptor but standard input, output and error to close as the process becomes another program.</summary>
     public static void CloseAllOnExec()
@@ -24,7 +18,4 @@ internal static partial class Descriptors
             }
         }
     }
-
-    [LibraryImport("libc", EntryPoint = "ioctl", SetLastError = true)]
-    private static partial int Control(int descriptor, nuint request);
 }

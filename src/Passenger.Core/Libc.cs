@@ -36,6 +36,16 @@ public static partial class Libc
     [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
     public static partial int Close(int descriptor);
 
+    /// <summary>FIOCLEX: macOS's _IO('f', 1), Linux's 0x5451.</summary>
+    private static readonly nuint CloseOnExecRequest = OperatingSystem.IsMacOS() ? 0x20006601u : 0x5451u;
+
+    /// <summary>Marks a descriptor to close as the process becomes another program, through ioctl, which takes no third
+    /// argument here: fcntl's is variadic, which arm64 macOS passes on the stack, where a fixed signature never puts it.</summary>
+    public static bool CloseOnExec(int descriptor) => Control(descriptor, CloseOnExecRequest) == 0;
+
+    [LibraryImport("libc", EntryPoint = "ioctl", SetLastError = true)]
+    private static partial int Control(int descriptor, nuint request);
+
     /// <summary>getxattr: a file's extended attribute named by <paramref name="name"/>'s NUL-ended bytes, its link followed,
     /// read into <paramref name="value"/>; its length (with no value, the length it needs), or -1. macOS's takes a place in
     /// a resource fork and options beside Linux's, given neither.</summary>

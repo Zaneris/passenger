@@ -71,6 +71,19 @@ public class UnsettingTests
     }
 
     [Fact]
+    public void Given_a_terminal_the_program_is_run_by_dash_which_takes_it_first_its_loader_variables_carried_past_dash()
+    {
+        Dictionary<string, string> environment = [];
+        (string app, string[] arguments) = TerminalSession.Unsetting([], "zsh", ["-l"], environment, new Dictionary<string, string> { ["DYLD_X"] = "value" }, "/dev/ttys003");
+        string script = $"exec 0<>'/dev/ttys003' 1>&0 2>&0; DYLD_X=\"${TerminalSession.KeptPrefix}DYLD_X\"; export DYLD_X; unset {TerminalSession.KeptPrefix}DYLD_X; exec \"$0\" \"$@\"";
+        Assert.True(app == "/bin/dash" && arguments.SequenceEqual(["-c", script, "zsh", "-l"]),
+            $"The program would run with no controlling terminal, where Ctrl+C and a hang-up reach nothing: {app} {string.Join(' ', arguments)}");
+        Assert.True(environment.GetValueOrDefault(TerminalSession.KeptPrefix + "DYLD_X") == "value", "The loader's variable was not carried past dash, which loses it");
+        Assert.True(TerminalSession.Unsetting([], "/bin/prog", [], new Dictionary<string, string>(), NoLoader, "/dev/ttys003") is ("/bin/dash", ["-c", "exec 0<>'/dev/ttys003' 1>&0 2>&0; exec \"$0\" \"$@\"", "/bin/prog"]),
+            "A program with no loader variables was not run by the shell that takes its terminal");
+    }
+
+    [Fact]
     public void A_programs_loader_variables_are_those_inherited_set_over_by_the_starts_own_less_those_it_takes_away()
     {
         Dictionary<string, string> inherited = new()

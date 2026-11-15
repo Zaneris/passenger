@@ -1344,6 +1344,53 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>A program run in the terminal that writes a line and ends at once, as echo does within a millisecond of its
+    /// start, has that line on its tab above how it ended, every time: 300 runs, each in a tab of its own.</summary>
+    [AvaloniaFact]
+    public void A_program_that_writes_a_line_and_ends_at_once_has_it_on_its_tab_every_run()
+    {
+        const int Runs = 300;
+        const string Said = "said-at-once";
+        string folder = TestFolders.Create("terminal-at-once-");
+        try
+        {
+            string project = TestFolders.Write(folder, "Says/Says.csproj", TestProjects.Console());
+            TestFolders.Write(folder, "Says/Program.cs", "return 0;\n");
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            window.SetConfigurations([new RunConfiguration
+            {
+                Name = "Echo",
+                Project = PathNames.Canonical(project),
+                Program = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/echo",
+                Arguments = OperatingSystem.IsWindows() ? $"/c echo {Said}" : Said,
+                WorkingDirectory = folder,
+                BuildBeforeLaunch = false,
+                Console = ConsoleKind.Terminal,
+            }], "Echo");
+            List<int> lost = [];
+            string? firstLost = null;
+            for (int run = 0; run < Runs; run++)
+            {
+                Ui.Launched(window, window.RunAsync(), "the run to start", TimeSpan.FromMinutes(1));
+                Assert.True(window.RunInTerminal is not null, $"Run {run} did not run in the terminal: {Ui.Said(window)}");
+                TerminalRun started = window.RunInTerminal;
+                Assert.Equal(0, Ui.Await(started.Ended, "the program's end"));
+                if (!Lines(started.Session.Screen).Contains(Said))
+                {
+                    lost.Add(run);
+                    firstLost ??= Screen(started.Session);
+                }
+            }
+            Assert.True(lost.Count == 0, $"{lost.Count} of {Runs} runs lost the line the program wrote (runs {string.Join(", ", lost)}); "
+                + $"the first's tab shows only:\n{firstLost}");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
     /// <summary>On macOS a run in the terminal that takes a variable away (the outer tmux's) still hands its program the
     /// loader's variables, which the loader takes out of a protected program's environment (env's, sh's): one Passenger
     /// inherited, held as a parent's are in the process's own environment, and one the run configuration gives.</summary>
