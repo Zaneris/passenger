@@ -144,7 +144,7 @@ internal sealed partial class CSharpAssist
         {
             return RefactorOutcome.Refused(refused);
         }
-        return new RefactorOutcome($"Created {function.Name} in {shown}", null, [new RefactoredFile(path, "changed", [])], []);
+        return new RefactorOutcome($"Created {function.Name} in {shown}", null, [new RefactoredFile(path, RefactoredChange.Changed, [])], []);
     }
 
     /// <summary>What a name's definition asks before it is written: where it goes and the line it writes, as the file now
@@ -176,7 +176,7 @@ internal sealed partial class CSharpAssist
         }
         context.CSharp?.For(file)?.RefreshDiagnostics();
         string where = define.Kind == GodotStringKind.Group ? $"{define.NodeName} in {Path.GetFileName(path)}" : $"project.godot's [{define.Section}]";
-        return new RefactorOutcome($"Added {GodotChecks.What(define.Kind)} '{define.Name}' to {where}", null, [new RefactoredFile(path, "changed", [])], []);
+        return new RefactorOutcome($"Added {GodotChecks.What(define.Kind)} '{define.Name}' to {where}", null, [new RefactoredFile(path, RefactoredChange.Changed, [])], []);
     }
 
     /// <summary>The file a definition is written in, its text as the editor has it when open, and the text it becomes; null

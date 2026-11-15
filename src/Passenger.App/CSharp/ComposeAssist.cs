@@ -195,7 +195,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
     {
         if (context.WebOf(document) is not { Lsp: { } lsp })
         {
-            return RefactorOutcome.Refused($"{old} was not renamed: the YAML language server does not run for {document.Name}");
+            return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"the YAML language server does not run for {document.Name}"));
         }
         ComposeRenaming? renaming;
         try
@@ -204,33 +204,27 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
         }
         catch (LanguageServerFailed failed)
         {
-            return RefactorOutcome.Refused($"{old} was not renamed: {failed.Reason}");
+            return RefactorOutcome.Refused(Refusals.NotRenamed(old, failed.Reason));
         }
         if (renaming is null || renaming.Name != old)
         {
-            return RefactorOutcome.Refused($"{old} was not renamed: the file no longer names it there");
+            return RefactorOutcome.Refused(Refusals.NotRenamed(old, "the file no longer names it there"));
         }
         if (ComposeRename.Problem(renaming, name, context.ReadOpenOrDisk) is { } problem)
         {
             return RefactorOutcome.Refused(problem);
         }
-        List<XamlFileChange> changes = [];
-        List<RefactoredFile> files = [];
+        PlacedRename placed = new(old, name);
         foreach (string file in ComposeRename.Files(document.Path, renaming))
         {
             string text = context.ReadOpenOrDisk(file);
-            if (ComposeRename.Edits(file, text, renaming, name) is { Count: > 0 } edits)
-            {
-                changes.Add(new XamlFileChange(file, now => ComposeRename.Edits(file, now, renaming, name)));
-                TextSnapshot written = TextSnapshot.From(text);
-                files.Add(new RefactoredFile(file, "changed", [.. edits.Select(e => written.GetLineFromOffset(e.Start) + 1).Distinct()]));
-            }
+            placed.Add(file, text, ComposeRename.Edits(file, text, renaming, name));
         }
-        if (await actions.ApplyFileChangesAsync($"Rename {old} to {name}", changes) is { } refused)
+        if (await placed.LandAsync(actions, "no file writes it") is { } refused)
         {
             return RefactorOutcome.Refused(refused);
         }
-        return new RefactorOutcome($"Renamed the {renaming.Kind} {old} to {name} in {Passenger.Core.Plural.Of(changes.Count, "file")}", null, files, []);
+        return placed.Outcome($"Renamed the {renaming.Kind} {old} to {name} in {Passenger.Core.Plural.Of(placed.Count, "file")}");
     }
 
     /// <summary>The fixes of a C# file's warnings, on an offset's line, that an open compose file's .NET service reads a connection
@@ -274,7 +268,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
         {
             return RefactorOutcome.Refused(refused);
         }
-        return new RefactorOutcome($"{title} in {compose}", null, [new RefactoredFile(gap.Compose, "changed", [])], []);
+        return new RefactorOutcome($"{title} in {compose}", null, [new RefactoredFile(gap.Compose, RefactoredChange.Changed, [])], []);
     }
 
     /// <summary>The kind a compose file's own names are listed as: a variable's, the file's own declarations.</summary>

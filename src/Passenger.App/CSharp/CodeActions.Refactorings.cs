@@ -340,7 +340,7 @@ internal sealed partial class CodeActions
             return RefactorOutcome.Refused($"Safe Delete failed: {error.Message}");
         }
         return new RefactorOutcome($"Deleted the {removal.Kind} '{removal.Name}'{uses}", null,
-            [new RefactoredFile(doomed.Path, "changed", [.. Enumerable.Range(first + 1, last - first + 1)])], []);
+            [new RefactoredFile(doomed.Path, RefactoredChange.Changed, [.. Enumerable.Range(first + 1, last - first + 1)])], []);
     }
 
     /// <summary>What Safe Delete takes out: the declaring file (its document when open, followed from when its usages were

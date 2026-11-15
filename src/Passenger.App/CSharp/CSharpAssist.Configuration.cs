@@ -170,10 +170,10 @@ internal sealed partial class CSharpAssist
         }
         context.CSharp?.For(file)?.RefreshDiagnostics();
         string where = secret ? $"{project.Name}'s user secrets" : $"{project.Name}'s appsettings.json";
-        List<RefactoredFile> files = [new RefactoredFile(path, made ? "created" : "changed", [])];
+        List<RefactoredFile> files = [new RefactoredFile(path, made ? RefactoredChange.Created : RefactoredChange.Changed, [])];
         if (given)
         {
-            files.Add(new RefactoredFile(project.Project, "changed", []));
+            files.Add(new RefactoredFile(project.Project, RefactoredChange.Changed, []));
         }
         return new RefactorOutcome($"Added {key} to {where}" + (given ? ", giving it a UserSecretsId" : string.Empty), null, files, []);
     }

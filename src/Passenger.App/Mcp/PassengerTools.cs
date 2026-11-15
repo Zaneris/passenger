@@ -693,8 +693,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return renaming.Said;
         }
         await SaveLandedAsync(cancel);
-        List<string> changed = [.. renaming.Files.Where(f => f.Change == "changed").Select(f => Relative(f.Path))];
-        List<string> moved = [.. renaming.Files.Where(f => f.Change == "moved").Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
+        List<string> changed = [.. renaming.Files.Where(f => f.Change == RefactoredChange.Changed).Select(f => Relative(f.Path))];
+        List<string> moved = [.. renaming.Files.Where(f => f.Change == RefactoredChange.Moved).Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
         string renamed = moved.Count > 0 ? $"; renamed {string.Join(", ", moved)}" : string.Empty;
         string unrenamed = renaming.Left.Count > 0 ? $"; not in {string.Join(", ", renaming.Left)}, edited meanwhile" : string.Empty;
         return $"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}{unrenamed}{(renaming.Unmoved is { } unmoved ? $"; but {unmoved}" : string.Empty)}";
@@ -864,8 +864,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// follow its type.</summary>
     private string ActionApplied(string what, RefactorOutcome made, string unrun)
     {
-        int changed = made.Files.Count(f => f.Change != "moved") - made.Left.Count;
-        List<string> moved = [.. made.Files.Where(f => f.Change == "moved").Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
+        int changed = made.Files.Count(f => f.Change != RefactoredChange.Moved) - made.Left.Count;
+        List<string> moved = [.. made.Files.Where(f => f.Change == RefactoredChange.Moved).Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
         string to = changed > 0 || moved.Count == 0 ? $" to {Plural.Of(changed, "file")}" : string.Empty;
         string renaming = moved.Count > 0 ? $", renaming {string.Join(", ", moved)}" : string.Empty;
         string left = made.Left.Count > 0 ? $", but not to {string.Join(", ", made.Left)}, edited meanwhile" : string.Empty;
@@ -890,8 +890,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string named = made.RenameAt is { } place && Editors.Find(DocumentUris.ToPath(place.Uri)) is { } open
             ? $", naming what it made {open.Text.Snapshot.GetText(TextNavigation.WordAt(open.Text.Snapshot, ServerLines.Of(open.Text.Snapshot).OffsetOf(place.Range.Start)))} at {Relative(open.Path)}:{place.Range.Start.Line + 1}:{place.Range.Start.Character + 1}"
             : string.Empty;
-        string changed = string.Join(", ", made.Files.Where(f => f.Change != "created").Select(f => Relative(f.Path)));
-        string created = string.Join(", ", made.Files.Where(f => f.Change == "created").Select(f => Relative(f.Path)));
+        string changed = string.Join(", ", made.Files.Where(f => f.Change != RefactoredChange.Created).Select(f => Relative(f.Path)));
+        string created = string.Join(", ", made.Files.Where(f => f.Change == RefactoredChange.Created).Select(f => Relative(f.Path)));
         string where = (changed.Length > 0 ? $" to {changed}" : string.Empty) + (created.Length > 0 ? $"{(changed.Length > 0 ? "," : string.Empty)} making {created}" : string.Empty);
         return $"Applied {what}{where}{named}{(made.Left.Count > 0 ? $", but not to {string.Join(", ", made.Left)}, edited meanwhile" : string.Empty)}";
     }

@@ -719,7 +719,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             said += $"{(dropped.Count > 0 ? "; and" : ", but")} {unmoved}";
         }
-        return new RefactorOutcome(said, null, [.. changed, .. applied.Moved.Select(m => new RefactoredFile(m.From, "moved", [], m.To))], dropped) { Unmoved = applied.Unmoved };
+        return new RefactorOutcome(said, null, [.. changed, .. applied.Moved.Select(m => new RefactoredFile(m.From, RefactoredChange.Moved, [], m.To))], dropped) { Unmoved = applied.Unmoved };
     }
 
     /// <summary>What a type's rename to <paramref name="name"/> takes along, Rename's and a code action's alike: the
@@ -1070,6 +1070,6 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             return RefactorOutcome.Refused($"{what} was not applied: {failed.Message}");
         }
         string said = applied.Unmoved is { } unmoved ? $"{what} was made, but {unmoved}" : waited ? $"{what} done" : string.Empty;
-        return new RefactorOutcome(said, null, [.. files, .. applied.Moved.Select(m => new RefactoredFile(m.From, "moved", [], m.To))], dropped) { Unmoved = applied.Unmoved };
+        return new RefactorOutcome(said, null, [.. files, .. applied.Moved.Select(m => new RefactoredFile(m.From, RefactoredChange.Moved, [], m.To))], dropped) { Unmoved = applied.Unmoved };
     }
 }

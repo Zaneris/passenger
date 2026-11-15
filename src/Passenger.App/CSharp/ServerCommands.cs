@@ -102,7 +102,7 @@ internal static class ServerCommands
             return RefactorOutcome.Refused($"{what} was not applied: {await recording.TakenBackAsync(refused)}");
         }
         List<RefactoredFile> shown = [.. files.Where(f => !(editors.Find(f.Path) is { } open && dropped.Contains(open.Name)))
-            .Select(f => created.Contains(f.Path) ? f with { Change = "created", Lines = [] } : f).DistinctBy(f => (f.Path, f.Change))];
+            .Select(f => created.Contains(f.Path) ? f with { Change = RefactoredChange.Created, Lines = [] } : f).DistinctBy(f => (f.Path, f.Change))];
         string said = refused is not null ? $"{what} was made only in part: {refused}"
             : files.Count == 0 && dropped.Count == 0 ? $"{what} changed nothing"
             : waited ? $"{what} done" : string.Empty;

@@ -284,7 +284,7 @@ internal sealed partial class CodeActions
             string found = read.Text;
             changes.Add(new XamlFileChange(path, text => text == found ? edits.Edits : []));
             TextSnapshot before = TextSnapshot.From(found);
-            files.Add(new RefactoredFile(path, "changed", [.. edits.Edits.Select(e => before.GetLineFromOffset(e.Start) + 1).Distinct()]));
+            files.Add(new RefactoredFile(path, RefactoredChange.Changed, [.. edits.Edits.Select(e => before.GetLineFromOffset(e.Start) + 1).Distinct()]));
         }
         foreach (IGrouping<string, PlacedEdits> file in beside.GroupBy(b => b.Path, PathNames.Comparer))
         {
@@ -295,7 +295,7 @@ internal sealed partial class CodeActions
                 ServerLines lines = ServerLines.Of(TextSnapshot.From(text));
                 return [.. edits.Select(e => new TextEdit(lines.OffsetOf(e.Range.Start), lines.OffsetOf(e.Range.End) - lines.OffsetOf(e.Range.Start), e.NewText)).OrderBy(e => e.Start)];
             }));
-            files.Add(new RefactoredFile(path, "changed", [.. edits.Select(e => e.Range.Start.Line + 1).Distinct()]));
+            files.Add(new RefactoredFile(path, RefactoredChange.Changed, [.. edits.Select(e => e.Range.Start.Line + 1).Distinct()]));
         }
         if (await ApplyFileChangesAsync(command, changes) is { } failed)
         {

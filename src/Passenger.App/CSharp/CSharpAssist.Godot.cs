@@ -482,7 +482,7 @@ internal sealed partial class CSharpAssist
             }
             // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
             RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience => await GodotNodeAtAsync(document, caret) is ({ } again, { } same, { Count: > 0 } now) && same == old
-                ? await RenameNodesAsync(again, now, old, name, patience) : RefactorOutcome.Refused($"{old} was not renamed: {document.Name} changed as it was read"));
+                ? await RenameNodesAsync(again, now, old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name)));
             context.Say(made.Problem ?? made.Said);
         });
         return true;
@@ -503,8 +503,7 @@ internal sealed partial class CSharpAssist
                 return RefactorOutcome.Refused(problem);
             }
         }
-        Dictionary<string, List<TextEdit>> edits = new(PathNames.Comparer);
-        Dictionary<string, string> made = new(PathNames.Comparer);
+        PlacedRename placed = new(old, name);
         SortedSet<string> binary = new(StringComparer.Ordinal);
         foreach (GodotTreeNode node in nodes)
         {
@@ -513,8 +512,7 @@ internal sealed partial class CSharpAssist
             {
                 if (scenes.FileOf(res) is { } file)
                 {
-                    made[file] = scenes.Files[res].Text;
-                    Add(file, sceneEdits);
+                    placed.Add(file, scenes.Files[res].Text, sceneEdits);
                 }
             }
             binary.UnionWith(left.Select(l => Path.GetFileName(l)));
@@ -553,8 +551,7 @@ internal sealed partial class CSharpAssist
             }
             if (paths.Count > 0)
             {
-                made[code] = text.ToString();
-                Add(code, paths);
+                placed.Add(code, text.ToString(), paths);
             }
         }
         List<string> gdscripts = [.. copies.SelectMany(c => c.Node.Root.Below()).Select(n => n.Script).OfType<string>().Where(GodotScriptDeclarations.IsScript).Distinct(StringComparer.Ordinal)
@@ -567,43 +564,18 @@ internal sealed partial class CSharpAssist
         {
             if (paths is null)
             {
-                return RefactorOutcome.Refused($"{old} was not renamed: a raw string of {Path.GetFileName(file)} can't say {name}");
+                return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"a raw string of {Path.GetFileName(file)} can't say {name}"));
             }
             if (paths.Count > 0)
             {
-                made[file] = text;
-                Add(file, paths);
+                placed.Add(file, text, paths);
             }
         }
-        List<XamlFileChange> changes = [.. edits.Select(e =>
-        {
-            string was = made[e.Key];
-            IReadOnlyList<TextEdit> these = [.. e.Value.Distinct().OrderBy(t => t.Start)];
-            return new XamlFileChange(e.Key, now => now == was ? these : []);
-        })];
-        if (changes.Count == 0)
-        {
-            return RefactorOutcome.Refused($"{old} was not renamed: no scene writes it");
-        }
-        if (await GodotBehindAsync(made, old, patience) is { } behind)
-        {
-            return RefactorOutcome.Refused(behind);
-        }
-        if (await actions.ApplyFileChangesAsync($"Rename {old} to {name}", changes) is { } refused)
+        if (await placed.LandAsync(actions, "no scene writes it", read => GodotBehindAsync(read, old, patience)) is { } refused)
         {
             return RefactorOutcome.Refused(refused);
         }
         string leaving = binary.Count == 0 ? string.Empty : $", leaving {Plural.Listed([.. binary])}, whose animations are binary and may still name {old}";
-        return new RefactorOutcome($"Renamed {old} to {name} in {Plural.Of(changes.Count, "file")}{leaving}", null,
-            [.. edits.Select(e => new RefactoredFile(e.Key, "changed", [.. e.Value.Select(t => TextSnapshot.From(made[e.Key]).GetLineFromOffset(t.Start) + 1).Distinct()]))], []);
-
-        void Add(string file, IEnumerable<TextEdit> more)
-        {
-            if (!edits.TryGetValue(file, out List<TextEdit>? list))
-            {
-                edits[file] = list = [];
-            }
-            list.AddRange(more);
-        }
+        return placed.Outcome($"Renamed {old} to {name} in {Plural.Of(placed.Count, "file")}{leaving}");
     }
 }

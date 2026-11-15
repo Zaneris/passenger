@@ -246,6 +246,6 @@ internal sealed partial class CSharpAssist
         }
         context.CSharp?.For(file)?.RefreshDiagnostics();
         context.XamlOf(file)?.Recheck();
-        return new RefactorOutcome($"Added '{key}' to {name}", null, [new RefactoredFile(target, "changed", [])], []);
+        return new RefactorOutcome($"Added '{key}' to {name}", null, [new RefactoredFile(target, RefactoredChange.Changed, [])], []);
     }
 }

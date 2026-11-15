@@ -520,8 +520,8 @@ public static class WorkspaceEdits
             if (change.Operation is { } operation)
             {
                 Resource resource = Resource.Read(operation);
-                string kind = resource.Kind switch { "create" => "created", "rename" => "moved", _ => "deleted" };
-                if (kind == "created")
+                RefactoredChange kind = resource.Kind switch { "create" => RefactoredChange.Created, "rename" => RefactoredChange.Moved, _ => RefactoredChange.Deleted };
+                if (kind == RefactoredChange.Created)
                 {
                     made.Add(resource.Path);
                 }
@@ -535,13 +535,13 @@ public static class WorkspaceEdits
             }
             TextSnapshot? text = texts(path);
             IReadOnlyList<int> lines = [.. change.Edits.Select(e => ServerPlaces.PositionOf(text, e.Range.Start).Line + 1).Distinct().Order()];
-            if (files.FindIndex(f => f.Path == path && f.Change == "changed") is int at and >= 0)
+            if (files.FindIndex(f => f.Path == path && f.Change == RefactoredChange.Changed) is int at and >= 0)
             {
                 files[at] = files[at] with { Lines = [.. files[at].Lines.Concat(lines).Distinct().Order()] };
             }
             else
             {
-                files.Add(new RefactoredFile(path, "changed", lines));
+                files.Add(new RefactoredFile(path, RefactoredChange.Changed, lines));
             }
         }
         return files;
@@ -636,7 +636,16 @@ public sealed record UnchangedUse(string Path, int Line, int Column, string Why)
 
 /// <summary>A file a refactoring changed: created, changed, moved (to <paramref name="To"/>) or deleted, with the lines its
 /// edits start on, from one, as the editor counts the text as it was.</summary>
-public sealed record RefactoredFile(string Path, string Change, IReadOnlyList<int> Lines, string? To = null);
+public sealed record RefactoredFile(string Path, RefactoredChange Change, IReadOnlyList<int> Lines, string? To = null);
+
+/// <summary>What a refactoring did to a file, which an agent reads as its name in lower case ("moved").</summary>
+public enum RefactoredChange
+{
+    Changed,
+    Created,
+    Moved,
+    Deleted,
+}
 
 /// <summary>A file's edits in the server's places, with the text they were found in where Passenger read the file itself (a
 /// Godot scene as its project's index holds it), which they fit only while the file is that text

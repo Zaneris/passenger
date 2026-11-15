@@ -907,7 +907,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         return new RefactorOutcome(dropped.Count > 0 ? $"Renamed, but not in {string.Join(", ", dropped)}: it was edited meanwhile"
             : files > 1 ? $"Renamed in {files} files" : "Renamed", null, [.. changes.Keys.Select(DocumentUris.ToPath)
-                .Where(p => !(context.Editors.Find(p) is { } open && dropped.Contains(open.Name))).Select(p => new RefactoredFile(p, "changed", []))], dropped);
+                .Where(p => !(context.Editors.Find(p) is { } open && dropped.Contains(open.Name))).Select(p => new RefactoredFile(p, RefactoredChange.Changed, []))], dropped);
     }
 
     /// <summary>Why the C# server's word that it knows nothing may be from files as they were (<see cref="WorkspaceEdits.StaleAsync"/>),

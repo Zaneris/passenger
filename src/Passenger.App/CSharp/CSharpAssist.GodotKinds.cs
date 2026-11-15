@@ -255,7 +255,7 @@ internal sealed partial class CSharpAssist
             }
             // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
             RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience => await GodotKindAtAsync(document, caret) is { } now && now.Name == named.Name
-                ? await RenameKindAsync(now, name, patience) : RefactorOutcome.Refused($"{named.Name} was not renamed: {document.Name} changed as it was read"));
+                ? await RenameKindAsync(now, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(named.Name, document.Name)));
             context.Say(made.Problem ?? made.Said);
         });
         return true;
@@ -342,8 +342,7 @@ internal sealed partial class CSharpAssist
         string old = named.Name;
         // An animation of a library is written in it by its own name, after the library's.
         int own = named.Kind == GodotStringKind.Animation ? old.LastIndexOf('/') + 1 : 0;
-        Dictionary<string, List<TextEdit>> edits = new(PathNames.Comparer);
-        Dictionary<string, string> made = new(PathNames.Comparer);
+        PlacedRename placed = new(old, name);
         foreach (GodotPlace place in named.Places.Where(p => !p.Unsure))
         {
             if (scenes.FileOf(place.Res) is not { } file || scenes.Defined.TextOf(place.Res) is not { } text)
@@ -354,8 +353,7 @@ internal sealed partial class CSharpAssist
             {
                 return RefactorOutcome.Refused(Overtaken(file, old, patience));
             }
-            made[file] = text;
-            Add(file, new TextEdit(place.Start, place.End - place.Start, place.Written(name[own..])!));
+            placed.Add(file, text, [new TextEdit(place.Start, place.End - place.Start, place.Written(name[own..])!)]);
         }
         if (context.CSharp?.Session is { } session)
         {
@@ -366,7 +364,7 @@ internal sealed partial class CSharpAssist
             }
             catch (LanguageServerFailed failed)
             {
-                return RefactorOutcome.Refused($"{old} was not renamed: {failed.Message}");
+                return RefactorOutcome.Refused(Refusals.NotRenamed(old, failed.Message));
             }
             foreach (GodotKindUse use in uses)
             {
@@ -379,41 +377,16 @@ internal sealed partial class CSharpAssist
                 {
                     return RefactorOutcome.Refused(Overtaken(use.File, old, patience));
                 }
-                made[use.File] = text.ToString();
-                Add(use.File, new TextEdit(at, old.Length, name));
+                placed.Add(use.File, text.ToString(), [new TextEdit(at, old.Length, name)]);
             }
         }
-        List<XamlFileChange> changes = [.. edits.Select(e =>
-        {
-            string was = made[e.Key];
-            IReadOnlyList<TextEdit> these = [.. e.Value.Distinct().OrderBy(t => t.Start)];
-            return new XamlFileChange(e.Key, now => now == was ? these : []);
-        })];
-        if (changes.Count == 0)
-        {
-            return RefactorOutcome.Refused($"{old} was not renamed: no file writes it");
-        }
-        if (await GodotBehindAsync(made, old, patience) is { } behind)
-        {
-            return RefactorOutcome.Refused(behind);
-        }
-        if (await actions.ApplyFileChangesAsync($"Rename {old} to {name}", changes) is { } refused)
+        if (await placed.LandAsync(actions, "no file writes it", read => GodotBehindAsync(read, old, patience)) is { } refused)
         {
             return RefactorOutcome.Refused(refused);
         }
         List<string> left = [.. named.Places.Where(p => p.Unsure).Select(p => p.Shown)];
         string leaving = left.Count == 0 ? string.Empty : $", leaving {Plural.Listed(left)}, which may not name the {GodotChecks.What(named.Kind)}";
-        return new RefactorOutcome($"Renamed {old} to {name} in {Plural.Of(changes.Count, "file")}{leaving}", null,
-            [.. edits.Select(e => new RefactoredFile(e.Key, "changed", [.. e.Value.Select(t => TextSnapshot.From(made[e.Key]).GetLineFromOffset(t.Start) + 1).Distinct()]))], []);
-
-        void Add(string file, TextEdit edit)
-        {
-            if (!edits.TryGetValue(file, out List<TextEdit>? list))
-            {
-                edits[file] = list = [];
-            }
-            list.Add(edit);
-        }
+        return placed.Outcome($"Renamed {old} to {name} in {Plural.Of(placed.Count, "file")}{leaving}");
     }
 
     /// <summary>The strings and numbers of the code naming a name of a kind (Passenger's extension's), those of an animation

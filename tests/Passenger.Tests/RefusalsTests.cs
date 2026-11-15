@@ -25,6 +25,8 @@ public sealed class RefusalsTests
         new(@"(?:^|: |; )(?i:t)he tests in \{\} \(\{\}\) could not be found(?:$|\W)"),
         new(@"(?:^|: )No test of \{\} was found(?:$|\W)"),
         new(@"(?:^|: )\{\} tracks no remote's branch to update from$"),
+        new(@"(?:^|: )\{\} was not renamed: "),
+        new(@"(?:^|: )\{\} changed as it was read$"),
     ];
 
     [Fact]

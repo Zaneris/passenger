@@ -431,6 +431,12 @@ public static class Refusals
     public static string ChangedSinceRead(string file) =>
         $"{file} changed after Passenger read it, so the places found there may be where they were before: nothing was changed; try again in a moment";
 
+    /// <summary>Why a rename renamed nothing: <paramref name="why"/>, said as a clause.</summary>
+    public static string NotRenamed(string old, string why) => $"{old} was not renamed: {why}";
+
+    /// <summary>A rename stopped at a file whose text is not what was read of it: the name's place in it, or a server's.</summary>
+    public static string ChangedAsRead(string old, string file) => NotRenamed(old, $"{file} changed as it was read");
+
     /// <summary>An agent's act in Godot's editor from its own Passenger (<c>--mcp</c>), which no editor of the person's reaches.</summary>
     public const string GodotEditorOfPerson = $"{Mcp.McpTools.GodotEditor} acts in the person's own Godot editor, which connects to the Passenger window they use, never to an agent's own: attach to that window (--mcp-attach)";
 

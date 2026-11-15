@@ -182,10 +182,10 @@ internal sealed partial class CSharpAssist
         }
         csharp.For(file)?.RefreshDiagnostics();
         string where = secret ? "the AppHost's user secrets" : $"the AppHost's {Path.GetFileName(path)}";
-        List<RefactoredFile> files = [new RefactoredFile(path, made ? "created" : "changed", [])];
+        List<RefactoredFile> files = [new RefactoredFile(path, made ? RefactoredChange.Created : RefactoredChange.Changed, [])];
         if (changes.Count > 1)
         {
-            files.Add(new RefactoredFile(host.AppHost, "changed", []));
+            files.Add(new RefactoredFile(host.AppHost, RefactoredChange.Changed, []));
         }
         return new RefactorOutcome($"Set {name} in {where}" + (changes.Count > 1 ? ", giving it a UserSecretsId" : string.Empty), null, files, []);
     }
@@ -254,7 +254,7 @@ internal sealed partial class CSharpAssist
     internal Task<RefactorOutcome> RenameResourceAsync(OpenDocument document, int offset, string old, string name, Patience? patience) =>
         actions.MakeAsync($"Rename {old} to {name}", document, offset,
             async current => (await current.ExtensionAsync<AspireRenaming>(Handlers.AspireRename, new AspireRenameRequest(current.PlaceOf(offset), name))).Made
-                ?? new Refactored($"{old} was not renamed: no resource is named there any longer", []),
+                ?? new Refactored(Refusals.NotRenamed(old, "no resource is named there any longer"), []),
             files => $"Renamed {old} to {name} in {Passenger.Core.Plural.Of(files, "file")}", patience);
 
     /// <summary>Aspire's Go to Declaration, in an AppHost's or a service's file: AddProject's project file, not its generated

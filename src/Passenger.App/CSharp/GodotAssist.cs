@@ -253,7 +253,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
             }
             // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
             RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience => await NodeAtAsync(document, caret) is ({ } again, { Name: var now } same) && now == old
-                ? await csharp.RenameNodesAsync(again, [same], old, name, patience) : RefactorOutcome.Refused($"{old} was not renamed: {document.Name} changed as it was read"));
+                ? await csharp.RenameNodesAsync(again, [same], old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name)));
             context.Say(made.Problem ?? made.Said);
         });
     }

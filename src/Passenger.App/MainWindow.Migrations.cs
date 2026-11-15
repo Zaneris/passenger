@@ -192,7 +192,7 @@ public partial class MainWindow
                     fixes.Add(new CSharp.EditorFix(fix.Title, gap.Said, new Text.TextRange(offset, 0), string.Empty)
                     {
                         Elsewhere = async (_, _) => await controller.FixAsync(fix) is { } why ? CSharp.RefactorOutcome.Refused(why)
-                            : new CSharp.RefactorOutcome($"{fix.Title}: done", null, [.. controller.Touched.Select(t => new CSharp.RefactoredFile(t, "changed", []))], []),
+                            : new CSharp.RefactorOutcome($"{fix.Title}: done", null, [.. controller.Touched.Select(t => new CSharp.RefactoredFile(t, CSharp.RefactoredChange.Changed, []))], []),
                     });
                 }
             }

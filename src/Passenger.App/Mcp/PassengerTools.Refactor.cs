@@ -518,7 +518,7 @@ public sealed partial class PassengerTools
                     return new RefactorAnswer(kind, $"Code Cleanup would reformat {Relative(markup.Path)}", [], []);
                 }
                 CSharp.CodeActions.Reformatted formatted = await FormatXamlAsync(markup, name);
-                return new RefactorAnswer(kind, formatted.Said, formatted.Changed ? [new RefactorFile(Relative(markup.Path), "changed", [], formatted.Said)] : [], []);
+                return new RefactorAnswer(kind, formatted.Said, formatted.Changed ? [new RefactorFile(Relative(markup.Path), Words(RefactoredChange.Changed), [], formatted.Said)] : [], []);
             }
             (OpenDocument document, LspDocument lsp) = await CSharpOnly(path, kind, cancel);
             if (describe)
@@ -530,7 +530,7 @@ public sealed partial class PassengerTools
             document.Save();
             await LandedAsync(cancel);
             return new RefactorAnswer(kind, $"{Relative(document.Path)}: {done}",
-                document.Text.Version == before ? [] : [new RefactorFile(Relative(document.Path), "changed", [], done)], []);
+                document.Text.Version == before ? [] : [new RefactorFile(Relative(document.Path), Words(RefactoredChange.Changed), [], done)], []);
         }
         if (scope is not ("project" or "solution"))
         {
@@ -596,7 +596,7 @@ public sealed partial class PassengerTools
             string done = await TidyOne(lsp, document, cleanup);
             if (document.Text.Version != before)
             {
-                tidied.Add(new RefactorFile(Relative(document.Path), "changed", [], done));
+                tidied.Add(new RefactorFile(Relative(document.Path), Words(RefactoredChange.Changed), [], done));
             }
         }
     }
@@ -644,9 +644,12 @@ public sealed partial class PassengerTools
     /// <summary>A refactoring's outcome as the agent reads it: refused with why, or each file it changed and what it left.</summary>
     private RefactorAnswer Applied(string kind, RefactorOutcome made) => made.Problem is { } problem
         ? throw new InvalidOperationException(problem)
-        : new RefactorAnswer(kind, made.Said, [.. made.Files.Select(f => new RefactorFile(Relative(f.Path), f.Change, f.Lines, To: f.To is { } to ? Relative(to) : null))],
+        : new RefactorAnswer(kind, made.Said, [.. made.Files.Select(f => new RefactorFile(Relative(f.Path), Words(f.Change), f.Lines, To: f.To is { } to ? Relative(to) : null))],
             [.. made.Left.Select(name => $"{name}: it was edited meanwhile, so it was left as it is"),
                 .. made.Unchanged.Select(use => $"{Relative(use.Path)}:{use.Line}:{use.Column}: {use.Why}, so it was left as it is")]);
+
+    /// <summary>What a refactoring did to a file, as an agent reads it ("moved").</summary>
+    private static string Words(RefactoredChange change) => JsonNamingPolicy.CamelCase.ConvertName(change.ToString());
 
     private static RefactorAnswer Described(string kind, string said, object dialog) =>
         new(kind, said + "; send options to apply it", [], [], JsonSerializer.SerializeToElement(dialog, DialogJson));
