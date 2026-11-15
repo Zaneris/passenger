@@ -21,7 +21,7 @@ public sealed record ConfigurationProject(string Project, string? UserSecretsId,
         UserSecrets.FileOf(UserSecrets.Of(Project, UserSecretsId, text)) is { } file ? PathNames.Canonical(file) : null;
 
     /// <summary>Its appsettings.json, there or not.</summary>
-    public string Settings => Path.Combine(Folder, "appsettings.json");
+    public string Settings => Path.Combine(Folder, AppSettingsFiles.Base);
 
     public string LaunchSettings => Run.LaunchProfile.SettingsIn(Folder);
 }
@@ -53,7 +53,7 @@ public sealed record ConfiguredCode(string Project, IReadOnlyList<ConfigurationP
 
     /// <summary>The environments the programs run in (<see cref="ConfigurationFiles.Environments"/>), each once.</summary>
     public IReadOnlyList<string> Environments(Func<string, string?> text) =>
-        [.. Programs.SelectMany(p => ConfigurationFiles.Environments(p, text)).Distinct(StringComparer.OrdinalIgnoreCase)];
+        [.. Programs.SelectMany(p => ConfigurationFiles.Environments(p.LaunchSettings, text)).Distinct(StringComparer.OrdinalIgnoreCase)];
 }
 
 /// <summary>What gives a configuration key: a settings file of the project's folder, a launch profile's variable, the
@@ -86,12 +86,6 @@ public sealed record GivenKey(string Key, GivenBy By, string? File, int Start, i
 /// inherits. What a key nothing gives is warned of against, completion leaves out as given, and Go to Declaration goes to.</summary>
 public static partial class ConfigurationFiles
 {
-    /// <summary>Whether a file is a settings file .NET's host reads: appsettings.json or appsettings.{anything}.json.</summary>
-    public static bool IsSettings(string path) =>
-        Path.GetFileName(path) is { } name && name.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase)
-        && name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
-        && (name.Length == "appsettings.json".Length || name["appsettings".Length] == '.');
-
     /// <summary>The user secrets id whose secrets.json a file is, under the secrets' folder (<see cref="UserSecrets.Root"/>);
     /// null for any other file.</summary>
     public static string? SecretsIdOf(string path)
@@ -104,12 +98,12 @@ public static partial class ConfigurationFiles
         return PathNames.Same(PathNames.Canonical(root), PathNames.Canonical(UserSecrets.Root)) ? Path.GetFileName(folder) : null;
     }
 
-    /// <summary>The environments a project runs in from its launch profiles, as ASP.NET Core reads each
+    /// <summary>The environments a program runs in from its launch profiles' file, as ASP.NET Core reads each
     /// (<see cref="AspNetCoreVariables.EnvironmentOf"/>), Development for a profile that names none, or where it has none.</summary>
-    public static IReadOnlyList<string> Environments(ConfigurationProject project, Func<string, string?> text)
+    public static IReadOnlyList<string> Environments(string launchSettings, Func<string, string?> text)
     {
         HashSet<string> found = new(StringComparer.OrdinalIgnoreCase);
-        foreach (Run.LaunchProfile profile in Run.LaunchProfile.Parse(text(project.LaunchSettings)))
+        foreach (Run.LaunchProfile profile in Run.LaunchProfile.Parse(text(launchSettings)))
         {
             found.Add(AspNetCoreVariables.EnvironmentOf(profile.EnvironmentVariables.GetValueOrDefault, "Development"));
         }
@@ -120,7 +114,7 @@ public static partial class ConfigurationFiles
     public static IReadOnlyList<GivenKey> Given(ConfigurationProject project, Func<string, string?> text)
     {
         List<GivenKey> given = [];
-        foreach (string file in Environments(project, text).Select(e => $"appsettings.{e}.json").Prepend("appsettings.json"))
+        foreach (string file in AppSettingsFiles.Read(Environments(project.LaunchSettings, text)))
         {
             string path = Path.Combine(project.Folder, file);
             given.AddRange(Flatten(text(path), path, GivenBy.Settings));

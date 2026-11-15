@@ -59,7 +59,7 @@ public sealed partial record BackingService(string Service, string Image, string
 
     /// <summary>The connection strings a project's appsettings.json declares (ConnectionStrings), or another settings file
     /// of its folder (appsettings.Development.json), each name with its value (empty for one that is no string), in its order.</summary>
-    public static IReadOnlyList<(string Name, string Value)> ConnectionStrings(string folder, string named = "appsettings.json")
+    public static IReadOnlyList<(string Name, string Value)> ConnectionStrings(string folder, string named = AppSettingsFiles.Base)
     {
         string settings = System.IO.Path.Combine(folder, named);
         try
@@ -83,7 +83,7 @@ public sealed partial record BackingService(string Service, string Image, string
     /// file's name; null where neither gives one that is not empty. A compose file's check and Aspire's alike read it.</summary>
     public static (string File, string Value)? Configured(string folder, string name, string environment)
     {
-        foreach (string file in (string[])[$"appsettings.{environment}.json", "appsettings.json"])
+        foreach (string file in AppSettingsFiles.Read([environment]).Reverse())
         {
             if (ConnectionStrings(folder, file).FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Value is { Length: > 0 } value)
             {

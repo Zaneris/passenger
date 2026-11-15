@@ -16,30 +16,24 @@ public sealed record AspireAppHostSettings(string AppHost, string? UserSecretsId
     public string? SecretsIn(Func<string, string?> text) => UserSecrets.FileOf(UserSecrets.Of(AppHost, UserSecretsId, text));
 
     /// <summary>Its appsettings.json, there or not.</summary>
-    public string Settings => Path.Combine(Folder, "appsettings.json");
+    public string Settings => Path.Combine(Folder, AppSettingsFiles.Base);
+
+    /// <summary>The file its launch profiles are in, there or not.</summary>
+    public string LaunchSettings => Passenger.Host.ProgramFiles.IsProgram(AppHost) ? Run.LaunchProfile.FileSettingsPath(AppHost) : Run.LaunchProfile.SettingsIn(Folder);
 }
 
-/// <summary>An AppHost's parameters' values where Passenger can know them before it runs: <c>Parameters:NAME</c> in its
-/// folder's appsettings*.json and in its user secrets (an environment variable or the command line only a run has), and the
-/// change that sets one: in the user secrets for a secret, else in appsettings.json, every other character of the file
-/// kept. A value is never read back out of either, only whether it is there.</summary>
+/// <summary>An AppHost's parameters' values where Passenger can know them before it runs: <c>Parameters:NAME</c> in the
+/// settings files it reads in the environments its launch profiles run it in (<see cref="ConfigurationFiles.Environments"/>)
+/// and in its user secrets (an environment variable or the command line only a run has), and the change that sets one: in
+/// the user secrets for a secret, else in appsettings.json, every other character of the file kept. A value is never read
+/// back out of either, only whether it is there.</summary>
 public static class AspireParameters
 {
     /// <summary>Whether the AppHost's configuration gives a parameter a value, read from <paramref name="text"/> (an open
     /// file's text as it stands, else the disk's).</summary>
-    public static bool HasValue(AspireAppHostSettings host, string name, Func<string, string?> text)
-    {
-        IEnumerable<string> settings;
-        try
-        {
-            settings = Directory.Exists(host.Folder) ? Directory.EnumerateFiles(host.Folder, "appsettings*.json").ToList() : [];
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            settings = [];
-        }
-        return settings.Append(host.SecretsIn(text)).OfType<string>().Any(file => Holds(text(file), name));
-    }
+    public static bool HasValue(AspireAppHostSettings host, string name, Func<string, string?> text) =>
+        AppSettingsFiles.Read(ConfigurationFiles.Environments(host.LaunchSettings, text)).Select(file => Path.Combine(host.Folder, file))
+            .Append(host.SecretsIn(text)).OfType<string>().Any(file => Holds(text(file), name));
 
     /// <summary>Whether a configuration file's text gives Parameters:NAME a value, its keys read as .NET's configuration
     /// reads them (nested objects joined by ':', letter case aside), the name also with its dashes as underscores.</summary>

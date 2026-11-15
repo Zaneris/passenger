@@ -373,24 +373,7 @@ public sealed class MigrationsTests
     [AvaloniaFact]
     public void A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo()
     {
-        string folder = ShopApp.Make(design: true, tool: ShopApp.Version, program: """
-            using Microsoft.EntityFrameworkCore;
-
-            using ShopContext context = new(new DbContextOptionsBuilder<ShopContext>().UseSqlite("Data Source=shop.db").Options);
-            Console.WriteLine(context.Products.Count());
-
-            public sealed class Product
-            {
-                public int Id { get; set; }
-                public string Name { get; set; } = "";
-            }
-
-            public sealed class ShopContext(DbContextOptions<ShopContext> options) : DbContext(options)
-            {
-                public DbSet<Product> Products => Set<Product>();
-            }
-
-            """);
+        string folder = ShopApp.Make(design: true, tool: ShopApp.Version, program: Unregistered);
         TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*Factory.cs]\nend_of_line = crlf\ncharset = utf-8-bom\n");
         const string Production = "Server=reporting.example;Database=reports;User Id=sa;Password=Pr0duction-Secret";
         TestFolders.Write(folder, "appsettings.json", $$"""
@@ -427,6 +410,72 @@ public sealed class MigrationsTests
 
             UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"));
             Assert.False(File.Exists(factory), "Undo left the factory it added");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A shop whose ShopContext no host registers and which has no parameterless constructor, so dotnet ef cannot
+    /// make it without a design-time factory.</summary>
+    private const string Unregistered = """
+        using Microsoft.EntityFrameworkCore;
+
+        using ShopContext context = new(new DbContextOptionsBuilder<ShopContext>().UseSqlite("Data Source=shop.db").Options);
+        Console.WriteLine(context.Products.Count());
+
+        public sealed class Product
+        {
+            public int Id { get; set; }
+            public string Name { get; set; } = "";
+        }
+
+        public sealed class ShopContext(DbContextOptions<ShopContext> options) : DbContext(options)
+        {
+            public DbSet<Product> Products => Set<Product>();
+        }
+
+        """;
+
+    /// <summary>The design-time factory added for a context reads the connection the startup project's settings name for it
+    /// in the environment its run gives dotnet ef: with its launch profile running it in Staging, appsettings.Staging.json's
+    /// ShopContext, which appsettings.json and appsettings.Development.json do not name.</summary>
+    [AvaloniaFact]
+    public void A_design_time_factory_reads_the_connection_the_settings_of_the_runs_environment_name()
+    {
+        string folder = ShopApp.Make(design: true, tool: ShopApp.Version, program: Unregistered);
+        TestFolders.Write(folder, "Properties/launchSettings.json", """
+            {
+              "profiles": {
+                "Shop": {
+                  "commandName": "Project",
+                  "environmentVariables": {
+                    "ASPNETCORE_ENVIRONMENT": "Staging"
+                  }
+                }
+              }
+            }
+
+            """);
+        TestFolders.Write(folder, "appsettings.json", "{\n  \"ConnectionStrings\": {\n    \"Reporting\": \"Data Source=reports.db\"\n  }\n}\n");
+        TestFolders.Write(folder, "appsettings.Development.json", "{\n  \"ConnectionStrings\": {\n    \"Audit\": \"Data Source=audit.db\"\n  }\n}\n");
+        TestFolders.Write(folder, "appsettings.Staging.json", "{\n  \"ConnectionStrings\": {\n    \"ShopContext\": \"Data Source=shop.db\"\n  }\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Migrations);
+            Ui.WaitFor(() => Gaps(window).Contains("dotnet ef cannot make ShopContext", StringComparison.Ordinal) && window.Migrations.Busy is null,
+                $"why the context cannot be made ({window.Status}; gaps: {Gaps(window)})", Slow);
+
+            Ui.ClickButton(window.MigrationsView, "Add a Design-Time Factory for ShopContext");
+            string factory = Path.Combine(folder, "ShopContextFactory.cs");
+            Ui.WaitFor(() => File.Exists(factory), "the factory written");
+            string made = File.ReadAllText(factory);
+            Assert.True(made.Contains("ConnectionString(\"ShopContext\")", StringComparison.Ordinal),
+                $"The factory does not read ShopContext, the connection appsettings.Staging.json names for the run's environment:\n{made}");
+            Assert.True(window.Status?.Contains("reads the connection string ShopContext, as the configuration's name for it names it", StringComparison.Ordinal) == true,
+                $"Adding the factory said \"{window.Status}\"");
         }
         finally
         {

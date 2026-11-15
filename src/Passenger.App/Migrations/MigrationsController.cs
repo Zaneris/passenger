@@ -1001,7 +1001,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             case EfFixKind.AlignProvider:
                 return await AlignAsync(startup, runtime, work);
             case EfFixKind.AddFactory:
-                return await AddFactoryAsync();
+                return await AddFactoryAsync(work);
             case EfFixKind.ScriptPlain:
                 return null;
             case EfFixKind.AddMigration:
@@ -1119,8 +1119,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
 
     /// <summary>A design-time factory for the context, beside the project's file, from a template: the provider's own
     /// <c>Use…</c> with the connection string of the context's name (<see cref="EfConnections"/>), read from the startup
-    /// project's configuration as dotnet ef runs; where nothing tells that name, the context's own, said.</summary>
-    private async Task<string?> AddFactoryAsync()
+    /// project's configuration as dotnet ef runs, in the environment its run gives it; where nothing tells that name, the
+    /// context's own, said.</summary>
+    private async Task<string?> AddFactoryAsync(Working work)
     {
         if (Project is not { } project || Startup is not { } startup)
         {
@@ -1139,9 +1140,12 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return $"{Path.GetFileName(file)} is already there";
         }
         CSharpParseOptions options = CompilationSymbols.Of(project);
+        // dotnet ef runs the startup project in Development where its run names no environment.
+        IReadOnlyDictionary<string, string> runs = (await RunOfAsync(startup, work)).Environment;
+        string environment = AspNetCoreVariables.EnvironmentOf(name => runs.GetValueOrDefault(name) ?? System.Environment.GetEnvironmentVariable(name), "Development");
         (string Name, string Told)? told = await BackgroundWork.Run(() => EfConnections.NameOf(context.Name,
             new[] { startup, project }.Distinct().SelectMany(p => FolderWalk.ProjectFiles(p, ".cs")).Distinct(PathNames.Comparer).Select(f => (f, Code(f))),
-            options, EfConnections.Configured(startup.Folder)));
+            options, EfConnections.Configured(startup.Folder, environment)));
         if (File.Exists(file))
         {
             return $"{Path.GetFileName(file)} is already there";

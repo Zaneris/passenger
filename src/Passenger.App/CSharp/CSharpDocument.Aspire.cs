@@ -92,9 +92,9 @@ public sealed partial class CSharpDocument
         return unset;
     }
 
-    /// <summary>An AppHost's parameters that take their value from its configuration alone and have none there (its
-    /// appsettings*.json, its user secrets, as the editor has them when open), each a warning on its name; the files are
-    /// read off the UI thread, values never.</summary>
+    /// <summary>An AppHost's parameters that take their value from its configuration alone and have none there (the settings
+    /// files of the environments it runs in, its user secrets, as the editor has them when open), each a warning on its name;
+    /// the files are read off the UI thread, values never.</summary>
     private async Task<IReadOnlyList<Diagnostic>> AspireUnsetParametersAsync(LspDocument lsp, CancellationToken cancel)
     {
         if (service.AspireAppHostOf?.Invoke(document.Path) is not { } host)

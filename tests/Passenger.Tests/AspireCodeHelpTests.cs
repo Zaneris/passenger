@@ -299,6 +299,32 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
             .Where(m => m.Message.StartsWith("Parameter '", StringComparison.Ordinal)).Select(m => m.Message.Split('\'')[1])];
     }
 
+    /// <summary>An AppHost's parameters take their values from the settings files it reads as it runs, those of the
+    /// environment its launch profiles run it in (Development, where none says): a value in appsettings.Development.json
+    /// is one, where appsettings.Production.json, of an environment it never runs in, and appsettings-old.json, no settings
+    /// file at all, give none, so those parameters are marked.</summary>
+    [AvaloniaFact]
+    public void A_parameter_only_settings_files_the_AppHost_never_reads_give_is_marked()
+    {
+        string program = PathNames.Canonical(project.PathOf("Host/Program.cs"));
+        project.Write("Host/Program.cs", Project.Host.Replace("builder.Build().Run();",
+            "var developed = builder.AddParameter(\"developed\");\nvar staged = builder.AddParameter(\"staged\");\nvar old = builder.AddParameter(\"old\");\nbuilder.Build().Run();",
+            StringComparison.Ordinal));
+        project.Write("Host/appsettings.Development.json", "{\n  \"Parameters\": {\n    \"developed\": \"yes\"\n  }\n}\n");
+        project.Write("Host/appsettings.Production.json", "{\n  \"Parameters\": {\n    \"staged\": \"yes\"\n  }\n}\n");
+        project.Write("Host/appsettings-old.json", "{\n  \"Parameters\": {\n    \"old\": \"yes\"\n  }\n}\n");
+        MainWindow window = project.Open(program);
+        try
+        {
+            Ui.WaitFor(() => UnsetParameters(window).SetEquals(["staged", "old"]),
+                () => $"the parameters only files the AppHost never reads give, and only those, to be marked: {string.Join(", ", UnsetParameters(window))}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A parameter's fix chosen at the caret placed after some text, its value typed into the box it asks with
     /// (masked for a secret); what the window says after never holds the value.</summary>
     private static void SetParameter(MainWindow window, string after, string fix, bool secret, string value)

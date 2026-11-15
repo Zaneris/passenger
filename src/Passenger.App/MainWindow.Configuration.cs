@@ -38,7 +38,7 @@ public partial class MainWindow
         });
         Editors.Opened += (_, document) =>
         {
-            if (ConfigurationFiles.IsSettings(document.Path) || ConfigurationFiles.SecretsIdOf(document.Path) is not null
+            if (AppSettingsFiles.Is(document.Path) || ConfigurationFiles.SecretsIdOf(document.Path) is not null
                 || Path.GetFileName(document.Path).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase))
             {
                 document.Text.Changed += (_, _) => configurationTyped.Restart();

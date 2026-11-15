@@ -100,12 +100,9 @@ public static partial class FileNesting
 
     /// <summary>ASP.NET Core's settings for an environment (appsettings.Development.json) go under its settings for all
     /// (appsettings.json), which no suffix rule says.</summary>
-    public const string EnvironmentParent = "appsettings.json";
+    public const string EnvironmentParent = AppSettingsFiles.Base;
 
-    public const string EnvironmentChildren = "appsettings.*.json";
-
-    [GeneratedRegex(@"^appsettings\.[^.]+\.json$", RegexOptions.IgnoreCase)]
-    private static partial Regex EnvironmentSettings();
+    public static string EnvironmentChildren => AppSettingsFiles.Of("*");
 
     /// <summary>A compose file's override (docker-compose.api.override.yml, compose.override.yaml) goes under the compose
     /// file of its name without .override, of its extension else the other, which no suffix rule says alone.</summary>
@@ -164,7 +161,7 @@ public static partial class FileNesting
                         found.Add(match);
                     }
                 }
-                if (EnvironmentSettings().IsMatch(name) && named.TryGetValue(EnvironmentParent, out string? settings) && !found.Contains(settings))
+                if (AppSettingsFiles.EnvironmentOf(name) is not null && named.TryGetValue(EnvironmentParent, out string? settings) && !found.Contains(settings))
                 {
                     found.Add(settings);
                 }

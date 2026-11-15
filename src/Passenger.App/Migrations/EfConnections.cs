@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Migrations;
 
@@ -50,11 +51,12 @@ public static class EfConnections
         context.EndsWith("DbContext", StringComparison.Ordinal) && context.Length > 9 ? context[..^9]
         : context.EndsWith("Context", StringComparison.Ordinal) && context.Length > 7 ? context[..^7] : context;
 
-    /// <summary>The names under ConnectionStrings in a project's appsettings.json and appsettings.Development.json, in order.</summary>
-    public static IReadOnlyList<string> Configured(string folder)
+    /// <summary>The names under ConnectionStrings in the settings files a project reads running in an environment, its
+    /// appsettings.json's then the environment's, in order.</summary>
+    public static IReadOnlyList<string> Configured(string folder, string environment)
     {
         List<string> names = [];
-        foreach (string file in (string[])["appsettings.json", "appsettings.Development.json"])
+        foreach (string file in AppSettingsFiles.Read([environment]))
         {
             try
             {

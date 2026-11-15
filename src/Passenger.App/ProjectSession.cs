@@ -445,13 +445,13 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>The programs whose configuration a settings file gives, as <see cref="ConfiguredCodeOf"/> finds them for code:
-    /// an appsettings*.json's, the one whose folder holds it; a secrets.json under the user secrets' folder, those whose
-    /// UserSecretsId names its folder. A project that owns no configuration (<see cref="ProjectModel.OwnsConfiguration"/>) is
-    /// none, as nothing reads its files.</summary>
+    /// an app's settings file's (<see cref="AppSettingsFiles.Is"/>), the one whose folder holds it; a secrets.json under the
+    /// user secrets' folder, those whose UserSecretsId names its folder. A project that owns no configuration
+    /// (<see cref="ProjectModel.OwnsConfiguration"/>) is none, as nothing reads its files.</summary>
     public IReadOnlyList<ConfigurationProject> ConfiguredBy(string path)
     {
         IReadOnlyList<ProjectModel> all = Projects;
-        if (ConfigurationFiles.IsSettings(path))
+        if (AppSettingsFiles.Is(path))
         {
             return ProjectOf(path) is { OwnsConfiguration: true } project && PathNames.Same(Path.GetDirectoryName(project.Path)!, Path.GetDirectoryName(path)!)
                 ? [ConfigurationOf(project, all)] : [];

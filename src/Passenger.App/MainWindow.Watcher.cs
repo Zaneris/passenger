@@ -105,7 +105,7 @@ public partial class MainWindow
             IdeErrors.Observe(OfferGodotTemplatesAsync());
         }
         // A settings file, a launch profile or a compose file written: the reads of keys nothing gave are looked at again.
-        if (changes.Lost || changes.LaunchProfiles || changes.Paths.Any(p => ConfigurationFiles.IsSettings(p) || Containers.ComposeFiles.IsCompose(p)))
+        if (changes.Lost || changes.LaunchProfiles || changes.Paths.Any(p => AppSettingsFiles.Is(p) || Containers.ComposeFiles.IsCompose(p)))
         {
             session.CSharp?.ConfigurationChanged();
         }
