@@ -118,34 +118,21 @@ public static partial class GDScriptRefactorings
     /// <summary>The expression lying exactly over a range of the text (written in parentheses or not), the outermost such.</summary>
     private static GDScriptExpression? ExpressionOver(GDScriptNode root, int offset, string text, TextRange range)
     {
-        (int start, int end) = Trimmed(text, range.Start, range.End);
-        while (end - start >= 2 && text[start] == '(' && text[end - 1] == ')')
+        TextRange over = TextRange.Trimmed(text, range);
+        while (over.Length >= 2 && text[over.Start] == '(' && text[over.End - 1] == ')')
         {
-            (start, end) = Trimmed(text, start + 1, end - 1);
+            over = TextRange.Trimmed(text, new TextRange(over.Start + 1, over.Length - 2));
         }
         GDScriptExpression? found = null;
         foreach (GDScriptNode node in GDScriptNodes.Below(root))
         {
-            if (node is GDScriptExpression expression && offset + node.Start == start && offset + node.End == end
+            if (node is GDScriptExpression expression && offset + node.Start == over.Start && offset + node.End == over.End
                 && (found is null || node.End - node.Start >= found.End - found.Start))
             {
                 found = expression;
             }
         }
         return found;
-    }
-
-    private static (int Start, int End) Trimmed(string text, int start, int end)
-    {
-        while (start < end && char.IsWhiteSpace(text[start]))
-        {
-            start++;
-        }
-        while (end > start && char.IsWhiteSpace(text[end - 1]))
-        {
-            end--;
-        }
-        return (start, end);
     }
 
     /// <summary>Where the line after an offset's starts (the text's end for the last line).</summary>
@@ -611,7 +598,9 @@ public static partial class GDScriptRefactorings
             return GDScriptRefactored.No($"the script already has a member '{name}'");
         }
         int offset = located.Offset;
-        (int from, int to) = Trimmed(text, selection.Start, selection.End);
+        TextRange selected = TextRange.Trimmed(text, selection);
+        int from = selected.Start;
+        int to = selected.End;
         Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(body);
         GDScriptSuite? suite = GDScriptNodes.Below(body).OfType<GDScriptSuite>()
             .Where(s => s.Statements.Any(st => offset + st.Start >= from && offset + st.End <= to))

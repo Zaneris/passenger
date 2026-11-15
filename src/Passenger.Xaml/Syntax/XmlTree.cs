@@ -201,7 +201,7 @@ public sealed class XmlTree
             {
                 if (end > start && open.Count == 0 && !IsBlank(start, end) && roots.Count > 0)
                 {
-                    problems.Add(new XmlProblem(Trimmed(start, end), "Text is outside the root element"));
+                    problems.Add(new XmlProblem(TextRange.Trimmed(text, TextRange.FromBounds(start, end)), "Text is outside the root element"));
                 }
                 return;
             }
@@ -221,19 +221,6 @@ public sealed class XmlTree
                 }
             }
             return true;
-        }
-
-        private TextRange Trimmed(int start, int end)
-        {
-            while (start < end && char.IsWhiteSpace(text[start]))
-            {
-                start++;
-            }
-            while (end > start && char.IsWhiteSpace(text[end - 1]))
-            {
-                end--;
-            }
-            return TextRange.FromBounds(start, end);
         }
 
         private void Comment()

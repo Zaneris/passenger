@@ -35,17 +35,9 @@ public static class SurroundScopes
             LineSpan line = text.GetLine(text.GetLineFromOffset(Math.Min(selection.Start, text.Length)));
             selection = new TextRange(line.Start, line.Length);
         }
-        int start = selection.Start;
-        int end = Math.Min(selection.End, text.Length);
-        while (start < end && char.IsWhiteSpace(text[start]))
-        {
-            start++;
-        }
-        while (end > start && char.IsWhiteSpace(text[end - 1]))
-        {
-            end--;
-        }
-        TextRange range = TextRange.FromBounds(start, end);
+        TextRange range = TextRange.Trimmed(text, TextRange.FromBounds(selection.Start, Math.Min(selection.End, text.Length)));
+        int start = range.Start;
+        int end = range.End;
         SyntaxNode root = syntax.Root;
         if (range.Length == 0 || Inside(root, start) || Inside(root, end))
         {

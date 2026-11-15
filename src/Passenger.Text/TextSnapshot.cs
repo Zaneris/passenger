@@ -239,6 +239,28 @@ public readonly record struct TextRange(int Start, int Length)
     public static TextRange FromBounds(int start, int end) => new(start, end - start);
 
     public bool Contains(int offset) => offset >= Start && offset < End;
+
+    /// <summary>What a range of a text holds without the white space at its two ends: empty at the range's end where it
+    /// holds nothing else.</summary>
+    public static TextRange Trimmed(string text, TextRange range) => Trimmed(text, range, static (held, at) => held[at]);
+
+    /// <inheritdoc cref="Trimmed(string, TextRange)"/>
+    public static TextRange Trimmed(TextSnapshot text, TextRange range) => Trimmed(text, range, static (held, at) => held[at]);
+
+    private static TextRange Trimmed<T>(T text, TextRange range, Func<T, int, char> charAt)
+    {
+        int start = range.Start;
+        int end = range.End;
+        while (start < end && char.IsWhiteSpace(charAt(text, start)))
+        {
+            start++;
+        }
+        while (end > start && char.IsWhiteSpace(charAt(text, end - 1)))
+        {
+            end--;
+        }
+        return FromBounds(start, end);
+    }
 }
 
 /// <summary>Replace <see cref="Length"/> characters at <see cref="Start"/> with <see cref="Text"/>.</summary>

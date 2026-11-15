@@ -167,18 +167,7 @@ public sealed record XamlFileSummary(string Path, string? Class, IReadOnlyList<R
         }
         if (element.LocalName is "SolidColorBrush" or "Color" && element.Texts.Count == 1 && element.Children.Count == 0)
         {
-            TextRange range = element.Texts[0].Range;
-            int start = range.Start;
-            int end = range.End;
-            while (start < end && char.IsWhiteSpace(text[start]))
-            {
-                start++;
-            }
-            while (end > start && char.IsWhiteSpace(text[end - 1]))
-            {
-                end--;
-            }
-            return TextRange.FromBounds(start, end);
+            return TextRange.Trimmed(text, element.Texts[0].Range);
         }
         return null;
     }

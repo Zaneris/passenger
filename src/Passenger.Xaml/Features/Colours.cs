@@ -52,7 +52,7 @@ public static class Colours
             if (element.LocalName is "Color" or "SolidColorBrush" && element.Children.Count == 0 && element.Texts.Count == 1)
             {
                 XmlText text = element.Texts[0];
-                TextRange trimmed = Trim(file.Text, text.Range);
+                TextRange trimmed = TextRange.Trimmed(file.Text, text.Range);
                 if (KnownColours.Parse(file.Text[trimmed.Start..trimmed.End]) is { } literal)
                 {
                     found.Add(new ColourUse(trimmed.Start, literal, file.Path, trimmed, ColourForm.Text));
@@ -77,7 +77,7 @@ public static class Colours
                 {
                     continue;
                 }
-                TextRange value = Trim(file.Text, attribute.ValueRange);
+                TextRange value = TextRange.Trimmed(file.Text, attribute.ValueRange);
                 if (KnownColours.Parse(file.Text[value.Start..value.End]) is { } colour)
                 {
                     found.Add(new ColourUse(value.Start, colour, file.Path, value, ColourForm.Text));
@@ -119,21 +119,6 @@ public static class Colours
             return Resource(project, defining, next.Value, variant, steps - 1);
         }
         return null;
-    }
-
-    private static TextRange Trim(string text, TextRange range)
-    {
-        int start = range.Start;
-        int end = range.End;
-        while (start < end && char.IsWhiteSpace(text[start]))
-        {
-            start++;
-        }
-        while (end > start && char.IsWhiteSpace(text[end - 1]))
-        {
-            end--;
-        }
-        return TextRange.FromBounds(start, end);
     }
 
     /// <summary>A C# file's colours: <c>Color.Parse("#…")</c> (and a brush's), <c>Color.FromRgb</c>, <c>Color.FromArgb</c>
