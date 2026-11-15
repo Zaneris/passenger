@@ -42,7 +42,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
             OpenDocument? shown = context.Editors.Active;
             string? markup = shown is null ? null : ScopedCss.MarkupOf(shown.Path);
             Func<TextSnapshot, int, CancellationToken, Task<CodeCompletion.OwnItems?>>? own = markup is not null ? (asked, caret, cancel) => ScopedItemsAsync(markup, asked, caret, cancel)
-                : shown is not null && GodotScriptTypes.IsScript(shown.Path) ? (asked, caret, _) => CSharpItemsAsync(shown, asked, caret)
+                : shown is not null && GodotScriptTypes.IsScript(shown.Path) ? (asked, caret, _) => CSharpItemsAsync(web, shown, asked, caret)
                 : null;
             await completion.ServerListAsync(lsp, trigger, incomplete, web, own);
         }
@@ -51,9 +51,9 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
 
     /// <summary>What Godot's server cannot list after a node's dot in a GDScript (<c>$Player.</c>): the members of the C# script
     /// the scenes run on the node, listed first, each once beside the server's; null elsewhere.</summary>
-    private async Task<CodeCompletion.OwnItems?> CSharpItemsAsync(OpenDocument document, TextSnapshot asked, int caret)
+    private async Task<CodeCompletion.OwnItems?> CSharpItemsAsync(WebDocument web, OpenDocument document, TextSnapshot asked, int caret)
     {
-        int start = context.WordStart(caret);
+        int start = WebWordStart(web, asked, Math.Min(caret, asked.Length));
         if (start < 2 || asked[start - 1] != '.' || context.GodotScriptTypes?.Invoke() is not { } types || await types.TypedAsync(document) is not { } typed
             || document.Text.Snapshot != asked)
         {
@@ -225,12 +225,17 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         _ => c is '"' or '-' or '.' or '@' or '/',
     };
 
+    /// <summary>A character of a web language's name: a GDScript's by Godot's identifier rule alone, another's an
+    /// identifier's (<see cref="AssistContext.IsIdentifierChar"/>) or one of its own (<see cref="IsWebWordChar"/>).</summary>
+    public static bool IsWebNameChar(WebDocument web, char c) =>
+        web.Kind == WebServerKind.GDScript ? GDScriptTokenizer.MayContinueIdentifier(c) : AssistContext.IsIdentifierChar(c) || IsWebWordChar(web, c);
+
     private int WebWordStart(WebDocument web, int caret) => WebWordStart(web, Editor.Document.Snapshot, caret);
 
     public static int WebWordStart(WebDocument web, TextSnapshot text, int caret)
     {
         int start = caret;
-        while (start > 0 && (AssistContext.IsIdentifierChar(text[start - 1]) || (IsWebWordChar(web, text[start - 1]) && text[start - 1] != '"')))
+        while (start > 0 && IsWebNameChar(web, text[start - 1]) && text[start - 1] != '"')
         {
             start--;
         }
@@ -242,7 +247,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
     {
         int start = WebWordStart(web, text, Math.Min(offset, text.Length));
         int end = Math.Min(offset, text.Length);
-        while (end < text.Length && (AssistContext.IsIdentifierChar(text[end]) || (IsWebWordChar(web, text[end]) && text[end] != '"')))
+        while (end < text.Length && IsWebNameChar(web, text[end]) && text[end] != '"')
         {
             end++;
         }

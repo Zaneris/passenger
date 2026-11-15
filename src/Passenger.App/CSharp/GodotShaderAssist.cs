@@ -48,7 +48,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
         {
             return true;
         }
-        bool starts = AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(caret) == caret - 1;
+        bool starts = context.StartsName(last, caret);
         bool marks = last is ',' or ':' && spot is GodotShaderSpot.RenderModes or GodotShaderSpot.StencilModes or GodotShaderSpot.Hints
             || last is '"' or '/' && spot == GodotShaderSpot.Include;
         if ((starts && spot is not (GodotShaderSpot.None or GodotShaderSpot.Member)) || marks)

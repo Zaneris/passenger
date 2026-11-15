@@ -165,7 +165,7 @@ public partial class MainWindow
         string[] parts = name.Trim().Split('/', '\\');
         string last = parts[^1];
         string type = last.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ? last[..^3] : last;
-        if (type.Length == 0 || !char.IsLetter(type[0]) && type[0] != '_' || !type.All(c => char.IsLetterOrDigit(c) || c == '_'))
+        if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(type))
         {
             return $"{type} is not a C# name";
         }
@@ -196,8 +196,8 @@ public partial class MainWindow
 
         static string Identifier(string part)
         {
-            string name = new([.. part.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c : '_')]);
-            return char.IsDigit(name[0]) ? "_" + name : name;
+            string name = new([.. part.Select(c => AssistContext.IsIdentifierChar(c) ? c : '_')]);
+            return AssistContext.IsIdentifierStart(name[0]) ? name : "_" + name;
         }
     }
 

@@ -54,7 +54,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         char last = text[^1];
         int caret = Editor.Selections.Primary.Caret;
-        if (XamlTrigger(text) || (AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(caret) == caret - 1))
+        if (XamlTrigger(text) || context.StartsName(last, caret))
         {
             IdeErrors.Observe(completion.Start(null));
         }

@@ -40,7 +40,7 @@ internal sealed class MSBuildAssist : LanguageAssist
         }
         char last = text[^1];
         int caret = Editor.Selections.Primary.Caret;
-        if (MSBuildTrigger(text) || (AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(caret) == caret - 1))
+        if (MSBuildTrigger(text) || context.StartsName(last, caret))
         {
             IdeErrors.Observe(completion.Start(null));
         }

@@ -2368,7 +2368,7 @@ public sealed class DebugController : IDisposable
             return -1;
         }
         int end = Math.Min(offset, text.Length);
-        while (end < text.Length && IsWordChar(text[end]))
+        while (end < text.Length && SyntaxFacts.IsIdentifierPartCharacter(text[end]))
         {
             end++;
         }
@@ -2428,27 +2428,27 @@ public sealed class DebugController : IDisposable
     /// "this.name.Length".</summary>
     public static string? ExpressionAt(TextSnapshot text, int offset)
     {
-        if (offset >= text.Length || !IsWordChar(text[offset]))
+        if (offset >= text.Length || !SyntaxFacts.IsIdentifierPartCharacter(text[offset]))
         {
-            if (offset == 0 || offset > text.Length || !IsWordChar(text[offset - 1]))
+            if (offset == 0 || offset > text.Length || !SyntaxFacts.IsIdentifierPartCharacter(text[offset - 1]))
             {
                 return null;
             }
             offset--;
         }
         int end = offset;
-        while (end < text.Length && IsWordChar(text[end]))
+        while (end < text.Length && SyntaxFacts.IsIdentifierPartCharacter(text[end]))
         {
             end++;
         }
         int start = offset;
         while (true)
         {
-            while (start > 0 && IsWordChar(text[start - 1]))
+            while (start > 0 && SyntaxFacts.IsIdentifierPartCharacter(text[start - 1]))
             {
                 start--;
             }
-            if (start > 1 && text[start - 1] == '.' && IsWordChar(text[start - 2]))
+            if (start > 1 && text[start - 1] == '.' && SyntaxFacts.IsIdentifierPartCharacter(text[start - 2]))
             {
                 start--;
                 continue;
@@ -2456,7 +2456,7 @@ public sealed class DebugController : IDisposable
             break;
         }
         string expression = text.GetText(start, end - start);
-        return expression.Length == 0 || char.IsAsciiDigit(expression[0]) || Keywords.Contains(expression) ? null : expression;
+        return expression.Length == 0 || !SyntaxFacts.IsIdentifierStartCharacter(expression[0]) || Keywords.Contains(expression) ? null : expression;
     }
 
     private static readonly HashSet<string> Keywords =
@@ -2466,8 +2466,6 @@ public sealed class DebugController : IDisposable
         "static", "readonly", "const", "new", "return", "if", "else", "for", "foreach", "while", "do", "switch", "case",
         "break", "continue", "in", "is", "as", "await", "async", "true", "false", "null", "throw", "try", "catch", "finally",
     ];
-
-    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 
     /// <summary>A session started, stopped, ran on or ended: its tab follows, and the window when the tab is chosen. A stop
     /// in a program not chosen chooses its tab; the chosen one's end chooses another still debugged (one paused first).</summary>

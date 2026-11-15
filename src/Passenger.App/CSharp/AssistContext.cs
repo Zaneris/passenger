@@ -233,7 +233,16 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>A file's text as the editor has it, else the disk's (<see cref="EditorArea.TextOf"/>); empty when it cannot be read.</summary>
     public string ReadOpenOrDisk(string path) => editors.TextOf(path)?.ToString() ?? string.Empty;
 
-    public static bool IsIdentifierChar(char c) => char.IsLetterOrDigit(c) || c == '_';
+    /// <summary>Whether a character is a C# name's, as Roslyn reads one: a letter, a decimal digit, connector punctuation, a
+    /// combining mark or a format character. The names of XAML, MSBuild and a shader are read by it too.</summary>
+    public static bool IsIdentifierChar(char c) => Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsIdentifierPartCharacter(c);
+
+    /// <summary>Whether a C# name may start with a character, as Roslyn reads one: a letter or '_'.</summary>
+    public static bool IsIdentifierStart(char c) => Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsIdentifierStartCharacter(c);
+
+    /// <summary>Whether the character just typed before an offset of the editor's text starts a name there: one a name may
+    /// start with, after none of a name's.</summary>
+    public bool StartsName(char typed, int caret) => IsIdentifierStart(typed) && WordStart(caret) == caret - 1;
 
     /// <summary>Where the identifier before an offset of the editor's text starts.</summary>
     public int WordStart(int caret)

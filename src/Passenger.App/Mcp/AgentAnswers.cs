@@ -49,7 +49,7 @@ public static class AgentAnswers
     /// <summary>An expression as written before a member it is given: as it is where it names a variable or a member of one,
     /// else in parentheses; "of its " where there is none.</summary>
     private static string Read(string? expression) => expression is not { Length: > 0 } named ? "of its "
-        : named.All(c => char.IsLetterOrDigit(c) || c is '_' or '.' or '@' or '$' or '[' or ']') && !char.IsDigit(named[0]) ? named
+        : named.All(c => Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsIdentifierPartCharacter(c) || c is '.' or '@' or '$' or '[' or ']') && !char.IsDigit(named[0]) ? named
         : $"({named})";
 
     /// <summary>A C# string literal's length as the string it writes, and how much of it is shown within

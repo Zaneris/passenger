@@ -974,11 +974,12 @@ internal sealed partial class CodeCompletion
         }
     }
 
-    /// <summary>A character of the word a completion list narrows by: an identifier's, and in a Razor file a markup
-    /// name's too (<c>@onclick</c>, <c>data-enhance-nav</c>, <c>@bind:after</c>).</summary>
-    private bool IsWordChar(char c) => AssistContext.IsIdentifierChar(c) || (c is '@' or '-' or ':' && context.InRazor) || (open?.ResourceNames == true && c == '-')
-        || (open?.WordCharacters.Contains(c) == true)
-        || (context.WebCurrent is { } web && WebAssist.IsWebWordChar(web, c));
+    /// <summary>A character of the word a completion list narrows by: a C# name's, a web language's name's in its file
+    /// (<see cref="WebAssist.IsWebNameChar"/>), and in a Razor file a markup name's too (<c>@onclick</c>,
+    /// <c>data-enhance-nav</c>, <c>@bind:after</c>).</summary>
+    private bool IsWordChar(char c) => (context.WebCurrent is { } web ? WebAssist.IsWebNameChar(web, c) : AssistContext.IsIdentifierChar(c))
+        || (c is '@' or '-' or ':' && context.InRazor) || (open?.ResourceNames == true && c == '-')
+        || (open?.WordCharacters.Contains(c) == true);
 
     /// <summary>Where a Razor list's word starts when its items say no range: back over an identifier, then over as much of
     /// a markup name before it as some item begins with, so <c>data-en</c> is replaced whole by <c>data-enhance-nav</c>

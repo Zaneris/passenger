@@ -27,7 +27,7 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         {
             IdeErrors.Observe(completion.Start(null));
         }
-        else if (AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(caret) == caret - 1)
+        else if (context.StartsName(last, caret))
         {
             IdeErrors.Observe(completion.Start(null));
         }

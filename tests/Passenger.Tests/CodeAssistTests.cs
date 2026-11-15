@@ -343,6 +343,42 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
     }
 
+    /// <summary>A C# name holding marks (नमस्ते's virama and vowel sign), one name to Roslyn, is narrowed by and replaced whole:
+    /// a list asked for after it is typed, and one opened by its first letter that its marks typed on narrow; and Find Usages
+    /// names it whole.</summary>
+    [AvaloniaFact]
+    public void A_name_holding_marks_is_narrowed_by_and_replaced_whole()
+    {
+        MainWindow window = project.Open("Marks.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        Ui.PlaceAfter(editor, "return ");
+        window.KeyTextInput("नमस्त");
+        Ui.Press(window, "control SPACE", settle: false);
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "नमस्त" && window.Assist.CompletionLabels.FirstOrDefault() == "नमस्ते",
+            () => $"नमस्ते first in the list asked for after नमस्त, narrowed by {window.Assist.CompletionNarrowedBy ?? "nothing, the list closed"}: [{string.Join(", ", window.Assist.CompletionLabels.Take(5))}]");
+        Ui.Press(window, "ENTER");
+        Assert.True(editor.Document.Snapshot.ToString().Contains("        return नमस्ते;\n", StringComparison.Ordinal),
+            $"नमस्ते was not put in place of नमस्त whole: the line reads {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}");
+
+        Ui.PlaceAfter(editor, "int twice = ");
+        foreach (string letter in new[] { "न", "म", "स", "\u094D", "त" })
+        {
+            window.KeyTextInput(letter);
+            Ui.Settle();
+        }
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "नमस्त" && window.Assist.CompletionLabels.FirstOrDefault() == "नमस्ते",
+            () => $"नमस्ते first in the list its first letter opened, narrowed through its virama by {window.Assist.CompletionNarrowedBy ?? "nothing, the list closed"}");
+        Ui.Press(window, "ENTER");
+        Assert.True(editor.Document.Snapshot.ToString().Contains("        int twice = नमस्ते;\n", StringComparison.Ordinal),
+            $"नमस्ते was not put in place of what was typed: the line reads {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}");
+
+        Ui.PlaceAfter(editor, "int न");
+        Ui.Run(window, AppActions.FindUsages);
+        Ui.WaitFor(() => window.Find.Shown == "Usages of नमस्ते", () => $"the Find window naming नमस्ते whole, where it shows {window.Find.Shown}");
+        window.Close();
+    }
+
     /// <summary>A method whose places each take a type, one local of that type and one of another type beginning as its
     /// name does.</summary>
     private const string FitsCode = "static class Fits\n{\n    public static bool Check()\n    {\n        int abc = 1;\n        bool aef = true;\n"
@@ -3489,6 +3525,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Casts.cs"), "static class Casts\n{\n    public static int Three() => (int)3;\n}\n");
             File.WriteAllText(PathOf("Ragged.cs"), Ragged);
             File.WriteAllText(PathOf("Fits.cs"), FitsCode);
+            File.WriteAllText(PathOf("Marks.cs"), "static class Marks\n{\n    public static int Greet()\n    {\n        int नमस्ते = 1;\n        int twice = ;\n        return ;\n    }\n}\n");
             File.WriteAllText(PathOf("Wide.cs"), "static class Wide\n{\n    public static int Four()\n    {\n        return Area.Of(2, 2);\n    }\n}\n", Encoding.Unicode);
             File.WriteAllText(PathOf("Actions.cs"), "static class Actions\n{\n    public static int Go()\n    {\n        int half = Half(4);\n"
                 + "        Missing gone = null;\n        return half;\n    }\n\n    private static int Half(int value) => value / 2;\n}\n");
