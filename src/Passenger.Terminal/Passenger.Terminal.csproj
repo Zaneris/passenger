@@ -3,6 +3,7 @@
        (TerminalView), and the shell it runs in a pseudo-terminal (TerminalSession, through Porta.Pty). -->
   <PropertyGroup>
     <RootNamespace>Passenger.Terminal</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

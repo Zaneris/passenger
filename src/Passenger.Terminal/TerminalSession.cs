@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia.Threading;
 using Passenger.Core;
@@ -12,7 +13,7 @@ namespace Passenger.Terminal;
 /// window's thread and fed to the <see cref="TerminalScreen"/> on it a slice at a time, keys and pastes written to it
 /// off the window's thread, its size kept to the view's. Its reads and writes block, so each has a thread of its own:
 /// on the thread pool, a pool every thread of which a build or a debugger holds would hold the shell too.</summary>
-public sealed class TerminalSession : IAsyncDisposable
+public sealed partial class TerminalSession : IAsyncDisposable
 {
     /// <summary>Output read but not yet on the screen past which reading waits, so a program writing faster than the
     /// window draws is held in its own write, as on a slow terminal, instead of its output piling up in memory.</summary>
@@ -28,6 +29,10 @@ public sealed class TerminalSession : IAsyncDisposable
     private readonly SemaphoreSlim room = new(0);
     private readonly BlockingCollection<byte[]> outgoing = new(new ConcurrentQueue<byte[]>());
     private IPtyConnection? pty;
+
+    /// <summary>The pseudo-terminal's own end on macOS and Linux, which tells whether every other end has closed
+    /// (<see cref="HungUp"/>); null on Windows, whose ConPTY stays open until it is closed.</summary>
+    private SafeHandle? controller;
 
     /// <summary>The piece the screen is taking, and how much of it it has taken.</summary>
     private Piece feeding;
@@ -54,10 +59,12 @@ public sealed class TerminalSession : IAsyncDisposable
     /// <summary>Whether the shell's end has been told: Porta.Pty's watcher and the start's own look may both find it.</summary>
     private int endTold;
 
-    /// <summary>How long output must have stopped, after the shell has exited, for its end to be told.</summary>
+    /// <summary>How long output must have stopped, after the shell has exited, for its end to be told where its
+    /// pseudo-terminal stays open.</summary>
     private static readonly TimeSpan Quiet = TimeSpan.FromMilliseconds(150);
 
-    /// <summary>The longest the end is told after the shell has exited, its output still coming.</summary>
+    /// <summary>The longest the end is told after the shell has exited, its output still coming, where its
+    /// pseudo-terminal stays open.</summary>
     private static readonly TimeSpan LastOutputLimit = TimeSpan.FromSeconds(2);
 
     /// <summary>How long a shell killed has to go, what it wrote read out, before its pseudo-terminal closes on it all the
@@ -153,6 +160,7 @@ public sealed class TerminalSession : IAsyncDisposable
             Ended(started.ExitCode);
         }
         Stream reader = pty.ReaderStream;
+        controller = OperatingSystem.IsWindows() ? null : (reader as FileStream)?.SafeFileHandle;
         Stream writer = pty.WriterStream;
         ApartThreads.Start("Terminal output", () => Read(reader));
         ApartThreads.Start("Terminal input", () => Send(writer));
@@ -374,9 +382,10 @@ public sealed class TerminalSession : IAsyncDisposable
         }
     }
 
-    /// <summary>Tells of the shell's end once what it wrote last is on the screen: when the pseudo-terminal closes, or,
-    /// where it stays open (ConPTY keeps it until it is closed, and a program the shell left behind may hold it), once
-    /// nothing more has come for a moment, two seconds at the most.</summary>
+    /// <summary>Tells of the shell's end once what it wrote last is on the screen: once its read has ended, however long
+    /// that takes where the pseudo-terminal has hung up (the shell's end hangs it up on macOS, and on Linux unless what
+    /// the shell left behind holds it); where it stays open (ConPTY keeps it until it is closed), once nothing more has
+    /// come for a moment, two seconds at the most.</summary>
     private void AfterLastOutput(int exitCode)
     {
         long exited = Stopwatch.GetTimestamp();
@@ -396,8 +405,9 @@ public sealed class TerminalSession : IAsyncDisposable
         };
         waiting.Start();
 
-        bool Done() => closed || readEnded || Stopwatch.GetElapsedTime(exited) >= LastOutputLimit
-            || Stopwatch.GetElapsedTime(Math.Max(exited, Interlocked.Read(ref lastRead))) >= Quiet;
+        bool Done() => closed || readEnded
+            || (!HungUp() && (Stopwatch.GetElapsedTime(exited) >= LastOutputLimit
+                || Stopwatch.GetElapsedTime(Math.Max(exited, Interlocked.Read(ref lastRead))) >= Quiet));
 
         void End()
         {
@@ -405,6 +415,39 @@ public sealed class TerminalSession : IAsyncDisposable
             IsRunning = false;
             Exited?.Invoke(this, exitCode);
         }
+    }
+
+    /// <summary>Whether every other end of the pseudo-terminal has closed, as poll says of its own end: its read then
+    /// ends once all it holds is read, the reader's hand-over of the last of it included. Window's thread, the session
+    /// open.</summary>
+    private bool HungUp()
+    {
+        if (controller is null)
+        {
+            return false;
+        }
+        PollDescriptor polled = new() { Descriptor = (int)controller.DangerousGetHandle(), Events = PollIn };
+        return Poll(ref polled, 1, 0) > 0 && (polled.Returned & PollHangUp) != 0;
+    }
+
+    /// <summary>poll's POLLIN, alike on macOS and Linux.</summary>
+    private const short PollIn = 0x1;
+
+    /// <summary>poll's POLLHUP, alike on macOS and Linux.</summary>
+    private const short PollHangUp = 0x10;
+
+    /// <summary>poll: how many of the descriptors have something to say within the timeout (milliseconds, 0 asking only
+    /// what holds now); -1 on a failure.</summary>
+    [LibraryImport("libc", EntryPoint = "poll")]
+    private static partial int Poll(ref PollDescriptor descriptor, nuint count, int timeout);
+
+    /// <summary>poll's struct pollfd, alike on macOS and Linux.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PollDescriptor
+    {
+        public int Descriptor;
+        public short Events;
+        public short Returned;
     }
 
     /// <summary>Puts all the output read so far on the screen at once, as the shell ends.</summary>
