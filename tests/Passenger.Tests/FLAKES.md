@@ -28,6 +28,77 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-15
+
+- `BlazorBrowserDebuggingTests`' `A_Blazor_Web_App_an_AppHost_starts_debugged_has_its_WebAssembly_component_stop_in_the_browser`,
+  CI 43716463750 (macOS shard 1 of the report lane): "Waited 360 s for the service's page component to stop in the
+  browser", both sessions running, the WebAssembly tab's console showing the page's every download of its .NET code
+  failing ("download '…/System.Drawing.r8ctzqfz3s.wasm' … failed 0 TypeError: Failed to fetch", each tried three times),
+  "Failed to start platform", 139 more "TypeError: Failed to fetch" and the Hot Reload configuration module's import
+  failing last, the server saying nothing past its start. **Neither: the browser's network service ended as the page
+  fetched its .NET code, and the IDE left the page as it was.** Ending Chrome's network service (as a crash ends it)
+  while the page fetches its code gives that console line for line on the Mac: every request under way fails, and so
+  does each retry in the moments Chrome takes to start the service again, so the page's .NET runtime never starts and
+  nothing loads the page again, unseen in a headless browser; holding the server still for 8 s instead only delays the
+  stop. CI uploads no browser log, so why the service ended there is not known; the test's own body passed 50 rounds of
+  50 on the Mac, before the fix and after. The WebAssembly session now loads a page again when its browser says its
+  network service ended before the page's .NET code started, and the test's failure names what the browser last wrote
+  (379e5d87b, #1732).
+- `InterpreterTests`' `A_large_lambda_evaluates_as_a_small_one_does_and_an_expression_that_loops_without_end_is_stopped`,
+  the report lane on CI's Windows x64 runner (43662781888): "The expression took too long to evaluate: it was stopped after
+  3 s" for the first lambda, the debugger's own code loading into the program (`Assembly.Load` of its bytes) taking 3.66 s
+  of it. **The test's limit**, as `EvalTests`' LINQ watch's: the run's 3 s is a developer machine's time, and a cold first
+  lambda needs it scaled. Both sessions now take `DebugSession.ScaledEvaluations` (the run's limit times `TimeScale`).
+- `ActionsTests`' `Every_action_Find_Action_lists_runs_where_it_was_asked_for_or_says_why_it_cannot`, the Mac under load
+  beside other test runs: "Refresh (app.containers.refresh) ran from Find Action but is not offered first the next time".
+  **A race in the IDE**: Prune…'s question of the container engine's state was not held work, so once the engine's last
+  answer was over 5 s old (the steps before took longer under load), the window went quiet with Prune's question still to
+  come; it came during Refresh's step and took the keys, so Refresh never ran. Prune now asks through `BackgroundWork.Run`
+  (642c97448); the test says, on failure, which actions ran, the status bar's words, the recent list and what has the keys,
+  and runs on a container engine of no program, never the machine's own (#1697).
+- `ProblemsTests`' `The_status_bar_says_solution_wide_analysis_is_under_way_until_its_first_round_answers`, CI 43699257512
+  (macOS, report shard 3): "Solution-wide analysis ended its first round with a pull of it unanswered". **The test waited
+  wrong.** It held the first workspace pull's answer and looked once it came, but a first round ends once Passenger's
+  extension says the pull analysed every file, which the server says before it answers, so the held answer kept nothing
+  under way: the test passed only while a slower source was still analysing as it looked (the warm server's sources had
+  all said so within milliseconds; the test took 1.09 s). The status bar is now read as the first pull is held unsent,
+  where the round surely goes on, and the test says each pull, file pull and refresh against its marks
+  (`CSharpService.AnalysisSteps`) (#1708).
+- `ProblemsTests`' `Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses`, CI
+  43699257512 (Linux, report shard 3): "asked the server again while 10 keys were typed in a burst … enc 1 then 1,
+  HotReloadDiagnostics 1 then 1". **The test waited wrong.** Avalonia's headless `KeyTextInput` runs the window's queued
+  work before it sends the key: a source's two-second rest after an answer with nothing new, come due as the warm-up's
+  settle drew its last frame, ran inside key 1's call with no file pull under way and asked before any key had come; the
+  first key let those pulls go and they were asked again once typing paused. With the window's thread stalled 2.2 s
+  before the first key it failed every time with CI's words; the test now counts from the first key's change (#1708).
+- `ProtocolBytesTests`' `A_variables_answer_of_2000_variables_costs_at_most_twice_its_JSON`, CI's macOS report lane at
+  5fe6947ca (run 43708547470): 594,408 bytes for 289,400 of JSON, 2.05 times against its 2, where it measures 1.75.
+  **The IDE**, and not load: a variable's type name is read once through `SharedNames`, which kept a name in one of 512
+  places by its bytes' `HashCode`, seeded anew in each process, so in about one process in a hundred two of the answer's
+  three type names took one place and threw each other out at every turn, about 1,000 variables reading theirs anew. A
+  harness of the test's conversation met two in 16 of 1,500 processes: 2.05 times where `Shop.Orders.Order` and the
+  `List<…>` met (CI's figure among them), 2.03 where the `List<…>` and `string` met, 1.75 in every other; the Ubuntu VM's
+  2.05 and 2.03 of 2026-11-11, put down then to the shared pool, match the first two. Load moved nothing (1.75 in 20
+  processes beside burners and a 3 GB hog). The table now keeps two places a hash, the name read last first (310475924,
+  #1722).
+- `FolderWatchTests`' `A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand`, CI
+  43708547470 (Linux report shard 1, 5fe6947ca): "A file made among 20,000 allocated 25,497 KB on its way into Go to File,
+  against 19,874 KB among 2,000 … as if the folder were walked again". **The test counted other tests' allocations**: it
+  counts every thread's (`GC.GetTotalAllocatedBytes`) and ran beside `ListedNamesTests`, whose two tests each parse all of
+  src with Roslyn; a profile put 395 of 400 MB in `ListedNamesTests.Joins`. The watchers walk nothing for a file heard
+  (about 300 KB among 2,000 or 20,000, as before). Started beside ListedNamesTests on purpose it failed with CI's words on
+  the Mac and the Ubuntu VM; it runs alone now (`FolderWatchBytesTests`), its bound as it was (da012a99c, #1721; #1725
+  holds the rule).
+- `NewGodotGameTests`' `A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it`,
+  the Mac with Godot 4.7.2: "Godot's editor did not build the game where its solution sits", Godot saying "An EditorPlugin
+  build callback failed … Aborting". **Godot's own defect**, met through this Mac's two .NET installations: its editor ran
+  on DOTNET_ROOT's .NET 11 but on macOS builds with /usr/local/share/dotnet/dotnet, which held .NET 11 only as release
+  candidates, so it registered MSBuild through the Microsoft.Build.Locator 1.2.6 it carries, which appends Sdks to
+  `dotnet --info`'s Base Path, written without its closing separator from .NET 11 on: the build got
+  `MSBuildSDKsPath=…/11.0.100Sdks` and found no Microsoft.NET.Sdk (MSB4236). The VMs' Godot builds with its own runtime's
+  dotnet and passed; CI has no Godot. The test skipped saying so where that held (ad09e8828, #1715); since #1726 Passenger hands Godot's editor the
+  .NET that builds, or says why none can before it starts, which the test now holds, and a failure names the build's own errors.
+
 ## 2026-11-13
 
 - `ProblemsTests`' `A_files_project_wide_pull_waiting_on_the_server_is_named_by_its_source`, CI 43556370791 (Linux
@@ -1714,58 +1785,3 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   `McpWindowTests`' `An_agents_definition_of_what_a_restore_brought_waits_for_its_projects_load_again_though_another_projects_load_ends_first`
   holds the server's hearing of Uses's files and the window's asking it to load Uses again (`WatchedFiles.HoldTelling`,
   `CSharpService.HoldReloads`) and failed with CI's words before (#1640).
-
-- `InterpreterTests`' `A_large_lambda_evaluates_as_a_small_one_does_and_an_expression_that_loops_without_end_is_stopped`,
-  the report lane on CI's Windows x64 runner (43662781888): "The expression took too long to evaluate: it was stopped after
-  3 s" for the first lambda, the debugger's own code loading into the program (`Assembly.Load` of its bytes) taking 3.66 s
-  of it. **The test's limit**, as `EvalTests`' LINQ watch's: the run's 3 s is a developer machine's time, and a cold first
-  lambda needs it scaled. Both sessions now take `DebugSession.ScaledEvaluations` (the run's limit times `TimeScale`).
-- `ActionsTests`' `Every_action_Find_Action_lists_runs_where_it_was_asked_for_or_says_why_it_cannot`, the Mac under load
-  beside other test runs: "Refresh (app.containers.refresh) ran from Find Action but is not offered first the next time".
-  **A race in the IDE**: Prune…'s question of the container engine's state was not held work, so once the engine's last
-  answer was over 5 s old (the steps before took longer under load), the window went quiet with Prune's question still to
-  come; it came during Refresh's step and took the keys, so Refresh never ran. Prune now asks through `BackgroundWork.Run`
-  (642c97448); the test says, on failure, which actions ran, the status bar's words, the recent list and what has the keys,
-  and runs on a container engine of no program, never the machine's own (#1697).
-- `ProblemsTests`' `The_status_bar_says_solution_wide_analysis_is_under_way_until_its_first_round_answers`, CI 43699257512
-  (macOS, report shard 3): "Solution-wide analysis ended its first round with a pull of it unanswered". **The test waited
-  wrong.** It held the first workspace pull's answer and looked once it came, but a first round ends once Passenger's
-  extension says the pull analysed every file, which the server says before it answers, so the held answer kept nothing
-  under way: the test passed only while a slower source was still analysing as it looked (the warm server's sources had
-  all said so within milliseconds; the test took 1.09 s). The status bar is now read as the first pull is held unsent,
-  where the round surely goes on, and the test says each pull, file pull and refresh against its marks
-  (`CSharpService.AnalysisSteps`) (#1708).
-- `ProblemsTests`' `Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses`, CI
-  43699257512 (Linux, report shard 3): "asked the server again while 10 keys were typed in a burst … enc 1 then 1,
-  HotReloadDiagnostics 1 then 1". **The test waited wrong.** Avalonia's headless `KeyTextInput` runs the window's queued
-  work before it sends the key: a source's two-second rest after an answer with nothing new, come due as the warm-up's
-  settle drew its last frame, ran inside key 1's call with no file pull under way and asked before any key had come; the
-  first key let those pulls go and they were asked again once typing paused. With the window's thread stalled 2.2 s
-  before the first key it failed every time with CI's words; the test now counts from the first key's change (#1708).
-- `ProtocolBytesTests`' `A_variables_answer_of_2000_variables_costs_at_most_twice_its_JSON`, CI's macOS report lane at
-  5fe6947ca (run 43708547470): 594,408 bytes for 289,400 of JSON, 2.05 times against its 2, where it measures 1.75.
-  **The IDE**, and not load: a variable's type name is read once through `SharedNames`, which kept a name in one of 512
-  places by its bytes' `HashCode`, seeded anew in each process, so in about one process in a hundred two of the answer's
-  three type names took one place and threw each other out at every turn, about 1,000 variables reading theirs anew. A
-  harness of the test's conversation met two in 16 of 1,500 processes: 2.05 times where `Shop.Orders.Order` and the
-  `List<…>` met (CI's figure among them), 2.03 where the `List<…>` and `string` met, 1.75 in every other; the Ubuntu VM's
-  2.05 and 2.03 of 2026-11-11, put down then to the shared pool, match the first two. Load moved nothing (1.75 in 20
-  processes beside burners and a 3 GB hog). The table now keeps two places a hash, the name read last first (310475924,
-  #1722).
-- `FolderWatchTests`' `A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand`, CI
-  43708547470 (Linux report shard 1, 5fe6947ca): "A file made among 20,000 allocated 25,497 KB on its way into Go to File,
-  against 19,874 KB among 2,000 … as if the folder were walked again". **The test counted other tests' allocations**: it
-  counts every thread's (`GC.GetTotalAllocatedBytes`) and ran beside `ListedNamesTests`, whose two tests each parse all of
-  src with Roslyn; a profile put 395 of 400 MB in `ListedNamesTests.Joins`. The watchers walk nothing for a file heard
-  (about 300 KB among 2,000 or 20,000, as before). Started beside ListedNamesTests on purpose it failed with CI's words on
-  the Mac and the Ubuntu VM; it runs alone now (`FolderWatchBytesTests`), its bound as it was (da012a99c, #1721; #1725
-  holds the rule).
-- `NewGodotGameTests`' `A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it`,
-  the Mac with Godot 4.7.2: "Godot's editor did not build the game where its solution sits", Godot saying "An EditorPlugin
-  build callback failed … Aborting". **Godot's own defect**, met through this Mac's two .NET installations: its editor ran
-  on DOTNET_ROOT's .NET 11 but on macOS builds with /usr/local/share/dotnet/dotnet, which held .NET 11 only as release
-  candidates, so it registered MSBuild through the Microsoft.Build.Locator 1.2.6 it carries, which appends Sdks to
-  `dotnet --info`'s Base Path, written without its closing separator from .NET 11 on: the build got
-  `MSBuildSDKsPath=…/11.0.100Sdks` and found no Microsoft.NET.Sdk (MSB4236). The VMs' Godot builds with its own runtime's
-  dotnet and passed; CI has no Godot. The test skipped saying so where that held (ad09e8828, #1715); since #1726 Passenger hands Godot's editor the
-  .NET that builds, or says why none can before it starts, which the test now holds, and a failure names the build's own errors.

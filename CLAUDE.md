@@ -549,7 +549,7 @@ a new name, and `just site-shots` retakes its images.
 - **Chrome and .NET's browser proxy**: Chrome runs a new-document script only once `Page.enable` came, so a page's
   conversation enables Page first, or nothing binds; an app-hosted `/_framework/debug/ws-proxy` binds once per app
   process to its first browser's port; with a fixed `--remote-debugging-port` Chrome writes no DevToolsActivePort; a
-  getter the proxy reads only by itself is called through `Runtime.callFunctionOn` on its object.
+  getter the proxy reads only by itself is called through `Runtime.callFunctionOn` on its object; Chrome's network service, ended as a page fetches its .NET code, fails every fetch until it restarts, so a page whose runtime never came is loaded again (`ChromiumBrowsers.NetworkServiceEnded`).
 - **Aspire's CLI and AppHosts** list pipeline steps only over the CLI's backchannel
   (`--operation inspect --list-steps true`, 13.6+); a real AppHost's `--operation publish` without it runs every step,
   deploy included: never in a probe or a test. They keep running AppHosts in `$HOME/.aspire/cli/bch` whatever
