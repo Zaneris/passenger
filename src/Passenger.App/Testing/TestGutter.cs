@@ -9,7 +9,9 @@ namespace Passenger.App.Testing;
 /// a runner found tests of (by their names, or a base type's by the file and line it gave them), coloured by how each last
 /// ran. A file's tests are read off the UI thread from its own parse as each lands, none made for them, so typing in one
 /// file reads no other; the Unit Tests window's tree takes the same read (<see cref="Read"/>). An open GDScript file of a
-/// Godot project carrying GUT is read for GUT's tests as its typing pauses (<see cref="GutScripts"/>).
+/// Godot project carrying GUT is read for GUT's tests as its typing pauses (<see cref="GutScripts"/>), and an open .feature
+/// file of a test project for its feature, rules and scenarios, each marked from the start and run by the tests the runner
+/// or the code-behind's <c>#line</c> directives say are on its lines.
 /// The icons follow the Unit Tests window at once when tests are found or a run begins or ends, and at most every 150 ms
 /// while its results come in (a pause would never come in a long run); with no test known, and none known before, there
 /// is nothing to follow.</summary>
@@ -70,6 +72,13 @@ public sealed class TestGutter
         Declared declared = new();
         if (!files.TryAdd(document, declared))
         {
+            return;
+        }
+        if (IsFeature(document))
+        {
+            declared.Reading = new Debounce(ScriptPause, () => ReadFeatureAsync(document, declared, ++declared.Asked, document.Text.Snapshot));
+            document.Text.Changed += (_, _) => declared.Reading.Restart();
+            declared.Reading.Restart();
             return;
         }
         if (IsScript(document))
@@ -179,6 +188,53 @@ public sealed class TestGutter
     }
 
     private static bool IsScript(OpenDocument document) => Path.GetExtension(document.Path).Equals(".gd", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsFeature(OpenDocument document) => Bdd.FeatureChecks.IsFeature(document.Path);
+
+    /// <summary>The scenario, else the rule, else the feature a .feature file's line is in, as the file was last read; null in
+    /// any other file, or outside them.</summary>
+    public DeclaredPlace? FeatureTestAt(OpenDocument document, int line)
+    {
+        UiThread.Check();
+        if (!IsFeature(document) || !files.TryGetValue(document, out Declared? file))
+        {
+            return null;
+        }
+        return file.Places.Methods.FirstOrDefault(m => m.First <= line && line <= m.Last)
+            ?? file.Places.Types.Where(t => t.First <= line && line <= t.Last).MinBy(t => t.Last - t.First);
+    }
+
+    /// <summary>A .feature file's feature, rules and scenarios read off the UI thread from its text as it stood, in its
+    /// project's language: a place each, marked whether or not its tests are found yet (a build makes them), the feature and
+    /// its rules as types holding the scenarios on their lines; none in a file of no test project.</summary>
+    private async Task ReadFeatureAsync(OpenDocument document, Declared file, int asked, Passenger.Text.TextSnapshot text)
+    {
+        string? project = ProjectsOf?.Invoke(document.Path).FirstOrDefault();
+        FilePlaces places = project is null ? FilePlaces.None : await BackgroundWork.Run(() =>
+        {
+            Passenger.Workspace.Gherkin.FeatureReading reading = Passenger.Workspace.Gherkin.FeatureReading.Read(text.ToString(),
+                Passenger.Workspace.Gherkin.FeatureLanguage.Of(Path.GetDirectoryName(project)));
+            List<DeclaredPlace> types = [];
+            if (reading.Feature is { } feature)
+            {
+                types.Add(new DeclaredPlace($"{feature.Keyword}: {feature.Title}", null, feature.Line, feature.Line, feature.EndLine));
+            }
+            types.AddRange(reading.Rules.Select(r => new DeclaredPlace($"{r.Keyword}: {r.Title}", null, r.Line, r.Line, r.EndLine)));
+            List<DeclaredPlace> methods = [.. reading.Scenarios.Where(s => s.Kind != Passenger.Workspace.Gherkin.ScenarioKind.Background)
+                .Select(s => new DeclaredPlace(document.Path, s.Title.Length > 0 ? s.Title : s.Keyword, s.Line, s.Line, s.EndLine))];
+            return new FilePlaces(types, methods);
+        });
+        if (asked != file.Asked || !ReferenceEquals(document.Text.Snapshot, text) || !files.ContainsKey(document))
+        {
+            return;
+        }
+        file.Reads++;
+        file.Tests = FileTests.None;
+        file.Places = places;
+        file.Marked = places.Types.Concat(places.Methods).Select(p => p.Line).ToHashSet();
+        Index();
+        Colour(document, file);
+    }
 
     /// <summary>A GDScript file's GUT tests read off the UI thread from its text as it stood, as the test class its path in
     /// its Godot project names; none in a file of no project known to carry GUT, which tells the tree nothing, so what is
@@ -304,7 +360,7 @@ public sealed class TestGutter
                     (methods ??= new(ReferenceEqualityComparer.Instance)).Add(method);
                 }
             }
-            if (methods is not null || testLines.Contains(place.Line))
+            if (methods is not null || testLines.Contains(place.Line) || file.Marked.Contains(place.Line))
             {
                 marks.Add(new TestMark(place.Line, MarkOf(methods)));
             }
@@ -328,16 +384,13 @@ public sealed class TestGutter
         byFile.Clear();
         foreach (TestNode method in tree.Methods)
         {
-            foreach (TestItem item in method.Items)
+            foreach ((string path, int line) in method.Places)
             {
-                if (item is { Path: { } path, Line: > 0 })
+                if (!byFile.TryGetValue(path, out List<(int Line, TestNode Method)>? its))
                 {
-                    if (!byFile.TryGetValue(path, out List<(int Line, TestNode Method)>? its))
-                    {
-                        byFile[path] = its = [];
-                    }
-                    its.Add((item.Line, method));
+                    byFile[path] = its = [];
                 }
+                its.Add((line, method));
             }
             if (method.FullName?.Replace('+', '.') is not { } name)
             {
@@ -380,5 +433,8 @@ public sealed class TestGutter
 
         /// <summary>Whether a GDScript file was last read with no project carrying GUT known to hold it.</summary>
         public bool Unplaced { get; set; }
+
+        /// <summary>The lines marked whether or not a test is known there: a feature's and its scenarios'.</summary>
+        public IReadOnlySet<int> Marked { get; set; } = new HashSet<int>();
     }
 }

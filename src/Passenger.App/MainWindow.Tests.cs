@@ -302,7 +302,7 @@ public partial class MainWindow
         bool Matches(Testing.TestNode test) =>
             (test.FullName is { } name && Testing.TestsAtCaret.Matches(name, type, method)
                 && Testing.TestFinder.IsOf(test, projects ??= running.Tests.Finder.ProjectsOf(path)))
-            || test.Items.Any(item => item is { Path: { } at, Line: > 0 } && PathNames.Same(at, path) && place.Holds(item.Line));
+            || test.Places.Any(at => PathNames.Same(at.Path, path) && place.Holds(at.Line));
 
         string None(string? unfound) => Refusals.NoTestOf(method ?? type, unfound);
     }

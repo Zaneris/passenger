@@ -16,7 +16,12 @@ public sealed record DeclaredTest(string Type, string Method, int Line, IReadOnl
     /// (<see cref="FileTests.PassedOn"/>); null for a test the file declares itself.</summary>
     public string? DeclaredIn { get; init; }
 
-    public bool SameAs(DeclaredTest other) => Line == other.Line && SameTest(other);
+    /// <summary>Where its code says it is written, by a <c>#line</c> directive in its body (a Reqnroll scenario's code-behind
+    /// names its .feature file and the scenario's line): the file as the directive names it, and the line from zero; null for
+    /// a test written where it is.</summary>
+    public (string File, int Line)? Written { get; init; }
+
+    public bool SameAs(DeclaredTest other) => Line == other.Line && Written == other.Written && SameTest(other);
 
     /// <summary>The same test, on whatever line.</summary>
     public bool SameTest(DeclaredTest other) =>

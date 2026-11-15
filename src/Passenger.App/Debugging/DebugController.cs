@@ -1952,11 +1952,12 @@ public sealed class DebugController : IDisposable
     /// <summary>Smart Step Into: the calls of the line the program is paused at, in the order they run, offered in
     /// its editor (each filled, the chosen one boxed, in the colour scheme's colours) to step straight into: the arrow keys
     /// or Tab move the choice, Enter or a click takes it, Escape leaves it. One call is stepped into at once; with none, it
-    /// is Step Into.</summary>
+    /// is Step Into, as on a .feature file's step, whose one call is its step definition.</summary>
     private async Task SmartStepIntoAsync()
     {
         UiThread.Check();
-        if (Session is not { State: DebugState.Paused } session || Stop is not { Frames: [var top, ..] } || top.Source?.Path is not { } source)
+        if (Session is not { State: DebugState.Paused } session || Stop is not { Frames: [var top, ..] } || top.Source?.Path is not { } source
+            || Bdd.FeatureChecks.IsFeature(source))
         {
             await ResumeAsync(session => session.StepIntoAsync(), "step into");
             return;
@@ -2263,7 +2264,8 @@ public sealed class DebugController : IDisposable
     {
         UiThread.Check();
         if (Session is not { State: DebugState.Paused } session || frame is not { } at || editors.Active is not { } file
-            || ExpressionAt(editors.CodeEditor.Document.Snapshot, offset) is not { } expression)
+            || (Bdd.FeatureChecks.IsFeature(file.Path) ? PlaceholderAt(editors.CodeEditor.Document.Snapshot, offset) : ExpressionAt(editors.CodeEditor.Document.Snapshot, offset))
+                is not { } expression)
         {
             return null;
         }
@@ -2302,6 +2304,30 @@ public sealed class DebugController : IDisposable
     /// it stopped in with its lambdas and local functions (<see cref="MethodBounds"/>); anywhere in it where that can't be
     /// told (no C# syntax, as Razor's; a decompiled frame's; a place in no method). A frame with no file sees decompiled
     /// code alone.</summary>
+    /// <summary>The parameter a .feature file's outline placeholder at an offset is in its scenario's test, named as Reqnroll's
+    /// generator names it (its words joined, the first in lower case): a stop in an example shows its value; none elsewhere
+    /// in a feature, whose words are no C#.</summary>
+    internal static string? PlaceholderAt(TextSnapshot text, int offset)
+    {
+        int line = text.GetLineFromOffset(Math.Min(offset, text.Length));
+        int start = text.GetLineStart(line);
+        string written = text.GetLineText(line);
+        int at = offset - start;
+        int open = written.LastIndexOf('<', Math.Clamp(at, 0, Math.Max(written.Length - 1, 0)));
+        int close = open < 0 ? -1 : written.IndexOf('>', open);
+        if (open < 0 || close < at - 1 || close <= open + 1)
+        {
+            return null;
+        }
+        string[] words = written[(open + 1)..close].Split([' ', '-', '_', '.'], StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0 || !words.All(w => w.All(char.IsLetterOrDigit)))
+        {
+            return null;
+        }
+        string name = char.ToLowerInvariant(words[0][0]) + words[0][1..] + string.Concat(words.Skip(1).Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
+        return char.IsDigit(name[0]) ? null : name;
+    }
+
     private async Task<bool> SeesAsync(DapStackFrame at, OpenDocument file, int offset)
     {
         if (at.Source?.Path is not { } source)

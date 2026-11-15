@@ -110,7 +110,12 @@ public static class TestsAtCaret
                 any = true;
                 typeTraits ??= Traits(type.AttributeLists);
                 tests.Add(new DeclaredTest(name, method.Identifier.ValueText, syntax.Text.GetLineFromOffset(method.Identifier.SpanStart),
-                    [.. typeTraits, .. Traits(method.AttributeLists)], inherited) { Cases = Cases(method.AttributeLists), Code = TestCode.Of(method) });
+                    [.. typeTraits, .. Traits(method.AttributeLists)], inherited)
+                {
+                    Cases = Cases(method.AttributeLists),
+                    Code = TestCode.Of(method),
+                    Written = syntax.Root.ContainsDirectives ? WrittenAt(method) : null,
+                });
             }
             if (any)
             {
@@ -118,6 +123,23 @@ public static class TestsAtCaret
             }
         }
         return new FileTests(types, tests, methods) { Attributes = attributes };
+    }
+
+    /// <summary>Where a test's first statement shown to a debugger is written, when a <c>#line</c> directive names another file
+    /// for it (a Reqnroll scenario's code-behind: its .feature file, at the scenario's line); null otherwise.</summary>
+    private static (string File, int Line)? WrittenAt(MethodDeclarationSyntax method)
+    {
+        SyntaxTree tree = method.SyntaxTree;
+        foreach (StatementSyntax statement in method.Body?.Statements ?? [])
+        {
+            if (tree.GetLineVisibility(statement.SpanStart) != LineVisibility.Visible)
+            {
+                continue;
+            }
+            FileLinePositionSpan mapped = tree.GetMappedLineSpan(statement.Span);
+            return mapped.HasMappedPath && mapped.Path.Length > 0 ? (mapped.Path, mapped.StartLinePosition.Line) : null;
+        }
+        return null;
     }
 
     /// <summary>A file not open in an editor, parsed on its own with its project's symbols (<see cref="CSharpParsing"/>),
