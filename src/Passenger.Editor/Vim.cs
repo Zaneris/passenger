@@ -416,7 +416,14 @@ public sealed partial class Vim(VimRegisters registers)
         replaying = true;
         try
         {
-            if (change.Visual is { } extent)
+            if (change.Visual is { Again: not InsertAgain.None } again)
+            {
+                // I or A over characters or lines types again from the carets, taking no stretch.
+                Follow(InsertedAgain(text, carets, again, new Command(keys, 0, null, null, "visual", null)));
+                keys = [];
+                times = 0;
+            }
+            else if (change.Visual is { } extent)
             {
                 // A visual change takes as much again from each caret, its count its own.
                 times = extent.Mode == VimMode.VisualBlock || keys.Contains(">") || keys.Contains("<") ? change.Count : 0;

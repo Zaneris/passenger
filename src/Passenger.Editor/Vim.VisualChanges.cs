@@ -266,8 +266,8 @@ public sealed partial class Vim
     /// <summary>I and A in visual mode, before or after a block on each line it crosses (a short line padded to the
     /// block's right edge for A), or over characters or lines once, as Vim's do: with the cursor on a line above where
     /// the stretch began, I at the cursor and A at that line's start; otherwise I at the first line's start and A after
-    /// the cursor's character, or on it after $, at a single place in the first column, or where the column it aims at
-    /// is the one the last block began at, or past it from a line too short to reach that.</summary>
+    /// the cursor's character, or on it after $, in the first column of the stretch's first line, or on a later line
+    /// reaching the column the last block began at where the column it aims at is that one, or past it from short of it.</summary>
     private VimResult VisualInsert(Command command, bool after, VimMode mode, List<Region> taken, TextSnapshot text, IVimView view, int top, int bottom, int left, int right)
     {
         int tab = view.Indent.TabWidth;
@@ -285,13 +285,26 @@ public sealed partial class Vim
                 int cursor = aimed >= 0 && aimed != int.MaxValue ? Settled(text, r.Cursor, breakEnds) : r.Cursor;
                 int column = CaretColumn(text, cursor, tab);
                 int aim = aimed >= 0 ? aimed : column;
-                bool onIt = r.Anchor == r.Cursor ? column == 0 : aim == keptBlockLeft || (aim > keptBlockLeft && column < keptBlockLeft);
+                LineSpan cursorLine = VimMotions.LineOf(text, cursor);
+                bool onIt = cursorLine.Line == anchorLine.Line ? column == 0
+                    : keptBlockLeft <= TextNavigation.VisualColumn(text, cursorLine.End, tab) && (aim == keptBlockLeft || (aim > keptBlockLeft && column < keptBlockLeft));
+                bool afterFirst = above && keptBlockLeft != 0 && anchorLine.Length > 0;
                 int place = !after ? (above ? r.Cursor : anchorLine.Start)
-                    : above ? (keptBlockLeft == 0 || anchorLine.Length == 0 ? anchorLine.Start : TextNavigation.NextGrapheme(text, anchorLine.Start))
+                    : above ? (afterFirst ? TextNavigation.NextGrapheme(text, anchorLine.Start) : anchorLine.Start)
                     : aim == int.MaxValue ? LastCharOf(text, r.Cursor)
-                    : onIt ? cursor
+                    : onIt ? Settled(text, cursor, breakEnds)
                     : Math.Min(CharEnd(text, r.Cursor), VimMotions.LineOf(text, r.Cursor).End);
                 inserts.Add(Selection.At(place));
+                if (i == Math.Clamp(visualPrimary, 0, taken.Count - 1) && changeExtent is { } extent)
+                {
+                    changeExtent = extent with
+                    {
+                        Again = !after ? InsertAgain.AtCursor
+                            : aim == int.MaxValue && !above ? InsertAgain.OnLastBelow
+                            : (above && !afterFirst) || (!above && onIt) ? InsertAgain.AtColumnBelow
+                            : InsertAgain.AfterColumnBelow,
+                    };
+                }
             }
             return Insert(text, SelectionSet.Create(inserts, 0), command, how);
         }
@@ -342,6 +355,28 @@ public sealed partial class Vim
             carets.Add(Selection.At(TextEditing.MapOffset(place, pads, true)));
         }
         return InsertAfter(text, new EditPlan(pads, SelectionSet.Create(carets, 0), EditKind.Other), command, how);
+    }
+
+    /// <summary>. after I or A over characters or lines: what they typed typed again at each caret, as <see cref="InsertAgain"/> says.</summary>
+    private VimResult InsertedAgain(TextSnapshot text, SelectionSet carets, VisualExtent extent, Command command)
+    {
+        SelectionSet places = carets.With(c =>
+        {
+            if (extent.Again == InsertAgain.AtCursor)
+            {
+                return Selection.At(c.Caret);
+            }
+            int line = (int)Math.Min(text.GetLineFromOffset(c.Caret) + (long)extent.Lines, VimMotions.LastLine(text, breakEnds));
+            int last = LastCharOf(text, text.GetLineStart(line));
+            if (extent.Again == InsertAgain.OnLastBelow)
+            {
+                return Selection.At(last);
+            }
+            // The column is the caret's place in its line, counted in characters, not cells.
+            int at = Math.Min(text.GetLineStart(line) + (c.Caret - VimMotions.LineOf(text, c.Caret).Start), last);
+            return Selection.At(extent.Again == InsertAgain.AfterColumnBelow ? Math.Min(CharEnd(text, at), text.GetLine(line).End) : at);
+        });
+        return Insert(text, places, command, extent.Again == InsertAgain.AtCursor ? "I" : "A");
     }
 
     /// <summary>r in visual mode: every character the stretches take, line breaks aside, made the one typed.</summary>

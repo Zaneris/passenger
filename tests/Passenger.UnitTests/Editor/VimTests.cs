@@ -1863,6 +1863,41 @@ public class VimTests
     public void Lines_put_over_a_block_go_below_its_cursors_line(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>. after I or A over characters or lines types again from the caret, taking no stretch, as Vim's does: I
+    /// at the caret; A as many lines below as the stretch had, at the caret's place in its line, after its character
+    /// where A went after the cursor's, on it where A went on it or before the stretch, and on the line's last character
+    /// after $; its count unused.</summary>
+    [Theory]
+    [InlineData("|one two\nthree\nfour five six\nseven", "vlA7<Esc>jj.", "on7e two\nthree\nfou|7r five six\nseven")]
+    [InlineData("|one two\nthree\nfour five six\nseven", "vlA7<Esc>.", "on7|7e two\nthree\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree four\nfive six seven\neight nine ten\neleven twelve", "vjA7<Esc>j0.", "one two\nth7ree four\nfive six seven\ne|7ight nine ten\neleven twelve")]
+    [InlineData("o|ne two\nthree four\nfive six seven\neight nine ten\neleven twelve", "vjA7<Esc>jjjjl.", "one two\nth7ree four\nfive six seven\neight nine ten\nelev|7en twelve")]
+    [InlineData("o|ne two\nthree four\nfive six seven\neight nine ten\neleven twelve", "VjA7<Esc>jl.", "one two\nth7ree four\nfive six seven\neigh|7t nine ten\neleven twelve")]
+    [InlineData("one two\nthree\nfour f|ive six\nseven", "vkA78<Esc>j.", "one two\nthree\n78four five six\ns7|8even")]
+    [InlineData("one two\nthree four\nfive six seven\neight nine ten\nelev|en twelve", "vkkA7<Esc>kkl.", "one two\nthree four\nfive six seven\neight nine ten\n7|7eleven twelve")]
+    [InlineData("one two\nthree four\nfive six seven\neight nine ten\nelev|en twelve", "vkI7<Esc>kl.", "one two\nthree four\nfive |7six seven\neigh7t nine ten\neleven twelve")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "vlI7<Esc>jjl.", "7one two\nthree\nf|7our five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "vjjI78<Esc>jl.", "78one two\nth7|8ree\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "v$A7<Esc>jj.", "one tw7o\nthree\nfour five si|7x\nseven")]
+    [InlineData("|one two\nthree four\nfive six seven\neight nine ten\neleven twelve", "vj$A78<Esc>jjk.", "one two\nthree fou78r\nfive six seven\neight nine te7|8n\neleven twelve")]
+    [InlineData("|one two\nthree four\nfive six seven\neight nine ten\neleven twelve", "0vA78<Esc>jj..", "78one two\nthree four\nf77|88ive six seven\neight nine ten\neleven twelve")]
+    [InlineData("|one two\nthree four\nfive six seven\neight nine ten\neleven twelve", "vjjA78<Esc>jj2.", "one two\nthree four\n78five six seven\neight nine ten\ne7|8leven twelve")]
+    [InlineData("|\tab\tcd\n  \tef gh\n\t\tij kl\nmn op qr st", "vjA7<Esc>j.", "\tab\tcd\n  \t7ef gh\n\t\tij kl\nmn|7 op qr st")]
+    public void Dot_after_visual_insert_or_append_types_again_from_the_caret(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A over characters after a block went on the cursor's character in its first column on the stretch's first
+    /// line, and on a later line only where that line reaches the column the block began at, as Vim's does.</summary>
+    [Theory]
+    [InlineData("|abcdefghij\nabcdefghij\nab\nabcdefghij\nabcdefghij", "ll<C-v>jyj0lvlA7<Esc>", "abcdefghij\nabc|7defghij\nab\nabcdefghij\nabcdefghij")]
+    [InlineData("|abcdefghij\nabcdefghij\nab\nabcdefghij\nabcdefghij", "ll<C-v>jyj0lvhA7<Esc>", "abcdefghij\n|7abcdefghij\nab\nabcdefghij\nabcdefghij")]
+    [InlineData("|abcdefghij\nabcdefghij\nab\nabcdefghij\nabcdefghij", "ll<C-v>jyj0lllvjA7<Esc>", "abcdefghij\nabcdefghij\na|7b\nabcdefghij\nabcdefghij")]
+    [InlineData("|abcdefghij\nabcdefghij\nab\nabcdefghij\nabcdefghij", "lll<C-v>jyj0lllvjA7<Esc>", "abcdefghij\nabcdefghij\nab|7\nabcdefghij\nabcdefghij")]
+    [InlineData("|abcdefghij\nabcdefghij\nab\nabcdefghij\nabcdefghij", "lll<C-v>jyj0lllvjjA7<Esc>", "abcdefghij\nabcdefghij\nab\nabc|7defghij\nabcdefghij")]
+    [InlineData("|abcdefghij\nabcdefghij\nab\nabc\nabcd\n\nabcdefghij", "lll<C-v>jyj0llvjjlA7<Esc>", "abcdefghij\nabcdefghij\nab\nab|7c\nabcd\n\nabcdefghij")]
+    public void Visual_append_after_a_block_lands_where_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

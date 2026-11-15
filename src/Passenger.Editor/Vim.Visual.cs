@@ -16,8 +16,22 @@ public sealed partial class Vim
     }
 
     /// <summary>How much a visual change took, for . to take as much again from the caret: the lines below its first,
-    /// and the characters it took on one line or the column it ended at on its last; a block's width in columns.</summary>
-    private readonly record struct VisualExtent(VimMode Mode, int Lines, int Columns, bool ToEnd);
+    /// and the characters it took on one line or the column it ended at on its last; a block's width in columns; and
+    /// for I or A over characters or lines, where . types again (<see cref="InsertAgain"/>).</summary>
+    private readonly record struct VisualExtent(VimMode Mode, int Lines, int Columns, bool ToEnd, InsertAgain Again = InsertAgain.None);
+
+    /// <summary>Where . types again what I or A over characters or lines typed: at the caret, as I did (and A over a
+    /// cursor above where the stretch began, unless its last block began past the first column, or on a single place in
+    /// the first column), else as many lines below as the stretch had, at the caret's place in its line, after the
+    /// character there, as A after a character did, or on that line's last character, as A after $ did.</summary>
+    private enum InsertAgain
+    {
+        None,
+        AtCursor,
+        AtColumnBelow,
+        AfterColumnBelow,
+        OnLastBelow,
+    }
 
     /// <summary>A change for . to make again: its keys after the count, the count, what its insert typed, and for a change
     /// made in visual mode how much it took.</summary>
