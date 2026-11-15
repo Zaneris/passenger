@@ -20,6 +20,8 @@ public sealed class BddSpecFlowTests : IClassFixture<RestoredFolders>, IDisposab
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>The solution written and given to restore by its folder's real path, so the library the specs reference is
+    /// never restored under two spellings at once.</summary>
     private static string Write(string made)
     {
         TestFolders.Write(made, "Shop.slnx", "<Solution>\n  <Project Path=\"SpecFlow/TechTalk.SpecFlow.csproj\" />\n  <Project Path=\"Shop.Specs/Shop.Specs.csproj\" />\n</Solution>\n");
@@ -33,7 +35,7 @@ public sealed class BddSpecFlowTests : IClassFixture<RestoredFolders>, IDisposab
         TestFolders.Write(made, "Shop.Specs/BasketSteps.cs",
             "using TechTalk.SpecFlow;\n\nnamespace Shop.Specs;\n\n[Binding]\npublic class BasketSteps\n{\n    [Given(@\"the basket holds (\\d+) items\")]\n    public void GivenTheBasketHolds(int count)\n    {\n    }\n}\n");
         TestFolders.Write(made, "Shop.Specs/Basket.feature", "Feature: Basket\n\nScenario: Full\n  Given the basket holds 3 items\n  Then the total is 12\n");
-        return Path.Combine(made, "Shop.slnx");
+        return Path.Combine(PathNames.Canonical(made), "Shop.slnx");
     }
 
     [AvaloniaFact]
