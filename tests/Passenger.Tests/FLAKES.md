@@ -1720,3 +1720,10 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   3 s" for the first lambda, the debugger's own code loading into the program (`Assembly.Load` of its bytes) taking 3.66 s
   of it. **The test's limit**, as `EvalTests`' LINQ watch's: the run's 3 s is a developer machine's time, and a cold first
   lambda needs it scaled. Both sessions now take `DebugSession.ScaledEvaluations` (the run's limit times `TimeScale`).
+- `ActionsTests`' `Every_action_Find_Action_lists_runs_where_it_was_asked_for_or_says_why_it_cannot`, the Mac under load
+  beside other test runs: "Refresh (app.containers.refresh) ran from Find Action but is not offered first the next time".
+  **A race in the IDE**: Prune…'s question of the container engine's state was not held work, so once the engine's last
+  answer was over 5 s old (the steps before took longer under load), the window went quiet with Prune's question still to
+  come; it came during Refresh's step and took the keys, so Refresh never ran. Prune now asks through `BackgroundWork.Run`
+  (642c97448); the test says, on failure, which actions ran, the status bar's words, the recent list and what has the keys,
+  and runs on a container engine of no program, never the machine's own (#1697).
