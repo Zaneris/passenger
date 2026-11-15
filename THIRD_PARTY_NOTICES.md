@@ -538,6 +538,49 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Reqnroll's step matching
+
+`src/Passenger.Workspace/Gherkin/StepExpressions.cs` is a port to C# of how Reqnroll makes a step definition's expression
+into the regular expression it matches a step with, from https://github.com/reqnroll/Reqnroll at its tag v3.3.4 (commit
+33eeea2298e62d53355ecc36e487b1fcbc0d9270): `Reqnroll/Bindings/CucumberExpressions/CucumberExpressionDetector.cs` (whether an
+expression is a Cucumber Expression), `ReqnrollCucumberExpression.cs` (its `{string}`),
+`CucumberExpressionParameterTypeRegistry.cs` and `UserDefinedCucumberExpressionParameterTypeTransformation.cs` (the
+parameter types, a transformation's regular expression), `Reqnroll/Bindings/RegexFactory.cs` (a regular expression
+anchored to the whole step) and `Reqnroll/Bindings/StepDefinitionRegexCalculator.cs` (a method named for its step).
+`StepMatcher.cs` beside it follows the matching rules of `Reqnroll/Infrastructure/StepDefinitionMatchService.cs` and
+`Reqnroll/Bindings/BindingScope.cs` at the same commit: the order of its checks and how a scope's fit is counted.
+
+```
+BSD 3-Clause License
+
+Copyright (c) 2024-2025, Reqnroll
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ## JetBrains Mono
 
 `src/Passenger.Editor/Fonts/` holds JetBrains Mono 2.304 (Regular, Bold, Italic, Bold Italic), the
