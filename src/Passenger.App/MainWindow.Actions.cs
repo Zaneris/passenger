@@ -277,10 +277,10 @@ public partial class MainWindow
 
     /// <summary>Why an action changing the text greys: the editor it goes to (another with the keys, a diff's side, else the
     /// one showing the file) refuses changes, in that editor's words, or the file shown is read-only; null where it takes
-    /// them, a text box with the keys taking its own, and a console those its program's input takes
+    /// them, a text box with the keys taking its own unless read-only, and a console those its program's input takes
     /// (<see cref="ToolWindows.OutputView.TakesEdit"/>).</summary>
     private static string? ChangeRefused(string action, ActionContext context) =>
-        context.Focused is TextBox && TextBoxEdits.ContainsKey(action) ? null
+        context.Focused is TextBox box && TextBoxEdits.ContainsKey(action) ? (box.IsReadOnly ? Refusals.TextReadOnly : null)
         : context.Focused is CodeEditor other && other != context.Editor
             ? (other.IsReadOnly && other.FindAncestorOfType<ToolWindows.OutputView>()?.TakesEdit(other, action) != true ? other.ReadOnlyWhy : null)
         : context.File is { } shown && context.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name) : null;

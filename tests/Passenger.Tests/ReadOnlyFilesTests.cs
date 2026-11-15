@@ -248,6 +248,48 @@ public sealed class ReadOnlyFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A text box shown only to read and copy from, here IDE Internal Errors' details, greys the Edit menu's Undo,
+    /// Redo, Cut and Paste saying its text is read-only, where they stayed enabled and ran as nothing; Copy and Select All
+    /// stay enabled and copy from it.</summary>
+    [AvaloniaFact]
+    public void The_edit_menus_changes_grey_over_a_read_only_text_box_saying_so_and_copy_takes_its_text()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        // Thrown on purpose, for a details box to show; cleared as the test ends.
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => throw new InvalidOperationException("A posted job went wrong"));
+        Ui.Settle();
+        try
+        {
+            ErrorsPopup popup = window.ShowErrors();
+            Ui.Settle();
+            TextBox details = popup.GetVisualDescendants().OfType<TextBox>().Single(box => box.IsReadOnly);
+            Assert.Contains("A posted job went wrong", details.Text, StringComparison.Ordinal);
+            Ui.Click(details);
+            ActionContext context = window.Actions.Context();
+            Assert.Same(details, context.Focused);
+
+            List<string> edit = EditMenu(window);
+            string[] changing = [EditorActions.Undo, EditorActions.Redo, EditorActions.Cut, EditorActions.Paste];
+            Assert.True(changing.Append(EditorActions.Copy).Append(EditorActions.SelectAll).All(edit.Contains), $"The Edit menu lacks some of Undo, Redo, Cut, Paste, Copy and Select All: {string.Join(", ", edit)}");
+            string[] offered = [.. changing.Where(id => window.Actions.WhyNot(id, context) != Refusals.TextReadOnly)
+                .Select(id => $"{id} ({window.Actions.WhyNot(id, context) ?? "enabled"})")];
+            Assert.True(offered.Length == 0, $"Over IDE Internal Errors' read-only details, these are offered or greyed for another reason: {string.Join(", ", offered)}");
+            Assert.True(window.Actions.WhyNot(EditorActions.Copy, context) is null && window.Actions.WhyNot(EditorActions.SelectAll, context) is null,
+                "Copy or Select All greyed over a read-only text box, which they only read");
+
+            Assert.Null(window.Actions.Run(EditorActions.SelectAll));
+            Assert.Null(window.Actions.Run(EditorActions.Copy));
+            Ui.Settle();
+            string? copied = Ui.Await(window.Clipboard!.TryGetTextAsync(), "the clipboard's text");
+            Assert.Equal(details.Text, copied);
+        }
+        finally
+        {
+            IdeErrors.Clear();
+            window.Close();
+        }
+    }
+
     /// <summary>Walks every editor action, those of the Edit menu among them, as the editor with the keys in front has them:
     /// each that would change its text greys saying <paramref name="why"/> but those its own input takes
     /// (<paramref name="taken"/>), and each that only reads, Copy and Select All among them, is enabled.</summary>

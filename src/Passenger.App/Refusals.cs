@@ -445,6 +445,9 @@ public static class Refusals
     /// <summary>A few lines shown of a file (a usage's, a search's match, a place gone to), not the file itself.</summary>
     public const string PreviewReadOnly = "The preview is read-only: open its file to change it";
 
+    /// <summary>A text box shown to read and copy from (an error's details, a log, a response, a licence).</summary>
+    public const string TextReadOnly = "The text is read-only";
+
     /// <summary>Why edits found in a file as Passenger read it are not made once the file is another text.</summary>
     public static string ChangedSinceRead(string file) =>
         $"{file} changed after Passenger read it, so the places found there may be where they were before: nothing was changed; try again in a moment";
