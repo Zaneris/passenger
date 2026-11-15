@@ -53,6 +53,15 @@ public sealed partial class DiskImageUpdater : Updater
     /// test, which holds the image there as another program may.</summary>
     public Func<string, int, Task>? Opening { get; init; }
 
+    /// <summary>The waits before each try again to let the image go while something holds its disk: two minutes in all,
+    /// forced from the fourth try.</summary>
+    public IReadOnlyList<TimeSpan> LetGoAgainAfter { get; init; } =
+        [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60)];
+
+    /// <summary>Runs as each try to let the image go begins, given its attachments and the try's number from 1: nothing but
+    /// in a test, which holds a disk there as another program may.</summary>
+    public Func<IReadOnlyList<AttachedImages.Attachment>, int, Task>? LettingGo { get; init; }
+
     /// <summary>What opens the image and lets it go: this Mac's own (<see cref="ThisMacs"/>) but in a test.</summary>
     public DiskImageTool Images { get; init; } = ThisMacs;
 
@@ -258,7 +267,7 @@ public sealed partial class DiskImageUpdater : Updater
         }
         finally
         {
-            await DetachAsync(mount).ConfigureAwait(false);
+            await LetGoAsync(folder, LetGoAgainAfter, forcedFrom: 4).ConfigureAwait(false);
         }
     }
 
@@ -287,12 +296,27 @@ public sealed partial class DiskImageUpdater : Updater
             string said = FailureOf(attached);
             if (attempt > OpenAgainAfter.Count)
             {
-                throw new UpdateRefusedException($"{name} does not open as a disk image: {said}", attached.Said);
+                throw new UpdateRefusedException($"{name} does not open as a disk image: {said}", $"{attached.Said}; {await HeldAsync(image, cancel).ConfigureAwait(false)}");
             }
             TimeSpan pause = Waits.Of(OpenAgainAfter[attempt - 1]);
             IdeErrors.Write($"Updates: {name} did not open as a disk image at try {attempt} ({said}); trying again in {pause.TotalSeconds:0.#} s");
             await Task.Delay(pause, cancel).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>What has the image open, and where it is attached already, for a refusal to say.</summary>
+    private static async Task<string> HeldAsync(string image, CancellationToken cancel)
+    {
+        string held = AttachedImages.Held(await AttachedImages.HoldersAsync([image], cancel).ConfigureAwait(false));
+        (IReadOnlyList<AttachedImages.Attachment>? listed, string why) = await AttachedImages.ListAsync(cancel).ConfigureAwait(false);
+        if (listed is null)
+        {
+            return $"{held}; {why}";
+        }
+        string canonical = PathNames.Canonical(image);
+        string[] attached = [.. listed.Where(a => PathNames.Same(PathNames.Canonical(a.Image), canonical))
+            .Select(a => a.Mounts.Count == 0 ? $"{a.Disk}, mounted nowhere" : $"{a.Disk} at {string.Join(", ", a.Mounts)}")];
+        return attached.Length == 0 ? held : $"{held}; attached already as {string.Join("; ", attached)}";
     }
 
     /// <summary>What the tool said of an attach that failed, its last line but a warning, named as hdiutil names itself
@@ -351,28 +375,71 @@ public sealed partial class DiskImageUpdater : Updater
             {
                 continue;
             }
-            if (Directory.Exists(Path.Combine(folder, "mount")))
+            string mount = Path.Combine(folder, "mount");
+            if (Directory.Exists(mount) && !await LetGoAsync(folder, [], forcedFrom: 1).ConfigureAwait(false))
             {
-                await DetachAsync(Path.Combine(folder, "mount")).ConfigureAwait(false);
+                // Still attached: all but its mount point goes, which the next clean tries again.
+                foreach (string entry in Directory.EnumerateFileSystemEntries(folder).Where(entry => entry != mount))
+                {
+                    RemoveEntry(entry);
+                }
+                continue;
             }
             Remove(folder);
         }
     }
 
-    private async Task DetachAsync(string mount)
+    /// <summary>A folder or file of a download's, a failure logged.</summary>
+    private static void RemoveEntry(string entry)
     {
-        if (!(await ToolAsync(ImageTool(["eject", mount], ["detach", mount, "-quiet"]), ToolLimit, CancellationToken.None).ConfigureAwait(false)).Succeeded)
+        if (Directory.Exists(entry))
         {
-            await ToolAsync(ImageTool(["eject", "force", mount], ["detach", mount, "-force", "-quiet"]), ToolLimit, CancellationToken.None).ConfigureAwait(false);
+            Remove(entry);
+            return;
         }
         try
         {
-            Directory.Delete(mount);
+            File.Delete(entry);
         }
-        catch (IOException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            // Still mounted, or holding something: the next clean tries again.
+            IdeErrors.Write($"Updates: {entry} could not be removed: {error.Message}");
         }
+    }
+
+    /// <summary>Every image in a download's folder let go of by its disks (<see cref="AttachedImages.DetachAsync"/>), again
+    /// after each of <paramref name="pauses"/> while one is listed, forced from the try <paramref name="forcedFrom"/>: a
+    /// disk a process holds open stays attached once its volume is unmounted. Whether none is listed any more; its mount
+    /// point is removed then, and kept where one still is, what held it in the log.</summary>
+    private async Task<bool> LetGoAsync(string folder, IReadOnlyList<TimeSpan> pauses, int forcedFrom)
+    {
+        string under = PathNames.Canonical(folder);
+        AttachedImages.LetGo letGo = await AttachedImages.DetachAsync(attachment => PathNames.IsUnder(PathNames.Canonical(attachment.Image), under),
+            (disk, attempt) => attempt >= forcedFrom ? ImageTool(["eject", "force", disk], ["detach", disk, "-force"]) : ImageTool(["eject", disk], ["detach", disk]),
+            [.. pauses.Select(Waits.Of)], LettingGo, CancellationToken.None).ConfigureAwait(false);
+        string said = string.Join(" ", letGo.Said.Select(words => $"[{words}]"));
+        if (!letGo.Detached)
+        {
+            IdeErrors.Write($"Updates: the disk image in {folder} is still attached after {Plural.Of(letGo.Tries, "try", "tries")} to let it go: {said}");
+            return false;
+        }
+        if (letGo.Tries > 1)
+        {
+            IdeErrors.Write($"Updates: the disk image in {folder} was let go of at try {letGo.Tries}, the tries before saying: {said}");
+        }
+        string mount = Path.Combine(folder, "mount");
+        try
+        {
+            if (Directory.Exists(mount))
+            {
+                Directory.Delete(mount);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Updates: {mount} could not be removed: {error.Message}");
+        }
+        return true;
     }
 
     /// <summary>LaunchServices starts the app as a new instance (this one is still ending), with the state folder, release

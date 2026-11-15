@@ -12,6 +12,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using Microsoft.Win32.SafeHandles;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App.Mcp;
@@ -451,7 +452,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>The Mac refusing the disk image just downloaded for a moment is waited out: hdiutil refuses one another
     /// program (a scanner) holds ("Resource temporarily unavailable"), as an exclusive lock taken on it here does, and
     /// diskutil image, which opens a held one, one it cannot read. The image, whose SHA-256 is the release's, is opened
-    /// again once let go; one never let go is refused in the tool's words.</summary>
+    /// again once let go; one never let go is refused in the tool's words, the log naming what had it open.</summary>
     [AvaloniaTheory]
     [InlineData(DiskImageTool.Hdiutil, "hdiutil: attach failed - Resource temporarily unavailable")]
     [InlineData(DiskImageTool.Diskutil, "diskutil: The operation couldn\u2019t be completed. Permission denied")]
@@ -511,6 +512,10 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Assert.Contains(words, ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty);
             Assert.True(tries.SequenceEqual([1, 2, 3]), $"The image refused throughout was tried {string.Join(", ", tries)}, not three times");
             Assert.True(other.Downloaded().Count == 0, $"The image refused left {string.Join(", ", other.Downloaded())} behind");
+            string holder = tool == DiskImageTool.Hdiutil ? $"(process {Environment.ProcessId}) on " : "nothing this user runs had it open";
+            string[] refusals = [.. Ui.IdeLog().Split('\n').Where(line => line.Contains($"Updates: {words} (", StringComparison.Ordinal))];
+            Assert.True(refusals.Any(line => line.Contains(holder, StringComparison.Ordinal)),
+                $"The log does not say what held the image refused throughout ('{holder}'): {string.Join("\n", refusals)}");
             window.Close();
         }
         finally
@@ -520,6 +525,134 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
         static bool Settled(MainWindow window, string version) =>
             Notice(window) == $"Restart to update to Passenger {version}" || Notice(window) == $"Passenger {version} not installed";
+    }
+
+    /// <summary>A disk image whose disk another program holds open as the update lets it go (a scanner, a backup agent):
+    /// its volume is unmounted, but its disk stays attached while held, which no detach takes, forced or not. The update
+    /// tries again by the disk until hdiutil lists the image no more, saying what held it; held throughout, the app copied
+    /// out is made ready all the same, the log naming what held the disk, and once let go the same release downloaded
+    /// again opens and every attachment of it is let go.</summary>
+    [AvaloniaTheory]
+    [InlineData(DiskImageTool.Hdiutil)]
+    [InlineData(DiskImageTool.Diskutil)]
+    [SupportedOSPlatform("macos")]
+    public void A_disk_image_whose_disk_is_held_as_it_is_let_go_goes_once_let_go_and_one_held_throughout_is_said_and_opens_again(DiskImageTool tool)
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Disk images are macOS's");
+        Assert.SkipWhen(tool == DiskImageTool.Diskutil && !OperatingSystem.IsMacOSVersionAtLeast(26), "diskutil image is macOS 26's");
+        using IDisposable theme = TestsTheme();
+        DiskHold hold = new();
+        ConcurrentQueue<int> tries = new();
+        AppBundle copy = new(images, TestFolders.Create("installed-")) { Images = tool };
+        AppBundle other = new(images, TestFolders.Create("installed-")) { Images = tool };
+        try
+        {
+            string newer = Bumped(1, 0);
+            string folder = Path.Combine(copy.Staging, newer);
+            github.Answer = Release($"v{newer}", files: copy.Update(newer));
+            DiskImageUpdater lettingGo = copy.LettingGoUpdater((attached, attempt) =>
+            {
+                tries.Enqueue(attempt);
+                if (attempt == 1)
+                {
+                    hold.Hold(attached, Path.Combine(folder, "mount"));
+                }
+                else if (attempt == 3)
+                {
+                    hold.Let();
+                }
+                return Task.CompletedTask;
+            }, [TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(200)]);
+            MainWindow window = Started(lettingGo);
+            window.WatchForUpdates();
+            Ui.WaitFor(() => Settled(window, newer), () => $"the update whose disk was held as it was let go to be made ready or refused, where {UpdatesSaid(window)}");
+            Assert.True(Notice(window) == $"Restart to update to Passenger {newer}", $"An update whose image's disk was held a moment was not made ready: {UpdatesSaid(window)}");
+            Assert.True(tries.Take(3).SequenceEqual([1, 2, 3]),
+                $"The image was let go of at tries {string.Join(", ", tries)}, not refused twice while its disk was held and let go at the third");
+            IReadOnlyList<string> left = AttachedUnder(copy.Staging);
+            Assert.True(left.Count == 0, $"The image whose disk was held a moment is still attached once let go, as {string.Join("; ", left)}");
+            string[] said = [.. Ui.IdeLog().Split('\n').Where(line => line.Contains($"Updates: the disk image in {folder} ", StringComparison.Ordinal))];
+            Assert.True(said.Any(line => line.Contains("was let go of at try ", StringComparison.Ordinal) && line.Contains($"(process {Environment.ProcessId}) on /dev/r", StringComparison.Ordinal)),
+                $"The log does not say the image was let go of once its disk was, naming this process as what held it: {string.Join("\n", said)}");
+            window.Close();
+
+            string later = Bumped(1, 1);
+            folder = Path.Combine(other.Staging, later);
+            github.Answer = Release($"v{later}", files: other.Update(later));
+            tries.Clear();
+            bool holding = true;
+            DiskImageUpdater neverLettingGo = other.LettingGoUpdater((attached, attempt) =>
+            {
+                tries.Enqueue(attempt);
+                if (Volatile.Read(ref holding))
+                {
+                    hold.Hold(attached, Path.Combine(folder, "mount"));
+                }
+                return Task.CompletedTask;
+            }, [TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100)]);
+            window = Started(neverLettingGo);
+            window.WatchForUpdates();
+            Ui.WaitFor(() => Settled(window, later), () => $"the update whose disk was held throughout to be made ready or refused, where {UpdatesSaid(window)}");
+            Assert.True(Notice(window) == $"Restart to update to Passenger {later}",
+                $"An update whose app was copied out and checked was not made ready because its image's disk stayed held: {UpdatesSaid(window)}");
+            Assert.True(tries.SequenceEqual([1, 2, 3, 4, 5]), $"The image held throughout was let go of at tries {string.Join(", ", tries)}, not five");
+            Assert.True(AttachedUnder(other.Staging).Count > 0, "The image whose disk was held throughout is not attached, so the test held nothing");
+            said = [.. Ui.IdeLog().Split('\n').Where(line => line.Contains($"Updates: the disk image in {folder} ", StringComparison.Ordinal))];
+            Assert.True(said.Any(line => line.Contains("is still attached after 5 tries to let it go", StringComparison.Ordinal)
+                    && line.Contains($"(process {Environment.ProcessId}) on /dev/r", StringComparison.Ordinal)),
+                $"The log does not say the image held throughout is still attached, naming this process as what held it: {string.Join("\n", said)}");
+
+            // Dropped while still held, then let go: the same release is downloaded to the same file again and opened.
+            window.ApplySettings(window.Settings with { CheckForUpdates = false });
+            Ui.WaitFor(() => !other.Holds(later) && Notice(window) == $"Passenger {later} available", () => $"the update made ready to be dropped as Check for updates went off, where {UpdatesSaid(window)}");
+            Volatile.Write(ref holding, false);
+            hold.Let();
+            window.ApplySettings(window.Settings with { CheckForUpdates = true });
+            Ui.WaitFor(() => Settled(window, later), () => $"the same release downloaded again to be made ready or refused, where {UpdatesSaid(window)}");
+            Assert.True(Notice(window) == $"Restart to update to Passenger {later}", $"Once its disk was let go, the same release's image did not open again: {UpdatesSaid(window)}");
+            left = AttachedUnder(other.Staging);
+            Assert.True(left.Count == 0, $"The same release opened again left its images attached, as {string.Join("; ", left)}");
+            window.Close();
+        }
+        finally
+        {
+            hold.Let();
+            TestVolumes.DetachUnder(copy.Staging);
+            TestVolumes.DetachUnder(other.Staging);
+        }
+
+        static bool Settled(MainWindow window, string version) =>
+            Notice(window) == $"Restart to update to Passenger {version}" || Notice(window) == $"Passenger {version} not installed";
+    }
+
+    /// <summary>A disk held open as another program may hold one (a scanner, a backup agent): its raw device, read.</summary>
+    [SupportedOSPlatform("macos")]
+    private sealed class DiskHold
+    {
+        private SafeFileHandle? held;
+
+        /// <summary>Holds the disk of the attachment whose volume is at <paramref name="mount"/>, the update's own.</summary>
+        public void Hold(IReadOnlyList<AttachedImages.Attachment> attached, string mount)
+        {
+            string at = PathNames.Canonical(mount);
+            if (Volatile.Read(ref held) is null && attached.FirstOrDefault(a => a.Mounts.Any(m => PathNames.Same(m, at))) is { } ours)
+            {
+                Volatile.Write(ref held, File.OpenHandle($"/dev/r{Path.GetFileName(ours.Disk)}", FileMode.Open, FileAccess.Read));
+            }
+        }
+
+        public void Let() => Interlocked.Exchange(ref held, null)?.Dispose();
+    }
+
+    /// <summary>The attachments hdiutil lists of an image under a folder, each as its disk and image.</summary>
+    [SupportedOSPlatform("macos")]
+    private static IReadOnlyList<string> AttachedUnder(string folder)
+    {
+        string under = PathNames.Canonical(folder);
+        (IReadOnlyList<AttachedImages.Attachment>? listed, string why) = Ui.AwaitPumped(Waiting.Apart(() => AttachedImages.ListAsync(CancellationToken.None)),
+            "hdiutil's list of the images attached", TimeSpan.FromMinutes(1).Scaled());
+        Assert.True(listed is not null, why);
+        return [.. listed.Where(a => PathNames.IsUnder(PathNames.Canonical(a.Image), under)).Select(a => $"{a.Disk} of {a.Image}")];
     }
 
     /// <summary>A disk image the Mac refuses as hdiutil or diskutil image would find it: held by another program for
@@ -1390,6 +1523,11 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         /// <paramref name="pauses"/> between tries.</summary>
         public DiskImageUpdater Updater(Func<string, int, Task> opening, IReadOnlyList<TimeSpan> pauses) =>
             new(Bundle, Staging, StartAsync) { Opening = opening, OpenAgainAfter = pauses, Images = Images };
+
+        /// <summary>The copy's updater, <paramref name="lettingGo"/> run as each try to let its image go begins, waiting
+        /// <paramref name="pauses"/> between tries.</summary>
+        public DiskImageUpdater LettingGoUpdater(Func<IReadOnlyList<AttachedImages.Attachment>, int, Task> lettingGo, IReadOnlyList<TimeSpan> pauses) =>
+            new(Bundle, Staging, StartAsync) { LettingGo = lettingGo, LetGoAgainAfter = pauses, Images = Images };
 
         public override string Package(string version) => ThisSystemsDownload();
 
