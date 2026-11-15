@@ -1,5 +1,6 @@
 using Passenger.Text;
 using Passenger.Xaml.Dialects;
+using Passenger.Xaml.Features;
 using Passenger.Xaml.Metadata;
 using Passenger.Xaml.Projects;
 using Passenger.Xaml.Syntax;
@@ -59,13 +60,13 @@ public sealed record XamlFileSummary(string Path, string? Class, IReadOnlyList<R
             bool variantDictionary = element.Parent?.LocalName.EndsWith(".ThemeDictionaries", StringComparison.Ordinal) == true;
             if (x is not null && !variantDictionary && element.Attribute($"{x}:Key") is { } key && key.Value.Length > 0)
             {
-                (string? variant, TextRange? group) = VariantOf(element, x);
+                (string? variant, TextRange? group) = VariantOf(element);
                 resources.Add(new ResourceDefinition(key.Value, path, key.ValueRange, element.LocalName, TextRange.FromBounds(element.Start, element.End),
                     variant, group, ColourOf(element, tree.Text)) { ColourRange = ColourRangeOf(element, tree.Text) });
             }
             if (element.LocalName.EndsWith(".ThemeDictionaries", StringComparison.Ordinal))
             {
-                List<string> variants = [.. element.Children.Select(c => x is null ? null : c.Attribute($"{x}:Key")?.Value).OfType<string>()];
+                List<string> variants = [.. element.Children.Select(ThemeVariants.VariantOf).OfType<string>()];
                 groups.Add(new ThemeGroup(TextRange.FromBounds(element.Start, element.End), variants));
             }
             // Avalonia's includes, and WPF's merged dictionary by its Source.
@@ -136,30 +137,18 @@ public sealed record XamlFileSummary(string Path, string? Class, IReadOnlyList<R
         return XamlDialect.IsLanguageUri(XamlFile.DeclaredUri(element, "x")) ? "x" : null;
     }
 
-    /// <summary>The theme variant a keyed element is for: the key of the dictionary it is in under a
+    /// <summary>The theme variant a keyed element is for: that of the dictionary it is in under a
     /// <c>ThemeDictionaries</c> property element, and that group's place.</summary>
-    private static (string? Variant, TextRange? Group) VariantOf(XmlElement element, string x)
+    private static (string? Variant, TextRange? Group) VariantOf(XmlElement element)
     {
         for (XmlElement? at = element.Parent; at is not null; at = at.Parent)
         {
-            if (at.Parent is { } holder && holder.LocalName.EndsWith(".ThemeDictionaries", StringComparison.Ordinal) && at.Attribute($"{x}:Key") is { } variant)
+            if (at.Parent is { } holder && holder.LocalName.EndsWith(".ThemeDictionaries", StringComparison.Ordinal) && ThemeVariants.VariantOf(at) is { } variant)
             {
-                return (StripStatic(variant.Value), TextRange.FromBounds(holder.Start, holder.End));
+                return (variant, TextRange.FromBounds(holder.Start, holder.End));
             }
         }
         return (null, null);
-    }
-
-    /// <summary>A variant written as <c>{x:Static ThemeVariant.Dark}</c> is <c>Dark</c>.</summary>
-    private static string StripStatic(string value)
-    {
-        string trimmed = value.Trim();
-        if (trimmed.StartsWith('{') && trimmed.EndsWith('}'))
-        {
-            int dot = trimmed.LastIndexOf('.');
-            return dot < 0 ? trimmed : trimmed[(dot + 1)..^1].Trim();
-        }
-        return trimmed;
     }
 
     /// <summary>The colour a colour or solid brush resource is written as, if it is a literal.</summary>

@@ -61,8 +61,8 @@ public static class ThemeVariants
         XmlTree tree = XmlTree.Parse(text);
         foreach (XmlElement group in tree.Elements.Where(e => e.LocalName.EndsWith(".ThemeDictionaries", StringComparison.Ordinal)))
         {
-            XmlElement? target = group.Children.FirstOrDefault(d => KeyOf(d) is { } named && Variant(named) == variant);
-            XmlElement? source = group.Children.Where(d => d != target).SelectMany(d => d.Children).FirstOrDefault(e => KeyOf(e) == key);
+            XmlElement? target = group.Children.FirstOrDefault(d => VariantOf(d) == variant);
+            XmlElement? source = group.Children.Where(d => d != target && VariantOf(d) is not null).SelectMany(d => d.Children).FirstOrDefault(e => KeyOf(e) == key);
             if (target is null || source is null || target.IsSelfClosing || !target.IsStartTagClosed || target.EndTagStart is not { } end)
             {
                 continue;
@@ -84,8 +84,11 @@ public static class ThemeVariants
         return [];
     }
 
-    private static string? KeyOf(XmlElement element) =>
-        element.Attributes.FirstOrDefault(a => a.LocalName == "Key" && a.Prefix.Length > 0)?.Value;
+    /// <summary>The theme variant a dictionary of a <c>ThemeDictionaries</c> group is for, read from its key in XAML's
+    /// language whatever the prefix, and none for a dictionary without one.</summary>
+    internal static string? VariantOf(XmlElement dictionary) => KeyOf(dictionary) is { } key ? Variant(key) : null;
+
+    private static string? KeyOf(XmlElement element) => XamlFile.Directive(element, "Key")?.Value;
 
     /// <summary>A variant written as <c>{x:Static ThemeVariant.Dark}</c> is <c>Dark</c>.</summary>
     private static string Variant(string key)
