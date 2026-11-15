@@ -183,4 +183,16 @@ public sealed class FeatureReadingTests
         Assert.Equal((11, "two spaces <here>"), (step.TextColumn, step.Text));
         Assert.Equal([22], step.Placeholders.Select(p => p.Column));
     }
+
+    [Fact]
+    public void A_file_of_crlf_lines_reads_as_one_of_lf_lines()
+    {
+        FeatureReading crlf = FeatureReading.Read(Calculator.Replace("\n", "\r\n", StringComparison.Ordinal), "en");
+        FeatureReading lf = FeatureReading.Read(Calculator, "en");
+
+        Assert.Equal(lf.Steps.Select(s => (s.Line, s.TextColumn, s.Text)), crlf.Steps.Select(s => (s.Line, s.TextColumn, s.Text)));
+        Assert.Equal(lf.Steps[^1].DocString!.Content, crlf.Steps[^1].DocString!.Content);
+        Assert.Equal(lf.Folds(), crlf.Folds());
+        Assert.Empty(crlf.Errors);
+    }
 }

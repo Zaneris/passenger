@@ -97,7 +97,7 @@ internal sealed partial class GherkinAssist
         List<StepSnippet> snippets = [];
         foreach (FeatureStep step in steps)
         {
-            StepSnippet snippet = StepSnippets.Of(step, analysis.Reading, analysis.Config.Skeleton, project.IsSpecFlow, culture, taken);
+            StepSnippet snippet = StepSnippets.Of(step, analysis.Reading, analysis.Config.SkeletonFor(project.IsSpecFlow), project.IsSpecFlow, culture, taken);
             // Steps written alike (an And repeating a Given) take one definition.
             if (!snippets.Any(s => AttributeOf(s) == AttributeOf(snippet)))
             {
@@ -106,7 +106,7 @@ internal sealed partial class GherkinAssist
             }
         }
         string usings = project.IsSpecFlow ? "TechTalk.SpecFlow" : "Reqnroll";
-        bool async = analysis.Config.Skeleton is SkeletonStyle.AsyncCucumberExpression or SkeletonStyle.AsyncRegex;
+        bool async = analysis.Config.SkeletonFor(project.IsSpecFlow) is SkeletonStyle.AsyncCucumberExpression or SkeletonStyle.AsyncRegex;
         XamlFileChange change;
         if (target.Class is null)
         {

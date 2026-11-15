@@ -32,10 +32,10 @@ internal static class StepBindingReading
         {
             cancel.ThrowIfCancellationRequested();
             // A multi-targeted project is several of the server's projects of one file: its bindings are read once. One that
-            // references no Reqnroll or SpecFlow is never compiled for them.
+            // references neither Reqnroll nor SpecFlow, nor any project that may, is never compiled for them.
             if (project.Language != LanguageNames.CSharp || project.FilePath is not { } file
                 || (asked.Projects.Count > 0 && !asked.Projects.Any(path => SamePath(path, file))) || !seen.Add(PathNames.Canonical(file))
-                || !project.MetadataReferences.Any(r => Path.GetFileName(r.Display) is "Reqnroll.dll" or "TechTalk.SpecFlow.dll")
+                || (!project.MetadataReferences.Any(r => Path.GetFileName(r.Display) is "Reqnroll.dll" or "TechTalk.SpecFlow.dll") && !project.ProjectReferences.Any())
                 || await project.GetCompilationAsync(cancel).ConfigureAwait(false) is not { } compilation)
             {
                 continue;
