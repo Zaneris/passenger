@@ -2090,6 +2090,38 @@ public class VimTests
     public void Characters_put_over_lines_leave_the_cursor_on_the_first_non_blank(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>. after p or P over a visual stretch deletes as much again as a d there would, putting nothing: after p
+    /// into the registers a d fills, after P into none; the black hole register puts as empty text, an empty line over
+    /// lines, as Vim's do.</summary>
+    [Theory]
+    [InlineData("ab|c\nde\nfg\nhi", "yiwjVp.", "abc\n|fg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "yiwjVp.p", "abc\nfg\n|abc\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "yiwjVp.\"2p", "abc\nfg\n|de\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "yiwjVP.p", "abc\nfab|cg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "\"ayiwjV\"ap.\"ap", "abc\nfab|cg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "vjyjVp.", "abc\n|de\n\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "ylvp.", "a|b\nde\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "ylv3p.p", "abcc|c\nde\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "yiwjvep.", "abc\nab|fg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "yl0vjp..", "|i")]
+    [InlineData("ab|c\nde\nfg\nhi", "yl0<C-v>jp.p", "b|cc\nec\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "yl0<C-v>jP.p", "b|cc\ne\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "jV\"_pp", "abc\n\n|de\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "<C-v>jh\"_p", "|a\nd\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "Vj\"_p.", "|hi")]
+    public void Dot_after_a_put_over_a_stretch_deletes_as_much_again_as_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A block deleted or changed over more than one line goes to register 1, one line's to -, as Vim's does.</summary>
+    [Theory]
+    [InlineData("ab|c\nde\nfg\nhi", "<C-v>jd\"1p", "ab|c\nde\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "<C-v>jd\"-p", "a|b\nde\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "yiwj<C-v>jp\"1p", "abc\nabc|de\nabcfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "<C-v>jc7<Esc>\"1p", "ab7|c\nde7\nfg\nhi")]
+    [InlineData("ab|c\nde\nfg\nhi", "<C-v>d\"-p", "ab|c\nde\nfg\nhi")]
+    public void A_block_of_several_lines_deleted_goes_to_register_one(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

@@ -64,14 +64,15 @@ public sealed class VimRegisters
     }
 
     /// <summary>A delete or change: into the register named, and into 1 (the others shifting down) when it was a line or
-    /// more or <paramref name="always"/> (its motion was one of Vim's jumps), else - when no register was named.</summary>
+    /// more, a block of more than one line, or <paramref name="always"/> (its motion was one of Vim's jumps), else -
+    /// when no register was named.</summary>
     public void Delete(char? name, VimRegister text, bool always)
     {
         if (name == '_')
         {
             return;
         }
-        bool small = !text.Linewise && !text.Parts.Any(p => p.Contains('\n', StringComparison.Ordinal));
+        bool small = !text.Linewise && !(text.Blockwise && text.Parts.Count > 1) && !text.Parts.Any(p => p.Contains('\n', StringComparison.Ordinal));
         VimRegister written = name is null or '"' ? text : Write(name.Value, text);
         if (!small || always)
         {

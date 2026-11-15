@@ -498,7 +498,7 @@ public sealed partial class Vim
     /// <summary>p and P over a visual stretch: the register's text in place of what is shown, which p keeps in the
     /// unnamed register and P doesn't; whole lines put over characters go on lines of their own, over a block below the
     /// line its cursor stands on (<paramref name="below"/>). From an empty register the stretch is deleted alone, as a d
-    /// into the unnamed register (for P into none), which . makes again.</summary>
+    /// into the unnamed register (for P into none); . after either deletes as much again so, putting nothing.</summary>
     private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view, int top, int below)
     {
         if (VimRegisters.IsClipboard(command.Register))
@@ -506,12 +506,13 @@ public sealed partial class Vim
             Remember(command);
             return new VimResult(true, carets);
         }
-        if (Registers.Get(command.Register) is not { } value)
+        // The black hole register puts as empty text, a line of nothing over lines.
+        if ((command.Register == '_' ? new VimRegister([string.Empty], false) : Registers.Get(command.Register)) is not { } value)
         {
             char? into = keep ? '_' : null;
             return Act(command with { Keys = into is { } none ? ["\"", none.ToString(), "d"] : ["d"], Register = into }, "d", stretches, text, carets, view, block);
         }
-        Remember(command);
+        Remember(command with { Keys = keep ? ["\"", "_", "d"] : ["d"], Count = 0 });
         stretches.Sort((a, b) => a.Start.CompareTo(b.Start));
         VimRegister replaced = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
         string eol = view.LineEnding;
