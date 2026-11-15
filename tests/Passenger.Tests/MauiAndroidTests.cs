@@ -101,7 +101,8 @@ public sealed class MauiAndroidTests
 
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => Left(tools, target).Length == 0, () => $"the app to end and the inspector's files to be let go on the emulator; it still has {Left(tools, target)}",
+            string serial = AndroidSerials.Of(window, target);
+            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"the app to end and the inspector's files to be let go on the emulator; it still has {Left(tools, serial)}",
                 TimeSpan.FromSeconds(30));
         }
         finally
@@ -111,10 +112,10 @@ public sealed class MauiAndroidTests
         }
     }
 
-    /// <summary>What a start left on the device: the app still running, the inspector's files in it; empty once its end took them away.</summary>
-    private static string Left(AndroidTools tools, DeviceTarget target)
+    /// <summary>What a start left on the emulator of <paramref name="serial"/>: the app still running, the inspector's files in
+    /// it; empty once its end took them away.</summary>
+    private static string Left(AndroidTools tools, string serial)
     {
-        string serial = target.Running ? target.Id : "emulator-5554";
         string running = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", MauiApp.Package]))), "pidof on the device")
             .Output.Trim();
         string files = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", $"run-as {MauiApp.Package} ls -a files"]))),

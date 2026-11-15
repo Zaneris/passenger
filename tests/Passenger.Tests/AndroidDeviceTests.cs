@@ -13,8 +13,9 @@ namespace Passenger.Tests;
 /// configuration named for the app (its launch settings' only profile is the MAUI template's Windows one), Run installs
 /// and starts it there, its log in the Run window, and Stop ends it on the emulator; Debug stops at a breakpoint in its
 /// OnCreate through Passenger's relay in the app, its locals shown, and Stop ends it; Run with Hot Reload takes an edit of
-/// its code through the relay. Skips, saying why, without the Android workload, its SDK and Java, an emulator or the
-/// relays. Debugged through the window, so run alone.</summary>
+/// its code through the relay. The emulator is the one ANDROID_SERIAL names where several run, and every adb call names
+/// it. Skips, saying why, without the Android workload, its SDK and Java, an emulator or the relays. Debugged through the
+/// window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class AndroidDeviceTests
 {
@@ -35,7 +36,8 @@ public sealed class AndroidDeviceTests
                 () => $"the app's log in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
-            Ui.WaitFor(() => Pid(tools, window).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, window)}", TimeSpan.FromSeconds(30));
+            string serial = AndroidSerials.Of(window, target);
+            Ui.WaitFor(() => Pid(tools, serial).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, serial)}", TimeSpan.FromSeconds(30));
 
             window.OpenFile(Path.Combine(PathNames.Canonical(folder), "MainActivity.cs"));
             Ui.Settle();
@@ -52,8 +54,9 @@ public sealed class AndroidDeviceTests
                     + $"{Shown(window, "greeting") ?? "not shown"}: {Ui.Said(window)}", Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => Pid(tools, window).Length == 0, () => $"the debugged app to end on the emulator once stopped; it runs as {Pid(tools, window)}", TimeSpan.FromSeconds(30));
-            Ui.WaitFor(() => Left(tools).Length == 0, () => $"the debugging's port and debugged app to be let go on the emulator; it still has {Left(tools)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Pid(tools, serial).Length == 0, () => $"the debugged app to end on the emulator once stopped; it runs as {Pid(tools, serial)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"the debugging's port and debugged app to be let go on the emulator; it still has {Left(tools, serial)}",
+                TimeSpan.FromSeconds(30));
         }
         finally
         {
@@ -87,11 +90,13 @@ public sealed class AndroidDeviceTests
             Ui.WaitFor(() => Output(window).Contains("Ticked after Hot Reload", StringComparison.Ordinal),
                 () => $"the app on the emulator to tick as the edited code does: {Ui.Said(window)}\n{Output(window)}", TimeSpan.FromMinutes(1));
 
+            string serial = AndroidSerials.Of(window, target);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
             Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the quiet session to end with the app");
-            Ui.WaitFor(() => Pid(tools, window).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, window)}", TimeSpan.FromSeconds(30));
-            Ui.WaitFor(() => Left(tools).Length == 0, () => $"the relay's port and debugged app to be let go on the emulator; it still has {Left(tools)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Pid(tools, serial).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, serial)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"the relay's port and debugged app to be let go on the emulator; it still has {Left(tools, serial)}",
+                TimeSpan.FromSeconds(30));
         }
         finally
         {
@@ -123,7 +128,7 @@ public sealed class AndroidDeviceTests
         {
             Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
         }
-        DeviceTarget? target = targets.FirstOrDefault(t => t.Running) ?? targets.FirstOrDefault(t => t.Kind == TargetKind.Emulator);
+        DeviceTarget? target = MauiApp.Target(targets);
         if (target is null)
         {
             Assert.Skip("No Android device is connected and no emulator is made (an AVD of an installed system image), so there is nothing to run on");
@@ -158,22 +163,21 @@ public sealed class AndroidDeviceTests
     /// <summary>A local's value as Variables shows it where the program stopped; null before it shows one.</summary>
     private static string? Shown(MainWindow window, string name) => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == name)?.Value;
 
-    /// <summary>What a Debug start left on the device: a port forwarded to a session's relay, the app marked as debugged;
-    /// empty once its end took both away.</summary>
-    private static string Left(AndroidTools tools)
+    /// <summary>What a Debug start left on the emulator of <paramref name="serial"/>: a port forwarded to a session's relay,
+    /// the app marked as debugged; empty once its end took both away.</summary>
+    private static string Left(AndroidTools tools, string serial)
     {
-        string forwards = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["forward", "--list"]))), "adb's forwards").Output;
-        string debugged = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["shell", "dumpsys activity processes | grep mDebugApp="]))),
-            "the device's debugged app").Output;
-        return string.Join("; ", [.. forwards.Split('\n').Where(l => l.Contains("localabstract:passenger-debug-", StringComparison.Ordinal)).Select(l => l.Trim()),
+        string forwards = Adb(tools, serial, "forward", "--list");
+        string debugged = Adb(tools, serial, "shell", "dumpsys activity processes | grep mDebugApp=");
+        return string.Join("; ", [.. forwards.Split('\n').Where(l => l.StartsWith(serial + " ", StringComparison.Ordinal) && l.Contains("localabstract:passenger-debug-", StringComparison.Ordinal))
+                .Select(l => l.Trim()),
             .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [$"{Package} marked as debugged"] : (string[])[]]);
     }
 
-    /// <summary>The app's process on the device the window chose, as pidof says it: empty once it has ended.</summary>
-    private static string Pid(AndroidTools tools, MainWindow window)
-    {
-        string serial = window.Session.RunPlan?.Device?.App?.Serial ?? "emulator-5554";
-        return Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", Package]))), "pidof on the device")
-            .Output.Trim();
-    }
+    /// <summary>The app's process on the emulator of <paramref name="serial"/>, as pidof says it: empty once it has ended.</summary>
+    private static string Pid(AndroidTools tools, string serial) => Adb(tools, serial, "shell", "pidof", Package).Trim();
+
+    /// <summary>What adb says to a command for the emulator of <paramref name="serial"/>.</summary>
+    private static string Adb(AndroidTools tools, string serial, params string[] command) =>
+        Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, .. command]))), $"adb {string.Join(' ', command)} on {serial}").Output;
 }

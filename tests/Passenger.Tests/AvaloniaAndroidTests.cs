@@ -47,7 +47,7 @@ public sealed class AvaloniaAndroidTests
         {
             Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
         }
-        if ((targets.FirstOrDefault(t => t.Running) ?? targets.FirstOrDefault(t => t.Kind == TargetKind.Emulator)) is not { } target)
+        if (MauiApp.Target(targets) is not { } target)
         {
             Assert.Skip("No Android device is connected and no emulator is made (an AVD of an installed system image), so there is nothing to run on");
             return;
@@ -69,8 +69,8 @@ public sealed class AvaloniaAndroidTests
             Ui.Launched(window, window.RunAsync(), "the build, the install and the start on the emulator", Slow);
             Ui.WaitFor(() => Output(window).Contains($"{Package} started as process ", StringComparison.Ordinal),
                 () => $"the app's start in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
-            Ui.WaitFor(() => Pid(tools, window).Length > 0, "the app to run on the emulator", TimeSpan.FromSeconds(30));
-            string serial = window.Session.RunPlan!.Device!.App!.Serial;
+            string serial = AndroidSerials.Of(window, target);
+            Ui.WaitFor(() => Pid(tools, serial).Length > 0, "the app to run on the emulator", TimeSpan.FromSeconds(30));
             Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, () => $"the inspector in the app on the emulator to say hello; it is "
                 + $"{window.Session.RunApp?.State.ToString() ?? "not made"} ({window.Session.RunApp?.Problem}): {Ui.Said(window)}\n{Output(window)}", Slow);
             TreeAsked tree = new(window.Session.RunApp!);
@@ -87,8 +87,9 @@ public sealed class AvaloniaAndroidTests
                 () => $"the saved XAML's TextBlock in the app's tree in place of its TextBox; it shows {tree.Shown}: {Ui.Said(window)}", Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
-            Ui.WaitFor(() => Pid(tools, window).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, window)}", TimeSpan.FromSeconds(30));
-            Ui.WaitFor(() => Left(tools).Length == 0, () => $"the inspector's port and files to be let go on the emulator; it still has {Left(tools)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Pid(tools, serial).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, serial)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"the inspector's port and files to be let go on the emulator; it still has {Left(tools, serial)}",
+                TimeSpan.FromSeconds(30));
             (string linked, string built) = AppEnvironment(tools, serial);
             Assert.True(linked == built, $"Run's end left the app's environment linked to '{linked}', not the build's own at {built}: the app's next start reads it");
 
@@ -115,8 +116,9 @@ public sealed class AvaloniaAndroidTests
                     + Ui.Said(window), Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => Pid(tools, window).Length == 0, () => $"the debugged app to end on the emulator once stopped; it runs as {Pid(tools, window)}", TimeSpan.FromSeconds(30));
-            Ui.WaitFor(() => Left(tools).Length == 0, () => $"the debugging's ports and files to be let go on the emulator; it still has {Left(tools)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Pid(tools, serial).Length == 0, () => $"the debugged app to end on the emulator once stopped; it runs as {Pid(tools, serial)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"the debugging's ports and files to be let go on the emulator; it still has {Left(tools, serial)}",
+                TimeSpan.FromSeconds(30));
             (linked, built) = AppEnvironment(tools, serial);
             Assert.True(linked == built, $"Debug, started where a start left its own environment file, left the app's environment linked to '{linked}', not the build's "
                 + $"own at {built}: the app's next start reads no environment of its build's");
@@ -162,15 +164,17 @@ public sealed class AvaloniaAndroidTests
         }
     }
 
-    /// <summary>What a start left on the device: a port forwarded to a relay's or an inspector's socket, the inspector's
-    /// files in the app, the app marked as debugged; empty once its end took them away.</summary>
-    private static string Left(AndroidTools tools)
+    /// <summary>What a start left on the emulator of <paramref name="serial"/>: a port forwarded to a relay's or an
+    /// inspector's socket, the inspector's files in the app, the app marked as debugged; empty once its end took them away.</summary>
+    private static string Left(AndroidTools tools, string serial)
     {
-        string forwards = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["forward", "--list"]))), "adb's forwards").Output;
-        string files = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["shell", $"run-as {Package} ls -a files"]))), "the app's files").Output;
-        string debugged = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["shell", "dumpsys activity processes | grep mDebugApp="]))),
+        string forwards = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "forward", "--list"]))), "adb's forwards").Output;
+        string files = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", $"run-as {Package} ls -a files"]))),
+            "the app's files").Output;
+        string debugged = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "dumpsys activity processes | grep mDebugApp="]))),
             "the device's debugged app").Output;
-        return string.Join("; ", [.. forwards.Split('\n').Where(l => l.Contains("localabstract:passenger-", StringComparison.Ordinal)).Select(l => l.Trim()),
+        return string.Join("; ", [.. forwards.Split('\n').Where(l => l.StartsWith(serial + " ", StringComparison.Ordinal) && l.Contains("localabstract:passenger-", StringComparison.Ordinal))
+                .Select(l => l.Trim()),
             .. files.Split('\n').Any(l => l.Trim() == ".passenger") ? ["the inspector's files"] : (string[])[],
             .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [$"{Package} marked as debugged"] : (string[])[]]);
     }
@@ -195,11 +199,7 @@ public sealed class AvaloniaAndroidTests
         return said.Output;
     }
 
-    /// <summary>The app's process on the device the window chose, as pidof says it: empty once it has ended.</summary>
-    private static string Pid(AndroidTools tools, MainWindow window)
-    {
-        string serial = window.Session.RunPlan?.Device?.App?.Serial ?? "emulator-5554";
-        return Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", Package]))), "pidof on the device")
-            .Output.Trim();
-    }
+    /// <summary>The app's process on the emulator of <paramref name="serial"/>, as pidof says it: empty once it has ended.</summary>
+    private static string Pid(AndroidTools tools, string serial) =>
+        Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", Package]))), "pidof on the device").Output.Trim();
 }

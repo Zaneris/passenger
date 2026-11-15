@@ -16,9 +16,9 @@ namespace Passenger.Tests;
 /// the emulator: the Passenger waits for the app's end there before it goes. An Avalonia app's Android head run there
 /// shows its view root as its one window to app_windows asked the moment run answers; the MAUI template's Android head run
 /// there lists its main page's label and button to app_tree, its window's picture to app_screenshot, and app_click taps the
-/// button. Skips, saying why, without the Android workload, its SDK and Java, or an emulator (and the relays, for the
-/// debugged app; Avalonia's Android packages, or MAUI's workload, for their apps). Alone, as AndroidDeviceTests is, the
-/// emulator being one for both.</summary>
+/// button. Every adb call names the emulator, ANDROID_SERIAL's where several run. Skips, saying why, without the Android
+/// workload, its SDK and Java, or an emulator (and the relays, for the debugged app; Avalonia's Android packages, or MAUI's
+/// workload, for their apps). Alone, as AndroidDeviceTests is, the emulator being one for both.</summary>
 [Collection(Alone.Name)]
 public sealed class McpAndroidDeviceTests : McpRig
 {
@@ -27,7 +27,7 @@ public sealed class McpAndroidDeviceTests : McpRig
     [Fact]
     public async Task An_agents_run_of_an_android_app_on_an_emulator_answers_once_it_has_started_there_naming_the_emulator()
     {
-        if (await ChosenAsync() is not ({ } client, { } target, { } tools))
+        if (await ChosenAsync() is not ({ } client, { } target, { } tools, { } project))
         {
             return;
         }
@@ -41,15 +41,16 @@ public sealed class McpAndroidDeviceTests : McpRig
                 $"run did not answer once the app started on {target.Name}, naming it and the app's process: {ran}");
             Assert.True(int.TryParse(status[status.LastIndexOf(' ')..], out _), $"run named no process of the app's: {status}");
 
+            string serial = await SerialAsync(target, project);
             await Call(client, McpTools.Stop);
-            await EndedAsync(target, tools);
+            await EndedAsync(serial, tools);
         }
     }
 
     [Fact]
     public async Task An_agents_debug_start_of_an_android_app_on_an_emulator_answers_once_its_session_runs_there_naming_the_emulator()
     {
-        if (await ChosenAsync() is not ({ } client, { } target, { } tools))
+        if (await ChosenAsync() is not ({ } client, { } target, { } tools, { } project))
         {
             return;
         }
@@ -63,14 +64,15 @@ public sealed class McpAndroidDeviceTests : McpRig
                 $"debug_start did not answer once the app started on {target.Name} debugged, naming it and the app's process: {debugged}");
             Assert.True(int.TryParse(status[status.LastIndexOf(' ')..], out _), $"debug_start named no process of the app's: {status}");
 
+            string serial = await SerialAsync(target, project);
             await Call(client, McpTools.Stop);
-            await EndedAsync(target, tools);
+            await EndedAsync(serial, tools);
         }
     }
 
     /// <summary>An agent's own Passenger over a copy of the Android test app, the emulator chosen for its configuration
-    /// with ide_action app.chooseRunTarget; skipped, saying why, where there is nothing to run it on.</summary>
-    private async Task<(McpClient? Client, DeviceTarget? Target, AndroidTools? Tools)> ChosenAsync()
+    /// with ide_action app.chooseRunTarget, and the app's project; skipped, saying why, where there is nothing to run it on.</summary>
+    private async Task<(McpClient? Client, DeviceTarget? Target, AndroidTools? Tools, string? Project)> ChosenAsync()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-android-"));
         DeleteAtEnd(folder);
@@ -82,10 +84,11 @@ public sealed class McpAndroidDeviceTests : McpRig
             Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
             File.Copy(file, copy);
         }
-        (DeviceTarget target, AndroidTools tools) = await TargetAsync(Path.Combine(folder, "AndroidApp.csproj"));
+        string project = Path.Combine(folder, "AndroidApp.csproj");
+        (DeviceTarget target, AndroidTools tools) = await TargetAsync(project);
         McpClient client = await Start(["--mcp", folder], languageServer: false);
         await ChooseAsync(client, "AndroidApp", target);
-        return (client, target, tools);
+        return (client, target, tools, project);
     }
 
     /// <summary>The device or emulator a project of the folder runs on, as the Android workload lists them, and its tools;
@@ -119,10 +122,23 @@ public sealed class McpAndroidDeviceTests : McpRig
         Assert.Equal($"{configuration} runs on {target.Name}", chose);
     }
 
-    /// <summary>Waits for the app to have ended on the emulator: its serial once it ran, else the first an emulator started takes.</summary>
-    private static async Task EndedAsync(DeviceTarget target, AndroidTools tools, string package = Package)
+    /// <summary>The serial of the emulator a test runs on: the target's own where it ran when listed, else the one its AVD
+    /// runs as once the start booted it.</summary>
+    private static async Task<string> SerialAsync(DeviceTarget target, string project)
     {
-        string serial = target.Running ? target.Id : "emulator-5554";
+        if (target.Running)
+        {
+            return target.Id;
+        }
+        string? serial = null;
+        await Waiting.UntilAsync(async () => (serial = (await AndroidDevices.ListAsync(project, "net11.0-android", new Dictionary<string, string>(), Cancel)).Targets
+            .FirstOrDefault(t => t.Running && t.Avd == target.Avd)?.Id) is not null, TimeSpan.FromMinutes(3), Cancel, TimeSpan.FromSeconds(2));
+        return serial ?? throw new InvalidOperationException($"{target.Name} was not booted as an emulator the workload lists");
+    }
+
+    /// <summary>Waits for the app to have ended on the emulator of <paramref name="serial"/>.</summary>
+    private static async Task EndedAsync(string serial, AndroidTools tools, string package = Package)
+    {
         await Waiting.UntilAsync(async () => (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", package]))).Output.Trim().Length == 0,
             TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(500));
     }
@@ -153,8 +169,9 @@ public sealed class McpAndroidDeviceTests : McpRig
         Assert.True(tree.StartsWith($"EmbeddableControlRoot {id} ", StringComparison.Ordinal) && tree.Contains("MainView", StringComparison.Ordinal),
             $"The window app_windows named is not the one app_tree shows the app's view in: {tree}");
 
+        string serial = await SerialAsync(target, project);
         await Call(client, McpTools.Stop);
-        await EndedAsync(target, tools, "com.CompanyName.XApp");
+        await EndedAsync(serial, tools, "com.CompanyName.XApp");
     }
 
     [Fact]
@@ -198,8 +215,9 @@ public sealed class McpAndroidDeviceTests : McpRig
         string counted = Text(await Call(client, McpTools.AppTree, new() { ["filter"] = "#CounterBtn" }));
         Assert.True(counted.StartsWith("Button#CounterBtn \"Clicked 1 time\" @", StringComparison.Ordinal), $"The button does not show its click in app_tree: {counted}");
 
+        string serial = await SerialAsync(target, project);
         await Call(client, McpTools.Stop);
-        await EndedAsync(target, tools, MauiApp.Package);
+        await EndedAsync(serial, tools, MauiApp.Package);
     }
 
     [Fact]
@@ -215,7 +233,8 @@ public sealed class McpAndroidDeviceTests : McpRig
             Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
             File.Copy(file, copy);
         }
-        (DeviceTarget target, AndroidTools tools) = await TargetAsync(Path.Combine(folder, "AndroidApp.csproj"));
+        string project = Path.Combine(folder, "AndroidApp.csproj");
+        (DeviceTarget target, AndroidTools tools) = await TargetAsync(project);
         if (!((string[])["android-arm64", "android-x64"]).Any(runtime => File.Exists(Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, AndroidApp.RelayFile))))
         {
             Assert.Skip("This build carries no Android debug relay, which `just debug-relay android` makes before a build carries it");
@@ -226,24 +245,26 @@ public sealed class McpAndroidDeviceTests : McpRig
             TimeSpan.FromMinutes(3), Cancel, TimeSpan.FromMilliseconds(500));
         await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ChooseRunTarget, ["input"] = target.Name });
         JsonElement started = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "AndroidApp", ["waitSeconds"] = 5 });
-        Assert.True((await LeftAsync(tools)).Length > 0, $"debug_start put nothing of Passenger's on the emulator: {started}");
+        string serial = await SerialAsync(target, project);
+        Assert.True((await LeftAsync(tools, serial)).Length > 0, $"debug_start put nothing of Passenger's on the emulator: {started}");
 
         await Call(client, McpTools.Stop);
         await client.DisposeAsync();
         Assert.True(await Waiting.Within(passenger.WaitForExitAsync(Cancel), TimeSpan.FromMinutes(1), Cancel), "Passenger did not end once the agent went");
-        string left = await LeftAsync(tools);
+        string left = await LeftAsync(tools, serial);
         Assert.True(left.Length == 0, $"Passenger went leaving on the emulator {left}: the next start finds them, and the app runs on marked as debugged");
     }
 
-    /// <summary>What a Debug start leaves on the device: a port forwarded to a relay's or an inspector's socket, the relay in
-    /// the app's folder, the app marked as debugged; empty once its end took them away.</summary>
-    private static async Task<string> LeftAsync(AndroidTools tools)
+    /// <summary>What a Debug start leaves on the emulator of <paramref name="serial"/>: a port forwarded to a relay's or an
+    /// inspector's socket, the relay in the app's folder, the app marked as debugged; empty once its end took them away.</summary>
+    private static async Task<string> LeftAsync(AndroidTools tools, string serial)
     {
-        string forwards = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["forward", "--list"]))).Output;
+        string forwards = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "forward", "--list"]))).Output;
         string relay = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb,
-            ["shell", $"run-as {Package} ls files/.__override__/arm64-v8a files/.__override__/x86_64 2>/dev/null"]))).Output;
-        string debugged = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["shell", "dumpsys activity processes | grep mDebugApp="]))).Output;
-        return string.Join("; ", [.. forwards.Split('\n').Where(l => l.Contains("localabstract:passenger-", StringComparison.Ordinal)).Select(l => l.Trim()),
+            ["-s", serial, "shell", $"run-as {Package} ls files/.__override__/arm64-v8a files/.__override__/x86_64 2>/dev/null"]))).Output;
+        string debugged = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "dumpsys activity processes | grep mDebugApp="]))).Output;
+        return string.Join("; ", [.. forwards.Split('\n').Where(l => l.StartsWith(serial + " ", StringComparison.Ordinal) && l.Contains("localabstract:passenger-", StringComparison.Ordinal))
+                .Select(l => l.Trim()),
             .. relay.Contains(AndroidApp.RelayFile, StringComparison.Ordinal) ? ["the relay in the app"] : (string[])[],
             .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [$"{Package} marked as debugged"] : (string[])[]]);
     }
