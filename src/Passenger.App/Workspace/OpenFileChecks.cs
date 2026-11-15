@@ -12,7 +12,6 @@ namespace Passenger.App.Workspace;
 internal abstract class OpenFileChecks<TKept>(TimeSpan settle) : IDisposable where TKept : class
 {
     private readonly Dictionary<OpenDocument, Followed> documents = [];
-    private Debounce? again;
 
     /// <summary>Who checks an open file it takes, as an agent is told while the check is under way, and what it keeps of the
     /// file from now on; null for a file it takes no part in.</summary>
@@ -26,6 +25,11 @@ internal abstract class OpenFileChecks<TKept>(TimeSpan settle) : IDisposable whe
     {
     }
 
+    /// <summary>An edit of a file it checks, heard as it is made, before the file's pause starts again.</summary>
+    protected virtual void Edited(TKept kept, DocumentChangedEventArgs e)
+    {
+    }
+
     public void Attach(OpenDocument document)
     {
         UiThread.Check();
@@ -34,7 +38,11 @@ internal abstract class OpenFileChecks<TKept>(TimeSpan settle) : IDisposable whe
             return;
         }
         Debounce pause = new(settle, () => CheckAsync(document, kept), () => document.Checking(checker));
-        Followed followed = new(checker, kept, pause, (_, _) => pause.Restart());
+        Followed followed = new(checker, kept, pause, (_, e) =>
+        {
+            Edited(kept, e);
+            pause.Restart();
+        });
         documents[document] = followed;
         document.Text.Changed += followed.Typed;
         IdeErrors.Observe(HeldAsync(document, followed));
@@ -58,20 +66,20 @@ internal abstract class OpenFileChecks<TKept>(TimeSpan settle) : IDisposable whe
         }
     }
 
-    /// <summary>What the open files are read against changed: each checked again once such changes pause.</summary>
+    /// <summary>What the open files are read against changed: each checked again once such changes and its typing pause,
+    /// held as its check meanwhile.</summary>
     public void Changed()
     {
         UiThread.Check();
-        if (documents.Count > 0)
+        foreach (Followed followed in documents.Values)
         {
-            (again ??= new Debounce(settle, () => Task.WhenAll([.. documents.Select(d => HeldAsync(d.Key, d.Value))]))).Restart();
+            followed.Pause.Restart();
         }
     }
 
     /// <summary>Its checks end with the window's session: every file let go, so none it keeps open is checked again by it.</summary>
     public void Dispose()
     {
-        again?.Stop();
         foreach (OpenDocument document in documents.Keys.ToList())
         {
             Detach(document);

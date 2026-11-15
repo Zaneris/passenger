@@ -20,7 +20,7 @@ public sealed class GDScriptColoursTests : FileColoursFolder
         + "func heal(by: int) -> void:\n\tvar gained := by * LIMIT\n\thealth += gained\n\thit.emit(gained)\n\tvar mood := Mood.ANGRY\n\tprint(mood, Hero, get_tree())\n";
 
     /// <summary>The one kind the first characters of a stretch's first occurrence are coloured as, or null for none or several.</summary>
-    private static TokenKind? KindAt(CodeEditor editor, string stretch, int length)
+    internal static TokenKind? KindAt(CodeEditor editor, string stretch, int length)
     {
         Passenger.Text.TextSnapshot text = editor.Document.Snapshot;
         int start = text.ToString().IndexOf(stretch, StringComparison.Ordinal);

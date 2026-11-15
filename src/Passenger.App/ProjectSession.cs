@@ -156,9 +156,7 @@ public sealed class ProjectSession : IAsyncDisposable
             Godot = () => setup.Settings().GodotExecutable,
             Shaders = GodotShaderChecker,
         };
-        GodotScenes.Changed += (_, _) => GodotMarks.Changed();
-        GodotScenes.Changed += (_, _) => GodotShaders.Changed();
-        GodotScenes.Changed += (_, _) => GodotScriptTypes.Changed();
+        GodotScenes.Changed += (_, _) => GodotFilesChanged();
         GodotScenes.CodeChanged += (_, _) => GodotMarks.CodeWritten();
         Debug = new DebugController(setup.Editors, setup.Views.Debug)
         {
@@ -341,8 +339,7 @@ public sealed class ProjectSession : IAsyncDisposable
         }
         // A Godot project's C# is read against its scenes once its evaluation says which folder they are in.
         CSharp?.GodotProjectsChanged();
-        GodotMarks.Changed();
-        GodotShaders.Changed();
+        GodotFilesChanged();
 
         static bool Same(ProjectEvaluation a, ProjectEvaluation b) =>
             a.AssetsFile == b.AssetsFile && a.PackageRoot == b.PackageRoot && a.TargetPath == b.TargetPath && ReferenceEquals(a.Parsing, b.Parsing)
@@ -1047,6 +1044,15 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The open GDScripts' own trees and types.</summary>
     internal Godot.GodotScriptTypes GodotScriptTypes { get; }
 
+    /// <summary>What the open Godot files are read against changed (the project's files, or which Godot project a file is of):
+    /// the open scenes, shaders and scripts each checked again once such changes pause.</summary>
+    private void GodotFilesChanged()
+    {
+        GodotMarks.Changed();
+        GodotShaders.Changed();
+        GodotScriptTypes.Changed();
+    }
+
     /// <summary>Holds the next reading of an open GDScript (<see cref="Godot.GodotScriptTypes.HoldNextTyping"/>).</summary>
     public Task HoldNextScriptReading(Task until) => GodotScriptTypes.HoldNextTyping(until);
 
@@ -1514,9 +1520,8 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             StartCSharp();
         }
-        // A Godot project of GDScript alone found by the walk is the open scenes' and shaders' project from now on.
-        GodotMarks.Changed();
-        GodotShaders.Changed();
+        // A Godot project of GDScript alone found by the walk is the open Godot files' project from now on.
+        GodotFilesChanged();
         WorkspaceChanged?.Invoke(this, EventArgs.Empty);
         ReadBuildChoices();
         // Each project whose evaluation no longer stands (its file or an import changed) is evaluated again.
@@ -1731,7 +1736,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScenes.Stop();
         GodotMarks.Dispose();
         GodotShaders.Dispose();
-        GodotScriptTypes.Stop();
+        GodotScriptTypes.Dispose();
         parts.Add(("Godot's editors", GodotEditors.DisposeAsync().AsTask()));
         // Not held, and off the window's thread, whose loop may stop first: a session's end told there would never come.
         parts.Add(("the apps on devices", Task.WhenAll(deviceEnds.Select(d => d.Ending.IsCompleted ? d.Ending : BackgroundWork.Unheld(d.Now)))));

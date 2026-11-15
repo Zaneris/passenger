@@ -15,6 +15,7 @@ namespace Passenger.App.Godot;
 /// marked, by the project's warning settings, until Godot's server speaks of the file (<see cref="Web.WebDocument.ShowPassengers"/>).
 /// What a key costs the window's thread is the edit's note and the pause's restart. A UI-thread object.</summary>
 internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, string?> godotOf, GodotEngineApis apis, Func<OpenDocument, Web.WebDocument?> webOf)
+    : OpenFileChecks<GodotScriptTypes.Kept>(Settle)
 {
     /// <summary>Who checks a script, as an agent is told while a check is under way.</summary>
     private const string Checker = "Passenger's reading of the script";
@@ -22,18 +23,12 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     /// <summary>How long typing pauses before the file is parsed and typed again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(250);
 
-    private readonly Dictionary<OpenDocument, Kept> documents = [];
-
     /// <summary>The next reading held by a test (<see cref="HoldNextTyping"/>): what it waits for, and done once it waits.</summary>
     private (Task Until, TaskCompletionSource Holding)? typingHeld;
 
     /// <summary>An open script's tree and analysis as last made, and the change its text has made since.</summary>
-    private sealed class Kept(Debounce pause)
+    internal sealed class Kept
     {
-        public Debounce Pause { get; } = pause;
-
-        public EventHandler<DocumentChangedEventArgs>? Typed { get; set; }
-
         public GDScriptTree? Tree { get; set; }
 
         public string? TreeText { get; set; }
@@ -56,35 +51,44 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     /// <summary>Godot's class reference for the engine's words on cards; null where none is found (<see cref="GodotEngineApis.ReferenceAsync"/>).</summary>
     public Task<GodotClassReference?> ReferenceAsync() => apis.ReferenceAsync();
 
-    public void Attach(OpenDocument document)
+    protected override (string Checker, Kept Kept)? Follow(OpenDocument document)
     {
-        UiThread.Check();
-        if (!IsScript(document.Path) || documents.ContainsKey(document))
+        if (!IsScript(document.Path))
         {
-            return;
+            return null;
         }
-        Kept kept = new(new Debounce(Settle, () => TypeAsync(document), () => document.Checking(Checker)));
-        kept.Typed = (_, e) =>
-        {
-            GDScriptTextChange change = GDScriptTextChange.Of(e.Edits);
-            kept.Pending = kept.Pending is { } before ? before.Then(change) : change;
-            kept.Pause.Restart();
-        };
+        Kept kept = new();
         if (document.Highlighter is { } grammar)
         {
             kept.Layer = new Languages.ColourLayer(grammar, document.Text);
             document.Highlighter = kept.Layer;
         }
-        documents[document] = kept;
-        document.Text.Changed += kept.Typed;
-        IdeErrors.Observe(FirstTypedAsync(document));
+        return (Checker, kept);
     }
 
-    /// <summary>The script as it opened typed, held as a check so an agent's first look waits for its marks.</summary>
-    private async Task FirstTypedAsync(OpenDocument document)
+    protected override void Edited(Kept kept, DocumentChangedEventArgs e)
     {
-        using OpenDocument.CheckHold hold = document.Checking(Checker);
-        await TypeAsync(document);
+        GDScriptTextChange change = GDScriptTextChange.Of(e.Edits);
+        kept.Pending = kept.Pending is { } before ? before.Then(change) : change;
+    }
+
+    protected override Task CheckAsync(OpenDocument document, Kept kept) => TypeAsync(document, kept);
+
+    /// <summary>Its colours and hints go with a script it lets go, so nothing an ended session read stays under the next's.</summary>
+    protected override void LetGo(OpenDocument document, Kept kept)
+    {
+        if (kept.Layer is { } layer)
+        {
+            if (document.Highlighter == layer)
+            {
+                document.Highlighter = layer.Syntax;
+            }
+            layer.Dispose();
+        }
+        if (document.InlayHints.Count > 0)
+        {
+            document.InlayHints = [];
+        }
     }
 
     /// <summary>The exports a scene's script gives a node, its own and those of the scripts it extends, read from its text as
@@ -99,52 +103,12 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         });
     }
 
-    /// <summary>Who marks an open file, as an agent is told while the check is under way; null for one this takes no part in.</summary>
-    public string? CheckOf(OpenDocument document) => documents.ContainsKey(document) ? Checker : null;
-
-    public void Detach(OpenDocument document)
-    {
-        UiThread.Check();
-        if (documents.Remove(document, out Kept? gone))
-        {
-            document.Text.Changed -= gone.Typed;
-            gone.Pause.Stop();
-            if (gone.Layer is { } layer)
-            {
-                if (document.Highlighter == layer)
-                {
-                    document.Highlighter = layer.Syntax;
-                }
-                layer.Dispose();
-            }
-        }
-    }
-
-    /// <summary>The project's other files changed: each open script typed again once changes pause.</summary>
-    public void Changed()
-    {
-        UiThread.Check();
-        foreach (Kept kept in documents.Values)
-        {
-            kept.Pause.Restart();
-        }
-    }
-
-    public void Stop()
-    {
-        foreach (Kept kept in documents.Values)
-        {
-            kept.Pause.Stop();
-        }
-    }
-
     /// <summary>An open script's types as last read, where they are of its text as it stands; null where typing has not
     /// paused since, or for a file this follows not.</summary>
     public Typed? Latest(OpenDocument document)
     {
         UiThread.Check();
-        return documents.TryGetValue(document, out Kept? kept) && kept.Current is { IsCompletedSuccessfully: true } done && done.Result is { } typed
-            && typed.Version == document.Text.Version ? typed : null;
+        return KeptOf(document)?.Current is { IsCompletedSuccessfully: true } done && done.Result is { } typed && typed.Version == document.Text.Version ? typed : null;
     }
 
     /// <summary>An open script's types for its text as it stands, read now where typing has not paused since; null for a
@@ -152,7 +116,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     public async Task<Typed?> TypedAsync(OpenDocument document)
     {
         UiThread.Check();
-        if (!documents.TryGetValue(document, out Kept? kept))
+        if (KeptOf(document) is not { } kept)
         {
             return null;
         }
@@ -160,7 +124,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         {
             return typed;
         }
-        return await TypeAsync(document);
+        return await TypeAsync(document, kept);
     }
 
     /// <summary>Every script of the project a file is in, read as a refactoring reads them (<see cref="GDScriptRead"/>):
@@ -258,13 +222,9 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     }
 
     /// <summary>The script typed again, after the typing under way: each starts from the tree the last one left.</summary>
-    private Task<Typed?> TypeAsync(OpenDocument document)
+    private Task<Typed?> TypeAsync(OpenDocument document, Kept kept)
     {
         UiThread.Check();
-        if (!documents.TryGetValue(document, out Kept? kept))
-        {
-            return Task.FromResult<Typed?>(null);
-        }
         Task<Typed?> typing = AfterAsync(document, kept, kept.Current);
         kept.Current = typing;
         return typing;
@@ -276,7 +236,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         {
             await before.Ended();
         }
-        if (!documents.ContainsKey(document))
+        if (!Follows(document, kept))
         {
             return null;
         }
@@ -290,7 +250,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             held.Holding.SetResult();
             await held.Until;
         }
-        if (typed is null || !documents.ContainsKey(document))
+        if (typed is null || !Follows(document, kept))
         {
             return typed;
         }
@@ -307,6 +267,9 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         }
         return typed;
     }
+
+    /// <summary>Whether an open script is followed still, as it was when a reading began.</summary>
+    private bool Follows(OpenDocument document, Kept kept) => KeptOf(document) == kept;
 
     /// <summary>A script's findings marked: beside its server's until the server speaks of it, else alone; none set where
     /// the marks shown, carried through the edits since, already say them.</summary>
