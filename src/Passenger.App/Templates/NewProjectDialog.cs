@@ -1333,7 +1333,7 @@ public sealed class NewProjectDialog : IdeWindow
     /// the link under the note installs. A greyed set-up says why on hover too.</summary>
     private void ShowSetup()
     {
-        string? why = template is null ? null : NotAService(template);
+        string? why = template is null ? null : NotAService(template, Variant());
         string? noContainers = noEngine is { } none ? $"{none}: Docker and Docker Compose are not offered" : null;
         foreach (ProjectSetup kind in (ProjectSetup[])[ProjectSetup.Dockerfile, ProjectSetup.SdkContainer, ProjectSetup.Compose])
         {
@@ -1391,17 +1391,23 @@ public sealed class NewProjectDialog : IdeWindow
         _ => "None",
     };
 
-    /// <summary>Why a template's project is set up to run no other way: it is no service (web, API, worker, Blazor, gRPC), or
-    /// it runs in the browser (<see cref="InBrowser"/>); null for one that is a service.</summary>
-    private static string? NotAService(ProjectTemplate template)
+    /// <summary>Why a template's project is set up to run no other way: it is no service (web, API, worker, Blazor, gRPC), it
+    /// makes a library whatever it is tagged (<see cref="TemplateVariant.OutputType"/>), or it runs in the browser (<see
+    /// cref="InBrowser"/>); null for one that is a service.</summary>
+    private static string? NotAService(ProjectTemplate template, TemplateVariant variant)
     {
         HashSet<string> kinds = new(template.Classifications, StringComparer.OrdinalIgnoreCase);
         if (InBrowser(template))
         {
             return $"{template.Name} runs in the browser, served by its development server: containers and Aspire are set up for services, which run on a server";
         }
-        return !template.IsSolution && (kinds.Contains("Web") || kinds.Contains("Worker")) && !kinds.Overlaps(["Test", "Library", "Desktop"]) ? null
-            : $"{template.Name} is not a service: containers and Aspire are set up for web, API, worker, Blazor and gRPC projects";
+        if (template.IsSolution || !(kinds.Contains("Web") || kinds.Contains("Worker")) || kinds.Overlaps(["Test", "Library", "Desktop"]))
+        {
+            return $"{template.Name} is not a service: containers and Aspire are set up for web, API, worker, Blazor and gRPC projects";
+        }
+        return string.Equals(variant.OutputType, TemplateProjects.Library, StringComparison.OrdinalIgnoreCase)
+            ? $"{template.Name} is not a service: its project is a class library, which makes no program to run in a container or under Aspire"
+            : null;
     }
 
     /// <summary>Whether a template's project runs wholly in the browser on .NET's WebAssembly runtime: Blazor's standalone

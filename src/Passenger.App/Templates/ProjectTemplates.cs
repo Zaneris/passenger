@@ -22,7 +22,7 @@ public sealed record TemplateCatalog(string Sdk, IReadOnlyList<TemplateFamily> F
     private static string ShapeOf(string sdk, IReadOnlyList<TemplateFamily> families, IReadOnlyList<string> formats, string format, IReadOnlyList<ProjectTemplate> items)
     {
         static string Variant(TemplateVariant v) =>
-            $"{v.Identity}:{v.Language}:{string.Join(',', v.Frameworks)}:{v.DefaultFramework}:{v.Description}:"
+            $"{v.Identity}:{v.Language}:{string.Join(',', v.Frameworks)}:{v.DefaultFramework}:{v.OutputType}:{v.Description}:"
             + string.Join(',', v.Options.Select(o => $"{o.Name}={o.Default}/{o.Label}/{o.Kind}/{o.Choices.Count}/{o.EnabledWhen}/{o.Through}"));
         static string Type(string family, ProjectTemplate t) =>
             $"{family}|{t.TypeName}|{t.Name}|{string.Join(',', t.ShortNames)}|{t.IsSolution}|{t.Pack?.Id}|{t.DefaultName}|{string.Join(';', t.Variants.Select(Variant))}";
@@ -91,6 +91,10 @@ public sealed record TemplateVariant(string Identity, string? Language, int Prec
 {
     /// <summary>The option that keeps dotnet new from restoring what it made (skipRestore's), when the template restores.</summary>
     public string? SkipRestoreOption { get; init; }
+
+    /// <summary>The output type of the projects it makes, where their files say it alike (Exe, Library); null where an SDK
+    /// of their own or a choice decides it, or it makes no project read here.</summary>
+    public string? OutputType { get; init; }
 }
 
 public enum TemplateOptionKind
@@ -397,6 +401,7 @@ public static partial class ProjectTemplates
             frameworkOption, frameworks, defaultFramework, options)
         {
             SkipRestoreOption = parameters.ContainsKey("skipRestore") ? LongName(cli, "skipRestore") : null,
+            OutputType = Tag(template, "type") == "project" ? ide.OutputType(template) : null,
         };
     }
 
@@ -596,11 +601,12 @@ public static partial class ProjectTemplates
     /// <summary>A whole number as dotnet new's files write it, a number or its text; 0 when it is neither.</summary>
     private static int Int(JsonElement? element, string name) => int.TryParse(JsonMembers.Scalar(element, name, AnyCase), out int value) ? value : 0;
 
-    /// <summary>A template's own files, beside its template.json in its package (or folder): its ide.host.json and the
-    /// computed symbols of its template.json, each package opened once.</summary>
+    /// <summary>A template's own files in its package (or folder): its ide.host.json, the computed symbols of its
+    /// template.json and the output type of the projects it makes, each package opened once and each template.json read once.</summary>
     private sealed class HostFiles : IDisposable
     {
         private readonly Dictionary<string, ZipArchive?> packages = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, JsonElement?> parsed = new(StringComparer.Ordinal);
         private readonly List<JsonDocument> read = [];
 
         public JsonElement? Read(JsonElement template) => Parsed(template, "ide.host.json");
@@ -612,9 +618,62 @@ public static partial class ProjectTemplates
                     .Select(s => JsonMembers.Scalar(s.Value, "value", AnyCase)).OfType<string>()]
                 : [];
 
+        /// <summary>The output type of the projects among its template.json's primary outputs, where their files say one
+        /// alike (<see cref="TemplateProjects.OutputType"/>); null where it names none, or one leaves it to its SDK or cannot be read.</summary>
+        public string? OutputType(JsonElement template)
+        {
+            List<string?> types = [];
+            foreach (JsonElement output in JsonMembers.Items(Parsed(template, null), "primaryOutputs", AnyCase))
+            {
+                if (JsonMembers.Scalar(output, "path", AnyCase) is not { } path || !TemplateProjects.IsProject(path))
+                {
+                    continue;
+                }
+                string inside = path.Replace('\\', '/');
+                while (inside.StartsWith("./", StringComparison.Ordinal))
+                {
+                    inside = inside[2..];
+                }
+                // A primary output is named from the folder holding .template.config, where its files are.
+                types.Add(inside.Split('/').Contains("..") ? null
+                    : Text(template, config => $"{Folder(Folder(config))}{inside}") is { } project ? TemplateProjects.OutputType(project) : null);
+            }
+            return types is [{ } first, ..] && types.All(t => string.Equals(t, first, StringComparison.OrdinalIgnoreCase)) ? first : null;
+        }
+
+        /// <summary>A path's folder with its slash, or nothing for a path in none.</summary>
+        private static string Folder(string path) => path[..(path.TrimEnd('/').LastIndexOf('/') + 1)];
+
         /// <summary>A file beside the template's template.json (the template.json itself given null), parsed; null where
         /// it is not there or cannot be read.</summary>
         private JsonElement? Parsed(JsonElement template, string? beside)
+        {
+            string key = $"{JsonMembers.Scalar(template, "MountPointUri", AnyCase)}\n{JsonMembers.Scalar(template, "ConfigPlace", AnyCase)}\n{beside}";
+            if (parsed.TryGetValue(key, out JsonElement? known))
+            {
+                return known;
+            }
+            JsonElement? found = null;
+            if (Text(template, config => beside is null ? config : $"{Folder(config)}{beside}") is { } text)
+            {
+                try
+                {
+                    JsonDocument document = JsonDocument.Parse(text, LenientJson.Document);
+                    read.Add(document);
+                    found = document.RootElement;
+                }
+                catch (JsonException)
+                {
+                    found = null;
+                }
+            }
+            parsed[key] = found;
+            return found;
+        }
+
+        /// <summary>One of the template's files, by its path in the package (or folder) from that of its template.json; null
+        /// where it is not there or cannot be read.</summary>
+        private string? Text(JsonElement template, Func<string, string> entryOf)
         {
             if (JsonMembers.Scalar(template, "MountPointUri", AnyCase) is not { } mount || JsonMembers.Scalar(template, "ConfigPlace", AnyCase) is not { } place)
             {
@@ -624,30 +683,22 @@ public static partial class ProjectTemplates
             {
                 mount = uri.LocalPath;
             }
-            string config = place.TrimStart('/');
-            string entry = beside is null ? config : $"{config[..(config.LastIndexOf('/') + 1)]}{beside}";
+            string entry = entryOf(place.TrimStart('/'));
             try
             {
-                string? text = null;
                 if (Directory.Exists(mount))
                 {
                     string file = Path.Combine(mount, entry);
-                    text = File.Exists(file) ? File.ReadAllText(file) : null;
+                    return File.Exists(file) ? File.ReadAllText(file) : null;
                 }
-                else if (Package(mount)?.GetEntry(entry) is { } zipped)
+                if (Package(mount)?.GetEntry(entry) is { } zipped)
                 {
                     using StreamReader reader = new(zipped.Open());
-                    text = reader.ReadToEnd();
+                    return reader.ReadToEnd();
                 }
-                if (text is null)
-                {
-                    return null;
-                }
-                JsonDocument host = JsonDocument.Parse(text, LenientJson.Document);
-                read.Add(host);
-                return host.RootElement;
+                return null;
             }
-            catch (Exception error) when (error is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
             {
                 return null;
             }
