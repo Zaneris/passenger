@@ -1,5 +1,10 @@
+using Avalonia;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Passenger.App;
+using Passenger.App.Workspace;
+using Passenger.Editor;
 using Passenger.App.Bdd;
 using Passenger.Core;
 using Passenger.Workspace.Gherkin;
@@ -7,7 +12,9 @@ using Passenger.Workspace.Gherkin;
 namespace Passenger.Tests;
 
 /// <summary>A Reqnroll solution's steps and their definitions as one thing (<see cref="ReqnrollProjects"/>): the bindings read
-/// from the code with no build, a project's own and those of the library it references.</summary>
+/// from the code with no build, a project's own and those of the library it references; a step no definition binds marked,
+/// the hover card naming a step's definition, Go to Declaration from a step to it, Find Usages from it to its steps, and
+/// completion offering the steps of a step's kind.</summary>
 public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
 {
     private readonly string folder;
@@ -61,5 +68,84 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public void A_step_no_definition_binds_is_marked_and_a_bound_steps_card_and_declaration_lead_to_its_definition()
+    {
+        MainWindow window = Open(out _);
+        try
+        {
+            OpenDocument feature = window.EditorArea.Active!;
+            Ui.WaitFor(() => feature.Markers.Any(m => m.Code == Passenger.App.Bdd.FeatureAnalysis.Undefined),
+                () => $"the step nobody wrote marked: {string.Join("; ", feature.Markers.Select(m => m.Message))}");
+            Marker undefined = Assert.Single(feature.Markers);
+            Assert.Equal("Given a step nobody wrote", feature.Text.Snapshot.GetText(undefined.Range.Start, undefined.Range.Length));
+            Assert.Equal(MarkerKind.Warning, undefined.Kind);
+
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Assert.Contains("GivenTheFirstNumberIs", Hover(window, editor, "first number is 50"), StringComparison.Ordinal);
+
+            Ui.PlaceAfter(editor, "Given the first num");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(StepsFile) && window.EditorArea.CodeEditor.CaretPosition.Line == 10,
+                () => $"Go to Declaration to GivenTheFirstNumberIs ({window.EditorArea.Active?.Path}:{window.EditorArea.CodeEditor.CaretPosition.Line})");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Find_usages_of_a_step_definition_lists_its_steps_and_completion_offers_the_steps_of_a_steps_kind()
+    {
+        MainWindow window = Open(out _);
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "  Given a step nobody wrote");
+            editor.Focus();
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("And ");
+            Ui.WaitFor(() => window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.Contains("the first number is [int]"),
+                () => $"the Given steps offered after And: {string.Join(", ", window.Assist.CompletionLabels)}");
+            Assert.Contains("the calculator is cleared", window.Assist.CompletionLabels);
+            Assert.DoesNotContain("the result should be [int]", window.Assist.CompletionLabels);
+            window.KeyTextInput("first");
+            Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "the first number is [int]",
+                () => $"the list narrowed to the first number: {string.Join(", ", window.Assist.CompletionLabels)}");
+            Ui.Press(window, "ENTER");
+            string written = editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+            Assert.True(written == "  And the first number is [int]", $"The step chosen written as \"{written}\"");
+            Assert.Equal("[int]", editor.Document.Snapshot.GetText(editor.Selections.Primary.Start, editor.Selections.Primary.Length));
+
+            Assert.Null(window.OpenFile(StepsFile));
+            Ui.Settle();
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "public void GivenTheFirst");
+            Ui.Run(window, AppActions.FindUsages);
+            Ui.WaitFor(() => window.Find.Rows.Count(r => r.Usage is not null) >= 2,
+                () => $"the steps GivenTheFirstNumberIs binds in the Find window ({window.Status})");
+            Passenger.App.ToolWindows.Usage[] usages = [.. window.Find.Rows.Select(r => r.Usage).OfType<Passenger.App.ToolWindows.Usage>()];
+            Assert.All(usages, u => Assert.Equal(PathNames.Canonical(FeatureFile), u.Path));
+            Assert.Equal(2, usages.Length);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The card shown with the pointer resting on some text of the editor's.</summary>
+    private static string Hover(MainWindow window, CodeEditor editor, string text)
+    {
+        Ui.Press(window, "ESCAPE");
+        window.MouseMove(new Point(0, 0), RawInputModifiers.None);
+        Ui.WaitFor(() => window.Assist.HoverText is null, "the last card to go");
+        int at = editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + 1;
+        Point point = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
+        window.MouseMove(point, RawInputModifiers.None);
+        Ui.WaitFor(() => window.Assist.HoverText is not null, $"the card on {text}");
+        return window.Assist.HoverText!;
     }
 }

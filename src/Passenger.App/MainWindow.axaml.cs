@@ -279,6 +279,7 @@ public partial class MainWindow : IdeWindow
         assist.KeepsPlaces = () => settings.FindResultsIn() == FindResults.FindWindow;
         assist.HttpRouteTargets = HttpRouteTargets;
         assist.RouteCallers = RouteCallers;
+        assist.Bdd = () => bdd ??= new Bdd.BddSource(() => session, Editors, StepsAsync);
         // Once the window has drawn, so its first frame waits for none of it.
         Opened += (_, _) => Dispatcher.UIThread.Post(assist.LayOutAhead, DispatcherPriority.Background);
         usages =new UsageHighlighting(Editors, () => session.CSharp);

@@ -1069,6 +1069,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The open files Passenger reads for itself (an .editorconfig, a .slnx) marked where it cannot use what they say.</summary>
     internal FileChecks FileChecks { get; } = new();
 
+    /// <summary>The open .feature files read and their steps matched to their project's bindings.</summary>
+    internal Bdd.FeatureChecks Features => field ??= new Bdd.FeatureChecks(this);
+
     /// <summary>The folder's NuGet: its package sources, feeds and known vulnerabilities, and the one way its projects'
     /// packages change, which the NuGet window, MSBuild files' code help, Migrations and an agent all use.</summary>
     public FolderPackages Packages { get; }
@@ -1306,6 +1309,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScriptTypes.Attach(document);
         MSBuild.Attach(document);
         FileChecks.Attach(document);
+        Features.Attach(document);
         Debug.Attach(document);
         Vcs.Attach(document);
         Bookmarks.Attach(document.Path, document.Text);
@@ -1329,7 +1333,7 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             checks.Add(Passenger.App.MSBuild.MSBuildDocument.Checker);
         }
-        foreach (string? check in (string?[])[GodotMarks.CheckOf(document), GodotShaders.CheckOf(document), GodotScriptTypes.CheckOf(document), FileChecks.CheckOf(document)])
+        foreach (string? check in (string?[])[GodotMarks.CheckOf(document), GodotShaders.CheckOf(document), GodotScriptTypes.CheckOf(document), FileChecks.CheckOf(document), Features.CheckOf(document)])
         {
             if (check is not null)
             {
@@ -1351,6 +1355,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScriptTypes.Detach(document);
         MSBuild.Detach(document);
         FileChecks.Detach(document);
+        Features.Detach(document);
         Debug.Detach(document);
         Vcs.Detach(document);
         Bookmarks.Detach(document.Path);
@@ -1394,6 +1399,8 @@ public sealed class ProjectSession : IAsyncDisposable
             MSBuild.Attach(document);
             FileChecks.Detach(document);
             FileChecks.Attach(document);
+            Features.Detach(document);
+            Features.Attach(document);
             GodotMarks.Detach(document);
             GodotMarks.Attach(document);
             GodotShaders.Detach(document);
@@ -1730,6 +1737,7 @@ public sealed class ProjectSession : IAsyncDisposable
         parts.Add(("the Godot editor's IDE messaging connection", GodotIde.DisposeAsync().AsTask()));
         MSBuild.Dispose();
         FileChecks.Dispose();
+        Features.Dispose();
         return parts;
     }
 
