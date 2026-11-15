@@ -805,7 +805,7 @@ after 2 s); multi-line edits `Typing.Replace` (`KeyTextInput` drops `\n`); a ser
 writing `Ui.Shared`. A terminal test points at a line or acts on the screen once the shell's prompt is below it
 (`WaitForPromptBelow`): cmd's prompt comes in a later ConPTY frame and scrolls a full screen. A dialog is held to `DialogButtonsTests.Check`, the window to UiRulesTests. A drag whose drawing a test checks goes through `Ui.DragDrawn`: `Ui.Drag` and a screenshot's `--drag` draw no frame between moves. A helper that runs a
 program waits on the UI thread with its loop running; a fixture or windowless test awaits its `…Async` form. A stand-in
-leaves files a target writes as it found them (a new one makes MSBuild skip the target). A headless click runs queued
+leaves files a target writes as it found them (a new one makes MSBuild skip the target). A stand-in's record a test reads while Passenger may run it again is written beside and moved into place (`McpTests.EnvironmentGitAsync`), never `> file`. A headless click runs queued
 work and draws after itself, so a status during a click is read from what it showed throughout; a count of a key's
 frames sets aside the caret's blinks.
 

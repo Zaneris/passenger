@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-15
 
+- `McpTests`' `With_no_SHELL_the_IDEs_environment_is_read_from_the_login_shell_its_terminal_runs`, CI 43725405917 (macOS
+  shard 4 of the report lane): "With no SHELL, Passenger never took a login shell's PATH, and ran a git other than the
+  one its profile puts first". **The test waited wrong**: it read a file another git was rewriting. Its recording git
+  wrote `env > file`, which empties the file before env writes it, and the test read the file as vcs_status answered.
+  The window reads Git again as it is first activated, a job posted as the headless window shows, which the agent's
+  first call can run ahead of; asked during vcs_status's own read, its `git status` started as vcs_status answered. The
+  login shell's environment had been read: every git start waits for it (`ShellEnvironment.Ready`). A probe on the Mac
+  holding the activation back until vcs_status's read had begun read an empty file in 4 of 14 runs (13 of 20 with env's
+  start slowed 30 ms), and none of 20 with the recording git now writing beside the file and moving it into place
+  (`EnvironmentGitAsync`) (afcf8af12, #1738).
 - `BuildRunTests`' `A_build_under_dotnet_tests_environment_ends_and_stopping_a_build_ends_its_steps_wherever_msbuild_ran_them_and_nothing_more_is_written_after`,
   CI 43716463750 (macOS gate, shard 1 of 2): "After Stop, the build went on writing to its output folder". **A race in
   the IDE.** Stop killed the build's own process group once, and left a step running in a node an earlier build had left
