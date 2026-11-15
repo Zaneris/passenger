@@ -182,4 +182,41 @@ internal sealed partial class GherkinAssist
         }
         return (string.Join(", ", bindings.Select(b => b.Shown).Distinct()), places);
     }
+
+    /// <summary>Find Unused Step Definitions: every step definition of the solution's code that no step of the features of
+    /// the projects seeing it binds, listed as usages are.</summary>
+    public async Task ShowUnusedAsync()
+    {
+        if (Bdd is not { } bdd)
+        {
+            return;
+        }
+        IReadOnlyList<StepBinding> unused = await UnusedAsync(bdd);
+        if (unused.Count == 0)
+        {
+            context.Say(bdd.Session.Steps.Projects.Any(p => p.Bindings.Count > 0) ? "There are no unused step definitions" : "No step definitions are in the solution");
+            return;
+        }
+        context.ShowUsages("Unused step definitions", [.. unused.Select(b => BddSource.PlaceOf(b.MethodPlace)!)], null);
+    }
+
+    /// <summary>The step definitions written in the solution's code that no step binds, each once, the window's and an agent's alike.</summary>
+    internal static async Task<IReadOnlyList<StepBinding>> UnusedAsync(BddSource bdd)
+    {
+        StepCatalog catalog = await bdd.StepsAsync();
+        List<StepBinding> used = [];
+        foreach ((string _, FeatureAnalysis analysis) in await bdd.FeaturesAsync(catalog.Projects))
+        {
+            used.AddRange(analysis.Matches.Values.SelectMany(m => m.Bindings).Select(b => b.Binding));
+        }
+        List<StepBinding> unused = [];
+        foreach (StepBinding binding in catalog.Projects.SelectMany(p => p.Bindings).Where(b => b.MethodPlace is not null))
+        {
+            if (!unused.Any(binding.SameAs) && !used.Any(binding.SameAs))
+            {
+                unused.Add(binding);
+            }
+        }
+        return unused;
+    }
 }

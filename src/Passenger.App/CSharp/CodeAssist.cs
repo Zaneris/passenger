@@ -519,6 +519,12 @@ public sealed class CodeAssist
         web.AddLintingActions(registry);
         Code(AppActions.CodeCleanup, "Code Cleanup", context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true);
         Code(AppActions.OptimizeUsings, "Optimize Imports", context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2));
+        registry.Add(new IdeAction(AppActions.FindUnusedStepDefinitions, "Find Unused Step Definitions", "Code",
+            context => IdeErrors.Observe(this.context.Languages.Gherkin.ShowUnusedAsync()))
+        {
+            WhyNot = _ => this.context.Languages.Gherkin.Source?.Invoke() is { } bdd && bdd.Session.Steps.Projects.Any() ? null : Refusals.NoReqnrollProject,
+            Menus = [new("Navigate", 2, 9)],
+        });
         registry.Add(new IdeAction(AppActions.OrderScriptParts, "Order Script's Parts", "Code", context => IdeErrors.Observe(OrderScriptParts()))
         {
             WhyNot = context => context.File is not { } file ? Refusals.NoFile : !Godot.GodotScriptTypes.IsScript(file.Path) ? "The file is not a GDScript"
