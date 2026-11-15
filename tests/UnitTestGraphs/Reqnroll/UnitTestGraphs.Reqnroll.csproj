@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Reqnroll on xunit v3, as the BDD tests' Reqnroll projects resolve it beside the tests' own xunit v3, VSTest adapter
+       and test SDK: Reqnroll's runtime, its code-behind generator and their Cucumber packages. -->
+  <ItemGroup>
+    <PackageDownload Include="Reqnroll" Version="[$(ReqnrollVersion)]" />
+    <PackageDownload Include="Reqnroll.Tools.MsBuild.Generation" Version="[$(ReqnrollVersion)]" />
+    <PackageDownload Include="Reqnroll.xunit.v3" Version="[$(ReqnrollVersion)]" />
+    <PackageDownload Include="Gherkin" Version="[$(ReqnrollGherkinVersion)]" />
+    <PackageDownload Include="Cucumber.CucumberExpressions" Version="[$(ReqnrollCucumberExpressionsVersion)]" />
+    <PackageDownload Include="Cucumber.HtmlFormatter" Version="[$(ReqnrollHtmlFormatterVersion)]" />
+    <PackageDownload Include="Cucumber.Messages" Version="[$(ReqnrollMessagesVersion)]" />
+    <PackageDownload Include="Microsoft.Bcl.AsyncInterfaces" Version="[$(ReqnrollAsyncInterfacesVersion)]" />
+    <PackageDownload Include="Microsoft.Extensions.DependencyModel" Version="[$(ReqnrollDependencyModelVersion)]" />
+    <PackageDownload Include="xunit.analyzers" Version="[$(ReqnrollXunitAnalyzersVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.Telemetry" Version="[$(ReqnrollTestingPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[$(ReqnrollTestingPlatformVersion)]" />
+  </ItemGroup>
+</Project>
