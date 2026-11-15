@@ -1,6 +1,8 @@
 using System.Text.Json;
+using System.Reflection.Metadata;
 using System.Text.RegularExpressions;
 using Passenger.Core;
+using Passenger.Dap;
 
 namespace Passenger.App.Debugging;
 
@@ -52,6 +54,39 @@ public static class WebAssemblyValues
             _ => JsonMembers.Text(value, "description") ?? raw?.GetRawText() ?? string.Empty,
         };
     }
+
+    /// <summary>A remote value read for a tracepoint's expression, as every debugger tells one to its specifiers
+    /// (<see cref="DisplayFormat.Shown"/>): a string with its own text, a number holding a whole one with its value and the
+    /// bytes its C# type holds it in (an int's 4 where the proxy names no type and it fits one, else a long's 8), anything
+    /// else as the Debug window shows it.</summary>
+    public static DisplayValue Displayed(JsonElement value)
+    {
+        JsonElement? raw = JsonMembers.Value(value, "value");
+        return JsonMembers.Text(value, "type") switch
+        {
+            "string" when raw is { ValueKind: JsonValueKind.String } text => DisplayValue.OfText(text.GetString()!, Shown(value)),
+            "number" when raw is { ValueKind: JsonValueKind.Number } number && WholeOf(number) is { } whole && BytesOf(value, whole) is { } bytes =>
+                DisplayValue.OfWhole(whole, bytes),
+            _ => DisplayValue.Said(Shown(value)),
+        };
+    }
+
+    /// <summary>A JSON number's value where it is whole; null for one with a fraction or an exponent.</summary>
+    private static Int128? WholeOf(JsonElement number) =>
+        number.TryGetInt64(out long signed) ? signed : number.TryGetUInt64(out ulong unsigned) ? unsigned : null;
+
+    /// <summary>The bytes a whole number's C# type holds it in, by the type the proxy names, else by its size; null for a
+    /// type of no whole numbers (a double holding one).</summary>
+    private static int? BytesOf(JsonElement value, Int128 whole) =>
+        TypeOf(value) is not { } named ? (whole >= int.MinValue && whole <= int.MaxValue ? sizeof(int) : sizeof(long))
+        : PrimitiveTypes.OfKeyword(named)?.Code switch
+        {
+            PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte => sizeof(byte),
+            PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16 => sizeof(short),
+            PrimitiveTypeCode.Int32 or PrimitiveTypeCode.UInt32 => sizeof(int),
+            PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 => sizeof(long),
+            _ => null,
+        };
 
     /// <summary>A remote value's type as C# names it ("int", "Bwa.Client.Pages.Counter"); null where the proxy names none.</summary>
     public static string? TypeOf(JsonElement value)

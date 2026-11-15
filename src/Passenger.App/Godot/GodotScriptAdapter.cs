@@ -912,16 +912,15 @@ public sealed class GodotScriptAdapter : InProcessAdapter
     }
 
     /// <summary>An expression of a tracepoint's message as read in the stop's frame, or why it could not be read.</summary>
-    private async Task<string> ShownAsync(string expression)
+    private async Task<DisplayValue> ShownAsync(string expression)
     {
         try
         {
-            object? value = (await ReadAsync(expression, 0)).Value;
-            return value is string words ? words : GodotScriptValues.Shown(value);
+            return GodotScriptValues.Displayed((await ReadAsync(expression, 0)).Value);
         }
         catch (DapException unread)
         {
-            return $"<{unread.Reason}>";
+            return DisplayValue.Said($"<{unread.Reason}>");
         }
     }
 

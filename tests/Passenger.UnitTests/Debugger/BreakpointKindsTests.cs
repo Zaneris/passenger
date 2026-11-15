@@ -1,4 +1,3 @@
-using System.Globalization;
 using Passenger.Dap;
 using Passenger.Debugger;
 using Passenger.Debugger.ExpressionEvaluator.Compiler;
@@ -146,7 +145,7 @@ public class BreakpointKindsTests
     {
         Named = "the breakpoint",
         Holds = _ => Task.FromResult(holds(i)),
-        Logged = message => BreakpointHits.LoggedAsync(message, _ => Task.FromResult(i.ToString(CultureInfo.InvariantCulture))),
+        Logged = message => BreakpointHits.LoggedAsync(message, _ => Task.FromResult(DisplayValue.OfWhole(i, sizeof(int)))),
         Reached = () => BreakpointHits.Reached("/src/Loop.cs", 5),
         Say = said.Add,
         Told = told.Add,

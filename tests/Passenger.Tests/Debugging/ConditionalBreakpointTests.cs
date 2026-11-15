@@ -305,11 +305,10 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal((AfterCount, "5"), (fifth.ReadStopInfo().line, await Count(host, fifth)));
     }
 
-    /// <summary>A breakpoint's hit count counts only the hits where its condition held, and an edit of its message keeps its
-    /// count: with _count &gt; 10 and ==4 it stops on the fourth pass past ten, _count 14, its message edited after its
-    /// second, as every debugger counts (GDScript's and the browser's tests stop the same breakpoint at the same hit). A
-    /// breakpoint after it, on the twentieth pass, is where one counting every hit would stop instead. The edited message
-    /// logs braces written \{ and \} as every debugger does, and one writing {{ is refused saying how to write a brace.</summary>
+    /// <summary>A hit count counts only hits whose condition held, through an edit of its message: _count &gt; 10 and ==4 stop
+    /// at _count 14, as every debugger counts (GDScript's and the browser's tests stop alike), not on the twentieth pass, where
+    /// one counting every hit would. The edited message logs \{ and \} as braces, a string quoted unless ,nq and a whole
+    /// number in hexadecimal under ,h, as every debugger does; one writing {{ is refused saying how to write a brace.</summary>
     [Fact]
     public async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it()
     {
@@ -329,7 +328,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         StoppedEvent paused = await host.WaitForStoppedEvent();
         Assert.Equal((CountUp, "12"), (paused.ReadStopInfo().line, await Count(host, paused)));
 
-        SetBreakpointsResponse edited = await host.SetBreakpointsAsync(file, [counted with { LogMessage = "second \\{{_count}\\}" }, missed,
+        SetBreakpointsResponse edited = await host.SetBreakpointsAsync(file, [counted with { LogMessage = "second \\{{_count}\\} {_name} {_name,nq} {_count,h}" }, missed,
             new DapSourceBreakpoint(CountUp, LogMessage: "{{_count}}")]);
         DapBreakpoint doubled = edited.Breakpoints[2];
         Assert.True(!doubled.Verified && doubled.Message == DisplayFormat.Misread("{{_count}}"),
@@ -339,8 +338,8 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
             || o.Output.StartsWith("missed", StringComparison.Ordinal));
         StoppedEvent stopped = await host.WaitForStoppedEvent();
         (int line, string count) at = (stopped.ReadStopInfo().line, await Count(host, stopped));
-        Assert.True(at == (AfterCount, "14") && logged.Output == "second {14}\n",
-            $"The breakpoint counting where _count > 10 stopped at line {at.line} with _count {at.count}, saying {logged.Output.Trim()}, not on its fourth such hit at line {AfterCount} with _count 14, saying second {{14}}");
+        Assert.True(at == (AfterCount, "14") && logged.Output == "second {14} \"Ada\" Ada 0x0000000e\n",
+            $"The breakpoint counting where _count > 10 stopped at line {at.line} with _count {at.count}, saying {logged.Output.Trim()}, not on its fourth such hit at line {AfterCount} with _count 14, saying second {{14}} \"Ada\" Ada 0x0000000e");
     }
 
     /// <summary>A breakpoint whose hit count is edited counts again from the edit, as one whose condition or place is edited

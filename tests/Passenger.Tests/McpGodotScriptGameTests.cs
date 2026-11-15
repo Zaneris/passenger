@@ -244,15 +244,14 @@ public sealed class McpGodotScriptGameTests : McpRig
     }
 
     /// <summary>A loop run once, in the first frame (in _ready the game's tree is still being set up), whose every turn adds
-    /// its number, the thirteenth pausing at a line of its own, and its end said.</summary>
-    private const string Loop = "extends Node\n\nvar total := 0\nvar looped := false\n\n\nfunc _process(_delta: float) -> void:\n\tif looped:\n\t\treturn\n"
+    /// its number, the thirteenth pausing at a line of its own, and its end said; and a name.</summary>
+    private const string Loop = "extends Node\n\nvar total := 0\nvar looped := false\nvar who := \"Ada\"\n\n\nfunc _process(_delta: float) -> void:\n\tif looped:\n\t\treturn\n"
         + "\tlooped = true\n\tfor i in 30:\n\t\ttotal += i\n\t\tif i == 12:\n\t\t\ttotal += 0\n\tprint(\"done \", total)\n";
 
-    /// <summary>A breakpoint's hit count counts only the hits where its condition held, and an edit of its message keeps its
-    /// count: with i &gt; 10 and ==4 the game stops at i 14, its message edited after its second such hit, as every debugger
-    /// counts (the managed debugger's and the browser's tests stop the same breakpoint at the same hit); a breakpoint that
-    /// neither stops nor logs says where it was reached. The edited message logs braces written \{ and \} as every debugger
-    /// does, and one writing {{ is refused saying how to write a brace.</summary>
+    /// <summary>A hit count counts only hits whose condition held, through an edit of its message: i &gt; 10 and ==4 stop the
+    /// game at i 14, as every debugger counts (the managed debugger's and the browser's tests stop alike); one that neither
+    /// stops nor logs says where it was reached. The edited message logs \{ and \} as braces, a string quoted unless ,nq and
+    /// an int, 64 bits, in hexadecimal under ,h, as every debugger does; one writing {{ is refused saying how to write a brace.</summary>
     [Fact]
     public async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it()
     {
@@ -270,7 +269,7 @@ public sealed class McpGodotScriptGameTests : McpRig
         await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["arguments"] = "--headless", ["waitSeconds"] = 60 });
         Assert.Equal($"ticker.gd:{paused}:1", (await Call(client, McpTools.DebugState)).GetProperty("location").GetString());
 
-        await Call(client, McpTools.BreakpointSet, new(counting) { ["logMessage"] = "second \\{{i}\\}" });
+        await Call(client, McpTools.BreakpointSet, new(counting) { ["logMessage"] = "second \\{{i}\\} {who} {who,nq} {i,h}" });
         JsonElement doubled = (await Call(client, McpTools.BreakpointSet, new() { ["path"] = "ticker.gd", ["line"] = paused, ["logMessage"] = "{{i}}" }))
             .EnumerateArray().Single(b => b.GetProperty("line").GetInt32() == paused);
         string? refused = doubled.TryGetProperty("message", out JsonElement message) ? message.GetString() : null;
@@ -284,7 +283,7 @@ public sealed class McpGodotScriptGameTests : McpRig
         await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 5 });
         string said = string.Empty;
         await Until(async () => (said = Text(await Call(client, McpTools.Output, new() { ["of"] = "debug" }))).Contains("done ", StringComparison.Ordinal), "the game to say the loop's end");
-        Assert.True(said.Contains("second {14}", StringComparison.Ordinal) && !said.Contains("first 1", StringComparison.Ordinal)
+        Assert.True(said.Contains("second {14} \"Ada\" Ada 0x000000000000000e\n", StringComparison.Ordinal) && !said.Contains("first 1", StringComparison.Ordinal)
             && said.Contains($"Breakpoint reached at ticker.gd:{done}", StringComparison.Ordinal),
             $"The game's console did not say the edited message at the stop, then where the breakpoint that neither stops nor logs was reached: {said}");
         await Call(client, McpTools.Stop);

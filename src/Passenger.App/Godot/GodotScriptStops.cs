@@ -1,3 +1,4 @@
+using Passenger.Dap;
 using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
@@ -90,6 +91,16 @@ public static class GodotScriptValues
     {
         GodotObjectId id => $"<{(hint.Length > 0 ? hint : "Object")}#{id.Id}>",
         _ => GodotVariant.Shown(value, quoted: true),
+    };
+
+    /// <summary>A value read for a tracepoint's expression, as every debugger tells one to its specifiers
+    /// (<see cref="DisplayFormat.Shown"/>): a String, StringName or NodePath with its own text, an int, 64 bits, with its
+    /// value, anything else as the debugger shows it.</summary>
+    public static DisplayValue Displayed(object? value) => value switch
+    {
+        string or GodotName or GodotNodePath => DisplayValue.OfText(GodotVariant.Shown(value), Shown(value)),
+        long whole => DisplayValue.OfWhole(whole, sizeof(long)),
+        _ => DisplayValue.Said(Shown(value)),
     };
 
     /// <summary>What a value holds, each by the name a person reads it by and the GDScript that reads it from the value's own

@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Reflection.Metadata;
 using System.Text;
 using Microsoft.CodeAnalysis.CSharp;
@@ -13,9 +14,10 @@ namespace Passenger.Debugger;
 public sealed record DebuggerDisplay(string Value, string? Name, string? Type);
 
 /// <summary>[DebuggerDisplay] rendered, its format read as a tracepoint's message is (<see cref="DisplayFormat"/>): each
-/// fragment is an expression on the value (",nq" leaves a string unquoted), evaluated on its own, so one that fails says
-/// so in its own place and the rest still shows. A fragment's value is formatted as the debugger formats any value: a
-/// string quoted, a value with its own display shown by it. The attribute is inherited, as it is declared to be.</summary>
+/// fragment is an expression on the value, evaluated on its own, so one that fails says so in its own place and the rest
+/// still shows. A fragment's value is formatted as the debugger formats any value, a string quoted, a value with its own
+/// display shown by it, then as its specifiers say (",nq" a string unquoted, ",h" a whole number in hexadecimal), as
+/// every debugger shows one (<see cref="DisplayFormat.Shown"/>). The attribute is inherited, as it is declared to be.</summary>
 public partial class ManagedDebugger
 {
     /// <summary>How deep displays inside displays go, before a value is shown by its type alone.</summary>
@@ -141,30 +143,67 @@ public partial class ManagedDebugger
         {
             CompiledExpressionEvaluationContext context = new(thread, threadId, frameStackDepth, target);
             using EvaluationResult result = await _expressionEvaluator!.Evaluate(expression, context);
-            // "nq" (no quotes) and "raw" (as it is, which CoreLib's spans use for their ToString()) show a string bare.
-            bool quoted = !specifiers.Contains("nq") && !specifiers.Contains("raw");
             if (result.Text is { } text)
             {
-                return (quoted ? SymbolDisplay.FormatLiteral(text, quote: true) : text, false, "string");
+                return (DisplayFormat.Shown(DisplayValue.OfText(text, SymbolDisplay.FormatLiteral(text, quote: true)), specifiers), false, "string");
             }
             if ((result.Error is not null || result.Value is null) && target is not null && IsDottedName(expression)
                 && await target.GetPropertyValue(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, GetIlFrameForThreadIdAndStackDepth(threadId, frameStackDepth), expression) is { } implemented)
             {
                 // Roslyn's own types name an explicitly implemented property by its metadata name (System.Collections.ICollection.Count).
-                FormattedValue shown = await FormatCorDebugValueAsync(ResolveCorDebugValue(implemented), threadId, frameStackDepth, quoted, nesting + 1);
-                return (shown.Value, shown.ResultIsError, shown.FriendlyTypeName);
+                return await SpecifiedAsync(ResolveCorDebugValue(implemented));
             }
             if (result.Error is not null || result.Value is null)
             {
                 return ($"<error: {ShortError(result.Error)}>", true, null);
             }
-            FormattedValue formatted = await FormatCorDebugValueAsync(ResolveCorDebugValue(result.Value), threadId, frameStackDepth, quoted, nesting + 1);
-            return (formatted.Value, formatted.ResultIsError, formatted.FriendlyTypeName);
+            return await SpecifiedAsync(ResolveCorDebugValue(result.Value));
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
             return ($"<error: {ShortError(error.Message)}>", true, null);
         }
+
+        async Task<(string Text, bool Failed, string? Type)> SpecifiedAsync(ResolvedCorDebugValue value)
+        {
+            FormattedValue formatted = await FormatCorDebugValueAsync(value, threadId, frameStackDepth, true, nesting + 1);
+            return (DisplayFormat.Shown(Displayed(value.Value, formatted), specifiers), formatted.ResultIsError, formatted.FriendlyTypeName);
+        }
+    }
+
+    /// <summary>A fragment's value as every debugger tells one to its specifiers (<see cref="DisplayFormat.Shown"/>): a
+    /// string with its own text, a whole number of the program's integer types with its value and size, anything else as the
+    /// debugger formatted it.</summary>
+    private static DisplayValue Displayed(ICorDebugValue? value, FormattedValue formatted) => formatted.ResultIsError ? DisplayValue.Said(formatted.Value)
+        : value?.UnwrapDebugValue() switch
+        {
+            ICorDebugStringValue text => DisplayValue.OfText(text.String, formatted.Value),
+            ICorDebugGenericValue number when WholeOf(number) is { } whole => DisplayValue.OfWhole(whole, number.Size),
+            _ => DisplayValue.Said(formatted.Value),
+        };
+
+    /// <summary>The value of a whole number of one of the program's integer types (its native ones as wide as it holds them);
+    /// null for any other value.</summary>
+    private static Int128? WholeOf(ICorDebugGenericValue value)
+    {
+        if (value.Type is not (CorElementType.I1 or CorElementType.U1 or CorElementType.I2 or CorElementType.U2 or CorElementType.I4 or CorElementType.U4
+            or CorElementType.I8 or CorElementType.U8 or CorElementType.I or CorElementType.U))
+        {
+            return null;
+        }
+        byte[] bytes = value.GetValueAsBytes();
+        // Little-endian, as the runtime holds them on every processor it runs on.
+        return (value.Type, bytes.Length) switch
+        {
+            (CorElementType.I1, _) => (sbyte)bytes[0],
+            (CorElementType.U1, _) => bytes[0],
+            (CorElementType.I2, _) => BinaryPrimitives.ReadInt16LittleEndian(bytes),
+            (CorElementType.U2, _) => BinaryPrimitives.ReadUInt16LittleEndian(bytes),
+            (CorElementType.I4 or CorElementType.I, 4) => BinaryPrimitives.ReadInt32LittleEndian(bytes),
+            (CorElementType.U4 or CorElementType.U, 4) => BinaryPrimitives.ReadUInt32LittleEndian(bytes),
+            (CorElementType.I8 or CorElementType.I, _) => BinaryPrimitives.ReadInt64LittleEndian(bytes),
+            _ => BinaryPrimitives.ReadUInt64LittleEndian(bytes),
+        };
     }
 
     /// <summary>Whether a fragment is names joined by dots, as an explicitly implemented member's full name is.</summary>

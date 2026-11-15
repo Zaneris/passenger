@@ -624,9 +624,8 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
     private Task<string> LoggedAsync(string message, WebAssemblyFrame frame) => BreakpointHits.LoggedAsync(message, async expression =>
     {
         JsonElement evaluated = await browser!.Page.SendAsync(CdpCommands.EvaluateOnCallFrame, new { callFrameId = frame.Id, expression });
-        return JsonMembers.Object(evaluated, "exceptionDetails") is { } failed ? $"<{WebAssemblyValues.Failure(failed)}>"
-            : JsonMembers.Object(evaluated, "result") is { } value && JsonMembers.Text(value, "type") == "string" ? JsonMembers.Text(value, "value") ?? string.Empty
-            : WebAssemblyValues.Shown(JsonMembers.Object(evaluated, "result") ?? default);
+        return JsonMembers.Object(evaluated, "exceptionDetails") is { } failed ? DisplayValue.Said($"<{WebAssemblyValues.Failure(failed)}>")
+            : WebAssemblyValues.Displayed(JsonMembers.Object(evaluated, "result") ?? default);
     });
 
     /// <summary>The page went on: of itself (no continue or step of the session's), the session hears it.</summary>

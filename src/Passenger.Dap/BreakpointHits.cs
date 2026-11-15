@@ -151,9 +151,9 @@ public static class BreakpointHits
     public static string ExceptionReached(string thrown) => $"Exception breakpoint reached: {thrown}";
 
     /// <summary>A tracepoint's message with each <c>{expression}</c> in it read by <paramref name="read"/>, which says a
-    /// failure in its own words; the message is read as every debugger reads one (<see cref="DisplayFormat"/>), an empty
-    /// expression showing nothing.</summary>
-    public static async Task<string> LoggedAsync(string message, Func<string, Task<string>> read)
+    /// failure in its own words; the message is read, and each value shown by its specifiers, as every debugger reads and
+    /// shows one (<see cref="DisplayFormat"/>), an empty expression showing nothing.</summary>
+    public static async Task<string> LoggedAsync(string message, Func<string, Task<DisplayValue>> read)
     {
         StringBuilder said = new();
         foreach ((string text, bool expression) in DisplayFormat.Pieces(message))
@@ -161,10 +161,12 @@ public static class BreakpointHits
             if (!expression)
             {
                 said.Append(text);
+                continue;
             }
-            else if (DisplayFormat.Specifiers(text).Expression is { Length: > 0 } asked)
+            (string asked, IReadOnlyList<string> specifiers) = DisplayFormat.Specifiers(text);
+            if (asked.Length > 0)
             {
-                said.Append(await read(asked));
+                said.Append(DisplayFormat.Shown(await read(asked), specifiers));
             }
         }
         return said.ToString();

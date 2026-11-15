@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Passenger.App.Debugging;
+using Passenger.Dap;
 
 namespace Passenger.UnitTests.Debugger;
 
@@ -54,6 +55,27 @@ public sealed class WebAssemblyValuesTests
         Assert.False(new Regex(WebAssemblyValues.PatternOf("/app/Pages/Counter.razor", ignoreCase: false)).IsMatch("/app/pages/Counter.razor"),
             "A file system that tells case apart had another file's breakpoint");
         Assert.Matches(WebAssemblyValues.PatternOf("/app (1)/Pages/Counter+.razor", ignoreCase: false), "/app (1)/Pages/Counter+.razor");
+    }
+
+    /// <summary>A tracepoint's value shows as every debugger shows one to its specifiers: a string quoted as C# writes it
+    /// unless nq, a number holding a whole one in hexadecimal under h as wide as its C# type (an int's where the proxy names
+    /// none and it fits one), anything else as the Debug window shows it.</summary>
+    [Fact]
+    public void A_tracepoints_string_is_quoted_unless_nq_and_its_whole_number_is_as_wide_as_its_type_under_h()
+    {
+        JsonElement name = Json("""{"type":"string","value":"Ada","description":"Ada","objectId":"dotnet:object:5"}""");
+        Assert.Equal(("\"Ada\"", "Ada"), (DisplayFormat.Shown(WebAssemblyValues.Displayed(name), []), DisplayFormat.Shown(WebAssemblyValues.Displayed(name), ["nq"])));
+        Assert.Equal(("14", "0x0000000e"), (Shown("""{"type":"number","value":14,"description":"14","className":"Int32"}""", []),
+            Shown("""{"type":"number","value":14,"description":"14","className":"Int32"}""", ["h"])));
+        Assert.Equal("0x000000000000000e", Shown("""{"type":"number","value":14,"description":"14","className":"System.Int64"}""", ["h"]));
+        Assert.Equal("0xff", Shown("""{"type":"number","value":255,"description":"255","className":"Byte"}""", ["h"]));
+        Assert.Equal("0xffffffff", Shown("""{"type":"number","value":-1,"description":"-1","className":"Object"}""", ["h"]));
+        Assert.Equal("0x0000000100000000", Shown("""{"type":"number","value":4294967296,"description":"4294967296"}""", ["h"]));
+        Assert.Equal("3", Shown("""{"type":"number","value":3,"description":"3","className":"Double"}""", ["h"]));
+        Assert.Equal("2.5", Shown("""{"type":"number","value":2.5,"description":"2.5"}""", ["h"]));
+        Assert.Equal("true", Shown("""{"type":"boolean","value":true,"description":"true","className":"Boolean"}""", ["h", "nq"]));
+
+        static string Shown(string value, string[] specifiers) => DisplayFormat.Shown(WebAssemblyValues.Displayed(Json(value)), specifiers);
     }
 
     [Fact]

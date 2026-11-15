@@ -1,11 +1,13 @@
+using System.Globalization;
 using System.Text;
 
 namespace Passenger.Dap;
 
 /// <summary>What a tracepoint's message and a type's [DebuggerDisplay] are written in, read one way by every debugger: words,
 /// and each <c>{expression}</c> read where the program stands, to its own closing brace (braces nested in it and anything
-/// in its quotes passed over), its format specifiers after its last comma outside brackets and quotes (<c>{name,nq}</c>);
-/// <c>\{</c> and <c>\}</c> are braces, and a brace that never closes is itself.</summary>
+/// in its quotes passed over), its format specifiers after its last comma outside brackets and quotes (<c>{name,nq}</c>),
+/// which show its value one way in every debugger (<see cref="Shown"/>); <c>\{</c> and <c>\}</c> are braces, and a brace
+/// that never closes is itself.</summary>
 public static class DisplayFormat
 {
     /// <summary>A format in pieces: its words, and each expression as written between its braces, specifiers and all.</summary>
@@ -112,6 +114,28 @@ public static class DisplayFormat
         return specifiers.All(s => s.All(char.IsAsciiLetterOrDigit) && char.IsAsciiLetter(s[0]))
             ? (written[..comma].Trim(), specifiers)
             : (written.Trim(), []);
+    }
+
+    /// <summary>A value an expression read, as its specifiers show it in every debugger: a string bare under <c>nq</c> or
+    /// <c>raw</c>, else quoted as its debugger quotes one; a whole number under <c>h</c> in hexadecimal, two digits to each
+    /// byte the program holds it in (an int's 14 is 0x0000000e, its -1 0xffffffff), under <c>d</c> in decimal, the last of
+    /// the two written winning; anything else, and under any other specifier, as its debugger shows it.</summary>
+    public static string Shown(DisplayValue value, IReadOnlyList<string> specifiers)
+    {
+        if (value.Text is { } text && (specifiers.Contains("nq") || specifiers.Contains("raw")))
+        {
+            return text;
+        }
+        if (value.Whole is not { } whole)
+        {
+            return value.Shown;
+        }
+        return specifiers.LastOrDefault(s => s is "h" or "d") switch
+        {
+            "h" => "0x" + ((UInt128)whole & (UInt128.MaxValue >> (128 - (8 * value.Bytes)))).ToString($"x{2 * value.Bytes}", CultureInfo.InvariantCulture),
+            "d" => whole.ToString(CultureInfo.InvariantCulture),
+            _ => value.Shown,
+        };
     }
 
     /// <summary>Where an expression opened at <paramref name="open"/> closes, past braces nested in it and anything inside
