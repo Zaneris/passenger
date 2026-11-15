@@ -252,9 +252,9 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
     /// <paramref name="what"/>.</summary>
     private async Task<CodeActions.Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, string what)
     {
-        if (document.IsReadOnly)
+        if (CodeActions.Reformatted.ReadOnly(document, what) is { } refused)
         {
-            return CodeActions.Reformatted.Refused(what, Refusals.ReadOnly(document.Name));
+            return refused;
         }
         using ChangeTracker asked = new(document.Text);
         TextSnapshot snapshot = asked.Snapshot;

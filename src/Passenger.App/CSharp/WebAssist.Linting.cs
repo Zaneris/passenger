@@ -186,9 +186,9 @@ internal sealed partial class WebAssist
     /// came of it.</summary>
     internal async Task<(Prettified Outcome, string Said)> PrettifyAsync(WebLanguages web, OpenDocument document, string what, TextRange? within = null)
     {
-        if (document.IsReadOnly)
+        if (CodeActions.Reformatted.ReadOnly(document, what) is { } refused)
         {
-            return (Prettified.Failed, $"{what}: {Refusals.ReadOnly(document.Name)}");
+            return (Prettified.Failed, refused.Said);
         }
         string text = document.Text.Snapshot.ToString();
         int version = document.Text.Version;

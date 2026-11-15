@@ -512,8 +512,8 @@ public sealed class CodeAssist
         // A file Prettier formats (Run on 'Reformat Code' action), a GDScript and a .feature file need no language server.
         registry.Add(new IdeAction(AppActions.Reformat, "Reformat Code", "Code", context => IdeErrors.Observe(actions.Reformat()))
         {
-            WhyNot = context => context.File is { } file && (web.PrettierReformats(file) || Godot.GodotScriptTypes.IsScript(file.Path) || Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path))
-                ? (context.Editor.IsReadOnly ? Refusals.ReadOnly(file.Name) : null) : WhyNot(context, server: true, markup: true),
+            WhyNot = context => (context.File is { } file && (web.PrettierReformats(file) || Godot.GodotScriptTypes.IsScript(file.Path) || Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path))
+                ? null : WhyNot(context, server: true, markup: true)) ?? (context.File is { } shown && context.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name) : null),
             Menus = [new("Code", 1, 0)],
         });
         web.AddLintingActions(registry);

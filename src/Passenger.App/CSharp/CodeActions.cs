@@ -892,11 +892,20 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         /// <summary>A reformat not applied, saying why.</summary>
         public static Reformatted Refused(string what, string why) => new(false, false, $"{what} was not applied: {why}");
 
+        /// <summary>A reformat of a file shown read-only, refused whatever its formatter would make of it; null for a file
+        /// that takes one.</summary>
+        public static Reformatted? ReadOnly(OpenDocument document, string what) =>
+            document.IsReadOnly ? Refused(what, Refusals.ReadOnly(document.Name)) : null;
+
         /// <summary>A reformat's edits, in the offsets of the text as <paramref name="asked"/> began, carried onto the open
-        /// file as it is now and applied as one undoable edit; refused where the code one changes was edited meanwhile, and
-        /// no change where there are none or the file has closed.</summary>
+        /// file as it is now and applied as one undoable edit; refused where the file is read-only or the code one changes
+        /// was edited meanwhile, and no change where there are none or the file has closed.</summary>
         public static Reformatted Apply(EditorArea editors, OpenDocument document, ChangeTracker asked, IReadOnlyList<TextEdit> edits, string what)
         {
+            if (ReadOnly(document, what) is { } refused)
+            {
+                return refused;
+            }
             if (edits.Count == 0 || !editors.Documents.Contains(document))
             {
                 return new(true, false, "Already formatted");
@@ -912,10 +921,14 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 
     /// <summary>Reformat Code on a file, the window's and an agent's alike, as one undoable edit, only <paramref name="within"/>
     /// when given: XAML by Passenger's own layout, a web language by its project's Prettier where it formats it on Reformat
-    /// Code, else the language <paramref name="server"/> gives, asked for only then. Null with no server to ask, or once
-    /// the file has closed.</summary>
+    /// Code, else the language <paramref name="server"/> gives, asked for only then; a read-only file refused before any is
+    /// asked. Null with no server to ask, or once the file has closed.</summary>
     internal async Task<Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, Func<LspDocument?> server)
     {
+        if (Reformatted.ReadOnly(document, "Reformat Code") is { } refused)
+        {
+            return refused;
+        }
         within = within is { } range ? WholeLines(document.Text.Snapshot, range) : null;
         if (await context.Languages.FormatAsync(document, within) is { } done)
         {

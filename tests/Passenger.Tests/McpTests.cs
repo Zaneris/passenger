@@ -1855,6 +1855,41 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         File.SetAttributes(notes, FileAttributes.Normal);
     }
 
+    /// <summary>An agent's format of a file the editor shows read-only, a library's XAML as Source Link gave it and a
+    /// framework type the language server decompiled, is refused saying so: nothing there changes, so nothing is said to be
+    /// reformatted or already formatted. Reformat Code greys on the decompiled file, saying why.</summary>
+    [Fact]
+    public async Task An_agents_format_of_a_read_only_xaml_or_cs_file_is_refused_saying_it_is_read_only()
+    {
+        string folder = await TakeFolderAsync();
+        // Where Passenger keeps what Source Link gives of a library, as it would hold Fluent's Button.xaml.
+        string button = TestFolders.Write(Path.Combine(OwnState, "MetadataAsSource", "SourceLink", "Avalonia.Themes.Fluent", "0123456789abcdef", "Controls"), "Button.xaml",
+            "<ResourceDictionary xmlns=\"https://github.com/avaloniaui\">\n<ControlTheme x:Key=\"{x:Type Button}\"   TargetType=\"Button\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">\n"
+            + "<Setter Property=\"Padding\"    Value=\"8\"/>\n</ControlTheme>\n</ResourceDictionary>\n");
+        string laid = File.ReadAllText(button);
+        await using McpClient client = await Start(["--mcp", folder]);
+
+        CallToolResult markup = await Result(client, McpTools.Format, new() { ["path"] = button });
+        Assert.True(markup.IsError == true && Text(markup).Contains("Reformat Code was not applied: Button.xaml is read-only", StringComparison.Ordinal),
+            $"format of a read-only XAML file answered: {Text(markup)}");
+        Assert.True(File.ReadAllText(button) == laid, "format wrote a read-only XAML file");
+
+        string decompiled = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "Program.cs", ["line"] = 6, ["column"] = 1 })).EnumerateArray())
+            .GetProperty("path").GetString()!;
+        Assert.Contains("MetadataAsSource", decompiled, StringComparison.Ordinal);
+        string written = File.ReadAllText(decompiled);
+        CallToolResult code = await Result(client, McpTools.Format, new() { ["path"] = decompiled });
+        Assert.True(code.IsError == true && Text(code).Contains($"Reformat Code was not applied: {Path.GetFileName(decompiled)} is read-only", StringComparison.Ordinal),
+            $"format of a decompiled C# file answered: {Text(code)}");
+        Assert.True(File.ReadAllText(decompiled) == written, "format wrote a decompiled C# file");
+
+        await Call(client, McpTools.Open, new() { ["path"] = decompiled });
+        string reformat = Assert.Single((await Call(client, McpTools.IdeActions, new() { ["query"] = AppActions.Reformat })).EnumerateArray(),
+            a => a.GetString()!.StartsWith($"{AppActions.Reformat}:", StringComparison.Ordinal)).GetString()!;
+        Assert.True(reformat.EndsWith($" - cannot run: {Path.GetFileName(decompiled)} is read-only", StringComparison.Ordinal),
+            $"Reformat Code could run on a decompiled C# file: {reformat}");
+    }
+
     /// <summary>An agent's push in its own IDE to a remote that asks for a login is refused at once, saying so and that
     /// nobody is there to give it, rather than waiting on a question nobody sees: the commit is made, the remote takes nothing.</summary>
     [Fact]

@@ -14,9 +14,9 @@ internal sealed partial class GherkinAssist
 
     private async Task<CodeActions.Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, string what)
     {
-        if (document.IsReadOnly)
+        if (CodeActions.Reformatted.ReadOnly(document, what) is { } refused)
         {
-            return CodeActions.Reformatted.Refused(what, Refusals.ReadOnly(document.Name));
+            return refused;
         }
         using ChangeTracker asked = new(document.Text);
         TextSnapshot snapshot = asked.Snapshot;
