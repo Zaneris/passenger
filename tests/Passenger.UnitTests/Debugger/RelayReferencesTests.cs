@@ -7,8 +7,8 @@ using Passenger.Debugger.Relay;
 namespace Passenger.UnitTests.Debugger;
 
 /// <summary>The engine's hold on an app's objects through the relay: each object let go in the app once the engine holds
-/// none of it, the objects the app's debugger keeps anyway held for the session, and what an object said asked of the
-/// app once, for as long as it holds.</summary>
+/// none of it, the objects the app's debugger keeps anyway held for the session, what an object said asked of the app
+/// once, for as long as it holds, and the metadata an update takes to be there made in the app first.</summary>
 public class RelayReferencesTests
 {
     [Fact]
@@ -105,8 +105,23 @@ public class RelayReferencesTests
             $"Walking 3 frames gave {walked.Count} in {app.Asked(typeof(ICorDebugFrameEnum), nameof(ICorDebugFrameEnum.TryNext))} round trips, where one brings them all");
     }
 
+    [Fact]
+    public void An_update_has_the_apps_debugger_make_its_own_copy_of_the_modules_metadata_first_and_lets_the_importer_go()
+    {
+        App app = new();
+        RelaySession session = new(app, new DeviceModules(null), null);
+        nint block = session.Take(new RemotePointer(0x6000, 0x6000), RemoteInterfaces.Of(typeof(ICorDebugModule)));
+        ICorDebugModule2 module = (ICorDebugModule2)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+        Assert.Equal(0, module.TryApplyChanges(2, [1, 2], 1, [3]));
+        int made = app.Calls.FindIndex(c => c == (0x6000ul, RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetMetaDataInterface))));
+        int applied = app.Calls.FindIndex(c => c.Slot == RelaySession.SlotOf(typeof(ICorDebugModule2), nameof(ICorDebugModule2.TryApplyChanges)) && c.Object != 0x6000);
+        Assert.True(made >= 0 && applied > made, $"The app's debugger was not asked for the module's metadata before the update, which its ApplyChanges takes to hold: "
+            + string.Join(", ", app.Calls.Select(c => $"0x{c.Object:x} slot {c.Slot}")));
+        Assert.True(app.Released.Count == 1, $"The importer the app's debugger handed back was not let go, or more was: {string.Join(", ", app.Released)}");
+    }
+
     /// <summary>An app's debugger as the relay carries it: every call answered by its arguments' kinds, a frame
-    /// enumerator's Next with <see cref="Frames"/> frames, every call's slot and every release heard.</summary>
+    /// enumerator's Next with <see cref="Frames"/> frames, every call's object and slot and every release heard.</summary>
     private sealed class App : IRelayLink
     {
         private readonly ConcurrentQueue<uint> _asked = new();
@@ -115,6 +130,9 @@ public class RelayReferencesTests
         public int Frames { get; init; }
 
         public List<ulong> Released { get; } = [];
+
+        /// <summary>Each call's object and slot, in order.</summary>
+        public List<(ulong Object, uint Slot)> Calls { get; } = [];
 
         public ulong Callback => 0;
 
@@ -125,6 +143,7 @@ public class RelayReferencesTests
         public RelayReply Call(ulong obj, uint slot, IReadOnlyList<RelayArg> args)
         {
             _asked.Enqueue(slot);
+            Calls.Add((obj, slot));
             if (slot == 0)
             {
                 return new RelayReply(0, [], [[new RemotePointer(obj + 8, obj)]]);

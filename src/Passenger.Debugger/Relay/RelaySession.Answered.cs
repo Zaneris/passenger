@@ -43,6 +43,11 @@ internal sealed unsafe partial class RelaySession
                 }
             }
         }
+        if (type == typeof(ICorDebugModule2) && method.Name == nameof(ICorDebugModule2.TryApplyChanges))
+        {
+            AppMetadataMade(standIn);
+            return null;
+        }
         if (type == typeof(ICorDebugAppDomain) && method.Name == nameof(ICorDebugAppDomain.TryGetModuleFromMetaDataInterface))
         {
             *(nint*)args[1] = 0;
@@ -103,6 +108,40 @@ internal sealed unsafe partial class RelaySession
             return _link.Call(standIn.Pointer, SlotOf(type, method.Name), [RelayArg.Number((uint)args[0]), RelayArg.Number((uint)size), RelayArg.In(new ReadOnlySpan<byte>((void*)args[2], size).ToArray())]).Hr;
         }
         return null;
+    }
+
+    /// <summary>The app's debugger made to hold its own copy of a module's metadata, which its ApplyChanges updates and
+    /// takes to be there: the engine's own asks for the metadata are answered on the host, so the app's is asked for here,
+    /// the importer it hands back let go at once (the module keeps its copy).</summary>
+    private void AppMetadataMade(StandIn module2)
+    {
+        InterfacePlan modulePlan = RemoteInterfaces.Of(typeof(ICorDebugModule));
+        ulong module;
+        lock (_lock)
+        {
+            module = module2.Owner.StandIns.TryGetValue(modulePlan, out StandIn? known) ? known.Pointer : 0;
+        }
+        ulong asked = 0;
+        if (module == 0)
+        {
+            RelayReply found = _link.Call(module2.Pointer, 0, [RelayArg.In(modulePlan.Iid.ToByteArray()), RelayArg.Objects(1)]);
+            module = asked = found.Hr >= 0 ? found.Objects[0][0].Pointer : 0;
+        }
+        if (module == 0)
+        {
+            return;
+        }
+        RelayReply made = _link.Call(module, SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetMetaDataInterface)),
+            [RelayArg.In(typeof(IMetaDataImport).GUID.ToByteArray()), RelayArg.Objects(1)]);
+        if (made.Hr >= 0)
+        {
+            _link.Release(made.Objects[0][0].Pointer);
+        }
+        else
+        {
+            _log?.Invoke($"The app's debugger made no copy of the module's metadata for its update: 0x{made.Hr:X8}");
+        }
+        _link.Release(asked);
     }
 
     internal static uint SlotOf(Type type, string method) =>
