@@ -224,13 +224,16 @@ public sealed partial class Vim
                 Region r = taken[i];
                 bool above = text.GetLineFromOffset(r.Cursor) < text.GetLineFromOffset(r.Anchor);
                 LineSpan anchorLine = VimMotions.LineOf(text, r.Anchor);
-                int column = CaretColumn(text, r.Cursor, tab);
-                int aim = i < visualAims.Length && visualAims[i] >= 0 ? visualAims[i] : column;
+                // A cursor j or k left past a short line's end stands on its last character here.
+                int aimed = i < visualAims.Length ? visualAims[i] : -1;
+                int cursor = aimed >= 0 && aimed != int.MaxValue ? Settled(text, r.Cursor, breakEnds) : r.Cursor;
+                int column = CaretColumn(text, cursor, tab);
+                int aim = aimed >= 0 ? aimed : column;
                 bool onIt = r.Anchor == r.Cursor ? column == 0 : aim == keptBlockLeft || (aim > keptBlockLeft && column < keptBlockLeft);
                 int place = !after ? (above ? r.Cursor : anchorLine.Start)
                     : above ? (keptBlockLeft == 0 || anchorLine.Length == 0 ? anchorLine.Start : TextNavigation.NextGrapheme(text, anchorLine.Start))
                     : aim == int.MaxValue ? LastCharOf(text, r.Cursor)
-                    : onIt ? r.Cursor
+                    : onIt ? cursor
                     : Math.Min(CharEnd(text, r.Cursor), VimMotions.LineOf(text, r.Cursor).End);
                 inserts.Add(Selection.At(place));
             }

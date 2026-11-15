@@ -507,7 +507,12 @@ public static class VimMotions
         {
             if (at == 0)
             {
-                if (i == 0 || !topAgain)
+                if (i == 0)
+                {
+                    // From the text's start one ( stays there, an operator taking nothing; more fail.
+                    return n == 1 ? new VimTarget(0, VimMotionKind.Exclusive) : null;
+                }
+                if (!topAgain)
                 {
                     return null;
                 }

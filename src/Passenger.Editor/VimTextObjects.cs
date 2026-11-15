@@ -218,10 +218,20 @@ public static class VimTextObjects
     }
 
     /// <summary>is and as: the sentence the caret is in, or the white after it; the outer one takes the white after, or
-    /// before where none is after.</summary>
+    /// before where none is after. On a run of empty lines the sentence is the run's last line.</summary>
     private static VimSpan? Sentence(TextSnapshot text, int caret, int n, bool inner)
     {
         int start = caret < text.Length ? VimMotions.PreviousSentenceStart(text, caret + 1) : VimMotions.PreviousSentenceStart(text, caret);
+        LineSpan on = VimMotions.LineOf(text, caret);
+        if (on.Length == 0)
+        {
+            int runEnd = on.Line;
+            while (runEnd + 1 < text.LineCount && text.GetLine(runEnd + 1).Length == 0 && text.GetLineStart(runEnd + 1) < text.Length)
+            {
+                runEnd++;
+            }
+            start = text.GetLineStart(runEnd);
+        }
         int end = start;
         bool onWhite = false;
         int bodyEnd = BodyEnd(text, start);
@@ -297,9 +307,14 @@ public static class VimTextObjects
         return next <= offset ? text.Length : next;
     }
 
-    /// <summary>Where a sentence's text ends, before the white that leads to the next one.</summary>
+    /// <summary>Where a sentence's text ends, before the white that leads to the next one; an empty line's past its break.</summary>
     private static int BodyEnd(TextSnapshot text, int start)
     {
+        LineSpan line = VimMotions.LineOf(text, start);
+        if (line.Length == 0 && line.Start == start && line.BreakLength > 0)
+        {
+            return line.EndIncludingBreak;
+        }
         int end = SentenceAfter(text, start);
         while (end > start && char.IsWhiteSpace(text[end - 1]))
         {

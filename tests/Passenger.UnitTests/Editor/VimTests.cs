@@ -1491,6 +1491,30 @@ public class VimTests
     public void Objects_with_nothing_inside_do_what_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>is and as on a run of empty lines take its last line as the sentence, the white after it too for as, and
+    /// one ( from the text's very start stays there, an operator taking nothing, where a count more fails, as Vim's do.</summary>
+    [Theory]
+    [InlineData("a b\n|\n\nc d", "dis", "a b\n\n|c d")]
+    [InlineData("a b\n|\n\nc d", "das", "a b\n\n|c d")]
+    [InlineData("a b\n\n|\nc d", "dis", "a b\n\n|c d")]
+    [InlineData("a b\n|\n\nc d", "2das", "a b\n|")]
+    [InlineData("|\n\nc d. e f", "dis", "\n|c d. e f")]
+    [InlineData("\n|\nc d. e f", "das", "\n|c d. e f")]
+    [InlineData("one.  two.\n\n  three. four\nfive.\n|\n\n\nsix", "das", "one.  two.\n\n  three. four\nfive.\n\n\n|six")]
+    [InlineData("one.  two.\n\n  three. four\nfive.\n\n\n|\nsix", "dis", "one.  two.\n\n  three. four\nfive.\n\n\n|six")]
+    [InlineData("a.\n|\n  b. c", "dis", "a.\n  |b. c")]
+    [InlineData("a.\n|\n  b. c", "das", "a.\n|b. c")]
+    [InlineData("a.\n|\n  b. c", "2das", "a.\n|c")]
+    [InlineData("one two three\nfour five six\n|", "gUas", "|ONE TWO THREE\nFOUR FIVE SIX\n")]
+    [InlineData("|abc. def", "c(X<Esc>", "|Xabc. def")]
+    [InlineData("|abc. def", "2c(X<Esc>", "|abc. def")]
+    [InlineData("|ABC. def", "gu(", "|aBC. def")]
+    [InlineData("|\nabc", "c(X<Esc>", "|X\nabc")]
+    [InlineData("\na|bc", "3c(X<Esc>", "|Xbc")]
+    [InlineData("\na|bc", "4c(X<Esc>", "\n|bc")]
+    public void Sentences_on_empty_lines_and_back_from_the_texts_start_do_what_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
