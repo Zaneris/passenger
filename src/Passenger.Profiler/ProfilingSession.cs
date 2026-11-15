@@ -132,24 +132,8 @@ public sealed class ProfilingSession : IAsyncDisposable
     public static async Task<ProfilingSession> StartAsync(ProfileTarget target, string folder, string sockets, ProgramPump pump,
         CancellationToken cancellation = default)
     {
-        if (!Directory.Exists(target.WorkingDirectory))
-        {
-            throw new ProfilingException($"Could not profile {target.Name}: its working folder {target.WorkingDirectory} does not exist");
-        }
-        // One named by its path must be there; a name alone is looked for on the PATH by the start.
-        if (Path.IsPathRooted(target.Program) && !File.Exists(target.Program))
-        {
-            throw new ProfilingException($"Could not profile {target.Name}: {target.Program} does not exist");
-        }
-        string trace;
-        try
-        {
-            trace = NewTrace(folder, target.Name);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            throw new ProfilingException($"Could not profile {target.Name}: no snapshot can be written in {folder}: {error.Message}", error);
-        }
+        Startable(target);
+        string trace = TraceIn(folder, target.Name, Named);
         // Named for this process first, so a later Passenger takes away one a crash left; never .sock, which agents look for.
         string port = OperatingSystem.IsWindows()
             ? $"passenger-profile-{Environment.ProcessId}-{Guid.NewGuid():N}"
@@ -158,22 +142,15 @@ public sealed class ProfilingSession : IAsyncDisposable
         limit.CancelAfter(TimeSpan.FromSeconds(30));
         Task<DiagnosticsClientConnector?> connecting = DiagnosticsClientConnector.FromDiagnosticPort(port, limit.Token)!;
 
-        ProcessStartInfo start = target.Start();
-        start.RedirectStandardOutput = true;
-        start.RedirectStandardError = true;
-        // An input of its own that stays open, for a program that waits on a read.
-        start.RedirectStandardInput = true;
-        ChildProcesses.WithVariables(start, target.Environment);
-        start.Environment[RuntimeVariables.DiagnosticPorts] = $"{port},suspend";
         Process process;
         try
         {
-            process = ChildProcesses.Start(start);
+            process = await StartedAsync(target, port);
         }
-        catch (Exception error) when (ChildFailures.Of(error))
+        catch (ProfilingException)
         {
             await StopListeningAsync(connecting, limit, port);
-            throw new ProfilingException($"Could not start {Path.GetFileName(target.Program)} to profile {target.Name}: {error.Message}", error);
+            throw;
         }
         // The last line it wrote on its standard error, which says why when it ends before the profiler sees it.
         string? lastSaid = null;
@@ -268,33 +245,17 @@ public sealed class ProfilingSession : IAsyncDisposable
     /// start that fails is a <see cref="ProfilingException"/> saying why.</summary>
     public static async Task<ProfilingSession> StartFramesAsync(ProfileTarget target, string folder, ProgramPump pump)
     {
-        if (!Directory.Exists(target.WorkingDirectory))
-        {
-            throw new ProfilingException($"Could not profile {target.Name}: its working folder {target.WorkingDirectory} does not exist");
-        }
-        string trace;
-        try
-        {
-            trace = NewTrace(folder, target.Name);
-            new FileStream(trace, FileMode.CreateNew, FileAccess.Write).Dispose();
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            throw new ProfilingException($"Could not profile {target.Name}: no snapshot can be written in {folder}: {error.Message}", error);
-        }
-        ProcessStartInfo start = target.Start();
-        start.RedirectStandardOutput = true;
-        start.RedirectStandardError = true;
-        start.RedirectStandardInput = true;
-        ChildProcesses.WithVariables(start, target.Environment);
+        Startable(target);
+        string trace = TraceIn(folder, target.Name, Emptied);
         Process process;
         try
         {
-            process = await ChildProcesses.StartAsync(start);
+            process = await StartedAsync(target, port: null);
         }
-        catch (Exception error) when (ChildFailures.Of(error))
+        catch (ProfilingException)
         {
-            throw new ProfilingException($"Could not start {Path.GetFileName(target.Program)} to profile {target.Name}: {error.Message}", error);
+            Unmade(trace);
+            throw;
         }
         Task reading = Task.WhenAll(pump(ChildProcesses.Output(process), false, null), pump(ChildProcesses.Errors(process), true, null));
         return new ProfilingSession(process, null, null, Task.CompletedTask, reading, trace, null, samples: false);
@@ -307,25 +268,16 @@ public sealed class ProfilingSession : IAsyncDisposable
     /// <see cref="ProfilingException"/> saying why.</summary>
     public static ProfilingSession AttachFrames(int processId, string name, string folder)
     {
-        Process process;
+        Process process = Running(processId, name);
         try
         {
-            process = Process.GetProcessById(processId);
-        }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
-        {
-            throw new ProfilingException($"Could not profile {name}: it has ended", error);
-        }
-        try
-        {
-            string trace = NewTrace(folder, name);
-            new FileStream(trace, FileMode.CreateNew, FileAccess.Write).Dispose();
+            string trace = TraceIn(folder, name, Emptied);
             return new ProfilingSession(process, null, null, Task.CompletedTask, Task.CompletedTask, trace, null, samples: false, attached: true);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (ProfilingException)
         {
             process.Dispose();
-            throw new ProfilingException($"Could not profile {name}: no snapshot can be written in {folder}: {error.Message}", error);
+            throw;
         }
     }
 
@@ -336,24 +288,16 @@ public sealed class ProfilingSession : IAsyncDisposable
     /// <see cref="ProfilingException"/> saying why, the program left recording nothing.</summary>
     public static async Task<ProfilingSession> AttachAsync(int processId, string name, string folder, CancellationToken cancellation = default, bool resume = false)
     {
-        Process process;
-        try
-        {
-            process = Process.GetProcessById(processId);
-        }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
-        {
-            throw new ProfilingException($"Could not profile {name}: it has ended", error);
-        }
+        Process process = Running(processId, name);
         string trace;
         try
         {
-            trace = NewTrace(folder, name);
+            trace = TraceIn(folder, name, Named);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (ProfilingException)
         {
             process.Dispose();
-            throw new ProfilingException($"Could not profile {name}: no snapshot can be written in {folder}: {error.Message}", error);
+            throw;
         }
         // The session goes with any failure, or the program goes on recording for no one.
         EventPipeSession? session = null;
@@ -370,7 +314,7 @@ public sealed class ProfilingSession : IAsyncDisposable
                     session = await client.StartEventPipeSessionAsync(Providers, requestRundown: true, circularBufferMB: 512, cancellation), cancellation);
                 if (session is null)
                 {
-                    throw new ProfilingException(waited == PortWait.Ended ? $"Could not profile {name}: it has ended"
+                    throw new ProfilingException(waited == PortWait.Ended ? HasEnded(name)
                         : $"The profiler could not reach {name}: it opened no diagnostic port in {HeldStart.PortLimit.TotalSeconds:0} s");
                 }
                 // Recorded either way: a runtime not held at its start may refuse what it never waits for, and runs.
@@ -384,8 +328,8 @@ public sealed class ProfilingSession : IAsyncDisposable
             bool reached = session is not null;
             session?.Dispose();
             process.Dispose();
-            throw new ProfilingException(gone ? $"Could not profile {name}: it has ended"
-                : reached ? $"Could not profile {name}: no snapshot can be written in {folder}: {error.Message}"
+            throw new ProfilingException(gone ? HasEnded(name)
+                : reached ? NoSnapshot(name, folder, error)
                 : $"The profiler could not reach {name}: {error.Message}", error);
         }
         catch
@@ -404,17 +348,7 @@ public sealed class ProfilingSession : IAsyncDisposable
     public static async Task<ProfilingSession> AttachAsync(int processId, string name, string folder, ProfilePlace place, bool resume = false,
         CancellationToken cancellation = default)
     {
-        string trace;
-        FileStream file;
-        try
-        {
-            trace = NewTrace(folder, name);
-            file = new FileStream(trace, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            throw new ProfilingException($"Could not profile {name}: no snapshot can be written in {folder}: {error.Message}", error);
-        }
+        (string trace, FileStream file) = TraceIn(folder, name, path => (path, new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read)));
         ContainerTrace recording;
         try
         {
@@ -422,7 +356,8 @@ public sealed class ProfilingSession : IAsyncDisposable
         }
         catch
         {
-            Unmade(file, trace);
+            file.Dispose();
+            Unmade(trace);
             throw;
         }
         Process tools = recording.Tools;
@@ -444,10 +379,9 @@ public sealed class ProfilingSession : IAsyncDisposable
         return new ProfilingSession(tools, null, null, copying, recording.Heard, trace, null, processId, place);
     }
 
-    /// <summary>A trace's file let go and deleted, its recording never begun: no snapshot to list.</summary>
-    private static void Unmade(FileStream file, string trace)
+    /// <summary>A trace's file deleted, its recording never begun: no snapshot to list.</summary>
+    private static void Unmade(string trace)
     {
-        file.Dispose();
         try
         {
             File.Delete(trace);
@@ -478,18 +412,93 @@ public sealed class ProfilingSession : IAsyncDisposable
         });
     }
 
-    /// <summary>A file for a run's trace, named for its program and when it began, never one written before.</summary>
-    private static string NewTrace(string folder, string name)
+    /// <summary>Refuses a start that cannot be, before anything of its run is made: its working folder not there, or the
+    /// program named by its path not there (a name alone is looked for on the PATH by the start).</summary>
+    private static void Startable(ProfileTarget target)
     {
-        Directory.CreateDirectory(folder);
-        string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
-        string trace = Path.Combine(folder, $"{name}-{stamp}.nettrace");
-        for (int again = 2; File.Exists(trace); again++)
+        if (!Directory.Exists(target.WorkingDirectory))
         {
-            trace = Path.Combine(folder, $"{name}-{stamp}-{again}.nettrace");
+            throw new ProfilingException($"Could not profile {target.Name}: its working folder {target.WorkingDirectory} does not exist");
         }
+        if (Path.IsPathRooted(target.Program) && !File.Exists(target.Program))
+        {
+            throw new ProfilingException($"Could not profile {target.Name}: {target.Program} does not exist");
+        }
+    }
+
+    /// <summary>The program started off the window's thread, its output and errors redirected for its caller to read and
+    /// an input of its own that stays open, for a program that waits on a read; with its environment, and held at
+    /// <paramref name="port"/> where one is given. A start that fails is a <see cref="ProfilingException"/> saying why.</summary>
+    private static async Task<Process> StartedAsync(ProfileTarget target, string? port)
+    {
+        ProcessStartInfo start = target.Start();
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        start.RedirectStandardInput = true;
+        ChildProcesses.WithVariables(start, target.Environment);
+        if (port is not null)
+        {
+            start.Environment[RuntimeVariables.DiagnosticPorts] = $"{port},suspend";
+        }
+        try
+        {
+            return await ChildProcesses.StartAsync(start);
+        }
+        catch (Exception error) when (ChildFailures.Of(error))
+        {
+            throw new ProfilingException($"Could not start {Path.GetFileName(target.Program)} to profile {target.Name}: {error.Message}", error);
+        }
+    }
+
+    /// <summary>A program running, by its id; one gone is a <see cref="ProfilingException"/> saying so.</summary>
+    private static Process Running(int processId, string name)
+    {
+        try
+        {
+            return Process.GetProcessById(processId);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            throw new ProfilingException(HasEnded(name), error);
+        }
+    }
+
+    /// <summary>What <paramref name="make"/> makes of a new trace in <paramref name="folder"/>, named for the run's
+    /// <paramref name="name"/> and when it began, never one written before; a folder that takes none is a
+    /// <see cref="ProfilingException"/> saying so.</summary>
+    private static T TraceIn<T>(string folder, string name, Func<string, T> make)
+    {
+        try
+        {
+            Directory.CreateDirectory(folder);
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+            string trace = Path.Combine(folder, $"{name}-{stamp}.nettrace");
+            for (int again = 2; File.Exists(trace); again++)
+            {
+                trace = Path.Combine(folder, $"{name}-{stamp}-{again}.nettrace");
+            }
+            return make(trace);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new ProfilingException(NoSnapshot(name, folder, error), error);
+        }
+    }
+
+    /// <summary>A trace by its path alone, its file made as its session's stream is first copied.</summary>
+    private static string Named(string trace) => trace;
+
+    /// <summary>A trace made empty, naming a run of a game's frames alone, which nothing writes into.</summary>
+    private static string Emptied(string trace)
+    {
+        new FileStream(trace, FileMode.CreateNew, FileAccess.Write).Dispose();
         return trace;
     }
+
+    private static string HasEnded(string name) => $"Could not profile {name}: it has ended";
+
+    private static string NoSnapshot(string name, string folder, Exception error) =>
+        $"Could not profile {name}: no snapshot can be written in {folder}: {error.Message}";
 
     /// <summary>Ends the wait for a program at the port: the listener goes, a connection that came all the same with it,
     /// and its socket file, which a listener ended mid-accept may leave.</summary>
