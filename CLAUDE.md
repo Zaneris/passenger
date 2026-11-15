@@ -592,7 +592,7 @@ a new name, and `just site-shots` retakes its images.
   scripts (GodotTools' watcher reloads the editor's own assemblies every 0.5 s); its completion kinds lack font sizes,
   so send the engine's numbers; an editor importing as it opens answers no handshake until done (`GodotIdeLink` retries
   after 10 s).
-- **Godot's game.** Stop ends a game before its debug session: wait for the session too; a session is ended once its
+- **Godot's game.** Passenger's helper comes in only once the game has run its loop (`GodotGame.LoopedAsync`): Godot reads messages between a script's lines and at each hit, while a root setting up its children adds no node; a refusal while the helper is sent for is the helper's (`GodotAgent.Unplaced`), and an evaluation's errors are those between its answer and its fence, sent in one write (`SendTogetherAsync`). Stop ends a game before its debug session: wait for the session too; a session is ended once its
   adapter says so or its process is gone after Exited without Terminated (`ProgramGone`). An agent's call on a game has
   one limit (`GodotGame.Within`); app_ tools wait for the first scene, no evaluation; an answer about a run whose app's inspector ended waits for the run's own end, heard after it; on a device the inspector's hello comes before the activity's view, so app_ tools wait for its first top level (`ViewShownAsync`). The frame counter runs on while
   paused: count the helper's frames. Node selection, once set up, takes the game's clicks until turned off; 4.8 renamed
