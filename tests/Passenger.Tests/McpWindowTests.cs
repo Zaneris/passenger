@@ -507,12 +507,15 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>A MAUI page's folder whose load after its first restore waits for its design-time builds (held back here)
-    /// longer than an agent's code tools wait for the C# language server: the agent's definition of the InitializeComponent
-    /// MAUI's generator declares, asked as the folder opens, is refused as the server still loading once the wait is over,
-    /// never answered as nothing from the load before the restore.</summary>
+    /// longer than an agent's code tools wait for the C# language server, given this window a little past the time the
+    /// server may say nothing of a load under way: the agent's definition of the InitializeComponent MAUI's generator
+    /// declares, asked as the folder opens, is refused as the server still loading once the wait is over, never answered as
+    /// nothing from the load before the restore.</summary>
     [AvaloniaFact]
     public void An_agents_definition_asked_while_the_server_loads_again_past_the_wait_is_refused_as_still_loading()
     {
+        string? limitWas = Environment.GetEnvironmentVariable(PassengerTools.ServerLimitVariable);
+        TimeSpan limit = Waits.Of(TimeSpan.FromSeconds(15)) + TimeSpan.FromSeconds(10).Scaled();
         string folder = McpNavigationTests.MauiPage("mcp-maui-slow-");
         DeleteAtEnd(folder);
         string project = Path.Combine(folder, "MauiApp1.csproj");
@@ -521,6 +524,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         TaskCompletionSource loading = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource reloading = new(TaskCreationOptions.RunContinuationsAsynchronously);
         McpClient? client = null;
+        Environment.SetEnvironmentVariable(PassengerTools.ServerLimitVariable, ((int)limit.TotalMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture));
         try
         {
             // Pumped, not settled throughout: the server's load held waits on the window.
@@ -552,6 +556,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
                 Gone(client);
             }
             window.Close();
+            Environment.SetEnvironmentVariable(PassengerTools.ServerLimitVariable, limitWas);
         }
     }
 

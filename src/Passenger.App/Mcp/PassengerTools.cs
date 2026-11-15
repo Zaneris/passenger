@@ -28,7 +28,14 @@ namespace Passenger.App.Mcp;
 /// none is an agent's own IDE's.</summary>
 public sealed partial class PassengerTools(MainWindow window, AgentConnection? connection = null)
 {
-    private static readonly TimeSpan ServerLimit = TimeSpan.FromSeconds(120);
+    /// <summary>The variable that gives <see cref="ServerLimit"/> in milliseconds.</summary>
+    [IdentifierHome]
+    public const string ServerLimitVariable = "PASSENGER_MCP_SERVER_WAIT_MS";
+
+    /// <summary>How long a code tool waits for the C# language server to be ready for its question before it refuses: 2
+    /// minutes, or what <see cref="ServerLimitVariable"/> gives; a value there that is no whole number of milliseconds above
+    /// 0 is fatal.</summary>
+    public static TimeSpan ServerLimit => EnvironmentValues.Milliseconds(ServerLimitVariable, TimeSpan.FromSeconds(120));
 
     /// <summary>How long a file's markers are waited for: its checks are quick once its project is read.</summary>
     private static readonly TimeSpan MarkersLimit = TimeSpan.FromSeconds(30);

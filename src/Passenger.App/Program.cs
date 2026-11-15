@@ -58,6 +58,7 @@ internal static class Program
             _ = MainWindow.WatchSaysLater;
             _ = CSharp.CSharpService.SlowLoad;
             _ = Mcp.AgentCall.Every;
+            _ = Mcp.PassengerTools.ServerLimit;
             _ = Dap.AdapterEnvironment.EvaluationTimeout;
             _ = Text.TextSearch.Apart;
             _ = Languages.TextMate.TextMateHighlighter.LineTime;
