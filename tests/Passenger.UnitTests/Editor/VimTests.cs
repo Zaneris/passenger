@@ -1515,6 +1515,21 @@ public class VimTests
     public void Sentences_on_empty_lines_and_back_from_the_texts_start_do_what_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>An inner quoted string with a count of two or more takes its quotes too but no white, as Vim's help says
+    /// and Vim 9.1 does, in visual mode as well.</summary>
+    [Theory]
+    [InlineData("x \"a|b\" y", "2di\"", "x | y")]
+    [InlineData("x \"a|b\" y", "3di\"", "x | y")]
+    [InlineData("x \"a|b\" y", "2da\"", "x |y")]
+    [InlineData("x \"a|b\" y", "v2i\"d", "x | y")]
+    [InlineData("x |\"ab\" y", "2ci\"Q<Esc>", "x |Q y")]
+    [InlineData("|x \"ab\" y", "2di\"", "x | y")]
+    [InlineData("x 'a|b' y", "2di'", "x | y")]
+    [InlineData("x \"a|b\" y", "2yi\"P", "x \"ab|\"\"ab\" y")]
+    [InlineData("x \"a|b\" y", "1di\"", "x \"|\" y")]
+    public void A_counted_inner_string_takes_its_quotes(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

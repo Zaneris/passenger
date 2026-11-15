@@ -22,7 +22,7 @@ public static class VimTextObjects
         "{" or "}" or "B" => Block(text, caret, n, inner, '{', '}'),
         "[" or "]" => Block(text, caret, n, inner, '[', ']'),
         "<" or ">" => Block(text, caret, n, inner, '<', '>'),
-        "\"" or "'" or "`" => Quoted(text, caret, key[0], inner),
+        "\"" or "'" or "`" => Quoted(text, caret, key[0], inner, withQuotes: inner && n > 1),
         "t" => Tag(text, caret, n, inner),
         _ => null,
     };
@@ -539,8 +539,9 @@ public static class VimTextObjects
     }
 
     /// <summary>A quoted string on the caret's line: the one the caret is in or on, else the first after it; the outer
-    /// one takes its quotes and the white after them, or before where none is after.</summary>
-    private static VimSpan? Quoted(TextSnapshot text, int caret, char quote, bool inner)
+    /// one takes its quotes and the white after them, or before where none is after; an inner one with a count its
+    /// quotes alone (<paramref name="withQuotes"/>).</summary>
+    private static VimSpan? Quoted(TextSnapshot text, int caret, char quote, bool inner, bool withQuotes = false)
     {
         LineSpan line = VimMotions.LineOf(text, caret);
         List<int> quotes = [];
@@ -582,7 +583,7 @@ public static class VimTextObjects
         }
         if (inner)
         {
-            return new VimSpan(open + 1, close, false);
+            return withQuotes ? new VimSpan(open, close + 1, false) : new VimSpan(open + 1, close, false);
         }
         int start = open;
         int end = close + 1;
