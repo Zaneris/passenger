@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Tests;
 
 /// <summary>The Reqnroll solution the BDD tests take, on Reqnroll's xunit v3 with the tests' own xunit v3, VSTest adapter
@@ -98,8 +100,9 @@ public static class ReqnrollProjects
         "    public double Percent(int value) => value / 100.0;\n" +
         "}\n";
 
-    /// <summary>Writes the solution into a folder and gives what to restore; <paramref name="intermediate"/> has Reqnroll
-    /// write its code-behind under obj (ReqnrollUseIntermediateOutputPathForCodeBehind).</summary>
+    /// <summary>Writes the solution into a folder and gives what to restore, by the folder's real path, so the project the
+    /// specs reference is never restored under two spellings at once; <paramref name="intermediate"/> has Reqnroll write its
+    /// code-behind under obj (ReqnrollUseIntermediateOutputPathForCodeBehind).</summary>
     public static string Write(string folder, bool intermediate = false)
     {
         TestFolders.Write(folder, "Calc.slnx",
@@ -122,6 +125,6 @@ public static class ReqnrollProjects
             "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
             $"  <ItemGroup>\n    <PackageReference Include=\"Reqnroll\" Version=\"{TestPackages.Reqnroll}\" />\n  </ItemGroup>\n</Project>\n");
         TestFolders.Write(folder, "Calc.Steps/SharedSteps.cs", Shared);
-        return Path.Combine(folder, "Calc.slnx");
+        return Path.Combine(PathNames.Canonical(folder), "Calc.slnx");
     }
 }
