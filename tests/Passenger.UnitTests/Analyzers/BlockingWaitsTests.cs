@@ -1,8 +1,10 @@
+extern alias Analyzers;
+
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Passenger.Analyzers;
+using Analyzers::Passenger.Analyzers;
 
 namespace Passenger.UnitTests.Analyzers;
 

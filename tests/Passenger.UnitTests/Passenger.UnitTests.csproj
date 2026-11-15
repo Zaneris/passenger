@@ -35,8 +35,8 @@
     <!-- Under an alias, since the tool compiles in Core's JsonMembers, which the tests take from Core. -->
     <ProjectReference Include="../../tools/Passenger.NodePackages/Passenger.NodePackages.csproj" Aliases="NodePackages" />
     <!-- Passenger's own rules, referenced as well as run over these tests (Directory.Build.props), so each is held to what
-         it flags in code compiled in memory. -->
-    <ProjectReference Update="$(MSBuildThisFileDirectory)../../src/Passenger.Analyzers/Passenger.Analyzers.csproj" ReferenceOutputAssembly="true" />
+         it flags in code compiled in memory; under an alias, since the analyzer compiles in Core's Plural. -->
+    <ProjectReference Update="$(MSBuildThisFileDirectory)../../src/Passenger.Analyzers/Passenger.Analyzers.csproj" ReferenceOutputAssembly="true" Aliases="Analyzers" />
   </ItemGroup>
 
   <!-- What the container runs read of Compose's and Docker's files, as text and paths alone, compiled in since their
