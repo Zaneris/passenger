@@ -203,13 +203,13 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer's "never" is a rule.
 - `Passenger.Core` (no UI), where each of these is the one way: a command's program `Programs.Command`/`CommandIn` (never a Windows `.exe` or `.cmd` name spelled by hand), a file on the PATH `OnPath`; .NET's folder
   `Dotnet.Root`, never `Dotnet.Host()`'s folder, for a folder's work `Dotnet.Root(folder)`/`Host(folder)` (the first installation holding the SDK its global.json takes, its `sdk.paths` searched as the muxer does, `Dotnet.Find(folder)`), which `DotnetCommand(args, folder)` and `NamingDotnet(start, folder)` take; a request of a host `OutboundHttp` (an answer read whole `OutboundHttp.ReadAsync`, a stream held to a limit `Streams.Bounded`); a Unix socket `SocketFolders`; a C
-  call made in more than one place `Libc`; whether a process runs `DotnetProcesses.Runs`, a `Process` held too, never
+  call made in more than one place `Libc`, a Windows one `Kernel32`; whether a process runs `DotnetProcesses.Runs`, a `Process` held too, never
   `HasExited` (PSG0007): ended, one Passenger started has an `ExitCode` to read, one found by id none; a PASSENGER_*_MS
   `EnvironmentValues.Milliseconds`, a PASSENGER_* stand-in for a host `EnvironmentValues.Address` (read in Program.Main's checks); a Windows command line `WindowsCommandLine`; git's environment variables `GitVariables`; the version `Product`, Passenger's own program `Product.Program`; a log below the
   App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes `MSBuildNames`; another program's or a person's
   JSON `JsonMembers` (`Value` for a member of any kind), never a bare `TryGetProperty`/`GetProperty` (PSG0008); a search
   by halving `Sorted`, never a loop of your own; the newest of folders named by versions `VersionOrder.Newest`; a primitive `PrimitiveTypes`; an SDK into an installation
-  `DotnetMerge`; a path in a project file `ItemPaths`, which files an MSBuild value names `ItemPaths.Matches` (its parts `ItemPaths.Parts`), a project file's items `ProjectItems`; what a Mac program links `MachOFile`; whether this process runs translated `Dotnet.Translated`, a program's processors
+  `DotnetMerge`; a path in a project file `ItemPaths`, which files an MSBuild value names `ItemPaths.Matches` (its parts `ItemPaths.Parts`), a project file's items `ProjectItems`; a Mac program's slices and what it links `MachOFile`; whether this process runs translated `Dotnet.Translated`, a program's processors
   `ProgramProcessors`; work any thread asks for by
   key (a download), begun once however many ask, an ask that stops waiting never letting it go, `SharedWork` (`unheld` where any window asks, saying why); a folder first on a PATH `Programs.FirstOnPath`; a shell's kind `ShellKinds.Of`; a macOS app bundle from a path `MacBundles`; requests to a peer answered by number `PendingRequests` (one asked after its end fails at once), never a table of one's own.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
@@ -414,7 +414,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   it (`CentralWrites`), never dotnet add package, which drops a props file's blank lines and turns a property to a literal;
   EF Core's own packages move as one set, another maker's provider only when asked (`MigrationsController.UpdateAsync`);
   `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
-  templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); updates are checked and downloaded once, by the watching window, and said in every window (`MainWindow.UpdatesOwner`); only an installed copy
+  templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); updates are checked and downloaded once, by the watching window, and said in every window (`MainWindow.UpdatesOwner`); an update put in place as Passenger ends goes through `InPlaceUpdater.Install` (macOS, Linux; each system's own steps only; Windows' Update.exe hand-off is `VelopackUpdater`'s); only an installed copy
   updates itself, a package manager's left to it; What's New from `docs/release-notes/X.Y.Z.md`.
 - **MCP.** `PassengerTools` (every tool on the UI thread), `McpHost`, `McpProxy`, `AgentConnection`. A tool that changes files answers once its saves landed and its moves are in Git's index (`SaveLandedAsync`, `VcsController.MovesIndexed`); a theme an agent names is taken as the picker takes one (`ThemeListing.TakeAsync`). An agent's rename, refactor and code action name their Local History change set (`MainWindow.NameAgentsChange`). A relay follows an
   update or, on Windows, ends, signalling the relay alone, never its agent's process group; `godot_editor` makes each
