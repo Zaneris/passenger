@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -40,6 +41,9 @@ public sealed class StepMatcher
     private readonly (StepBinding Binding, Regex? Regex, string? Error)[] compiled;
     private readonly CultureInfo culture;
 
+    /// <summary>The definitions whose expression ran past its time on a step, which match nothing from then on.</summary>
+    private readonly ConcurrentDictionary<StepBinding, string> stopped = new(ReferenceEqualityComparer.Instance);
+
     public StepMatcher(IReadOnlyList<StepBinding> bindings, IReadOnlyList<StepTransformation> transformations, CultureInfo culture)
     {
         Bindings = bindings;
@@ -60,13 +64,18 @@ public sealed class StepMatcher
     public ReqnrollParameterTypes Types { get; }
 
     /// <summary>Why a definition cannot bind any step (its own error, or its expression's); null where it can.</summary>
-    public string? ErrorOf(StepBinding binding) => compiled.FirstOrDefault(c => ReferenceEquals(c.Binding, binding)).Error;
+    public string? ErrorOf(StepBinding binding) =>
+        stopped.TryGetValue(binding, out string? why) ? why : compiled.FirstOrDefault(c => ReferenceEquals(c.Binding, binding)).Error;
 
     /// <summary>A step of a file read as it runs: an outline's once for each example row with its values (the context
     /// taking the row's examples' tags), a background's in the context of each scenario after it; matched where every
     /// run binds it, each definition listed once.</summary>
     public StepMatch Match(FeatureStep step, FeatureReading reading)
     {
+        if (!Matchable(step))
+        {
+            return StepMatch.None;
+        }
         List<StepMatch> runs = [];
         foreach ((string text, StepContext context) in RunsOf(step, reading))
         {
@@ -84,8 +93,20 @@ public sealed class StepMatcher
         {
             return ambiguous with { Bindings = [.. ambiguous.Bindings.Select(b => b with { Arguments = [] })] };
         }
-        return new StepMatch(MatchStatus.Defined, [.. runs.SelectMany(r => r.Bindings).Select(b => b.Binding).Distinct().Select(b => new BoundStep(b, []))]);
+        // Runs of one text (a background's, an outline's step with no placeholder) give their arguments where they are.
+        bool alike = step.Placeholders.Count == 0;
+        List<BoundStep> bound = [];
+        foreach (BoundStep each in runs.SelectMany(r => r.Bindings).Where(each => !bound.Any(b => b.Binding.SameAs(each.Binding))))
+        {
+            bound.Add(alike ? each : each with { Arguments = [] });
+        }
+        return new StepMatch(MatchStatus.Defined, bound);
     }
+
+    /// <summary>Whether a step can be matched as it stands: one with placeholders needs its outline's examples to have rows,
+    /// as it is said of nothing until then (an outline being written).</summary>
+    public static bool Matchable(FeatureStep step) =>
+        step.Placeholders.Count == 0 || step.Scenario.Examples.Any(e => e.Header is not null && e.Rows.Count > 0);
 
     /// <summary>A step's text matched in a context.</summary>
     public StepMatch Match(StepKind kind, string text, bool hasDocString, bool hasTable, StepContext context)
@@ -94,7 +115,7 @@ public sealed class StepMatcher
         List<string> refused = [];
         foreach ((StepBinding binding, Regex? regex, string? error) in compiled)
         {
-            if (regex is null || error is not null || !binding.Binds(kind) || regex.Match(text) is not { Success: true } match)
+            if (regex is null || error is not null || !binding.Binds(kind) || stopped.ContainsKey(binding) || MatchOf(binding, regex, text) is not { Success: true } match)
             {
                 continue;
             }
@@ -122,13 +143,29 @@ public sealed class StepMatcher
             return new StepMatch(MatchStatus.Undefined, [], refused.Count > 0 ? string.Join("\n", refused) : null);
         }
         int best = fitting.Max(f => f.Fit);
-        BoundStep[] bound = [.. fitting.Where(f => f.Fit == best).Select(f => new BoundStep(f.Binding, ArgumentsOf(f.Match)))];
+        // One method under several attributes that match is one definition, as Reqnroll takes it.
+        BoundStep[] bound = [.. fitting.Where(f => f.Fit == best).DistinctBy(f => (f.Binding.Type, f.Binding.Method))
+            .Select(f => new BoundStep(f.Binding, ArgumentsOf(f.Match)))];
         return new StepMatch(bound.Length == 1 ? MatchStatus.Defined : MatchStatus.Ambiguous, bound);
     }
 
     /// <summary>The steps of the files given that a definition binds, each with its file's reading.</summary>
     public IEnumerable<(FeatureReading Reading, FeatureStep Step)> UsesOf(StepBinding binding, IEnumerable<FeatureReading> readings) =>
         readings.SelectMany(r => r.Steps.Select(s => (r, s))).Where(u => Match(u.s, u.r).Bindings.Any(b => b.Binding.SameAs(binding)));
+
+    /// <summary>A definition's expression matched to a text; null where it ran past its time, after which it matches nothing.</summary>
+    private Match? MatchOf(StepBinding binding, Regex regex, string text)
+    {
+        try
+        {
+            return regex.Match(text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            stopped[binding] = $"Its expression ran past {regex.MatchTimeout.TotalSeconds:0.#} s matching \"{text}\"";
+            return null;
+        }
+    }
 
     private static StepArgument[] ArgumentsOf(Match match) =>
         [.. match.Groups.Cast<Group>().Skip(1).Where(g => g.Success).Select(g => new StepArgument(g.Index, g.Length))];

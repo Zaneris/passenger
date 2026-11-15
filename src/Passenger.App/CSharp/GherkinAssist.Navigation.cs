@@ -158,8 +158,8 @@ internal sealed partial class GherkinAssist
         }
         else if (PathNames.HasExtension(document.Path, [".cs"]))
         {
-            await bdd.StepsAsync();
-            if (bdd.BindingAt(document, offset) is not { } binding)
+            // The bindings as last read, never waited for: every C# Find Usages passes through here, Reqnroll or not.
+            if (bdd.Session.Steps.Wants || bdd.BindingAt(document, offset) is not { } binding)
             {
                 return null;
             }

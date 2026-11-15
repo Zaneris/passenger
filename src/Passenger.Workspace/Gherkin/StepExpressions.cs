@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using CucumberExpressions;
+using Passenger.Text;
 
 namespace Passenger.Workspace.Gherkin;
 
@@ -31,15 +32,18 @@ public static partial class StepExpressions
     {
         try
         {
+            // A project's own expression may backtrack without end: it stops where a search of the editor's would.
             if (binding.Expression is null)
             {
-                return (new Regex(FromMethodName(binding), RegexOptions.CultureInvariant), null);
+                return (new Regex(FromMethodName(binding), RegexOptions.CultureInvariant, TextSearch.Apart), null);
             }
             bool cucumber = binding.CucumberExpression ?? IsCucumberExpression(binding.Expression);
-            Regex regex = cucumber
-                ? new ReqnrollCucumberExpression(binding.Expression, types).Regex
-                : new Regex(WholeText(binding.Expression), RegexOptions.CultureInvariant);
-            return (regex, null);
+            if (!cucumber)
+            {
+                return (new Regex(WholeText(binding.Expression), RegexOptions.CultureInvariant, TextSearch.Apart), null);
+            }
+            Regex made = new ReqnrollCucumberExpression(binding.Expression, types).Regex;
+            return (new Regex(made.ToString(), made.Options, TextSearch.Apart), null);
         }
         catch (CucumberExpressionException error)
         {

@@ -83,4 +83,11 @@ public sealed class GherkinFormatterTests
 
         Assert.Equal((false, 2, true, "\t"), (options.IndentSteps, options.CellPadding, options.IndentDataTable, options.Indent));
     }
+
+    [Fact]
+    public void A_doc_strings_trailing_whitespace_is_its_value_and_stays()
+    {
+        Assert.Equal("Feature: F\nScenario: S\n    Given text\n        \"\"\"\n        kept  \n        \"\"\"\n",
+            Format("Feature: F\nScenario: S\nGiven text\n\"\"\"\nkept  \n\"\"\"\n"));
+    }
 }

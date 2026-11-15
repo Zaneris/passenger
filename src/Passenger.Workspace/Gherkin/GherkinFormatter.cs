@@ -42,7 +42,7 @@ public sealed record GherkinFormatOptions(string Indent, bool IndentFeatureChild
 /// <summary>A .feature file laid out (<see cref="GherkinFormatOptions"/>): each header, tag, step, table row and doc string
 /// at its level, each table's columns aligned, a doc string's lines kept as they stand within it, a comment at the level of
 /// what follows it, a step's keyword and text one space apart, descriptions and lines Gherkin reads as nothing left as
-/// written, every line's trailing whitespace gone. Lines and their breaks stay where they are. Pure.</summary>
+/// written, every line's trailing whitespace gone but a doc string's own. Lines and their breaks stay where they are. Pure.</summary>
 public static class GherkinFormatter
 {
     public static string Format(string text, GherkinFormatOptions options, string language)
@@ -162,7 +162,9 @@ public static class GherkinFormatter
             {
                 string written = lines[line].TrimEnd('\r');
                 int indent = written.Length - written.TrimStart().Length;
-                string rest = written.Trim().Length == 0 ? string.Empty : written[Math.Min(was, indent)..].TrimEnd();
+                bool delimiter = line == doc.Line || line == doc.EndLine;
+                // A content line's trailing whitespace is the doc string's value; only its delimiters' goes.
+                string rest = written.Trim().Length == 0 ? string.Empty : delimiter ? written.Trim() : written[Math.Min(was, indent)..];
                 levels[line] = level;
                 laid[line] = rest.Length == 0 ? string.Empty : Indent(level) + rest;
             }

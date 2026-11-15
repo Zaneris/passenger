@@ -144,7 +144,7 @@ public sealed class FeatureScenario(ScenarioKind kind, string keyword, string ti
 }
 
 /// <summary>A step: its keyword, its text and where each is, the kind it binds as, its argument and placeholders.</summary>
-public sealed class FeatureStep(int line, int column, string keyword, StepKeywordKind keywordKind, StepKind kind, string text, FeatureScenario scenario)
+public sealed class FeatureStep(int line, int column, string keyword, StepKeywordKind keywordKind, StepKind kind, string text, int textColumn, FeatureScenario scenario)
 {
     private static readonly Regex Placeholder = new("<([^<>]+)>", RegexOptions.CultureInvariant);
 
@@ -161,7 +161,8 @@ public sealed class FeatureStep(int line, int column, string keyword, StepKeywor
 
     public string Text { get; } = text;
 
-    public int TextColumn => KeywordColumn + Keyword.Length;
+    /// <summary>Where its text starts: past its keyword and every space after it, which Gherkin's reader trims.</summary>
+    public int TextColumn { get; } = textColumn;
 
     public FeatureScenario Scenario { get; } = scenario;
 
@@ -408,7 +409,13 @@ public sealed partial class FeatureReading
             _ => kindBefore,
         };
         kindBefore = kind;
-        lastStep = new FeatureStep(line, indent, keyword, keywordKind, kind, token.MatchedText ?? "", scenario);
+        string raw = token.Line.GetLineText(0);
+        int textColumn = Math.Min(indent + keyword.Length, raw.Length);
+        while (textColumn < raw.Length && char.IsWhiteSpace(raw[textColumn]))
+        {
+            textColumn++;
+        }
+        lastStep = new FeatureStep(line, indent, keyword, keywordKind, kind, token.MatchedText ?? "", textColumn, scenario);
         scenario.Steps.Add(lastStep);
         Steps.Add(lastStep);
         describing = false;

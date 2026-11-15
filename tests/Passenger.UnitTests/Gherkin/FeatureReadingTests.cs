@@ -174,4 +174,13 @@ public sealed class FeatureReadingTests
             [(1, 27), (4, 5), (8, 13), (15, 27), (19, 21), (24, 27)],
             reading.Folds().Select(f => (f.FirstLine, f.LastLine)));
     }
+
+    [Fact]
+    public void A_steps_text_starts_after_every_space_after_its_keyword()
+    {
+        FeatureStep step = FeatureReading.Read("Feature: F\nScenario: S\n    Given  two spaces <here>\n", "en").Steps[0];
+
+        Assert.Equal((11, "two spaces <here>"), (step.TextColumn, step.Text));
+        Assert.Equal([22], step.Placeholders.Select(p => p.Column));
+    }
 }

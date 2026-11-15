@@ -181,7 +181,7 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.WaitFor(() => window.EditorArea.TextOf(StepsFile)?.ToString().Contains("[Given(\"the initial number is {int}\")]", StringComparison.Ordinal) == true
                 || File.ReadAllText(StepsFile).Contains("[Given(\"the initial number is {int}\")]", StringComparison.Ordinal),
                 () => $"the definition's expression renamed ({window.Status})");
-            Assert.Contains("1 outline step with placeholders left as written", window.Status ?? string.Empty, StringComparison.Ordinal);
+            Assert.Contains("1 step with placeholders or no arguments to keep left as written", window.Status ?? string.Empty, StringComparison.Ordinal);
         }
         finally
         {

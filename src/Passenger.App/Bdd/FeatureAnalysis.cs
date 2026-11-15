@@ -56,7 +56,7 @@ public sealed class FeatureAnalysis
         Dictionary<FeatureStep, StepMatch> matches = [];
         if (matcher is not null)
         {
-            foreach (FeatureStep step in reading.Steps)
+            foreach (FeatureStep step in reading.Steps.Where(StepMatcher.Matchable))
             {
                 matches[step] = matcher.Match(step, reading);
             }
