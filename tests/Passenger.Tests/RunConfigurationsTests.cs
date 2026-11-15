@@ -1299,7 +1299,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Ui.Settle();
             Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
             Heard(window, shared, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
-            Assert.Equal(["Undo Change Launch Profiles? It changes Shop.slnLaunch and Shop.slnLaunch.user."], asked);
+            Assert.Equal(["Undo Change Launch Profiles? It changes Shop.slnLaunch, and deletes Shop.slnLaunch.user."], asked);
             Assert.True(File.ReadAllText(shared) == Launch && !File.Exists(own), "Undo did not put the launch profiles back as they were");
             Ui.WaitFor(() => Names(window).SequenceEqual(["Hello", "Tool: quiet", "Both", "Old"]), () => $"the configurations to follow the files taken back ({string.Join(", ", Names(window))})");
         }

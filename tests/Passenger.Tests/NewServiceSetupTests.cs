@@ -235,7 +235,7 @@ public sealed class NewServiceSetupTests : IDisposable
             Ui.Run(window, AppActions.FocusExplorer);
             Ui.Run(window, EditorActions.Undo);
             Assert.Equal(2, asked.Count);
-            Assert.Equal("Undo Rename notes.md to guide.md? It changes guide.md.", asked[1].Message);
+            Assert.Equal("Undo Rename notes.md to guide.md? It renames guide.md back to notes.md.", asked[1].Message);
             Assert.True(File.Exists(notes) && !File.Exists(guide), $"The rename's own Undo did not name guide.md back: {window.Status}");
         }
         finally
