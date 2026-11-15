@@ -1688,3 +1688,30 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   could not eject a disk a process held, `package-mac.sh` took a mount point no longer mounted as detached, and the image
   stayed attached, its helper holding the file's lock (the orphan each failed job's cleanup ended). It now detaches by
   disk until hdiutil lists the image no more, naming what held it (#1473).
+- `McpNavigationTests`' `Definition_of_a_maui_pages_initialize_component_answers_the_generators_declaration_in_a_copy_of_its_code`,
+  CI 43648783540 (macOS report shard 4): "No symbol at MainPage.xaml.cs:9:9, and line 9 declares none". **A race in the
+  IDE**, neither of the two first thought of: the wait did start at the load after the restore, and the generators' queue
+  did hold a run. The load after the restore takes its design-time build's documents by their paths, so the server kept
+  the text it had read of the project's generated .editorconfig (which only now gives MAUI's generator the page's
+  settings) and of its global usings until it heard of them, 60 to 110 ms later; the generators' wait (`GeneratorsRun`)
+  ended as their queued run ran, and when the restore came within 1.5 s of the first load that was the first load's own
+  run falling due 20 to 40 ms after the load (on CI: the load 04.683, its first load's run due about 04.72, the two files
+  told 04.794), so MAUI's generator ran on the settings of before the restore. Once in 30 loaded rounds on the Mac (the
+  load 59.835, the files told 59.920). The extension's `GeneratorsRun` now also names the files of each project's
+  intermediate output folder the server holds otherwise than the disk, and the wait asks again each 100 ms until there are
+  none (`CSharpService.GeneratorsReadAsync`, 15 s at most); `McpWindowTests`'
+  `An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_server_to_read_what_its_build_wrote_again`
+  holds the server's hearing of the two files (`WatchedFiles.HoldTelling`) and failed with CI's words before (#1640).
+- `McpNavigationTests`' `Definition_of_what_a_restore_brings_waits_for_its_projects_load_again_beside_a_restore_that_fails`,
+  CI 43648783540 (Linux report shard 1): answered the caller's own line, `Uses/Caller.cs:5:26`. **A race in the IDE**: the
+  wait for what a restore brought ended at the end of the server's next batch of loads, whichever project's: with Uses
+  restored in a batch of its own and Lacks's change queued meanwhile, the next batch loaded Lacks alone before the server
+  heard of Uses's assets, and once Lacks's restore failed nothing held the question, Uses not yet loaded again. CI's run
+  kept no log of the batches; the test's own order (Uses.csproj and Lacks.csproj written one after the other, told the
+  server apart under load) allows it. A restore of projects named singly now keeps each waited for until a load of it is
+  reported (`CSharpService.RestoredStillToLoad`; let go once the server has said nothing of its loads for 15 s with no
+  restore under way), a solution's, which names none, the batch after it as before; the agent is told what it waits for.
+  `McpWindowTests`' `An_agents_definition_of_what_a_restore_brought_waits_for_its_projects_load_again_though_another_projects_load_ends_first`
+  holds the server's hearing of Uses's files and the window's asking it to load Uses again (`WatchedFiles.HoldTelling`,
+  `CSharpService.HoldReloads`) and failed with CI's words before (#1640).
+
