@@ -85,14 +85,16 @@ internal sealed class BddSource(Func<ProjectSession> session, EditorArea editors
         return read;
     }
 
-    /// <summary>A feature file's reading: an open one's as the editor holds it, any other's from disk.</summary>
+    /// <summary>A feature file's reading: an open one's as the editor holds it, any other's from disk off the window's thread,
+    /// as the editor reads a file (<see cref="EditorArea.Read"/>).</summary>
     public async Task<FeatureAnalysis> AnalysisOfAsync(string path)
     {
-        if (editors.Documents.FirstOrDefault(d => PathNames.Same(d.Path, path)) is { } open && await Checks.CurrentAsync(open) is { } analysis)
+        OpenDocument? open = editors.Find(path);
+        if (open is not null && await Checks.CurrentAsync(open) is { } analysis)
         {
             return analysis;
         }
-        TextSnapshot text = editors.TextOf(path) ?? TextSnapshot.From(await BackgroundWork.Run(() => File.Exists(path) ? File.ReadAllText(path) : string.Empty));
+        TextSnapshot text = open is { HoldsText: true } ? open.Text.Snapshot : await BackgroundWork.Run(() => EditorArea.Read(path)) ?? TextSnapshot.From(string.Empty);
         return await Checks.ReadAsync(path, text);
     }
 
