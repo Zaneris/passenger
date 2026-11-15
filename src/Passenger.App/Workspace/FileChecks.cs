@@ -1,5 +1,4 @@
 using Passenger.App.Endpoints;
-using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -9,7 +8,7 @@ namespace Passenger.App.Workspace;
 /// <summary>Each open file Passenger reads for itself marked where it cannot use what the file says, as it opens and again
 /// once typing pauses: an .editorconfig's sections that match no file because their glob cannot be used (a range in
 /// reverse order), and a .slnx that is not well-formed XML where its reader stopped. A UI-thread object.</summary>
-internal sealed class FileChecks : IDisposable
+internal sealed class FileChecks() : OpenFileChecks<FileChecks.Check>(Settle)
 {
     /// <summary>How long typing pauses before the file is checked again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(250);
@@ -24,62 +23,13 @@ internal sealed class FileChecks : IDisposable
         new(HttpFile.Is, "Passenger's reading of its requests", RequestMarks),
     ];
 
-    private readonly Dictionary<OpenDocument, (Check Kind, Debounce Wait, EventHandler<DocumentChangedEventArgs> Changed)> documents = [];
+    protected override (string Checker, Check Kept)? Follow(OpenDocument document) =>
+        Kinds.FirstOrDefault(k => k.Takes(document.Path)) is { } kind ? (kind.Checker, kind) : null;
 
-    public void Attach(OpenDocument document)
+    protected override Task CheckAsync(OpenDocument document, Check kind)
     {
-        UiThread.Check();
-        if (documents.ContainsKey(document) || Kinds.FirstOrDefault(k => k.Takes(document.Path)) is not { } kind)
-        {
-            return;
-        }
-        Debounce wait = new(Settle, () =>
-        {
-            Mark(document);
-            return Task.CompletedTask;
-        }, () => document.Checking(kind.Checker));
-        EventHandler<DocumentChangedEventArgs> changed = (_, _) => wait.Restart();
-        document.Text.Changed += changed;
-        documents[document] = (kind, wait, changed);
-        Mark(document);
-    }
-
-    /// <summary>Who marks an open file, as an agent is told while the check is under way; null for one this takes no part in.</summary>
-    public string? CheckOf(OpenDocument document) => documents.TryGetValue(document, out (Check Kind, Debounce Wait, EventHandler<DocumentChangedEventArgs> Changed) held) ? held.Kind.Checker : null;
-
-    public void Detach(OpenDocument document)
-    {
-        UiThread.Check();
-        if (documents.Remove(document, out (Check Kind, Debounce Wait, EventHandler<DocumentChangedEventArgs> Changed) gone))
-        {
-            document.Text.Changed -= gone.Changed;
-            gone.Wait.Stop();
-            if (document.Markers.Count > 0)
-            {
-                document.Markers = [];
-            }
-        }
-    }
-
-    public void Dispose()
-    {
-        foreach (OpenDocument document in documents.Keys.ToList())
-        {
-            Detach(document);
-        }
-    }
-
-    private void Mark(OpenDocument document)
-    {
-        if (!documents.TryGetValue(document, out (Check Kind, Debounce Wait, EventHandler<DocumentChangedEventArgs> Changed) checking))
-        {
-            return;
-        }
-        IReadOnlyList<Marker> marks = checking.Kind.Marks(document.Path, document.Text.Snapshot);
-        if (marks.Count > 0 || document.Markers.Count > 0)
-        {
-            document.Markers = [.. marks];
-        }
+        Show(document, document.Text.Version, kind.Marks(document.Path, document.Text.Snapshot));
+        return Task.CompletedTask;
     }
 
     /// <summary>A .slnx's text that does not read marked as an error where its XML reader stopped (its lines, a lone '\r'
@@ -112,5 +62,5 @@ internal sealed class FileChecks : IDisposable
     }
 
     /// <summary>A kind of file checked.</summary>
-    private sealed record Check(Func<string, bool> Takes, string Checker, Func<string, TextSnapshot, IReadOnlyList<Marker>> Marks);
+    internal sealed record Check(Func<string, bool> Takes, string Checker, Func<string, TextSnapshot, IReadOnlyList<Marker>> Marks);
 }

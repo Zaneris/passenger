@@ -19,6 +19,7 @@ namespace Passenger.App.Godot;
 /// (<see cref="CodeAsync"/>); and each Shader it writes itself marked with what Godot's shader front end says of its code
 /// (<see cref="ShaderMarksAsync"/>). A UI-thread object.</summary>
 internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string?> godotOf, Func<CSharp.CSharpService?> csharp, CommandHistory commands)
+    : OpenFileChecks<GodotSceneMarks.Scene>(Settle)
 {
     /// <summary>The Godot the person's settings name (their command line for it), whose GodotSharp tells the engine's classes.</summary>
     public Func<string?> Godot { get; init; } = () => null;
@@ -32,86 +33,19 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
     /// <summary>Who checks a scene, as an agent is told while a check is under way.</summary>
     private const string Checker = "Passenger's reading of its scene";
 
-    private readonly HashSet<OpenDocument> documents = [];
-
-    /// <summary>Each open scene's own typing, which holds its check from the first key until it is read again, so an
-    /// agent's diagnostics waits for the marks of the text as it stands.</summary>
-    private readonly Dictionary<OpenDocument, (Debounce Pause, EventHandler<DocumentChangedEventArgs> Typed)> typing = [];
-
-    /// <summary>What each open scene's marks offer to mend them, by their words.</summary>
-    private readonly Dictionary<OpenDocument, IReadOnlyDictionary<string, GodotOffer>> offers = [];
-    private Debounce? again;
-
-    public void Attach(OpenDocument document)
-    {
-        UiThread.Check();
-        if (GodotFile.IsText(document.Path) && documents.Add(document))
-        {
-            Debounce pause = new(Settle, () => MarkAsync(document), () => document.Checking(Checker));
-            EventHandler<DocumentChangedEventArgs> typed = (_, _) => pause.Restart();
-            typing[document] = (pause, typed);
-            document.Text.Changed += typed;
-            IdeErrors.Observe(MarkAsync(document));
-        }
-    }
-
-    /// <summary>Who marks an open file, as an agent is told while the check is under way; null for one this takes no part in.</summary>
-    public string? CheckOf(OpenDocument document) => documents.Contains(document) ? Checker : null;
-
-    public void Detach(OpenDocument document)
-    {
-        UiThread.Check();
-        offers.Remove(document);
-        if (typing.Remove(document, out (Debounce Pause, EventHandler<DocumentChangedEventArgs> Typed) typed))
-        {
-            document.Text.Changed -= typed.Typed;
-            typed.Pause.Stop();
-        }
-        if (documents.Remove(document) && document.Markers.Count > 0)
-        {
-            document.Markers = [];
-        }
-    }
-
-    /// <summary>What the open scenes are read against changed: each is read again once changes pause.</summary>
-    public void Changed()
-    {
-        UiThread.Check();
-        if (documents.Count > 0)
-        {
-            (again ??= new Debounce(Settle, () => Task.WhenAll([.. documents.Select(MarkAsync)]))).Restart();
-        }
-    }
+    protected override (string Checker, Scene Kept)? Follow(OpenDocument document) => GodotFile.IsText(document.Path) ? (Checker, new Scene()) : null;
 
     /// <summary>A C# file of a project was written on disk: each open scene read again now, once the server has read it.</summary>
-    public void CodeWritten()
-    {
-        UiThread.Check();
-        if (documents.Count > 0)
-        {
-            IdeErrors.Observe(Task.WhenAll([.. documents.Select(MarkAsync)]));
-        }
-    }
+    public void CodeWritten() => CheckAll();
 
-    /// <summary>Its changes stopped for good: the window's session ended.</summary>
-    public void Stop()
+    protected override async Task CheckAsync(OpenDocument document, Scene kept)
     {
-        again?.Stop();
-        foreach ((Debounce pause, _) in typing.Values)
-        {
-            pause.Stop();
-        }
-    }
-
-    private async Task MarkAsync(OpenDocument document)
-    {
-        using OpenDocument.CheckHold hold = document.Checking(Checker);
         int version = document.Text.Version;
         if (godotOf(document.Path) is not { } folder)
         {
             if (Show(document, version, []))
             {
-                offers.Remove(document);
+                kept.Offers = null;
             }
             return;
         }
@@ -133,7 +67,7 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
         IReadOnlyList<Marker> shaders = await ShaderMarksAsync(scenes, res, file);
         if (Show(document, version, [.. findings.Select(f => new Marker(TextRange.FromBounds(f.Start, Math.Max(f.Start, f.End)), f.Error ? MarkerKind.Error : MarkerKind.Warning, f.Message)), .. shaders]))
         {
-            offers[document] = findings.Where(f => f.Offer is { Any: true }).DistinctBy(f => f.Message).ToDictionary(f => f.Message, f => f.Offer!, StringComparer.Ordinal);
+            kept.Offers = findings.Where(f => f.Offer is { Any: true }).DistinctBy(f => f.Message).ToDictionary(f => f.Message, f => f.Offer!, StringComparer.Ordinal);
         }
     }
 
@@ -193,7 +127,7 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
     public IReadOnlyList<(TextRange Range, string Message, GodotOffer Offer)> OffersOn(OpenDocument document, int? offset)
     {
         UiThread.Check();
-        if (!offers.TryGetValue(document, out IReadOnlyDictionary<string, GodotOffer>? kept))
+        if (KeptOf(document)?.Offers is not { } kept)
         {
             return [];
         }
@@ -203,17 +137,9 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
             .Select(m => (m.Range, m.Message, kept[m.Message]))];
     }
 
-    /// <summary>A scene's marks, where it is open still as they were read for; whether they stand for its text.</summary>
-    private bool Show(OpenDocument document, int version, IReadOnlyList<Marker> marks)
+    /// <summary>What is kept of an open scene: what its marks offer to mend them, by their words.</summary>
+    internal sealed class Scene
     {
-        if (!documents.Contains(document) || document.Text.Version != version)
-        {
-            return false;
-        }
-        if (marks.Count > 0 || document.Markers.Count > 0)
-        {
-            document.Markers = marks;
-        }
-        return true;
+        public IReadOnlyDictionary<string, GodotOffer>? Offers { get; set; }
     }
 }

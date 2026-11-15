@@ -1729,8 +1729,8 @@ public sealed class ProjectSession : IAsyncDisposable
         parts.Add(("the folder's containers", Containers.EndAsync(Task.WhenAll(debuggers, abandoned))));
         Xaml.Dispose();
         GodotScenes.Stop();
-        GodotMarks.Stop();
-        GodotShaders.Stop();
+        GodotMarks.Dispose();
+        GodotShaders.Dispose();
         GodotScriptTypes.Stop();
         parts.Add(("Godot's editors", GodotEditors.DisposeAsync().AsTask()));
         // Not held, and off the window's thread, whose loop may stop first: a session's end told there would never come.

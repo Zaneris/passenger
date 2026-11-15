@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Passenger.App;
+using Passenger.App.Workspace;
 using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -12,7 +13,8 @@ namespace Passenger.Tests;
 /// <summary>A Godot project's shaders checked by Passenger's port of Godot's front end, with or without a Godot: a shader
 /// with several errors is marked with each of them in Godot's words at its line; one that compiles is warned of what it
 /// declares and never uses, but where its project turns a warning off; an include is read alone as Godot's editor reads
-/// one; and a uniform's card says what the check read of it.</summary>
+/// one; a uniform's card says what the check read of it; and a shader opened before its project keeps its marks once the
+/// project is open.</summary>
 public sealed class GodotShaderFrontEndTests
 {
     private const string Several = """
@@ -94,6 +96,37 @@ public sealed class GodotShaderFrontEndTests
 
         Assert.Null(window.OpenFile(Path.Combine(folder, "lib", "helpers.gdshaderinc")));
         Ui.WaitFor(() => Marked(window, "Unknown identifier in expression: 'scale'.", "v * scale"), () => $"the include read alone, its unknown name marked: {Said(window)}");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_shader_opened_before_its_project_keeps_its_marks_as_typing_pauses_once_the_project_is_open()
+    {
+        TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Several\"\n");
+        TestFolders.Write(folder, "several.gdshader", Several);
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        Assert.Null(window.OpenFile(Path.Combine(folder, "several.gdshader")));
+        Ui.Settle();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        Ui.WaitFor(() => Marked(window, "Unknown identifier in expression: 'speedd'.", "TIME * speedd"), () => $"the shader marked once its project opened: {Said(window)}");
+        OpenDocument shader = window.EditorArea.Active!;
+        List<int> marked = [];
+        shader.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(OpenDocument.Markers))
+            {
+                marked.Add(shader.Markers.Count);
+            }
+        };
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        editor.Selections = SelectionSet.Single(editor.Document.Snapshot.Length);
+        Ui.Press(window, "enter");
+        Ui.Settle();
+        Assert.True(!marked.Contains(0) && Marked(window, "Unknown identifier in expression: 'speedd'.", "TIME * speedd"),
+            $"The shader's marks went as its typing paused ({string.Join(", ", marked)} marks in turn), as the check of the window with no folder still read it: {Said(window)}");
         window.Close();
     }
 
