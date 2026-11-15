@@ -33,7 +33,7 @@ public class ImplementedTests(ITestOutputHelper testOutputHelper)
     [InlineData("list.Count(x => x > 1)", "2", "list.Count()", "3")]
     public async Task A_LINQ_call_evaluates_the_first_time_in_a_program_that_has_not_loaded_System_Linq(string first, string firstCount, string then, string thenCount)
     {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
         int frame = await StoppedAtImplementedAsync(host);
         string loaded = await Evaluate(host, frame, "string.Join(\", \", (object[])AppDomain.CurrentDomain.GetAssemblies()).Contains(\"System.Linq, \")");
         Assert.True(loaded == "false", $"Whether the program has loaded System.Linq before any LINQ call is {loaded}, so the test cannot tell a first call");

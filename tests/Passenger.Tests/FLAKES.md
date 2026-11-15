@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-15
 
+- `ImplementedTests`' `A_LINQ_call_evaluates_the_first_time_in_a_program_that_has_not_loaded_System_Linq`, the report lane
+  on CI's Windows x64 runner (43733598402): "The expression took too long to evaluate: it was stopped after 3 s" for its
+  first evaluation (the program's loaded assemblies joined into a string), two evaluations in the program taking 3.6 s.
+  **The test's limit**, as `InterpreterTests`' and `EvalTests`' below: a fresh program's first evaluation pays a cold
+  cost the run's 3 s, a developer machine's time, doesn't hold on a loaded runner; it now takes
+  `DebugSession.ScaledEvaluations`.
 - `McpTests`' `With_no_SHELL_the_IDEs_environment_is_read_from_the_login_shell_its_terminal_runs`, CI 43725405917 (macOS
   shard 4 of the report lane): "With no SHELL, Passenger never took a login shell's PATH, and ran a git other than the
   one its profile puts first". **The test waited wrong**: it read a file another git was rewriting. Its recording git

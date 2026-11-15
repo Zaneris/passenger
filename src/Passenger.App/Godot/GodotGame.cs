@@ -756,7 +756,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         {
             throw new LiveAppException($"{Name} is not connected");
         }
-        string name = string.Join(" and ", messages.Select(m => m.Name));
+        string name = Plural.Listed([.. messages.Select(m => m.Name)]);
         List<byte[]> frames = [.. messages.Select(m => GodotMessage.Frame(m.Name, thread, m.Data))];
         AgentAsking? asking = Asking.Value;
         CancellationToken giveUp = asking?.GiveUp ?? CancellationToken.None;

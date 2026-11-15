@@ -1754,8 +1754,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode _) = project.AskToStartApi("apiservice");
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             string? why = Ui.Await(profiling, "Profile to give up on the API");
-            Assert.True(why?.StartsWith("apiservice did not start under the profiler within ", StringComparison.Ordinal) == true
-                && why.EndsWith(" s of its AppHost asking for it", StringComparison.Ordinal),
+            Assert.True(why is not null && System.Text.RegularExpressions.Regex.IsMatch(why, $"^apiservice did not start under the profiler within {SaidWhile.Pattern} of its AppHost asking for it$"),
                 $"Profile's time limit was said as '{why}': a service that reached the profiler past its time was recorded as one in time");
             Assert.Equal(why, window.Status);
             Ui.WaitFor(() => window.AspireRuntime.Apps.Count == 0, "the AppHost to stop as Profile gave up");
