@@ -92,7 +92,7 @@ internal sealed partial class GherkinAssist
     private async Task<RefactorOutcome> DefineAsync(FeatureAnalysis analysis, IReadOnlyList<FeatureStep> steps, Target target)
     {
         ProjectSteps project = analysis.Steps!;
-        CultureInfo culture = CultureOf(analysis.Config.BindingCultureOf(analysis.Reading));
+        CultureInfo culture = ProjectSteps.CultureOf(analysis.Config.BindingCultureOf(analysis.Reading));
         List<string> taken = [.. project.Bindings.Where(b => b.ShortType == target.Class).Select(b => b.Method)];
         List<StepSnippet> snippets = [];
         foreach (FeatureStep step in steps)
@@ -168,16 +168,4 @@ internal sealed partial class GherkinAssist
     /// <summary>Code of lines each ending in a line break, every line that holds anything indented.</summary>
     private static string Indented(string code, string indent) =>
         string.Concat(code.TrimEnd('\n').Split('\n').Select(line => line.Length == 0 ? "\n" : $"{indent}{line}\n"));
-
-    private static CultureInfo CultureOf(string? name)
-    {
-        try
-        {
-            return name is null ? CultureInfo.GetCultureInfo("en-US") : CultureInfo.GetCultureInfo(name);
-        }
-        catch (CultureNotFoundException)
-        {
-            return CultureInfo.InvariantCulture;
-        }
-    }
 }
