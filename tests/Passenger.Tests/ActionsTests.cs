@@ -30,6 +30,8 @@ public sealed class ActionsTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, engine: new Passenger.App.Containers.ContainerEngine(cli: Path.Combine(folder, "no-docker")));
         window.OpenFile("One.cs");
         Ui.Settle();
+        List<string> ran = [];
+        window.Actions.Running += (_, running) => ran.Add(running.Action.Id);
         try
         {
             IReadOnlyList<IdeAction> listed = FindAction(window).Rows;
@@ -43,9 +45,10 @@ public sealed class ActionsTests : IDisposable
             {
                 string? why = window.Actions.WhyNot(action.Id, window.Actions.Context());
                 ActionPopup popup = FindAction(window);
-                Assert.True(popup.Rows[0].Id == first.Id, previous is null || previous == first
+                Assert.True(popup.Rows[0].Id == first.Id, (previous is null || previous == first
                     ? $"{first.Title} ({first.Id}) ran from Find Action but is not offered first the next time"
-                    : $"{previous.Title} ({previous.Id}) could not run, yet Find Action offers {popup.Rows[0].Title} first rather than {first.Title}, run last");
+                    : $"{previous.Title} ({previous.Id}) could not run, yet Find Action offers {popup.Rows[0].Title} first rather than {first.Title}, run last")
+                    + $": it offers {popup.Rows[0].Title} ({popup.Rows[0].Id}) first; {Said(window)}");
                 popup.Query = action.Title;
                 Ui.Settle();
                 int row = popup.Rows.ToList().FindIndex(a => a.Id == action.Id);
@@ -54,9 +57,13 @@ public sealed class ActionsTests : IDisposable
                 {
                     Ui.Press(window, "DOWN");
                 }
+                string before = $"before Enter, {(window.Popup == popup ? $"Find Action had {popup.Selected?.Id ?? "no row"} chosen" : $"Find Action was gone, {window.Popup?.GetType().Name ?? "no popup"} open")}";
+                ran.Clear();
                 Ui.Press(window, "ENTER");
                 if (why is null)
                 {
+                    Assert.True(ran.Contains(action.Id), $"{action.Title} ({action.Id}) was chosen in Find Action, which ran "
+                        + $"{(ran.Count == 0 ? "nothing" : string.Join(", ", ran))}; {before}; {Said(window)}");
                     first = action;
                 }
                 else
@@ -183,6 +190,13 @@ public sealed class ActionsTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>What the window shows of the actions run: the status bar's words, those Find Action ran latest first, the
+    /// windows it opened and what has its keys.</summary>
+    private static string Said(MainWindow window) =>
+        $"the status bar says '{window.Status}', Find Action ran last [{string.Join(", ", window.RecentActions)}], "
+        + $"the window owns [{string.Join(", ", window.OwnedWindows.Select(w => $"{w.GetType().Name} '{w.Title}'"))}] "
+        + $"and its keys are with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}";
 
     /// <summary>Find Action as its shortcut opens it, waiting with the keys in its query.</summary>
     private static ActionPopup FindAction(MainWindow window)

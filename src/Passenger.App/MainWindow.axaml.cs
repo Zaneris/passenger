@@ -1002,6 +1002,9 @@ public partial class MainWindow : IdeWindow
     /// <summary>The actions run from Find Action, the latest first, which it lists before anything is typed.</summary>
     private readonly List<string> recentActions = [];
 
+    /// <summary>The ids of the actions run from Find Action, the latest first.</summary>
+    public IReadOnlyList<string> RecentActions => recentActions;
+
     /// <summary>Find Action: every action by name, those that cannot run where it was opened greyed; the one chosen runs
     /// there as its shortcut would, or says why it cannot.</summary>
     public void ShowFindAction()
