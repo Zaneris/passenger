@@ -24,6 +24,18 @@ public sealed class GodotExecutablesTests : IDisposable
         Assert.Equal(Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(newest))!, "Resources", "GodotSharp", "Tools", "nupkgs"), found!.Packages);
     }
 
+    /// <summary>The beta's bundle name comes first in a listing, so the order it is listed in never decides.</summary>
+    [Fact]
+    public void A_release_in_Applications_is_taken_over_its_beta()
+    {
+        string applications = Folder("Applications");
+        Bundle(applications, "Godot_v4.8-beta2_mono.app", dotnet: "4.8.0-beta.2");
+        string release = Bundle(applications, "Godot_v4.8-stable_mono.app", dotnet: "4.8.0");
+        GodotFound? found = GodotExecutables.Find(null, null, [], [applications], windows: false);
+        Assert.True(found is { WhyNot: null, Version: "4.8.0" } && found.Executable == release,
+            $"Applications holding Godot 4.8.0-beta.2 and 4.8.0 gave {found}, so a C# game would run on the beta its release replaced");
+    }
+
     [Fact]
     public void A_Godot_without_dotnet_is_found_saying_it_cannot_run_CSharp()
     {

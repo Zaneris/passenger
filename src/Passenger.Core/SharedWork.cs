@@ -4,9 +4,10 @@ namespace Passenger.Core;
 
 /// <summary>Work asked for by key from any thread (a download), begun once however many ask at once: an ask takes the key's
 /// task under way, or one that ended and still stands, and only where there is neither is the work begun anew, on the
-/// thread pool through <see cref="BackgroundWork"/>. An ask that stops waiting (its own <c>WaitAsync</c>) never ends the
-/// task or lets go of it. Without <c>stands</c> a task is let go once it ended, holding no answer after.</summary>
-public sealed class SharedWork<TKey, T>(Func<Task<T>, bool>? stands = null, IEqualityComparer<TKey>? comparer = null)
+/// thread pool through <see cref="BackgroundWork"/>: held, its end landing on its first asker's thread, or <c>unheld</c>
+/// where that thread may never run again (asks from any window's), the caller saying why. An ask that stops waiting (its
+/// own <c>WaitAsync</c>) never ends the task or lets go of it. Without <c>stands</c> a task is let go once it ended.</summary>
+public sealed class SharedWork<TKey, T>(Func<Task<T>, bool>? stands = null, IEqualityComparer<TKey>? comparer = null, bool unheld = false)
     where TKey : notnull
 {
     private readonly Dictionary<TKey, Task<T>> tasks = new(comparer);
@@ -21,8 +22,19 @@ public sealed class SharedWork<TKey, T>(Func<Task<T>, bool>? stands = null, IEqu
                 return held;
             }
             Task<T>? begun = null;
-            begun = tasks[key] = BackgroundWork.Run(stands is null ? () => LetGoAsync(key, work, () => begun) : work, file: file, line: line);
+            Func<Task<T>> body = stands is null ? () => LetGoAsync(key, work, () => begun) : work;
+            begun = tasks[key] = unheld ? BackgroundWork.Unheld(body) : BackgroundWork.Run(body, file: file, line: line);
             return begun;
+        }
+    }
+
+    /// <summary>Lets go of every key's task, under way or ended, so the next ask of each begins its work anew; an ask
+    /// already given one keeps it.</summary>
+    public void Forget()
+    {
+        lock (tasks)
+        {
+            tasks.Clear();
         }
     }
 

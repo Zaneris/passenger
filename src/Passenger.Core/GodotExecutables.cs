@@ -445,7 +445,7 @@ public static partial class GodotExecutables
         && (windows ? name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) : !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && !name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The Godot app bundles in the folders given (Godot.app, Godot_mono.app, Godot_v4.7.2-stable_mono.app), the
-    /// newest .NET build first.</summary>
+    /// newest .NET build first (<see cref="VersionOrder"/>'s, a release above its prereleases).</summary>
     private static IEnumerable<GodotFound> Bundles(IReadOnlyList<string> folders)
     {
         List<GodotFound> found = [];
@@ -462,18 +462,15 @@ public static partial class GodotExecutables
                 // A folder this user may not list offers no Godot.
             }
         }
-        return found.OrderBy(g => g.WhyNot is null ? 0 : 1).ThenByDescending(g => Comparable(g.Version)).ThenBy(g => g.Executable, StringComparer.Ordinal);
+        return found.OrderBy(g => g.WhyNot is null ? 0 : 1).ThenByDescending(g => g.Version ?? string.Empty, VersionOrder.Instance).ThenBy(g => g.Executable, StringComparer.Ordinal);
     }
 
-    /// <summary>A version as one to compare ("4.7.2-beta1" as 4.7.2), none the oldest.</summary>
-    private static Version Comparable(string? version) =>
-        System.Version.TryParse(version?.Split('-')[0], out Version? parsed) ? parsed : new Version(0, 0);
-
-    /// <summary>The answers each Godot gave to <c>--version</c>, by its executable and when it was last written.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string, DateTime), Lazy<Task<string?>>> Answered = new();
+    /// <summary>The answers each Godot gave to <c>--version</c>, by its executable and when it was last written, kept once
+    /// it gave one. Unheld, every asker's: on the first one's thread, a thread that never runs again would hold the rest.</summary>
+    private static readonly SharedWork<(string, DateTime), string?> Answered = new(answer => answer.IsCompletedSuccessfully && answer.Result is not null, unheld: true);
 
     /// <summary>The version a Godot's executable answers <c>--version</c> with, asked headless once per executable as it
-    /// is written, else the one its files gave (<see cref="GodotFound.Version"/>).</summary>
+    /// is written (again while it gives none), else the one its files gave (<see cref="GodotFound.Version"/>).</summary>
     public static async Task<string?> VersionAsync(GodotFound found, CancellationToken cancel = default) =>
         (await AnswerAsync(found, cancel).ConfigureAwait(false) is { } line ? ReadVersion(line)?.Version : null) ?? found.Version;
 
@@ -485,10 +482,8 @@ public static partial class GodotExecutables
         {
             return null;
         }
-        (string, DateTime) key = (found.Executable, File.GetLastWriteTimeUtc(found.Executable));
-        // Not held, every asker's: on the first one's thread, a thread that never runs again would hold the rest.
-        Lazy<Task<string?>> once = Answered.GetOrAdd(key, _ => new Lazy<Task<string?>>(() => BackgroundWork.Unheld(() => AskVersionAsync(found.Executable))));
-        return await once.Value.WaitAsync(cancel).ConfigureAwait(false);
+        return await Answered.Take((found.Executable, File.GetLastWriteTimeUtc(found.Executable)), () => AskVersionAsync(found.Executable))
+            .WaitAsync(cancel).ConfigureAwait(false);
     }
 
     private static async Task<string?> AskVersionAsync(string executable)

@@ -38,18 +38,12 @@ public static class ProgramStarts
     /// program runs. An unread version does not.</summary>
     public static bool TakesSessionsAsItStarts(string? version)
     {
-        if (version is null)
+        if (version is null || VersionOrder.Major(version) is not { } major)
         {
             return false;
         }
-        string plain = version.Split('+')[0];
-        int dash = plain.IndexOf('-', StringComparison.Ordinal);
-        if (!Version.TryParse(dash < 0 ? plain : plain[..dash], out Version? number))
-        {
-            return false;
-        }
-        string label = dash < 0 ? string.Empty : plain[(dash + 1)..];
-        return number.Major > 11 || number.Major == 11 && !label.StartsWith("preview", StringComparison.Ordinal) && !label.StartsWith("alpha", StringComparison.Ordinal);
+        string label = VersionOrder.Label(version) ?? string.Empty;
+        return major > 11 || major == 11 && !label.StartsWith("preview", StringComparison.Ordinal) && !label.StartsWith("alpha", StringComparison.Ordinal);
     }
 
     /// <summary>The product version of the runtime process <paramref name="processId"/> runs on, as the CoreLib beside its

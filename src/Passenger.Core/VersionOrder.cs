@@ -7,7 +7,10 @@ public sealed class VersionOrder : IComparer<string>
 {
     public static readonly VersionOrder Instance = new();
 
-    public static bool IsPrerelease(string version) => Release(version).Contains('-', StringComparison.Ordinal);
+    public static bool IsPrerelease(string version) => Label(version) is not null;
+
+    /// <summary>A version's prerelease label (rc.2 of 9.0.0-rc.2+abc), null for a release.</summary>
+    public static string? Label(string version) => Release(version.Trim()).Split('-', 2) is [_, { } label] ? label : null;
 
     /// <summary>A version's first number (9 of 9.0.1 and 9.0.0-rc.2); null for a version that starts with none.</summary>
     public static int? Major(string version) =>

@@ -3,7 +3,8 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>Work shared by key (<see cref="SharedWork{TKey, T}"/>): asks at once take one task, an ask that stops waiting
-/// leaves it to the rest, and an ended task is taken again only where it stands. Each task ends when the test says.</summary>
+/// leaves it to the rest, an ended task is taken again only where it stands and until forgotten, and unheld work ends
+/// whatever becomes of its first asker's thread. Each task ends when the test says.</summary>
 public class SharedWorkTests
 {
     [Fact]
@@ -55,5 +56,54 @@ public class SharedWorkTests
         Assert.Equal("download 1", await shared.Take("bootstrap.min.css", Work));
 
         Assert.Equal("download 2", await shared.Take("bootstrap.min.css", Work));
+    }
+
+    [Fact]
+    public async Task A_task_that_stands_is_begun_anew_once_forgotten()
+    {
+        SharedWork<string, string> shared = new(task => task.IsCompletedSuccessfully, StringComparer.Ordinal);
+        int begun = 0;
+        Task<string> Work() => Task.FromResult($"10.0.{Interlocked.Increment(ref begun)}");
+
+        Assert.Equal("10.0.1", await shared.Take("/src/app", Work));
+        shared.Forget();
+
+        Assert.True(await shared.Take("/src/app", Work) == "10.0.2", "An SDK named before one was installed is still the folder's once told to forget it");
+    }
+
+    /// <summary>The first asker's thread runs nothing posted to it, as a headless test's thread once its test is over.</summary>
+    [Fact]
+    public async Task Unheld_work_ends_for_every_asker_though_the_first_ones_thread_never_runs_again()
+    {
+        SharedWork<string, string> shared = new(task => task.IsCompletedSuccessfully, StringComparer.Ordinal, unheld: true);
+        TaskCompletionSource<string> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        SynchronizationContext? own = SynchronizationContext.Current;
+        NeverRuns never = new();
+        SynchronizationContext.SetSynchronizationContext(never);
+        Task<string> first;
+        try
+        {
+            first = shared.Take("/src/app", () => answer.Task);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(own);
+        }
+        Task<string> second = shared.Take("/src/app", () => answer.Task);
+        answer.SetResult("10.0.404");
+
+        Assert.True(await Task.WhenAny(second, never.Posted) == second,
+            "The work's end was posted to its first asker's thread, which never runs again, so every asker waits for its answer for good");
+        Assert.True(ReferenceEquals(first, second) && await second == "10.0.404", "A second asker was given work of its own, so the SDK would be asked twice at once");
+    }
+
+    /// <summary>A thread's context that runs nothing posted to it, saying when something is.</summary>
+    private sealed class NeverRuns : SynchronizationContext
+    {
+        private readonly TaskCompletionSource posted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Posted => posted.Task;
+
+        public override void Post(SendOrPostCallback d, object? state) => posted.TrySetResult();
     }
 }
