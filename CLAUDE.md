@@ -209,7 +209,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes `MSBuildNames`; another program's or a person's
   JSON `JsonMembers` (`Value` for a member of any kind), never a bare `TryGetProperty`/`GetProperty` (PSG0008); a search
   by halving `Sorted`, never a loop of your own; the newest of folders named by versions `VersionOrder.Newest`; a primitive `PrimitiveTypes`; an SDK into an installation
-  `DotnetMerge`; a path in a project file `ItemPaths`; what a Mac program links `MachOFile`; whether this process runs translated `Dotnet.Translated`, a program's processors
+  `DotnetMerge`; a path in a project file `ItemPaths`, which files an MSBuild value names `ItemPaths.Matches` (its parts `ItemPaths.Parts`), a project file's items `ProjectItems`; what a Mac program links `MachOFile`; whether this process runs translated `Dotnet.Translated`, a program's processors
   `ProgramProcessors`; work any thread asks for by
   key (a download), begun once however many ask, an ask that stops waiting never letting it go, `SharedWork` (`unheld` where any window asks, saying why); a folder first on a PATH `Programs.FirstOnPath`; a shell's kind `ShellKinds.Of`; a macOS app bundle from a path `MacBundles`; requests to a peer answered by number `PendingRequests` (one asked after its end fails at once), never a table of one's own.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
